@@ -6475,6 +6475,7 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
         (
             "pipeline_contract.fresh_dry_run_completed",
             "source.paths_redacted",
+            "registered_roots_public.paths_redacted",
             "controlled_delta.hydrated_only",
             "api_runner_acceptance.dry_run_plan_generated",
             "classification.reported",
@@ -6596,6 +6597,23 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 expected=0,
                 actual=_get(summary, "localization.failed", None),
             )
+        loc_diag = str(_get(summary, "localization_diagnosis.diagnosis", "") or "")
+        if loc_diag and loc_diag != "benign_all_localizable_tags_already_localized_or_newly_localized":
+            result.fail(
+                "s3a_m2_localization_diagnosis_not_benign",
+                "Localization diagnosis must explain that remaining localizable tag gaps are resolved or benign.",
+                path="localization_diagnosis.diagnosis",
+                expected="benign_all_localizable_tags_already_localized_or_newly_localized",
+                actual=loc_diag,
+            )
+        if _as_int(_get(summary, "localization_diagnosis.tags_requiring_localization_after_runner", 0)) != 0:
+            result.fail(
+                "s3a_m2_localization_gap_remaining",
+                "S3A-M2 cannot leave localizable tag gaps unreported or unresolved.",
+                path="localization_diagnosis.tags_requiring_localization_after_runner",
+                expected=0,
+                actual=_get(summary, "localization_diagnosis.tags_requiring_localization_after_runner", None),
+            )
 
     gpu_status = str(_get(summary, "gpu_telemetry.validation_status", "") or "").casefold()
     actual_provider = str(_get(summary, "gpu_telemetry.actual_provider", "") or "")
@@ -6617,6 +6635,34 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             actual=actual_provider,
         )
 
+    launcher_status_any = str(_get(summary, "launcher_web_admin_acceptance.status", "") or "").casefold()
+    launcher_execute_clicked = _as_bool(_get(summary, "launcher_web_admin_acceptance.execute_clicked", False))
+    if launcher_status_any == "passed_gui_execute_completed" and not launcher_execute_clicked:
+        result.fail(
+            "s3a_m2_gui_execute_claim_without_click",
+            "Launcher/Web Admin validation must not claim GUI execute completion unless the GUI clicked Execute.",
+            path="launcher_web_admin_acceptance.execute_clicked",
+            expected=True,
+            actual=launcher_execute_clicked,
+        )
+    if launcher_status_any == "passed_gui_execute_not_safe_runner_execute_used":
+        if launcher_execute_clicked:
+            result.fail(
+                "s3a_m2_runner_fallback_claim_with_gui_execute_click",
+                "Runner fallback status must not also claim the GUI clicked Execute.",
+                path="launcher_web_admin_acceptance.execute_clicked",
+                expected=False,
+                actual=True,
+            )
+        if not str(_get(summary, "launcher_web_admin_acceptance.fallback_reason", "") or ""):
+            result.fail(
+                "s3a_m2_runner_fallback_missing_reason",
+                "Runner fallback status must include a stable public-safe fallback reason.",
+                path="launcher_web_admin_acceptance.fallback_reason",
+                expected="non-empty public-safe reason",
+                actual=_get(summary, "launcher_web_admin_acceptance.fallback_reason", None),
+            )
+
     if status == "dry_run_complete_pending_approval":
         if production_performed or _as_bool(_get(summary, "api_runner_acceptance.execute_ran", False)):
             result.fail(
@@ -6634,6 +6680,7 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             "api_runner_acceptance.execute_ran",
             "ledger_consistency.passed",
             "launcher_web_admin_acceptance.validated",
+            "standard_pipeline_flow.public_safe",
         )
         _check_required_boolean_paths(
             summary,
@@ -6642,12 +6689,50 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             code="s3a_m2_target_proof_missing",
             message="S3A-M2 target_met requires approved production execute, ledger proof, and launcher/Web Admin validation.",
         )
-        if str(_get(summary, "launcher_web_admin_acceptance.status", "")).casefold() != "passed":
+        if str(_get(summary, "standard_pipeline_flow.status", "") or "").casefold() != "completed":
+            result.fail(
+                "s3a_m2_standard_pipeline_flow_incomplete",
+                "S3A-M2 target_met requires the standardized scan/hydrate/rescan/import/classify/AI/localize/ledger/telemetry/redaction/GUI/report flow to be complete.",
+                path="standard_pipeline_flow.status",
+                expected="completed",
+                actual=_get(summary, "standard_pipeline_flow.status", None),
+            )
+        for step_name in (
+            "scan_current_source_delta",
+            "detect_cloud_placeholders",
+            "hydrate_placeholders_non_destructively",
+            "rescan_after_hydration",
+            "import_all_current_importable_items",
+            "classify_imported_media",
+            "run_ai_tagging",
+            "run_localization_or_stable_reasons",
+            "record_ledger_for_every_planned_item",
+            "capture_resource_gpu_telemetry",
+            "validate_public_redaction",
+            "validate_launcher_web_admin_workflow",
+            "produce_public_report_and_contract",
+        ):
+            step_path = f"standard_pipeline_flow.steps.{step_name}.completed"
+            if not _as_bool(_get(summary, step_path, False)):
+                result.fail(
+                    "s3a_m2_standard_pipeline_step_incomplete",
+                    "Every standard S3A-M2 pipeline step must be completed before target_met.",
+                    path=step_path,
+                    expected=True,
+                    actual=_get(summary, step_path, None),
+                )
+        launcher_status = str(_get(summary, "launcher_web_admin_acceptance.status", "")).casefold()
+        allowed_launcher_statuses = {
+            "passed",
+            "passed_gui_execute_completed",
+            "passed_gui_execute_not_safe_runner_execute_used",
+        }
+        if launcher_status not in allowed_launcher_statuses:
             result.fail(
                 "s3a_m2_launcher_validation_not_passed",
                 "S3A-M2 target_met requires launcher/Web Admin status validation to pass.",
                 path="launcher_web_admin_acceptance.status",
-                expected="passed",
+                expected=sorted(allowed_launcher_statuses),
                 actual=_get(summary, "launcher_web_admin_acceptance.status", None),
             )
         if gpu_status != "passed" or actual_provider not in gpu_providers:
@@ -6658,29 +6743,70 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 expected="passed",
                 actual=_get(summary, "gpu_telemetry.validation_status", None),
             )
-        if _as_int(_get(summary, "execute.imported", 0)) <= 0:
+        placeholder_status = str(_get(summary, "placeholder_hydration.status", "") or "").casefold()
+        if placeholder_status not in {"completed", "completed_with_stable_failures", "not_required"}:
+            result.fail(
+                "s3a_m2_placeholder_hydration_missing",
+                "S3A-M2 target_met requires placeholder hydration evidence or an explicit not-required state.",
+                path="placeholder_hydration.status",
+                expected=["completed", "completed_with_stable_failures", "not_required"],
+                actual=_get(summary, "placeholder_hydration.status", None),
+            )
+        if _as_int(_get(summary, "placeholder_hydration.remaining_placeholders_after_hydration", 0)) != 0:
+            result.fail(
+                "s3a_m2_placeholders_remaining_after_hydration",
+                "S3A-M2 target_met cannot treat remaining iCloud placeholders as completed work.",
+                path="placeholder_hydration.remaining_placeholders_after_hydration",
+                expected=0,
+                actual=_get(summary, "placeholder_hydration.remaining_placeholders_after_hydration", None),
+            )
+        if _as_int(_get(summary, "final_inventory.current_importable_hydrated_supported_items", 0)) != 0:
+            result.fail(
+                "s3a_m2_importable_items_remaining",
+                "All currently importable hydrated supported delta items must be imported before target_met.",
+                path="final_inventory.current_importable_hydrated_supported_items",
+                expected=0,
+                actual=_get(summary, "final_inventory.current_importable_hydrated_supported_items", None),
+            )
+        if _as_int(_get(summary, "final_inventory.placeholders_remaining", 0)) != 0:
+            result.fail(
+                "s3a_m2_final_placeholders_remaining",
+                "Final inventory must show zero remaining placeholders or stable accepted failure details outside target_met.",
+                path="final_inventory.placeholders_remaining",
+                expected=0,
+                actual=_get(summary, "final_inventory.placeholders_remaining", None),
+            )
+        if _as_bool(_get(summary, "final_inventory.scan_cap_stopped_scan", False)):
+            result.fail(
+                "s3a_m2_final_inventory_cap_stopped_scan",
+                "Final remaining-delta inventory must not be cap-truncated when target_met is claimed.",
+                path="final_inventory.scan_cap_stopped_scan",
+                expected=False,
+                actual=True,
+            )
+        if _as_int(_get(summary, "final_totals.imported", _get(summary, "execute.imported", 0))) <= 0:
             result.fail(
                 "s3a_m2_target_without_imported_delta",
                 "S3A-M2 target_met requires a real imported production delta.",
-                path="execute.imported",
+                path="final_totals.imported",
                 expected="> 0",
-                actual=_get(summary, "execute.imported", None),
+                actual=_get(summary, "final_totals.imported", _get(summary, "execute.imported", None)),
             )
-        if _as_int(_get(summary, "classification.count", 0)) <= 0:
+        if _as_int(_get(summary, "final_totals.classified", _get(summary, "classification.count", 0))) <= 0:
             result.fail(
                 "s3a_m2_target_without_classification",
                 "S3A-M2 target_met requires classification work to complete for the delta.",
-                path="classification.count",
+                path="final_totals.classified",
                 expected="> 0",
-                actual=_get(summary, "classification.count", None),
+                actual=_get(summary, "final_totals.classified", _get(summary, "classification.count", None)),
             )
-        if _as_int(_get(summary, "ai_tagging.count", 0)) <= 0:
+        if _as_int(_get(summary, "final_totals.ai_tagged", _get(summary, "ai_tagging.count", 0))) <= 0:
             result.fail(
                 "s3a_m2_target_without_ai_tagging",
                 "S3A-M2 target_met requires AI tagging work to complete for the delta.",
-                path="ai_tagging.count",
+                path="final_totals.ai_tagged",
                 expected="> 0",
-                actual=_get(summary, "ai_tagging.count", None),
+                actual=_get(summary, "final_totals.ai_tagged", _get(summary, "ai_tagging.count", None)),
             )
 
     public_payloads: list[Any] = [summary]

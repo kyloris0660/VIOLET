@@ -635,6 +635,10 @@ def _coerce_profile_payload(
         profile["safe_startup"] = bool(payload.get("safe_startup"))
     if "require_auth" in payload:
         profile["require_auth"] = _auth_policy_bool(payload.get("require_auth"), default=True)
+    if "manual_sync_enabled" in payload:
+        profile["manual_sync_enabled"] = bool(payload.get("manual_sync_enabled"))
+    if "manual_sync_execute_enabled" in payload:
+        profile["manual_sync_execute_enabled"] = bool(payload.get("manual_sync_execute_enabled"))
     if "manual_sync_execute_max_files" in payload:
         profile["manual_sync_execute_max_files"] = payload.get("manual_sync_execute_max_files")
     if "manual_sync_max_duration_seconds" in payload:
@@ -720,6 +724,12 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
         profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] = str(profile.get("manual_sync_execute_max_files"))
     if profile.get("manual_sync_max_duration_seconds") is not None:
         profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] = str(profile.get("manual_sync_max_duration_seconds"))
+    if profile.get("manual_sync_enabled") is not None:
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] = "true" if bool(profile.get("manual_sync_enabled")) else "false"
+    if profile.get("manual_sync_execute_enabled") is not None:
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] = (
+            "true" if bool(profile.get("manual_sync_execute_enabled")) else "false"
+        )
     for flag in AUTOMATION_FLAGS:
         profile_env[flag] = "false"
     for flag in DANGEROUS_PRODUCTION_FLAGS:
@@ -1454,6 +1464,14 @@ def _profile_public(config: RuntimeConfig) -> dict[str, Any]:
         "python_configured": bool(str(config.expected_python or "").strip()),
         "python_exists": config.expected_python.is_file(),
         "safe_startup": bool(config.profile_data.get("safe_startup", False)) if config.profile_data else False,
+        "manual_sync_enabled": bool(config.profile_data.get("manual_sync_enabled", False)) if config.profile_data else False,
+        "manual_sync_execute_enabled": bool(config.profile_data.get("manual_sync_execute_enabled", False))
+        if config.profile_data
+        else False,
+        "manual_sync_execute_max_files": config.profile_data.get("manual_sync_execute_max_files") if config.profile_data else None,
+        "manual_sync_max_duration_seconds": config.profile_data.get("manual_sync_max_duration_seconds")
+        if config.profile_data
+        else None,
         "automation_flags_disabled": not automation_enabled,
         "automation_flags_enabled": automation_enabled,
         "development_dotenv_required": False,
@@ -1802,6 +1820,14 @@ def profile_update(
         profile["app_port"] = updates["app_port"]
     if "require_auth" in updates and updates["require_auth"] is not None:
         profile["require_auth"] = _auth_policy_bool(updates["require_auth"], default=True)
+    if "manual_sync_enabled" in updates and updates["manual_sync_enabled"] is not None:
+        profile["manual_sync_enabled"] = bool(updates["manual_sync_enabled"])
+    if "manual_sync_execute_enabled" in updates and updates["manual_sync_execute_enabled"] is not None:
+        profile["manual_sync_execute_enabled"] = bool(updates["manual_sync_execute_enabled"])
+    if "manual_sync_execute_max_files" in updates and updates["manual_sync_execute_max_files"] is not None:
+        profile["manual_sync_execute_max_files"] = updates["manual_sync_execute_max_files"]
+    if "manual_sync_max_duration_seconds" in updates and updates["manual_sync_max_duration_seconds"] is not None:
+        profile["manual_sync_max_duration_seconds"] = updates["manual_sync_max_duration_seconds"]
     db_updates = updates.get("db")
     if isinstance(db_updates, Mapping):
         db = dict(profile["db"])

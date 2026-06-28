@@ -1551,6 +1551,21 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "public_source_identity": "source-abc123",
             "paths_redacted": True,
         },
+        "registered_roots_public": {
+            "registered_root_count": 1,
+            "in_scope_root_id": 1,
+            "paths_redacted": True,
+            "roots": [
+                {
+                    "id": 1,
+                    "public_source_identity": "source-abc123",
+                    "is_active": True,
+                    "auto_sync_enabled": False,
+                    "in_scope": True,
+                    "path_redacted": True,
+                }
+            ],
+        },
         "controlled_delta": {
             "cap": 300,
             "cap_exceeded": False,
@@ -1592,6 +1607,19 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "llm_called": True,
             "provider_call_count": 2,
         },
+        "localization_diagnosis": {
+            "status": "completed",
+            "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
+            "ai_wd_assignment_count": 1000,
+            "distinct_ai_wd_tag_count": 200,
+            "localizable_distinct_tags": 180,
+            "localizable_already_localized_or_static": 100,
+            "newly_localized_tags": 80,
+            "tags_requiring_localization_after_runner": 0,
+            "proper_noun_suggestion_review_only_tags_skipped": 20,
+            "not_eligible_for_localization": {"proper_noun_suggestion_review_only": 20},
+            "public_safe": True,
+        },
         "gpu_telemetry": {
             "status": "collected",
             "validation_status": "passed",
@@ -1621,10 +1649,72 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "execute_ran": True,
             "status_polled_or_serialized": True,
         },
+        "placeholder_hydration": {
+            "status": "completed",
+            "placeholder_count_before_hydration": 2,
+            "hydration_attempted_count": 2,
+            "hydration_succeeded_count": 2,
+            "hydration_failed_count": 0,
+            "remaining_placeholders_after_hydration": 0,
+            "failure_reasons": {},
+            "manual_user_action_required": False,
+            "source_content_written": False,
+            "source_deleted_moved_renamed": False,
+            "public_safe": True,
+        },
+        "final_inventory": {
+            "current_delta_candidates": 20,
+            "current_importable_hydrated_supported_items": 0,
+            "existing_media": 3,
+            "placeholders_remaining": 0,
+            "unsupported_items": 17,
+            "unreadable_zero_byte_damaged": 0,
+            "unsupported_extension_breakdown": {".txt": 17},
+            "scan_cap_stopped_scan": False,
+            "public_safe": True,
+        },
+        "final_totals": {
+            "imported": 100,
+            "classified": 100,
+            "ai_tagged": 100,
+            "localized": 80,
+        },
         "launcher_web_admin_acceptance": {
             "validated": True,
             "status": "passed",
             "target_path": "/admin?tab=content#dynamic-library-sync-section",
+            "execute_clicked": False,
+        },
+        "standard_pipeline_flow": {
+            "version": 1,
+            "status": "completed",
+            "future_automation_readiness": "manual_pipeline_standardized_no_automatic_sync_implemented",
+            "automatic_sync_implemented": False,
+            "public_safe": True,
+            "aggregate_basis": {
+                "initial_execute_run_id": 7,
+                "remaining_execute_run_id": 8,
+                "hydration_passes_represented": 2,
+                "final_inventory_delta_candidates": 20,
+            },
+            "steps": {
+                name: {"completed": True, "status": "completed", "evidence": {}}
+                for name in (
+                    "scan_current_source_delta",
+                    "detect_cloud_placeholders",
+                    "hydrate_placeholders_non_destructively",
+                    "rescan_after_hydration",
+                    "import_all_current_importable_items",
+                    "classify_imported_media",
+                    "run_ai_tagging",
+                    "run_localization_or_stable_reasons",
+                    "record_ledger_for_every_planned_item",
+                    "capture_resource_gpu_telemetry",
+                    "validate_public_redaction",
+                    "validate_launcher_web_admin_workflow",
+                    "produce_public_report_and_contract",
+                )
+            },
         },
         "private_artifacts": {
             "root": ".local_manifests/s3a_m2_delta_e2e",
@@ -3692,6 +3782,72 @@ def test_s3a_m2_contract_rejects_missing_launcher_validation_for_target() -> Non
 
     assert "s3a_m2_target_proof_missing" in codes
     assert "s3a_m2_launcher_validation_not_passed" in codes
+
+
+def test_s3a_m2_contract_rejects_remaining_placeholder_completion() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["placeholder_hydration"]["remaining_placeholders_after_hydration"] = 1
+    summary["final_inventory"]["placeholders_remaining"] = 1
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_placeholders_remaining_after_hydration" in codes
+    assert "s3a_m2_final_placeholders_remaining" in codes
+
+
+def test_s3a_m2_contract_rejects_remaining_importable_delta_completion() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["final_inventory"]["current_importable_hydrated_supported_items"] = 2
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_importable_items_remaining" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_unexplained_localization_gap() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["localization_diagnosis"]["diagnosis"] = "localization_gap_remaining"
+    summary["localization_diagnosis"]["tags_requiring_localization_after_runner"] = 4
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_localization_diagnosis_not_benign" in codes
+    assert "s3a_m2_localization_gap_remaining" in codes
+
+
+def test_s3a_m2_contract_rejects_incomplete_standard_pipeline_step() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["standard_pipeline_flow"]["status"] = "incomplete"
+    summary["standard_pipeline_flow"]["steps"]["hydrate_placeholders_non_destructively"]["completed"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_standard_pipeline_flow_incomplete" in codes
+    assert "s3a_m2_standard_pipeline_step_incomplete" in codes
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_click() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["status"] = "passed_gui_execute_completed"
+    summary["launcher_web_admin_acceptance"]["execute_clicked"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_click" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_runner_fallback_without_reason() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["status"] = "passed_gui_execute_not_safe_runner_execute_used"
+    summary["launcher_web_admin_acceptance"]["execute_clicked"] = False
+    summary["launcher_web_admin_acceptance"].pop("fallback_reason", None)
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_runner_fallback_missing_reason" in _error_codes(result)
 
 
 def test_s3a_m2_contract_rejects_public_redaction_leak() -> None:

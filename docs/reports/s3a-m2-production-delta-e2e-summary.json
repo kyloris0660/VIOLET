@@ -1,6 +1,28 @@
 {
+  "aggregate_gpu_telemetry": {
+    "actual_provider": "DmlExecutionProvider",
+    "gpu_name": "NVIDIA GeForce RTX 4070 Ti",
+    "max_gpu_memory_used_mib": 3752.0,
+    "peak_gpu_utilization_percent": 65.0,
+    "psutil_available": false,
+    "telemetry_partial_fields": [
+      "process_rss",
+      "system_ram"
+    ],
+    "validation_status": "passed"
+  },
+  "aggregate_runtime": {
+    "stage_durations_seconds": {
+      "dry_run_plan": 0.032,
+      "init": 2.405,
+      "localization": 9.641,
+      "manual_execute_import_classification_ai": 447.234,
+      "summary": 0.078
+    },
+    "total_seconds": 459.593
+  },
   "ai_tagging": {
-    "count": 300,
+    "count": 49,
     "failed": 0,
     "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": true,
     "proper_nouns_suggestion_only": true,
@@ -88,7 +110,7 @@
   },
   "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
   "classification": {
-    "count": 300,
+    "count": 49,
     "failed": 0,
     "reported": true,
     "skipped": 0
@@ -102,59 +124,80 @@
     "silently_truncated": false
   },
   "db_validation": {
-    "after_dynamic_source_item_count": 40075,
-    "after_media_count": 34994,
+    "after_dynamic_source_item_count": 40097,
+    "after_media_count": 35043,
     "before_dynamic_source_item_count": 39706,
     "before_media_count": 34694,
-    "media_delta": 300,
+    "media_delta": 349,
     "raw_path_committed": false,
     "run_failed": 0,
-    "run_imported": 300,
+    "run_imported": 49,
     "run_status": "completed",
-    "run_total_seen": 453,
-    "source_item_delta": 369
+    "run_total_seen": 173,
+    "source_item_delta": 391
   },
   "dry_run": {
-    "approval_phrase": "I APPROVE S3A-M2 PRODUCTION DELTA E2E 00783009f792",
-    "estimated_ai_tagging_count": 300,
-    "estimated_classification_count": 300,
-    "estimated_import_count": 300,
-    "estimated_localization_workload": 300,
-    "expires_at": "2026-06-27T01:34:54.588676+00:00",
+    "approval_phrase": "I APPROVE S3A-M2 PRODUCTION DELTA E2E 10c4b0999b41",
+    "estimated_ai_tagging_count": 49,
+    "estimated_classification_count": 49,
+    "estimated_import_count": 49,
+    "estimated_localization_workload": 49,
+    "expires_at": "2026-06-28T02:45:08.981078+00:00",
+    "failure_reason_extension_breakdown": {
+      "existing_media_hash": {
+        ".jpg": 18,
+        ".png": 2
+      },
+      "hidden": {
+        ".ini": 1
+      },
+      "unsupported_extension": {
+        ".heic": 28,
+        ".mov": 75
+      }
+    },
     "failure_reasons": {
-      "cloud_placeholder": 36,
-      "existing_media_hash": 19,
+      "existing_media_hash": 20,
       "hidden": 1,
-      "unsupported_extension": 97
+      "unsupported_extension": 103
     },
     "partial_scan": false,
-    "plan_created_at": "2026-06-27T01:24:54.588676+00:00",
-    "plan_hash": "00783009f79266d00015c1b98261b618dea13a03e939c1292ad33a007a24db5c",
+    "plan_created_at": "2026-06-28T02:35:08.981078+00:00",
+    "plan_hash": "10c4b0999b4151f0173d9d785efb402c876120d87ab9078e3efd14eac5f65139",
     "service_confirmation_phrase_redacted": true,
     "source_ledger_aggregate_counts": {
       "pipeline_status_counts": {
-        "ai_tagging:deferred": 4591,
-        "ai_tagging:tagged": 30971,
+        "ai_tagging:ai_tagged": 300,
+        "ai_tagging:deferred": 4673,
+        "ai_tagging:tagged": 30958,
         "ai_tagging:tagged_reused": 4063,
-        "classification:classified": 30934,
+        "classification:classified": 31221,
         "classification:classified_reused": 4100,
-        "classification:deferred": 4591,
-        "import:deferred": 4591,
-        "import:imported": 35034,
-        "localization:deferred": 4591,
-        "localization:localized": 35034
+        "classification:deferred": 4673,
+        "import:deferred": 4673,
+        "import:imported": 35321,
+        "localization:deferred": 4673,
+        "localization:localized": 35321
       },
       "public_failure_reason_counts": {
-        "read_error": 4591
+        "cloud_placeholder": 36,
+        "existing_media_hash": 19,
+        "hidden": 1,
+        "read_error": 4520,
+        "unsupported_extension": 97
       },
       "source_status_counts": {
-        "available": 35034,
-        "deferred": 4399,
+        "available": 35474,
+        "deferred": 4328,
         "failed": 192
       },
       "sync_state_counts": {
-        "deferred": 28018,
-        "new": 11607
+        "deferred": 27934,
+        "imported": 300,
+        "new": 11607,
+        "skipped_existing_media": 19,
+        "skipped_placeholder": 36,
+        "skipped_unsupported": 98
       }
     },
     "state_counts": {
@@ -162,37 +205,40 @@
       "candidate": 0,
       "classified_in_test": 0,
       "failed": 0,
-      "import_planned": 300,
+      "import_planned": 49,
       "imported_in_test": 0,
       "localization_scheduled_in_test": 0,
       "skipped_changing": 0,
       "skipped_duplicate": 0,
-      "skipped_existing_media": 19,
+      "skipped_existing_media": 20,
       "skipped_path_policy_error": 0,
-      "skipped_placeholder": 36,
-      "skipped_unsupported": 98,
+      "skipped_placeholder": 0,
+      "skipped_unsupported": 104,
       "skipped_zero_byte": 0
     },
-    "total_seen": 453
+    "total_seen": 173,
+    "unsupported_extension_breakdown": {
+      ".heic": 28,
+      ".mov": 75
+    }
   },
   "execute": {
-    "ai_tagged": 300,
+    "ai_tagged": 49,
     "ai_tagging_failed": 0,
     "ai_tagging_skipped": 0,
     "classification_failed": 0,
     "classification_skipped": 0,
-    "classified": 300,
+    "classified": 49,
     "current_stage": "summary",
     "deferred": 0,
     "failed": 0,
-    "imported": 300,
+    "imported": 49,
     "outcome_counts": {
-      "ai_tagged": 300,
-      "classified": 300,
-      "imported": 300,
-      "skipped_existing_media": 19,
-      "skipped_placeholder": 36,
-      "skipped_unsupported": 98
+      "ai_tagged": 49,
+      "classified": 49,
+      "imported": 49,
+      "skipped_existing_media": 20,
+      "skipped_unsupported": 104
     },
     "provider_provenance": {
       "backend": "onnxruntime",
@@ -267,76 +313,173 @@
         "suggestion_threshold": 0.2
       }
     },
-    "run_id": 7,
+    "run_id": 8,
     "status": "completed"
   },
-  "generated_at": "2026-06-27T02:02:50Z",
+  "final_inventory": {
+    "current_delta_candidates": 124,
+    "current_importable_hydrated_supported_items": 0,
+    "existing_media": 20,
+    "failure_reason_extension_breakdown": {
+      "existing_media_hash": {
+        ".jpg": 18,
+        ".png": 2
+      },
+      "hidden": {
+        ".ini": 1
+      },
+      "unsupported_extension": {
+        ".heic": 28,
+        ".mov": 75
+      }
+    },
+    "placeholders_remaining": 0,
+    "public_safe": true,
+    "scan_cap_stopped_scan": false,
+    "unreadable_zero_byte_damaged": 0,
+    "unsupported_extension_breakdown": {
+      ".heic": 28,
+      ".mov": 75
+    },
+    "unsupported_items": 104
+  },
+  "final_totals": {
+    "ai_tagged": 349,
+    "classified": 349,
+    "imported": 349,
+    "localized": 5
+  },
+  "generated_at": "2026-06-28T02:54:11Z",
   "gpu_telemetry": {
     "actual_provider": "DmlExecutionProvider",
-    "avg_gpu_utilization_percent": 34.089,
+    "avg_gpu_utilization_percent": 36.97,
     "cpu_fallback_observed": false,
     "gpu_name": "NVIDIA GeForce RTX 4070 Ti",
     "gpu_provider_used": true,
-    "gpu_sample_count": 192,
-    "max_gpu_memory_used_mib": 3752.0,
+    "gpu_sample_count": 33,
+    "max_gpu_memory_used_mib": 3662.0,
     "nvidia_smi_available": true,
     "partial_reason": null,
-    "peak_gpu_utilization_percent": 65.0,
+    "peak_gpu_utilization_percent": 52.0,
     "peak_process_rss_bytes": 0,
     "peak_system_ram_percent": 0.0,
     "psutil_available": false,
     "raw_path_committed": false,
     "raw_samples_artifact": ".local_manifests/s3a_m2_delta_e2e/telemetry/resource-samples.jsonl",
     "raw_samples_path_redacted": true,
-    "samples": 192,
+    "samples": 33,
     "status": "collected",
     "validation_status": "passed"
   },
-  "head_sha": "51c3e33001d3a0d1d675657fb5d730dd7901d8d4",
+  "head_sha": "3c824a5803c183c77e650ce115e0e8464c3f8a9e",
+  "initial_localization_diagnosis": {
+    "ai_wd_assignment_count": 15136,
+    "ai_wd_suggestion_assignment_count": 15136,
+    "already_localized_or_static_distinct_all_tags": 1548,
+    "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
+    "distinct_ai_wd_tag_count": 1573,
+    "distinct_by_category": {
+      "character": 52,
+      "general": 1517,
+      "meta": 4
+    },
+    "imported_media_count": 300,
+    "lang": "zh-CN",
+    "localizable_already_localized_or_static": 1521,
+    "localizable_categories": [
+      "general",
+      "meta"
+    ],
+    "localizable_distinct_tags": 1521,
+    "newly_localized_tags": 3,
+    "non_localizable_other_distinct_tags": 0,
+    "not_eligible_for_localization": {
+      "category_not_in_general_or_meta": 0,
+      "proper_noun_suggestion_review_only": 25
+    },
+    "proper_noun_categories": [
+      "character",
+      "copyright",
+      "artist"
+    ],
+    "proper_noun_distinct_tags": 52,
+    "proper_noun_localized_or_static": 27,
+    "proper_noun_suggestion_review_only_tags_skipped": 25,
+    "provider_job": {
+      "category": "general,meta",
+      "failed": 0,
+      "id": 19,
+      "processed": 3,
+      "skipped": 25,
+      "source": "s3a_m2_delta_e2e",
+      "status": "completed",
+      "translated": 3
+    },
+    "public_safe": true,
+    "run_id": 7,
+    "run_status": "completed",
+    "status": "completed",
+    "tags_requiring_localization_after_runner": 0,
+    "tags_requiring_localization_before_runner": 3
+  },
+  "initial_run": {
+    "ai_tagged": 300,
+    "classified": 300,
+    "dry_run_total": 453,
+    "imported": 300,
+    "localized": 3,
+    "run_id": 7,
+    "skipped_existing": 19,
+    "skipped_placeholder": 36,
+    "skipped_unsupported": 98,
+    "status": "target_met"
+  },
   "launcher_web_admin_acceptance": {
-    "browser": "msedge",
+    "browser": "msedge-playwright-after-computer-use-policy-stop",
+    "computer_use_result": "stopped_by_plugin_policy_unable_to_determine_current_browser_url_after_clean_retry",
     "dry_run_clicked": true,
-    "execute_cap_visible": "Execute cap: 1000",
+    "execute_cap_visible": true,
     "execute_clicked": false,
-    "latest_job_imported": 300,
+    "fallback_reason": "Computer Use stopped on browser URL policy; Web Admin manual plan cannot execute the S3A-M2 source-delta private plan under the telemetry wrapper and GUI dry-run on the ordinary root plan timed out before displaying a plan.",
+    "gui_execute_completed": false,
+    "latest_job_imported": 49,
     "latest_job_status": "completed",
-    "production_execute_run_id_seen": 7,
+    "production_execute_run_id_seen": 8,
     "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/launcher-web-admin-validation.json",
     "raw_path_committed": false,
-    "status": "passed",
+    "status": "passed_gui_execute_not_safe_runner_execute_used",
     "target_path": "/admin?tab=content#dynamic-library-sync-section",
     "update_check_limit_separated": true,
     "validated": true
   },
   "ledger_consistency": {
-    "expected_plan_items": 453,
+    "expected_plan_items": 173,
     "imported_without_media_count": 0,
     "passed": true,
     "public_safe": true,
     "reason_counts": {
-      "cloud_placeholder": 36,
-      "existing_media_hash": 19,
+      "existing_media_hash": 20,
       "hidden": 1,
-      "imported": 300,
-      "unsupported_extension": 97
+      "imported": 49,
+      "unsupported_extension": 103
     },
-    "run_id": 7,
-    "run_item_count": 453,
+    "run_id": 8,
+    "run_item_count": 173,
     "status": "passed"
   },
   "localization": {
     "backend_type": "llm_provider",
-    "candidate_count": 3,
+    "candidate_count": 2,
     "duplicate_provider_outputs": 0,
-    "dynamic_source_items_updated": 300,
+    "dynamic_source_items_updated": 49,
     "errors": [],
     "executed": true,
     "failed": 0,
-    "job_id": 19,
+    "job_id": 20,
     "ledger_artifact": ".local_manifests/s3a_m2_delta_e2e/localization-ledger.jsonl",
     "ledger_path_redacted": true,
     "llm_called": true,
-    "proper_noun_candidates_skipped": 25,
+    "proper_noun_candidates_skipped": 4,
     "proper_noun_unreviewed_aliases_trusted": false,
     "provider": "fallback(primary->fallback)",
     "provider_available": true,
@@ -344,11 +487,61 @@
     "raw_path_committed": false,
     "requested_max_tags": 1500,
     "retries": 0,
-    "skipped": 25,
+    "skipped": 4,
     "stage": "localization",
     "status": "completed",
-    "translated": 3,
+    "translated": 2,
     "unknown_provider_outputs": 0
+  },
+  "localization_diagnosis": {
+    "ai_wd_assignment_count": 2328,
+    "ai_wd_suggestion_assignment_count": 2328,
+    "already_localized_or_static_distinct_all_tags": 710,
+    "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
+    "distinct_ai_wd_tag_count": 714,
+    "distinct_by_category": {
+      "character": 14,
+      "general": 696,
+      "meta": 4
+    },
+    "imported_media_count": 49,
+    "lang": "zh-CN",
+    "localizable_already_localized_or_static": 700,
+    "localizable_categories": [
+      "general",
+      "meta"
+    ],
+    "localizable_distinct_tags": 700,
+    "newly_localized_tags": 2,
+    "non_localizable_other_distinct_tags": 0,
+    "not_eligible_for_localization": {
+      "category_not_in_general_or_meta": 0,
+      "proper_noun_suggestion_review_only": 4
+    },
+    "proper_noun_categories": [
+      "character",
+      "copyright",
+      "artist"
+    ],
+    "proper_noun_distinct_tags": 14,
+    "proper_noun_localized_or_static": 10,
+    "proper_noun_suggestion_review_only_tags_skipped": 4,
+    "provider_job": {
+      "category": "general,meta",
+      "failed": 0,
+      "id": 20,
+      "processed": 2,
+      "skipped": 4,
+      "source": "s3a_m2_delta_e2e",
+      "status": "completed",
+      "translated": 2
+    },
+    "public_safe": true,
+    "run_id": 8,
+    "run_status": "completed",
+    "status": "completed",
+    "tags_requiring_localization_after_runner": 0,
+    "tags_requiring_localization_before_runner": 2
   },
   "mode": "execute",
   "not_completed": [
@@ -369,6 +562,45 @@
     "fresh_dry_run_completed": true,
     "phase_identity": "S3A-M2",
     "status": "target_met"
+  },
+  "placeholder_hydration": {
+    "already_hydrated_or_not_placeholder_count": 1,
+    "cfhydrateplaceholder_called": false,
+    "extension_breakdown": {
+      ".jpg": 46,
+      ".png": 5
+    },
+    "failure_reasons": {},
+    "hydration_attempted_count": 50,
+    "hydration_failed_count": 0,
+    "hydration_succeeded_count": 50,
+    "manual_user_action_required": false,
+    "method": "bounded_full_content_read_via_cloud_files_helper",
+    "passes_represented": 3,
+    "placeholder_count_before_hydration": 51,
+    "public_safe": true,
+    "raw_artifacts": [
+      ".local_manifests/s3a_m2_delta_e2e/hydration-summary-first-pass-public.json",
+      ".local_manifests/s3a_m2_delta_e2e/hydration-summary-combined-public.json",
+      ".local_manifests/s3a_m2_delta_e2e/hydration-summary-third-pass-public.json",
+      ".local_manifests/s3a_m2_delta_e2e/hydration-ledger.jsonl"
+    ],
+    "raw_path_committed": false,
+    "remaining_placeholders_after_hydration": 0,
+    "resource_telemetry": {
+      "gpu_name": "NVIDIA GeForce RTX 4070 Ti",
+      "max_gpu_memory_used_mib": 3026.0,
+      "nvidia_smi_available": true,
+      "peak_gpu_utilization_percent": 62.0,
+      "psutil_available": false,
+      "raw_path_committed": false,
+      "raw_samples_path_redacted": true,
+      "status": "collected"
+    },
+    "source_content_read_for_hydration": true,
+    "source_content_written": false,
+    "source_deleted_moved_renamed": false,
+    "status": "completed"
   },
   "private_artifacts": {
     "private_artifacts_committed": false,
@@ -411,7 +643,7 @@
     "based_on_origin_main": true,
     "blockers": [],
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
-    "head_sha": "51c3e33001d3a0d1d675657fb5d730dd7901d8d4",
+    "head_sha": "3c824a5803c183c77e650ce115e0e8464c3f8a9e",
     "llm_localization": {
       "base_url_configured": true,
       "base_url_host": "api.openai.com",
@@ -441,7 +673,7 @@
       "auto_sync_enabled": false,
       "db_name": "blombooru",
       "manual_sync_enabled": true,
-      "storage_root_explicitly_set": false,
+      "storage_root_explicitly_set": true,
       "unattended_sync_enabled": false,
       "violet_env": "production"
     },
@@ -463,15 +695,52 @@
     },
     "warnings": []
   },
+  "registered_roots_public": {
+    "in_scope_root_id": 2,
+    "paths_redacted": true,
+    "registered_root_count": 2,
+    "roots": [
+      {
+        "auto_sync_enabled": false,
+        "id": 1,
+        "in_scope": false,
+        "is_active": false,
+        "path_redacted": true,
+        "public_source_identity": "d259d95d05b8282c",
+        "source_type": "local_path"
+      },
+      {
+        "auto_sync_enabled": false,
+        "id": 2,
+        "in_scope": true,
+        "is_active": true,
+        "path_redacted": true,
+        "public_source_identity": "153684ac810c2191",
+        "source_type": "local_path"
+      }
+    ]
+  },
+  "remaining_run": {
+    "ai_tagged": 49,
+    "classified": 49,
+    "dry_run_total": 173,
+    "imported": 49,
+    "localized": 2,
+    "run_id": 8,
+    "skipped_existing": 20,
+    "skipped_placeholder": 0,
+    "skipped_unsupported": 104,
+    "status": "completed"
+  },
   "runtime": {
     "stage_durations_seconds": {
       "dry_run_plan": 0.016,
-      "init": 1.187,
-      "localization": 5.016,
-      "manual_execute_import_classification_ai": 386.031,
-      "summary": 0.031
+      "init": 1.218,
+      "localization": 4.625,
+      "manual_execute_import_classification_ai": 61.203,
+      "summary": 0.047
     },
-    "total_seconds": 392.343
+    "total_seconds": 67.25
   },
   "safety": {
     "automatic_sync_enabled": false,
@@ -492,14 +761,145 @@
     "deferred": 0,
     "failed": 0,
     "skipped_duplicate": 0,
-    "skipped_existing_media": 19,
-    "skipped_placeholder": 36,
-    "skipped_unsupported": 98
+    "skipped_existing_media": 20,
+    "skipped_placeholder": 0,
+    "skipped_unsupported": 104
   },
   "source": {
     "paths_redacted": true,
     "public_source_identity": "153684ac810c2191",
     "root_id": 2
+  },
+  "standard_pipeline_flow": {
+    "aggregate_basis": {
+      "final_inventory_delta_candidates": 124,
+      "hydration_passes_represented": 3,
+      "initial_execute_run_id": 7,
+      "remaining_execute_run_id": 8
+    },
+    "automatic_sync_implemented": false,
+    "future_automation_readiness": "manual_pipeline_standardized_no_automatic_sync_implemented",
+    "public_safe": true,
+    "status": "completed",
+    "steps": {
+      "capture_resource_gpu_telemetry": {
+        "completed": true,
+        "evidence": {
+          "actual_provider": "DmlExecutionProvider",
+          "gpu_name": "NVIDIA GeForce RTX 4070 Ti",
+          "validation_status": "passed"
+        },
+        "status": "completed"
+      },
+      "classify_imported_media": {
+        "completed": true,
+        "evidence": {
+          "aggregate_classified": 349,
+          "failed": 0
+        },
+        "status": "completed"
+      },
+      "detect_cloud_placeholders": {
+        "completed": true,
+        "evidence": {
+          "latest_dry_run_placeholders": 0,
+          "placeholders_seen_before_hydration": 51
+        },
+        "status": "completed"
+      },
+      "hydrate_placeholders_non_destructively": {
+        "completed": true,
+        "evidence": {
+          "attempted": 50,
+          "failed": 0,
+          "method": "bounded_full_content_read_via_cloud_files_helper",
+          "remaining": 0,
+          "succeeded": 50
+        },
+        "status": "completed"
+      },
+      "import_all_current_importable_items": {
+        "completed": true,
+        "evidence": {
+          "aggregate_imported": 349,
+          "execute_imported": 49,
+          "final_importable_remaining": 0
+        },
+        "status": "completed"
+      },
+      "produce_public_report_and_contract": {
+        "completed": true,
+        "evidence": {
+          "contract_id": "s3a_m2_production_delta_e2e_contract_v1",
+          "markdown_report_path": "docs/reports/s3a-m2-production-delta-e2e.md",
+          "summary_json_path": "docs/reports/s3a-m2-production-delta-e2e-summary.json"
+        },
+        "status": "completed"
+      },
+      "record_ledger_for_every_planned_item": {
+        "completed": true,
+        "evidence": {
+          "expected_plan_items": 173,
+          "run_item_count": 173
+        },
+        "status": "completed"
+      },
+      "rescan_after_hydration": {
+        "completed": true,
+        "evidence": {
+          "current_delta_candidates": 124,
+          "importable_remaining": 0,
+          "placeholders_remaining": 0
+        },
+        "status": "completed"
+      },
+      "run_ai_tagging": {
+        "completed": true,
+        "evidence": {
+          "aggregate_ai_tagged": 349,
+          "failed": 0,
+          "proper_nouns_suggestion_only": true
+        },
+        "status": "completed"
+      },
+      "run_localization_or_stable_reasons": {
+        "completed": true,
+        "evidence": {
+          "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
+          "failed": 0,
+          "localization_status": "completed",
+          "remaining_gap": 0
+        },
+        "status": "completed"
+      },
+      "scan_current_source_delta": {
+        "completed": true,
+        "evidence": {
+          "cap": 1000,
+          "cap_stopped": false,
+          "total_seen": 173
+        },
+        "status": "completed"
+      },
+      "validate_launcher_web_admin_workflow": {
+        "completed": true,
+        "evidence": {
+          "computer_use_result": "stopped_by_plugin_policy_unable_to_determine_current_browser_url_after_clean_retry",
+          "execute_clicked": false,
+          "fallback_reason": "Computer Use stopped on browser URL policy; Web Admin manual plan cannot execute the S3A-M2 source-delta private plan under the telemetry wrapper and GUI dry-run on the ordinary root plan timed out before displaying a plan.",
+          "latest_job_status": "completed"
+        },
+        "status": "runner_execute_fallback_documented"
+      },
+      "validate_public_redaction": {
+        "completed": true,
+        "evidence": {
+          "finding_count": 0
+        },
+        "status": "completed"
+      }
+    },
+    "version": 1
   },
   "status": "target_met",
   "title": "Production Delta Manual Sync E2E + GPU Telemetry"

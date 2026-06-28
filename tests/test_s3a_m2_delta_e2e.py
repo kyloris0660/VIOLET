@@ -19,8 +19,10 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.database import Base
 from app.enums import FileTypeEnum
-from app.models import DynamicSourceItem, DynamicSourceRoot, Media
+from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, Media
 from scripts.run_s3a_m2_delta_e2e_with_telemetry import (
+    _placeholder_rows_from_plan,
+    build_standard_pipeline_flow,
     build_ledger_pending_plan,
     build_source_delta_plan,
     refresh_completion_claims,
@@ -95,17 +97,46 @@ def test_s3a_m2_telemetry_summary_reads_nested_provider_provenance(tmp_path: Pat
 def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
     summary = {
         "status": "completed_with_followup_required",
-        "pipeline_contract": {"claims": {"target_met": False}},
+        "pipeline_contract": {
+            "contract_id": "s3a_m2_production_delta_e2e_contract_v1",
+            "fresh_dry_run_completed": True,
+            "claims": {"target_met": False},
+        },
         "production_acceptance": {"performed": True},
         "controlled_delta": {"cap_exceeded": False},
+        "dry_run": {"total_seen": 3, "partial_scan": False, "state_counts": {"skipped_placeholder": 0}},
         "readiness": {"passed": True},
         "ledger_consistency": {"passed": True},
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "public_reports": {
+            "markdown_report_path": "docs/reports/s3a-m2-production-delta-e2e.md",
+            "summary_json_path": "docs/reports/s3a-m2-production-delta-e2e-summary.json",
+        },
+        "safety": {"private_paths_or_hashes_in_public_report": False},
         "localization": {"status": "completed", "failed": 0},
+        "localization_diagnosis": {
+            "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
+            "tags_requiring_localization_after_runner": 0,
+        },
+        "placeholder_hydration": {
+            "status": "completed",
+            "remaining_placeholders_after_hydration": 0,
+            "source_content_written": False,
+            "source_deleted_moved_renamed": False,
+        },
+        "final_inventory": {
+            "current_importable_hydrated_supported_items": 0,
+            "placeholders_remaining": 0,
+        },
         "execute": {
             "status": "completed",
             "imported": 3,
+            "classified": 3,
+            "ai_tagged": 3,
             "provider_provenance": {"provider": {"actual_provider": "DmlExecutionProvider"}},
         },
+        "classification": {"reported": True, "count": 3, "failed": 0},
+        "ai_tagging": {"reported": True, "count": 3, "failed": 0, "proper_nouns_suggestion_only": True},
         "gpu_telemetry": {"status": "collected"},
         "launcher_web_admin_acceptance": {"validated": False, "status": "pending"},
     }
@@ -118,9 +149,64 @@ def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
     completed = refresh_completion_claims(summary)
 
     assert completed["status"] == "target_met"
+    assert completed["standard_pipeline_flow"]["status"] == "completed"
+    assert completed["standard_pipeline_flow"]["future_automation_readiness"] == "manual_pipeline_standardized_no_automatic_sync_implemented"
     assert completed["gpu_telemetry"]["actual_provider"] == "DmlExecutionProvider"
     assert completed["gpu_telemetry"]["validation_status"] == "passed"
     assert completed["pipeline_contract"]["claims"]["target_met"] is True
+
+
+def test_s3a_m2_standard_pipeline_records_runner_fallback_without_gui_execute_claim() -> None:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "s3a_m2_production_delta_e2e_contract_v1",
+            "fresh_dry_run_completed": True,
+        },
+        "controlled_delta": {"cap": 1000},
+        "dry_run": {"total_seen": 12, "partial_scan": False, "state_counts": {"skipped_placeholder": 0}},
+        "execute": {"status": "completed", "imported": 5},
+        "classification": {"reported": True, "count": 5, "failed": 0},
+        "ai_tagging": {"reported": True, "count": 5, "failed": 0, "proper_nouns_suggestion_only": True},
+        "localization": {"status": "completed", "failed": 0},
+        "localization_diagnosis": {
+            "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
+            "tags_requiring_localization_after_runner": 0,
+        },
+        "placeholder_hydration": {
+            "status": "completed",
+            "remaining_placeholders_after_hydration": 0,
+            "source_content_written": False,
+            "source_deleted_moved_renamed": False,
+        },
+        "final_inventory": {
+            "current_delta_candidates": 12,
+            "current_importable_hydrated_supported_items": 0,
+            "placeholders_remaining": 0,
+            "scan_cap_stopped_scan": False,
+        },
+        "ledger_consistency": {"passed": True, "expected_plan_items": 12, "run_item_count": 12},
+        "gpu_telemetry": {"status": "collected", "validation_status": "passed", "actual_provider": "DmlExecutionProvider"},
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "public_reports": {
+            "markdown_report_path": "docs/reports/s3a-m2-production-delta-e2e.md",
+            "summary_json_path": "docs/reports/s3a-m2-production-delta-e2e-summary.json",
+        },
+        "safety": {"private_paths_or_hashes_in_public_report": False},
+        "launcher_web_admin_acceptance": {
+            "validated": True,
+            "status": "passed_gui_execute_not_safe_runner_execute_used",
+            "execute_clicked": False,
+            "fallback_reason": "GUI cannot execute source-delta private plan under telemetry wrapper.",
+            "computer_use_result": "policy_stop_then_browser_validation",
+        },
+    }
+
+    flow = build_standard_pipeline_flow(summary)
+
+    assert flow["status"] == "completed"
+    step = flow["steps"]["validate_launcher_web_admin_workflow"]
+    assert step["status"] == "runner_execute_fallback_documented"
+    assert step["evidence"]["execute_clicked"] is False
 
 
 def test_s3a_m2_ledger_pending_plan_uses_pending_delta_and_redacts_private_fields(tmp_path: Path) -> None:
@@ -294,3 +380,92 @@ def test_s3a_m2_source_delta_plan_caps_delta_not_unchanged_known_files(tmp_path:
         db.close()
         Base.metadata.drop_all(engine)
         engine.dispose()
+
+
+def test_s3a_m2_source_delta_reincludes_unresolved_placeholder_from_run(tmp_path: Path) -> None:
+    from PIL import Image
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        source_root = tmp_path / "library"
+        source_root.mkdir()
+        placeholder_now_hydrated = source_root / "hydrated.png"
+        Image.new("RGB", (2, 2), (7, 8, 9)).save(placeholder_now_hydrated)
+        stat = placeholder_now_hydrated.stat()
+        root = DynamicSourceRoot(
+            label="test",
+            root_path=str(source_root),
+            root_path_hash="abc1234567890defabc1234567890def",
+            is_active=True,
+        )
+        db.add(root)
+        db.flush()
+        db.add(DynamicSyncRun(id=7, run_type="manual_sync_execute", mode="production_acceptance", status="completed"))
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path="hydrated.png",
+                relative_path_hash=hashlib.sha256("hydrated.png".encode("utf-8")).hexdigest(),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                source_status="available",
+                sync_state="skipped_placeholder",
+                import_status="deferred",
+                deferred_reason="cloud_placeholder",
+                last_sync_run_id=7,
+            )
+        )
+        db.commit()
+
+        args = SimpleNamespace(
+            delta_cap=300,
+            hydrated_only=True,
+            stable_age_seconds=0.0,
+            execute=False,
+            plan_created_at="",
+            include_unresolved_run_id=7,
+        )
+        plan = build_source_delta_plan(db, args, root, include_private_details=False)
+
+        counts = plan["counts"]
+        assert counts["total_seen"] == 1
+        assert counts["state_counts"]["import_planned"] == 1
+        assert counts["estimated_import_count"] == 1
+        assert plan["limits"]["unchanged_known_files"] == 0
+        assert "hydrated.png" not in json.dumps(plan, sort_keys=True)
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_s3a_m2_placeholder_rows_from_private_plan_selects_only_placeholders() -> None:
+    plan = {
+        "private_details": {
+            "items": [
+                {"safe_label": "delta-1", "relative_path": "a.png", "relative_path_hash": "hash-a", "state": "skipped_placeholder", "reason": "cloud_placeholder"},
+                {"safe_label": "delta-2", "relative_path": "b.png", "relative_path_hash": "hash-b", "state": "import_planned", "reason": None},
+            ],
+            "not_for_public_reports": True,
+        }
+    }
+
+    rows = _placeholder_rows_from_plan(plan)
+
+    assert len(rows) == 1
+    assert rows[0]["safe_label"] == "delta-1"
+    assert rows[0]["relative_path"] == "a.png"

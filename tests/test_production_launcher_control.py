@@ -159,6 +159,8 @@ def test_profile_to_env_allows_manual_sync_phase_caps_without_automation(tmp_pat
             "password": "",
         },
         "safe_startup": True,
+        "manual_sync_enabled": True,
+        "manual_sync_execute_enabled": True,
         "manual_sync_execute_max_files": 1000,
         "manual_sync_max_duration_seconds": 7200,
     }
@@ -168,6 +170,8 @@ def test_profile_to_env_allows_manual_sync_phase_caps_without_automation(tmp_pat
 
     assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] == "1000"
     assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] == "7200"
+    assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] == "true"
+    assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] == "true"
     assert env["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
     assert env["S3B_UNATTENDED_SYNC_ENABLED"] == "false"
     assert env["VIOLET_ENV"] == "production"
@@ -518,6 +522,40 @@ def test_profile_update_stdin_json_accepts_password_payload_without_argv(tmp_pat
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     assert result.data["profile"]["db"]["password_present"] is True
     assert profile["db"]["password"] == "secret-db-password"
+
+
+def test_profile_update_persists_manual_sync_phase_controls(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    payload, error = control._profile_update_stdin_payload(
+        json.dumps(
+            {
+                "manual_sync_enabled": True,
+                "manual_sync_execute_enabled": True,
+                "manual_sync_execute_max_files": 1000,
+                "manual_sync_max_duration_seconds": 7200,
+            }
+        )
+    )
+    assert error is None
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates=payload,
+    )
+
+    profile, _path, _errors = control.load_production_profile(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+    assert result.ok is True
+    assert result.data["profile"]["manual_sync_enabled"] is True
+    assert result.data["profile"]["manual_sync_execute_enabled"] is True
+    assert result.data["profile"]["manual_sync_execute_max_files"] == 1000
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] == "true"
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] == "true"
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] == "1000"
+    assert env_payload["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
 
 
 def test_profile_update_can_clear_existing_db_password_explicitly(tmp_path, safe_backends):

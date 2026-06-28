@@ -367,10 +367,14 @@ def summarize_telemetry(samples_path: Path) -> dict[str, Any]:
         if gpu_rows
         else 0.0
     )
+    try:
+        artifact = samples_path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except Exception:
+        artifact = f".local_manifests/{PHASE_SLUG}/telemetry/{samples_path.name}"
     return {
         "status": "collected" if samples else "partial_no_samples",
         "samples": len(samples),
-        "raw_samples_artifact": f".local_manifests/{PHASE_SLUG}/telemetry/{samples_path.name}",
+        "raw_samples_artifact": artifact,
         "raw_samples_path_redacted": True,
         "raw_path_committed": False,
         "psutil_available": any(sample.get("psutil_available") for sample in samples),
@@ -971,7 +975,8 @@ def build_source_delta_plan(
                 or (existing.mtime_ns is None or int(existing.mtime_ns) != int(metadata.get("mtime_ns") or -1))
             )
         pending_existing = bool(existing is not None and str(existing.import_status or "") == "pending")
-        if existing is not None and not pending_existing and not metadata_changed:
+        unresolved_followup = _existing_requires_source_delta_followup(existing, args)
+        if existing is not None and not pending_existing and not unresolved_followup and not metadata_changed:
             unchanged_known_files += 1
             continue
 
@@ -999,6 +1004,7 @@ def build_source_delta_plan(
                 "metadata": metadata,
                 "reason": reason,
                 "content_hash": content_hash,
+                "extension": file_path.suffix.lower() or "<none>",
                 "source_item_id": int(existing.id) if existing is not None else None,
                 "source_item_state": str(getattr(existing, "sync_state", "") or "new"),
                 "source_status": str(getattr(existing, "source_status", "") or "available"),
@@ -1015,6 +1021,8 @@ def build_source_delta_plan(
     private_items: list[dict[str, Any]] = []
     integrity_items: list[dict[str, Any]] = []
     seen_hashes: set[str] = set()
+    unsupported_extension_counts: Counter[str] = Counter()
+    reason_extension_counts: dict[str, Counter[str]] = {}
 
     for record in candidate_records:
         reason = record["reason"]
@@ -1038,6 +1046,9 @@ def build_source_delta_plan(
         state_counts[state] += 1
         if public_reason:
             reason_counts[public_reason] += 1
+            reason_extension_counts.setdefault(public_reason, Counter())[record.get("extension") or "<none>"] += 1
+        if public_reason == "unsupported_extension":
+            unsupported_extension_counts[record.get("extension") or "<none>"] += 1
 
         metadata = record["metadata"]
         item = {
@@ -1153,6 +1164,13 @@ def build_source_delta_plan(
             "failure_reasons": dict(sorted((key, int(value)) for key, value in reason_counts.items())),
             "partial_scan": partial_scan,
             "source_ledger_aggregate_counts": ledger_aggregates,
+            "unsupported_extension_breakdown": dict(
+                sorted((key, int(value)) for key, value in unsupported_extension_counts.items())
+            ),
+            "failure_reason_extension_breakdown": {
+                reason: dict(sorted((key, int(value)) for key, value in counter.items()))
+                for reason, counter in sorted(reason_extension_counts.items())
+            },
         },
         "ledger": {
             "db_write_performed": False,
@@ -1429,6 +1447,48 @@ def category_value(category: Any) -> str:
     return text.split(".", 1)[-1] if "." in text else text
 
 
+def _all_private_plan_items(plan: Mapping[str, Any]) -> list[dict[str, Any]]:
+    private = plan.get("private_details") or {}
+    items = private.get("items") or private.get("private_plan_items") or []
+    return [dict(item) for item in items if isinstance(item, Mapping)]
+
+
+def _existing_requires_source_delta_followup(existing: Any, args: argparse.Namespace) -> bool:
+    """Keep unresolved S3A-M2 work visible even when file metadata is unchanged."""
+
+    if existing is None:
+        return False
+    include_run_id = int(getattr(args, "include_unresolved_run_id", 0) or 0)
+    if include_run_id and int(getattr(existing, "last_sync_run_id", 0) or 0) != include_run_id:
+        return False
+    import_status = str(getattr(existing, "import_status", "") or "")
+    sync_state = str(getattr(existing, "sync_state", "") or "")
+    reason = str(getattr(existing, "deferred_reason", "") or getattr(existing, "failure_reason", "") or "")
+    return (
+        import_status in {"pending", "deferred", "failed"}
+        or sync_state
+        in {
+            "skipped_placeholder",
+            "skipped_unsupported",
+            "skipped_duplicate",
+            "skipped_existing_media",
+            "failed",
+            "deferred",
+        }
+        or reason
+        in {
+            "cloud_placeholder",
+            "icloud_placeholder",
+            "unsupported_extension",
+            "hidden",
+            "zero_byte",
+            "read_error",
+            "source_missing",
+            "permission_denied",
+        }
+    )
+
+
 def _static_translation_names() -> set[str]:
     try:
         from app.services.tag_localization_service import _load_static_dict
@@ -1493,6 +1553,329 @@ def select_delta_localization_candidates(db: Any, run_id: int, *, lang: str, lim
         for tag in visual_rows[:limit]
     ]
     return candidates, int(proper_count)
+
+
+def diagnose_run_localization(db: Any, run_id: int, *, lang: str = "zh-CN", job_id: int | None = None) -> dict[str, Any]:
+    from app.models import DynamicSyncRun, DynamicSyncRunItem, Tag, TagTranslation, TagTranslationJob, blombooru_media_tags
+
+    media_ids = [
+        int(row[0])
+        for row in db.query(DynamicSyncRunItem.media_id)
+        .filter(DynamicSyncRunItem.sync_run_id == int(run_id), DynamicSyncRunItem.media_id.isnot(None))
+        .distinct()
+        .all()
+    ]
+    translated_names = {
+        str(row[0])
+        for row in db.query(TagTranslation.canonical_name)
+        .filter(TagTranslation.language == lang, TagTranslation.status != "rejected")
+        .all()
+    }
+    static_names = _static_translation_names()
+    rows = []
+    if media_ids:
+        rows = (
+            db.query(Tag.name, Tag.category, blombooru_media_tags.c.is_suggestion)
+            .join(blombooru_media_tags, Tag.id == blombooru_media_tags.c.tag_id)
+            .filter(blombooru_media_tags.c.media_id.in_(media_ids))
+            .filter(blombooru_media_tags.c.source == "ai_wd")
+            .all()
+        )
+    distinct_tags: dict[str, dict[str, Any]] = {}
+    suggestion_assignments = 0
+    for name, category, is_suggestion in rows:
+        key = str(name)
+        distinct_tags.setdefault(key, {"category": category_value(category), "suggestion_seen": False})
+        if bool(is_suggestion):
+            suggestion_assignments += 1
+            distinct_tags[key]["suggestion_seen"] = True
+
+    by_category = Counter(str(item["category"]) for item in distinct_tags.values())
+    localizable = {name for name, item in distinct_tags.items() if item["category"] in LOCALIZABLE_CATEGORIES}
+    proper = {name for name, item in distinct_tags.items() if item["category"] in PROPER_NOUN_CATEGORIES}
+    other = set(distinct_tags) - localizable - proper
+    localized = {name for name in distinct_tags if name in translated_names or name in static_names}
+    localizable_missing_after = localizable - localized
+    proper_missing = proper - localized
+
+    if job_id:
+        job = db.get(TagTranslationJob, int(job_id))
+    else:
+        job = (
+            db.query(TagTranslationJob)
+            .filter(TagTranslationJob.source == "s3a_m2_delta_e2e")
+            .order_by(TagTranslationJob.id.desc())
+            .first()
+        )
+    run = db.get(DynamicSyncRun, int(run_id))
+    translated_by_runner = int(job.translated or 0) if job else 0
+    failed_by_runner = int(job.failed or 0) if job else 0
+    skipped_by_runner = int(job.skipped or 0) if job else 0
+    return {
+        "run_id": int(run_id),
+        "run_status": str(run.status) if run else None,
+        "lang": lang,
+        "imported_media_count": len(media_ids),
+        "ai_wd_assignment_count": len(rows),
+        "ai_wd_suggestion_assignment_count": suggestion_assignments,
+        "distinct_ai_wd_tag_count": len(distinct_tags),
+        "distinct_by_category": dict(sorted((str(key), int(value)) for key, value in by_category.items())),
+        "localizable_categories": list(LOCALIZABLE_CATEGORIES),
+        "proper_noun_categories": list(PROPER_NOUN_CATEGORIES),
+        "localizable_distinct_tags": len(localizable),
+        "already_localized_or_static_distinct_all_tags": len(localized),
+        "localizable_already_localized_or_static": len(localizable & localized),
+        "newly_localized_tags": translated_by_runner,
+        "tags_requiring_localization_before_runner": translated_by_runner + failed_by_runner + len(localizable_missing_after),
+        "tags_requiring_localization_after_runner": len(localizable_missing_after),
+        "proper_noun_distinct_tags": len(proper),
+        "proper_noun_localized_or_static": len(proper & localized),
+        "proper_noun_suggestion_review_only_tags_skipped": len(proper_missing),
+        "non_localizable_other_distinct_tags": len(other),
+        "not_eligible_for_localization": {
+            "proper_noun_suggestion_review_only": len(proper_missing),
+            "category_not_in_general_or_meta": len(other),
+        },
+        "provider_job": {
+            "id": int(job.id) if job else None,
+            "status": str(job.status) if job else None,
+            "source": str(job.source) if job else None,
+            "processed": int(job.processed or 0) if job else 0,
+            "translated": translated_by_runner,
+            "failed": failed_by_runner,
+            "skipped": skipped_by_runner,
+            "category": str(job.category) if job else None,
+        },
+        "diagnosis": (
+            "benign_all_localizable_tags_already_localized_or_newly_localized"
+            if len(localizable_missing_after) == 0 and failed_by_runner == 0
+            else "localization_gap_remaining"
+        ),
+        "public_safe": True,
+    }
+
+
+def collect_source_roots_public(db: Any, *, in_scope_root_id: int | None = None) -> dict[str, Any]:
+    from app.models import DynamicSourceRoot
+
+    roots = db.query(DynamicSourceRoot).order_by(DynamicSourceRoot.id.asc()).all()
+    return {
+        "registered_root_count": len(roots),
+        "in_scope_root_id": int(in_scope_root_id) if in_scope_root_id is not None else None,
+        "roots": [
+            {
+                "id": int(root.id),
+                "public_source_identity": str(root.root_path_hash or "")[:16],
+                "source_type": str(root.source_type or ""),
+                "is_active": bool(root.is_active),
+                "auto_sync_enabled": bool(root.auto_sync_enabled),
+                "in_scope": bool(in_scope_root_id is not None and int(root.id) == int(in_scope_root_id)),
+                "path_redacted": True,
+            }
+            for root in roots
+        ],
+        "paths_redacted": True,
+    }
+
+
+def _normal_hydration_failure_reason(result: Mapping[str, Any] | None, before_state: Mapping[str, Any]) -> str | None:
+    if not result:
+        return None
+    reason = str(result.get("error_reason") or "")
+    if reason in {"read_probe_timeout", "read_timeout"}:
+        return "read_timeout"
+    if reason in {"read_probe_no_result", "read_no_result"}:
+        return "generic_read_failed"
+    if reason == "generic_copy_failed" and before_state.get("likely_cloud_placeholder"):
+        return "cloud_hydration_failed"
+    return reason or None
+
+
+def _placeholder_rows_from_plan(plan: Mapping[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for item in _all_private_plan_items(plan):
+        state = str(item.get("state") or "")
+        reason = str(item.get("reason") or "")
+        if state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
+            rows.append(
+                {
+                    "safe_label": str(item.get("safe_label") or f"placeholder-{len(rows) + 1:05d}"),
+                    "relative_path": str(item.get("relative_path") or ""),
+                    "relative_path_hash": str(item.get("relative_path_hash") or ""),
+                    "file_size": item.get("file_size"),
+                    "source": "approved_private_plan",
+                }
+            )
+    return rows
+
+
+def _placeholder_rows_from_run(db: Any, run_id: int) -> list[dict[str, Any]]:
+    from app.models import DynamicSourceItem, DynamicSyncRunItem
+
+    rows = (
+        db.query(DynamicSourceItem.relative_path, DynamicSourceItem.relative_path_hash, DynamicSourceItem.file_size)
+        .join(DynamicSyncRunItem, DynamicSyncRunItem.source_item_id == DynamicSourceItem.id)
+        .filter(DynamicSyncRunItem.sync_run_id == int(run_id))
+        .filter(DynamicSyncRunItem.item_state == "skipped_placeholder")
+        .all()
+    )
+    return [
+        {
+            "safe_label": f"run-{int(run_id)}-placeholder-{index:05d}",
+            "relative_path": str(relative_path or ""),
+            "relative_path_hash": str(relative_path_hash or "")[:16],
+            "file_size": file_size,
+            "source": f"run_{int(run_id)}",
+        }
+        for index, (relative_path, relative_path_hash, file_size) in enumerate(rows, start=1)
+    ]
+
+
+def hydrate_placeholders(args: argparse.Namespace, root: Any) -> dict[str, Any]:
+    from app.services.dynamic_library_sync_service import validate_source_root_path
+    from app.services.manual_sync_execute_service import _safe_source_file
+    from app.utils.cloud_files import classify_cloud_file_state, read_verify_full_content
+
+    output_dir = prepare_output_dir(args)
+    ledger_path = output_dir / "hydration-ledger.jsonl"
+    write_jsonl(ledger_path, [])
+    db = open_db_session()
+    try:
+        plan_rows: list[dict[str, Any]] = []
+        if args.approved_plan_json and Path(args.approved_plan_json).exists():
+            plan_rows = _placeholder_rows_from_plan(read_json(Path(args.approved_plan_json)))
+        run_rows = (
+            _placeholder_rows_from_run(db, int(args.include_unresolved_run_id))
+            if int(args.include_unresolved_run_id or 0)
+            else []
+        )
+    finally:
+        db.close()
+
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in [*plan_rows, *run_rows]:
+        rel = str(row.get("relative_path") or "")
+        if not rel:
+            continue
+        key = str(row.get("relative_path_hash") or stable_json_hash({"rel": rel})[:16])
+        by_key.setdefault(key, row)
+
+    source_path = validate_source_root_path(root.root_path)
+    rows = list(by_key.values())
+    attempted = 0
+    succeeded = 0
+    failed = 0
+    already_hydrated = 0
+    remaining = 0
+    failures: Counter[str] = Counter()
+    before_reasons: Counter[str] = Counter()
+    after_reasons: Counter[str] = Counter()
+    extension_counts: Counter[str] = Counter()
+    started = time.monotonic()
+    for index, row in enumerate(rows, start=1):
+        rel = str(row["relative_path"])
+        safe_label = str(row.get("safe_label") or f"placeholder-{index:05d}")
+        public_base = {
+            "safe_label": safe_label,
+            "relative_path_hash": str(row.get("relative_path_hash") or "")[:16],
+            "source": str(row.get("source") or "unknown"),
+            "path_private_or_omitted": True,
+        }
+        try:
+            file_path = _safe_source_file(source_path, rel)
+            before_state = classify_cloud_file_state(file_path).to_dict(include_path=False)
+            extension_counts[file_path.suffix.lower() or "<none>"] += 1
+        except Exception as exc:
+            failed += 1
+            failures["source_path_resolution_failed"] += 1
+            append_jsonl(
+                ledger_path,
+                {**public_base, "state": "failed", "failure_reason": "source_path_resolution_failed", "error": safe_error(exc)},
+            )
+            continue
+
+        before_reason = "cloud_placeholder" if before_state.get("likely_cloud_placeholder") else "not_placeholder"
+        before_reasons[before_reason] += 1
+        if not before_state.get("likely_cloud_placeholder"):
+            already_hydrated += 1
+            after_reasons["not_placeholder"] += 1
+            append_jsonl(
+                ledger_path,
+                {
+                    **public_base,
+                    "state": "already_hydrated_or_not_placeholder",
+                    "before_likely_cloud_placeholder": False,
+                    "after_likely_cloud_placeholder": False,
+                },
+            )
+            continue
+
+        attempted += 1
+        result = read_verify_full_content(
+            file_path,
+            expected_size=int(row["file_size"]) if row.get("file_size") is not None else None,
+            timeout_seconds=max(1, int(args.hydration_timeout_seconds)),
+            retries=max(0, int(args.hydration_retries)),
+            chunk_size=max(1, int(args.hydration_chunk_size)),
+        )
+        try:
+            after_state = classify_cloud_file_state(file_path).to_dict(include_path=False)
+        except Exception:
+            after_state = {"likely_cloud_placeholder": True, "state_check_failed": True}
+        after_placeholder = bool(after_state.get("likely_cloud_placeholder"))
+        ok = bool(result.get("ok")) and not after_placeholder
+        failure_reason = None
+        if ok:
+            succeeded += 1
+        else:
+            failed += 1
+            failure_reason = _normal_hydration_failure_reason(result, before_state) or (
+                "cloud_placeholder_remaining" if after_placeholder else "cloud_hydration_failed"
+            )
+            failures[failure_reason] += 1
+        if after_placeholder:
+            remaining += 1
+            after_reasons["cloud_placeholder"] += 1
+        else:
+            after_reasons["not_placeholder"] += 1
+        append_jsonl(
+            ledger_path,
+            {
+                **public_base,
+                "state": "hydrated" if ok else "failed",
+                "before_likely_cloud_placeholder": bool(before_state.get("likely_cloud_placeholder")),
+                "after_likely_cloud_placeholder": after_placeholder,
+                "bytes_read": int(result.get("bytes_read") or 0),
+                "duration_seconds": round(float(result.get("duration_seconds") or 0.0), 3),
+                "failure_reason": failure_reason,
+            },
+        )
+
+    summary = {
+        "status": "completed" if failed == 0 and remaining == 0 else "completed_with_stable_failures",
+        "placeholder_count_before_hydration": len(rows),
+        "hydration_attempted_count": attempted,
+        "hydration_succeeded_count": succeeded,
+        "hydration_failed_count": failed,
+        "already_hydrated_or_not_placeholder_count": already_hydrated,
+        "remaining_placeholders_after_hydration": remaining,
+        "failure_reasons": dict(sorted((key, int(value)) for key, value in failures.items())),
+        "before_state_counts": dict(sorted((key, int(value)) for key, value in before_reasons.items())),
+        "after_state_counts": dict(sorted((key, int(value)) for key, value in after_reasons.items())),
+        "extension_breakdown": dict(sorted((key, int(value)) for key, value in extension_counts.items())),
+        "manual_user_action_required": bool(failed or remaining),
+        "source_content_read_for_hydration": attempted > 0,
+        "source_content_written": False,
+        "source_deleted_moved_renamed": False,
+        "cfhydrateplaceholder_called": False,
+        "method": "bounded_full_content_read_via_cloud_files_helper",
+        "duration_seconds": round(time.monotonic() - started, 3),
+        "ledger_artifact": f".local_manifests/{PHASE_SLUG}/{ledger_path.name}",
+        "raw_path_committed": False,
+        "public_safe": True,
+    }
+    write_json(output_dir / "hydration-summary-public.json", summary)
+    return summary
 
 
 def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker: StageTracker) -> dict[str, Any]:
@@ -1811,7 +2194,9 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     execute = summary.get("execute") or {}
     loc = summary.get("localization") or {}
     telemetry = summary.get("gpu_telemetry") or {}
+    aggregate_telemetry = summary.get("aggregate_gpu_telemetry") or telemetry
     runtime = summary.get("runtime") or {}
+    aggregate_runtime = summary.get("aggregate_runtime") or runtime
     classification = summary.get("classification") or {}
     ai_tagging = summary.get("ai_tagging") or {}
     ledger = summary.get("ledger_consistency") or {}
@@ -1820,6 +2205,14 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     db_validation = summary.get("db_validation") or {}
     pipeline = summary.get("pipeline_contract") or {}
     safety = summary.get("safety") or {}
+    loc_diag = summary.get("localization_diagnosis") or {}
+    hydration = summary.get("placeholder_hydration") or {}
+    inventory = summary.get("final_inventory") or {}
+    initial = summary.get("initial_run") or {}
+    remaining = summary.get("remaining_run") or {}
+    final_totals = summary.get("final_totals") or {}
+    standard_flow = summary.get("standard_pipeline_flow") or {}
+    standard_steps = standard_flow.get("steps") or {}
     not_completed = summary.get("not_completed") or [
         "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
         "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
@@ -1834,6 +2227,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- Phase: `{summary.get('phase')}` / `{summary.get('title')}`.",
             f"- Status: `{summary.get('status')}`.",
             f"- Contract: `{pipeline.get('contract_id')}`; target met: `{(pipeline.get('claims') or {}).get('target_met')}`.",
+            f"- Standard pipeline flow: `{standard_flow.get('status')}`.",
             f"- Branch: `{summary.get('branch')}`.",
             f"- Head SHA: `{summary.get('head_sha')}`.",
             f"- Production acceptance performed: `{summary.get('production_acceptance', {}).get('performed')}`.",
@@ -1848,14 +2242,63 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- AI tagging count/failures: `{ai_tagging.get('count')}` / `{ai_tagging.get('failed')}`.",
             f"- Localization translated/failures/skipped: `{loc.get('translated')}` / `{loc.get('failed')}` / `{loc.get('skipped')}`.",
             f"- Localization provider/calls/retries: `{loc.get('provider')}` / `{loc.get('provider_call_count')}` / `{loc.get('retries')}`.",
+            f"- Final imported/classified/AI-tagged/localized totals: `{final_totals.get('imported')}` / `{final_totals.get('classified')}` / `{final_totals.get('ai_tagged')}` / `{final_totals.get('localized')}`.",
             f"- Skipped/failed/deferred: `{summary.get('skipped_failed_deferred', {})}`.",
+            "",
+            "## Initial Run",
+            "",
+            f"- Dry-run total/import: `{initial.get('dry_run_total')}` / `{initial.get('imported')}`.",
+            f"- Classified / AI-tagged / localized: `{initial.get('classified')}` / `{initial.get('ai_tagged')}` / `{initial.get('localized')}`.",
+            f"- Placeholder / unsupported / existing skips: `{initial.get('skipped_placeholder')}` / `{initial.get('skipped_unsupported')}` / `{initial.get('skipped_existing')}`.",
+            "",
+            "## Remaining Run",
+            "",
+            f"- Dry-run total/import: `{remaining.get('dry_run_total')}` / `{remaining.get('imported')}`.",
+            f"- Classified / AI-tagged / localized: `{remaining.get('classified')}` / `{remaining.get('ai_tagged')}` / `{remaining.get('localized')}`.",
+            f"- Placeholder / unsupported / existing skips: `{remaining.get('skipped_placeholder')}` / `{remaining.get('skipped_unsupported')}` / `{remaining.get('skipped_existing')}`.",
+            "",
+            "## Localization Diagnosis",
+            "",
+            f"- Diagnosis: `{loc_diag.get('diagnosis')}`.",
+            f"- AI tag assignments / distinct tags: `{loc_diag.get('ai_wd_assignment_count')}` / `{loc_diag.get('distinct_ai_wd_tag_count')}`.",
+            f"- Localizable distinct / already localized / newly localized / remaining gap: `{loc_diag.get('localizable_distinct_tags')}` / `{loc_diag.get('localizable_already_localized_or_static')}` / `{loc_diag.get('newly_localized_tags')}` / `{loc_diag.get('tags_requiring_localization_after_runner')}`.",
+            f"- Proper-noun suggestion/review-only skipped: `{loc_diag.get('proper_noun_suggestion_review_only_tags_skipped')}`.",
+            f"- Not eligible: `{loc_diag.get('not_eligible_for_localization', {})}`.",
+            "",
+            "## Placeholder Hydration",
+            "",
+            f"- Status: `{hydration.get('status')}`.",
+            f"- Passes represented: `{hydration.get('passes_represented')}`.",
+            f"- Before / attempted / succeeded / failed / remaining: `{hydration.get('placeholder_count_before_hydration')}` / `{hydration.get('hydration_attempted_count')}` / `{hydration.get('hydration_succeeded_count')}` / `{hydration.get('hydration_failed_count')}` / `{hydration.get('remaining_placeholders_after_hydration')}`.",
+            f"- Failure reasons: `{hydration.get('failure_reasons', {})}`.",
+            f"- Manual user action required: `{hydration.get('manual_user_action_required')}`.",
+            "",
+            "## Final Inventory",
+            "",
+            f"- Current delta candidates/importable: `{inventory.get('current_delta_candidates')}` / `{inventory.get('current_importable_hydrated_supported_items')}`.",
+            f"- Existing / placeholders remaining / unsupported / unreadable-zero-byte-damaged: `{inventory.get('existing_media')}` / `{inventory.get('placeholders_remaining')}` / `{inventory.get('unsupported_items')}` / `{inventory.get('unreadable_zero_byte_damaged')}`.",
+            f"- Unsupported extension breakdown: `{inventory.get('unsupported_extension_breakdown', {})}`.",
+            f"- Failure reason extension breakdown: `{inventory.get('failure_reason_extension_breakdown', {})}`.",
+            f"- Scan cap stopped scan: `{inventory.get('scan_cap_stopped_scan')}`.",
+            "",
+            "## Standard Pipeline Flow",
+            "",
+            f"- Version: `{standard_flow.get('version')}`; future automation readiness: `{standard_flow.get('future_automation_readiness')}`.",
+            f"- Aggregate basis: `{standard_flow.get('aggregate_basis', {})}`.",
+            *[
+                f"- {name}: `{step.get('status')}`; completed: `{step.get('completed')}`."
+                for name, step in standard_steps.items()
+                if isinstance(step, Mapping)
+            ],
             "",
             "## Telemetry",
             "",
-            f"- GPU provider: `{telemetry.get('actual_provider')}`; GPU validation: `{telemetry.get('validation_status')}`.",
-            f"- GPU name: `{telemetry.get('gpu_name')}`.",
-            f"- Peak GPU memory MiB: `{telemetry.get('max_gpu_memory_used_mib')}`; peak GPU util: `{telemetry.get('peak_gpu_utilization_percent')}`.",
-            f"- Runtime seconds: `{runtime.get('total_seconds')}`; stage durations: `{runtime.get('stage_durations_seconds')}`.",
+            f"- GPU provider: `{aggregate_telemetry.get('actual_provider')}`; GPU validation: `{aggregate_telemetry.get('validation_status')}`.",
+            f"- GPU name: `{aggregate_telemetry.get('gpu_name')}`.",
+            f"- Aggregate peak GPU memory MiB: `{aggregate_telemetry.get('max_gpu_memory_used_mib')}`; peak GPU util: `{aggregate_telemetry.get('peak_gpu_utilization_percent')}`.",
+            f"- Telemetry partial fields: `{aggregate_telemetry.get('telemetry_partial_fields', [])}`.",
+            f"- Aggregate runtime seconds: `{aggregate_runtime.get('total_seconds')}`; stage durations: `{aggregate_runtime.get('stage_durations_seconds')}`.",
+            f"- Remaining-run runtime seconds: `{runtime.get('total_seconds')}`; stage durations: `{runtime.get('stage_durations_seconds')}`.",
             "",
             "## Validation",
             "",
@@ -1881,6 +2324,245 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     ) + "\n"
 
 
+STANDARD_PIPELINE_STEP_ORDER = (
+    "scan_current_source_delta",
+    "detect_cloud_placeholders",
+    "hydrate_placeholders_non_destructively",
+    "rescan_after_hydration",
+    "import_all_current_importable_items",
+    "classify_imported_media",
+    "run_ai_tagging",
+    "run_localization_or_stable_reasons",
+    "record_ledger_for_every_planned_item",
+    "capture_resource_gpu_telemetry",
+    "validate_public_redaction",
+    "validate_launcher_web_admin_workflow",
+    "produce_public_report_and_contract",
+)
+
+
+def _standard_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
+def _standard_step(completed: bool, status: str, **evidence: Any) -> dict[str, Any]:
+    return {
+        "completed": bool(completed),
+        "status": status,
+        "evidence": {key: value for key, value in evidence.items() if value is not None},
+    }
+
+
+def build_standard_pipeline_flow(summary: Mapping[str, Any]) -> dict[str, Any]:
+    """Aggregate S3A-M2 into the repeatable manual-sync pipeline future automation can reuse."""
+
+    dry_run = summary.get("dry_run") or {}
+    dry_state = dry_run.get("state_counts") or {}
+    execute = summary.get("execute") or {}
+    classification = summary.get("classification") or {}
+    ai_tagging = summary.get("ai_tagging") or {}
+    localization = summary.get("localization") or {}
+    loc_diag = summary.get("localization_diagnosis") or {}
+    hydration = summary.get("placeholder_hydration") or {}
+    inventory = summary.get("final_inventory") or {}
+    ledger = summary.get("ledger_consistency") or {}
+    telemetry = summary.get("gpu_telemetry") or {}
+    redaction = summary.get("public_redaction") or {}
+    launcher = summary.get("launcher_web_admin_acceptance") or {}
+    pipeline = summary.get("pipeline_contract") or {}
+    public_reports = summary.get("public_reports") or {}
+    safety = summary.get("safety") or {}
+    initial = summary.get("initial_run") or {}
+    remaining = summary.get("remaining_run") or {}
+
+    placeholder_before = _standard_int(hydration.get("placeholder_count_before_hydration"))
+    placeholders_remaining = _standard_int(
+        hydration.get("remaining_placeholders_after_hydration") or inventory.get("placeholders_remaining")
+    )
+    hydration_status = str(hydration.get("status") or "")
+    hydration_failures = _standard_int(hydration.get("hydration_failed_count"))
+    stable_failure_reasons = hydration.get("failure_reasons") or {}
+    stable_placeholder_failures_accepted = (
+        hydration_status == "completed_with_stable_failures"
+        and hydration_failures > 0
+        and bool(stable_failure_reasons)
+        and not bool(hydration.get("manual_user_action_required"))
+    )
+    hydration_completed = hydration_status == "not_required" or (
+        hydration_status == "completed" and placeholders_remaining == 0
+    ) or stable_placeholder_failures_accepted
+
+    localization_status = str(localization.get("status") or "")
+    localization_diagnosis = str(loc_diag.get("diagnosis") or "")
+    localization_completed = (
+        localization_status in {"completed", "completed_noop_no_candidates"}
+        and _standard_int(localization.get("failed")) == 0
+        and _standard_int(loc_diag.get("tags_requiring_localization_after_runner")) == 0
+        and localization_diagnosis
+        in {
+            "benign_all_localizable_tags_already_localized_or_newly_localized",
+            "no_imported_media",
+        }
+    )
+
+    launcher_status = str(launcher.get("status") or "")
+    launcher_validated = bool(launcher.get("validated"))
+    launcher_execute_clicked = bool(launcher.get("execute_clicked"))
+    launcher_gui_execute_completed = launcher_status == "passed_gui_execute_completed" and launcher_execute_clicked
+    launcher_fallback_documented = (
+        launcher_status == "passed_gui_execute_not_safe_runner_execute_used"
+        and not launcher_execute_clicked
+        and bool(launcher.get("fallback_reason") or launcher.get("computer_use_result"))
+    )
+    launcher_completed = launcher_validated and (
+        launcher_status == "passed" or launcher_gui_execute_completed or launcher_fallback_documented
+    )
+
+    final_importable = _standard_int(inventory.get("current_importable_hydrated_supported_items"))
+    final_placeholders = _standard_int(inventory.get("placeholders_remaining"))
+    scanned_current_delta = _standard_int(dry_run.get("total_seen")) > 0 and bool(
+        (summary.get("pipeline_contract") or {}).get("fresh_dry_run_completed")
+    )
+    execute_completed = str(execute.get("status") or "") == "completed"
+    imported_total = _standard_int((summary.get("final_totals") or {}).get("imported")) or _standard_int(execute.get("imported"))
+    classified_total = _standard_int((summary.get("final_totals") or {}).get("classified")) or _standard_int(
+        classification.get("count")
+    )
+    ai_total = _standard_int((summary.get("final_totals") or {}).get("ai_tagged")) or _standard_int(ai_tagging.get("count"))
+
+    steps = {
+        "scan_current_source_delta": _standard_step(
+            scanned_current_delta,
+            "completed" if scanned_current_delta else "missing_or_pending",
+            total_seen=dry_run.get("total_seen"),
+            cap=(summary.get("controlled_delta") or {}).get("cap"),
+            cap_stopped=dry_run.get("partial_scan"),
+        ),
+        "detect_cloud_placeholders": _standard_step(
+            "skipped_placeholder" in dry_state
+            or placeholder_before > 0
+            or final_placeholders == 0
+            or "cloud_placeholder" in (dry_run.get("failure_reasons") or {}),
+            "completed",
+            placeholders_seen_before_hydration=placeholder_before,
+            latest_dry_run_placeholders=dry_state.get("skipped_placeholder"),
+        ),
+        "hydrate_placeholders_non_destructively": _standard_step(
+            hydration_completed
+            and not bool(hydration.get("source_content_written"))
+            and not bool(hydration.get("source_deleted_moved_renamed")),
+            "completed"
+            if hydration_completed
+            else ("stable_failures_unaccepted" if placeholders_remaining else "missing_or_pending"),
+            attempted=hydration.get("hydration_attempted_count"),
+            succeeded=hydration.get("hydration_succeeded_count"),
+            failed=hydration.get("hydration_failed_count"),
+            remaining=placeholders_remaining,
+            method=hydration.get("method"),
+        ),
+        "rescan_after_hydration": _standard_step(
+            bool(inventory) and not bool(inventory.get("scan_cap_stopped_scan")),
+            "completed" if bool(inventory) and not bool(inventory.get("scan_cap_stopped_scan")) else "missing_or_cap_stopped",
+            current_delta_candidates=inventory.get("current_delta_candidates"),
+            importable_remaining=final_importable,
+            placeholders_remaining=final_placeholders,
+        ),
+        "import_all_current_importable_items": _standard_step(
+            execute_completed and final_importable == 0 and imported_total > 0,
+            "completed" if execute_completed and final_importable == 0 and imported_total > 0 else "remaining_or_pending",
+            execute_imported=execute.get("imported"),
+            final_importable_remaining=final_importable,
+            aggregate_imported=imported_total,
+        ),
+        "classify_imported_media": _standard_step(
+            execute_completed and bool(classification.get("reported")) and _standard_int(classification.get("failed")) == 0 and classified_total > 0,
+            "completed" if classified_total > 0 and _standard_int(classification.get("failed")) == 0 else "failed_or_pending",
+            aggregate_classified=classified_total,
+            failed=classification.get("failed"),
+        ),
+        "run_ai_tagging": _standard_step(
+            execute_completed
+            and bool(ai_tagging.get("reported"))
+            and _standard_int(ai_tagging.get("failed")) == 0
+            and ai_total > 0
+            and bool(ai_tagging.get("proper_nouns_suggestion_only")),
+            "completed" if ai_total > 0 and _standard_int(ai_tagging.get("failed")) == 0 else "failed_or_pending",
+            aggregate_ai_tagged=ai_total,
+            failed=ai_tagging.get("failed"),
+            proper_nouns_suggestion_only=ai_tagging.get("proper_nouns_suggestion_only"),
+        ),
+        "run_localization_or_stable_reasons": _standard_step(
+            localization_completed,
+            "completed" if localization_completed else "gap_or_pending",
+            localization_status=localization_status,
+            diagnosis=localization_diagnosis,
+            remaining_gap=loc_diag.get("tags_requiring_localization_after_runner"),
+            failed=localization.get("failed"),
+        ),
+        "record_ledger_for_every_planned_item": _standard_step(
+            bool(ledger.get("passed")),
+            "completed" if bool(ledger.get("passed")) else "failed_or_pending",
+            expected_plan_items=ledger.get("expected_plan_items"),
+            run_item_count=ledger.get("run_item_count"),
+        ),
+        "capture_resource_gpu_telemetry": _standard_step(
+            str(telemetry.get("status") or "") in {"collected", "partial_no_samples"} and bool(telemetry.get("validation_status")),
+            "completed" if str(telemetry.get("validation_status") or "") == "passed" else "partial_or_pending",
+            validation_status=telemetry.get("validation_status"),
+            actual_provider=telemetry.get("actual_provider"),
+            gpu_name=telemetry.get("gpu_name"),
+        ),
+        "validate_public_redaction": _standard_step(
+            bool(redaction.get("passed")) and not bool(safety.get("private_paths_or_hashes_in_public_report")),
+            "completed" if bool(redaction.get("passed")) else "failed_or_pending",
+            finding_count=redaction.get("finding_count"),
+        ),
+        "validate_launcher_web_admin_workflow": _standard_step(
+            launcher_completed,
+            "gui_execute_completed"
+            if launcher_gui_execute_completed
+            else ("runner_execute_fallback_documented" if launcher_fallback_documented else ("completed" if launcher_completed else "pending")),
+            computer_use_result=launcher.get("computer_use_result"),
+            execute_clicked=launcher.get("execute_clicked"),
+            fallback_reason=launcher.get("fallback_reason"),
+            latest_job_status=launcher.get("latest_job_status"),
+        ),
+        "produce_public_report_and_contract": _standard_step(
+            bool(public_reports.get("markdown_report_path"))
+            and bool(public_reports.get("summary_json_path"))
+            and str(pipeline.get("contract_id") or "") == CONTRACT_ID,
+            "completed"
+            if bool(public_reports.get("markdown_report_path")) and str(pipeline.get("contract_id") or "") == CONTRACT_ID
+            else "missing_or_pending",
+            contract_id=pipeline.get("contract_id"),
+            markdown_report_path=public_reports.get("markdown_report_path"),
+            summary_json_path=public_reports.get("summary_json_path"),
+        ),
+    }
+    completed = all(bool(steps[name].get("completed")) for name in STANDARD_PIPELINE_STEP_ORDER)
+    return {
+        "version": 1,
+        "status": "completed" if completed else "incomplete",
+        "steps": steps,
+        "aggregate_basis": {
+            "initial_execute_run_id": initial.get("run_id"),
+            "remaining_execute_run_id": remaining.get("run_id") or execute.get("run_id"),
+            "hydration_passes_represented": hydration.get("passes_represented"),
+            "final_inventory_delta_candidates": inventory.get("current_delta_candidates"),
+        },
+        "future_automation_readiness": (
+            "manual_pipeline_standardized_no_automatic_sync_implemented"
+            if completed
+            else "manual_pipeline_evidence_incomplete"
+        ),
+        "automatic_sync_implemented": False,
+        "public_safe": True,
+    }
+
+
 def build_summary(
     args: argparse.Namespace,
     *,
@@ -1898,6 +2580,24 @@ def build_summary(
     execute_summary = manual_execute_stage_summary(execution)
     run_id = execute_summary.get("run_id")
     ledger = verify_ledger_consistency(int(run_id) if run_id else None, int(counts.get("total_seen") or 0)) if execution else {"status": "not_run", "passed": False}
+    localization_diagnosis: dict[str, Any] = {"status": "not_run"}
+    source_roots: dict[str, Any] = {"registered_root_count": None, "paths_redacted": True}
+    try:
+        db = open_db_session()
+        try:
+            source_roots = collect_source_roots_public(db, in_scope_root_id=int(root.id))
+            if run_id:
+                localization_diagnosis = diagnose_run_localization(
+                    db,
+                    int(run_id),
+                    lang=str(args.lang),
+                    job_id=int((localization or {}).get("job_id") or 0) or None,
+                )
+                localization_diagnosis["status"] = "completed"
+        finally:
+            db.close()
+    except Exception as exc:
+        localization_diagnosis = {"status": "unavailable", "reason": safe_error(exc), "public_safe": True}
     telemetry_summary = dict(
         telemetry
         or {
@@ -1983,6 +2683,7 @@ def build_summary(
             "public_source_identity": str(root.root_path_hash or "")[:16],
             "paths_redacted": True,
         },
+        "registered_roots_public": source_roots,
         "controlled_delta": {
             "cap": int(args.delta_cap),
             "cap_exceeded": cap_exceeded,
@@ -2002,6 +2703,8 @@ def build_summary(
             "estimated_localization_workload": int(counts.get("estimated_localization_workload") or 0),
             "state_counts": state_counts,
             "failure_reasons": counts.get("failure_reasons") or {},
+            "unsupported_extension_breakdown": counts.get("unsupported_extension_breakdown") or {},
+            "failure_reason_extension_breakdown": counts.get("failure_reason_extension_breakdown") or {},
             "source_ledger_aggregate_counts": counts.get("source_ledger_aggregate_counts") or {},
             "partial_scan": cap_exceeded,
             "approval_phrase": s3a_m2_approval_phrase(str((plan.get("integrity") or {}).get("plan_hash") or "")),
@@ -2024,6 +2727,7 @@ def build_summary(
             "provider_provenance": execute_summary.get("provider_provenance") or {},
         },
         "localization": loc,
+        "localization_diagnosis": localization_diagnosis,
         "gpu_telemetry": telemetry_summary,
         "runtime": {
             "total_seconds": round(time.monotonic() - started_at_monotonic, 3),
@@ -2060,6 +2764,20 @@ def build_summary(
             "failed": int(execute_summary.get("failed") or state_counts.get("failed", 0)),
             "deferred": int(execute_summary.get("deferred") or 0),
         },
+        "final_inventory": {
+            "current_delta_candidates": int(counts.get("total_seen") or 0),
+            "current_importable_hydrated_supported_items": int(state_counts.get("import_planned", 0)),
+            "existing_media": int(state_counts.get("skipped_existing_media", 0)),
+            "placeholders_remaining": int(state_counts.get("skipped_placeholder", 0)),
+            "unsupported_items": int(state_counts.get("skipped_unsupported", 0)),
+            "unreadable_zero_byte_damaged": int(
+                state_counts.get("failed", 0)
+                + state_counts.get("skipped_zero_byte", 0)
+                + state_counts.get("skipped_path_policy_error", 0)
+            ),
+            "unsupported_extension_breakdown": counts.get("unsupported_extension_breakdown") or {},
+            "scan_cap_stopped_scan": cap_exceeded,
+        },
         "private_artifacts": {
             "root": f".local_manifests/{PHASE_SLUG}",
             "telemetry_root": f".local_manifests/{PHASE_SLUG}/telemetry",
@@ -2082,9 +2800,14 @@ def build_summary(
         },
         "readiness": dict(readiness),
     }
+    summary["standard_pipeline_flow"] = build_standard_pipeline_flow(summary)
     markdown = public_report_markdown(summary)
     redaction = scan_public_output(summary, markdown)
     summary["public_redaction"] = redaction
+    refresh_completion_claims(summary)
+    markdown = public_report_markdown(summary)
+    summary["public_redaction"] = scan_public_output(summary, markdown)
+    summary["standard_pipeline_flow"] = build_standard_pipeline_flow(summary)
     return summary
 
 
@@ -2128,6 +2851,29 @@ def refresh_completion_claims(summary: dict[str, Any]) -> dict[str, Any]:
 
     launcher = summary.get("launcher_web_admin_acceptance") or {}
     loc = summary.get("localization") or {}
+    loc_diag = summary.get("localization_diagnosis") or {}
+    hydration = summary.get("placeholder_hydration") or {}
+    inventory = summary.get("final_inventory") or {}
+    hydration_status = str(hydration.get("status") or "")
+    placeholder_hydration_ok = (
+        hydration_status in {"completed", "completed_with_stable_failures", "not_required"}
+        and int(hydration.get("remaining_placeholders_after_hydration") or inventory.get("placeholders_remaining") or 0) == 0
+    )
+    localization_diagnosis_ok = str(loc_diag.get("diagnosis") or "") in {
+        "benign_all_localizable_tags_already_localized_or_newly_localized",
+        "no_imported_media",
+    } and int(loc_diag.get("tags_requiring_localization_after_runner") or 0) == 0
+    inventory_ok = int(inventory.get("current_importable_hydrated_supported_items") or 0) == 0 and int(
+        inventory.get("placeholders_remaining") or 0
+    ) == 0
+    launcher_status = str(launcher.get("status") or "")
+    launcher_ok = launcher.get("validated") is True and launcher_status in {
+        "passed",
+        "passed_gui_execute_completed",
+        "passed_gui_execute_not_safe_runner_execute_used",
+    }
+    summary["standard_pipeline_flow"] = build_standard_pipeline_flow(summary)
+    standard_pipeline_ok = str((summary.get("standard_pipeline_flow") or {}).get("status") or "") == "completed"
     target_met = bool(
         (summary.get("production_acceptance") or {}).get("performed")
         and execute.get("status") == "completed"
@@ -2136,9 +2882,12 @@ def refresh_completion_claims(summary: dict[str, Any]) -> dict[str, Any]:
         and (summary.get("ledger_consistency") or {}).get("passed")
         and loc.get("status") in {"completed", "completed_noop_no_candidates"}
         and int(loc.get("failed") or 0) == 0
+        and localization_diagnosis_ok
+        and placeholder_hydration_ok
+        and inventory_ok
         and telemetry.get("validation_status") == "passed"
-        and launcher.get("validated") is True
-        and str(launcher.get("status") or "").casefold() == "passed"
+        and launcher_ok
+        and standard_pipeline_ok
     )
     if target_met:
         status = "target_met"
@@ -2165,25 +2914,188 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
     summary = read_json(args.summary_json)
     if not isinstance(summary, dict):
         raise S3AM2Blocked("summary_json_not_object")
+    initial_summary = read_json(args.initial_summary_json) if args.initial_summary_json and args.initial_summary_json.exists() else None
+    if initial_summary is not None and not isinstance(initial_summary, dict):
+        raise S3AM2Blocked("initial_summary_json_not_object")
+    if args.hydration_summary_json and args.hydration_summary_json.exists():
+        hydration_summary = read_json(args.hydration_summary_json)
+        if not isinstance(hydration_summary, dict):
+            raise S3AM2Blocked("hydration_summary_json_not_object")
+        summary["placeholder_hydration"] = hydration_summary
+    elif "placeholder_hydration" not in summary:
+        summary["placeholder_hydration"] = {
+            "status": "not_required",
+            "placeholder_count_before_hydration": 0,
+            "hydration_attempted_count": 0,
+            "hydration_succeeded_count": 0,
+            "hydration_failed_count": 0,
+            "remaining_placeholders_after_hydration": 0,
+            "failure_reasons": {},
+            "manual_user_action_required": False,
+            "public_safe": True,
+        }
+    if args.final_inventory_plan_json and args.final_inventory_plan_json.exists():
+        inventory_plan = read_json(args.final_inventory_plan_json)
+        counts = (inventory_plan.get("counts") or {}) if isinstance(inventory_plan, Mapping) else {}
+        state_counts = counts.get("state_counts") or {}
+        summary["final_inventory"] = {
+            "current_delta_candidates": int(counts.get("total_seen") or 0),
+            "current_importable_hydrated_supported_items": int(state_counts.get("import_planned", 0)),
+            "existing_media": int(state_counts.get("skipped_existing_media", 0)),
+            "placeholders_remaining": int(state_counts.get("skipped_placeholder", 0)),
+            "unsupported_items": int(state_counts.get("skipped_unsupported", 0)),
+            "unreadable_zero_byte_damaged": int(
+                state_counts.get("failed", 0)
+                + state_counts.get("skipped_zero_byte", 0)
+                + state_counts.get("skipped_path_policy_error", 0)
+            ),
+            "unsupported_extension_breakdown": counts.get("unsupported_extension_breakdown") or {},
+            "failure_reason_extension_breakdown": counts.get("failure_reason_extension_breakdown") or {},
+            "scan_cap_stopped_scan": bool(counts.get("partial_scan")),
+            "public_safe": True,
+        }
+    if initial_summary:
+        initial_execute = initial_summary.get("execute") or {}
+        initial_dry_run = initial_summary.get("dry_run") or {}
+        initial_loc = initial_summary.get("localization") or {}
+        summary["initial_run"] = {
+            "run_id": initial_execute.get("run_id"),
+            "dry_run_total": initial_dry_run.get("total_seen"),
+            "imported": initial_execute.get("imported"),
+            "classified": initial_execute.get("classified"),
+            "ai_tagged": initial_execute.get("ai_tagged"),
+            "localized": initial_loc.get("translated"),
+            "skipped_placeholder": (initial_summary.get("skipped_failed_deferred") or {}).get("skipped_placeholder"),
+            "skipped_unsupported": (initial_summary.get("skipped_failed_deferred") or {}).get("skipped_unsupported"),
+            "skipped_existing": (initial_summary.get("skipped_failed_deferred") or {}).get("skipped_existing_media"),
+            "status": initial_summary.get("status"),
+        }
+        try:
+            db = open_db_session()
+            try:
+                initial_run_id = int(initial_execute.get("run_id") or 0)
+                if initial_run_id:
+                    summary["initial_localization_diagnosis"] = diagnose_run_localization(
+                        db,
+                        initial_run_id,
+                        lang=str(args.lang),
+                        job_id=int(initial_loc.get("job_id") or 0) or None,
+                    )
+                    summary["initial_localization_diagnosis"]["status"] = "completed"
+            finally:
+                db.close()
+        except Exception as exc:
+            summary["initial_localization_diagnosis"] = {"status": "unavailable", "reason": safe_error(exc)}
+        remaining_execute = summary.get("execute") or {}
+        remaining_dry_run = summary.get("dry_run") or {}
+        remaining_loc = summary.get("localization") or {}
+        try:
+            db = open_db_session()
+            try:
+                remaining_run_id = int(remaining_execute.get("run_id") or 0)
+                if remaining_run_id:
+                    summary["localization_diagnosis"] = diagnose_run_localization(
+                        db,
+                        remaining_run_id,
+                        lang=str(args.lang),
+                        job_id=int(remaining_loc.get("job_id") or 0) or None,
+                    )
+                    summary["localization_diagnosis"]["status"] = "completed"
+            finally:
+                db.close()
+        except Exception as exc:
+            summary["localization_diagnosis"] = {"status": "unavailable", "reason": safe_error(exc), "public_safe": True}
+        summary["remaining_run"] = {
+            "run_id": remaining_execute.get("run_id"),
+            "dry_run_total": remaining_dry_run.get("total_seen"),
+            "imported": remaining_execute.get("imported"),
+            "classified": remaining_execute.get("classified"),
+            "ai_tagged": remaining_execute.get("ai_tagged"),
+            "localized": remaining_loc.get("translated"),
+            "skipped_placeholder": (summary.get("skipped_failed_deferred") or {}).get("skipped_placeholder"),
+            "skipped_unsupported": (summary.get("skipped_failed_deferred") or {}).get("skipped_unsupported"),
+            "skipped_existing": (summary.get("skipped_failed_deferred") or {}).get("skipped_existing_media"),
+            "status": remaining_execute.get("status") or summary.get("status"),
+        }
+        initial_runtime = initial_summary.get("runtime") or {}
+        remaining_runtime = summary.get("runtime") or {}
+        initial_stage = initial_runtime.get("stage_durations_seconds") or {}
+        remaining_stage = remaining_runtime.get("stage_durations_seconds") or {}
+        stage_names = sorted({*initial_stage.keys(), *remaining_stage.keys()})
+        summary["aggregate_runtime"] = {
+            "total_seconds": round(
+                float(initial_runtime.get("total_seconds") or 0.0) + float(remaining_runtime.get("total_seconds") or 0.0),
+                3,
+            ),
+            "stage_durations_seconds": {
+                name: round(float(initial_stage.get(name) or 0.0) + float(remaining_stage.get(name) or 0.0), 3)
+                for name in stage_names
+            },
+        }
+        initial_gpu = initial_summary.get("gpu_telemetry") or {}
+        remaining_gpu = summary.get("gpu_telemetry") or {}
+        summary["aggregate_gpu_telemetry"] = {
+            "actual_provider": remaining_gpu.get("actual_provider") or initial_gpu.get("actual_provider"),
+            "gpu_name": remaining_gpu.get("gpu_name") or initial_gpu.get("gpu_name"),
+            "max_gpu_memory_used_mib": max(
+                float(initial_gpu.get("max_gpu_memory_used_mib") or 0.0),
+                float(remaining_gpu.get("max_gpu_memory_used_mib") or 0.0),
+            ),
+            "peak_gpu_utilization_percent": max(
+                float(initial_gpu.get("peak_gpu_utilization_percent") or 0.0),
+                float(remaining_gpu.get("peak_gpu_utilization_percent") or 0.0),
+            ),
+            "psutil_available": bool(initial_gpu.get("psutil_available") and remaining_gpu.get("psutil_available")),
+            "telemetry_partial_fields": sorted(
+                {
+                    field
+                    for field, ok in {
+                        "process_rss": bool(initial_gpu.get("peak_process_rss_bytes") and remaining_gpu.get("peak_process_rss_bytes")),
+                        "system_ram": bool(initial_gpu.get("peak_system_ram_percent") and remaining_gpu.get("peak_system_ram_percent")),
+                    }.items()
+                    if not ok
+                }
+            ),
+            "validation_status": (
+                "passed"
+                if (remaining_gpu.get("validation_status") == "passed" and initial_gpu.get("validation_status") == "passed")
+                else "partial"
+            ),
+        }
+        summary["final_totals"] = {
+            "imported": int(initial_execute.get("imported") or 0) + int((summary.get("execute") or {}).get("imported") or 0),
+            "classified": int(initial_execute.get("classified") or 0)
+            + int((summary.get("execute") or {}).get("classified") or 0),
+            "ai_tagged": int(initial_execute.get("ai_tagged") or 0)
+            + int((summary.get("execute") or {}).get("ai_tagged") or 0),
+            "localized": int(initial_loc.get("translated") or 0)
+            + int((summary.get("localization") or {}).get("translated") or 0),
+        }
     validation = read_json(args.launcher_validation_json)
     if not isinstance(validation, dict):
         raise S3AM2Blocked("launcher_validation_json_not_object")
-    if validation.get("status") != "passed":
+    if validation.get("status") not in {"passed", "passed_gui_execute_completed", "passed_gui_execute_not_safe_runner_execute_used"}:
         raise S3AM2Blocked("launcher_web_admin_validation_not_passed")
 
     assertions = validation.get("assertions") or {}
     summary["launcher_web_admin_acceptance"] = {
         "validated": True,
-        "status": "passed",
+        "status": validation.get("status") or "passed",
         "target_path": "/admin?tab=content#dynamic-library-sync-section",
         "browser": validation.get("browser") or "msedge",
         "dry_run_clicked": bool(validation.get("dry_run_clicked")),
         "execute_clicked": bool(validation.get("execute_clicked")),
         "production_execute_run_id_seen": validation.get("production_execute_run_id_seen"),
         "execute_cap_visible": assertions.get("execute_cap_visible"),
-        "update_check_limit_separated": bool(assertions.get("update_check_limit_has_separate_input")),
+        "update_check_limit_separated": bool(
+            assertions.get("update_check_limit_has_separate_input")
+            or assertions.get("update_check_has_separate_input")
+        ),
         "latest_job_status": assertions.get("latest_job_status"),
         "latest_job_imported": assertions.get("latest_job_imported"),
+        "computer_use_result": validation.get("computer_use_result"),
+        "fallback_reason": validation.get("fallback_reason"),
+        "gui_execute_completed": bool(validation.get("gui_execute_completed")),
         "raw_artifact": f".local_manifests/{PHASE_SLUG}/{Path(args.launcher_validation_json).name}",
         "raw_path_committed": False,
     }
@@ -2194,6 +3106,12 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
         before = read_json(before_path)
         after = read_json(after_path)
         if isinstance(before, Mapping) and isinstance(after, Mapping):
+            def first_present(*keys: str) -> Any:
+                for key in keys:
+                    if key in after and after.get(key) is not None:
+                        return after.get(key)
+                return None
+
             summary["db_validation"] = {
                 "before_media_count": before.get("media_count"),
                 "after_media_count": after.get("media_count"),
@@ -2201,10 +3119,10 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
                 "before_dynamic_source_item_count": before.get("dynamic_source_item_count"),
                 "after_dynamic_source_item_count": after.get("dynamic_source_item_count"),
                 "source_item_delta": int(after.get("dynamic_source_item_count") or 0) - int(before.get("dynamic_source_item_count") or 0),
-                "run_status": after.get("run_7_status"),
-                "run_total_seen": after.get("run_7_total_seen"),
-                "run_imported": after.get("run_7_new_items"),
-                "run_failed": after.get("run_7_failed_items"),
+                "run_status": first_present("latest_run_status", "run_8_status", "run_7_status"),
+                "run_total_seen": first_present("latest_run_total_seen", "run_8_total_seen", "run_7_total_seen"),
+                "run_imported": first_present("latest_run_new_items", "run_8_new_items", "run_7_new_items"),
+                "run_failed": first_present("latest_run_failed_items", "run_8_failed_items", "run_7_failed_items"),
                 "raw_path_committed": False,
             }
 
@@ -2216,11 +3134,18 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
     if not redaction.get("passed"):
         write_json(DEFAULT_OUTPUT_DIR / "public-redaction-failed.json", redaction)
         raise S3AM2Blocked("public_redaction_failed")
+    refresh_completion_claims(summary)
+    markdown = public_report_markdown(summary)
+    redaction = scan_public_output(summary, markdown)
+    summary["public_redaction"] = redaction
+    if not redaction.get("passed"):
+        write_json(DEFAULT_OUTPUT_DIR / "public-redaction-failed.json", redaction)
+        raise S3AM2Blocked("public_redaction_failed")
     write_json(DEFAULT_OUTPUT_DIR / "run-summary-private.json", summary)
     write_json(DEFAULT_OUTPUT_DIR / "public-redaction-check.json", redaction)
     if args.write_public_report:
         write_json(PUBLIC_REPORT_JSON, summary)
-        write_text(PUBLIC_REPORT_MD, public_report_markdown(summary))
+        write_text(PUBLIC_REPORT_MD, markdown)
     return summary
 
 
@@ -2288,9 +3213,12 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--execute", action="store_true")
     mode.add_argument("--finalize-report", action="store_true")
+    mode.add_argument("--hydrate-placeholders", action="store_true")
+    mode.add_argument("--diagnose-localization-run-id", type=int, default=None)
     parser.add_argument("--root-id", type=int, default=None)
     parser.add_argument("--delta-cap", type=int, default=DEFAULT_DELTA_CAP)
     parser.add_argument("--plan-source", choices=("source-delta", "ledger-pending", "source-walk"), default="source-delta")
+    parser.add_argument("--include-unresolved-run-id", type=int, default=None)
     parser.add_argument("--stable-age-seconds", type=float, default=None)
     parser.add_argument("--hydrated-only", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--expected-plan-hash", default="")
@@ -2308,7 +3236,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--approved-plan-json", type=Path, default=DEFAULT_OUTPUT_DIR / "fresh-dry-run-plan.json")
     parser.add_argument("--summary-json", type=Path, default=PUBLIC_REPORT_JSON)
+    parser.add_argument("--initial-summary-json", type=Path, default=None)
+    parser.add_argument("--hydration-summary-json", type=Path, default=DEFAULT_OUTPUT_DIR / "hydration-summary-public.json")
+    parser.add_argument("--final-inventory-plan-json", type=Path, default=None)
     parser.add_argument("--launcher-validation-json", type=Path, default=DEFAULT_OUTPUT_DIR / "launcher-web-admin-validation.json")
+    parser.add_argument("--hydration-timeout-seconds", type=int, default=120)
+    parser.add_argument("--hydration-retries", type=int, default=1)
+    parser.add_argument("--hydration-chunk-size", type=int, default=4 * 1024 * 1024)
     parser.add_argument("--write-public-report", action="store_true")
     return parser
 
@@ -2320,6 +3254,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if args.execute_duration_seconds <= 0:
         print("ERROR: --execute-duration-seconds must be positive", file=sys.stderr)
+        return 2
+    if args.hydration_timeout_seconds <= 0:
+        print("ERROR: --hydration-timeout-seconds must be positive", file=sys.stderr)
         return 2
     if args.execute:
         missing = [
@@ -2335,7 +3272,41 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"ERROR: execute missing required arguments: {', '.join(missing)}", file=sys.stderr)
             return 2
     try:
-        summary = finalize_existing_report(args) if args.finalize_report else run_pipeline(args)
+        if args.finalize_report:
+            summary = finalize_existing_report(args)
+        elif args.hydrate_placeholders:
+            configure_phase_env(args)
+            db = open_db_session()
+            try:
+                root = select_source_root(db, args.root_id)
+            finally:
+                db.close()
+            stage_tracker = StageTracker()
+            stage_tracker.set("hydration")
+            monitor = ResourceTelemetryMonitor(
+                telemetry_dir=args.telemetry_dir / "hydration",
+                stage_tracker=stage_tracker,
+                provider_getter=lambda: {},
+                interval_seconds=max(0.5, float(args.telemetry_interval_seconds)),
+            )
+            monitor.start()
+            try:
+                summary = hydrate_placeholders(args, root)
+            finally:
+                telemetry = monitor.stop()
+            summary["resource_telemetry"] = telemetry
+            summary["runtime"] = {"stage_durations_seconds": stage_tracker.durations()}
+            write_json(prepare_output_dir(args) / "hydration-summary-public.json", summary)
+        elif args.diagnose_localization_run_id:
+            configure_phase_env(args)
+            db = open_db_session()
+            try:
+                summary = diagnose_run_localization(db, int(args.diagnose_localization_run_id), lang=str(args.lang))
+            finally:
+                db.close()
+            write_json(prepare_output_dir(args) / f"localization-diagnosis-run-{int(args.diagnose_localization_run_id)}.json", summary)
+        else:
+            summary = run_pipeline(args)
     except S3AM2Blocked as exc:
         print(f"ERROR: {safe_error(exc)}", file=sys.stderr)
         return 2

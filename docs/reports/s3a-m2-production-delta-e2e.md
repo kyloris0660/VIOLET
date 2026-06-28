@@ -5,36 +5,94 @@
 - Phase: `S3A-M2` / `Production Delta Manual Sync E2E + GPU Telemetry`.
 - Status: `target_met`.
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `True`.
+- Standard pipeline flow: `completed`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `51c3e33001d3a0d1d675657fb5d730dd7901d8d4`.
+- Head SHA: `3c824a5803c183c77e650ce115e0e8464c3f8a9e`.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
 ## Counts
 
 - Cap used: `1000`; cap exceeded: `False`.
-- Dry-run total/import: `453` / `300`.
-- Execute total/imported: `453` / `300`.
-- Classification count/failures: `300` / `0`.
-- AI tagging count/failures: `300` / `0`.
-- Localization translated/failures/skipped: `3` / `0` / `25`.
+- Dry-run total/import: `173` / `49`.
+- Execute total/imported: `173` / `49`.
+- Classification count/failures: `49` / `0`.
+- AI tagging count/failures: `49` / `0`.
+- Localization translated/failures/skipped: `2` / `0` / `4`.
 - Localization provider/calls/retries: `fallback(primary->fallback)` / `1` / `0`.
-- Skipped/failed/deferred: `{'deferred': 0, 'failed': 0, 'skipped_duplicate': 0, 'skipped_existing_media': 19, 'skipped_placeholder': 36, 'skipped_unsupported': 98}`.
+- Final imported/classified/AI-tagged/localized totals: `349` / `349` / `349` / `5`.
+- Skipped/failed/deferred: `{'deferred': 0, 'failed': 0, 'skipped_duplicate': 0, 'skipped_existing_media': 20, 'skipped_placeholder': 0, 'skipped_unsupported': 104}`.
+
+## Initial Run
+
+- Dry-run total/import: `453` / `300`.
+- Classified / AI-tagged / localized: `300` / `300` / `3`.
+- Placeholder / unsupported / existing skips: `36` / `98` / `19`.
+
+## Remaining Run
+
+- Dry-run total/import: `173` / `49`.
+- Classified / AI-tagged / localized: `49` / `49` / `2`.
+- Placeholder / unsupported / existing skips: `0` / `104` / `20`.
+
+## Localization Diagnosis
+
+- Diagnosis: `benign_all_localizable_tags_already_localized_or_newly_localized`.
+- AI tag assignments / distinct tags: `2328` / `714`.
+- Localizable distinct / already localized / newly localized / remaining gap: `700` / `700` / `2` / `0`.
+- Proper-noun suggestion/review-only skipped: `4`.
+- Not eligible: `{'proper_noun_suggestion_review_only': 4, 'category_not_in_general_or_meta': 0}`.
+
+## Placeholder Hydration
+
+- Status: `completed`.
+- Passes represented: `3`.
+- Before / attempted / succeeded / failed / remaining: `51` / `50` / `50` / `0` / `0`.
+- Failure reasons: `{}`.
+- Manual user action required: `False`.
+
+## Final Inventory
+
+- Current delta candidates/importable: `124` / `0`.
+- Existing / placeholders remaining / unsupported / unreadable-zero-byte-damaged: `20` / `0` / `104` / `0`.
+- Unsupported extension breakdown: `{'.heic': 28, '.mov': 75}`.
+- Failure reason extension breakdown: `{'existing_media_hash': {'.jpg': 18, '.png': 2}, 'hidden': {'.ini': 1}, 'unsupported_extension': {'.heic': 28, '.mov': 75}}`.
+- Scan cap stopped scan: `False`.
+
+## Standard Pipeline Flow
+
+- Version: `1`; future automation readiness: `manual_pipeline_standardized_no_automatic_sync_implemented`.
+- Aggregate basis: `{'initial_execute_run_id': 7, 'remaining_execute_run_id': 8, 'hydration_passes_represented': 3, 'final_inventory_delta_candidates': 124}`.
+- scan_current_source_delta: `completed`; completed: `True`.
+- detect_cloud_placeholders: `completed`; completed: `True`.
+- hydrate_placeholders_non_destructively: `completed`; completed: `True`.
+- rescan_after_hydration: `completed`; completed: `True`.
+- import_all_current_importable_items: `completed`; completed: `True`.
+- classify_imported_media: `completed`; completed: `True`.
+- run_ai_tagging: `completed`; completed: `True`.
+- run_localization_or_stable_reasons: `completed`; completed: `True`.
+- record_ledger_for_every_planned_item: `completed`; completed: `True`.
+- capture_resource_gpu_telemetry: `completed`; completed: `True`.
+- validate_public_redaction: `completed`; completed: `True`.
+- validate_launcher_web_admin_workflow: `runner_execute_fallback_documented`; completed: `True`.
+- produce_public_report_and_contract: `completed`; completed: `True`.
 
 ## Telemetry
 
 - GPU provider: `DmlExecutionProvider`; GPU validation: `passed`.
 - GPU name: `NVIDIA GeForce RTX 4070 Ti`.
-- Peak GPU memory MiB: `3752.0`; peak GPU util: `65.0`.
-- Runtime seconds: `392.343`; stage durations: `{'dry_run_plan': 0.016, 'init': 1.187, 'localization': 5.016, 'manual_execute_import_classification_ai': 386.031, 'summary': 0.031}`.
+- Aggregate peak GPU memory MiB: `3752.0`; peak GPU util: `65.0`.
+- Telemetry partial fields: `['process_rss', 'system_ram']`.
+- Aggregate runtime seconds: `459.593`; stage durations: `{'dry_run_plan': 0.032, 'init': 2.405, 'localization': 9.641, 'manual_execute_import_classification_ai': 447.234, 'summary': 0.078}`.
+- Remaining-run runtime seconds: `67.25`; stage durations: `{'dry_run_plan': 0.016, 'init': 1.218, 'localization': 4.625, 'manual_execute_import_classification_ai': 61.203, 'summary': 0.047}`.
 
 ## Validation
 
-- Ledger consistency: `passed`; represented items: `453` / `453`.
-- DB count delta: media `300`, source items `369`.
+- Ledger consistency: `passed`; represented items: `173` / `173`.
+- DB count delta: media `349`, source items `391`.
 - Public redaction: `True`; findings: `0`.
-- Launcher/Web Admin: `passed`; browser: `msedge`; dry-run clicked: `True`; execute clicked: `False`.
-- Latest job observed by UI/API: run `7`, status `completed`, imported `300`.
+- Launcher/Web Admin: `passed_gui_execute_not_safe_runner_execute_used`; browser: `msedge-playwright-after-computer-use-policy-stop`; dry-run clicked: `True`; execute clicked: `False`.
+- Latest job observed by UI/API: run `8`, status `completed`, imported `49`.
 
 ## Safety
 
