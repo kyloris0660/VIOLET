@@ -19,8 +19,8 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.database import Base
-from app.enums import FileTypeEnum
-from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, Media
+from app.enums import FileTypeEnum, TagCategoryEnum
+from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, blombooru_media_tags
 import scripts.run_s3a_m2_delta_e2e_with_telemetry as s3a_m2_runner
 from scripts.run_s3a_m2_delta_e2e_with_telemetry import (
     _placeholder_rows_from_plan,
@@ -34,7 +34,8 @@ from scripts.run_s3a_m2_delta_e2e_with_telemetry import (
     s3a_m2_approval_phrase,
     summarize_telemetry,
 )
-from scripts.diagnose_s3a_m2_ai_tag_assignments import load_run_ids_from_summary
+from scripts.diagnose_s3a_m2_ai_tag_assignments import assignment_rows, load_run_ids_from_summary, repair_assignments
+import scripts.validate_s3a_m2_gui_execute_acceptance as gui_validator
 
 
 def test_s3a_m2_approval_phrase_is_plan_hash_bound() -> None:
@@ -52,6 +53,104 @@ def test_s3a_m2_incident_diagnostic_requires_explicit_or_reported_run_ids(tmp_pa
 
     with pytest.raises(RuntimeError, match="s3a_m2_summary_missing_run_ids"):
         load_run_ids_from_summary(empty_summary)
+
+
+def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
+    runner_run = SimpleNamespace(
+        summary_json={
+            "manual_sync_execute": {
+                "request": {
+                    "request_source": "api_or_runner",
+                    "gui_validation_session_id": "gui-test-session",
+                }
+            }
+        }
+    )
+    gui_run = SimpleNamespace(
+        summary_json={
+            "manual_sync_execute": {
+                "request": {
+                    "request_source": "web_admin_gui",
+                    "gui_validation_session_id": "gui-test-session",
+                    "client_route": "/admin?tab=content#dynamic-library-sync-section",
+                }
+            }
+        }
+    )
+
+    assert gui_validator.gui_provenance_for_run(runner_run)["valid"] is False
+    assert gui_validator.gui_provenance_for_run(gui_run, expected_session_id="wrong-session")["valid"] is False
+    assert gui_validator.gui_provenance_for_run(gui_run, expected_session_id="gui-test-session")["valid"] is True
+
+
+def test_s3a_m2_gui_validator_rejects_private_output_outside_manifest_tree(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="gui_acceptance_output_dir_outside_local_manifest_tree"):
+        gui_validator.ensure_private_output_dir(tmp_path)
+
+
+def test_s3a_m2_ai_repair_commits_before_fresh_session_audit(tmp_path: Path) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        media = Media(
+            filename="repair-test.png",
+            path="media/original/repair-test.png",
+            hash="repair-test-hash",
+            file_type=FileTypeEnum.image,
+        )
+        tag = Tag(name="repair_test_character", category=TagCategoryEnum.character, post_count=1)
+        db.add_all([media, tag])
+        db.flush()
+        db.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media.id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.99,
+                is_suggestion=True,
+                is_locked=False,
+            )
+        )
+        db.commit()
+        media_id = int(media.id)
+        rows = assignment_rows(db, [media_id])
+
+        repair = repair_assignments(
+            db,
+            rows,
+            run_ids=[7],
+            reclassify=False,
+            allow_clip_classification=False,
+        )
+
+        assert repair["db_commit_performed"] is True
+        assert repair["assignments_converted_from_suggestion_to_normal"] == 1
+        db.close()
+        fresh = Session()
+        try:
+            post_rows = assignment_rows(fresh, [media_id])
+            assert len(post_rows) == 1
+            assert post_rows[0]["is_suggestion"] is False
+        finally:
+            fresh.close()
+    finally:
+        if db.is_active:
+            db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
 
 
 def test_s3a_m2_runner_rejects_cap_above_approved_ceiling_before_configure(monkeypatch) -> None:
@@ -234,6 +333,9 @@ def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
         "execute_clicked": True,
         "gui_execute_completed": True,
         "gui_execute_run_id": 9,
+        "gui_provenance_valid": True,
+        "request_source": "web_admin_gui",
+        "gui_validation_session_id_present": True,
     }
     completed = refresh_completion_claims(summary)
 
@@ -561,6 +663,82 @@ def test_s3a_m2_source_delta_plan_caps_delta_not_unchanged_known_files(tmp_path:
         assert "fresh.png" not in public_json
         assert "known.png" not in public_json
         assert "known-hash" not in public_json
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_s3a_m2_source_delta_plan_skips_stable_unsupported_before_cap(tmp_path: Path) -> None:
+    from PIL import Image
+    from app.services.dynamic_library_sync_service import _hash_text
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        source_root = tmp_path / "library"
+        source_root.mkdir()
+        stable_unsupported = source_root / "old-video.mov"
+        new_file = source_root / "fresh.png"
+        stable_unsupported.write_bytes(b"not current image pipeline")
+        Image.new("RGB", (2, 2), (4, 5, 6)).save(new_file)
+        stable_stat = stable_unsupported.stat()
+        root = DynamicSourceRoot(
+            label="test",
+            root_path=str(source_root),
+            root_path_hash="abc1234567890defabc1234567890def",
+            is_active=True,
+        )
+        db.add(root)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path="old-video.mov",
+                relative_path_hash=_hash_text("old-video.mov"),
+                file_size=stable_stat.st_size,
+                mtime_ns=stable_stat.st_mtime_ns,
+                source_status="deferred",
+                sync_state="skipped_unsupported",
+                import_status="deferred",
+                deferred_reason="unsupported_extension",
+            )
+        )
+        db.commit()
+
+        args = SimpleNamespace(
+            delta_cap=1,
+            hydrated_only=True,
+            stable_age_seconds=0.0,
+            execute=False,
+            plan_created_at="",
+        )
+        plan = build_source_delta_plan(db, args, root, include_private_details=False)
+
+        counts = plan["counts"]
+        assert counts["total_seen"] == 1
+        assert counts["estimated_import_count"] == 1
+        assert counts["state_counts"]["import_planned"] == 1
+        assert counts["state_counts"]["skipped_unsupported"] == 0
+        assert counts["partial_scan"] is False
+        assert plan["limits"]["scanned_files"] == 2
+        assert plan["limits"]["unchanged_known_files"] == 1
+        public_json = json.dumps(plan, sort_keys=True)
+        assert "old-video.mov" not in public_json
+        assert "fresh.png" not in public_json
     finally:
         db.close()
         Base.metadata.drop_all(engine)

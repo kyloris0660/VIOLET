@@ -301,6 +301,61 @@ def test_manual_sync_plan_route_is_sync_worker_thread_endpoint() -> None:
     assert py_inspect.iscoroutinefunction(dynamic_routes.plan_manual_sync) is False
 
 
+def test_manual_sync_execute_route_records_web_admin_gui_provenance(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setattr(dynamic_routes, "start_manual_sync_execute_run", lambda _run_id: None)
+
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "fresh.png", (10, 20, 30))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    session_id = "gui-test-session-12345"
+
+    plan_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "gui_validation_session_id": session_id,
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+    assert plan_response.status_code == 200, plan_response.text
+    plan = plan_response.json()
+    assert plan["gui_provenance"]["request_source"] == "web_admin_gui"
+    assert plan["gui_provenance"]["gui_validation_session_id"] == session_id
+
+    execute_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/execute",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "expected_plan_hash": plan["integrity"]["plan_hash"],
+            "confirmation_phrase": plan["integrity"]["confirmation_phrase"],
+            "plan_created_at": plan["job"]["created_at"],
+            "production_acceptance_approved": False,
+            "gui_validation_session_id": session_id,
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+    assert execute_response.status_code == 200, execute_response.text
+    run = db.query(DynamicSyncRun).one()
+    request = run.summary_json["manual_sync_execute"]["request"]
+    assert request["request_source"] == "web_admin_gui"
+    assert request["gui_validation_session_id"] == session_id
+    assert request["client_route"] == "/admin?tab=content#dynamic-library-sync-section"
+
+
 def test_manual_sync_dry_run_plan_route_rejects_hydrated_only_false(client, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()

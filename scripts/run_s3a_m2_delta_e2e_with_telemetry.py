@@ -1497,31 +1497,24 @@ def _existing_requires_source_delta_followup(existing: Any, args: argparse.Names
     import_status = str(getattr(existing, "import_status", "") or "")
     sync_state = str(getattr(existing, "sync_state", "") or "")
     reason = str(getattr(existing, "deferred_reason", "") or getattr(existing, "failure_reason", "") or "")
+    if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
+        return True
+    if import_status == "pending":
+        return True
     if import_status == "imported" and getattr(existing, "media_id", None) is None:
         return True
-    return (
-        import_status in {"pending", "deferred", "failed"}
-        or sync_state
-        in {
-            "skipped_placeholder",
-            "skipped_unsupported",
-            "skipped_duplicate",
-            "skipped_existing_media",
-            "failed",
-            "deferred",
-        }
-        or reason
-        in {
-            "cloud_placeholder",
-            "icloud_placeholder",
-            "unsupported_extension",
-            "hidden",
-            "zero_byte",
-            "read_error",
-            "source_missing",
-            "permission_denied",
-        }
-    )
+    stable_non_actionable = {
+        "unsupported_extension",
+        "hidden",
+        "zero_byte",
+        "zero_byte_file",
+        "read_error",
+        "source_missing",
+        "permission_denied",
+    }
+    if reason in stable_non_actionable:
+        return False
+    return import_status in {"deferred", "failed"} or sync_state in {"failed", "deferred"}
 
 
 def _static_translation_names() -> set[str]:
@@ -2135,6 +2128,8 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
             update_values = {DynamicSourceItem.localization_status: target_status}
             if target_deferred_reason:
                 update_values[DynamicSourceItem.deferred_reason] = target_deferred_reason
+            else:
+                update_values[DynamicSourceItem.deferred_reason] = None
             updated_items = int(
                 db.query(DynamicSourceItem)
                 .filter(DynamicSourceItem.id.in_(item_ids))
@@ -2522,11 +2517,17 @@ def build_standard_pipeline_flow(summary: Mapping[str, Any]) -> dict[str, Any]:
         _standard_int(execute.get("run_id")),
     )
     launcher_run_id = _standard_int(launcher.get("gui_execute_run_id") or launcher.get("production_execute_run_id_seen"))
+    launcher_gui_provenance_ok = (
+        bool(launcher.get("gui_provenance_valid"))
+        and str(launcher.get("request_source") or "") == "web_admin_gui"
+        and bool(launcher.get("gui_validation_session_id_present"))
+    )
     launcher_gui_execute_completed = (
         launcher_status == "passed_gui_execute_completed"
         and launcher_execute_clicked
         and bool(launcher.get("gui_execute_completed"))
         and launcher_run_id > previous_execute_run_id
+        and launcher_gui_provenance_ok
     )
     launcher_fallback_documented = (
         launcher_status == "passed_gui_execute_not_safe_runner_execute_used"
@@ -2996,12 +2997,18 @@ def refresh_completion_claims(summary: dict[str, Any]) -> dict[str, Any]:
         _standard_int(execute.get("run_id")),
     )
     launcher_run_id = _standard_int(launcher.get("gui_execute_run_id") or launcher.get("production_execute_run_id_seen"))
+    launcher_gui_provenance_ok = (
+        bool(launcher.get("gui_provenance_valid"))
+        and str(launcher.get("request_source") or "") == "web_admin_gui"
+        and bool(launcher.get("gui_validation_session_id_present"))
+    )
     launcher_ok = (
         launcher.get("validated") is True
         and launcher_status == "passed_gui_execute_completed"
         and bool(launcher.get("execute_clicked"))
         and bool(launcher.get("gui_execute_completed"))
         and launcher_run_id > previous_execute_run_id
+        and launcher_gui_provenance_ok
     )
     incident = summary.get("ai_tag_assignment_incident") or {}
     incident_after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
@@ -3281,10 +3288,14 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
         raise S3AM2Blocked("launcher_validation_json_not_object")
     if validation.get("status") not in {"passed", "passed_gui_execute_completed", "passed_gui_execute_not_safe_runner_execute_used"}:
         raise S3AM2Blocked("launcher_web_admin_validation_not_passed")
-    expected_execute_run_id = int((summary.get("execute") or {}).get("run_id") or 0)
-    validation_run_id = int(validation.get("production_execute_run_id_seen") or 0)
-    if expected_execute_run_id and validation_run_id != expected_execute_run_id:
-        raise S3AM2Blocked("launcher_validation_run_id_mismatch")
+    previous_runner_run_id = max(
+        _standard_int((summary.get("initial_run") or {}).get("run_id")),
+        _standard_int((summary.get("remaining_run") or {}).get("run_id")),
+        _standard_int((summary.get("execute") or {}).get("run_id")),
+    )
+    validation_run_id = int(validation.get("gui_execute_run_id") or validation.get("production_execute_run_id_seen") or 0)
+    if validation.get("status") == "passed_gui_execute_completed" and validation_run_id <= previous_runner_run_id:
+        raise S3AM2Blocked("launcher_validation_gui_run_not_newer_than_runner")
     validation_head = str(validation.get("validated_head_sha") or validation.get("head_sha") or "")
     if current_head and validation_head != current_head:
         raise S3AM2Blocked("launcher_validation_head_sha_mismatch")
@@ -3303,7 +3314,32 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
         "browser": validation.get("browser") or "msedge",
         "dry_run_clicked": bool(validation.get("dry_run_clicked")),
         "execute_clicked": bool(validation.get("execute_clicked")),
+        "gui_execute_run_id": validation.get("gui_execute_run_id") or validation.get("production_execute_run_id_seen"),
         "production_execute_run_id_seen": validation.get("production_execute_run_id_seen"),
+        "previous_execute_run_id": previous_runner_run_id,
+        "gui_provenance_valid": bool(
+            validation.get("gui_provenance_valid")
+            or (isinstance(validation.get("gui_provenance"), Mapping) and validation["gui_provenance"].get("valid"))
+        ),
+        "request_source": validation.get("request_source")
+        or (
+            validation.get("gui_provenance", {}).get("request_source")
+            if isinstance(validation.get("gui_provenance"), Mapping)
+            else None
+        ),
+        "gui_validation_session_id_present": bool(
+            validation.get("gui_validation_session_id_present")
+            or (
+                isinstance(validation.get("gui_provenance"), Mapping)
+                and validation["gui_provenance"].get("gui_validation_session_id_present")
+            )
+        ),
+        "gui_validation_session_id_hash": validation.get("gui_validation_session_id_hash")
+        or (
+            validation.get("gui_provenance", {}).get("gui_validation_session_id_hash")
+            if isinstance(validation.get("gui_provenance"), Mapping)
+            else None
+        ),
         "validated_head_sha": validation_head,
         "public_source_identity": validation_source_identity,
         "execute_cap_visible": assertions.get("execute_cap_visible"),

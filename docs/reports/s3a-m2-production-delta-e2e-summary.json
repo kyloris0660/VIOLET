@@ -63,6 +63,7 @@
     "localization_remaining_gap": 0,
     "public_safe": true,
     "repair": {
+      "after_audit_session": "fresh_session_after_commit",
       "assignments_converted_from_normal_to_suggestion": 0,
       "assignments_converted_from_suggestion_to_normal": 157,
       "assignments_deleted_or_replaced": 0,
@@ -71,7 +72,9 @@
       "classification_items_changed": 0,
       "classification_items_rechecked": 0,
       "classification_rechecked": false,
+      "db_commit_performed": true,
       "duplicate_rows_created": 0,
+      "post_commit_fresh_session_verified": true,
       "proper_noun_suggestions_converted_to_normal": 157,
       "proper_noun_suggestions_inspected": 207,
       "proper_noun_suggestions_kept_reason": "below_confirm_threshold_suggestion",
@@ -217,7 +220,7 @@
     "current_pr_head_before_this_fix": "9b9ab2b43388e719c6960bf61c302214564b2928",
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
-    "head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928",
+    "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": true,
     "old_server_process_from_main_or_old_branch_found": false,
@@ -552,7 +555,8 @@
   "deferred_failed_inventory": {
     "backend_query": "active source-root DynamicSourceItem rows where import_status='deferred' OR source_status in deferred/failed/missing",
     "current_actionable_importable_pending": 0,
-    "current_placeholder_reason_count": 1,
+    "current_actionable_placeholder_count": 0,
+    "current_placeholder_reason_count": 0,
     "extension_counts": {
       ".heic": 4060,
       ".ini": 1,
@@ -563,7 +567,9 @@
       ".pic": 1,
       ".png": 129
     },
-    "interpretation": "Mostly accumulated historical deferred/failed source-item inventory, not 4646 currently importable delta items; however current placeholder rows inside the inventory remain actionable blockers until hydrated or given stable accepted reasons.",
+    "historical_cloud_placeholder_stable_reason": "source_path_missing_on_recheck; not current actionable delta work; no source/iCloud mutation attempted",
+    "historical_cloud_placeholder_stale_path_missing_count": 1,
+    "interpretation": "Mostly accumulated historical deferred/failed source-item inventory, not 4646 currently importable delta items. The single cloud_placeholder row was rechecked at the current head and its source path no longer exists, so it is historical/stale rather than current actionable GUI delta work.",
     "pipeline_status_counts": {
       "ai_tagging:deferred": 4646,
       "classification:deferred": 4646,
@@ -890,7 +896,7 @@
     "imported": 349,
     "localized": 5
   },
-  "generated_at": "2026-06-28T05:31:35Z",
+  "generated_at": "2026-06-28T13:24:36Z",
   "gpu_telemetry": {
     "actual_provider": "DmlExecutionProvider",
     "avg_gpu_utilization_percent": 36.97,
@@ -939,6 +945,41 @@
     "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
     "violet_env": "production",
     "watchdog_timeout_added": true
+  },
+  "gui_execute_acceptance": {
+    "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+    "gui_provenance": {
+      "gui_validation_session_id_expected": false,
+      "request_sources_accepted": [
+        "web_admin_gui"
+      ],
+      "required": true
+    },
+    "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
+    "min_run_id": 8,
+    "phase": "S3A-M2",
+    "profile": {
+      "app_port": "8012",
+      "automation_flags": {
+        "ai_auto_tag_after_import": false,
+        "content_classification_auto_after_import": false,
+        "dynamic_library_auto_sync": false,
+        "tag_translation_auto": false,
+        "tag_translation_background": false
+      },
+      "db_name": "blombooru",
+      "loaded": true,
+      "manual_sync_enabled": true,
+      "manual_sync_execute_enabled": true,
+      "manual_sync_execute_max_files": 1000,
+      "path_redacted": true,
+      "profile_id": "production-default",
+      "storage_root_public_marker": "b369834e62908e17",
+      "violet_env": "production"
+    },
+    "public_safe": true,
+    "status": "blocked_no_gui_execute_run_found",
+    "validated": false
   },
   "gui_hang_root_cause": {
     "backend_kept_scanning": true,
@@ -992,7 +1033,7 @@
     "watchdog_timeout_added": true,
     "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
   },
-  "head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928",
+  "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
     "ai_wd_suggestion_assignment_count": 3711,
@@ -1075,17 +1116,22 @@
     "execute_clicked": false,
     "fallback_reason": "GUI dry-run hang was diagnosed before another execute attempt. The GUI plan endpoint was using a broad source-root walk/verify path; final GUI Execute acceptance remains blocked until a new GUI-created run newer than run #8 is validated.",
     "gui_execute_completed": false,
-    "latest_job_imported": 49,
-    "latest_job_status": "completed",
-    "production_execute_run_id_seen": 8,
+    "gui_execute_run_id": null,
+    "gui_provenance_valid": false,
+    "gui_validation_session_id_hash": null,
+    "gui_validation_session_id_present": null,
+    "latest_job_imported": null,
+    "latest_job_status": null,
+    "production_execute_run_id_seen": null,
     "public_source_identity": "153684ac810c2191",
-    "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
+    "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance/gui-execute-acceptance-private.json",
     "raw_path_committed": false,
-    "status": "blocked_gui_dry_run_hang_diagnosed_pending_gui_execute",
+    "request_source": null,
+    "status": "blocked_no_gui_execute_run_found",
     "target_path": "/admin?tab=content#dynamic-library-sync-section",
     "update_check_limit_separated": true,
     "validated": false,
-    "validated_head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928"
+    "validated_head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102"
   },
   "ledger_consistency": {
     "expected_plan_items": 173,
@@ -1188,14 +1234,14 @@
       "real GUI execute acceptance",
       "separate automation design",
       "scheduled/startup/service safety gates",
-      "current actionable deferred inventory separation"
+      "historical deferred inventory UI wording/separation"
     ],
     "can_user_use_launcher_web_admin_now": false,
     "evidence_based": true,
     "gpu_inference_path_reliable_for_manual_sync": true,
     "gui_execute_works_end_to_end": false,
     "public_safe": true,
-    "reason": "The API/runner E2E and repairs are healthy, but the real GUI Execute button path has not completed a newer run after the hang diagnosis, and current deferred inventory still includes at least one cloud-placeholder reason that must be hydrated or stably accepted.",
+    "reason": "The API/runner E2E and repairs are healthy, but the real GUI Execute button path has not completed a newer Web Admin GUI-provenance run after the hang diagnosis.",
     "safe_conditions_before_execute": [
       "branch/head/provenance match the PR branch",
       "managed production server is freshly started from the intended profile",
@@ -1214,7 +1260,7 @@
     "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
     "SourceConcept/Entity bridge work was not run.",
     "Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang; a new GUI-created run newer than run #8 must be validated before merge.",
-    "The latest deferred/failed inventory explanation found one current cloud-placeholder reason inside historical inventory; final acceptance must hydrate or stably accept it before target_met."
+    "The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance."
   ],
   "phase": "S3A-M2",
   "pipeline_contract": {
@@ -1328,7 +1374,7 @@
     "based_on_origin_main": true,
     "blockers": [],
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
-    "head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928",
+    "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
     "llm_localization": {
       "base_url_configured": true,
       "base_url_host": "api.openai.com",
@@ -1412,19 +1458,9 @@
       "status": "blocking_merge"
     },
     {
-      "code": "current_cloud_placeholder_in_deferred_inventory",
-      "detail": "The latest deferred/failed inventory contains one cloud-placeholder reason; it must not be hidden under historical deferred counts for target_met.",
-      "status": "blocking_final_acceptance_until_hydrated_or_stably_accepted"
-    },
-    {
       "code": "gui_ai_localization_readiness_not_validated_after_hang_fix",
       "detail": "The final GUI execute environment must prove AI tagging and localization readiness before claiming E2E.",
       "status": "blocking_gui_e2e_claim"
-    },
-    {
-      "code": "current_pr_head_not_reviewed_by_codex_reviewer",
-      "detail": "Codex reviewer last reviewed an older head; later review trigger hit usage limits.",
-      "status": "review_pending_or_usage_limited"
     }
   ],
   "remaining_run": {
@@ -1438,6 +1474,12 @@
     "skipped_placeholder": 0,
     "skipped_unsupported": 104,
     "status": "completed"
+  },
+  "reviewer_status": {
+    "current_head_p1_p2_addressed_in_this_update": true,
+    "current_head_reviewed_by_codex": true,
+    "public_safe": true,
+    "reviewed_head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102"
   },
   "runtime": {
     "stage_durations_seconds": {
@@ -1596,8 +1638,6 @@
           "execute_clicked": false,
           "fallback_reason": "GUI dry-run hang was diagnosed before another execute attempt. The GUI plan endpoint was using a broad source-root walk/verify path; final GUI Execute acceptance remains blocked until a new GUI-created run newer than run #8 is validated.",
           "gui_execute_completed": false,
-          "gui_execute_run_id": 8,
-          "latest_job_status": "completed",
           "previous_execute_run_id": 8
         },
         "status": "pending"

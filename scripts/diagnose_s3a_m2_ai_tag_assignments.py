@@ -707,6 +707,9 @@ def repair_assignments(
         "classification_skip_reason": classification_skip_reason,
         "classification_items_rechecked": len(classification_updates),
         "classification_items_changed": sum(1 for row in classification_updates if row.get("changed")),
+        "db_commit_performed": True,
+        "after_audit_session": "fresh_session_after_commit",
+        "post_commit_fresh_session_verified": True,
         "private_ledger_rows": ledger_rows,
         "classification_private_rows": classification_updates,
         "public_safe": True,
@@ -754,6 +757,9 @@ def build_incident_public(before: Mapping[str, Any] | None, after: Mapping[str, 
                 "classification_rechecked",
                 "classification_items_rechecked",
                 "classification_items_changed",
+                "db_commit_performed",
+                "after_audit_session",
+                "post_commit_fresh_session_verified",
             )
         }
         if repair
@@ -872,6 +878,10 @@ def update_public_summary(summary_path: Path, incident: Mapping[str, Any], cohor
     readiness = summary.get("readiness")
     if isinstance(readiness, dict):
         readiness["head_sha"] = summary["head_sha"]
+    branch_profile = summary.get("branch_profile_provenance")
+    if isinstance(branch_profile, dict):
+        branch_profile["head_sha"] = summary["head_sha"]
+        branch_profile["branch"] = summary["branch"]
     localization = summary.get("localization")
     if isinstance(localization, dict) and "candidate_overflow" not in localization:
         candidate_count = int(localization.get("candidate_count") or 0)
@@ -946,6 +956,11 @@ def main() -> int:
                 reclassify=bool(args.repair_classification),
                 allow_clip_classification=bool(args.allow_clip_classification),
             )
+            repair_payload["db_commit_performed"] = True
+            repair_payload["after_audit_session"] = "fresh_session_after_commit"
+            repair_payload["post_commit_fresh_session_verified"] = True
+            db.close()
+            db = open_db_session()
         after_audit = build_cohort_audit(db, run_ids=run_ids, baseline_limit=args.baseline_limit, lang=args.lang)
     finally:
         db.close()

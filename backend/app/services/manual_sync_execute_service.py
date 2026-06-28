@@ -298,8 +298,11 @@ def _public_request_payload(
     expected_plan_hash: str,
     plan_created_at: str,
     production_acceptance_approved: bool,
+    request_source: str = "api_or_runner",
+    gui_validation_session_id: Optional[str] = None,
+    client_route: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return {
+    payload: Dict[str, Any] = {
         "root_id": root_id,
         "max_files": max_files,
         "effective_max_files": effective_max_files,
@@ -310,7 +313,13 @@ def _public_request_payload(
         "plan_created_at": plan_created_at,
         "production_acceptance_approved": bool(production_acceptance_approved),
         "trigger_type": "manual_operator",
+        "request_source": request_source,
     }
+    if gui_validation_session_id:
+        payload["gui_validation_session_id"] = str(gui_validation_session_id)
+    if client_route:
+        payload["client_route"] = str(client_route)
+    return payload
 
 
 def _verify_execute_gates(
@@ -535,6 +544,9 @@ def create_manual_sync_execute_run(
     confirmation_phrase: str,
     plan_created_at: str,
     production_acceptance_approved: bool = False,
+    request_source: str = "api_or_runner",
+    gui_validation_session_id: Optional[str] = None,
+    client_route: Optional[str] = None,
 ) -> DynamicSyncRun:
     if is_manual_sync_execute_active():
         raise ManualSyncExecuteError(
@@ -608,6 +620,9 @@ def create_manual_sync_execute_run(
                     expected_plan_hash=expected_plan_hash,
                     plan_created_at=plan_created_at,
                     production_acceptance_approved=production_acceptance_approved,
+                    request_source=request_source,
+                    gui_validation_session_id=gui_validation_session_id,
+                    client_route=client_route,
                 ),
                 "plan": plan,
                 "private_plan_items": private_plan_items,

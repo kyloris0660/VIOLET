@@ -10,6 +10,7 @@ class AdminPanel {
         this.dynamicSyncJobId = null;
         this.dynamicSyncPollTimer = null;
         this.dynamicSyncExecuteEnabled = false;
+        this.dynamicSyncGuiSessionId = null;
         window.adminPanel = this;
         this.init();
     }
@@ -1972,6 +1973,13 @@ class AdminPanel {
         return body;
     }
 
+    _newManualSyncGuiSessionId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return `gui-${window.crypto.randomUUID()}`;
+        }
+        return `gui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
     _renderManualSyncPlan(plan) {
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
@@ -2028,6 +2036,9 @@ class AdminPanel {
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.select_root_first', 'Select a source root first.'), 'error');
             return;
         }
+        this.dynamicSyncGuiSessionId = this._newManualSyncGuiSessionId();
+        body.gui_validation_session_id = this.dynamicSyncGuiSessionId;
+        body.client_route = '/admin?tab=content#dynamic-library-sync-section';
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const dryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
         const timeoutMs = 10 * 60 * 1000;
@@ -2070,10 +2081,13 @@ class AdminPanel {
         const body = this._manualSyncRequestBody();
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
         const integrity = this.dynamicSyncPlan.integrity || {};
+        const guiProvenance = this.dynamicSyncPlan.gui_provenance || {};
         body.expected_plan_hash = integrity.plan_hash;
         body.confirmation_phrase = confirmationEl ? confirmationEl.value.trim() : '';
         body.plan_created_at = (this.dynamicSyncPlan.job || {}).created_at;
         body.production_acceptance_approved = !!this.dynamicSyncProductionMode;
+        body.gui_validation_session_id = guiProvenance.gui_validation_session_id || this.dynamicSyncGuiSessionId || this._newManualSyncGuiSessionId();
+        body.client_route = guiProvenance.client_route || '/admin?tab=content#dynamic-library-sync-section';
         try {
             const job = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/execute', {
                 method: 'POST',

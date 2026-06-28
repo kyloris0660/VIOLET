@@ -6980,6 +6980,27 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 expected=f"> {previous_runner_run_id}",
                 actual=gui_run_id,
             )
+        gui_provenance_valid = _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_provenance_valid", False))
+        request_source = str(_get(summary, "launcher_web_admin_acceptance.request_source", "") or "")
+        gui_session_present = _as_bool(
+            _get(summary, "launcher_web_admin_acceptance.gui_validation_session_id_present", False)
+        )
+        if not gui_provenance_valid or request_source != "web_admin_gui" or not gui_session_present:
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_gui_provenance",
+                "GUI Execute acceptance must be backed by a Web Admin GUI-created run with a durable GUI validation session marker.",
+                path="launcher_web_admin_acceptance",
+                expected={
+                    "gui_provenance_valid": True,
+                    "request_source": "web_admin_gui",
+                    "gui_validation_session_id_present": True,
+                },
+                actual={
+                    "gui_provenance_valid": gui_provenance_valid,
+                    "request_source": request_source,
+                    "gui_validation_session_id_present": gui_session_present,
+                },
+            )
     if launcher_status_any == "passed_gui_execute_not_safe_runner_execute_used":
         if launcher_execute_clicked:
             result.fail(

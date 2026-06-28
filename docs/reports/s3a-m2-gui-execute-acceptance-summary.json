@@ -1,0 +1,35 @@
+{
+  "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+  "gui_provenance": {
+    "gui_validation_session_id_expected": false,
+    "request_sources_accepted": [
+      "web_admin_gui"
+    ],
+    "required": true
+  },
+  "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
+  "min_run_id": 8,
+  "phase": "S3A-M2",
+  "profile": {
+    "app_port": "8012",
+    "automation_flags": {
+      "ai_auto_tag_after_import": false,
+      "content_classification_auto_after_import": false,
+      "dynamic_library_auto_sync": false,
+      "tag_translation_auto": false,
+      "tag_translation_background": false
+    },
+    "db_name": "blombooru",
+    "loaded": true,
+    "manual_sync_enabled": true,
+    "manual_sync_execute_enabled": true,
+    "manual_sync_execute_max_files": 1000,
+    "path_redacted": true,
+    "profile_id": "production-default",
+    "storage_root_public_marker": "b369834e62908e17",
+    "violet_env": "production"
+  },
+  "public_safe": true,
+  "status": "blocked_no_gui_execute_run_found",
+  "validated": false
+}

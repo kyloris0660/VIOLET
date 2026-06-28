@@ -88,6 +88,8 @@ class ManualSyncDryRunPlanRequest(BaseModel):
     max_files: Optional[int] = Field(default=None, ge=1, le=100000)
     hydrated_only: bool = True
     stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
+    gui_validation_session_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    client_route: Optional[str] = Field(default=None, max_length=200)
 
 
 class ManualSyncExecuteRequest(BaseModel):
@@ -99,6 +101,8 @@ class ManualSyncExecuteRequest(BaseModel):
     confirmation_phrase: str = Field(..., min_length=1, max_length=200)
     plan_created_at: str = Field(..., min_length=1, max_length=80)
     production_acceptance_approved: bool = False
+    gui_validation_session_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    client_route: Optional[str] = Field(default=None, max_length=200)
 
 
 @router.get("/dynamic-library-sync")
@@ -234,7 +238,7 @@ def plan_manual_sync(
                 raise ValueError("dynamic source record not found")
             source_path = root.root_path
             source_record_id = root.id
-        return plan_manual_sync_dry_run(
+        plan = plan_manual_sync_dry_run(
             db,
             source_path=source_path or "",
             source_record_id=source_record_id,
@@ -243,6 +247,14 @@ def plan_manual_sync(
             stable_age_seconds=body.stable_age_seconds,
             include_private_details=False,
         )
+        if body.gui_validation_session_id:
+            plan["gui_provenance"] = {
+                "request_source": "web_admin_gui",
+                "gui_validation_session_id": body.gui_validation_session_id,
+                "client_route": body.client_route,
+                "dry_run_requested_from_gui": True,
+            }
+        return plan
     except ManualSyncExecuteError as exc:
         raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
     except ValueError as exc:
@@ -266,6 +278,9 @@ def execute_manual_sync(
             confirmation_phrase=body.confirmation_phrase,
             plan_created_at=body.plan_created_at,
             production_acceptance_approved=body.production_acceptance_approved,
+            request_source="web_admin_gui",
+            gui_validation_session_id=body.gui_validation_session_id,
+            client_route=body.client_route,
         )
         start_manual_sync_execute_run(run.id)
         return serialize_manual_sync_execute_run(run)

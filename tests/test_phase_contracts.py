@@ -1719,6 +1719,10 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "gui_execute_run_id": 9,
             "previous_execute_run_id": 8,
             "production_execute_run_id_seen": 9,
+            "gui_provenance_valid": True,
+            "request_source": "web_admin_gui",
+            "gui_validation_session_id_present": True,
+            "gui_validation_session_id_hash": "session-hash",
             "validated_head_sha": "head-abc123",
             "public_source_identity": "source-abc123",
         },
@@ -4064,6 +4068,17 @@ def test_s3a_m2_contract_rejects_gui_execute_completion_without_newer_run() -> N
     codes = _error_codes(result)
 
     assert "s3a_m2_gui_execute_claim_without_newer_run" in codes
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_gui_provenance() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_provenance_valid"] = False
+    summary["launcher_web_admin_acceptance"]["request_source"] = "standalone_runner"
+    summary["launcher_web_admin_acceptance"]["gui_validation_session_id_present"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_gui_provenance" in _error_codes(result)
 
 
 def test_s3a_m2_contract_rejects_missing_deferred_failed_inventory_postmortem() -> None:

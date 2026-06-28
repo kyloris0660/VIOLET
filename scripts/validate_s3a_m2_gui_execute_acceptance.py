@@ -30,9 +30,11 @@ PHASE = "S3A-M2"
 PHASE_SLUG = "s3a_m2_delta_e2e"
 MIN_EXPECTED_RUN_ID = 8
 LOCAL_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG / "gui_acceptance"
+LOCAL_OUTPUT_ROOT = ROOT / ".local_manifests" / PHASE_SLUG
 PUBLIC_SUMMARY_PATH = ROOT / "docs" / "reports" / "s3a-m2-gui-execute-acceptance-summary.json"
 PUBLIC_REPORT_JSON = ROOT / "docs" / "reports" / "s3a-m2-production-delta-e2e-summary.json"
 PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / "s3a-m2-production-delta-e2e.md"
+GUI_REQUEST_SOURCES = {"web_admin_gui"}
 
 
 def json_default(value: Any) -> Any:
@@ -72,6 +74,16 @@ def git_value(*args: str) -> str:
 
 def public_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def ensure_private_output_dir(path: Path) -> Path:
+    resolved = path.resolve()
+    allowed = LOCAL_OUTPUT_ROOT.resolve()
+    try:
+        resolved.relative_to(allowed)
+    except ValueError as exc:
+        raise RuntimeError("gui_acceptance_output_dir_outside_local_manifest_tree") from exc
+    return resolved
 
 
 def apply_profile_env(profile_path: Path) -> dict[str, Any]:
@@ -145,7 +157,25 @@ def open_db_session():
     return app_database.SessionLocal()
 
 
-def latest_manual_execute_run(db: Any, *, min_run_id: int, run_id: int | None):
+def gui_provenance_for_run(run: Any, *, expected_session_id: str | None = None) -> dict[str, Any]:
+    payload = run.summary_json if isinstance(getattr(run, "summary_json", None), dict) else {}
+    execute_payload = payload.get("manual_sync_execute") if isinstance(payload.get("manual_sync_execute"), dict) else {}
+    request = execute_payload.get("request") if isinstance(execute_payload.get("request"), dict) else {}
+    source = str(request.get("request_source") or "")
+    session_id = str(request.get("gui_validation_session_id") or "")
+    route = str(request.get("client_route") or "")
+    session_matches = expected_session_id is None or session_id == expected_session_id
+    return {
+        "valid": source in GUI_REQUEST_SOURCES and bool(session_id) and session_matches,
+        "request_source": source,
+        "gui_validation_session_id_present": bool(session_id),
+        "gui_validation_session_id_hash": public_hash(session_id) if session_id else None,
+        "gui_validation_session_id_matches_expected": session_matches,
+        "client_route": route,
+    }
+
+
+def latest_manual_execute_run(db: Any, *, min_run_id: int, run_id: int | None, gui_validation_session_id: str | None):
     from app.models import DynamicSyncRun
 
     query = db.query(DynamicSyncRun).filter(
@@ -153,10 +183,21 @@ def latest_manual_execute_run(db: Any, *, min_run_id: int, run_id: int | None):
         DynamicSyncRun.dry_run == False,  # noqa: E712
     )
     if run_id is not None:
-        query = query.filter(DynamicSyncRun.id == int(run_id))
-    else:
-        query = query.filter(DynamicSyncRun.id > int(min_run_id)).order_by(DynamicSyncRun.id.desc())
-    return query.first()
+        return query.filter(DynamicSyncRun.id == int(run_id)).first()
+    candidates = (
+        query.filter(DynamicSyncRun.id > int(min_run_id))
+        .order_by(DynamicSyncRun.id.desc())
+        .limit(50)
+        .all()
+    )
+    for candidate in candidates:
+        provenance = gui_provenance_for_run(
+            candidate,
+            expected_session_id=gui_validation_session_id,
+        )
+        if provenance.get("valid"):
+            return candidate
+    return None
 
 
 def run_items_summary(db: Any, run_id: int) -> dict[str, Any]:
@@ -235,7 +276,12 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
 
     db = open_db_session()
     try:
-        run = latest_manual_execute_run(db, min_run_id=args.min_run_id, run_id=args.run_id)
+        run = latest_manual_execute_run(
+            db,
+            min_run_id=args.min_run_id,
+            run_id=args.run_id,
+            gui_validation_session_id=args.gui_validation_session_id,
+        )
         if run is None:
             public = {
                 "phase": PHASE,
@@ -245,6 +291,11 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
                 "profile": profile,
                 "branch": git_value("branch", "--show-current"),
                 "head_sha": git_value("rev-parse", "HEAD"),
+                "gui_provenance": {
+                    "required": True,
+                    "request_sources_accepted": sorted(GUI_REQUEST_SOURCES),
+                    "gui_validation_session_id_expected": bool(args.gui_validation_session_id),
+                },
                 "public_safe": True,
             }
             return public, {"public": public, "private": {"run_found": False}}
@@ -258,6 +309,7 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
         execute_payload = run_payload.get("manual_sync_execute") if isinstance(run_payload, dict) else {}
         execute_payload = execute_payload if isinstance(execute_payload, dict) else {}
         request = execute_payload.get("request") if isinstance(execute_payload.get("request"), dict) else {}
+        gui_provenance = gui_provenance_for_run(run, expected_session_id=args.gui_validation_session_id)
         outcome = execute_payload.get("outcome_counts") if isinstance(execute_payload.get("outcome_counts"), dict) else {}
         localization_payload = execute_payload.get("localization") if isinstance(execute_payload.get("localization"), dict) else {}
 
@@ -282,6 +334,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
         blockers: list[str] = []
         if int(run.id) <= int(args.min_run_id):
             blockers.append("gui_run_not_newer_than_min_run_id")
+        if not gui_provenance.get("valid"):
+            blockers.append("gui_run_provenance_missing_or_not_web_admin")
         if str(run.status) != "completed":
             blockers.append("gui_run_not_completed")
         if not ledger_ok:
@@ -351,8 +405,13 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
                 "execute_max_files_cap": request.get("execute_max_files_cap"),
                 "hydrated_only": request.get("hydrated_only"),
                 "trigger_type": request.get("trigger_type"),
+                "request_source": request.get("request_source"),
                 "production_acceptance_approved": bool(request.get("production_acceptance_approved")),
                 "expected_plan_hash_present": bool(request.get("expected_plan_hash")),
+            },
+            "gui_provenance": {
+                "required": True,
+                **gui_provenance,
             },
             "tag_assignment": {
                 "assignment_count": assignment_summary.get("assignment_count"),
@@ -428,6 +487,14 @@ def maybe_update_main_report(public: Mapping[str, Any]) -> None:
             "gui_execute_completed": bool(public.get("validated")),
             "gui_execute_run_id": public.get("gui_execute_run_id"),
             "production_execute_run_id_seen": public.get("gui_execute_run_id"),
+            "gui_provenance_valid": bool((public.get("gui_provenance") or {}).get("valid")),
+            "request_source": (public.get("gui_provenance") or {}).get("request_source"),
+            "gui_validation_session_id_present": (public.get("gui_provenance") or {}).get(
+                "gui_validation_session_id_present"
+            ),
+            "gui_validation_session_id_hash": (public.get("gui_provenance") or {}).get(
+                "gui_validation_session_id_hash"
+            ),
             "latest_job_status": public.get("run_status"),
             "latest_job_imported": public.get("imported"),
             "validated_head_sha": public.get("head_sha"),
@@ -454,6 +521,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-run-id", type=int, default=MIN_EXPECTED_RUN_ID)
     parser.add_argument("--run-id", type=int, default=None)
     parser.add_argument("--allow-zero-import", action="store_true")
+    parser.add_argument("--gui-validation-session-id", default=None)
     parser.add_argument("--write-public-summary", action="store_true")
     parser.add_argument("--update-main-report", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=LOCAL_OUTPUT_DIR)
@@ -466,6 +534,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("ERROR: --min-run-id must be non-negative", file=sys.stderr)
         return 2
     try:
+        args.output_dir = ensure_private_output_dir(args.output_dir)
         public, private = build_validation(args)
         private_path = args.output_dir / "gui-execute-acceptance-private.json"
         write_json(private_path, private)
@@ -482,7 +551,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "error": str(exc)[:1000],
             "public_safe": True,
         }
-        write_json(args.output_dir / "gui-execute-acceptance-error-private.json", payload)
+        try:
+            safe_output_dir = ensure_private_output_dir(args.output_dir)
+            write_json(safe_output_dir / "gui-execute-acceptance-error-private.json", payload)
+        except Exception:
+            pass
         print(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True), file=sys.stderr)
         return 1
 
