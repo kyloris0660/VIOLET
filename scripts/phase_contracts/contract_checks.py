@@ -6482,6 +6482,221 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             actual=_get(summary, "pipeline_contract.phase_identity", None),
         )
 
+    postmortem_required = status != "dry_run_complete_pending_approval"
+    if postmortem_required:
+        required_postmortem_sections = {
+            "failure_timeline": list,
+            "deferred_failed_inventory": Mapping,
+            "gui_hang_root_cause": Mapping,
+            "api_vs_gui_divergence": Mapping,
+            "branch_profile_provenance": Mapping,
+            "localization_diagnosis": Mapping,
+            "unsupported_inventory": Mapping,
+            "manual_sync_safety_judgement": Mapping,
+            "remaining_blockers": list,
+        }
+        for section_path, expected_type in required_postmortem_sections.items():
+            value = _get(summary, section_path, MISSING)
+            if value is MISSING or not isinstance(value, expected_type):
+                result.fail(
+                    "s3a_m2_postmortem_section_missing",
+                    "Post-execute S3A-M2 summaries must include structured incident/postmortem sections.",
+                    path=section_path,
+                    expected=expected_type.__name__,
+                    actual=None if value is MISSING else type(value).__name__,
+                )
+
+        timeline = _get(summary, "failure_timeline", [])
+        if isinstance(timeline, list) and not timeline:
+            result.fail(
+                "s3a_m2_failure_timeline_empty",
+                "S3A-M2 postmortem must include a chronological failure/correction timeline.",
+                path="failure_timeline",
+                expected="non-empty list",
+                actual=[],
+            )
+        elif isinstance(timeline, list):
+            required_event_fields = {"event", "what_happened", "detected_by", "why_earlier_evidence_missed", "production_impact", "repair_or_prevention"}
+            for index, item in enumerate(timeline):
+                if not isinstance(item, Mapping):
+                    result.fail(
+                        "s3a_m2_failure_timeline_event_invalid",
+                        "Every S3A-M2 timeline event must be a structured public-safe object.",
+                        path=f"failure_timeline[{index}]",
+                        expected="mapping",
+                        actual=type(item).__name__,
+                    )
+                    continue
+                missing_event_fields = sorted(field for field in required_event_fields if not item.get(field))
+                if missing_event_fields:
+                    result.fail(
+                        "s3a_m2_failure_timeline_event_incomplete",
+                        "Every S3A-M2 timeline event must explain detection, missed evidence, impact, and repair/prevention.",
+                        path=f"failure_timeline[{index}]",
+                        expected=sorted(required_event_fields),
+                        actual=missing_event_fields,
+                    )
+
+        deferred_inventory = _get(summary, "deferred_failed_inventory", {})
+        if isinstance(deferred_inventory, Mapping):
+            required_deferred_paths = (
+                "source_field",
+                "query_scope",
+                "total",
+                "reason_counts",
+                "pipeline_status_counts",
+                "current_actionable_importable_pending",
+                "current_placeholder_reason_count",
+                "ui_recommendation",
+            )
+            for key in required_deferred_paths:
+                if key not in deferred_inventory:
+                    result.fail(
+                        "s3a_m2_deferred_failed_inventory_incomplete",
+                        "S3A-M2 must explain the Web Admin deferred/failed inventory instead of leaving the number uninterpreted.",
+                        path=f"deferred_failed_inventory.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+            if status == "target_met":
+                if _as_int(deferred_inventory.get("current_actionable_importable_pending", 0)) != 0:
+                    result.fail(
+                        "s3a_m2_target_with_actionable_deferred_inventory",
+                        "S3A-M2 target_met cannot hide currently importable work inside the deferred/failed inventory.",
+                        path="deferred_failed_inventory.current_actionable_importable_pending",
+                        expected=0,
+                        actual=deferred_inventory.get("current_actionable_importable_pending"),
+                    )
+                if _as_int(deferred_inventory.get("current_placeholder_reason_count", 0)) != 0:
+                    result.fail(
+                        "s3a_m2_target_with_current_placeholder_inventory",
+                        "S3A-M2 target_met cannot leave current placeholder work inside the deferred/failed inventory.",
+                        path="deferred_failed_inventory.current_placeholder_reason_count",
+                        expected=0,
+                        actual=deferred_inventory.get("current_placeholder_reason_count"),
+                    )
+
+        gui_root = _get(summary, "gui_hang_root_cause", {})
+        if isinstance(gui_root, Mapping):
+            for key in ("endpoint_called", "root_cause", "backend_request_sent", "backend_kept_scanning", "cleanup_performed", "watchdog_timeout_added"):
+                if key not in gui_root:
+                    result.fail(
+                        "s3a_m2_gui_hang_root_cause_incomplete",
+                        "S3A-M2 GUI hang analysis must include endpoint, backend activity, cleanup, and watchdog evidence.",
+                        path=f"gui_hang_root_cause.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+
+        api_gui = _get(summary, "api_vs_gui_divergence", {})
+        if isinstance(api_gui, Mapping):
+            for key in ("runner_gui_planner_diverged", "api_runner_proved_backend_only", "prevention_added"):
+                if key not in api_gui:
+                    result.fail(
+                        "s3a_m2_api_gui_divergence_incomplete",
+                        "S3A-M2 must explain why API/runner evidence did not prove the GUI workflow.",
+                        path=f"api_vs_gui_divergence.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+
+        provenance = _get(summary, "branch_profile_provenance", {})
+        if isinstance(provenance, Mapping):
+            summary_head = str(_get(summary, "head_sha", "") or "")
+            provenance_head = str(provenance.get("head_sha") or "")
+            if summary_head and provenance_head and provenance_head != summary_head:
+                result.fail(
+                    "s3a_m2_branch_profile_head_mismatch",
+                    "Branch/profile provenance must match the report head SHA.",
+                    path="branch_profile_provenance.head_sha",
+                    expected=summary_head,
+                    actual=provenance_head,
+                )
+            for key in ("branch", "head_sha", "profile_id", "db_name", "violet_env", "stale_process_cleanup_status"):
+                if not provenance.get(key):
+                    result.fail(
+                        "s3a_m2_branch_profile_provenance_incomplete",
+                        "S3A-M2 must record branch/head/profile/server provenance for GUI validation.",
+                        path=f"branch_profile_provenance.{key}",
+                        expected="non-empty",
+                        actual=provenance.get(key),
+                    )
+
+        safety_judgement = _get(summary, "manual_sync_safety_judgement", {})
+        if isinstance(safety_judgement, Mapping):
+            safety_status = str(safety_judgement.get("status") or "")
+            allowed_safety_statuses = {
+                "manual_sync_safe_for_normal_use",
+                "manual_sync_safe_with_operator_checks",
+                "manual_sync_not_yet_safe_gui_execute_unvalidated",
+                "manual_sync_not_safe_blockers_remaining",
+            }
+            if safety_status not in allowed_safety_statuses:
+                result.fail(
+                    "s3a_m2_manual_sync_safety_judgement_missing",
+                    "S3A-M2 must include one of the explicit manual sync safety judgement statuses.",
+                    path="manual_sync_safety_judgement.status",
+                    expected=sorted(allowed_safety_statuses),
+                    actual=safety_status,
+                )
+            if status == "target_met" and safety_status not in {"manual_sync_safe_for_normal_use", "manual_sync_safe_with_operator_checks"}:
+                result.fail(
+                    "s3a_m2_target_without_safe_manual_sync_judgement",
+                    "S3A-M2 target_met requires an evidence-based judgement that manual sync is safe for use.",
+                    path="manual_sync_safety_judgement.status",
+                    expected=["manual_sync_safe_for_normal_use", "manual_sync_safe_with_operator_checks"],
+                    actual=safety_status,
+                )
+            if safety_status in {"manual_sync_safe_for_normal_use", "manual_sync_safe_with_operator_checks"}:
+                if not _as_bool(safety_judgement.get("evidence_based", False)):
+                    result.fail(
+                        "s3a_m2_manual_sync_safe_without_evidence",
+                        "Manual sync cannot be marked safe without evidence-based engineering judgement.",
+                        path="manual_sync_safety_judgement.evidence_based",
+                        expected=True,
+                        actual=safety_judgement.get("evidence_based"),
+                    )
+                if not _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_execute_completed", False)):
+                    result.fail(
+                        "s3a_m2_manual_sync_safe_without_gui_execute",
+                        "Manual sync cannot be marked safe for normal use until a GUI Execute run is validated.",
+                        path="launcher_web_admin_acceptance.gui_execute_completed",
+                        expected=True,
+                        actual=_get(summary, "launcher_web_admin_acceptance.gui_execute_completed", None),
+                    )
+
+        if status != "target_met":
+            blockers = _get(summary, "remaining_blockers", [])
+            if isinstance(blockers, list) and not blockers:
+                result.fail(
+                    "s3a_m2_non_target_without_remaining_blockers",
+                    "A non-target S3A-M2 postmortem summary must explicitly list the remaining blockers.",
+                    path="remaining_blockers",
+                    expected="non-empty list",
+                    actual=[],
+                )
+
+        incident = _get(summary, "ai_tag_assignment_incident", {})
+        if _as_int(_get(summary, "final_totals.ai_tagged", _get(summary, "ai_tagging.count", 0))) > 0:
+            if not isinstance(incident, Mapping):
+                result.fail(
+                    "s3a_m2_ai_tag_semantic_validation_missing",
+                    "S3A-M2 cannot use AI-tagged counts as proof without assignment-level semantic validation.",
+                    path="ai_tag_assignment_incident",
+                    expected="mapping",
+                    actual=type(incident).__name__,
+                )
+            else:
+                after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
+                if not after:
+                    result.fail(
+                        "s3a_m2_ai_tag_semantic_validation_missing",
+                        "S3A-M2 cannot use AI-tagged counts as proof without before/after assignment semantics.",
+                        path="ai_tag_assignment_incident.after",
+                        expected="mapping",
+                        actual=after,
+                    )
+
     _check_required_boolean_paths(
         summary,
         result,
@@ -6731,6 +6946,36 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             expected=True,
             actual=launcher_execute_clicked,
         )
+    if launcher_status_any == "passed_gui_execute_completed":
+        gui_completed = _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_execute_completed", False))
+        gui_run_id = _as_int(
+            _get(
+                summary,
+                "launcher_web_admin_acceptance.gui_execute_run_id",
+                _get(summary, "launcher_web_admin_acceptance.production_execute_run_id_seen", 0),
+            )
+        )
+        previous_runner_run_id = max(
+            _as_int(_get(summary, "initial_run.run_id", 0)),
+            _as_int(_get(summary, "remaining_run.run_id", 0)),
+            _as_int(_get(summary, "launcher_web_admin_acceptance.previous_execute_run_id", 0)),
+        )
+        if not gui_completed:
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_completed_run",
+                "Launcher/Web Admin validation must not claim GUI execute completion unless the GUI-created run completed.",
+                path="launcher_web_admin_acceptance.gui_execute_completed",
+                expected=True,
+                actual=_get(summary, "launcher_web_admin_acceptance.gui_execute_completed", None),
+            )
+        if previous_runner_run_id and gui_run_id <= previous_runner_run_id:
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_newer_run",
+                "GUI Execute acceptance must validate a GUI-created run newer than the prior runner/API execute runs.",
+                path="launcher_web_admin_acceptance.gui_execute_run_id",
+                expected=f"> {previous_runner_run_id}",
+                actual=gui_run_id,
+            )
     if launcher_status_any == "passed_gui_execute_not_safe_runner_execute_used":
         if launcher_execute_clicked:
             result.fail(
@@ -6971,14 +7216,12 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 )
         launcher_status = str(_get(summary, "launcher_web_admin_acceptance.status", "")).casefold()
         allowed_launcher_statuses = {
-            "passed",
             "passed_gui_execute_completed",
-            "passed_gui_execute_not_safe_runner_execute_used",
         }
         if launcher_status not in allowed_launcher_statuses:
             result.fail(
                 "s3a_m2_launcher_validation_not_passed",
-                "S3A-M2 target_met requires launcher/Web Admin status validation to pass.",
+                "S3A-M2 target_met requires a real launcher/Web Admin GUI Execute validation to pass.",
                 path="launcher_web_admin_acceptance.status",
                 expected=sorted(allowed_launcher_statuses),
                 actual=_get(summary, "launcher_web_admin_acceptance.status", None),
@@ -7097,20 +7340,22 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             )
 
     public_payloads: list[Any] = [summary]
-    markdown_path = _get(summary, "public_reports.markdown_report_path", None)
-    if isinstance(markdown_path, str) and markdown_path:
-        path = (CONTRACT_ROOT / markdown_path).resolve()
+    for report_key in ("markdown_report_path", "ai_tag_incident_report_path", "gui_validation_postmortem_path"):
+        report_path = _get(summary, f"public_reports.{report_key}", None)
+        if not isinstance(report_path, str) or not report_path:
+            continue
+        path = (CONTRACT_ROOT / report_path).resolve()
         try:
             path.relative_to(CONTRACT_ROOT)
             if path.exists():
-                public_payloads.append({"public_markdown_text": path.read_text(encoding="utf-8")})
+                public_payloads.append({f"public_{report_key}_text": path.read_text(encoding="utf-8")})
         except Exception:
             result.fail(
                 "s3a_m2_public_report_path_invalid",
                 "S3A-M2 public markdown report path must stay under the repository root.",
-                path="public_reports.markdown_report_path",
+                path=f"public_reports.{report_key}",
                 expected="repo-relative path",
-                actual=markdown_path,
+                actual=report_path,
             )
     findings: list[dict[str, Any]] = []
     for payload in public_payloads:

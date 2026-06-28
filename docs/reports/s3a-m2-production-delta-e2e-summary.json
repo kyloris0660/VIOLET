@@ -187,7 +187,65 @@
     "raw_artifacts_root": ".local_manifests/s3a_m2_delta_e2e",
     "status_polled_or_serialized": true
   },
+  "api_vs_gui_divergence": {
+    "api_runner_path": "S3A-M2 runner/API production executes #7/#8 with dry-run snapshot, plan hash, telemetry, localization diagnostics, and ledger/report validation.",
+    "api_runner_proved_backend_only": true,
+    "contract_tests_missed_ui_request_provenance": true,
+    "different_flags_or_config": "GUI readiness displayed background AI/LLM flags as blockers. Manual execute can use the manual pipeline profile, but final GUI E2E must verify AI/localization readiness before execute.",
+    "gui_path_before_fix": "Web Admin dry-run button called /api/admin/dynamic-library-sync/manual-sync/plan, which was still a broad source-root planning path and did not carry all private S3A-M2 runner context or progress semantics.",
+    "prevention_added": [
+      "dashboard runtime provenance exposed and shown in UI",
+      "GUI dry-run displays cap/source/partial scan and blocks execute on partial/no-importable plans",
+      "server-side plan timeout and unchanged-known terminal skip reduce broad-root hangs",
+      "contract requires GUI Execute click plus completed GUI-created run newer than runner run #8 before target_met",
+      "post-GUI validator fails closed when no newer GUI-created run exists"
+    ],
+    "public_safe": true,
+    "runner_gui_planner_diverged": true,
+    "same_server_profile_proven": "The captured GUI server was launcher-managed production profile on port 8012, but the browser URL lacked ?tab=content and the page could be affected by stale tab state if reused."
+  },
   "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+  "branch_profile_provenance": {
+    "automation_flags": {
+      "automatic_sync_enabled": false,
+      "scheduled_sync_enabled": false,
+      "startup_sync_enabled": false,
+      "system_service_enabled": false
+    },
+    "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+    "browser_stale_state_risk": "Observed URL omitted ?tab=content, so future validation must use a fresh context or canonical URL and inspect localStorage/admin tab state before trusting the page.",
+    "current_pr_head_before_this_fix": "9b9ab2b43388e719c6960bf61c302214564b2928",
+    "db_name": "blombooru",
+    "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
+    "head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928",
+    "managed_validation_server_stopped_after_abort": true,
+    "matches_reported_pr_head_at_start_of_debug": true,
+    "old_server_process_from_main_or_old_branch_found": false,
+    "port": 8012,
+    "profile_id": "production-default",
+    "public_safe": true,
+    "python_executable_name": "python.exe",
+    "stale_process_cleanup_status": "managed_validation_processes_cleaned; unrelated port owners left untouched",
+    "storage_root_marker": "b369834e62908e17",
+    "violet_env": "production"
+  },
+  "browser_validation_current_head": {
+    "attempted": true,
+    "db_name": "blombooru_test",
+    "db_reachable": false,
+    "health_ok": false,
+    "port": 8012,
+    "public_safe": true,
+    "reason": "Controlled non-production browser validation server started from the PR branch but /api/health reported the test DB unreachable, so no browser assertion was trusted.",
+    "schema_compatible": false,
+    "server_env": "test",
+    "server_pids_started_and_stopped": [
+      69176,
+      63696
+    ],
+    "source_or_production_mutation": false,
+    "status": "blocked_test_server_db_unreachable"
+  },
   "classification": {
     "count": 49,
     "failed": 0,
@@ -491,6 +549,60 @@
     "run_total_seen": 173,
     "source_item_delta": 391
   },
+  "deferred_failed_inventory": {
+    "backend_query": "active source-root DynamicSourceItem rows where import_status='deferred' OR source_status in deferred/failed/missing",
+    "current_actionable_importable_pending": 0,
+    "current_placeholder_reason_count": 1,
+    "extension_counts": {
+      ".heic": 4060,
+      ".ini": 1,
+      ".jfif": 150,
+      ".jpg": 84,
+      ".mov": 193,
+      ".mp4": 28,
+      ".pic": 1,
+      ".png": 129
+    },
+    "interpretation": "Mostly accumulated historical deferred/failed source-item inventory, not 4646 currently importable delta items; however current placeholder rows inside the inventory remain actionable blockers until hydrated or given stable accepted reasons.",
+    "pipeline_status_counts": {
+      "ai_tagging:deferred": 4646,
+      "classification:deferred": 4646,
+      "import:deferred": 4646,
+      "localization:deferred": 4646
+    },
+    "public_safe": true,
+    "query_scope": "active_source_roots",
+    "raw_private_artifact": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/deferred-failed-inventory-public.json",
+    "reason_counts": {
+      "cloud_placeholder": 1,
+      "existing_media_hash": 20,
+      "hidden": 1,
+      "read_error_invalid_argument": 180,
+      "read_timeout_180s": 11,
+      "subprocess_no_result": 1,
+      "unsupported_desired_media": 4177,
+      "unsupported_extension": 104,
+      "unsupported_sidecar": 151
+    },
+    "should_be_alarming_blocker_in_ui": false,
+    "source_field": "get_pending_summary().pending_deferred",
+    "source_status_counts": {
+      "available": 126,
+      "deferred": 4328,
+      "failed": 192
+    },
+    "sync_state_counts": {
+      "deferred": 4520,
+      "skipped_existing_media": 20,
+      "skipped_placeholder": 1,
+      "skipped_unsupported": 105
+    },
+    "threshold": 100,
+    "threshold_reached": true,
+    "total": 4646,
+    "ui_recommendation": "Show historical accumulated deferred/failed separately from current actionable delta blockers, with stable reason and extension aggregates.",
+    "ui_should_distinguish_historical_from_current_actionable": true
+  },
   "dry_run": {
     "approval_phrase": "I APPROVE S3A-M2 PRODUCTION DELTA E2E 10c4b0999b41",
     "estimated_ai_tagging_count": 49,
@@ -671,6 +783,80 @@
     "run_id": 8,
     "status": "completed"
   },
+  "failure_timeline": [
+    {
+      "detected_by": "S3A-M2 runner ledger, public report, and user review of the first run scope.",
+      "event": "initial_production_delta_run",
+      "production_impact": "Production media, classification, AI media-tag, localization, and ledger rows were written for the imported subset; source/iCloud content was not written.",
+      "repair_or_prevention": "Placeholder hydration became a first-class standard pipeline step and target_met stays false when unresolved placeholders/importable items remain.",
+      "what_happened": "Run #7 processed 453 planned items: 300 imported/classified/AI-tagged, 3 newly localized, 36 placeholders skipped, 98 unsupported, 19 existing.",
+      "why_earlier_evidence_missed": "The first acceptance treated placeholders as skipped ledger states instead of required iCloud placeholder work."
+    },
+    {
+      "detected_by": "User correction, fresh remaining-delta scans, and private hydration ledgers under the approved local artifact tree.",
+      "event": "placeholder_hydration_continuation",
+      "production_impact": "Source files were read for hydration only; no delete, rename, move, rewrite, source mutation, or app-storage rewrite was performed by hydration.",
+      "repair_or_prevention": "The runner/report/contract now model scan, placeholder detection, hydration, and re-scan as the reusable manual-sync flow.",
+      "what_happened": "The original placeholders and later discovered placeholders were safely hydrated by bounded non-destructive source reads; 51 placeholders were represented across passes with 0 hydration failures in those passes.",
+      "why_earlier_evidence_missed": "The initial ledger represented placeholders but did not require hydration and re-scan before completion."
+    },
+    {
+      "detected_by": "Aggregate tag eligibility diagnostics over AI tag assignments, DB/static zh-CN coverage, and localization jobs.",
+      "event": "localization_count_diagnosis",
+      "production_impact": "No localization corruption was found; most localizable tags were already covered by DB/static translations.",
+      "repair_or_prevention": "Reports now include localizable distinct tags, already-covered tags, newly-localized tags, proper-noun handling, and remaining gaps.",
+      "what_happened": "Run #7 localized only 3 new general/meta tags despite 300 imports; run #8 localized 2 new tags for 49 imports.",
+      "why_earlier_evidence_missed": "Raw imported/AI-tagged counts did not explain how many distinct localizable tags were already covered."
+    },
+    {
+      "detected_by": "Runner execute output, DynamicSyncRun ledger checks, DB counts, and public redaction contract.",
+      "event": "remaining_delta_execute_run_8",
+      "production_impact": "Additional production media/tag/localization rows were written for the 49 importable items; unsupported/hidden items remained deferred/skipped with stable public reasons.",
+      "repair_or_prevention": "Aggregate phase state now covers runs #7 and #8 instead of only the latest command.",
+      "what_happened": "After hydration and re-scan, run #8 processed 173 planned items: 49 imported/classified/AI-tagged, 2 localized, 20 existing, 104 unsupported/hidden, 0 failures.",
+      "why_earlier_evidence_missed": "This was a continuation after the first run and placeholder hydration, not part of the initial acceptance snapshot."
+    },
+    {
+      "detected_by": "Project-owner manual production UI validation on newly imported media, followed by aggregate DB diagnostics.",
+      "event": "ai_tag_assignment_pollution_discovered_by_ui",
+      "production_impact": "The affected layer was media-tag assignment state for S3A-M2 media; import/media/storage rows and classification were not the root cause.",
+      "repair_or_prevention": "AI assignment diagnostics, cohort audit, mature-policy tests, and contract checks now require high-confidence mature-policy tags to become normal media tags.",
+      "what_happened": "Manual UI inspection showed newly imported AI tags grouped under suggestion UI instead of normal category groups.",
+      "why_earlier_evidence_missed": "The runner and contract counted AI-tagged media but did not initially validate assignment-level normal-vs-suggestion semantics."
+    },
+    {
+      "detected_by": "Project-owner policy correction plus baseline cohort comparison against older mature AI-tagged media.",
+      "event": "proper_noun_policy_correction_and_second_repair",
+      "production_impact": "157 high-confidence proper-noun media-tag assignments were converted from suggestion to normal; 50 low-confidence proper-noun suggestions remained suggestions; Entity/SourceConcept truth violations remained 0.",
+      "repair_or_prevention": "Tests and contract now distinguish media tags from entity truth and reject over-suggestion of mature-category proper nouns.",
+      "what_happened": "The interim proper-noun suggestion-only rule was corrected: high-confidence character/copyright/artist media tags should follow mature media-tag semantics while still not creating Entity/SourceConcept truth.",
+      "why_earlier_evidence_missed": "The interim safety rule overcorrected from entity-truth safety into media-tag assignment semantics."
+    },
+    {
+      "detected_by": "User observation, Playwright/browser evidence, server logs, DB active-run checks, and process/port cleanup evidence.",
+      "event": "gui_validation_hang",
+      "production_impact": "No active execute/import/classification/AI/localization job or DB stuck run remained after cleanup; dry-run source reads/stat/hash work may have occurred; source mutation was not detected.",
+      "repair_or_prevention": "GUI plan now has timeout/progress, partial-scan execute blocking, backend plan timeout, unchanged-known terminal skips, runtime provenance display, and contract gates requiring a newer GUI-created execute run before target_met.",
+      "what_happened": "The Web Admin dry-run button path appeared stuck for about one hour on port 8012 and was aborted; no GUI Execute run newer than #8 completed.",
+      "why_earlier_evidence_missed": "API/runner evidence proved backend execution but not that the launcher/Web Admin button used the same bounded delta flow with visible progress and correct runtime provenance."
+    },
+    {
+      "detected_by": "Current-scope reviewer findings and self-audit while continuing PR #126.",
+      "event": "reviewer_p1_p2_hardening",
+      "production_impact": "No new production execute was run for these code fixes; they prevent future unsafe or misleading acceptance claims.",
+      "repair_or_prevention": "Focused tests and contract checks were added or updated for these classes of failure.",
+      "what_happened": "The branch incorporated hardening for cap ceiling, localization after execute, stale skip handling, execute flag gating, public redaction/content-hash detection, and stale GUI validation artifacts.",
+      "why_earlier_evidence_missed": "Several checks were originally report-level or runner-level and did not fully cover backend execute gates or stale validation artifacts."
+    },
+    {
+      "detected_by": "Read-only GUI acceptance validator and latest run/status checks.",
+      "event": "final_gui_execute_status",
+      "production_impact": "No final GUI execute production DB write has been accepted after the hang diagnosis.",
+      "repair_or_prevention": "The contract now rejects GUI completion claims without a clicked and completed newer GUI run.",
+      "what_happened": "Post-run validation found no GUI-created manual sync execute run newer than #8; GUI Execute acceptance remains pending.",
+      "why_earlier_evidence_missed": "Earlier validation observed latest job #8 but did not require a GUI-created run newer than the runner/API executes."
+    }
+  ],
   "final_inventory": {
     "current_delta_candidates": 124,
     "current_importable_hydrated_supported_items": 0,
@@ -726,7 +912,87 @@
     "status": "collected",
     "validation_status": "passed"
   },
-  "head_sha": "56d1c1f5cb8d3feaaec7613174845e25e281c7f0",
+  "gui_acceptance_debug": {
+    "acceptance_blocker": "No GUI Execute button-triggered run newer than run #8 has completed and passed post-run validation.",
+    "active_db_sessions_after_cleanup": 0,
+    "active_dynamic_sync_runs_after_cleanup": 0,
+    "branch_profile_stale_state_audit_required_before_retry": true,
+    "cap_ui_mismatch": "backend execute cap was 1000 but frontend execute input kept stale default 5 until policy initialization; fixed to initialize from backend cap on first dashboard load",
+    "db_name": "blombooru",
+    "deferred_failed_inventory_explained": true,
+    "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "managed_processes_cleaned": true,
+    "manual_sync_safety_status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
+    "no_silent_spinner_fix": true,
+    "observed_port": "8012",
+    "plan_source_after_fix": "manual_sync_delta_candidates_with_unchanged_known_terminal_skips_timeout_and_partial_scan_execute_block",
+    "plan_source_before_fix": "gui_manual_plan_endpoint_used_legacy_registered_root_walk_verify_hash",
+    "private_debug_artifacts": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
+    "profile_id": "production-default",
+    "public_safe": true,
+    "readiness_config_mismatch": "UI readiness displayed background AI/LLM flags as blockers; manual execute AI can use the manual pipeline profile, but final GUI acceptance must confirm AI/localization readiness before execute and must not claim E2E if localization remains disabled",
+    "root_cause": "GUI dry-run used the manual-sync plan endpoint but that endpoint still performed a broad source-root walk and expensive verify/hash over unchanged known items; frontend abort/browser close did not cancel the backend request, so it kept scanning until server stop.",
+    "server_role": "launcher-managed production validation server; port 8012 selected because 8000 was occupied by unrelated Clash Verge",
+    "source_mutation_detected": false,
+    "status": "diagnosed_blocked_pending_final_gui_execute",
+    "stuck_jobs_found": false,
+    "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
+    "violet_env": "production",
+    "watchdog_timeout_added": true
+  },
+  "gui_hang_root_cause": {
+    "backend_kept_scanning": true,
+    "backend_plan_timeout_added": true,
+    "backend_request_sent": true,
+    "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+    "button_clicked": "dynamic-sync-dry-run-btn",
+    "canonical_url": "/admin?tab=content#dynamic-library-sync-section",
+    "cleanup_performed": true,
+    "created_execute_run_id": null,
+    "db_active_runs_after_cleanup": 0,
+    "db_name": "blombooru",
+    "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "frontend_timeout_seconds": 600,
+    "head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928",
+    "managed_processes_stopped": [
+      "server_parent_64804",
+      "server_worker_50844",
+      "launcher_validation_process_tree"
+    ],
+    "not_root_cause": [
+      "ordinary update-check endpoint was not the button clicked in the captured dry-run",
+      "no active execute job remained",
+      "no DB running/cancelling DynamicSyncRun row remained after cleanup"
+    ],
+    "port": 8012,
+    "profile_id": "production-default",
+    "progress_feedback_added": true,
+    "public_safe": true,
+    "request_payload_public_summary": {
+      "hydrated_only": true,
+      "max_files": 1000,
+      "root_id": 2
+    },
+    "response_observed": "one captured request returned after a long scan with partial_scan=true and no importable items; later user-aborted run closed the browser while backend continued until cleanup",
+    "root_cause": "The GUI dry-run used the manual-sync plan endpoint, but that endpoint still performed a broad registered-root walk plus expensive verify/hash work over unchanged known items. Frontend/browser abort did not cancel the backend request, so the backend continued scanning until the managed server was stopped.",
+    "server_pid_parent": 64804,
+    "server_pid_worker": 50844,
+    "server_role": "launcher-managed production validation server",
+    "source_mutation_detected": false,
+    "status": "diagnosed_blocked_pending_final_gui_execute",
+    "storage_root_marker": "b369834e62908e17",
+    "stuck_jobs_found": false,
+    "timeout_behavior_before_fix": "No useful server-side plan timeout/correlation/progress; frontend could appear stuck for a long scan.",
+    "unrelated_processes_left_running": [
+      "port_8000_and_8016_owned_by_non_project_network_proxy_process"
+    ],
+    "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
+    "url_observed": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
+    "violet_env": "production",
+    "watchdog_timeout_added": true,
+    "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
+  },
+  "head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928",
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
     "ai_wd_suggestion_assignment_count": 3711,
@@ -799,26 +1065,27 @@
   },
   "launcher_web_admin_acceptance": {
     "browser": "msedge",
-    "computer_use_result": "unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge",
+    "computer_use_result": "attempted earlier; user aborted the stuck manual validation after about one hour; no retry before fixing provenance/timeout/delta-plan gates",
     "dry_run_aborted_by_server_stop": true,
-    "dry_run_button_click_fired_request": false,
-    "dry_run_clicked": false,
+    "dry_run_button_click_fired_request": true,
+    "dry_run_clicked": true,
     "dry_run_page_context_fetch_timed_out": true,
+    "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "execute_cap_visible": true,
     "execute_clicked": false,
-    "fallback_reason": "Computer Use controls unavailable. Web Admin button click did not fire a request in Playwright; a page-context dry-run then entered a broad source-walk scan and exceeded 180 seconds, so the managed server was stopped to avoid continuing unnecessary source reads. Runner/DB evidence is used for remaining-delta proof; GUI execute was not clicked because no safe remaining importable delta was expected.",
+    "fallback_reason": "GUI dry-run hang was diagnosed before another execute attempt. The GUI plan endpoint was using a broad source-root walk/verify path; final GUI Execute acceptance remains blocked until a new GUI-created run newer than run #8 is validated.",
     "gui_execute_completed": false,
     "latest_job_imported": 49,
     "latest_job_status": "completed",
     "production_execute_run_id_seen": 8,
     "public_source_identity": "153684ac810c2191",
-    "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/launcher-web-admin-validation.json",
+    "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
     "raw_path_committed": false,
-    "status": "passed_gui_execute_not_safe_runner_execute_used",
+    "status": "blocked_gui_dry_run_hang_diagnosed_pending_gui_execute",
     "target_path": "/admin?tab=content#dynamic-library-sync-section",
     "update_check_limit_separated": true,
-    "validated": true,
-    "validated_head_sha": "56d1c1f5cb8d3feaaec7613174845e25e281c7f0"
+    "validated": false,
+    "validated_head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928"
   },
   "ledger_consistency": {
     "expected_plan_items": 173,
@@ -915,25 +1182,53 @@
     "tags_requiring_localization_after_runner": 0,
     "tags_requiring_localization_before_runner": 2
   },
+  "manual_sync_safety_judgement": {
+    "api_runner_e2e_reliable": true,
+    "automatic_sync_remaining_prerequisites": [
+      "real GUI execute acceptance",
+      "separate automation design",
+      "scheduled/startup/service safety gates",
+      "current actionable deferred inventory separation"
+    ],
+    "can_user_use_launcher_web_admin_now": false,
+    "evidence_based": true,
+    "gpu_inference_path_reliable_for_manual_sync": true,
+    "gui_execute_works_end_to_end": false,
+    "public_safe": true,
+    "reason": "The API/runner E2E and repairs are healthy, but the real GUI Execute button path has not completed a newer run after the hang diagnosis, and current deferred inventory still includes at least one cloud-placeholder reason that must be hydrated or stably accepted.",
+    "safe_conditions_before_execute": [
+      "branch/head/provenance match the PR branch",
+      "managed production server is freshly started from the intended profile",
+      "automatic/scheduled/startup/system-service sync flags remain off",
+      "GUI dry-run completes without partial_scan and with reasonable current-delta counts",
+      "AI tagging and localization readiness are enabled or blockers are explicitly accepted before execute",
+      "confirmation phrase is copied exactly and Execute is clicked once",
+      "post-GUI validation script confirms a completed run newer than #8"
+    ],
+    "standardized_pipeline_reusable_for_future_automatic_design": true,
+    "status": "manual_sync_not_yet_safe_gui_execute_unvalidated"
+  },
   "mode": "execute",
   "not_completed": [
     "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
     "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
-    "SourceConcept/Entity bridge work was not run."
+    "SourceConcept/Entity bridge work was not run.",
+    "Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang; a new GUI-created run newer than run #8 must be validated before merge.",
+    "The latest deferred/failed inventory explanation found one current cloud-placeholder reason inside historical inventory; final acceptance must hydrate or stably accept it before target_met."
   ],
   "phase": "S3A-M2",
   "pipeline_contract": {
     "claims": {
-      "full_chain_complete": true,
-      "safe_to_merge": true,
-      "target_met": true
+      "full_chain_complete": false,
+      "safe_to_merge": false,
+      "target_met": false
     },
     "contract_id": "s3a_m2_production_delta_e2e_contract_v1",
     "exact_operator_approval_present": true,
     "execute_after_approval": true,
     "fresh_dry_run_completed": true,
     "phase_identity": "S3A-M2",
-    "status": "target_met"
+    "status": "completed_with_followup_required"
   },
   "placeholder_hydration": {
     "already_hydrated_or_not_placeholder_count": 1,
@@ -1012,6 +1307,7 @@
     "passed": true
   },
   "public_reports": {
+    "ai_tag_incident_report_path": "docs/reports/s3a-m2-ai-tag-assignment-incident.md",
     "markdown_report_path": "docs/reports/s3a-m2-production-delta-e2e.md",
     "summary_json_path": "docs/reports/s3a-m2-production-delta-e2e-summary.json"
   },
@@ -1032,7 +1328,7 @@
     "based_on_origin_main": true,
     "blockers": [],
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
-    "head_sha": "56d1c1f5cb8d3feaaec7613174845e25e281c7f0",
+    "head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928",
     "llm_localization": {
       "base_url_configured": true,
       "base_url_host": "api.openai.com",
@@ -1109,6 +1405,28 @@
       }
     ]
   },
+  "remaining_blockers": [
+    {
+      "code": "gui_execute_run_newer_than_8_missing",
+      "detail": "No GUI-created manual sync execute run newer than #8 has completed and passed validation.",
+      "status": "blocking_merge"
+    },
+    {
+      "code": "current_cloud_placeholder_in_deferred_inventory",
+      "detail": "The latest deferred/failed inventory contains one cloud-placeholder reason; it must not be hidden under historical deferred counts for target_met.",
+      "status": "blocking_final_acceptance_until_hydrated_or_stably_accepted"
+    },
+    {
+      "code": "gui_ai_localization_readiness_not_validated_after_hang_fix",
+      "detail": "The final GUI execute environment must prove AI tagging and localization readiness before claiming E2E.",
+      "status": "blocking_gui_e2e_claim"
+    },
+    {
+      "code": "current_pr_head_not_reviewed_by_codex_reviewer",
+      "detail": "Codex reviewer last reviewed an older head; later review trigger hit usage limits.",
+      "status": "review_pending_or_usage_limited"
+    }
+  ],
   "remaining_run": {
     "ai_tagged": 49,
     "classified": 49,
@@ -1167,9 +1485,9 @@
       "remaining_execute_run_id": 8
     },
     "automatic_sync_implemented": false,
-    "future_automation_readiness": "manual_pipeline_standardized_no_automatic_sync_implemented",
+    "future_automation_readiness": "manual_pipeline_evidence_incomplete",
     "public_safe": true,
-    "status": "completed",
+    "status": "incomplete",
     "steps": {
       "capture_resource_gpu_telemetry": {
         "completed": true,
@@ -1272,14 +1590,17 @@
         "status": "completed"
       },
       "validate_launcher_web_admin_workflow": {
-        "completed": true,
+        "completed": false,
         "evidence": {
-          "computer_use_result": "unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge",
+          "computer_use_result": "attempted earlier; user aborted the stuck manual validation after about one hour; no retry before fixing provenance/timeout/delta-plan gates",
           "execute_clicked": false,
-          "fallback_reason": "Computer Use controls unavailable. Web Admin button click did not fire a request in Playwright; a page-context dry-run then entered a broad source-walk scan and exceeded 180 seconds, so the managed server was stopped to avoid continuing unnecessary source reads. Runner/DB evidence is used for remaining-delta proof; GUI execute was not clicked because no safe remaining importable delta was expected.",
-          "latest_job_status": "completed"
+          "fallback_reason": "GUI dry-run hang was diagnosed before another execute attempt. The GUI plan endpoint was using a broad source-root walk/verify path; final GUI Execute acceptance remains blocked until a new GUI-created run newer than run #8 is validated.",
+          "gui_execute_completed": false,
+          "gui_execute_run_id": 8,
+          "latest_job_status": "completed",
+          "previous_execute_run_id": 8
         },
-        "status": "runner_execute_fallback_documented"
+        "status": "pending"
       },
       "validate_public_redaction": {
         "completed": true,
@@ -1291,6 +1612,32 @@
     },
     "version": 1
   },
-  "status": "target_met",
-  "title": "Production Delta Manual Sync E2E + GPU Telemetry"
+  "status": "completed_with_followup_required",
+  "title": "Production Delta Manual Sync E2E + GPU Telemetry",
+  "unsupported_inventory": {
+    "current_image_pipeline_importable_under_existing_rules": 0,
+    "current_remaining_run_extension_counts": {
+      ".heic": 28,
+      ".ini_hidden": 1,
+      ".mov": 75
+    },
+    "current_scope_hidden_items": 1,
+    "current_scope_unsupported_items": 104,
+    "heic_current_count": 28,
+    "hidden_or_ini_current_count": 1,
+    "historical_deferred_extension_counts": {
+      ".heic": 4060,
+      ".ini": 1,
+      ".jfif": 150,
+      ".jpg": 84,
+      ".mov": 193,
+      ".mp4": 28,
+      ".pic": 1,
+      ".png": 129
+    },
+    "interpretation": "HEIC/MOV/hidden sidecar items are intentionally outside the current still-image import rules for S3A-M2; they should be future roadmap work if the library needs Apple Live Photo/video support.",
+    "mov_current_count": 75,
+    "public_safe": true,
+    "risk_to_future_manual_sync": "They can keep historical deferred/failed counters high unless the UI separates unsupported historical inventory from current actionable delta."
+  }
 }

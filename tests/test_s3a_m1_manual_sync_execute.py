@@ -406,6 +406,27 @@ def test_s3a_m1_execute_rejects_stale_plan_hash(db, tmp_path, monkeypatch):
     assert db.query(Media).count() == 0
 
 
+def test_s3a_m1_execute_rejects_partial_scan_plan(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    plan = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=5, stable_age_seconds=0)
+    plan["counts"]["partial_scan"] = True
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        execute_service._verify_execute_gates(
+            db=db,
+            plan=plan,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+            hydrated_only=True,
+            production_acceptance_approved=False,
+        )
+
+    assert exc.value.code == "manual_sync_plan_partial_scan"
+
+
 def test_s3a_m1_execute_rejects_old_hash_with_forged_fresh_timestamp(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     source_root = tmp_path / "source"

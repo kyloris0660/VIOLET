@@ -1848,6 +1848,7 @@ class AdminPanel {
         const readiness = data.readiness || {};
         const roots = data.source_roots || [];
         const policy = data.default_off_policy || {};
+        const runtime = data.runtime_provenance || {};
         const setText = (id, value) => {
             const el = document.getElementById(id);
             if (el) el.textContent = value;
@@ -1898,9 +1899,10 @@ class AdminPanel {
         const executeCapLabel = document.getElementById('dynamic-sync-execute-cap');
         if (executeInput && executeCap > 0) {
             executeInput.max = String(executeCap);
-            if (!executeInput.value || parseInt(executeInput.value, 10) > executeCap) {
+            if (executeInput.dataset.policyInitialized !== 'true' || !executeInput.value || parseInt(executeInput.value, 10) > executeCap) {
                 executeInput.value = String(executeCap);
             }
+            executeInput.dataset.policyInitialized = 'true';
             executeInput.placeholder = String(executeCap);
         }
         if (executeCapLabel) {
@@ -1910,9 +1912,20 @@ class AdminPanel {
         this.dynamicSyncExecuteEnabled = enabled;
         if (syncBtn) syncBtn.disabled = !enabled;
         if (syncStatus) {
+            const runtimeBits = [
+                runtime.violet_env ? `env=${runtime.violet_env}` : null,
+                runtime.db_name ? `db=${runtime.db_name}` : null,
+                runtime.profile_id ? `profile=${runtime.profile_id}` : null,
+                runtime.app_port ? `port=${runtime.app_port}` : null,
+                runtime.git_branch ? `branch=${runtime.git_branch}` : null,
+                runtime.git_head ? `head=${String(runtime.git_head).slice(0, 12)}` : null,
+            ].filter(Boolean).join(', ');
             syncStatus.textContent = enabled
                 ? this._dynamicSyncT('admin.dynamic_library_sync.manual_sync_enabled', 'Manual sync execution is enabled.')
                 : this._dynamicSyncT('admin.dynamic_library_sync.manual_sync_disabled', 'Manual sync execution is disabled by default until an approved S2 run.');
+            if (runtimeBits) {
+                syncStatus.textContent += ` Runtime: ${runtimeBits}.`;
+            }
         }
         this._updateManualSyncExecuteButton();
         this.loadLatestManualSyncJob();
@@ -1953,6 +1966,9 @@ class AdminPanel {
         const integrity = plan.integrity || {};
         const limits = plan.limits || {};
         const confirmationPhrase = this._manualSyncExpectedConfirmationPhrase(plan);
+        const planSource = (plan.source || {}).plan_source || limits.plan_source || '-';
+        const complete = !counts.partial_scan;
+        const importable = (counts.estimated_import_count || 0) > 0;
         resultEl.classList.remove('hidden');
         resultEl.innerHTML = `
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
@@ -1961,7 +1977,8 @@ class AdminPanel {
                 <div><span class="text-secondary">Import</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
                 <div><span class="text-secondary">Expires</span><br><span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             </div>
-            <div class="mb-2"><span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
+            <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
+            ${complete && importable ? '' : `<div class="mb-2 text-warning">Execute blocked until the dry-run is complete and has importable hydrated items.</div>`}
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
             <div><span class="text-secondary">Confirmation:</span></div>
             <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
@@ -1984,7 +2001,10 @@ class AdminPanel {
         if (!btn) return;
         const expected = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
         const matches = confirmationEl && confirmationEl.value.trim() === expected;
-        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && matches);
+        const counts = (this.dynamicSyncPlan || {}).counts || {};
+        const complete = this.dynamicSyncPlan && !counts.partial_scan;
+        const importable = (counts.estimated_import_count || 0) > 0;
+        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable && matches);
     }
 
     async runManualSyncDryRunPlan() {
@@ -1993,11 +2013,22 @@ class AdminPanel {
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.select_root_first', 'Select a source root first.'), 'error');
             return;
         }
+        const resultEl = document.getElementById('dynamic-sync-plan-result');
+        const dryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
+        const timeoutMs = 10 * 60 * 1000;
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+        if (resultEl) {
+            resultEl.classList.remove('hidden');
+            resultEl.innerHTML = `<div class="text-warning">Planning source delta dry-run... timeout=${Math.round(timeoutMs / 1000)}s</div>`;
+        }
+        if (dryRunBtn) dryRunBtn.disabled = true;
         try {
             const plan = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/plan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
+                signal: controller.signal,
             });
             this.dynamicSyncPlan = plan;
             this._renderManualSyncPlan(plan);
@@ -2005,7 +2036,17 @@ class AdminPanel {
         } catch (e) {
             this.dynamicSyncPlan = null;
             this._updateManualSyncExecuteButton();
-            app.showNotification(`Manual sync plan failed: ${e.message || e}`, 'error');
+            const message = e.name === 'AbortError'
+                ? 'Manual sync plan timed out; check server logs and retry only after confirming no active request remains.'
+                : `Manual sync plan failed: ${e.message || e}`;
+            if (resultEl) {
+                resultEl.classList.remove('hidden');
+                resultEl.innerHTML = `<div class="text-red-400">${this.escapeHtml(message)}</div>`;
+            }
+            app.showNotification(message, 'error');
+        } finally {
+            window.clearTimeout(timeoutId);
+            if (dryRunBtn) dryRunBtn.disabled = false;
         }
     }
 

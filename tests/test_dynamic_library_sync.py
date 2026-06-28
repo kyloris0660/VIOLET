@@ -182,6 +182,21 @@ def test_pending_snapshot_embeds_completed_current_run(app_style_db, tmp_path):
     assert not (embedded["status"] == "running" and embedded["total_seen"] == 0)
 
 
+def test_dynamic_sync_dashboard_exposes_runtime_provenance(client):
+    response = client.get("/api/admin/dynamic-library-sync")
+
+    assert response.status_code == 200
+    payload = response.json()
+    runtime = payload["runtime_provenance"]
+    assert "git_head" in runtime
+    assert "git_branch" in runtime
+    assert "profile_id" in runtime
+    assert "app_port" in runtime
+    assert "violet_env" in runtime
+    assert "db_name" in runtime
+    assert runtime["python_executable_name"]
+
+
 def test_manual_sync_dry_run_plan_reports_public_safe_item_states(db, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -475,6 +490,150 @@ def test_manual_sync_dry_run_existing_media_uses_candidate_hash_lookup(db, tmp_p
     assert queried_hashes == [{candidate_hash}]
     assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
     assert plan["ledger"]["per_file_public_records"][0]["media_id"] is not None
+
+
+def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    known_path = source_root / "a_known.png"
+    fresh_path = source_root / "b_fresh.png"
+    _write_png(known_path, (20, 30, 40))
+    _write_png(fresh_path, (60, 70, 80))
+    known_stat = known_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="a_known.png",
+            relative_path_hash=service._hash_text("a_known.png"),
+            file_size=known_stat.st_size,
+            mtime_ns=known_stat.st_mtime_ns,
+            content_hash=calculate_file_hash(known_path),
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 0
+    assert plan["counts"]["total_seen"] == 1
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["limits"]["scanned_files"] == 2
+    assert plan["limits"]["unchanged_known_files"] == 1
+    assert plan["limits"]["max_files_scope"] == "manual_sync_delta_candidates"
+    assert "a_known.png" not in str(plan)
+    assert "b_fresh.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_reincludes_unresolved_known_items_for_registered_root(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    unresolved_path = source_root / "cloud_now_readable.png"
+    _write_png(unresolved_path, (20, 30, 40))
+    stat = unresolved_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="cloud_now_readable.png",
+            relative_path_hash=service._hash_text("cloud_now_readable.png"),
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            source_status="available",
+            sync_state="skipped_placeholder",
+            import_status="deferred",
+            deferred_reason="cloud_placeholder",
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["total_seen"] == 1
+    assert plan["limits"]["unchanged_known_files"] == 0
+    assert "cloud_now_readable.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_skips_unchanged_stable_unsupported_without_consuming_cap(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    stable_path = source_root / "a_old_video.mov"
+    fresh_path = source_root / "b_fresh.png"
+    stable_path.write_bytes(b"not imported video")
+    _write_png(fresh_path, (60, 70, 80))
+    stable_stat = stable_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="a_old_video.mov",
+            relative_path_hash=service._hash_text("a_old_video.mov"),
+            file_size=stable_stat.st_size,
+            mtime_ns=stable_stat.st_mtime_ns,
+            source_status="deferred",
+            sync_state="skipped_unsupported",
+            import_status="deferred",
+            deferred_reason="unsupported_extension",
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["skipped_unsupported"] == 0
+    assert plan["counts"]["total_seen"] == 1
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["limits"]["scanned_files"] == 2
+    assert plan["limits"]["unchanged_known_files"] == 1
+    assert "a_old_video.mov" not in str(plan)
 
 
 def test_update_check_detects_changed_and_missing_items(db, tmp_path):

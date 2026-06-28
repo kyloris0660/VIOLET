@@ -11,6 +11,7 @@ import hashlib
 import json
 import multiprocessing
 import os
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -85,6 +86,7 @@ MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
         "import_failed",
         "not_a_file",
         "path_escape",
+        "plan_timeout",
         "read_error",
         "read_timeout",
         "source_missing",
@@ -549,11 +551,33 @@ def plan_manual_sync_dry_run(
     candidate_hashes: set[str] = set()
     partial_scan = False
     walk_errors: List[str] = []
+    scanned_files = 0
+    unchanged_known_files = 0
+    plan_timeout = False
+    plan_started_monotonic = time.monotonic()
+    plan_timeout_seconds = min(
+        MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
+        max(30, int(settings.DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS)),
+    )
+    known_items_by_rel_hash: Dict[str, DynamicSourceItem] = {}
+    if source_record_id is not None:
+        known_items_by_rel_hash = {
+            item.relative_path_hash: item
+            for item in db.query(DynamicSourceItem)
+            .filter(DynamicSourceItem.source_root_id == int(source_record_id))
+            .all()
+        }
 
     for index, file_path in enumerate(_iter_source_files(resolved, walk_errors=walk_errors), start=1):
+        if time.monotonic() - plan_started_monotonic > plan_timeout_seconds:
+            partial_scan = True
+            plan_timeout = True
+            reason_counts["plan_timeout"] += 1
+            break
         if len(candidate_records) >= effective_max_files:
             partial_scan = True
             break
+        scanned_files = index
 
         safe_label = f"file-{index:05d}"
         rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
@@ -564,7 +588,6 @@ def plan_manual_sync_dry_run(
         content_hash = None
 
         try:
-            reason = reason or _manual_public_reason_code(_is_scannable_file(file_path, hydrated_only=hydrated_only))
             metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
         except OSError:
             reason = "stat_error"
@@ -573,6 +596,14 @@ def plan_manual_sync_dry_run(
             mtime = metadata.get("mtime")
             if mtime is not None and created_ts - float(mtime) < effective_stable_age:
                 reason = "file_still_changing"
+
+        known_item = known_items_by_rel_hash.get(rel_hash_full)
+        if reason is None and _manual_plan_can_skip_unchanged_known_item(known_item, metadata):
+            unchanged_known_files += 1
+            continue
+
+        if reason is None:
+            reason = _manual_public_reason_code(_is_scannable_file(file_path, hydrated_only=hydrated_only))
 
         if reason is None:
             reason = _verify_supported_image_file_with_timeout(file_path, read_timeout_seconds)
@@ -598,6 +629,8 @@ def plan_manual_sync_dry_run(
     existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes)
     seen_hashes: set[str] = set()
     integrity_items: List[Dict[str, Any]] = []
+    unsupported_extension_counts: Counter = Counter()
+    reason_extension_counts: Dict[str, Counter] = {}
     for record in candidate_records:
         reason = record["reason"]
         content_hash = record["content_hash"]
@@ -621,6 +654,10 @@ def plan_manual_sync_dry_run(
         state_counts[state] += 1
         if public_reason:
             reason_counts[public_reason] += 1
+            extension = Path(str(record["relative_path"] or "")).suffix.lower() or "<none>"
+            reason_extension_counts.setdefault(public_reason, Counter())[extension] += 1
+            if public_reason == "unsupported_extension":
+                unsupported_extension_counts[extension] += 1
 
         metadata = record["metadata"]
         item = {
@@ -682,6 +719,12 @@ def plan_manual_sync_dry_run(
         "stable_age_seconds": effective_stable_age,
         "max_duration_seconds": max_duration_seconds,
         "file_read_timeout_seconds": read_timeout_seconds,
+        "scanned_files": scanned_files,
+        "unchanged_known_files": unchanged_known_files,
+        "max_files_scope": "manual_sync_delta_candidates",
+        "plan_source": "source_delta" if source_record_id is not None else "ad_hoc_source_path",
+        "plan_timeout_seconds": plan_timeout_seconds,
+        "plan_timeout": plan_timeout,
     }
     integrity_payload = _manual_plan_integrity_payload(
         source_record_id=source_record_id,
@@ -722,6 +765,13 @@ def plan_manual_sync_dry_run(
             "state_counts": state_counts_public,
             "failure_reasons": reason_counts_public,
             "partial_scan": partial_scan,
+            "unsupported_extension_breakdown": dict(
+                sorted((key, int(value)) for key, value in unsupported_extension_counts.items())
+            ),
+            "failure_reason_extension_breakdown": {
+                reason: dict(sorted((key, int(value)) for key, value in counter.items()))
+                for reason, counter in sorted(reason_extension_counts.items())
+            },
         },
         "ledger": {
             "db_write_performed": False,
@@ -811,6 +861,40 @@ def _relative_identity_and_preflight_reason(root_path: Path, file_path: Path) ->
     except RuntimeError:
         return rel, "path_escape"
     return rel, None
+
+
+def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -> bool:
+    if item is None:
+        return False
+    import_status = str(item.import_status or "")
+    sync_state = str(item.sync_state or "")
+    reason = str(item.deferred_reason or item.failure_reason or "")
+    if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
+        return True
+    if import_status == "pending":
+        return True
+    stable_non_actionable = {
+        "unsupported_extension",
+        "hidden",
+        "zero_byte",
+        "read_error",
+        "source_missing",
+        "permission_denied",
+    }
+    if reason in stable_non_actionable:
+        return False
+    return import_status in {"deferred", "failed"} or sync_state in {"failed", "deferred"}
+
+
+def _manual_plan_can_skip_unchanged_known_item(
+    item: Optional[DynamicSourceItem],
+    metadata: Dict[str, Any],
+) -> bool:
+    if item is None:
+        return False
+    if item.file_size != metadata.get("file_size") or item.mtime_ns != metadata.get("mtime_ns"):
+        return False
+    return not _manual_plan_existing_requires_followup(item)
 
 
 def _apply_item_state(

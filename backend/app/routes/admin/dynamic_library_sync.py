@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -37,6 +40,33 @@ from ...services.manual_sync_execute_service import (
 )
 
 router = APIRouter()
+
+
+def _runtime_provenance() -> dict:
+    def _git_value(*args: str) -> Optional[str]:
+        try:
+            completed = subprocess.run(
+                ["git", *args],
+                cwd=settings.CODE_ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except Exception:
+            return None
+        value = completed.stdout.strip()
+        return value or None
+
+    return {
+        "git_head": _git_value("rev-parse", "HEAD"),
+        "git_branch": _git_value("branch", "--show-current"),
+        "profile_id": os.getenv("VIOLET_PRODUCTION_PROFILE_ID") or None,
+        "app_port": os.getenv("APP_PORT") or None,
+        "violet_env": settings.VIOLET_ENV,
+        "db_name": settings.DB_NAME,
+        "python_executable_name": os.path.basename(sys.executable),
+    }
 
 
 class RegisterSourceRootRequest(BaseModel):
@@ -81,6 +111,7 @@ async def dynamic_library_sync_dashboard(
     policy["manual_execute_max_files_cap"] = manual_sync_execute_max_files_cap()
     policy["manual_execute_default_max_files"] = manual_sync_execute_max_files_cap()
     payload["default_off_policy"] = policy
+    payload["runtime_provenance"] = _runtime_provenance()
     return payload
 
 
@@ -171,6 +202,7 @@ async def get_manual_sync_foundation_status(
         "classification_job_active": is_classification_job_active(),
         "pending_summary": get_pending_summary(db),
         "ai_execution_profile": build_ai_tagging_execution_profile(settings).to_public_dict(),
+        "runtime_provenance": _runtime_provenance(),
     }
 
 

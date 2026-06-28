@@ -215,7 +215,14 @@ def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
     assert pending["status"] == "completed_with_followup_required"
     assert pending["pipeline_contract"]["claims"]["target_met"] is False
 
-    summary["launcher_web_admin_acceptance"] = {"validated": True, "status": "passed"}
+    summary["remaining_run"] = {"run_id": 8}
+    summary["launcher_web_admin_acceptance"] = {
+        "validated": True,
+        "status": "passed_gui_execute_completed",
+        "execute_clicked": True,
+        "gui_execute_completed": True,
+        "gui_execute_run_id": 9,
+    }
     completed = refresh_completion_claims(summary)
 
     assert completed["status"] == "target_met"
@@ -280,10 +287,89 @@ def test_s3a_m2_standard_pipeline_records_runner_fallback_without_gui_execute_cl
 
     flow = build_standard_pipeline_flow(summary)
 
-    assert flow["status"] == "completed"
+    assert flow["status"] == "incomplete"
     step = flow["steps"]["validate_launcher_web_admin_workflow"]
-    assert step["status"] == "runner_execute_fallback_documented"
+    assert step["status"] == "gui_execute_pending_fallback_documented"
+    assert step["completed"] is False
     assert step["evidence"]["execute_clicked"] is False
+
+
+def test_s3a_m2_completion_claim_rejects_stale_gui_run_id() -> None:
+    summary = {
+        "pipeline_contract": {"contract_id": "s3a_m2_production_delta_e2e_contract_v1", "fresh_dry_run_completed": True},
+        "production_acceptance": {"performed": True},
+        "controlled_delta": {"cap_exceeded": False},
+        "dry_run": {"total_seen": 3, "partial_scan": False, "state_counts": {"skipped_placeholder": 0}},
+        "readiness": {"passed": True},
+        "ledger_consistency": {"passed": True},
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "public_reports": {
+            "markdown_report_path": "docs/reports/s3a-m2-production-delta-e2e.md",
+            "summary_json_path": "docs/reports/s3a-m2-production-delta-e2e-summary.json",
+        },
+        "safety": {"private_paths_or_hashes_in_public_report": False},
+        "localization": {"status": "completed", "failed": 0},
+        "localization_diagnosis": {
+            "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
+            "tags_requiring_localization_after_runner": 0,
+        },
+        "placeholder_hydration": {
+            "status": "completed",
+            "remaining_placeholders_after_hydration": 0,
+            "source_content_written": False,
+            "source_deleted_moved_renamed": False,
+        },
+        "final_inventory": {"current_importable_hydrated_supported_items": 0, "placeholders_remaining": 0},
+        "execute": {"status": "completed", "imported": 3, "classified": 3, "ai_tagged": 3},
+        "remaining_run": {"run_id": 8},
+        "classification": {"reported": True, "count": 3, "failed": 0},
+        "ai_tagging": {
+            "reported": True,
+            "count": 3,
+            "failed": 0,
+            "mature_media_tag_policy": True,
+            "proper_nouns_suggestion_only": False,
+            "no_sourceconcept_or_entity_truth_from_ai_only_tags": True,
+        },
+        "gpu_telemetry": {"status": "collected", "validation_status": "passed", "actual_provider": "DmlExecutionProvider"},
+        "launcher_web_admin_acceptance": {
+            "validated": True,
+            "status": "passed_gui_execute_completed",
+            "execute_clicked": True,
+            "gui_execute_completed": True,
+            "gui_execute_run_id": 8,
+        },
+        "ai_tag_assignment_incident": {
+            "status": "repaired",
+            "public_safe": True,
+            "after": {
+                "all_ai_assignments_are_suggestions": False,
+                "high_conf_nonproper_expected_normal_count": 2,
+                "high_conf_nonproper_incorrect_suggestion_count": 0,
+                "high_conf_nonproper_normal_count": 2,
+                "high_conf_proper_expected_normal_count": 1,
+                "high_conf_proper_incorrect_suggestion_count": 0,
+                "high_conf_proper_normal_count": 1,
+                "proper_noun_non_suggestion_count": 1,
+            },
+            "entity_truth_violations_found": 0,
+            "localization_remaining_gap": 0,
+            "ui_verification": {"status": "passed", "public_safe": True, "sample_count": 1, "normal_visible_pass_count": 1},
+        },
+        "cohort_self_audit": {
+            "status": "passed_after_repair",
+            "public_safe": True,
+            "normal_ai_tag_semantics_consistent_with_policy": True,
+            "blocker_anomaly_count": 0,
+            "affected_media_count": 3,
+            "baseline_media_count": 3,
+        },
+    }
+
+    refreshed = refresh_completion_claims(summary)
+
+    assert refreshed["pipeline_contract"]["claims"]["target_met"] is False
+    assert refreshed["standard_pipeline_flow"]["steps"]["validate_launcher_web_admin_workflow"]["completed"] is False
 
 
 def test_s3a_m2_ledger_pending_plan_uses_pending_delta_and_redacts_private_fields(tmp_path: Path) -> None:

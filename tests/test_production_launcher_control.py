@@ -112,6 +112,7 @@ def safe_backends(monkeypatch):
     monkeypatch.setattr(control, "detect_git_worktree", lambda repo_root=control.ROOT: False)
     monkeypatch.setattr(control, "_storage_root_looks_production", lambda config: (True, "ok"))
     monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: False)
+    monkeypatch.setattr(control, "is_port_bind_available", lambda port, host="0.0.0.0": True)
     monkeypatch.setattr(control, "port_owner_pid", lambda port: None)
 
 
@@ -916,6 +917,22 @@ def test_profile_update_allows_identity_changes_when_stopped(tmp_path, safe_back
 def test_preflight_blocks_unknown_process_on_target_port(tmp_path, safe_backends, monkeypatch):
     repo, _storage, env = _write_fake_repo(tmp_path)
     monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: True)
+
+    result = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        db_check=lambda config: (True, "ok"),
+        state_path=tmp_path / "missing-state.json",
+    )
+
+    assert result.ok is False
+    assert "target_port_available_or_managed" in result.errors
+
+
+def test_preflight_blocks_port_bound_without_listener(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: False)
+    monkeypatch.setattr(control, "is_port_bind_available", lambda port, host="0.0.0.0": False)
 
     result = control.preflight(
         repo_root=repo,

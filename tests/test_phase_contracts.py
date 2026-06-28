@@ -1584,7 +1584,7 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "partial_scan": False,
         },
         "execute": {
-            "run_id": 8,
+            "run_id": 9,
             "status": "completed",
             "imported": 100,
             "classified": 100,
@@ -1704,10 +1704,13 @@ def _s3a_m2_summary(**overrides: object) -> dict:
         },
         "launcher_web_admin_acceptance": {
             "validated": True,
-            "status": "passed",
+            "status": "passed_gui_execute_completed",
             "target_path": "/admin?tab=content#dynamic-library-sync-section",
-            "execute_clicked": False,
-            "production_execute_run_id_seen": 8,
+            "execute_clicked": True,
+            "gui_execute_completed": True,
+            "gui_execute_run_id": 9,
+            "previous_execute_run_id": 8,
+            "production_execute_run_id_seen": 9,
             "validated_head_sha": "head-abc123",
             "public_source_identity": "source-abc123",
         },
@@ -1820,6 +1823,68 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "normal_ai_tag_semantics_consistent_with_policy": True,
             "public_safe": True,
         },
+        "failure_timeline": [
+            {
+                "event": "initial_production_delta_run",
+                "what_happened": "bounded production delta execute ran",
+                "detected_by": "runner ledger and report",
+                "why_earlier_evidence_missed": "no GUI execute evidence was required yet",
+                "production_impact": "production import/classification/AI/localization rows were written",
+                "repair_or_prevention": "aggregate postmortem and GUI execute contract gates added",
+            }
+        ],
+        "deferred_failed_inventory": {
+            "source_field": "pending_summary.pending_deferred",
+            "query_scope": "active_source_roots",
+            "total": 0,
+            "reason_counts": {},
+            "extension_counts": {},
+            "pipeline_status_counts": {},
+            "current_actionable_importable_pending": 0,
+            "current_placeholder_reason_count": 0,
+            "ui_recommendation": "distinguish historical inventory from current actionable blockers",
+            "public_safe": True,
+        },
+        "gui_hang_root_cause": {
+            "status": "not_observed_in_passing_fixture",
+            "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
+            "root_cause": "no hang in passing fixture",
+            "backend_request_sent": True,
+            "backend_kept_scanning": False,
+            "cleanup_performed": True,
+            "watchdog_timeout_added": True,
+            "public_safe": True,
+        },
+        "api_vs_gui_divergence": {
+            "runner_gui_planner_diverged": False,
+            "api_runner_proved_backend_only": False,
+            "prevention_added": ["gui_execute_run_id_newer_than_runner_required"],
+            "public_safe": True,
+        },
+        "branch_profile_provenance": {
+            "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+            "head_sha": "head-abc123",
+            "profile_id": "production-default",
+            "db_name": "blombooru",
+            "violet_env": "production",
+            "stale_process_cleanup_status": "clean",
+            "public_safe": True,
+        },
+        "unsupported_inventory": {
+            "extension_counts": {".txt": 17},
+            "current_scope_unsupported_items": 17,
+            "current_image_pipeline_importable_under_existing_rules": 0,
+            "public_safe": True,
+        },
+        "manual_sync_safety_judgement": {
+            "status": "manual_sync_safe_with_operator_checks",
+            "evidence_based": True,
+            "gui_execute_validated": True,
+            "api_runner_e2e_reliable": True,
+            "future_automatic_sync_ready": False,
+            "public_safe": True,
+        },
+        "remaining_blockers": [],
         "private_artifacts": {
             "root": ".local_manifests/s3a_m2_delta_e2e",
             "telemetry_root": ".local_manifests/s3a_m2_delta_e2e/telemetry",
@@ -3979,6 +4044,54 @@ def test_s3a_m2_contract_rejects_gui_execute_completion_without_click() -> None:
     result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
 
     assert "s3a_m2_gui_execute_claim_without_click" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_newer_run() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_execute_run_id"] = 8
+    summary["launcher_web_admin_acceptance"]["production_execute_run_id_seen"] = 8
+    summary["execute"]["run_id"] = 8
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_gui_execute_claim_without_newer_run" in codes
+
+
+def test_s3a_m2_contract_rejects_missing_deferred_failed_inventory_postmortem() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary.pop("deferred_failed_inventory")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_manual_sync_safety_judgement() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["manual_sync_safety_judgement"]["status"] = "not_assessed"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_manual_sync_safety_judgement_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_safe_judgement_without_gui_execute() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_execute_completed"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_manual_sync_safe_without_gui_execute" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_stale_branch_profile_provenance() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["branch_profile_provenance"]["head_sha"] = "old-head"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_branch_profile_head_mismatch" in _error_codes(result)
 
 
 def test_s3a_m2_contract_rejects_runner_fallback_without_reason() -> None:

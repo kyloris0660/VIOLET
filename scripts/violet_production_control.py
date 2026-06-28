@@ -900,6 +900,22 @@ def is_port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.5) -> bo
         return sock.connect_ex((host, port)) == 0
 
 
+def is_port_bind_available(port: int, host: str = "0.0.0.0") -> bool:
+    """Return whether the production server can bind the requested TCP port."""
+    try:
+        port_number = int(port)
+    except (TypeError, ValueError):
+        return False
+    if not (1 <= port_number <= 65535):
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port_number))
+        except OSError:
+            return False
+    return True
+
+
 def _load_state(path: Path = STATE_FILE) -> dict[str, Any] | None:
     if not path.exists():
         return None
@@ -1975,8 +1991,10 @@ def preflight(
     stale_state_cleanup(config, state_path)
     state = _load_state(state_path)
     port_open = is_port_open(config.port)
-    port_ok = not port_open or is_managed_process(state, config)
-    gate("target_port_available_or_managed", port_ok, "Target port is free or owned by this launcher state.")
+    port_bind_available = is_port_bind_available(config.port)
+    managed_port = is_managed_process(state, config)
+    port_ok = managed_port or (not port_open and port_bind_available)
+    gate("target_port_available_or_managed", port_ok, "Target port is free and bindable, or owned by this launcher state.")
     gate("no_stale_pid_claim", state is None or state_pid(state) is None or process_exists(state_pid(state) or 0), "No stale PID claims a running process.")
 
     enabled_automation = [flag for flag in AUTOMATION_FLAGS if _truthy(config.env.get(flag))]

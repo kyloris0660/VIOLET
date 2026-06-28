@@ -2258,6 +2258,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     affected_classification = cohort_affected.get("classification") if isinstance(cohort_affected.get("classification"), Mapping) else {}
     baseline_classification = cohort_baseline.get("classification") if isinstance(cohort_baseline.get("classification"), Mapping) else {}
     affected_localization = cohort_affected.get("localization") if isinstance(cohort_affected.get("localization"), Mapping) else {}
+    gui_debug = summary.get("gui_acceptance_debug") if isinstance(summary.get("gui_acceptance_debug"), Mapping) else {}
     not_completed = summary.get("not_completed") or [
         "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
         "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
@@ -2361,6 +2362,24 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- Aggregate runtime seconds: `{aggregate_runtime.get('total_seconds')}`; stage durations: `{aggregate_runtime.get('stage_durations_seconds')}`.",
             f"- Remaining-run runtime seconds: `{runtime.get('total_seconds')}`; stage durations: `{runtime.get('stage_durations_seconds')}`.",
             "",
+            *(
+                [
+                    "## GUI Acceptance Debug",
+                    "",
+                    f"- Status: `{gui_debug.get('status')}`.",
+                    f"- Observed server: port `{gui_debug.get('observed_port')}`, profile `{gui_debug.get('profile_id')}`, env `{gui_debug.get('violet_env')}`, DB `{gui_debug.get('db_name')}`.",
+                    f"- Endpoint clicked: `{gui_debug.get('endpoint_called')}`; plan source before fix: `{gui_debug.get('plan_source_before_fix')}`; plan source after fix: `{gui_debug.get('plan_source_after_fix')}`.",
+                    f"- Root cause: `{gui_debug.get('root_cause')}`.",
+                    f"- Stuck jobs found/cleaned: `{gui_debug.get('stuck_jobs_found')}` / `{gui_debug.get('managed_processes_cleaned')}`.",
+                    f"- Cap/UI mismatch: `{gui_debug.get('cap_ui_mismatch')}`.",
+                    f"- Readiness/config mismatch: `{gui_debug.get('readiness_config_mismatch')}`.",
+                    f"- Watchdog/timeout added: `{gui_debug.get('watchdog_timeout_added')}`; no-silent-spinner fix: `{gui_debug.get('no_silent_spinner_fix')}`.",
+                    f"- Acceptance blocker: `{gui_debug.get('acceptance_blocker')}`.",
+                    "",
+                ]
+                if gui_debug
+                else []
+            ),
             "## Validation",
             "",
             f"- Ledger consistency: `{ledger.get('status')}`; represented items: `{ledger.get('run_item_count')}` / `{ledger.get('expected_plan_items')}`.",
@@ -2474,15 +2493,24 @@ def build_standard_pipeline_flow(summary: Mapping[str, Any]) -> dict[str, Any]:
     launcher_status = str(launcher.get("status") or "")
     launcher_validated = bool(launcher.get("validated"))
     launcher_execute_clicked = bool(launcher.get("execute_clicked"))
-    launcher_gui_execute_completed = launcher_status == "passed_gui_execute_completed" and launcher_execute_clicked
+    previous_execute_run_id = max(
+        _standard_int(initial.get("run_id")),
+        _standard_int(remaining.get("run_id")),
+        _standard_int(execute.get("run_id")),
+    )
+    launcher_run_id = _standard_int(launcher.get("gui_execute_run_id") or launcher.get("production_execute_run_id_seen"))
+    launcher_gui_execute_completed = (
+        launcher_status == "passed_gui_execute_completed"
+        and launcher_execute_clicked
+        and bool(launcher.get("gui_execute_completed"))
+        and launcher_run_id > previous_execute_run_id
+    )
     launcher_fallback_documented = (
         launcher_status == "passed_gui_execute_not_safe_runner_execute_used"
         and not launcher_execute_clicked
         and bool(launcher.get("fallback_reason") or launcher.get("computer_use_result"))
     )
-    launcher_completed = launcher_validated and (
-        launcher_status == "passed" or launcher_gui_execute_completed or launcher_fallback_documented
-    )
+    launcher_completed = launcher_validated and launcher_gui_execute_completed
 
     final_importable = _standard_int(inventory.get("current_importable_hydrated_supported_items"))
     final_placeholders = _standard_int(inventory.get("placeholders_remaining"))
@@ -2591,9 +2619,12 @@ def build_standard_pipeline_flow(summary: Mapping[str, Any]) -> dict[str, Any]:
             launcher_completed,
             "gui_execute_completed"
             if launcher_gui_execute_completed
-            else ("runner_execute_fallback_documented" if launcher_fallback_documented else ("completed" if launcher_completed else "pending")),
+            else ("gui_execute_pending_fallback_documented" if launcher_fallback_documented else "pending"),
             computer_use_result=launcher.get("computer_use_result"),
             execute_clicked=launcher.get("execute_clicked"),
+            gui_execute_completed=launcher.get("gui_execute_completed"),
+            gui_execute_run_id=launcher_run_id or None,
+            previous_execute_run_id=previous_execute_run_id or None,
             fallback_reason=launcher.get("fallback_reason"),
             latest_job_status=launcher.get("latest_job_status"),
         ),
@@ -2936,11 +2967,19 @@ def refresh_completion_claims(summary: dict[str, Any]) -> dict[str, Any]:
         inventory.get("placeholders_remaining") or 0
     ) == 0
     launcher_status = str(launcher.get("status") or "")
-    launcher_ok = launcher.get("validated") is True and launcher_status in {
-        "passed",
-        "passed_gui_execute_completed",
-        "passed_gui_execute_not_safe_runner_execute_used",
-    }
+    previous_execute_run_id = max(
+        _standard_int((summary.get("initial_run") or {}).get("run_id")),
+        _standard_int((summary.get("remaining_run") or {}).get("run_id")),
+        _standard_int(execute.get("run_id")),
+    )
+    launcher_run_id = _standard_int(launcher.get("gui_execute_run_id") or launcher.get("production_execute_run_id_seen"))
+    launcher_ok = (
+        launcher.get("validated") is True
+        and launcher_status == "passed_gui_execute_completed"
+        and bool(launcher.get("execute_clicked"))
+        and bool(launcher.get("gui_execute_completed"))
+        and launcher_run_id > previous_execute_run_id
+    )
     incident = summary.get("ai_tag_assignment_incident") or {}
     incident_after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
     incident_ui = incident.get("ui_verification") or summary.get("post_repair_ui_validation") or {}

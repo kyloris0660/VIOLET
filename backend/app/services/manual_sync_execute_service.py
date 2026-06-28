@@ -376,6 +376,14 @@ def _verify_execute_gates(
             status_code=409,
         )
 
+    counts = plan.get("counts") or {}
+    if bool(counts.get("partial_scan")):
+        raise ManualSyncExecuteError(
+            "manual_sync_plan_partial_scan",
+            "Manual sync execute requires a complete dry-run plan. Raise the cap or resolve scan timeout first.",
+            status_code=409,
+        )
+
     if settings.IS_PRODUCTION_ENV:
         expected_phrase = manual_sync_execute_confirmation_phrase(plan_hash, production=True)
         if not production_acceptance_approved or confirmation_phrase != expected_phrase:
