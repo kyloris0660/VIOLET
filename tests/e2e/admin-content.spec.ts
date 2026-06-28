@@ -68,9 +68,13 @@ test.describe('Admin Content Tab', () => {
     await openContentSection(page, 'dynamic-library-sync-section');
     await expect(page.locator('#dynamic-sync-pending-new')).toBeVisible();
     await expect(page.locator('#dynamic-sync-threshold')).toHaveText(/100|\d+/);
+    await expect(page.locator('#dynamic-sync-start-btn')).toBeVisible();
+    await expect(page.locator('#dynamic-sync-progress')).toBeAttached();
+    await expect(page.locator('#dynamic-sync-advanced-controls')).toBeVisible();
+    await expect(page.locator('#dynamic-sync-check-btn')).toBeHidden();
+    await page.locator('#dynamic-sync-advanced-controls summary').click();
     await expect(page.locator('#dynamic-sync-check-btn')).toBeVisible();
     await expect(page.locator('#dynamic-sync-dry-run-btn')).toBeVisible();
-    await expect(page.locator('#dynamic-sync-sync-pending-btn')).toBeDisabled();
     await expect(page.locator('#dynamic-sync-ai-localization')).toBeVisible();
   });
 });

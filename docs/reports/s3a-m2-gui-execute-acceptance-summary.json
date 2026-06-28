@@ -1,5 +1,22 @@
 {
   "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+  "computer_use_url_confidence_diagnosis": {
+    "chrome_observed_url": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
+    "code_fix": "Frontend setupTabs now preserves or restores ?tab=content when the hash targets an admin content section; launcher control test already asserts the canonical URL; production-launcher docs now name the canonical URL.",
+    "computer_use_available": true,
+    "computer_use_missing_signal": "Windows Computer Use policy could not independently read/verify the Chrome address-bar URL from the browser window state; it had title/window evidence but no trusted URL signal.",
+    "execute_clicked": false,
+    "expected_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
+    "launcher_button_clicked": "openManualSyncButton",
+    "launcher_started_from_user_entrypoint": true,
+    "missing_tab_param_observed": true,
+    "private_artifact_dir": ".local_manifests/s3a_m2_delta_e2e/computer_use_acceptance/",
+    "root_cause": "The launcher control path requested the canonical URL, but the running production server still served older frontend setupTabs code that removed tab=content on load; Computer Use then stopped because it could not independently verify the browser URL for policy enforcement.",
+    "status": "blocked_by_browser_url_policy_after_launcher_opened_web_admin",
+    "sync_mutation_performed": false,
+    "url_mismatch_contributed": true,
+    "visible_browser_title": "Admin Panel - V.I.O.L.E.T. - Google Chrome"
+  },
   "gui_provenance": {
     "gui_validation_session_id_expected": false,
     "request_sources_accepted": [
@@ -7,7 +24,8 @@
     ],
     "required": true
   },
-  "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
+  "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
+  "head_sha_pending_final_amend": true,
   "min_run_id": 8,
   "phase": "S3A-M2",
   "profile": {
@@ -30,6 +48,6 @@
     "violet_env": "production"
   },
   "public_safe": true,
-  "status": "blocked_no_gui_execute_run_found",
+  "status": "blocked_computer_use_url_policy_pending_retry",
   "validated": false
 }

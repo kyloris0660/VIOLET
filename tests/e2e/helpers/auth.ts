@@ -6,13 +6,16 @@ const ADMIN_PASS = process.env.VIOLET_ADMIN_PASS || 'admin123';
 export async function loginAsAdmin(page: Page) {
   await page.goto('/admin');
 
-  if (page.url().includes('/login')) {
-    await page.locator('input[name="username"], input[placeholder*="用户名"], #username').first().fill(ADMIN_USER);
-    await page.locator('input[type="password"], input[placeholder*="密码"], #password').first().fill(ADMIN_PASS);
-    await page.locator('button:has-text("登录"), button:has-text("Login")').first().click();
+  const loginForm = page.locator('input[name="username"], #username').first();
+  if (page.url().includes('/login') || await loginForm.isVisible().catch(() => false)) {
+    await loginForm.fill(ADMIN_USER);
+    await page.locator('input[type="password"], #password').first().fill(ADMIN_PASS);
+    await page.locator('#login-btn, button:has-text("Login"), button:has-text("登录")').first().click();
 
-    await page.waitForURL(/\/admin/, { timeout: 15_000 });
+    await expect(page.locator('h1').first()).toContainText(/管理面板|Admin Panel/, { timeout: 15_000 });
+    return;
   }
+
   await expect(page.locator('h1').first()).toContainText(/管理面板|Admin Panel/, { timeout: 10_000 });
 }
 
@@ -26,13 +29,8 @@ export async function switchToTab(page: Page, tabName: string) {
   await page.waitForTimeout(500);
 }
 
-/**
- * Navigate to a section within the Content tab using section-nav anchor links.
- * Clicks the "内容" top-level tab first, then clicks the matching section-nav
- * link (e.g. "标签本地化", "媒体管理", "AI 标签审核").
- */
 export async function navigateToContentSection(page: Page, sectionName: string) {
-  await switchToTab(page, '内容');
+  await switchToTab(page, 'content');
   await page.locator(`#content-section-nav a:has-text("${sectionName}")`).first().click();
   await page.waitForTimeout(500);
 }
@@ -49,8 +47,8 @@ export async function apiCall(page: Page, path: string, options?: {
     }, {} as Record<string, string>);
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (cookies['access_token']) {
-      headers['Authorization'] = `Bearer ${cookies['access_token']}`;
+    if (cookies.access_token) {
+      headers.Authorization = `Bearer ${cookies.access_token}`;
     }
 
     const r = await fetch(path, {

@@ -1165,6 +1165,30 @@ def test_readiness_blocks_unreviewed_proper_noun_llm_alias_even_if_needs_review_
     assert readiness["s2_ready"] is False
 
 
+def test_operator_readiness_separates_manual_and_background_warnings(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+
+    assert operator["manual_execute_ready"] is False
+    assert [item["code"] for item in operator["manual_execute_blockers"]] == ["AI_TAGGING_ENABLED_false"]
+    background_codes = {item["code"] for item in operator["background_warnings"]}
+    assert "tag_translation_auto_and_background_disabled" in background_codes
+    assert all("_false" not in item["label"] for item in operator["manual_execute_blockers"])
+    assert operator["normal_operator_plan_endpoint"] == "POST /api/admin/dynamic-library-sync/manual-sync/plan"
+    assert operator["legacy_update_check_endpoint"] == "POST /api/admin/dynamic-library-sync/check"
+
+
 def test_admin_api_register_check_pending_and_fail_closed_sync(client, tmp_path, monkeypatch):
     monkeypatch.setenv("DYNAMIC_LIBRARY_SYNC_THRESHOLD", "100")
     source_root = tmp_path / "source"

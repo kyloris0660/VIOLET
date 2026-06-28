@@ -11,6 +11,10 @@ class AdminPanel {
         this.dynamicSyncPollTimer = null;
         this.dynamicSyncExecuteEnabled = false;
         this.dynamicSyncGuiSessionId = null;
+        this.dynamicSyncActionInFlight = false;
+        this.dynamicSyncProgressStartedAt = null;
+        this.dynamicSyncProgressTimer = null;
+        this.dynamicSyncLatestJob = null;
         window.adminPanel = this;
         this.init();
     }
@@ -351,7 +355,19 @@ class AdminPanel {
         }
         const dynamicSyncDryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
         if (dynamicSyncDryRunBtn) {
-            dynamicSyncDryRunBtn.addEventListener('click', () => this.runManualSyncDryRunPlan());
+            dynamicSyncDryRunBtn.addEventListener('click', () => this.runManualSyncDryRunPlan({ source: 'advanced' }));
+        }
+        const dynamicSyncStartBtn = document.getElementById('dynamic-sync-start-btn');
+        if (dynamicSyncStartBtn) {
+            dynamicSyncStartBtn.addEventListener('click', () => this.startManualSyncFlow());
+        }
+        const dynamicSyncConfirmExecuteBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
+        if (dynamicSyncConfirmExecuteBtn) {
+            dynamicSyncConfirmExecuteBtn.addEventListener('click', () => this.executeManualSyncPlan({ useExpectedConfirmation: true }));
+        }
+        const dynamicSyncCopyConfirmationBtn = document.getElementById('dynamic-sync-copy-confirmation-btn');
+        if (dynamicSyncCopyConfirmationBtn) {
+            dynamicSyncCopyConfirmationBtn.addEventListener('click', () => this.copyManualSyncConfirmationPhrase());
         }
         const dynamicSyncPendingBtn = document.getElementById('dynamic-sync-sync-pending-btn');
         if (dynamicSyncPendingBtn) {
@@ -791,13 +807,24 @@ class AdminPanel {
         const savedTab = localStorage.getItem('admin_active_tab');
         const defaultTab = 'content';
         let initialTab = defaultTab;
+        const hashIdForTab = window.location.hash ? window.location.hash.substring(1) : '';
+        const hashIsContentSection = !!(
+            hashIdForTab
+            && document.getElementById(hashIdForTab)
+            && document.getElementById(hashIdForTab).classList.contains('admin-content-section')
+        );
 
         if (tabParam && document.querySelector(`.tab-btn[data-tab="${tabParam}"]`)) {
             initialTab = tabParam;
-            urlParams.delete('tab');
-            const newSearch = urlParams.toString();
-            const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '') + window.location.hash;
-            window.history.replaceState({}, '', newUrl);
+            if (hashIsContentSection && tabParam !== 'content') {
+                urlParams.set('tab', 'content');
+                initialTab = 'content';
+                window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}${window.location.hash}`);
+            }
+        } else if (hashIsContentSection) {
+            initialTab = 'content';
+            urlParams.set('tab', 'content');
+            window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}${window.location.hash}`);
         } else if (savedTab && document.querySelector(`.tab-btn[data-tab="${savedTab}"]`)) {
             initialTab = savedTab;
         }
@@ -1841,7 +1868,77 @@ class AdminPanel {
     }
 
     _dynamicSyncT(key, fallback) {
-        return window.i18n ? window.i18n.t(key) : fallback;
+        if (!window.i18n || typeof window.i18n.t !== 'function') return fallback;
+        const translated = window.i18n.t(key);
+        return translated && translated !== key ? translated : fallback;
+    }
+
+    _manualSyncSetProgress({ visible = true, label = '', detail = '', inFlight = false } = {}) {
+        const progress = document.getElementById('dynamic-sync-progress');
+        const labelEl = document.getElementById('dynamic-sync-progress-label');
+        const detailEl = document.getElementById('dynamic-sync-progress-detail');
+        const elapsedEl = document.getElementById('dynamic-sync-progress-elapsed');
+        if (progress) progress.classList.toggle('hidden', !visible);
+        if (labelEl && label) labelEl.textContent = label;
+        if (detailEl && detail) detailEl.textContent = detail;
+
+        if (inFlight && !this.dynamicSyncProgressStartedAt) {
+            this.dynamicSyncProgressStartedAt = Date.now();
+        }
+        if (!inFlight) {
+            this.dynamicSyncProgressStartedAt = null;
+            if (this.dynamicSyncProgressTimer) {
+                window.clearInterval(this.dynamicSyncProgressTimer);
+                this.dynamicSyncProgressTimer = null;
+            }
+            return;
+        }
+        const updateElapsed = () => {
+            if (!elapsedEl || !this.dynamicSyncProgressStartedAt) return;
+            elapsedEl.textContent = `${Math.max(0, Math.round((Date.now() - this.dynamicSyncProgressStartedAt) / 1000))}s`;
+        };
+        updateElapsed();
+        if (!this.dynamicSyncProgressTimer) {
+            this.dynamicSyncProgressTimer = window.setInterval(updateElapsed, 1000);
+        }
+    }
+
+    _manualSyncSetControlsBusy(busy) {
+        this.dynamicSyncActionInFlight = !!busy;
+        const ids = [
+            'dynamic-sync-start-btn',
+            'dynamic-sync-dry-run-btn',
+            'dynamic-sync-check-btn',
+            'dynamic-sync-confirm-execute-btn',
+            'dynamic-sync-copy-confirmation-btn',
+            'dynamic-sync-execute-btn',
+        ];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !!busy || el.dataset.lockedByState === 'true';
+        });
+        this._updateManualSyncExecuteButton();
+    }
+
+    _manualSyncIssueLabel(code) {
+        const labels = {
+            AI_TAGGING_ENABLED_false: 'AI tagging is disabled for this server; manual E2E cannot complete AI tagging.',
+            AI_TAGGING_AUTO_LOCALIZATION_false: 'AI-to-localization chaining is disabled; manual execute must report stable localization reasons.',
+            TAG_TRANSLATION_LLM_ENABLED_false: 'LLM translation is disabled; new missing translations will stay blocked unless already covered.',
+            tag_translation_auto_and_background_disabled: 'Background/automatic translation workers are disabled; this is expected for manual-only sync.',
+            unreviewed_proper_noun_llm_aliases_present: 'Unreviewed proper-noun translations exist; they do not create Entity truth but still need review.',
+            no_dynamic_source_roots_configured: 'No source root is registered.',
+            VIOLET_STORAGE_ROOT_not_explicitly_set: 'Storage root is not explicitly set.',
+            running_in_test_environment: 'This server is using a test environment.',
+            automatic_dynamic_sync_enabled_requires_explicit_operator_review: 'Automatic sync is enabled; stop before production manual acceptance.',
+            manual_pending_sync_execution_disabled_by_default: 'Manual pending sync execution is disabled.',
+        };
+        return labels[code] || String(code || 'unknown');
+    }
+
+    _manualSyncActiveJobRunning() {
+        const job = this.dynamicSyncLatestJob || {};
+        return ['pending', 'running', 'cancelling'].includes(job.status);
     }
 
     _renderDynamicSyncDashboard(data) {
@@ -1850,6 +1947,7 @@ class AdminPanel {
         const roots = data.source_roots || [];
         const policy = data.default_off_policy || {};
         const runtime = data.runtime_provenance || {};
+        const operatorReadiness = readiness.manual_sync_operator_readiness || {};
         const setText = (id, value) => {
             const el = document.getElementById(id);
             if (el) el.textContent = value;
@@ -1875,27 +1973,32 @@ class AdminPanel {
 
         const warning = document.getElementById('dynamic-sync-warning');
         const warnings = readiness.warnings || [];
-        const blockers = readiness.blockers_before_s2 || [];
+        const manualBlockers = operatorReadiness.manual_execute_blockers || [];
+        const manualWarnings = operatorReadiness.manual_execute_warnings || [];
+        const backgroundWarnings = operatorReadiness.background_warnings || [];
         if (warning) {
-            if (pending.threshold_reached || warnings.length || blockers.length) {
+            if (manualBlockers.length || warnings.length) {
                 warning.classList.remove('hidden');
                 const parts = [];
-                if (pending.threshold_reached) {
-                    const thresholdKey = pending.pending_deferred_includes_historical
-                        ? 'admin.dynamic_library_sync.threshold_warning_historical'
-                        : 'admin.dynamic_library_sync.threshold_warning';
-                    const thresholdFallback = pending.pending_deferred_includes_historical
-                        ? 'Historical deferred/failed inventory reached threshold; use the dry-run plan for current delta counts.'
-                        : 'Pending threshold reached.';
-                    parts.push(this._dynamicSyncT(thresholdKey, thresholdFallback));
+                if (manualBlockers.length) {
+                    parts.push(`Manual sync blockers: ${manualBlockers.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' ')}`);
                 }
-                if (blockers.length) parts.push(`Blockers: ${blockers.join(', ')}`);
-                if (warnings.length) parts.push(`Warnings: ${warnings.join(', ')}`);
+                if (warnings.length) parts.push(`Runtime warnings: ${warnings.map(code => this._manualSyncIssueLabel(code)).join(' ')}`);
                 warning.textContent = parts.join(' ');
             } else {
                 warning.classList.add('hidden');
                 warning.textContent = '';
             }
+        }
+
+        const ledgerExplanation = document.getElementById('dynamic-sync-ledger-explanation');
+        if (ledgerExplanation) {
+            const pendingImport = pending.current_actionable_pending_import || pending.pending_import || 0;
+            const historical = pending.pending_deferred || 0;
+            ledgerExplanation.textContent = [
+                `Update-check ledger: ${pendingImport} pending import rows and ${historical} historical deferred/failed rows.`,
+                'This panel is diagnostic only; the Start manual sync plan is the source of truth for current safe-to-execute items.',
+            ].join(' ');
         }
 
         this._renderDynamicSyncRoots(roots);
@@ -1925,7 +2028,7 @@ class AdminPanel {
             executeCapLabel.textContent = `Execute cap: ${executeCap || 5}`;
         }
         this.dynamicSyncProductionMode = (readiness.production_settings || {}).violet_env === 'production';
-        this.dynamicSyncExecuteEnabled = enabled;
+        this.dynamicSyncExecuteEnabled = enabled && operatorReadiness.manual_execute_ready !== false;
         if (syncBtn) syncBtn.disabled = !enabled;
         if (syncStatus) {
             const runtimeBits = [
@@ -1942,6 +2045,24 @@ class AdminPanel {
             if (runtimeBits) {
                 syncStatus.textContent += ` Runtime: ${runtimeBits}.`;
             }
+        }
+        const operatorSummary = document.getElementById('dynamic-sync-operator-summary');
+        if (operatorSummary) {
+            const rootLabel = roots.find(root => root.is_active)?.label || roots[0]?.label || 'not configured';
+            const blockerText = manualBlockers.length
+                ? `Blocked: ${manualBlockers.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' ')}`
+                : 'Ready to generate a bounded manual sync plan. Execute still requires reviewing the plan summary.';
+            const historicalText = pending.pending_deferred_includes_historical
+                ? `Historical deferred inventory (${pending.pending_deferred || 0}) is separated from the current manual plan.`
+                : '';
+            operatorSummary.textContent = `Root: ${rootLabel}. ${blockerText} ${historicalText}`.trim();
+        }
+        const activeState = document.getElementById('dynamic-sync-active-state');
+        if (activeState) {
+            const warningsText = [...manualWarnings, ...backgroundWarnings]
+                .map(item => item.label || this._manualSyncIssueLabel(item.code))
+                .join(' ');
+            activeState.textContent = warningsText || 'No background worker warning is blocking the normal manual button.';
         }
         this._updateManualSyncExecuteButton();
         this.loadLatestManualSyncJob();
@@ -1983,6 +2104,9 @@ class AdminPanel {
     _renderManualSyncPlan(plan) {
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
+        const confirmActions = document.getElementById('dynamic-sync-confirm-actions');
+        const confirmBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
+        const copyBtn = document.getElementById('dynamic-sync-copy-confirmation-btn');
         if (!resultEl) return;
         const counts = plan.counts || {};
         const states = counts.state_counts || {};
@@ -1992,6 +2116,7 @@ class AdminPanel {
         const planSource = (plan.source || {}).plan_source || limits.plan_source || '-';
         const complete = !counts.partial_scan;
         const importable = (counts.estimated_import_count || 0) > 0;
+        const canExecute = complete && importable && this.dynamicSyncExecuteEnabled;
         resultEl.classList.remove('hidden');
         resultEl.innerHTML = `
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
@@ -2001,12 +2126,15 @@ class AdminPanel {
                 <div><span class="text-secondary">Expires</span><br><span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             </div>
             <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
-            ${complete && importable ? '' : `<div class="mb-2 text-warning">Execute blocked until the dry-run is complete and has importable hydrated items.</div>`}
+            ${canExecute ? `<div class="mb-2 text-green-400">Plan is ready. Review counts, then click Confirm and execute once.</div>` : `<div class="mb-2 text-warning">Execute is blocked until the plan is complete, has importable hydrated items, and manual E2E readiness is satisfied.</div>`}
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
-            <div><span class="text-secondary">Confirmation:</span></div>
-            <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
+            <div><span class="text-secondary">Confirmation phrase shown for audit:</span></div>
+            <code id="dynamic-sync-confirmation-phrase" class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
         `;
         if (confirmationEl) confirmationEl.value = '';
+        if (confirmActions) confirmActions.classList.toggle('hidden', !this.dynamicSyncPlan);
+        if (confirmBtn) confirmBtn.disabled = !canExecute || this.dynamicSyncActionInFlight;
+        if (copyBtn) copyBtn.disabled = !confirmationPhrase || this.dynamicSyncActionInFlight;
         this._updateManualSyncExecuteButton();
     }
 
@@ -2027,10 +2155,36 @@ class AdminPanel {
         const counts = (this.dynamicSyncPlan || {}).counts || {};
         const complete = this.dynamicSyncPlan && !counts.partial_scan;
         const importable = (counts.estimated_import_count || 0) > 0;
-        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable && matches);
+        const active = this._manualSyncActiveJobRunning();
+        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable && matches) || active || this.dynamicSyncActionInFlight;
+        const confirmBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
+        if (confirmBtn) {
+            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable) || active || this.dynamicSyncActionInFlight;
+        }
+        const copyBtn = document.getElementById('dynamic-sync-copy-confirmation-btn');
+        if (copyBtn) {
+            copyBtn.disabled = !expected || this.dynamicSyncActionInFlight;
+        }
+        const startBtn = document.getElementById('dynamic-sync-start-btn');
+        if (startBtn) {
+            startBtn.disabled = !this.dynamicSyncExecuteEnabled || active || this.dynamicSyncActionInFlight;
+            startBtn.textContent = this.dynamicSyncActionInFlight
+                ? '处理中...'
+                : (active ? '已有任务运行中' : '开始手动同步');
+        }
     }
 
-    async runManualSyncDryRunPlan() {
+    async startManualSyncFlow() {
+        if (this.dynamicSyncActionInFlight) return;
+        if (this._manualSyncActiveJobRunning()) {
+            app.showNotification('A manual sync job is already active. Watch the latest job status instead of starting another one.', 'warning');
+            return;
+        }
+        await this.runManualSyncDryRunPlan({ source: 'operator' });
+    }
+
+    async runManualSyncDryRunPlan({ source = 'operator' } = {}) {
+        if (this.dynamicSyncActionInFlight) return;
         const body = this._manualSyncRequestBody();
         if (!body.root_id) {
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.select_root_first', 'Select a source root first.'), 'error');
@@ -2041,14 +2195,23 @@ class AdminPanel {
         body.client_route = '/admin?tab=content#dynamic-library-sync-section';
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const dryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
+        const startBtn = document.getElementById('dynamic-sync-start-btn');
         const timeoutMs = 10 * 60 * 1000;
         const controller = new AbortController();
         const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
         if (resultEl) {
             resultEl.classList.remove('hidden');
-            resultEl.innerHTML = `<div class="text-warning">Planning source delta dry-run... timeout=${Math.round(timeoutMs / 1000)}s</div>`;
+            resultEl.innerHTML = `<div class="text-warning">Planning current source delta... timeout=${Math.round(timeoutMs / 1000)}s</div>`;
         }
+        this._manualSyncSetControlsBusy(true);
         if (dryRunBtn) dryRunBtn.disabled = true;
+        if (startBtn) startBtn.disabled = true;
+        this._manualSyncSetProgress({
+            visible: true,
+            inFlight: true,
+            label: source === 'advanced' ? 'Running dry-run plan' : '正在生成手动同步计划',
+            detail: 'POST /api/admin/dynamic-library-sync/manual-sync/plan',
+        });
         try {
             const plan = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/plan', {
                 method: 'POST',
@@ -2058,6 +2221,12 @@ class AdminPanel {
             });
             this.dynamicSyncPlan = plan;
             this._renderManualSyncPlan(plan);
+            this._manualSyncSetProgress({
+                visible: true,
+                inFlight: false,
+                label: '计划已生成',
+                detail: `seen=${(plan.counts || {}).total_seen || 0}, import=${(plan.counts || {}).estimated_import_count || 0}`,
+            });
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.plan_ready', 'Dry-run plan ready.'), 'success');
         } catch (e) {
             this.dynamicSyncPlan = null;
@@ -2070,24 +2239,40 @@ class AdminPanel {
                 resultEl.innerHTML = `<div class="text-red-400">${this.escapeHtml(message)}</div>`;
             }
             app.showNotification(message, 'error');
+            this._manualSyncSetProgress({
+                visible: true,
+                inFlight: false,
+                label: '计划失败',
+                detail: message,
+            });
         } finally {
             window.clearTimeout(timeoutId);
-            if (dryRunBtn) dryRunBtn.disabled = false;
+            this._manualSyncSetControlsBusy(false);
+            this._updateManualSyncExecuteButton();
         }
     }
 
-    async executeManualSyncPlan() {
-        if (!this.dynamicSyncPlan) return;
+    async executeManualSyncPlan({ useExpectedConfirmation = false } = {}) {
+        if (!this.dynamicSyncPlan || this.dynamicSyncActionInFlight || this._manualSyncActiveJobRunning()) return;
         const body = this._manualSyncRequestBody();
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
         const integrity = this.dynamicSyncPlan.integrity || {};
         const guiProvenance = this.dynamicSyncPlan.gui_provenance || {};
         body.expected_plan_hash = integrity.plan_hash;
-        body.confirmation_phrase = confirmationEl ? confirmationEl.value.trim() : '';
+        const expected = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
+        if (useExpectedConfirmation && confirmationEl) confirmationEl.value = expected;
+        body.confirmation_phrase = useExpectedConfirmation ? expected : (confirmationEl ? confirmationEl.value.trim() : '');
         body.plan_created_at = (this.dynamicSyncPlan.job || {}).created_at;
         body.production_acceptance_approved = !!this.dynamicSyncProductionMode;
         body.gui_validation_session_id = guiProvenance.gui_validation_session_id || this.dynamicSyncGuiSessionId || this._newManualSyncGuiSessionId();
         body.client_route = guiProvenance.client_route || '/admin?tab=content#dynamic-library-sync-section';
+        this._manualSyncSetControlsBusy(true);
+        this._manualSyncSetProgress({
+            visible: true,
+            inFlight: true,
+            label: '正在启动执行',
+            detail: 'POST /api/admin/dynamic-library-sync/manual-sync/execute',
+        });
         try {
             const job = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/execute', {
                 method: 'POST',
@@ -2095,11 +2280,33 @@ class AdminPanel {
                 body: JSON.stringify(body),
             });
             this.dynamicSyncJobId = job.id;
+            this.dynamicSyncLatestJob = job;
             this._renderManualSyncJob(job);
             this._startManualSyncPolling(job.id);
+            this._manualSyncSetProgress({
+                visible: true,
+                inFlight: true,
+                label: `执行中：Job #${job.id}`,
+                detail: 'Waiting for import, classification, AI tagging, localization, and report stages.',
+            });
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.execute_started', 'Manual sync execute started.'), 'success');
         } catch (e) {
-            app.showNotification(`Manual sync execute blocked: ${e.message || e}`, 'error');
+            const message = `Manual sync execute blocked: ${e.message || e}`;
+            this._manualSyncSetProgress({ visible: true, inFlight: false, label: '执行未启动', detail: message });
+            app.showNotification(message, 'error');
+            this._manualSyncSetControlsBusy(false);
+            this._updateManualSyncExecuteButton();
+        }
+    }
+
+    async copyManualSyncConfirmationPhrase() {
+        const phrase = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
+        if (!phrase) return;
+        try {
+            await navigator.clipboard.writeText(phrase);
+            app.showNotification('Confirmation phrase copied.', 'success');
+        } catch (_e) {
+            app.showNotification('Copy failed; select the visible phrase manually.', 'warning');
         }
     }
 
@@ -2109,6 +2316,7 @@ class AdminPanel {
         try {
             const payload = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/jobs/latest', { method: 'GET' });
             if (payload.job) {
+                this.dynamicSyncLatestJob = payload.job;
                 this._renderManualSyncJob(payload.job);
                 if (['pending', 'running', 'cancelling'].includes(payload.job.status)) {
                     this._startManualSyncPolling(payload.job.id);
@@ -2123,14 +2331,25 @@ class AdminPanel {
         const statusEl = document.getElementById('dynamic-sync-job-status');
         const cancelBtn = document.getElementById('dynamic-sync-cancel-btn');
         if (!statusEl || !job) return;
+        this.dynamicSyncLatestJob = job;
         const execute = job.manual_sync_execute || {};
         const outcomes = execute.outcome_counts || {};
+        const active = ['pending', 'running', 'cancelling'].includes(job.status);
         statusEl.innerHTML = `
-            <div>Job #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | stage=${this.escapeHtml(execute.current_stage || '-')}</div>
+            <div>Latest manual sync job #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | stage=${this.escapeHtml(execute.current_stage || '-')}</div>
             <div>seen=${job.total_seen || 0}, imported=${job.new_items || 0}, failed=${job.failed_items || 0}</div>
             <div class="text-secondary">${Object.entries(outcomes).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
         `;
-        if (cancelBtn) cancelBtn.disabled = !['pending', 'running', 'cancelling'].includes(job.status);
+        if (cancelBtn) cancelBtn.disabled = !active;
+        if (active) {
+            this._manualSyncSetProgress({
+                visible: true,
+                inFlight: true,
+                label: `执行中：Job #${job.id}`,
+                detail: `stage=${execute.current_stage || '-'}, seen=${job.total_seen || 0}, imported=${job.new_items || 0}`,
+            });
+        }
+        this._updateManualSyncExecuteButton();
     }
 
     _startManualSyncPolling(runId) {
@@ -2145,11 +2364,20 @@ class AdminPanel {
                 if (!['pending', 'running', 'cancelling'].includes(job.status)) {
                     window.clearInterval(this.dynamicSyncPollTimer);
                     this.dynamicSyncPollTimer = null;
+                    this._manualSyncSetControlsBusy(false);
+                    this._manualSyncSetProgress({
+                        visible: true,
+                        inFlight: false,
+                        label: `任务结束：${job.status || '-'}`,
+                        detail: `Job #${job.id}: seen=${job.total_seen || 0}, imported=${job.new_items || 0}, failed=${job.failed_items || 0}`,
+                    });
                     this.loadDynamicSyncDashboard();
                 }
             } catch (e) {
                 window.clearInterval(this.dynamicSyncPollTimer);
                 this.dynamicSyncPollTimer = null;
+                this._manualSyncSetControlsBusy(false);
+                this._manualSyncSetProgress({ visible: true, inFlight: false, label: '轮询失败', detail: e.message || String(e) });
                 app.showNotification(`Manual sync polling failed: ${e.message || e}`, 'error');
             }
         }, 1500);
@@ -2193,15 +2421,17 @@ class AdminPanel {
             el.textContent = this._dynamicSyncT('admin.dynamic_library_sync.no_runs', 'No update checks have run yet.');
             return;
         }
-        el.textContent = `Last run #${run.id}: ${run.status}, seen=${run.total_seen}, new=${run.new_items}, changed=${run.changed_items}, deferred=${run.deferred_items}, finished=${run.finished_at || '-'}`;
+        el.textContent = `Latest update-check ledger run #${run.id}: ${run.status}, seen=${run.total_seen}, new=${run.new_items}, changed=${run.changed_items}, deferred=${run.deferred_items}, finished=${run.finished_at || '-'}`;
     }
 
     _renderDynamicSyncReadiness(readiness) {
         const el = document.getElementById('dynamic-sync-readiness');
         if (!el) return;
         const production = readiness.production_settings || {};
-        const blockers = readiness.blockers_before_s2 || [];
-        const warnings = readiness.warnings || [];
+        const operator = readiness.manual_sync_operator_readiness || {};
+        const blockers = operator.manual_execute_blockers || [];
+        const warnings = [...(operator.manual_execute_warnings || []), ...(readiness.warnings || []).map(code => ({ code }))];
+        const backgroundWarnings = operator.background_warnings || [];
         const badge = (value) => value
             ? '<span class="text-green-400 font-bold">ON</span>'
             : '<span class="text-red-400 font-bold">OFF</span>';
@@ -2213,8 +2443,9 @@ class AdminPanel {
             <div>Manual update: ${badge(!!readiness.manual_update_ready)}</div>
             <div>Auto production writes: ${badge(!!production.auto_sync_enabled)}</div>
             <div>Manual sync execution: ${badge(!!production.manual_sync_enabled)}</div>
-            <div class="text-red-400">${blockers.length ? `Blockers: ${this.escapeHtml(blockers.join(', '))}` : ''}</div>
-            <div class="text-warning">${warnings.length ? `Warnings: ${this.escapeHtml(warnings.join(', '))}` : ''}</div>
+            <div class="text-red-400">${blockers.length ? `Manual blockers: ${this.escapeHtml(blockers.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' '))}` : 'Manual blockers: none'}</div>
+            <div class="text-warning">${warnings.length ? `Manual warnings: ${this.escapeHtml(warnings.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' '))}` : ''}</div>
+            <div class="text-secondary">${backgroundWarnings.length ? `Background-only warnings: ${this.escapeHtml(backgroundWarnings.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' '))}` : 'Background-only warnings: none'}</div>
         `;
     }
 
@@ -2234,6 +2465,7 @@ class AdminPanel {
             <div>Worker categories: <span class="font-bold">${this.escapeHtml((tl.background_categories || []).join(', ') || '-')}</span></div>
             <div>Gap: missing=${gap.missing || 0}, general/meta=${gap.general_meta_missing || 0}, proper nouns=${gap.proper_noun_missing || 0}, needs_review=${gap.needs_review || 0}</div>
             <div>Proper-noun worker exclusion: ${badge(!!gap.worker_excludes_proper_nouns)}</div>
+            <div class="text-secondary">Manual note: AI OFF blocks full manual E2E; LLM OFF only blocks new missing translations that are not already covered.</div>
             <div class="text-secondary">Chain: ${(readiness.integration_chain || []).map(step => this.escapeHtml(step)).join(' -> ')}</div>
         `;
     }
@@ -2274,6 +2506,7 @@ class AdminPanel {
     }
 
     async runDynamicUpdateCheck() {
+        if (this.dynamicSyncActionInFlight) return;
         const maxFilesEl = document.getElementById('dynamic-sync-check-max-files');
         const hydratedEl = document.getElementById('dynamic-sync-hydrated-only');
         const body = {
@@ -2281,16 +2514,33 @@ class AdminPanel {
         };
         const maxFiles = maxFilesEl && maxFilesEl.value ? parseInt(maxFilesEl.value, 10) : null;
         if (maxFiles) body.max_files = maxFiles;
+        this._manualSyncSetControlsBusy(true);
+        this._manualSyncSetProgress({
+            visible: true,
+            inFlight: true,
+            label: '正在运行旧更新检查',
+            detail: 'POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root.',
+        });
         try {
             const result = await app.apiCall('/api/admin/dynamic-library-sync/check', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
+            this._manualSyncSetProgress({
+                visible: true,
+                inFlight: false,
+                label: `更新检查完成：#${result.id}`,
+                detail: `seen=${result.total_seen || 0}, new=${result.new_items || 0}, changed=${result.changed_items || 0}, deferred=${result.deferred_items || 0}`,
+            });
             app.showNotification(`Dynamic sync check #${result.id} completed`, 'success');
             this.loadDynamicSyncDashboard();
         } catch (e) {
-            app.showNotification(`Dynamic sync check failed: ${e.message || e}`, 'error');
+            const message = `Dynamic sync check failed: ${e.message || e}`;
+            this._manualSyncSetProgress({ visible: true, inFlight: false, label: '更新检查失败', detail: message });
+            app.showNotification(message, 'error');
+        } finally {
+            this._manualSyncSetControlsBusy(false);
         }
     }
 

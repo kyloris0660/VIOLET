@@ -1442,21 +1442,59 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
     ai_localization = get_ai_localization_readiness(db)
     blockers: List[str] = []
     warnings: List[str] = []
+    manual_execute_blockers: List[Dict[str, str]] = []
+    manual_execute_warnings: List[Dict[str, str]] = []
+    background_warnings: List[Dict[str, str]] = []
 
     if not roots:
         blockers.append("no_dynamic_source_roots_configured")
+        manual_execute_blockers.append(
+            {
+                "code": "no_dynamic_source_roots_configured",
+                "label": "No source root is registered.",
+                "scope": "manual_execute",
+            }
+        )
     if not settings.STORAGE_ROOT_EXPLICITLY_SET:
         warnings.append("VIOLET_STORAGE_ROOT_not_explicitly_set")
     if settings.DB_NAME == "blombooru_test" or settings.IS_TEST_ENV:
         warnings.append("running_in_test_environment")
     if not settings.AI_TAGGING_ENABLED:
         blockers.append("AI_TAGGING_ENABLED_false")
+        manual_execute_blockers.append(
+            {
+                "code": "AI_TAGGING_ENABLED_false",
+                "label": "AI tagging is disabled for this server, so a manual E2E run cannot complete AI tagging.",
+                "scope": "manual_execute",
+            }
+        )
     if not settings.AI_TAGGING_AUTO_LOCALIZATION:
         blockers.append("AI_TAGGING_AUTO_LOCALIZATION_false")
+        manual_execute_warnings.append(
+            {
+                "code": "AI_TAGGING_AUTO_LOCALIZATION_false",
+                "label": "AI-to-localization chaining is disabled; manual execute must report stable localization reasons.",
+                "scope": "manual_execute",
+            }
+        )
     if not settings.TAG_TRANSLATION_LLM_ENABLED:
         blockers.append("TAG_TRANSLATION_LLM_ENABLED_false")
+        manual_execute_warnings.append(
+            {
+                "code": "TAG_TRANSLATION_LLM_ENABLED_false",
+                "label": "LLM translation is disabled; new missing translations will remain blocked unless already covered.",
+                "scope": "localization",
+            }
+        )
     if not (settings.TAG_TRANSLATION_AUTO_ENABLED or settings.TAG_TRANSLATION_BG_ENABLED):
         blockers.append("tag_translation_auto_and_background_disabled")
+        background_warnings.append(
+            {
+                "code": "tag_translation_auto_and_background_disabled",
+                "label": "Automatic/background translation workers are disabled; this is expected for manual-only sync.",
+                "scope": "background_only",
+            }
+        )
     if settings.DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED:
         warnings.append("automatic_dynamic_sync_enabled_requires_explicit_operator_review")
     if not settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED:
@@ -1465,6 +1503,13 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
         blockers.append("background_translation_categories_include_proper_nouns")
     if ai_localization["tag_localization"]["gap_summary"]["unreviewed_proper_noun_llm_aliases"] > 0:
         blockers.append("unreviewed_proper_noun_llm_aliases_present")
+        manual_execute_warnings.append(
+            {
+                "code": "unreviewed_proper_noun_llm_aliases_present",
+                "label": "Unreviewed proper-noun translations exist; they do not create Entity truth, but search aliases still need review.",
+                "scope": "localization_review",
+            }
+        )
 
     return {
         "production_settings": {
@@ -1484,6 +1529,18 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
         "source_roots": [serialize_source_root(root) for root in roots],
         "pending_summary": pending,
         "ai_localization_readiness": ai_localization,
+        "manual_sync_operator_readiness": {
+            "manual_execute_ready": bool(roots)
+            and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED
+            and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED
+            and settings.AI_TAGGING_ENABLED,
+            "manual_execute_blockers": manual_execute_blockers,
+            "manual_execute_warnings": manual_execute_warnings,
+            "background_warnings": background_warnings,
+            "historical_deferred_inventory_is_actionable": False,
+            "normal_operator_plan_endpoint": "POST /api/admin/dynamic-library-sync/manual-sync/plan",
+            "legacy_update_check_endpoint": "POST /api/admin/dynamic-library-sync/check",
+        },
         "blockers_before_s2": blockers,
         "warnings": warnings,
         "s2_ready": not blockers,

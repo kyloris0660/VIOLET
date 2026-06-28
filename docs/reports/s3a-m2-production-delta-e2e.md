@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `bfacd86c3fc440d655531ccca9fb5273dc38d102`.
+- Head SHA: `e6d659b3d9bf88728bd79abba624628c2b1ae8c3`.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -57,7 +57,7 @@
 - Classification unknown rate S3A-M2/baseline: `6.59` / `5.155`.
 - Localization remaining gap after repair: `0`; blocker anomalies remaining: `0`.
 - Post-repair UI validation: `passed`; samples: `8`; normal visible pass: `8`; mature proper normal visible pass: `3`; true suggestion visible pass: `8`.
-- Computer Use result: `unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge`; fallback method: `playwright_msedge_against_launcher_started_production_server_after_second_repair`.
+- Computer Use result: `blocked_by_browser_url_policy_after_launcher_opened_web_admin`; launcher step reached: `openManualSyncButton clicked`; Chrome title observed: `Admin Panel - V.I.O.L.E.T.`; expected URL: `http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section`; Chrome-observed URL: `http://127.0.0.1:8012/admin#dynamic-library-sync-section`.
 
 ## Placeholder Hydration
 
@@ -106,6 +106,9 @@
 
 - Status: `diagnosed_blocked_pending_final_gui_execute`.
 - Observed server: port `8012`, profile `production-default`, env `production`, DB `blombooru`.
+- Computer Use URL-confidence diagnosis: `Computer Use could see the Chrome window title after launcher Open Manual Sync, but its Windows browser policy layer could not independently read/verify the current address-bar URL. A read-only Chrome tab listing then showed the tab URL was hash-only: http://127.0.0.1:8012/admin#dynamic-library-sync-section`.
+- Expected canonical manual-sync URL: `http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section`.
+- URL mismatch cause: `launcher control already requested the canonical URL, but the running 8012 production server was still serving the older frontend setupTabs logic that removed tab=content on load. Current code preserves or restores tab=content for content-section hashes; production must be restarted on this head before retrying Computer Use`.
 - Endpoint clicked: `/api/admin/dynamic-library-sync/manual-sync/plan`; plan source before fix: `gui_manual_plan_endpoint_used_legacy_registered_root_walk_verify_hash`; plan source after fix: `manual_sync_delta_candidates_with_unchanged_known_terminal_skips_timeout_and_partial_scan_execute_block`.
 - Root cause: `GUI dry-run used the manual-sync plan endpoint but that endpoint still performed a broad source-root walk and expensive verify/hash over unchanged known items; frontend abort/browser close did not cancel the backend request, so it kept scanning until server stop.`.
 - Stuck jobs found/cleaned: `False` / `True`.
@@ -116,6 +119,7 @@
 
 ## Validation
 
+- Reviewer status: latest exact head review pending after this UI/Computer Use URL-confidence fix; last confirmed Codex review was for `bfacd86c3fc440d655531ccca9fb5273dc38d102`.
 - Ledger consistency: `passed`; represented items: `173` / `173`.
 - DB count delta: media `349`, source items `391`.
 - Public redaction: `True`; findings: `0`.

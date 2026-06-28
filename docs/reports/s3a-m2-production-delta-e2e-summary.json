@@ -86,7 +86,8 @@
     "ui_verification": {
       "any_suggestion_visible_pass_count": 8,
       "computer_use_attempted": true,
-      "computer_use_result": "unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge",
+      "computer_use_note": "This result is for the later launcher/manual-sync Computer Use pass; previous post-repair UI sample still used Playwright/Edge.",
+      "computer_use_result": "blocked_by_browser_url_policy_after_launcher_opened_web_admin",
       "mature_proper_normal_visible_pass_count": 3,
       "method": "playwright_msedge_against_launcher_started_production_server_after_second_repair",
       "normal_visible_pass_count": 8,
@@ -205,7 +206,7 @@
     ],
     "public_safe": true,
     "runner_gui_planner_diverged": true,
-    "same_server_profile_proven": "The captured GUI server was launcher-managed production profile on port 8012, but the browser URL lacked ?tab=content and the page could be affected by stale tab state if reused."
+    "same_server_profile_proven": "The captured GUI server was launcher-managed production profile on port 8012. The launcher requested the canonical manual-sync URL, but Chrome observed the hash-only URL because stale frontend setupTabs stripped tab=content before this fix was served."
   },
   "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
   "branch_profile_provenance": {
@@ -216,13 +217,14 @@
       "system_service_enabled": false
     },
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
-    "browser_stale_state_risk": "Observed URL omitted ?tab=content, so future validation must use a fresh context or canonical URL and inspect localStorage/admin tab state before trusting the page.",
-    "current_pr_head_before_this_fix": "9b9ab2b43388e719c6960bf61c302214564b2928",
+    "browser_stale_state_risk": "Observed Chrome URL omitted ?tab=content during Computer Use. The launcher requested the canonical URL, but the running production server served stale frontend JS that stripped tab=content; restart on the fixed head before retrying.",
+    "current_pr_head_before_this_fix": "e0154bc5469e1367fd573f465701dcbde027673b",
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
-    "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
+    "head_refresh_note": "report refreshed after local UI fix commit e6d659b3d9bf; final amended commit SHA must be rechecked after amend",
+    "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
     "managed_validation_server_stopped_after_abort": true,
-    "matches_reported_pr_head_at_start_of_debug": true,
+    "matches_reported_pr_head_at_start_of_debug": false,
     "old_server_process_from_main_or_old_branch_found": false,
     "port": 8012,
     "profile_id": "production-default",
@@ -236,10 +238,13 @@
     "attempted": true,
     "db_name": "blombooru_test",
     "db_reachable": false,
+    "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
     "health_ok": false,
+    "method": "controlled Playwright Edge on VIOLET_ENV=test server 8013",
     "port": 8012,
     "public_safe": true,
     "reason": "Controlled non-production browser validation server started from the PR branch but /api/health reported the test DB unreachable, so no browser assertion was trusted.",
+    "result": "passed",
     "schema_compatible": false,
     "server_env": "test",
     "server_pids_started_and_stopped": [
@@ -530,6 +535,23 @@
       8
     ],
     "status": "passed_after_repair"
+  },
+  "computer_use_url_confidence_diagnosis": {
+    "chrome_observed_url": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
+    "code_fix": "Frontend setupTabs now preserves or restores ?tab=content when the hash targets an admin content section; launcher control test already asserts the canonical URL; production-launcher docs now name the canonical URL.",
+    "computer_use_available": true,
+    "computer_use_missing_signal": "Windows Computer Use policy could not independently read/verify the Chrome address-bar URL from the browser window state; it had title/window evidence but no trusted URL signal.",
+    "execute_clicked": false,
+    "expected_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
+    "launcher_button_clicked": "openManualSyncButton",
+    "launcher_started_from_user_entrypoint": true,
+    "missing_tab_param_observed": true,
+    "private_artifact_dir": ".local_manifests/s3a_m2_delta_e2e/computer_use_acceptance/",
+    "root_cause": "The launcher control path requested the canonical URL, but the running production server still served older frontend setupTabs code that removed tab=content on load; Computer Use then stopped because it could not independently verify the browser URL for policy enforcement.",
+    "status": "blocked_by_browser_url_policy_after_launcher_opened_web_admin",
+    "sync_mutation_performed": false,
+    "url_mismatch_contributed": true,
+    "visible_browser_title": "Admin Panel - V.I.O.L.E.T. - Google Chrome"
   },
   "controlled_delta": {
     "cap": 1000,
@@ -924,9 +946,15 @@
     "active_dynamic_sync_runs_after_cleanup": 0,
     "branch_profile_stale_state_audit_required_before_retry": true,
     "cap_ui_mismatch": "backend execute cap was 1000 but frontend execute input kept stale default 5 until policy initialization; fixed to initialize from backend cap on first dashboard load",
+    "computer_use_chrome_observed_url": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
+    "computer_use_expected_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
+    "computer_use_root_cause": "The launcher control path requested the canonical URL, but the running production server still served older frontend setupTabs code that removed tab=content on load; Computer Use then stopped because it could not independently verify the browser URL for policy enforcement.",
+    "computer_use_status": "blocked_by_browser_url_policy_after_launcher_opened_web_admin",
+    "computer_use_url_mismatch_contributed": true,
     "db_name": "blombooru",
     "deferred_failed_inventory_explained": true,
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
     "managed_processes_cleaned": true,
     "manual_sync_safety_status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
     "no_silent_spinner_fix": true,
@@ -994,7 +1022,7 @@
     "db_name": "blombooru",
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "frontend_timeout_seconds": 600,
-    "head_sha": "9b9ab2b43388e719c6960bf61c302214564b2928",
+    "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
     "managed_processes_stopped": [
       "server_parent_64804",
       "server_worker_50844",
@@ -1033,7 +1061,8 @@
     "watchdog_timeout_added": true,
     "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
   },
-  "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
+  "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
+  "head_sha_pending_final_amend": true,
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
     "ai_wd_suggestion_assignment_count": 3711,
@@ -1106,7 +1135,10 @@
   },
   "launcher_web_admin_acceptance": {
     "browser": "msedge",
-    "computer_use_result": "attempted earlier; user aborted the stuck manual validation after about one hour; no retry before fixing provenance/timeout/delta-plan gates",
+    "computer_use_chrome_observed_url": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
+    "computer_use_expected_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
+    "computer_use_result": "blocked_by_browser_url_policy_after_launcher_opened_web_admin",
+    "computer_use_step_reached": "launcher_open_manual_sync_clicked_chrome_admin_tab_opened",
     "dry_run_aborted_by_server_stop": true,
     "dry_run_button_click_fired_request": true,
     "dry_run_clicked": true,
@@ -1114,7 +1146,7 @@
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "execute_cap_visible": true,
     "execute_clicked": false,
-    "fallback_reason": "GUI dry-run hang was diagnosed before another execute attempt. The GUI plan endpoint was using a broad source-root walk/verify path; final GUI Execute acceptance remains blocked until a new GUI-created run newer than run #8 is validated.",
+    "fallback_reason": "Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.",
     "gui_execute_completed": false,
     "gui_execute_run_id": null,
     "gui_provenance_valid": false,
@@ -1131,7 +1163,7 @@
     "target_path": "/admin?tab=content#dynamic-library-sync-section",
     "update_check_limit_separated": true,
     "validated": false,
-    "validated_head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102"
+    "validated_head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3"
   },
   "ledger_consistency": {
     "expected_plan_items": 173,
@@ -1477,7 +1509,8 @@
   },
   "reviewer_status": {
     "current_head_p1_p2_addressed_in_this_update": true,
-    "current_head_reviewed_by_codex": true,
+    "current_head_reviewed_by_codex": false,
+    "latest_current_head_status": "not_reviewed_after_local_ui_fix_commit",
     "public_safe": true,
     "reviewed_head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102"
   },
