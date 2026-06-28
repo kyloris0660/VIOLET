@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -20,6 +21,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.database import Base
 from app.enums import FileTypeEnum
 from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, Media
+import scripts.run_s3a_m2_delta_e2e_with_telemetry as s3a_m2_runner
 from scripts.run_s3a_m2_delta_e2e_with_telemetry import (
     _placeholder_rows_from_plan,
     build_standard_pipeline_flow,
@@ -29,12 +31,42 @@ from scripts.run_s3a_m2_delta_e2e_with_telemetry import (
     s3a_m2_approval_phrase,
     summarize_telemetry,
 )
+from scripts.diagnose_s3a_m2_ai_tag_assignments import load_run_ids_from_summary
 
 
 def test_s3a_m2_approval_phrase_is_plan_hash_bound() -> None:
     phrase = s3a_m2_approval_phrase("abcdef1234567890")
 
     assert phrase == "I APPROVE S3A-M2 PRODUCTION DELTA E2E abcdef123456"
+
+
+def test_s3a_m2_incident_diagnostic_requires_explicit_or_reported_run_ids(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="s3a_m2_summary_missing_run_ids"):
+        load_run_ids_from_summary(tmp_path / "missing-summary.json")
+
+    empty_summary = tmp_path / "summary.json"
+    empty_summary.write_text(json.dumps({"execute": {}}), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="s3a_m2_summary_missing_run_ids"):
+        load_run_ids_from_summary(empty_summary)
+
+
+def test_s3a_m2_runner_rejects_cap_above_approved_ceiling_before_configure(monkeypatch) -> None:
+    def fail_configure(_args):
+        raise AssertionError("configure_phase_env must not run for over-ceiling cap")
+
+    monkeypatch.setattr(s3a_m2_runner, "configure_phase_env", fail_configure)
+
+    assert s3a_m2_runner.main(["--dry-run", "--delta-cap", "1001"]) == 2
+
+
+def test_s3a_m2_runner_rejects_non_positive_translation_batch_max_before_configure(monkeypatch) -> None:
+    def fail_configure(_args):
+        raise AssertionError("configure_phase_env must not run for invalid translation batch max")
+
+    monkeypatch.setattr(s3a_m2_runner, "configure_phase_env", fail_configure)
+
+    assert s3a_m2_runner.main(["--dry-run", "--translation-batch-max-items", "0"]) == 2
 
 
 def test_s3a_m2_telemetry_summary_uses_public_safe_artifact_label(tmp_path: Path) -> None:
@@ -136,7 +168,14 @@ def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
             "provider_provenance": {"provider": {"actual_provider": "DmlExecutionProvider"}},
         },
         "classification": {"reported": True, "count": 3, "failed": 0},
-        "ai_tagging": {"reported": True, "count": 3, "failed": 0, "proper_nouns_suggestion_only": True},
+        "ai_tagging": {
+            "reported": True,
+            "count": 3,
+            "failed": 0,
+            "mature_media_tag_policy": True,
+            "proper_nouns_suggestion_only": False,
+            "no_sourceconcept_or_entity_truth_from_ai_only_tags": True,
+        },
         "gpu_telemetry": {"status": "collected"},
         "launcher_web_admin_acceptance": {"validated": False, "status": "pending"},
         "ai_tag_assignment_incident": {
@@ -147,7 +186,10 @@ def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
                 "high_conf_nonproper_expected_normal_count": 2,
                 "high_conf_nonproper_incorrect_suggestion_count": 0,
                 "high_conf_nonproper_normal_count": 2,
-                "proper_noun_non_suggestion_count": 0,
+                "high_conf_proper_expected_normal_count": 1,
+                "high_conf_proper_incorrect_suggestion_count": 0,
+                "high_conf_proper_normal_count": 1,
+                "proper_noun_non_suggestion_count": 1,
             },
             "entity_truth_violations_found": 0,
             "localization_remaining_gap": 0,
@@ -194,7 +236,14 @@ def test_s3a_m2_standard_pipeline_records_runner_fallback_without_gui_execute_cl
         "dry_run": {"total_seen": 12, "partial_scan": False, "state_counts": {"skipped_placeholder": 0}},
         "execute": {"status": "completed", "imported": 5},
         "classification": {"reported": True, "count": 5, "failed": 0},
-        "ai_tagging": {"reported": True, "count": 5, "failed": 0, "proper_nouns_suggestion_only": True},
+        "ai_tagging": {
+            "reported": True,
+            "count": 5,
+            "failed": 0,
+            "mature_media_tag_policy": True,
+            "proper_nouns_suggestion_only": False,
+            "no_sourceconcept_or_entity_truth_from_ai_only_tags": True,
+        },
         "localization": {"status": "completed", "failed": 0},
         "localization_diagnosis": {
             "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",

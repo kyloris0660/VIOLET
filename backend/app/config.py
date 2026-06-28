@@ -636,6 +636,12 @@ class Settings:
         return val.lower() in ("true", "1", "yes", "on")
 
     @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED(self) -> bool:
+        """Second operator switch for guarded manual execute writes."""
+        val = os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
     def DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES(self) -> int:
         """Default upper bound for manual sync dry-run planning."""
         return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES", "1000")))

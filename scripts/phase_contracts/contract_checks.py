@@ -6493,12 +6493,12 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             "api_runner_acceptance.dry_run_plan_generated",
             "classification.reported",
             "ai_tagging.reported",
-            "ai_tagging.proper_nouns_suggestion_only",
-            "ai_tagging.no_sourceconcept_or_entity_truth_from_ai_proper_nouns",
+            "ai_tagging.mature_media_tag_policy",
+            "ai_tagging.no_sourceconcept_or_entity_truth_from_ai_only_tags",
             "public_redaction.passed",
         ),
         code="s3a_m2_required_proof_missing",
-        message="S3A-M2 requires fresh dry-run, hydrated-only source handling, stage accounting, AI proper-noun safeguards, and public redaction proof.",
+        message="S3A-M2 requires fresh dry-run, hydrated-only source handling, stage accounting, mature AI media-tag policy proof, AI-only Entity/SourceConcept safeguards, and public redaction proof.",
     )
     _check_explicit_false_paths(
         summary,
@@ -6675,6 +6675,31 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 expected=True,
                 actual=_get(summary, "localization.candidate_overflow", None),
             )
+        if _as_bool(_get(summary, "localization.candidate_overflow", False)):
+            if localization_status in {"completed", "completed_noop_no_candidates"}:
+                result.fail(
+                    "s3a_m2_localization_overflow_claimed_complete",
+                    "Localization overflow must leave remaining localization work deferred or incomplete, not completed.",
+                    path="localization.status",
+                    expected="deferred or partial overflow status",
+                    actual=_get(summary, "localization.status", None),
+                )
+            if str(_get(summary, "localization.dynamic_source_items_target_status", "") or "") != "deferred":
+                result.fail(
+                    "s3a_m2_localization_overflow_source_items_not_deferred",
+                    "Localization overflow must not mark all imported source items localized.",
+                    path="localization.dynamic_source_items_target_status",
+                    expected="deferred",
+                    actual=_get(summary, "localization.dynamic_source_items_target_status", None),
+                )
+            if not str(_get(summary, "localization.dynamic_source_items_deferred_reason", "") or ""):
+                result.fail(
+                    "s3a_m2_localization_overflow_missing_deferred_reason",
+                    "Localization overflow must include a stable deferred reason for remaining source items.",
+                    path="localization.dynamic_source_items_deferred_reason",
+                    expected="non-empty stable reason",
+                    actual=_get(summary, "localization.dynamic_source_items_deferred_reason", None),
+                )
 
     gpu_status = str(_get(summary, "gpu_telemetry.validation_status", "") or "").casefold()
     actual_provider = str(_get(summary, "gpu_telemetry.actual_provider", "") or "")
@@ -6761,41 +6786,53 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 actual=incident_status,
             )
         incident_after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
-        expected_normal = _as_int(incident_after.get("high_conf_nonproper_expected_normal_count", 0))
-        incorrect_suggestions = _as_int(incident_after.get("high_conf_nonproper_incorrect_suggestion_count", 0))
-        normal_count = _as_int(incident_after.get("high_conf_nonproper_normal_count", 0))
-        proper_non_suggestion = _as_int(incident_after.get("proper_noun_non_suggestion_count", 0))
-        if expected_normal > 0 and _as_bool(incident_after.get("all_ai_assignments_are_suggestions", False)):
+        expected_nonproper_normal = _as_int(incident_after.get("high_conf_nonproper_expected_normal_count", 0))
+        incorrect_nonproper_suggestions = _as_int(incident_after.get("high_conf_nonproper_incorrect_suggestion_count", 0))
+        nonproper_normal_count = _as_int(incident_after.get("high_conf_nonproper_normal_count", 0))
+        expected_proper_normal = _as_int(incident_after.get("high_conf_proper_expected_normal_count", 0))
+        incorrect_proper_suggestions = _as_int(incident_after.get("high_conf_proper_incorrect_suggestion_count", 0))
+        proper_normal_count = _as_int(incident_after.get("high_conf_proper_normal_count", 0))
+        if (expected_nonproper_normal > 0 or expected_proper_normal > 0) and _as_bool(
+            incident_after.get("all_ai_assignments_are_suggestions", False)
+        ):
             result.fail(
-                "s3a_m2_all_ai_tags_suggestions_with_nonproper_expected",
-                "S3A-M2 cannot pass when all AI tags are suggestions while high-confidence non-proper tags should be normal.",
+                "s3a_m2_all_ai_tags_suggestions_with_mature_policy_expected",
+                "S3A-M2 cannot pass when all AI tags are suggestions while mature-policy high-confidence tags should be normal media tags.",
                 path="ai_tag_assignment_incident.after.all_ai_assignments_are_suggestions",
                 expected=False,
                 actual=True,
             )
-        if incorrect_suggestions != 0:
+        if incorrect_nonproper_suggestions != 0:
             result.fail(
                 "s3a_m2_high_conf_nonproper_ai_tags_still_suggestions",
                 "High-confidence non-proper AI tags must be normal media tags after repair.",
                 path="ai_tag_assignment_incident.after.high_conf_nonproper_incorrect_suggestion_count",
                 expected=0,
-                actual=incorrect_suggestions,
+                actual=incorrect_nonproper_suggestions,
             )
-        if expected_normal > 0 and normal_count <= 0:
+        if expected_nonproper_normal > 0 and nonproper_normal_count <= 0:
             result.fail(
                 "s3a_m2_high_conf_nonproper_ai_tags_not_normalized",
                 "S3A-M2 target_met requires normal non-suggestion AI tag assignments for high-confidence non-proper tags.",
                 path="ai_tag_assignment_incident.after.high_conf_nonproper_normal_count",
                 expected="> 0",
-                actual=normal_count,
+                actual=nonproper_normal_count,
             )
-        if proper_non_suggestion != 0:
+        if incorrect_proper_suggestions != 0:
             result.fail(
-                "s3a_m2_proper_noun_ai_tags_not_review_only",
-                "AI-only proper noun tags must remain suggestion/review-only.",
-                path="ai_tag_assignment_incident.after.proper_noun_non_suggestion_count",
+                "s3a_m2_high_conf_proper_ai_tags_still_suggestions",
+                "High-confidence mature-policy character/copyright/artist AI media tags must not be forced into suggestions.",
+                path="ai_tag_assignment_incident.after.high_conf_proper_incorrect_suggestion_count",
                 expected=0,
-                actual=proper_non_suggestion,
+                actual=incorrect_proper_suggestions,
+            )
+        if expected_proper_normal > 0 and proper_normal_count < expected_proper_normal:
+            result.fail(
+                "s3a_m2_high_conf_proper_ai_tags_not_normalized",
+                "S3A-M2 target_met requires mature-policy character/copyright/artist AI media tags to be normal media tags when above threshold.",
+                path="ai_tag_assignment_incident.after.high_conf_proper_normal_count",
+                expected=f">= {expected_proper_normal}",
+                actual=proper_normal_count,
             )
         if _as_int(incident.get("entity_truth_violations_found", 0)) != 0:
             result.fail(
@@ -6876,6 +6913,15 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 expected=True,
                 actual={"incident_public_safe": incident.get("public_safe"), "cohort_public_safe": cohort.get("public_safe")},
             )
+        initial_validation = _get(summary, "initial_run_validation", {})
+        if not isinstance(initial_validation, Mapping) or not _as_bool(initial_validation.get("passed", False)):
+            result.fail(
+                "s3a_m2_initial_run_validation_not_passed",
+                "S3A-M2 aggregate target_met requires the initial production run to be validated before claiming aggregate completion.",
+                path="initial_run_validation.passed",
+                expected=True,
+                actual=initial_validation.get("passed") if isinstance(initial_validation, Mapping) else None,
+            )
         required_target_true = (
             "production_acceptance.performed",
             "pipeline_contract.exact_operator_approval_present",
@@ -6936,6 +6982,36 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 path="launcher_web_admin_acceptance.status",
                 expected=sorted(allowed_launcher_statuses),
                 actual=_get(summary, "launcher_web_admin_acceptance.status", None),
+            )
+        expected_execute_run_id = _as_int(_get(summary, "execute.run_id", 0))
+        launcher_execute_run_id = _as_int(_get(summary, "launcher_web_admin_acceptance.production_execute_run_id_seen", 0))
+        if expected_execute_run_id and launcher_execute_run_id != expected_execute_run_id:
+            result.fail(
+                "s3a_m2_launcher_validation_run_id_mismatch",
+                "Launcher/Web Admin validation artifact must identify the production execute run it validates.",
+                path="launcher_web_admin_acceptance.production_execute_run_id_seen",
+                expected=expected_execute_run_id,
+                actual=launcher_execute_run_id,
+            )
+        expected_head_sha = str(_get(summary, "head_sha", "") or "")
+        launcher_head_sha = str(_get(summary, "launcher_web_admin_acceptance.validated_head_sha", "") or "")
+        if expected_head_sha and launcher_head_sha != expected_head_sha:
+            result.fail(
+                "s3a_m2_launcher_validation_head_sha_mismatch",
+                "Launcher/Web Admin validation artifact must match the report head SHA.",
+                path="launcher_web_admin_acceptance.validated_head_sha",
+                expected=expected_head_sha,
+                actual=launcher_head_sha,
+            )
+        expected_source_identity = str(_get(summary, "source.public_source_identity", "") or "")
+        launcher_source_identity = str(_get(summary, "launcher_web_admin_acceptance.public_source_identity", "") or "")
+        if expected_source_identity and launcher_source_identity != expected_source_identity:
+            result.fail(
+                "s3a_m2_launcher_validation_source_mismatch",
+                "Launcher/Web Admin validation artifact must match the public-safe source identity for this execute.",
+                path="launcher_web_admin_acceptance.public_source_identity",
+                expected=expected_source_identity,
+                actual=launcher_source_identity,
             )
         if gpu_status != "passed" or actual_provider not in gpu_providers:
             result.fail(

@@ -154,6 +154,14 @@ def output_dir_allowed(path: Path) -> bool:
     return True
 
 
+def telemetry_dir_allowed(path: Path) -> bool:
+    try:
+        path.resolve().relative_to(DEFAULT_TELEMETRY_DIR.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def prepare_output_dir(args: argparse.Namespace) -> Path:
     output_dir = args.output_dir.resolve()
     if not output_dir_allowed(output_dir):
@@ -397,10 +405,12 @@ def configure_phase_env(args: argparse.Namespace) -> None:
     os.environ["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] = str(int(args.delta_cap))
     os.environ["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] = str(int(args.execute_duration_seconds))
     os.environ["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] = "true"
+    os.environ["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] = "true"
     os.environ["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] = "false"
     os.environ["S3B_UNATTENDED_SYNC_ENABLED"] = "false"
     os.environ["TAG_TRANSLATION_BACKGROUND_ENABLED"] = "false"
     os.environ["TAG_TRANSLATION_AUTO_ENABLED"] = "false"
+    os.environ["TAG_TRANSLATION_BATCH_MAX_ITEMS"] = str(max(1, int(args.translation_batch_max_items)))
 
 
 def open_db_session():
@@ -474,6 +484,8 @@ def collect_readiness(args: argparse.Namespace, root: Any) -> dict[str, Any]:
         blockers.append("VIOLET_ENV_not_production")
     if not settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED:
         blockers.append("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED_false")
+    if not settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED:
+        blockers.append("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED_false")
     if settings.DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED or settings.S3B_UNATTENDED_SYNC_ENABLED:
         blockers.append("automatic_or_unattended_sync_enabled")
     if not args.hydrated_only:
@@ -1630,9 +1642,11 @@ def diagnose_run_localization(db: Any, run_id: int, *, lang: str = "zh-CN", job_
         "tags_requiring_localization_after_runner": len(localizable_missing_after),
         "proper_noun_distinct_tags": len(proper),
         "proper_noun_localized_or_static": len(proper & localized),
+        "proper_noun_entity_deferred_tags_skipped": len(proper_missing),
         "proper_noun_suggestion_review_only_tags_skipped": len(proper_missing),
         "non_localizable_other_distinct_tags": len(other),
         "not_eligible_for_localization": {
+            "proper_noun_entity_deferred_not_general_or_meta": len(proper_missing),
             "proper_noun_suggestion_review_only": len(proper_missing),
             "category_not_in_general_or_meta": len(other),
         },
@@ -1925,6 +1939,7 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
                 else ("exact_limit_no_overflow" if len(candidates) == max_tags else "under_limit")
             ),
             "proper_noun_candidates_skipped": skipped_proper_nouns,
+            "proper_noun_entity_deferred_candidates": skipped_proper_nouns,
             "proper_noun_unreviewed_aliases_trusted": False,
             "translated": 0,
             "failed": 0,
@@ -1946,7 +1961,14 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
             result["errors"] = ["localization_provider_unavailable"]
             return result
 
-        batch_size = max(1, min(int(args.localization_batch_size), int(settings.TAG_TRANSLATION_BATCH_MAX_ITEMS)))
+        batch_size = max(
+            1,
+            min(
+                int(args.localization_batch_size),
+                int(args.translation_batch_max_items),
+                int(settings.TAG_TRANSLATION_BATCH_MAX_ITEMS),
+            ),
+        )
         job = TagTranslationJob(
             status="running",
             source="s3a_m2_delta_e2e",
@@ -2072,7 +2094,8 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
         job.skipped = skipped + skipped_proper_nouns
         job.finished_at = datetime.now(timezone.utc)
 
-        target_status = "localized" if failed == 0 else "deferred"
+        target_status = "deferred" if candidate_overflow or failed else "localized"
+        target_deferred_reason = "localization_candidate_overflow" if candidate_overflow else ("localization_failed" if failed else None)
         item_ids = [
             int(item_id)
             for (item_id,) in (
@@ -2086,10 +2109,13 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
         ]
         updated_items = 0
         if item_ids:
+            update_values = {DynamicSourceItem.localization_status: target_status}
+            if target_deferred_reason:
+                update_values[DynamicSourceItem.deferred_reason] = target_deferred_reason
             updated_items = int(
                 db.query(DynamicSourceItem)
                 .filter(DynamicSourceItem.id.in_(item_ids))
-                .update({DynamicSourceItem.localization_status: target_status}, synchronize_session=False)
+                .update(update_values, synchronize_session=False)
             )
         db.commit()
         return {
@@ -2105,6 +2131,8 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
             "unknown_provider_outputs": unknown_outputs,
             "duplicate_provider_outputs": duplicate_outputs,
             "dynamic_source_items_updated": updated_items,
+            "dynamic_source_items_target_status": target_status,
+            "dynamic_source_items_deferred_reason": target_deferred_reason,
             "job_id": int(job.id),
             "errors": sorted(set(errors)),
         }
@@ -2279,7 +2307,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- Diagnosis: `{loc_diag.get('diagnosis')}`.",
             f"- AI tag assignments / distinct tags: `{loc_diag.get('ai_wd_assignment_count')}` / `{loc_diag.get('distinct_ai_wd_tag_count')}`.",
             f"- Localizable distinct / already localized / newly localized / remaining gap: `{loc_diag.get('localizable_distinct_tags')}` / `{loc_diag.get('localizable_already_localized_or_static')}` / `{loc_diag.get('newly_localized_tags')}` / `{loc_diag.get('tags_requiring_localization_after_runner')}`.",
-            f"- Proper-noun suggestion/review-only skipped: `{loc_diag.get('proper_noun_suggestion_review_only_tags_skipped')}`.",
+            f"- Proper-noun entity-deferred/not-current-localization-category skipped: `{loc_diag.get('proper_noun_entity_deferred_tags_skipped', loc_diag.get('proper_noun_suggestion_review_only_tags_skipped'))}`.",
             f"- Not eligible: `{loc_diag.get('not_eligible_for_localization', {})}`.",
             "",
             "## AI Tag Assignment Incident And Cohort Audit",
@@ -2288,13 +2316,14 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- Root cause: `{incident.get('root_cause')}`.",
             f"- Repair converted suggestion->normal: `{(incident.get('repair') or {}).get('assignments_converted_from_suggestion_to_normal')}`; kept suggestions: `{(incident.get('repair') or {}).get('assignments_kept_suggestion')}`; duplicate rows created: `{(incident.get('repair') or {}).get('duplicate_rows_created')}`.",
             f"- After repair high-confidence non-proper incorrect suggestions: `{incident_after.get('high_conf_nonproper_incorrect_suggestion_count')}`; normal high-confidence non-proper tags: `{incident_after.get('high_conf_nonproper_normal_count')}`.",
-            f"- Proper-noun non-suggestion violations: `{incident_after.get('proper_noun_non_suggestion_count')}`; Entity/SourceConcept truth violations: `{incident.get('entity_truth_violations_found')}`.",
+            f"- Mature-policy proper-noun normal tags / incorrect suggestions: `{incident_after.get('high_conf_proper_normal_count')}` / `{incident_after.get('high_conf_proper_incorrect_suggestion_count')}`.",
+            f"- Proper-noun suggestions kept below threshold: `{incident_after.get('low_conf_proper_suggestion_count')}`; Entity/SourceConcept truth violations: `{incident.get('entity_truth_violations_found')}`.",
             f"- Cohort status: `{cohort.get('status')}`; baseline method: `{(cohort.get('baseline_selection') or {}).get('method')}`; affected/baseline media: `{cohort.get('affected_media_count')}` / `{cohort.get('baseline_media_count')}`.",
             f"- S3A-M2 normal/suggestion tags per media avg: `{(affected_tags.get('normal_tag_count_per_media') or {}).get('avg')}` / `{(affected_tags.get('suggestion_tag_count_per_media') or {}).get('avg')}`.",
             f"- Baseline normal/suggestion tags per media avg: `{(baseline_tags.get('normal_tag_count_per_media') or {}).get('avg')}` / `{(baseline_tags.get('suggestion_tag_count_per_media') or {}).get('avg')}`.",
             f"- Classification unknown rate S3A-M2/baseline: `{affected_classification.get('unknown_or_empty_rate_percent')}` / `{baseline_classification.get('unknown_or_empty_rate_percent')}`.",
             f"- Localization remaining gap after repair: `{affected_localization.get('localizable_remaining_gap')}`; blocker anomalies remaining: `{cohort.get('blocker_anomaly_count')}`.",
-            f"- Post-repair UI validation: `{post_repair_ui.get('status')}`; samples: `{post_repair_ui.get('sample_count')}`; normal visible pass: `{post_repair_ui.get('normal_visible_pass_count')}`; proper suggestion visible pass: `{post_repair_ui.get('proper_suggestion_visible_pass_count')}`.",
+            f"- Post-repair UI validation: `{post_repair_ui.get('status')}`; samples: `{post_repair_ui.get('sample_count')}`; normal visible pass: `{post_repair_ui.get('normal_visible_pass_count')}`; mature proper normal visible pass: `{post_repair_ui.get('mature_proper_normal_visible_pass_count')}`; true suggestion visible pass: `{post_repair_ui.get('any_suggestion_visible_pass_count')}`.",
             f"- Computer Use result: `{post_repair_ui.get('computer_use_result')}`; fallback method: `{post_repair_ui.get('method')}`.",
             "",
             "## Placeholder Hydration",
@@ -2338,6 +2367,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- DB count delta: media `{db_validation.get('media_delta')}`, source items `{db_validation.get('source_item_delta')}`.",
             f"- Public redaction: `{redaction.get('passed')}`; findings: `{redaction.get('finding_count')}`.",
             f"- Launcher/Web Admin: `{launcher.get('status')}`; browser: `{launcher.get('browser')}`; dry-run clicked: `{launcher.get('dry_run_clicked')}`; execute clicked: `{launcher.get('execute_clicked')}`.",
+            f"- Launcher dry-run request/timeout/server-stop: `{launcher.get('dry_run_button_click_fired_request')}` / `{launcher.get('dry_run_page_context_fetch_timed_out')}` / `{launcher.get('dry_run_aborted_by_server_stop')}`.",
+            f"- Launcher fallback reason: `{launcher.get('fallback_reason')}`.",
             f"- Latest job observed by UI/API: run `{launcher.get('production_execute_run_id_seen')}`, status `{launcher.get('latest_job_status')}`, imported `{launcher.get('latest_job_imported')}`.",
             "",
             "## Safety",
@@ -2520,11 +2551,15 @@ def build_standard_pipeline_flow(summary: Mapping[str, Any]) -> dict[str, Any]:
             and bool(ai_tagging.get("reported"))
             and _standard_int(ai_tagging.get("failed")) == 0
             and ai_total > 0
-            and bool(ai_tagging.get("proper_nouns_suggestion_only")),
+            and bool(ai_tagging.get("mature_media_tag_policy"))
+            and bool(ai_tagging.get("no_sourceconcept_or_entity_truth_from_ai_only_tags")),
             "completed" if ai_total > 0 and _standard_int(ai_tagging.get("failed")) == 0 else "failed_or_pending",
             aggregate_ai_tagged=ai_total,
             failed=ai_tagging.get("failed"),
-            proper_nouns_suggestion_only=ai_tagging.get("proper_nouns_suggestion_only"),
+            mature_media_tag_policy=ai_tagging.get("mature_media_tag_policy"),
+            no_sourceconcept_or_entity_truth_from_ai_only_tags=ai_tagging.get(
+                "no_sourceconcept_or_entity_truth_from_ai_only_tags"
+            ),
         ),
         "run_localization_or_stable_reasons": _standard_step(
             localization_completed,
@@ -2754,7 +2789,9 @@ def build_summary(
             "count": int(execute_summary.get("ai_tagged") or 0),
             "failed": int(execute_summary.get("ai_tagging_failed") or 0),
             "skipped": int(execute_summary.get("ai_tagging_skipped") or 0),
-            "proper_nouns_suggestion_only": True,
+            "mature_media_tag_policy": True,
+            "proper_nouns_suggestion_only": False,
+            "no_sourceconcept_or_entity_truth_from_ai_only_tags": True,
             "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": True,
             "provider_provenance": execute_summary.get("provider_provenance") or {},
         },
@@ -2913,12 +2950,20 @@ def refresh_completion_claims(summary: dict[str, Any]) -> dict[str, Any]:
         and str(incident_ui.get("status") or "") == "passed"
         and bool(incident_ui.get("public_safe"))
         and _standard_int(incident_after.get("high_conf_nonproper_incorrect_suggestion_count")) == 0
-        and _standard_int(incident_after.get("proper_noun_non_suggestion_count")) == 0
+        and _standard_int(incident_after.get("high_conf_proper_incorrect_suggestion_count")) == 0
         and _standard_int(incident.get("entity_truth_violations_found")) == 0
         and _standard_int(incident.get("localization_remaining_gap")) == 0
         and not (
-            _standard_int(incident_after.get("high_conf_nonproper_expected_normal_count")) > 0
+            (
+                _standard_int(incident_after.get("high_conf_nonproper_expected_normal_count")) > 0
+                or _standard_int(incident_after.get("high_conf_proper_expected_normal_count")) > 0
+            )
             and bool(incident_after.get("all_ai_assignments_are_suggestions"))
+        )
+        and (
+            _standard_int(incident_after.get("high_conf_proper_expected_normal_count")) == 0
+            or _standard_int(incident_after.get("high_conf_proper_normal_count"))
+            >= _standard_int(incident_after.get("high_conf_proper_expected_normal_count"))
         )
     )
     cohort = summary.get("cohort_self_audit") or {}
@@ -3065,6 +3110,30 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
                 db.close()
         except Exception as exc:
             summary["localization_diagnosis"] = {"status": "unavailable", "reason": safe_error(exc), "public_safe": True}
+        initial_validation_blockers: list[str] = []
+        if str(initial_execute.get("status") or "") != "completed":
+            initial_validation_blockers.append("initial_execute_not_completed")
+        if not bool((initial_summary.get("ledger_consistency") or {}).get("passed")):
+            initial_validation_blockers.append("initial_ledger_consistency_not_passed")
+        if not bool((initial_summary.get("public_redaction") or {}).get("passed")):
+            initial_validation_blockers.append("initial_public_redaction_not_passed")
+        initial_loc_diag = summary.get("initial_localization_diagnosis") or initial_summary.get("localization_diagnosis") or {}
+        if isinstance(initial_loc_diag, Mapping):
+            remaining_gap = int(
+                initial_loc_diag.get("tags_requiring_localization_after_runner")
+                or initial_loc_diag.get("localizable_remaining_gap")
+                or 0
+            )
+            if remaining_gap != 0:
+                initial_validation_blockers.append("initial_localization_gap_remaining")
+        summary["initial_run_validation"] = {
+            "passed": not initial_validation_blockers,
+            "blockers": initial_validation_blockers,
+            "status": "passed" if not initial_validation_blockers else "blocked",
+            "public_safe": True,
+        }
+        if initial_validation_blockers:
+            raise S3AM2Blocked("initial_run_validation_failed:" + ",".join(initial_validation_blockers))
         summary["remaining_run"] = {
             "run_id": remaining_execute.get("run_id"),
             "dry_run_total": remaining_dry_run.get("total_seen"),
@@ -3131,11 +3200,38 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
             "localized": int(initial_loc.get("translated") or 0)
             + int((summary.get("localization") or {}).get("translated") or 0),
         }
+    current_head = git_value(["rev-parse", "HEAD"])
+    if current_head:
+        summary["head_sha"] = current_head
+        readiness = summary.get("readiness")
+        if isinstance(readiness, dict):
+            readiness["head_sha"] = current_head
+
+    ai_tagging = summary.setdefault("ai_tagging", {})
+    if isinstance(ai_tagging, dict):
+        ai_tagging["mature_media_tag_policy"] = True
+        ai_tagging["proper_nouns_suggestion_only"] = False
+        ai_tagging["no_sourceconcept_or_entity_truth_from_ai_only_tags"] = True
+        ai_tagging["no_sourceconcept_or_entity_truth_from_ai_proper_nouns"] = True
+
     validation = read_json(args.launcher_validation_json)
     if not isinstance(validation, dict):
         raise S3AM2Blocked("launcher_validation_json_not_object")
     if validation.get("status") not in {"passed", "passed_gui_execute_completed", "passed_gui_execute_not_safe_runner_execute_used"}:
         raise S3AM2Blocked("launcher_web_admin_validation_not_passed")
+    expected_execute_run_id = int((summary.get("execute") or {}).get("run_id") or 0)
+    validation_run_id = int(validation.get("production_execute_run_id_seen") or 0)
+    if expected_execute_run_id and validation_run_id != expected_execute_run_id:
+        raise S3AM2Blocked("launcher_validation_run_id_mismatch")
+    validation_head = str(validation.get("validated_head_sha") or validation.get("head_sha") or "")
+    if current_head and validation_head != current_head:
+        raise S3AM2Blocked("launcher_validation_head_sha_mismatch")
+    expected_source_identity = str((summary.get("source") or {}).get("public_source_identity") or "")
+    validation_source_identity = str(
+        validation.get("public_source_identity") or validation.get("source_public_identity") or ""
+    )
+    if expected_source_identity and validation_source_identity != expected_source_identity:
+        raise S3AM2Blocked("launcher_validation_source_identity_mismatch")
 
     assertions = validation.get("assertions") or {}
     summary["launcher_web_admin_acceptance"] = {
@@ -3146,13 +3242,22 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
         "dry_run_clicked": bool(validation.get("dry_run_clicked")),
         "execute_clicked": bool(validation.get("execute_clicked")),
         "production_execute_run_id_seen": validation.get("production_execute_run_id_seen"),
+        "validated_head_sha": validation_head,
+        "public_source_identity": validation_source_identity,
         "execute_cap_visible": assertions.get("execute_cap_visible"),
+        "dry_run_button_click_fired_request": bool(validation.get("dry_run_button_click_fired_request")),
+        "dry_run_page_context_fetch_timed_out": bool(validation.get("dry_run_page_context_fetch_timed_out")),
+        "dry_run_aborted_by_server_stop": bool(validation.get("dry_run_aborted_by_server_stop")),
         "update_check_limit_separated": bool(
             assertions.get("update_check_limit_has_separate_input")
             or assertions.get("update_check_has_separate_input")
         ),
-        "latest_job_status": assertions.get("latest_job_status"),
-        "latest_job_imported": assertions.get("latest_job_imported"),
+        "latest_job_status": validation.get("latest_job_status") or assertions.get("latest_job_status"),
+        "latest_job_imported": (
+            validation.get("latest_job_imported")
+            if validation.get("latest_job_imported") is not None
+            else assertions.get("latest_job_imported")
+        ),
         "computer_use_result": validation.get("computer_use_result"),
         "fallback_reason": validation.get("fallback_reason"),
         "gui_execute_completed": bool(validation.get("gui_execute_completed")),
@@ -3326,8 +3431,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.delta_cap <= 0:
         print("ERROR: --delta-cap must be positive", file=sys.stderr)
         return 2
+    if args.delta_cap > 1000:
+        print("ERROR: --delta-cap must not exceed the S3A-M2 approved ceiling of 1000", file=sys.stderr)
+        return 2
+    if not telemetry_dir_allowed(args.telemetry_dir):
+        print("ERROR: --telemetry-dir must be under .local_manifests/s3a_m2_delta_e2e/telemetry", file=sys.stderr)
+        return 2
     if args.execute_duration_seconds <= 0:
         print("ERROR: --execute-duration-seconds must be positive", file=sys.stderr)
+        return 2
+    if args.translation_batch_max_items <= 0:
+        print("ERROR: --translation-batch-max-items must be positive", file=sys.stderr)
         return 2
     if args.hydration_timeout_seconds <= 0:
         print("ERROR: --hydration-timeout-seconds must be positive", file=sys.stderr)

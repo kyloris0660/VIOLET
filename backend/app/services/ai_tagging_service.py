@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 WD_CATEGORY_MAP = {
     "general": "general",
     "character": "character",
+    "copyright": "copyright",
+    "artist": "artist",
     "rating": "meta",
 }
 AI_PROPER_NOUN_CATEGORIES = {"character", "copyright", "artist"}
@@ -128,7 +130,7 @@ def _resolve_media_file(media: Media) -> Optional[Path]:
 
 def _determine_thresholds(category: str):
     """Return (confirm_threshold, suggestion_threshold) for a WD category."""
-    if category == "character":
+    if category in AI_PROPER_NOUN_CATEGORIES:
         return settings.AI_CHARACTER_THRESHOLD, settings.AI_SUGGESTION_THRESHOLD
     if category == "rating":
         return settings.AI_RATING_THRESHOLD, settings.AI_SUGGESTION_THRESHOLD
@@ -141,7 +143,6 @@ def run_ai_tagging(
     *,
     dry_run: bool = False,
     force_suggestions: bool = False,
-    proper_noun_suggestions: bool = False,
     local_files_only: bool = False,
     schedule_localization: bool = True,
 ) -> Dict[str, Any]:
@@ -197,9 +198,7 @@ def run_ai_tagging(
             action = "suggestion"
 
         db_category = WD_CATEGORY_MAP.get(wd_category, "general")
-        proper_noun_override = proper_noun_suggestions and db_category in AI_PROPER_NOUN_CATEGORIES
-
-        if (force_suggestions or proper_noun_override) and action == "confirmed":
+        if force_suggestions and action == "confirmed":
             action = "suggestion"
 
         pred_entry = {
@@ -231,7 +230,7 @@ def run_ai_tagging(
             continue
         tag_obj = tag_objects[0]
 
-        effective_confirm_threshold = 1.1 if (force_suggestions or proper_noun_override) else confirm_thresh
+        effective_confirm_threshold = 1.1 if force_suggestions else confirm_thresh
         added = add_ai_tag_to_media(
             db,
             media_id=media_id,

@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `True`.
 - Standard pipeline flow: `completed`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `ecebcb91e891669ba6dabefd44b045e288947ba6`.
+- Head SHA: `56d1c1f5cb8d3feaaec7613174845e25e281c7f0`.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -40,23 +40,24 @@
 - Diagnosis: `benign_all_localizable_tags_already_localized_or_newly_localized`.
 - AI tag assignments / distinct tags: `2328` / `714`.
 - Localizable distinct / already localized / newly localized / remaining gap: `700` / `700` / `2` / `0`.
-- Proper-noun suggestion/review-only skipped: `4`.
-- Not eligible: `{'category_not_in_general_or_meta': 0, 'proper_noun_suggestion_review_only': 4}`.
+- Proper-noun entity-deferred/not-current-localization-category skipped: `4`.
+- Not eligible: `{'proper_noun_entity_deferred_not_general_or_meta': 4, 'proper_noun_suggestion_review_only': 4, 'category_not_in_general_or_meta': 0}`.
 
 ## AI Tag Assignment Incident And Cohort Audit
 
 - Incident status: `repaired`; affected runs: `[7, 8]`; affected media: `349`; assignments inspected: `17464`.
-- Root cause: `manual_sync_execute_forced_force_suggestions_true_for_all_ai_tags`.
-- Repair converted suggestion->normal: `12973`; kept suggestions: `4491`; duplicate rows created: `0`.
+- Root cause: `manual_sync_execute_used_an_overbroad_suggestion_override; the first repair then retained an over-strict proper-noun suggestion-only policy instead of mature media-tag semantics.`.
+- Repair converted suggestion->normal: `157`; kept suggestions: `4334`; duplicate rows created: `0`.
 - After repair high-confidence non-proper incorrect suggestions: `0`; normal high-confidence non-proper tags: `12973`.
-- Proper-noun non-suggestion violations: `0`; Entity/SourceConcept truth violations: `0`.
+- Mature-policy proper-noun normal tags / incorrect suggestions: `157` / `0`.
+- Proper-noun suggestions kept below threshold: `50`; Entity/SourceConcept truth violations: `0`.
 - Cohort status: `passed_after_repair`; baseline method: `latest older non-S3A-M2 media with source='ai_wd' before affected cohort upload window`; affected/baseline media: `349` / `194`.
-- S3A-M2 normal/suggestion tags per media avg: `37.172` / `12.868`.
+- S3A-M2 normal/suggestion tags per media avg: `37.622` / `12.418`.
 - Baseline normal/suggestion tags per media avg: `39.526` / `12.021`.
 - Classification unknown rate S3A-M2/baseline: `6.59` / `5.155`.
 - Localization remaining gap after repair: `0`; blocker anomalies remaining: `0`.
-- Post-repair UI validation: `passed`; samples: `8`; normal visible pass: `8`; proper suggestion visible pass: `8`.
-- Computer Use result: `unavailable_in_current_tool_session; tool discovery exposed browser/node automation but not computer-use controls`; fallback method: `in_app_browser_playwright_against_launcher_started_production_server_with_tag_state_polling`.
+- Post-repair UI validation: `passed`; samples: `8`; normal visible pass: `8`; mature proper normal visible pass: `3`; true suggestion visible pass: `8`.
+- Computer Use result: `unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge`; fallback method: `playwright_msedge_against_launcher_started_production_server_after_second_repair`.
 
 ## Placeholder Hydration
 
@@ -106,7 +107,9 @@
 - Ledger consistency: `passed`; represented items: `173` / `173`.
 - DB count delta: media `349`, source items `391`.
 - Public redaction: `True`; findings: `0`.
-- Launcher/Web Admin: `passed_gui_execute_not_safe_runner_execute_used`; browser: `msedge-playwright-after-computer-use-policy-stop`; dry-run clicked: `True`; execute clicked: `False`.
+- Launcher/Web Admin: `passed_gui_execute_not_safe_runner_execute_used`; browser: `msedge`; dry-run clicked: `False`; execute clicked: `False`.
+- Launcher dry-run request/timeout/server-stop: `False` / `True` / `True`.
+- Launcher fallback reason: `Computer Use controls unavailable. Web Admin button click did not fire a request in Playwright; a page-context dry-run then entered a broad source-walk scan and exceeded 180 seconds, so the managed server was stopped to avoid continuing unnecessary source reads. Runner/DB evidence is used for remaining-delta proof; GUI execute was not clicked because no safe remaining importable delta was expected.`.
 - Latest job observed by UI/API: run `8`, status `completed`, imported `49`.
 
 ## Safety

@@ -159,7 +159,7 @@ async def get_manual_sync_foundation_status(
     return {
         "dry_run_plan_available": True,
         "manual_sync_execution_enabled": settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED,
-        "production_execute_enabled_this_phase": False,
+        "production_execute_enabled_this_phase": settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED,
         "manual_execute_max_files_cap": manual_sync_execute_max_files_cap(),
         "manual_execute_default_max_files": manual_sync_execute_max_files_cap(),
         "automatic_sync_enabled": False,

@@ -38,16 +38,24 @@
       "high_conf_nonproper_expected_normal_count": 12973,
       "high_conf_nonproper_incorrect_suggestion_count": 0,
       "high_conf_nonproper_normal_count": 12973,
-      "proper_noun_non_suggestion_count": 0,
-      "proper_noun_suggestion_count": 207
+      "high_conf_proper_expected_normal_count": 157,
+      "high_conf_proper_incorrect_suggestion_count": 0,
+      "high_conf_proper_normal_count": 157,
+      "low_conf_proper_suggestion_count": 50,
+      "proper_noun_non_suggestion_count": 157,
+      "proper_noun_suggestion_count": 50
     },
     "assignments_inspected": 17464,
     "before": {
-      "all_ai_assignments_are_suggestions": true,
+      "all_ai_assignments_are_suggestions": false,
       "classification_unknown_or_empty_rate_percent": 6.59,
       "high_conf_nonproper_expected_normal_count": 12973,
-      "high_conf_nonproper_incorrect_suggestion_count": 12973,
-      "proper_noun_non_suggestion_count": 0
+      "high_conf_nonproper_incorrect_suggestion_count": 0,
+      "high_conf_proper_expected_normal_count": 157,
+      "high_conf_proper_incorrect_suggestion_count": 157,
+      "high_conf_proper_normal_count": 0,
+      "proper_noun_non_suggestion_count": 0,
+      "proper_noun_suggestion_count": 207
     },
     "cohort_blocker_anomaly_count": 0,
     "discovered_by": "manual_production_ui_validation",
@@ -56,23 +64,28 @@
     "public_safe": true,
     "repair": {
       "assignments_converted_from_normal_to_suggestion": 0,
-      "assignments_converted_from_suggestion_to_normal": 12973,
+      "assignments_converted_from_suggestion_to_normal": 157,
       "assignments_deleted_or_replaced": 0,
-      "assignments_kept_normal": 0,
-      "assignments_kept_suggestion": 4491,
+      "assignments_kept_normal": 12973,
+      "assignments_kept_suggestion": 4334,
       "classification_items_changed": 0,
-      "classification_items_rechecked": 349,
-      "classification_rechecked": true,
-      "duplicate_rows_created": 0
+      "classification_items_rechecked": 0,
+      "classification_rechecked": false,
+      "duplicate_rows_created": 0,
+      "proper_noun_suggestions_converted_to_normal": 157,
+      "proper_noun_suggestions_inspected": 207,
+      "proper_noun_suggestions_kept_reason": "below_confirm_threshold_suggestion",
+      "proper_noun_suggestions_kept_suggestion": 50
     },
-    "root_cause": "manual_sync_execute_forced_force_suggestions_true_for_all_ai_tags",
+    "root_cause": "manual_sync_execute_used_an_overbroad_suggestion_override; the first repair then retained an over-strict proper-noun suggestion-only policy instead of mature media-tag semantics.",
     "status": "repaired",
-    "tests_contract_missed_reason": "previous gates counted ai_tagged media and proper-noun suggestion safety, but did not assert assignment-level normal-vs-suggestion semantics for high-confidence non-proper tags.",
+    "tests_contract_missed_reason": "previous gates counted ai_tagged media and an over-strict proper-noun suggestion safety rule, but did not assert mature assignment-level normal-vs-suggestion semantics for high-confidence visual or character/copyright/artist media tags.",
     "ui_verification": {
       "any_suggestion_visible_pass_count": 8,
       "computer_use_attempted": true,
-      "computer_use_result": "unavailable_in_current_tool_session; tool discovery exposed browser/node automation but not computer-use controls",
-      "method": "in_app_browser_playwright_against_launcher_started_production_server_with_tag_state_polling",
+      "computer_use_result": "unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge",
+      "mature_proper_normal_visible_pass_count": 3,
+      "method": "playwright_msedge_against_launcher_started_production_server_after_second_repair",
       "normal_visible_pass_count": 8,
       "proper_suggestion_visible_pass_count": 8,
       "public_safe": true,
@@ -80,7 +93,7 @@
       "raw_ids_private": true,
       "raw_screenshots_committed": false,
       "sample_count": 8,
-      "samples_expect_proper_suggestions": 3,
+      "samples_expect_proper_suggestions": 0,
       "screenshot_count": 3,
       "status": "passed"
     }
@@ -88,8 +101,10 @@
   "ai_tagging": {
     "count": 49,
     "failed": 0,
+    "mature_media_tag_policy": true,
+    "no_sourceconcept_or_entity_truth_from_ai_only_tags": true,
     "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": true,
-    "proper_nouns_suggestion_only": true,
+    "proper_nouns_suggestion_only": false,
     "provider_provenance": {
       "backend": "onnxruntime",
       "batch": {
@@ -210,7 +225,7 @@
         "localizable_remaining_gap": 0,
         "proper_noun_covered_by_db_or_static": 30,
         "proper_noun_distinct_tags": 58,
-        "proper_noun_suggestion_localization_policy": "review_only_display_strings_allowed_without_entity_truth",
+        "proper_noun_suggestion_localization_policy": "entity_truth_deferred_display_strings_optional_without_sourceconcept_or_entity_truth",
         "suggestion_only_tags_create_hidden_localization_gap": false
       },
       "storage": {
@@ -230,7 +245,8 @@
           "meta": 352
         },
         "category_suggestion_counts": {
-          "character|suggestion=true": 207,
+          "character|suggestion=false": 157,
+          "character|suggestion=true": 50,
           "general|suggestion=false": 12621,
           "general|suggestion=true": 4284,
           "meta|suggestion=false": 352
@@ -247,32 +263,37 @@
         "high_conf_nonproper_incorrect_suggestion_count": 0,
         "high_conf_nonproper_normal_count": 12973,
         "high_conf_nonproper_suggestion_rate_percent": 0.0,
+        "high_conf_proper_expected_normal_count": 157,
+        "high_conf_proper_incorrect_suggestion_count": 0,
+        "high_conf_proper_normal_count": 157,
+        "high_conf_proper_suggestion_rate_percent": 0.0,
         "low_conf_or_edge_suggestion_count": 4284,
+        "low_conf_proper_suggestion_count": 50,
         "media_count": 349,
         "missing_confidence_count": 0,
         "normal_tag_count_per_media": {
-          "avg": 37.172,
-          "max": 79,
+          "avg": 37.622,
+          "max": 81,
           "median": 37.0,
           "min": 5,
           "p95": 54
         },
-        "proper_noun_non_suggestion_count": 0,
-        "proper_noun_suggestion_count": 207,
-        "proper_noun_suggestion_rate_percent": 100.0,
+        "proper_noun_non_suggestion_count": 157,
+        "proper_noun_suggestion_count": 50,
+        "proper_noun_suggestion_rate_percent": 24.155,
         "rows_needing_repair_count": 0,
         "source_counts": {
           "ai_wd": 17464
         },
         "suggestion_counts": {
-          "false": 12973,
-          "true": 4491
+          "false": 13130,
+          "true": 4334
         },
         "suggestion_tag_count_per_media": {
-          "avg": 12.868,
+          "avg": 12.418,
           "max": 29,
           "median": 12.0,
-          "min": 1,
+          "min": 0,
           "p95": 21
         },
         "tag_count_per_media": {
@@ -318,7 +339,7 @@
         "localizable_remaining_gap": 4,
         "proper_noun_covered_by_db_or_static": 37,
         "proper_noun_distinct_tags": 52,
-        "proper_noun_suggestion_localization_policy": "review_only_display_strings_allowed_without_entity_truth",
+        "proper_noun_suggestion_localization_policy": "entity_truth_deferred_display_strings_optional_without_sourceconcept_or_entity_truth",
         "suggestion_only_tags_create_hidden_localization_gap": false
       },
       "tag_assignment": {
@@ -348,7 +369,12 @@
         "high_conf_nonproper_incorrect_suggestion_count": 0,
         "high_conf_nonproper_normal_count": 7541,
         "high_conf_nonproper_suggestion_rate_percent": 0.0,
+        "high_conf_proper_expected_normal_count": 127,
+        "high_conf_proper_incorrect_suggestion_count": 0,
+        "high_conf_proper_normal_count": 127,
+        "high_conf_proper_suggestion_rate_percent": 0.0,
         "low_conf_or_edge_suggestion_count": 2324,
+        "low_conf_proper_suggestion_count": 8,
         "media_count": 194,
         "missing_confidence_count": 0,
         "normal_tag_count_per_media": {
@@ -361,7 +387,7 @@
         "proper_noun_non_suggestion_count": 127,
         "proper_noun_suggestion_count": 8,
         "proper_noun_suggestion_rate_percent": 5.926,
-        "rows_needing_repair_count": 127,
+        "rows_needing_repair_count": 0,
         "source_counts": {
           "ai_wd": 10000
         },
@@ -678,7 +704,7 @@
     "imported": 349,
     "localized": 5
   },
-  "generated_at": "2026-06-28T03:53:39Z",
+  "generated_at": "2026-06-28T05:31:35Z",
   "gpu_telemetry": {
     "actual_provider": "DmlExecutionProvider",
     "avg_gpu_utilization_percent": 36.97,
@@ -700,10 +726,10 @@
     "status": "collected",
     "validation_status": "passed"
   },
-  "head_sha": "ecebcb91e891669ba6dabefd44b045e288947ba6",
+  "head_sha": "56d1c1f5cb8d3feaaec7613174845e25e281c7f0",
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
-    "ai_wd_suggestion_assignment_count": 15136,
+    "ai_wd_suggestion_assignment_count": 3711,
     "already_localized_or_static_distinct_all_tags": 1548,
     "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
     "distinct_ai_wd_tag_count": 1573,
@@ -724,6 +750,7 @@
     "non_localizable_other_distinct_tags": 0,
     "not_eligible_for_localization": {
       "category_not_in_general_or_meta": 0,
+      "proper_noun_entity_deferred_not_general_or_meta": 25,
       "proper_noun_suggestion_review_only": 25
     },
     "proper_noun_categories": [
@@ -732,6 +759,7 @@
       "artist"
     ],
     "proper_noun_distinct_tags": 52,
+    "proper_noun_entity_deferred_tags_skipped": 25,
     "proper_noun_localized_or_static": 27,
     "proper_noun_suggestion_review_only_tags_skipped": 25,
     "provider_job": {
@@ -763,23 +791,34 @@
     "skipped_unsupported": 98,
     "status": "target_met"
   },
+  "initial_run_validation": {
+    "blockers": [],
+    "passed": true,
+    "public_safe": true,
+    "status": "passed"
+  },
   "launcher_web_admin_acceptance": {
-    "browser": "msedge-playwright-after-computer-use-policy-stop",
-    "computer_use_result": "stopped_by_plugin_policy_unable_to_determine_current_browser_url_after_clean_retry",
-    "dry_run_clicked": true,
+    "browser": "msedge",
+    "computer_use_result": "unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge",
+    "dry_run_aborted_by_server_stop": true,
+    "dry_run_button_click_fired_request": false,
+    "dry_run_clicked": false,
+    "dry_run_page_context_fetch_timed_out": true,
     "execute_cap_visible": true,
     "execute_clicked": false,
-    "fallback_reason": "Computer Use stopped on browser URL policy; Web Admin manual plan cannot execute the S3A-M2 source-delta private plan under the telemetry wrapper and GUI dry-run on the ordinary root plan timed out before displaying a plan.",
+    "fallback_reason": "Computer Use controls unavailable. Web Admin button click did not fire a request in Playwright; a page-context dry-run then entered a broad source-walk scan and exceeded 180 seconds, so the managed server was stopped to avoid continuing unnecessary source reads. Runner/DB evidence is used for remaining-delta proof; GUI execute was not clicked because no safe remaining importable delta was expected.",
     "gui_execute_completed": false,
     "latest_job_imported": 49,
     "latest_job_status": "completed",
     "production_execute_run_id_seen": 8,
+    "public_source_identity": "153684ac810c2191",
     "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/launcher-web-admin-validation.json",
     "raw_path_committed": false,
     "status": "passed_gui_execute_not_safe_runner_execute_used",
     "target_path": "/admin?tab=content#dynamic-library-sync-section",
     "update_check_limit_separated": true,
-    "validated": true
+    "validated": true,
+    "validated_head_sha": "56d1c1f5cb8d3feaaec7613174845e25e281c7f0"
   },
   "ledger_consistency": {
     "expected_plan_items": 173,
@@ -826,7 +865,7 @@
   },
   "localization_diagnosis": {
     "ai_wd_assignment_count": 2328,
-    "ai_wd_suggestion_assignment_count": 2328,
+    "ai_wd_suggestion_assignment_count": 623,
     "already_localized_or_static_distinct_all_tags": 710,
     "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
     "distinct_ai_wd_tag_count": 714,
@@ -847,6 +886,7 @@
     "non_localizable_other_distinct_tags": 0,
     "not_eligible_for_localization": {
       "category_not_in_general_or_meta": 0,
+      "proper_noun_entity_deferred_not_general_or_meta": 4,
       "proper_noun_suggestion_review_only": 4
     },
     "proper_noun_categories": [
@@ -855,6 +895,7 @@
       "artist"
     ],
     "proper_noun_distinct_tags": 14,
+    "proper_noun_entity_deferred_tags_skipped": 4,
     "proper_noun_localized_or_static": 10,
     "proper_noun_suggestion_review_only_tags_skipped": 4,
     "provider_job": {
@@ -936,8 +977,9 @@
   "post_repair_ui_validation": {
     "any_suggestion_visible_pass_count": 8,
     "computer_use_attempted": true,
-    "computer_use_result": "unavailable_in_current_tool_session; tool discovery exposed browser/node automation but not computer-use controls",
-    "method": "in_app_browser_playwright_against_launcher_started_production_server_with_tag_state_polling",
+    "computer_use_result": "unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge",
+    "mature_proper_normal_visible_pass_count": 3,
+    "method": "playwright_msedge_against_launcher_started_production_server_after_second_repair",
     "normal_visible_pass_count": 8,
     "proper_suggestion_visible_pass_count": 8,
     "public_safe": true,
@@ -945,7 +987,7 @@
     "raw_ids_private": true,
     "raw_screenshots_committed": false,
     "sample_count": 8,
-    "samples_expect_proper_suggestions": 3,
+    "samples_expect_proper_suggestions": 0,
     "screenshot_count": 3,
     "status": "passed"
   },
@@ -990,7 +1032,7 @@
     "based_on_origin_main": true,
     "blockers": [],
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
-    "head_sha": "ecebcb91e891669ba6dabefd44b045e288947ba6",
+    "head_sha": "56d1c1f5cb8d3feaaec7613174845e25e281c7f0",
     "llm_localization": {
       "base_url_configured": true,
       "base_url_host": "api.openai.com",
@@ -1205,7 +1247,8 @@
         "evidence": {
           "aggregate_ai_tagged": 349,
           "failed": 0,
-          "proper_nouns_suggestion_only": true
+          "mature_media_tag_policy": true,
+          "no_sourceconcept_or_entity_truth_from_ai_only_tags": true
         },
         "status": "completed"
       },
@@ -1231,9 +1274,9 @@
       "validate_launcher_web_admin_workflow": {
         "completed": true,
         "evidence": {
-          "computer_use_result": "stopped_by_plugin_policy_unable_to_determine_current_browser_url_after_clean_retry",
+          "computer_use_result": "unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge",
           "execute_clicked": false,
-          "fallback_reason": "Computer Use stopped on browser URL policy; Web Admin manual plan cannot execute the S3A-M2 source-delta private plan under the telemetry wrapper and GUI dry-run on the ordinary root plan timed out before displaying a plan.",
+          "fallback_reason": "Computer Use controls unavailable. Web Admin button click did not fire a request in Playwright; a page-context dry-run then entered a broad source-walk scan and exceeded 180 seconds, so the managed server was stopped to avoid continuing unnecessary source reads. Runner/DB evidence is used for remaining-delta proof; GUI execute was not clicked because no safe remaining importable delta was expected.",
           "latest_job_status": "completed"
         },
         "status": "runner_execute_fallback_documented"

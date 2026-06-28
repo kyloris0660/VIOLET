@@ -1537,6 +1537,7 @@ def _set_nested(payload: dict, path: str, value: object) -> None:
 def _s3a_m2_summary(**overrides: object) -> dict:
     summary = {
         "phase": "S3A-M2",
+        "head_sha": "head-abc123",
         "pipeline_contract": {
             "contract_id": "s3a_m2_production_delta_e2e_contract_v1",
             "status": "target_met",
@@ -1583,6 +1584,7 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "partial_scan": False,
         },
         "execute": {
+            "run_id": 8,
             "status": "completed",
             "imported": 100,
             "classified": 100,
@@ -1596,7 +1598,9 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "count": 100,
             "failed": 0,
             "skipped": 0,
-            "proper_nouns_suggestion_only": True,
+            "mature_media_tag_policy": True,
+            "proper_nouns_suggestion_only": False,
+            "no_sourceconcept_or_entity_truth_from_ai_only_tags": True,
             "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": True,
         },
         "localization": {
@@ -1610,6 +1614,8 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "candidate_count": 80,
             "candidate_overflow": False,
             "localization_limit_status": "under_limit",
+            "dynamic_source_items_target_status": "localized",
+            "dynamic_source_items_deferred_reason": None,
         },
         "localization_diagnosis": {
             "status": "completed",
@@ -1660,6 +1666,12 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "execute_ran": True,
             "status_polled_or_serialized": True,
         },
+        "initial_run_validation": {
+            "passed": True,
+            "blockers": [],
+            "status": "passed",
+            "public_safe": True,
+        },
         "placeholder_hydration": {
             "status": "completed",
             "placeholder_count_before_hydration": 2,
@@ -1695,6 +1707,9 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "status": "passed",
             "target_path": "/admin?tab=content#dynamic-library-sync-section",
             "execute_clicked": False,
+            "production_execute_run_id_seen": 8,
+            "validated_head_sha": "head-abc123",
+            "public_source_identity": "source-abc123",
         },
         "standard_pipeline_flow": {
             "version": 1,
@@ -1738,12 +1753,20 @@ def _s3a_m2_summary(**overrides: object) -> dict:
                 "all_ai_assignments_are_suggestions": True,
                 "high_conf_nonproper_expected_normal_count": 600,
                 "high_conf_nonproper_incorrect_suggestion_count": 600,
+                "high_conf_proper_expected_normal_count": 25,
+                "high_conf_proper_incorrect_suggestion_count": 25,
+                "high_conf_proper_normal_count": 0,
                 "proper_noun_non_suggestion_count": 0,
+                "proper_noun_suggestion_count": 25,
             },
             "repair": {
-                "assignments_converted_from_suggestion_to_normal": 600,
+                "assignments_converted_from_suggestion_to_normal": 625,
                 "assignments_converted_from_normal_to_suggestion": 0,
-                "assignments_kept_suggestion": 400,
+                "assignments_kept_suggestion": 375,
+                "proper_noun_suggestions_inspected": 25,
+                "proper_noun_suggestions_converted_to_normal": 25,
+                "proper_noun_suggestions_kept_suggestion": 0,
+                "proper_noun_suggestions_kept_reason": "below_confirm_threshold_suggestion",
                 "assignments_deleted_or_replaced": 0,
                 "duplicate_rows_created": 0,
             },
@@ -1752,8 +1775,12 @@ def _s3a_m2_summary(**overrides: object) -> dict:
                 "high_conf_nonproper_expected_normal_count": 600,
                 "high_conf_nonproper_incorrect_suggestion_count": 0,
                 "high_conf_nonproper_normal_count": 600,
-                "proper_noun_non_suggestion_count": 0,
-                "proper_noun_suggestion_count": 25,
+                "high_conf_proper_expected_normal_count": 25,
+                "high_conf_proper_incorrect_suggestion_count": 0,
+                "high_conf_proper_normal_count": 25,
+                "low_conf_proper_suggestion_count": 3,
+                "proper_noun_non_suggestion_count": 25,
+                "proper_noun_suggestion_count": 3,
             },
             "entity_truth_violations_found": 0,
             "localization_remaining_gap": 0,
@@ -3917,6 +3944,21 @@ def test_s3a_m2_contract_rejects_localization_partial_without_overflow() -> None
     assert "s3a_m2_localization_partial_without_overflow" in _error_codes(result)
 
 
+def test_s3a_m2_contract_rejects_localization_overflow_marked_localized() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["localization"]["candidate_overflow"] = True
+    summary["localization"]["status"] = "completed"
+    summary["localization"]["dynamic_source_items_target_status"] = "localized"
+    summary["localization"]["dynamic_source_items_deferred_reason"] = None
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_localization_overflow_claimed_complete" in codes
+    assert "s3a_m2_localization_overflow_source_items_not_deferred" in codes
+    assert "s3a_m2_localization_overflow_missing_deferred_reason" in codes
+
+
 def test_s3a_m2_contract_rejects_incomplete_standard_pipeline_step() -> None:
     summary = copy.deepcopy(_s3a_m2_summary())
     summary["standard_pipeline_flow"]["status"] = "incomplete"
@@ -3959,6 +4001,30 @@ def test_s3a_m2_contract_rejects_test_db_production_acceptance() -> None:
     assert "s3a_m2_production_acceptance_on_test_db" in _error_codes(result)
 
 
+def test_s3a_m2_contract_rejects_initial_run_validation_failure() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["initial_run_validation"]["passed"] = False
+    summary["initial_run_validation"]["blockers"] = ["initial_ledger_consistency_not_passed"]
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_initial_run_validation_not_passed" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_stale_launcher_validation_artifact() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["production_execute_run_id_seen"] = 7
+    summary["launcher_web_admin_acceptance"]["validated_head_sha"] = "old-head"
+    summary["launcher_web_admin_acceptance"]["public_source_identity"] = "source-old"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_launcher_validation_run_id_mismatch" in codes
+    assert "s3a_m2_launcher_validation_head_sha_mismatch" in codes
+    assert "s3a_m2_launcher_validation_source_mismatch" in codes
+
+
 def test_s3a_m2_contract_rejects_all_ai_suggestions_with_high_conf_nonproper_tags() -> None:
     summary = copy.deepcopy(_s3a_m2_summary())
     summary["ai_tag_assignment_incident"]["status"] = "blocked"
@@ -3971,18 +4037,22 @@ def test_s3a_m2_contract_rejects_all_ai_suggestions_with_high_conf_nonproper_tag
     codes = _error_codes(result)
 
     assert "s3a_m2_ai_tag_assignment_incident_not_resolved" in codes
-    assert "s3a_m2_all_ai_tags_suggestions_with_nonproper_expected" in codes
+    assert "s3a_m2_all_ai_tags_suggestions_with_mature_policy_expected" in codes
     assert "s3a_m2_high_conf_nonproper_ai_tags_still_suggestions" in codes
     assert "s3a_m2_high_conf_nonproper_ai_tags_not_normalized" in codes
 
 
-def test_s3a_m2_contract_rejects_proper_noun_ai_tags_as_normal() -> None:
+def test_s3a_m2_contract_rejects_high_conf_proper_ai_tags_left_as_suggestions() -> None:
     summary = copy.deepcopy(_s3a_m2_summary())
-    summary["ai_tag_assignment_incident"]["after"]["proper_noun_non_suggestion_count"] = 1
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_proper_expected_normal_count"] = 7
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_proper_incorrect_suggestion_count"] = 7
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_proper_normal_count"] = 0
 
     result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
 
-    assert "s3a_m2_proper_noun_ai_tags_not_review_only" in _error_codes(result)
+    codes = _error_codes(result)
+    assert "s3a_m2_high_conf_proper_ai_tags_still_suggestions" in codes
+    assert "s3a_m2_high_conf_proper_ai_tags_not_normalized" in codes
 
 
 def test_s3a_m2_contract_rejects_abnormal_cohort_distribution() -> None:

@@ -324,6 +324,12 @@ def _verify_execute_gates(
             "Manual sync execute is disabled. Set DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED=true only for an approved bounded run.",
             status_code=409,
         )
+    if not settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED:
+        raise ManualSyncExecuteError(
+            "manual_sync_execute_disabled",
+            "Manual sync execute is disabled. Set DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED=true only for an approved bounded run.",
+            status_code=409,
+        )
     if settings.DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED or settings.S3B_UNATTENDED_SYNC_ENABLED:
         raise ManualSyncExecuteError(
             "unattended_sync_flag_enabled",
@@ -403,6 +409,12 @@ def _verify_execute_recheck(
     production_acceptance_approved: bool,
 ) -> None:
     if not settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED:
+        raise ManualSyncExecuteError(
+            "manual_sync_execute_disabled",
+            "Manual sync execute became disabled before the run started.",
+            status_code=409,
+        )
+    if not settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED:
         raise ManualSyncExecuteError(
             "manual_sync_execute_disabled",
             "Manual sync execute became disabled before the run started.",
@@ -1128,7 +1140,6 @@ def _ai_tag_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
         media_id,
         dry_run=False,
         force_suggestions=False,
-        proper_noun_suggestions=True,
         local_files_only=True,
         schedule_localization=False,
     )
@@ -1257,14 +1268,15 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 else:
                     metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
                     item_failure_reason = _manual_public_reason_code(preflight_reason)
-                    if item_failure_reason is None and state == "import_planned":
+                    expected_hash = str(plan_item.get("content_hash") or "")
+                    should_verify_content = state == "import_planned" or bool(expected_hash)
+                    if item_failure_reason is None and should_verify_content:
                         current_hash, hash_reason = _calculate_manual_plan_file_hash(
                             source_file,
                             max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS)),
                         )
                         item_failure_reason = _manual_public_reason_code(hash_reason)
                         if item_failure_reason is None:
-                            expected_hash = str(plan_item.get("content_hash") or "")
                             if expected_hash and current_hash and current_hash != expected_hash:
                                 item_failure_reason = "content_changed_after_plan"
                             current_content_hash = current_hash or current_content_hash

@@ -47,6 +47,7 @@ from app.services.manual_sync_execute_service import (  # noqa: E402
     create_manual_sync_execute_run,
     execute_manual_sync_run,
 )
+from app.utils.media_processor import calculate_file_hash  # noqa: E402
 from scripts import run_s3a_m1_manual_sync_execute as runner  # noqa: E402
 
 
@@ -98,6 +99,7 @@ def _patch_test_storage(monkeypatch, tmp_path: Path) -> Path:
 
 def _enable_manual_execute(monkeypatch) -> None:
     monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
     monkeypatch.setenv("VIOLET_ENV", "test")
     monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
     monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
@@ -884,6 +886,35 @@ def test_s3a_m1_execute_rejects_max_files_over_cap(db, tmp_path, monkeypatch):
     assert exc.value.code == "manual_sync_execute_max_files_exceeded"
 
 
+def test_s3a_m1_execute_requires_execute_enabled_flag(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "false")
+    source_root = tmp_path / "source"
+    _write_png(source_root / "one.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+        )
+
+    assert exc.value.code == "manual_sync_execute_disabled"
+
+
 def test_s3a_m1_execute_allows_max_files_within_cap_and_records_cap(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     source_root = tmp_path / "source"
@@ -1535,7 +1566,7 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
     assert run_item.current_metadata_json["classification"]["content_class"] == "anime"
 
 
-def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, monkeypatch):
+def test_s3a_m1_manual_execute_ai_proper_nouns_follow_mature_media_tag_policy(db, tmp_path, monkeypatch):
     import app.services.ai_tagging_service as ai_tagging_service
 
     class FakeTagger:
@@ -1551,6 +1582,9 @@ def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, 
         def predict_from_file(self, *_args, **_kwargs):
             return [
                 {"name": "hakurei_reimu", "category": "character", "confidence": 0.99},
+                {"name": "touhou", "category": "copyright", "confidence": 0.98},
+                {"name": "zun", "category": "artist", "confidence": 0.97},
+                {"name": "edge_character", "category": "character", "confidence": 0.25},
             ]
 
     _enable_manual_execute(monkeypatch)
@@ -1583,25 +1617,37 @@ def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, 
     result = execute_manual_sync_run(db, run_id=run.id)
 
     assert result["status"] == "completed"
-    tag = db.query(Tag).filter(Tag.name == "hakurei_reimu").one()
-    assert tag.category == TagCategoryEnum.character
-    media_tag = db.execute(
-        blombooru_media_tags.select().where(
-            blombooru_media_tags.c.tag_id == tag.id,
+    rows = {
+        row.name: row
+        for row in db.query(
+            Tag.name,
+            Tag.category,
+            blombooru_media_tags.c.source,
+            blombooru_media_tags.c.is_suggestion,
+            blombooru_media_tags.c.is_locked,
         )
-    ).one()
-    assert media_tag.source == "ai_wd"
-    assert media_tag.is_suggestion is True
-    assert media_tag.is_locked is False
+        .join(blombooru_media_tags, Tag.id == blombooru_media_tags.c.tag_id)
+        .all()
+    }
+    assert rows["hakurei_reimu"].category == TagCategoryEnum.character
+    assert rows["hakurei_reimu"].source == "ai_wd"
+    assert rows["hakurei_reimu"].is_suggestion is False
+    assert rows["hakurei_reimu"].is_locked is False
+    assert rows["touhou"].category == TagCategoryEnum.copyright
+    assert rows["touhou"].is_suggestion is False
+    assert rows["zun"].category == TagCategoryEnum.artist
+    assert rows["zun"].is_suggestion is False
+    assert rows["edge_character"].category == TagCategoryEnum.character
+    assert rows["edge_character"].is_suggestion is True
     assert db.query(Entity).count() == 0
     assert db.query(MediaEntityAssignment).count() == 0
     assert db.query(SourceConcept).count() == 0
     run_item = db.query(DynamicSyncRunItem).one()
     assert run_item.current_metadata_json["ai_tagging"]["suggestions_added"] == 1
-    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 0
+    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 3
 
 
-def test_s3a_m2_manual_execute_ai_policy_confirms_general_but_suggests_proper_and_low_confidence(
+def test_s3a_m2_manual_execute_ai_policy_confirms_mature_categories_and_suggests_low_confidence(
     db,
     tmp_path,
     monkeypatch,
@@ -1622,7 +1668,10 @@ def test_s3a_m2_manual_execute_ai_policy_confirms_general_but_suggests_proper_an
             return [
                 {"name": "long_hair", "category": "general", "confidence": 0.92},
                 {"name": "hakurei_reimu", "category": "character", "confidence": 0.99},
+                {"name": "touhou", "category": "copyright", "confidence": 0.99},
+                {"name": "zun", "category": "artist", "confidence": 0.99},
                 {"name": "blue_ribbon", "category": "general", "confidence": 0.25},
+                {"name": "edge_character", "category": "character", "confidence": 0.25},
             ]
 
     _enable_manual_execute(monkeypatch)
@@ -1670,13 +1719,16 @@ def test_s3a_m2_manual_execute_ai_policy_confirms_general_but_suggests_proper_an
     }
     assert rows["long_hair"].is_suggestion is False
     assert rows["long_hair"].is_locked is False
-    assert rows["hakurei_reimu"].is_suggestion is True
+    assert rows["hakurei_reimu"].is_suggestion is False
+    assert rows["touhou"].is_suggestion is False
+    assert rows["zun"].is_suggestion is False
     assert rows["blue_ribbon"].is_suggestion is True
+    assert rows["edge_character"].is_suggestion is True
     assert db.query(Entity).count() == 0
     assert db.query(MediaEntityAssignment).count() == 0
     assert db.query(SourceConcept).count() == 0
     run_item = db.query(DynamicSyncRunItem).one()
-    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 1
+    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 4
     assert run_item.current_metadata_json["ai_tagging"]["suggestions_added"] == 2
 
 
@@ -2083,6 +2135,57 @@ def test_s3a_m1_execute_does_not_hash_non_import_skip_items(db, tmp_path, monkey
     run_items = db.query(DynamicSyncRunItem).all()
     assert len(run_items) == 1
     assert run_items[0].item_state == "skipped_unsupported"
+
+
+def test_s3a_m1_execute_revalidates_existing_media_skip_hash_before_trusting_plan(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    planned_existing = source_root / "existing.png"
+    _write_png(planned_existing, (10, 20, 30))
+    existing_hash = calculate_file_hash(planned_existing)
+    db.add(
+        Media(
+            filename="existing-redacted.png",
+            path="media/original/existing-redacted.png",
+            hash=existing_hash,
+            file_type=FileTypeEnum.image,
+        )
+    )
+    db.commit()
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    _write_png(planned_existing, (90, 80, 70))
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    assert result["failed_items"] == 1
+    assert result["manual_sync_execute"]["outcome_counts"]["failed"] == 1
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.item_state == "failed"
+    assert run_item.reason == "content_changed_after_plan"
+    assert db.query(Media).count() == 1
 
 
 def test_s3a_m1_execute_materializes_unprocessed_items_on_cancel(db, tmp_path, monkeypatch):

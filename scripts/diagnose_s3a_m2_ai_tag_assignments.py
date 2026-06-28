@@ -122,14 +122,16 @@ def open_db_session():
 
 def load_run_ids_from_summary(path: Path) -> list[int]:
     if not path.exists():
-        return [7, 8]
+        raise RuntimeError("s3a_m2_summary_missing_run_ids")
     payload = json.loads(path.read_text(encoding="utf-8"))
     ids = []
     for key in ("initial_run", "remaining_run", "execute"):
         value = (payload.get(key) or {}).get("run_id")
         if value:
             ids.append(int(value))
-    return sorted(set(ids)) or [7, 8]
+    if not ids:
+        raise RuntimeError("s3a_m2_summary_missing_run_ids")
+    return sorted(set(ids))
 
 
 def tag_threshold(category: str, settings: Any) -> float:
@@ -150,10 +152,19 @@ def is_proper(row: Mapping[str, Any]) -> bool:
     return str(row.get("category") or "") in PROPER_NOUN_CATEGORIES
 
 
+def is_high_conf_proper(row: Mapping[str, Any], settings: Any) -> bool:
+    confidence = row.get("confidence")
+    return is_proper(row) and confidence is not None and float(confidence) >= tag_threshold(str(row.get("category") or ""), settings)
+
+
+def is_mature_policy_confirmed(row: Mapping[str, Any], settings: Any) -> bool:
+    category = str(row.get("category") or "")
+    confidence = row.get("confidence")
+    return confidence is not None and float(confidence) >= tag_threshold(category, settings)
+
+
 def target_suggestion_state(row: Mapping[str, Any], settings: Any) -> bool:
-    if is_proper(row):
-        return True
-    if is_high_conf_nonproper(row, settings):
+    if is_mature_policy_confirmed(row, settings):
         return False
     return True
 
@@ -248,6 +259,10 @@ def summarize_assignments(rows: list[dict[str, Any]], media_ids: list[int], sett
     high_conf_nonproper = 0
     high_conf_nonproper_suggestions = 0
     high_conf_nonproper_normal = 0
+    high_conf_proper = 0
+    high_conf_proper_suggestions = 0
+    high_conf_proper_normal = 0
+    low_conf_proper_suggestions = 0
     low_conf_or_edge_suggestions = 0
     proper_suggestions = 0
     proper_normal = 0
@@ -276,6 +291,14 @@ def summarize_assignments(rows: list[dict[str, Any]], media_ids: list[int], sett
                 proper_suggestions += 1
             else:
                 proper_normal += 1
+            if is_high_conf_proper(row, settings):
+                high_conf_proper += 1
+                if suggestion:
+                    high_conf_proper_suggestions += 1
+                else:
+                    high_conf_proper_normal += 1
+            elif suggestion:
+                low_conf_proper_suggestions += 1
         elif is_high_conf_nonproper(row, settings):
             high_conf_nonproper += 1
             if suggestion:
@@ -308,6 +331,11 @@ def summarize_assignments(rows: list[dict[str, Any]], media_ids: list[int], sett
         "proper_noun_suggestion_count": int(proper_suggestions),
         "proper_noun_non_suggestion_count": int(proper_normal),
         "proper_noun_suggestion_rate_percent": pct(proper_suggestions, proper_suggestions + proper_normal),
+        "high_conf_proper_expected_normal_count": int(high_conf_proper),
+        "high_conf_proper_incorrect_suggestion_count": int(high_conf_proper_suggestions),
+        "high_conf_proper_normal_count": int(high_conf_proper_normal),
+        "high_conf_proper_suggestion_rate_percent": pct(high_conf_proper_suggestions, high_conf_proper),
+        "low_conf_proper_suggestion_count": int(low_conf_proper_suggestions),
         "high_conf_nonproper_expected_normal_count": int(high_conf_nonproper),
         "high_conf_nonproper_incorrect_suggestion_count": int(high_conf_nonproper_suggestions),
         "high_conf_nonproper_normal_count": int(high_conf_nonproper_normal),
@@ -369,7 +397,7 @@ def localization_summary(db: Any, rows: list[dict[str, Any]], *, lang: str) -> d
         "localizable_remaining_gap": len(localizable - covered),
         "proper_noun_distinct_tags": len(proper),
         "proper_noun_covered_by_db_or_static": len(proper & covered),
-        "proper_noun_suggestion_localization_policy": "review_only_display_strings_allowed_without_entity_truth",
+        "proper_noun_suggestion_localization_policy": "entity_truth_deferred_display_strings_optional_without_sourceconcept_or_entity_truth",
         "suggestion_only_tags_create_hidden_localization_gap": False,
     }
 
@@ -504,8 +532,15 @@ def build_cohort_audit(db: Any, *, run_ids: list[int], baseline_limit: int, lang
                 "blocker": affected_assignment["rows_needing_repair_count"] > 0,
             }
         )
-    if affected_assignment["proper_noun_non_suggestion_count"] > 0:
-        anomalies.append({"code": "proper_noun_ai_assignment_not_suggestion", "status": "confirmed_bug", "blocker": True})
+    if affected_assignment["high_conf_proper_incorrect_suggestion_count"] > 0:
+        anomalies.append(
+            {
+                "code": "high_conf_proper_ai_assignment_still_suggestion",
+                "status": "confirmed_bug",
+                "blocker": True,
+                "affected_count": affected_assignment["high_conf_proper_incorrect_suggestion_count"],
+            }
+        )
     if affected_classification["unknown_or_empty_rate_percent"] > max(80.0, baseline_classification["unknown_or_empty_rate_percent"] + 50.0):
         anomalies.append(
             {
@@ -526,8 +561,9 @@ def build_cohort_audit(db: Any, *, run_ids: list[int], baseline_limit: int, lang
     blocker_count = sum(1 for item in anomalies if item.get("blocker"))
     normal_semantics = (
         affected_assignment["high_conf_nonproper_incorrect_suggestion_count"] == 0
-        and affected_assignment["proper_noun_non_suggestion_count"] == 0
+        and affected_assignment["high_conf_proper_incorrect_suggestion_count"] == 0
         and affected_assignment["high_conf_nonproper_normal_count"] > 0
+        and affected_assignment["high_conf_proper_normal_count"] >= affected_assignment["high_conf_proper_expected_normal_count"]
     )
     return {
         "status": "passed_after_repair" if blocker_count == 0 and normal_semantics else "blocked_anomalies_remaining",
@@ -579,12 +615,20 @@ def repair_assignments(
     converted_to_suggestion = 0
     kept_suggestion = 0
     kept_normal = 0
+    proper_suggestions_inspected = 0
+    proper_suggestions_converted_to_normal = 0
+    proper_suggestions_kept_suggestion = 0
     for row in rows:
         desired = target_suggestion_state(row, settings)
         before = bool(row["is_suggestion"])
+        proper = is_proper(row)
+        if proper and before:
+            proper_suggestions_inspected += 1
         if before == desired:
             if desired:
                 kept_suggestion += 1
+                if proper:
+                    proper_suggestions_kept_suggestion += 1
             else:
                 kept_normal += 1
             continue
@@ -599,6 +643,8 @@ def repair_assignments(
         touched_media_ids.add(int(row["media_id"]))
         if before and not desired:
             converted_to_normal += 1
+            if proper:
+                proper_suggestions_converted_to_normal += 1
         elif not before and desired:
             converted_to_suggestion += 1
         ledger_rows.append(
@@ -609,7 +655,7 @@ def repair_assignments(
                 "confidence": row.get("confidence"),
                 "before_is_suggestion": before,
                 "after_is_suggestion": desired,
-                "reason": "proper_noun_review_only" if desired and is_proper(row) else "mature_policy_high_conf_nonproper_normal",
+                "reason": "below_confirm_threshold_suggestion" if desired else "mature_policy_confirmed_normal",
             }
         )
 
@@ -649,6 +695,10 @@ def repair_assignments(
         "assignments_converted_from_normal_to_suggestion": converted_to_suggestion,
         "assignments_kept_suggestion": kept_suggestion,
         "assignments_kept_normal": kept_normal,
+        "proper_noun_suggestions_inspected": proper_suggestions_inspected,
+        "proper_noun_suggestions_converted_to_normal": proper_suggestions_converted_to_normal,
+        "proper_noun_suggestions_kept_suggestion": proper_suggestions_kept_suggestion,
+        "proper_noun_suggestions_kept_reason": "below_confirm_threshold_suggestion",
         "assignments_deleted_or_replaced": 0,
         "duplicate_rows_created": 0,
         "touched_media_count": len(touched_media_ids),
@@ -673,13 +723,17 @@ def build_incident_public(before: Mapping[str, Any] | None, after: Mapping[str, 
         "affected_run_ids": after.get("run_ids", []),
         "affected_media_count": after.get("affected_media_count"),
         "assignments_inspected": affected_after.get("assignment_count"),
-        "root_cause": "manual_sync_execute_forced_force_suggestions_true_for_all_ai_tags",
-        "tests_contract_missed_reason": "previous gates counted ai_tagged media and proper-noun suggestion safety, but did not assert assignment-level normal-vs-suggestion semantics for high-confidence non-proper tags.",
+        "root_cause": "manual_sync_execute_used_an_overbroad_suggestion_override; the first repair then retained an over-strict proper-noun suggestion-only policy instead of mature media-tag semantics.",
+        "tests_contract_missed_reason": "previous gates counted ai_tagged media and an over-strict proper-noun suggestion safety rule, but did not assert mature assignment-level normal-vs-suggestion semantics for high-confidence visual or character/copyright/artist media tags.",
         "before": {
             "all_ai_assignments_are_suggestions": before_assignment.get("all_ai_assignments_are_suggestions"),
             "high_conf_nonproper_expected_normal_count": before_assignment.get("high_conf_nonproper_expected_normal_count"),
             "high_conf_nonproper_incorrect_suggestion_count": before_assignment.get("high_conf_nonproper_incorrect_suggestion_count"),
+            "high_conf_proper_expected_normal_count": before_assignment.get("high_conf_proper_expected_normal_count"),
+            "high_conf_proper_incorrect_suggestion_count": before_assignment.get("high_conf_proper_incorrect_suggestion_count"),
+            "high_conf_proper_normal_count": before_assignment.get("high_conf_proper_normal_count"),
             "proper_noun_non_suggestion_count": before_assignment.get("proper_noun_non_suggestion_count"),
+            "proper_noun_suggestion_count": before_assignment.get("proper_noun_suggestion_count"),
             "classification_unknown_or_empty_rate_percent": (before or {}).get("affected", {})
             .get("classification", {})
             .get("unknown_or_empty_rate_percent"),
@@ -691,6 +745,10 @@ def build_incident_public(before: Mapping[str, Any] | None, after: Mapping[str, 
                 "assignments_converted_from_normal_to_suggestion",
                 "assignments_kept_suggestion",
                 "assignments_kept_normal",
+                "proper_noun_suggestions_inspected",
+                "proper_noun_suggestions_converted_to_normal",
+                "proper_noun_suggestions_kept_suggestion",
+                "proper_noun_suggestions_kept_reason",
                 "assignments_deleted_or_replaced",
                 "duplicate_rows_created",
                 "classification_rechecked",
@@ -705,6 +763,10 @@ def build_incident_public(before: Mapping[str, Any] | None, after: Mapping[str, 
             "high_conf_nonproper_expected_normal_count": affected_after.get("high_conf_nonproper_expected_normal_count"),
             "high_conf_nonproper_incorrect_suggestion_count": affected_after.get("high_conf_nonproper_incorrect_suggestion_count"),
             "high_conf_nonproper_normal_count": affected_after.get("high_conf_nonproper_normal_count"),
+            "high_conf_proper_expected_normal_count": affected_after.get("high_conf_proper_expected_normal_count"),
+            "high_conf_proper_incorrect_suggestion_count": affected_after.get("high_conf_proper_incorrect_suggestion_count"),
+            "high_conf_proper_normal_count": affected_after.get("high_conf_proper_normal_count"),
+            "low_conf_proper_suggestion_count": affected_after.get("low_conf_proper_suggestion_count"),
             "proper_noun_non_suggestion_count": affected_after.get("proper_noun_non_suggestion_count"),
             "proper_noun_suggestion_count": affected_after.get("proper_noun_suggestion_count"),
             "classification_content_class_counts": classification_after.get("content_class_counts"),
@@ -728,6 +790,9 @@ def load_ui_validation_public(path: Path = DEFAULT_UI_VALIDATION_JSON) -> dict[s
         "computer_use_result": payload.get("computer_use_result"),
         "sample_count": int(payload.get("sample_count") or 0),
         "normal_visible_pass_count": int(payload.get("normal_visible_pass_count") or 0),
+        "mature_proper_normal_visible_pass_count": int(
+            payload.get("mature_proper_normal_visible_pass_count") or 0
+        ),
         "proper_suggestion_visible_pass_count": int(payload.get("proper_suggestion_visible_pass_count") or 0),
         "any_suggestion_visible_pass_count": int(payload.get("any_suggestion_visible_pass_count") or 0),
         "samples_expect_proper_suggestions": int(payload.get("samples_expect_proper_suggestions") or 0),
