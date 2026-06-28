@@ -498,6 +498,10 @@ def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
             # Key names are not automatically failures; values decide whether a
             # public field is unsafe. Path-like key text is still caught above.
             continue
+        if text is not None and kind == "key" and PRIVATE_CONTENT_HASH_KEY_RE.search(text):
+            finding = {"path": display_path, "kind": kind}
+            finding.update(_redacted_match_payload("private_content_hash_key_present", text))
+            findings.append(finding)
     return findings
 
 

@@ -574,9 +574,6 @@ def plan_manual_sync_dry_run(
             plan_timeout = True
             reason_counts["plan_timeout"] += 1
             break
-        if len(candidate_records) >= effective_max_files:
-            partial_scan = True
-            break
         scanned_files = index
 
         safe_label = f"file-{index:05d}"
@@ -601,6 +598,10 @@ def plan_manual_sync_dry_run(
         if reason is None and _manual_plan_can_skip_unchanged_known_item(known_item, metadata):
             unchanged_known_files += 1
             continue
+
+        if len(candidate_records) >= effective_max_files:
+            partial_scan = True
+            break
 
         if reason is None:
             reason = _manual_public_reason_code(_is_scannable_file(file_path, hydrated_only=hydrated_only))
@@ -873,10 +874,13 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         return True
     if import_status == "pending":
         return True
+    if import_status == "imported" and item.media_id is None:
+        return True
     stable_non_actionable = {
         "unsupported_extension",
         "hidden",
         "zero_byte",
+        "zero_byte_file",
         "read_error",
         "source_missing",
         "permission_denied",

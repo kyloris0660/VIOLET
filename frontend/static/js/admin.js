@@ -1893,7 +1893,10 @@ class AdminPanel {
 
         const syncBtn = document.getElementById('dynamic-sync-sync-pending-btn');
         const syncStatus = document.getElementById('dynamic-sync-sync-status');
-        const enabled = !!policy.manual_sync_execution_enabled && !policy.automatic_production_writes_enabled;
+        const executeEnabled = policy.manual_sync_execute_enabled !== undefined
+            ? !!policy.manual_sync_execute_enabled
+            : !!policy.production_execute_enabled_this_phase;
+        const enabled = !!policy.manual_sync_execution_enabled && executeEnabled && !policy.automatic_production_writes_enabled;
         const executeCap = parseInt(policy.manual_execute_max_files_cap || policy.manual_execute_default_max_files || 5, 10);
         const executeInput = document.getElementById('dynamic-sync-execute-max-files');
         const executeCapLabel = document.getElementById('dynamic-sync-execute-cap');

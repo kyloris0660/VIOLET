@@ -39,6 +39,7 @@ PHASE_SLUG = "s3a_m2_delta_e2e"
 CONTRACT_ID = "s3a_m2_production_delta_e2e_contract_v1"
 BRANCH = "codex/s3a-m2-production-delta-e2e-gpu-telemetry"
 DEFAULT_DELTA_CAP = 300
+APPROVED_DELTA_CAP_CEILING = 1000
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG
 DEFAULT_TELEMETRY_DIR = DEFAULT_OUTPUT_DIR / "telemetry"
 PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / "s3a-m2-production-delta-e2e.md"
@@ -162,6 +163,17 @@ def telemetry_dir_allowed(path: Path) -> bool:
     return True
 
 
+def validate_phase_limits(args: argparse.Namespace) -> None:
+    if int(args.delta_cap) <= 0:
+        raise S3AM2Blocked("delta_cap_must_be_positive")
+    if int(args.delta_cap) > APPROVED_DELTA_CAP_CEILING:
+        raise S3AM2Blocked("delta_cap_exceeds_s3a_m2_approved_ceiling")
+    if int(args.execute_duration_seconds) <= 0:
+        raise S3AM2Blocked("execute_duration_seconds_must_be_positive")
+    if int(args.translation_batch_max_items) <= 0:
+        raise S3AM2Blocked("translation_batch_max_items_must_be_positive")
+
+
 def prepare_output_dir(args: argparse.Namespace) -> Path:
     output_dir = args.output_dir.resolve()
     if not output_dir_allowed(output_dir):
@@ -207,6 +219,8 @@ class ResourceTelemetryMonitor:
         provider_getter,
         interval_seconds: float = 2.0,
     ) -> None:
+        if not telemetry_dir_allowed(telemetry_dir):
+            raise S3AM2Blocked("telemetry_dir_outside_approved_tree")
         self.telemetry_dir = telemetry_dir
         self.stage_tracker = stage_tracker
         self.provider_getter = provider_getter
@@ -402,6 +416,7 @@ def summarize_telemetry(samples_path: Path) -> dict[str, Any]:
 
 
 def configure_phase_env(args: argparse.Namespace) -> None:
+    validate_phase_limits(args)
     os.environ["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] = str(int(args.delta_cap))
     os.environ["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] = str(int(args.execute_duration_seconds))
     os.environ["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] = "true"
@@ -482,6 +497,11 @@ def collect_readiness(args: argparse.Namespace, root: Any) -> dict[str, Any]:
         blockers.append("branch_not_based_on_latest_origin_main")
     if args.execute and settings.VIOLET_ENV != "production":
         blockers.append("VIOLET_ENV_not_production")
+    db_name = str(getattr(settings, "DB_NAME", "") or "")
+    if args.execute and settings.VIOLET_ENV == "production" and db_name.casefold().endswith("_test"):
+        blockers.append("production_execute_db_identity_is_test_db")
+    if args.execute and settings.VIOLET_ENV == "production" and db_name.casefold() == "blombooru_test":
+        blockers.append("production_execute_db_identity_is_test_db")
     if not settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED:
         blockers.append("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED_false")
     if not settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED:
@@ -992,6 +1012,10 @@ def build_source_delta_plan(
             unchanged_known_files += 1
             continue
 
+        if len(candidate_records) >= effective_max_files:
+            partial_scan = True
+            break
+
         if reason is None and effective_stable_age > 0:
             mtime = metadata.get("mtime")
             if mtime is not None and created_ts - float(mtime) < effective_stable_age:
@@ -1022,9 +1046,6 @@ def build_source_delta_plan(
                 "source_status": str(getattr(existing, "source_status", "") or "available"),
             }
         )
-        if len(candidate_records) > effective_max_files:
-            partial_scan = True
-            break
 
     existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes)
     state_counts: Counter[str] = Counter()
@@ -1476,6 +1497,8 @@ def _existing_requires_source_delta_followup(existing: Any, args: argparse.Names
     import_status = str(getattr(existing, "import_status", "") or "")
     sync_state = str(getattr(existing, "sync_state", "") or "")
     reason = str(getattr(existing, "deferred_reason", "") or getattr(existing, "failure_reason", "") or "")
+    if import_status == "imported" and getattr(existing, "media_id", None) is None:
+        return True
     return (
         import_status in {"pending", "deferred", "failed"}
         or sync_state
@@ -3470,8 +3493,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.delta_cap <= 0:
         print("ERROR: --delta-cap must be positive", file=sys.stderr)
         return 2
-    if args.delta_cap > 1000:
-        print("ERROR: --delta-cap must not exceed the S3A-M2 approved ceiling of 1000", file=sys.stderr)
+    if args.delta_cap > APPROVED_DELTA_CAP_CEILING:
+        print(
+            f"ERROR: --delta-cap must not exceed the S3A-M2 approved ceiling of {APPROVED_DELTA_CAP_CEILING}",
+            file=sys.stderr,
+        )
         return 2
     if not telemetry_dir_allowed(args.telemetry_dir):
         print("ERROR: --telemetry-dir must be under .local_manifests/s3a_m2_delta_e2e/telemetry", file=sys.stderr)

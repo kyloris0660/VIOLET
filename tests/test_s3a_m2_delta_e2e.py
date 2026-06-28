@@ -28,6 +28,9 @@ from scripts.run_s3a_m2_delta_e2e_with_telemetry import (
     build_ledger_pending_plan,
     build_source_delta_plan,
     refresh_completion_claims,
+    ResourceTelemetryMonitor,
+    S3AM2Blocked,
+    StageTracker,
     s3a_m2_approval_phrase,
     summarize_telemetry,
 )
@@ -124,6 +127,15 @@ def test_s3a_m2_telemetry_summary_reads_nested_provider_provenance(tmp_path: Pat
     assert summary["actual_provider"] == "DmlExecutionProvider"
     assert summary["gpu_provider_used"] is True
     assert summary["cpu_fallback_observed"] is False
+
+
+def test_s3a_m2_telemetry_monitor_rejects_output_outside_approved_tree(tmp_path: Path) -> None:
+    with pytest.raises(S3AM2Blocked, match="telemetry_dir_outside_approved_tree"):
+        ResourceTelemetryMonitor(
+            telemetry_dir=tmp_path,
+            stage_tracker=StageTracker(),
+            provider_getter=lambda: {},
+        )
 
 
 def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
@@ -473,6 +485,7 @@ def test_s3a_m2_ledger_pending_plan_uses_pending_delta_and_redacts_private_field
 
 def test_s3a_m2_source_delta_plan_caps_delta_not_unchanged_known_files(tmp_path: Path) -> None:
     from PIL import Image
+    from app.services.dynamic_library_sync_service import _hash_text
 
     engine = create_engine(
         "sqlite://",
@@ -505,17 +518,26 @@ def test_s3a_m2_source_delta_plan_caps_delta_not_unchanged_known_files(tmp_path:
         )
         db.add(root)
         db.flush()
+        media = Media(
+            filename="known.png",
+            path="media/original/known.png",
+            hash="known-hash",
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
         db.add(
             DynamicSourceItem(
                 source_root_id=root.id,
                 relative_path="known.png",
-                relative_path_hash=hashlib.sha256("known.png".encode("utf-8")).hexdigest(),
+                relative_path_hash=_hash_text("known.png"),
                 file_size=unchanged_stat.st_size,
                 mtime_ns=unchanged_stat.st_mtime_ns,
                 content_hash="known-hash",
                 source_status="available",
                 sync_state="new",
                 import_status="imported",
+                media_id=media.id,
             )
         )
         db.commit()
@@ -539,6 +561,75 @@ def test_s3a_m2_source_delta_plan_caps_delta_not_unchanged_known_files(tmp_path:
         assert "fresh.png" not in public_json
         assert "known.png" not in public_json
         assert "known-hash" not in public_json
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_s3a_m2_source_delta_reincludes_imported_item_with_missing_media_link(tmp_path: Path) -> None:
+    from PIL import Image
+    from app.services.dynamic_library_sync_service import _hash_text
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        source_root = tmp_path / "library"
+        source_root.mkdir()
+        source_file = source_root / "orphaned-import.png"
+        Image.new("RGB", (2, 2), (8, 8, 8)).save(source_file)
+        stat = source_file.stat()
+        rel_hash = _hash_text("orphaned-import.png")
+        root = DynamicSourceRoot(
+            label="test",
+            root_path=str(source_root),
+            root_path_hash="abc1234567890defabc1234567890def",
+            is_active=True,
+        )
+        db.add(root)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path="orphaned-import.png",
+                relative_path_hash=rel_hash,
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash="previous-hash",
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                media_id=None,
+            )
+        )
+        db.commit()
+
+        args = SimpleNamespace(
+            delta_cap=300,
+            hydrated_only=True,
+            stable_age_seconds=0.0,
+            execute=False,
+            plan_created_at="",
+        )
+        plan = build_source_delta_plan(db, args, root, include_private_details=False)
+
+        counts = plan["counts"]
+        assert counts["total_seen"] == 1
+        assert counts["estimated_import_count"] == 1
+        assert counts["state_counts"]["import_planned"] == 1
     finally:
         db.close()
         Base.metadata.drop_all(engine)

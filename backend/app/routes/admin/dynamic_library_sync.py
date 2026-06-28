@@ -110,6 +110,8 @@ async def dynamic_library_sync_dashboard(
     policy = dict(payload.get("default_off_policy") or {})
     policy["manual_execute_max_files_cap"] = manual_sync_execute_max_files_cap()
     policy["manual_execute_default_max_files"] = manual_sync_execute_max_files_cap()
+    policy["manual_sync_execute_enabled"] = settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED
+    policy["production_execute_enabled_this_phase"] = settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED
     payload["default_off_policy"] = policy
     payload["runtime_provenance"] = _runtime_provenance()
     return payload

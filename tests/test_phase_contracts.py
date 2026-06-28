@@ -22,6 +22,14 @@ from scripts.phase_contracts.contract_registry import SOURCE_CONCEPT_FULL_CHAIN_
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "phase_contracts"
 
 
+def test_public_payload_redaction_rejects_content_hash_keys() -> None:
+    findings = contract_checks_module.scan_public_payload(
+        {"public": {"content_hash": "[redacted]", "nested": {"sha256": "[redacted]"}}}
+    )
+
+    assert {finding["code"] for finding in findings} >= {"private_content_hash_key_present"}
+
+
 def _current_test_head() -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "HEAD"],

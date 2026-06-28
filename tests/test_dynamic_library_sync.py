@@ -509,6 +509,14 @@ def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root
     )
     db.add(root)
     db.flush()
+    media = Media(
+        filename="a_known.png",
+        path="media/original/a_known.png",
+        hash=calculate_file_hash(known_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
     db.add(
         DynamicSourceItem(
             source_root_id=root.id,
@@ -516,10 +524,11 @@ def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root
             relative_path_hash=service._hash_text("a_known.png"),
             file_size=known_stat.st_size,
             mtime_ns=known_stat.st_mtime_ns,
-            content_hash=calculate_file_hash(known_path),
+            content_hash=media.hash,
             source_status="available",
             sync_state="imported",
             import_status="imported",
+            media_id=media.id,
         )
     )
     db.commit()

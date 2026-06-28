@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import threading
+import asyncio
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,8 @@ from ..models import (
     DynamicSourceRoot,
     DynamicSyncRun,
     DynamicSyncRunItem,
+    Tag,
+    TagTranslation,
     blombooru_media_tags,
 )
 from ..routes.media import process_and_save_media
@@ -68,6 +71,8 @@ MANUAL_SYNC_EXECUTE_MAX_CONSECUTIVE_FAILURES = 10
 MANUAL_SYNC_EXECUTE_MAX_DURATION_SECONDS = 10 * 60
 MANUAL_SYNC_EXECUTE_MAX_FILES = 5
 _ACTIVE_JOB_STATUSES = ("pending", "running", "cancelling")
+LOCALIZABLE_TAG_CATEGORIES = {"general", "meta"}
+PROPER_NOUN_TAG_CATEGORIES = {"character", "copyright", "artist"}
 
 
 def is_manual_sync_execute_active() -> bool:
@@ -1153,6 +1158,218 @@ def _ai_tag_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
     )
 
 
+def _tag_category_name(category: Any) -> str:
+    value = getattr(category, "value", category)
+    return str(value or "").casefold()
+
+
+def _covered_translation_names(db: Session, *, lang: str) -> set[str]:
+    from .tag_localization_service import _load_static_dict
+
+    translated = {
+        str(name)
+        for (name,) in db.query(TagTranslation.canonical_name)
+        .filter(TagTranslation.language == lang, TagTranslation.status != "rejected")
+        .all()
+    }
+    static = set((_load_static_dict().get("tags") or {}).keys())
+    return translated | static
+
+
+def _manual_sync_finalize_localization(
+    db: Session,
+    *,
+    run: DynamicSyncRun,
+    media_ids: List[int],
+    lang: str = "zh-CN",
+) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
+        "scheduled": False,
+        "safe_to_schedule": False,
+        "status": "completed_noop_no_imports",
+        "background_worker_started": False,
+        "auto_translation_enabled": False,
+        "llm_called": False,
+        "provider_call_count": 0,
+        "translated": 0,
+        "failed": 0,
+        "skipped": 0,
+        "language": lang,
+        "localizable_categories": sorted(LOCALIZABLE_TAG_CATEGORIES),
+        "proper_noun_categories": sorted(PROPER_NOUN_TAG_CATEGORIES),
+        "distinct_ai_wd_tag_count": 0,
+        "localizable_distinct_tags": 0,
+        "localizable_already_localized_or_static": 0,
+        "tags_requiring_localization_after_runner": 0,
+        "proper_noun_distinct_tags": 0,
+        "proper_noun_missing_translation_stable_reason_count": 0,
+        "dynamic_source_items_updated": 0,
+        "dynamic_source_items_target_status": None,
+        "blocked_reason": None,
+        "public_safe": True,
+    }
+    if not media_ids:
+        return result
+
+    imported_items = (
+        db.query(DynamicSourceItem)
+        .filter(DynamicSourceItem.media_id.in_(media_ids))
+        .filter(DynamicSourceItem.import_status == "imported")
+        .all()
+    )
+    eligible_media_ids = {
+        int(item.media_id)
+        for item in imported_items
+        if item.media_id is not None and str(item.ai_tagging_status or "") in {"ai_tagged", "tagged", "tagged_reused"}
+    }
+    if not eligible_media_ids:
+        updated = (
+            db.query(DynamicSourceItem)
+            .filter(DynamicSourceItem.media_id.in_(media_ids))
+            .filter(DynamicSourceItem.import_status == "imported")
+            .update(
+                {
+                    DynamicSourceItem.localization_status: "blocked_ai_tagging_not_completed",
+                    DynamicSourceItem.deferred_reason: "localization_requires_completed_ai_tags",
+                },
+                synchronize_session=False,
+            )
+        )
+        db.commit()
+        return {
+            **result,
+            "status": "blocked_ai_tagging_not_completed",
+            "blocked_reason": "localization_requires_completed_ai_tags",
+            "dynamic_source_items_updated": int(updated or 0),
+            "dynamic_source_items_target_status": "blocked_ai_tagging_not_completed",
+        }
+
+    covered = _covered_translation_names(db, lang=lang)
+    rows = (
+        db.query(Tag.name, Tag.category)
+        .join(blombooru_media_tags, Tag.id == blombooru_media_tags.c.tag_id)
+        .filter(blombooru_media_tags.c.media_id.in_(eligible_media_ids))
+        .filter(blombooru_media_tags.c.source == "ai_wd")
+        .distinct()
+        .all()
+    )
+    tag_categories = {str(name): _tag_category_name(category) for name, category in rows}
+    localizable = {name for name, category in tag_categories.items() if category in LOCALIZABLE_TAG_CATEGORIES}
+    proper = {name for name, category in tag_categories.items() if category in PROPER_NOUN_TAG_CATEGORIES}
+    localizable_missing = sorted(name for name in localizable if name not in covered)
+    translated = 0
+    failed = 0
+    provider_call_count = 0
+    llm_called = False
+    errors: list[str] = []
+
+    if localizable_missing:
+        if not settings.TAG_TRANSLATION_LLM_ENABLED:
+            blocked_reason = "localization_backend_disabled"
+        else:
+            try:
+                from .llm_translation_provider import get_llm_provider
+                from .tag_localization_service import upsert_translation, invalidate_translation_cache
+
+                provider = get_llm_provider()
+                if not provider.is_available():
+                    blocked_reason = "localization_provider_unavailable"
+                else:
+                    blocked_reason = None
+                    batch_size = max(1, min(int(settings.TAG_TRANSLATION_BATCH_MAX_ITEMS), len(localizable_missing)))
+                    candidate_by_name = {
+                        name: {"name": name, "category": tag_categories.get(name, "general")}
+                        for name in localizable_missing
+                    }
+                    for start in range(0, len(localizable_missing), batch_size):
+                        batch_names = localizable_missing[start : start + batch_size]
+                        inputs = [candidate_by_name[name] for name in batch_names]
+                        provider_call_count += 1
+                        llm_called = True
+                        try:
+                            translations = asyncio.run(provider.translate_tags(inputs))
+                        except Exception:
+                            errors.append("provider_batch_failed")
+                            failed += len(batch_names)
+                            continue
+                        seen_outputs: set[str] = set()
+                        for translation in translations:
+                            canonical = str(getattr(translation, "canonical_name", "") or "")
+                            if canonical not in candidate_by_name or canonical in seen_outputs:
+                                continue
+                            seen_outputs.add(canonical)
+                            item = candidate_by_name[canonical]
+                            saved = upsert_translation(
+                                db,
+                                canonical_name=canonical,
+                                display_name=getattr(translation, "display_name_zh", ""),
+                                lang=lang,
+                                aliases=getattr(translation, "aliases_zh", []) or [],
+                                category=item["category"],
+                                source="llm",
+                                status="translated",
+                                confidence=getattr(translation, "confidence", None),
+                                needs_review=bool(getattr(translation, "needs_review", False)),
+                                provider=provider.get_provider_name(),
+                            )
+                            if saved is None:
+                                result["skipped"] += 1
+                            else:
+                                translated += 1
+                        missing_from_provider = max(0, len(batch_names) - len(seen_outputs))
+                        failed += missing_from_provider
+                    invalidate_translation_cache()
+                    covered = _covered_translation_names(db, lang=lang)
+                    localizable_missing = sorted(name for name in localizable if name not in covered)
+            except Exception:
+                blocked_reason = "localization_execution_failed"
+                failed += len(localizable_missing)
+    else:
+        blocked_reason = None
+
+    if localizable_missing or failed:
+        target_status = "deferred"
+        target_reason = blocked_reason or "localization_failed"
+        status = "blocked_localization_gap_remaining" if localizable_missing else "completed_with_failures"
+    else:
+        target_status = "localized"
+        target_reason = None
+        status = "completed_existing_coverage" if translated == 0 else "completed"
+
+    update_values: Dict[Any, Any] = {DynamicSourceItem.localization_status: target_status}
+    if target_reason:
+        update_values[DynamicSourceItem.deferred_reason] = target_reason
+    else:
+        update_values[DynamicSourceItem.deferred_reason] = None
+    updated_items = (
+        db.query(DynamicSourceItem)
+        .filter(DynamicSourceItem.media_id.in_(eligible_media_ids))
+        .filter(DynamicSourceItem.import_status == "imported")
+        .update(update_values, synchronize_session=False)
+    )
+    db.commit()
+
+    return {
+        **result,
+        "status": status,
+        "blocked_reason": target_reason,
+        "llm_called": llm_called,
+        "provider_call_count": provider_call_count,
+        "translated": translated,
+        "failed": failed,
+        "errors": sorted(set(errors)),
+        "distinct_ai_wd_tag_count": len(tag_categories),
+        "localizable_distinct_tags": len(localizable),
+        "localizable_already_localized_or_static": len(localizable - set(localizable_missing)),
+        "tags_requiring_localization_after_runner": len(localizable_missing),
+        "proper_noun_distinct_tags": len(proper),
+        "proper_noun_missing_translation_stable_reason_count": len(proper - covered),
+        "proper_noun_missing_translation_reason": "proper_noun_translation_not_required_for_current_media_tag_layer",
+        "dynamic_source_items_updated": int(updated_items or 0),
+        "dynamic_source_items_target_status": target_status,
+    }
+
+
 def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
     global _active_execute_run_id
 
@@ -1277,6 +1494,12 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
                     item_failure_reason = _manual_public_reason_code(preflight_reason)
                     expected_hash = str(plan_item.get("content_hash") or "")
+                    if (
+                        item_failure_reason is None
+                        and state in {"import_planned", "skipped_existing_media", "skipped_duplicate"}
+                        and not expected_hash
+                    ):
+                        item_failure_reason = "plan_integrity_missing_content_hash"
                     should_verify_content = state == "import_planned" or bool(expected_hash)
                     if item_failure_reason is None and should_verify_content:
                         current_hash, hash_reason = _calculate_manual_plan_file_hash(
@@ -1685,7 +1908,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                                 "suggestions_added": result.get("suggestions_added", 0),
                             },
                         )
-                    item.localization_status = "blocked_llm_calls_forbidden"
+                    item.localization_status = "waiting_localization"
                 db.commit()
                 stage_processed += 1
                 processed_items += 1
@@ -1722,7 +1945,25 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             )
             run.summary_json = _set_stage(run.summary_json or {}, "ai_tagging", status=stage_status, processed=0, failed=0)
             db.commit()
-        run.summary_json = _set_stage(run.summary_json or {}, "localization", status="blocked", processed=0, failed=0)
+        localization_result = _manual_sync_finalize_localization(
+            db,
+            run=run,
+            media_ids=imported_media_ids,
+        )
+        run.summary_json = _set_stage(
+            run.summary_json or {},
+            "localization",
+            status=str(localization_result.get("status") or "unknown"),
+            processed=int(localization_result.get("dynamic_source_items_updated") or 0),
+            failed=int(localization_result.get("failed") or 0),
+        )
+        localization_items_updated = int(localization_result.get("dynamic_source_items_updated") or 0)
+        if localization_result.get("dynamic_source_items_target_status") == "localized":
+            counts["localized"] += localization_items_updated
+        elif localization_items_updated:
+            counts["localization_deferred"] += localization_items_updated
+        if int(localization_result.get("failed") or 0):
+            counts["localization_failed"] += int(localization_result.get("failed") or 0)
 
         run.failed_items = int(counts["failed"] + counts["classification_failed"] + counts["ai_tagging_failed"])
         run.pending_import_items = int(unprocessed_import_planned_count)
@@ -1740,10 +1981,10 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             unprocessed_count=unprocessed_count,
             unprocessed_import_planned_count=unprocessed_import_planned_count,
             budgets=_budget_policy_payload(),
-            localization=_localization_policy_payload([]),
+            localization=localization_result,
             source_mutation_performed=False,
             app_storage_mutation_performed=bool(imported_media_ids),
-            llm_calls_performed=False,
+            llm_calls_performed=bool(localization_result.get("llm_called")),
             external_provider_calls_performed=False,
             model_downloads_performed=False,
         )
