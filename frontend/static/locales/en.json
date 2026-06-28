@@ -357,6 +357,7 @@
             "confirm_execute_btn": "Confirm and execute",
             "copy_confirmation_btn": "Copy confirmation phrase",
             "advanced_controls": "Advanced / diagnostics",
+            "hydration_policy_cloud_aware": "Hydration: enabled for iCloud placeholders",
             "pending_new": "Update-check new",
             "pending_changed": "Update-check changed",
             "pending_deferred": "Historical deferred/failed",

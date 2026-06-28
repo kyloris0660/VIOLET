@@ -33,6 +33,7 @@ from ..models import (
 from ..services.job_control import build_ai_tagging_execution_profile
 from ..utils.local_library_scanner import (
     _calculate_file_hash_with_timeout,
+    _is_cloud_only,
     _is_scannable_file,
     validate_scan_paths,
 )
@@ -74,6 +75,7 @@ MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS = 600
 MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
     {
         "cloud_placeholder",
+        "cloud_hydration_failed",
         "classification_model_uncached",
         "content_changed_after_plan",
         "corrupted_image",
@@ -271,7 +273,14 @@ def _manual_state_for_reason(reason: str) -> str:
         return "skipped_changing"
     if reason in {"corrupted_image", "image_verify_failed"}:
         return "failed"
-    if reason in {"source_missing", "stat_error", "read_error", "read_timeout", "content_changed_after_plan"}:
+    if reason in {
+        "source_missing",
+        "stat_error",
+        "read_error",
+        "read_timeout",
+        "content_changed_after_plan",
+        "cloud_hydration_failed",
+    }:
         return "failed"
     return "skipped_unsupported"
 
@@ -526,9 +535,6 @@ def plan_manual_sync_dry_run(
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """Build a public-safe manual sync dry-run plan without DB or file writes."""
-    if hydrated_only is False:
-        raise ValueError("manual sync dry-run requires hydrated_only=true")
-
     resolved = validate_source_root_path(source_path)
     created_at = now or _utcnow()
     created_ts = created_at.timestamp()
@@ -583,6 +589,7 @@ def plan_manual_sync_dry_run(
         metadata: Dict[str, Any] = {}
         reason = _manual_public_reason_code(preflight_reason)
         content_hash = None
+        cloud_placeholder_before_hydration = False
 
         try:
             metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
@@ -603,6 +610,12 @@ def plan_manual_sync_dry_run(
             partial_scan = True
             break
 
+        if reason is None and not hydrated_only:
+            try:
+                cloud_placeholder_before_hydration = bool(_is_cloud_only(file_path))
+            except Exception:
+                cloud_placeholder_before_hydration = False
+
         if reason is None:
             reason = _manual_public_reason_code(_is_scannable_file(file_path, hydrated_only=hydrated_only))
 
@@ -613,6 +626,8 @@ def plan_manual_sync_dry_run(
             content_hash, reason = _calculate_manual_plan_file_hash(file_path, read_timeout_seconds)
 
         reason = _manual_public_reason_code(reason)
+        if cloud_placeholder_before_hydration and reason in {"read_error", "read_timeout", "stat_error"}:
+            reason = "cloud_hydration_failed"
         if reason is None and content_hash:
             candidate_hashes.add(content_hash)
         candidate_records.append(
@@ -624,6 +639,7 @@ def plan_manual_sync_dry_run(
                 "metadata": metadata,
                 "reason": reason,
                 "content_hash": content_hash,
+                "cloud_placeholder_before_hydration": cloud_placeholder_before_hydration,
             }
         )
 
@@ -672,6 +688,7 @@ def plan_manual_sync_dry_run(
             "media_id": media_id,
             "file_size": metadata.get("file_size"),
             "content_hash_computed": bool(content_hash),
+            "cloud_placeholder_before_hydration": bool(record.get("cloud_placeholder_before_hydration")),
         }
         public_items.append(item)
         integrity_items.append(
@@ -683,6 +700,7 @@ def plan_manual_sync_dry_run(
                 "state": state,
                 "reason": public_reason,
                 "content_hash": content_hash,
+                "cloud_placeholder_before_hydration": bool(record.get("cloud_placeholder_before_hydration")),
             }
         )
         if include_private_details:
@@ -692,6 +710,7 @@ def plan_manual_sync_dry_run(
                     "relative_path": record["relative_path"],
                     "content_hash": content_hash,
                     "mtime_ns": metadata.get("mtime_ns"),
+                    "cloud_placeholder_before_hydration": bool(record.get("cloud_placeholder_before_hydration")),
                 }
             )
 
@@ -717,6 +736,10 @@ def plan_manual_sync_dry_run(
     limits = {
         "max_files": effective_max_files,
         "hydrated_only": hydrated_only,
+        "hydration_policy": "local_readable_only" if hydrated_only else "cloud_aware_non_destructive_read",
+        "cloud_placeholders_detected_before_hydration": int(
+            sum(1 for record in candidate_records if record.get("cloud_placeholder_before_hydration"))
+        ),
         "stable_age_seconds": effective_stable_age,
         "max_duration_seconds": max_duration_seconds,
         "file_read_timeout_seconds": read_timeout_seconds,
@@ -1397,6 +1420,17 @@ def get_ai_localization_readiness(db: Session) -> Dict[str, Any]:
     background_categories = settings.TAG_TRANSLATION_BG_CATEGORIES
     auto_path_available = settings.TAG_TRANSLATION_AUTO_ENABLED and settings.TAG_TRANSLATION_LLM_ENABLED
     worker_path_available = settings.TAG_TRANSLATION_BG_ENABLED and settings.TAG_TRANSLATION_LLM_ENABLED
+    llm_provider_configured = bool(
+        settings.TAG_TRANSLATION_LLM_API_KEY
+        and settings.TAG_TRANSLATION_LLM_MODEL
+        and settings.TAG_TRANSLATION_LLM_BASE_URL
+    )
+    fallback_provider_configured = bool(
+        settings.TAG_TRANSLATION_LLM_FALLBACK_ENABLED
+        and settings.TAG_TRANSLATION_LLM_FALLBACK_API_KEY
+        and settings.TAG_TRANSLATION_LLM_FALLBACK_MODEL
+        and settings.TAG_TRANSLATION_LLM_FALLBACK_BASE_URL
+    )
     return {
         "ai_tagging": {
             "enabled": settings.AI_TAGGING_ENABLED,
@@ -1410,6 +1444,8 @@ def get_ai_localization_readiness(db: Session) -> Dict[str, Any]:
         },
         "tag_localization": {
             "llm_enabled": settings.TAG_TRANSLATION_LLM_ENABLED,
+            "llm_provider_configured": llm_provider_configured,
+            "llm_fallback_provider_configured": fallback_provider_configured,
             "auto_enabled": settings.TAG_TRANSLATION_AUTO_ENABLED,
             "background_enabled": settings.TAG_TRANSLATION_BG_ENABLED,
             "background_categories": background_categories,
@@ -1468,26 +1504,45 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
                 "scope": "manual_execute",
             }
         )
+    if not settings.CONTENT_CLASSIFICATION_ENABLED:
+        blockers.append("CONTENT_CLASSIFICATION_ENABLED_false")
+        manual_execute_blockers.append(
+            {
+                "code": "CONTENT_CLASSIFICATION_ENABLED_false",
+                "label": "Content classification is disabled for this server, so a manual E2E run cannot complete classification.",
+                "scope": "manual_execute",
+            }
+        )
     if not settings.AI_TAGGING_AUTO_LOCALIZATION:
-        blockers.append("AI_TAGGING_AUTO_LOCALIZATION_false")
-        manual_execute_warnings.append(
+        background_warnings.append(
             {
                 "code": "AI_TAGGING_AUTO_LOCALIZATION_false",
-                "label": "AI-to-localization chaining is disabled; manual execute must report stable localization reasons.",
-                "scope": "manual_execute",
+                "label": "Background AI-to-localization chaining is disabled; this is expected because manual execute finalizes localization.",
+                "scope": "background_only",
             }
         )
     if not settings.TAG_TRANSLATION_LLM_ENABLED:
         blockers.append("TAG_TRANSLATION_LLM_ENABLED_false")
-        manual_execute_warnings.append(
+        manual_execute_blockers.append(
             {
                 "code": "TAG_TRANSLATION_LLM_ENABLED_false",
-                "label": "LLM translation is disabled; new missing translations will remain blocked unless already covered.",
-                "scope": "localization",
+                "label": "LLM translation is disabled, so a manual E2E run cannot localize newly discovered localizable tags.",
+                "scope": "manual_execute",
+            }
+        )
+    elif not (
+        ai_localization["tag_localization"]["llm_provider_configured"]
+        or ai_localization["tag_localization"]["llm_fallback_provider_configured"]
+    ):
+        blockers.append("TAG_TRANSLATION_LLM_PROVIDER_unconfigured")
+        manual_execute_blockers.append(
+            {
+                "code": "TAG_TRANSLATION_LLM_PROVIDER_unconfigured",
+                "label": "LLM translation is enabled but provider credentials/model/base URL are not configured for this production profile.",
+                "scope": "manual_execute",
             }
         )
     if not (settings.TAG_TRANSLATION_AUTO_ENABLED or settings.TAG_TRANSLATION_BG_ENABLED):
-        blockers.append("tag_translation_auto_and_background_disabled")
         background_warnings.append(
             {
                 "code": "tag_translation_auto_and_background_disabled",
@@ -1518,6 +1573,16 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
             "storage_root_explicitly_set": settings.STORAGE_ROOT_EXPLICITLY_SET,
             "auto_sync_enabled": settings.DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED,
             "manual_sync_enabled": settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED,
+            "manual_sync_execute_enabled": settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED,
+            "classification_enabled": settings.CONTENT_CLASSIFICATION_ENABLED,
+            "content_classification_method": settings.CONTENT_CLASSIFICATION_METHOD,
+            "ai_tagging_enabled": settings.AI_TAGGING_ENABLED,
+            "tag_translation_llm_enabled": settings.TAG_TRANSLATION_LLM_ENABLED,
+            "tag_translation_llm_provider_configured": bool(
+                ai_localization["tag_localization"]["llm_provider_configured"]
+                or ai_localization["tag_localization"]["llm_fallback_provider_configured"]
+            ),
+            "cloud_placeholder_hydration_enabled": True,
         },
         "dynamic_sync_state_ready": True,
         "manual_update_ready": bool(roots),
@@ -1530,14 +1595,23 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
         "pending_summary": pending,
         "ai_localization_readiness": ai_localization,
         "manual_sync_operator_readiness": {
-            "manual_execute_ready": bool(roots)
-            and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED
-            and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED
-            and settings.AI_TAGGING_ENABLED,
+            "manual_execute_ready": (
+                bool(roots)
+                and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED
+                and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED
+                and settings.AI_TAGGING_ENABLED
+                and settings.CONTENT_CLASSIFICATION_ENABLED
+                and settings.TAG_TRANSLATION_LLM_ENABLED
+                and (
+                    ai_localization["tag_localization"]["llm_provider_configured"]
+                    or ai_localization["tag_localization"]["llm_fallback_provider_configured"]
+                )
+            ),
             "manual_execute_blockers": manual_execute_blockers,
             "manual_execute_warnings": manual_execute_warnings,
             "background_warnings": background_warnings,
             "historical_deferred_inventory_is_actionable": False,
+            "cloud_placeholder_hydration_policy": "cloud_aware_non_destructive_read",
             "normal_operator_plan_endpoint": "POST /api/admin/dynamic-library-sync/manual-sync/plan",
             "legacy_update_check_endpoint": "POST /api/admin/dynamic-library-sync/check",
         },

@@ -222,7 +222,7 @@
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
     "head_refresh_note": "report refreshed after local UI fix commit e6d659b3d9bf; final amended commit SHA must be rechecked after amend",
-    "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
+    "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": false,
     "old_server_process_from_main_or_old_branch_found": false,
@@ -238,7 +238,7 @@
     "attempted": true,
     "db_name": "blombooru_test",
     "db_reachable": false,
-    "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
+    "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
     "health_ok": false,
     "method": "controlled Playwright Edge on VIOLET_ENV=test server 8013",
     "port": 8012,
@@ -954,7 +954,7 @@
     "db_name": "blombooru",
     "deferred_failed_inventory_explained": true,
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
-    "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
+    "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
     "managed_processes_cleaned": true,
     "manual_sync_safety_status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
     "no_silent_spinner_fix": true,
@@ -964,7 +964,7 @@
     "private_debug_artifacts": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
     "profile_id": "production-default",
     "public_safe": true,
-    "readiness_config_mismatch": "UI readiness displayed background AI/LLM flags as blockers; manual execute AI can use the manual pipeline profile, but final GUI acceptance must confirm AI/localization readiness before execute and must not claim E2E if localization remains disabled",
+    "readiness_config_mismatch": "Earlier UI readiness displayed background AI/LLM flags as blockers. A later manual GUI attempt correctly stopped because the launcher-managed production profile had AI tagging disabled for manual E2E. The profile/env mapping is now repaired so manual classification, AI tagging, and LLM localization provider readiness can be ON while automatic/background sync remains OFF.",
     "root_cause": "GUI dry-run used the manual-sync plan endpoint but that endpoint still performed a broad source-root walk and expensive verify/hash over unchanged known items; frontend abort/browser close did not cancel the backend request, so it kept scanning until server stop.",
     "server_role": "launcher-managed production validation server; port 8012 selected because 8000 was occupied by unrelated Clash Verge",
     "source_mutation_detected": false,
@@ -1009,6 +1009,84 @@
     "status": "blocked_no_gui_execute_run_found",
     "validated": false
   },
+  "manual_gui_e2e_readiness_fix": {
+    "status": "fixed_pending_user_gui_execute_retry",
+    "observed_user_blocker": "Manual sync blockers: AI tagging is disabled for this server, so a manual E2E run cannot complete AI tagging.",
+    "root_cause": "The launcher-managed production child process runs with VIOLET_SKIP_DOTENV=1 and the private production profile did not previously materialize the manual E2E component flags/provider config. That left AI_TAGGING_ENABLED and TAG_TRANSLATION_LLM provider readiness disabled even though automatic/background sync was correctly off.",
+    "fix_summary": [
+      "production profile now carries manual_e2e_components for classification, AI tagging, and LLM localization",
+      "profile repair copies only redacted/configured LLM provider fields from local .env into the ignored private production profile",
+      "launcher child env enables manual E2E components while forcing automatic/scheduled/startup/service/background sync flags off",
+      "Web Admin readiness separates manual blockers from background-only warnings",
+      "normal manual sync defaults to cloud-aware non-destructive iCloud placeholder hydration; local-readable-only remains advanced/debug",
+      "service worker static cache now keys off sw.js cache-buster and caches versioned static requests so stale admin.js cannot keep showing old manual-sync readiness text"
+    ],
+    "manual_e2e_components_after_repair": {
+      "content_classification_enabled": true,
+      "content_classification_method": "heuristic",
+      "ai_tagging_enabled": true,
+      "tag_translation_llm_enabled": true,
+      "tag_translation_llm_provider_configured": true,
+      "ai_tagging_auto_localization": false,
+      "auto_or_background_sync_enabled": false
+    },
+    "automation_flags_after_repair": {
+      "automatic_sync": false,
+      "scheduled_sync": false,
+      "startup_sync": false,
+      "system_service_sync": false,
+      "unattended_background_sync": false,
+      "tag_translation_background_worker": false,
+      "tag_translation_auto": false,
+      "ai_tagging_auto_localization": false
+    },
+    "normal_acceptance_hydrated_only_required": false,
+    "cloud_placeholder_hydration_policy": "cloud_aware_non_destructive_read",
+    "advanced_local_readable_only_option_retained": true,
+    "profile_repair_command": "scripts/violet_production_control.py profile-repair --json",
+    "profile_repair_result": "ok_private_profile_updated",
+    "private_profile_artifact": ".local_manifests/production_launcher/production-profile.json",
+    "private_profile_committed": false,
+    "browser_validation_before_final_commit": {
+      "canonical_url": true,
+      "operator_card_visible": true,
+      "start_manual_sync_button_visible": true,
+      "manual_blockers_none": true,
+      "classification_ai_llm_provider_ready": true,
+      "historical_deferred_inventory_separated": true,
+      "raw_i18n_keys_visible": false,
+      "raw_internal_blocker_constants_visible": false,
+      "static_cache_note": "The uncommitted worktree used the previous commit hash as static cache-buster; a stale service-worker cache was also found and fixed so the final user retry receives the current admin.js after restart/pull."
+    },
+    "browser_validation_after_service_worker_fix": {
+      "validated_code_head_sha": "c9e662ba65faeb8e7a5d181162b1cff8ee5b1d61",
+      "current_report_commit_may_differ": true,
+      "method": "in-app browser clean tab against launcher-managed production server on port 8012",
+      "admin_script_src": "/static/js/admin.js?v=c9e662b",
+      "canonical_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
+      "operator_card_visible": true,
+      "start_manual_sync_button_visible": true,
+      "execute_cap_visible": 1000,
+      "normal_operator_hydrated_only_visible": false,
+      "advanced_hydrated_only_visible": true,
+      "manual_blockers_none": true,
+      "classification_ai_llm_provider_ready": true,
+      "auto_background_sync_disabled_visible": true,
+      "cloud_placeholder_hydration_visible": true,
+      "historical_deferred_inventory_separated": true,
+      "raw_i18n_keys_visible": false,
+      "raw_internal_blocker_constants_visible": false,
+      "gui_execute_clicked": false,
+      "status": "passed_read_only_ui_readiness"
+    },
+    "validator_policy_after_fix": {
+      "fails_if_gui_run_imports_without_ai_tagging": true,
+      "fails_if_localization_missing_without_accepted_policy": true,
+      "requires_gui_created_run_newer_than_8": true
+    },
+    "public_safe": true,
+    "next_required_action": "User retries real Web Admin GUI Start manual sync/Execute on a small JPG/PNG iCloud batch, then runs scripts/validate_s3a_m2_gui_execute_acceptance.py --min-run-id 8 --write-public-summary --update-main-report."
+  },
   "gui_hang_root_cause": {
     "backend_kept_scanning": true,
     "backend_plan_timeout_added": true,
@@ -1022,7 +1100,7 @@
     "db_name": "blombooru",
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "frontend_timeout_seconds": 600,
-    "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
+    "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
     "managed_processes_stopped": [
       "server_parent_64804",
       "server_worker_50844",
@@ -1061,7 +1139,7 @@
     "watchdog_timeout_added": true,
     "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
   },
-  "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
+  "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
   "head_sha_pending_final_amend": true,
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
@@ -1163,7 +1241,7 @@
     "target_path": "/admin?tab=content#dynamic-library-sync-section",
     "update_check_limit_separated": true,
     "validated": false,
-    "validated_head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3"
+    "validated_head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b"
   },
   "ledger_consistency": {
     "expected_plan_items": 173,
@@ -1279,7 +1357,7 @@
       "managed production server is freshly started from the intended profile",
       "automatic/scheduled/startup/system-service sync flags remain off",
       "GUI dry-run completes without partial_scan and with reasonable current-delta counts",
-      "AI tagging and localization readiness are enabled or blockers are explicitly accepted before execute",
+      "classification, AI tagging, and localization/provider readiness are enabled for manual E2E before execute",
       "confirmation phrase is copied exactly and Execute is clicked once",
       "post-GUI validation script confirms a completed run newer than #8"
     ],
@@ -1291,7 +1369,7 @@
     "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
     "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
     "SourceConcept/Entity bridge work was not run.",
-    "Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang; a new GUI-created run newer than run #8 must be validated before merge.",
+    "Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.",
     "The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance."
   ],
   "phase": "S3A-M2",
@@ -1490,9 +1568,9 @@
       "status": "blocking_merge"
     },
     {
-      "code": "gui_ai_localization_readiness_not_validated_after_hang_fix",
-      "detail": "The final GUI execute environment must prove AI tagging and localization readiness before claiming E2E.",
-      "status": "blocking_gui_e2e_claim"
+      "code": "gui_execute_user_retry_pending_after_readiness_fix",
+      "detail": "Manual E2E readiness is fixed and browser-checked before commit, but the user has not yet retried the real GUI Execute and validator on a new small delta.",
+      "status": "blocking_merge"
     }
   ],
   "remaining_run": {

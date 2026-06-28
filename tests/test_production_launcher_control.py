@@ -164,6 +164,11 @@ def test_profile_to_env_allows_manual_sync_phase_caps_without_automation(tmp_pat
         "manual_sync_execute_enabled": True,
         "manual_sync_execute_max_files": 1000,
         "manual_sync_max_duration_seconds": 7200,
+        "tag_translation_llm": {
+            "api_key": "test-key",
+            "model": "test-model",
+            "base_url": "http://127.0.0.1:1/v1",
+        },
     }
 
     coerced = control._coerce_profile_payload(profile, repo_root=repo)
@@ -173,8 +178,20 @@ def test_profile_to_env_allows_manual_sync_phase_caps_without_automation(tmp_pat
     assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] == "7200"
     assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] == "true"
     assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] == "true"
+    assert env["AI_TAGGING_ENABLED"] == "true"
+    assert env["CONTENT_CLASSIFICATION_ENABLED"] == "true"
+    assert env["CONTENT_CLASSIFICATION_METHOD"] == "heuristic"
+    assert env["TAG_TRANSLATION_LLM_ENABLED"] == "true"
+    assert env["TAG_TRANSLATION_LLM_API_KEY"] == "test-key"
+    assert env["TAG_TRANSLATION_LLM_MODEL"] == "test-model"
+    assert env["TAG_TRANSLATION_LLM_BASE_URL"] == "http://127.0.0.1:1/v1"
+    assert env["AI_TAGGING_AUTO_LOCALIZATION"] == "false"
     assert env["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
     assert env["S3B_UNATTENDED_SYNC_ENABLED"] == "false"
+    assert env["AI_AUTO_TAG_AFTER_IMPORT"] == "false"
+    assert env["CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT"] == "false"
+    assert env["TAG_TRANSLATION_AUTO_ENABLED"] == "false"
+    assert env["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "false"
     assert env["VIOLET_ENV"] == "production"
 
 

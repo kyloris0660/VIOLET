@@ -112,8 +112,6 @@ def _aware_utc(value: Optional[datetime]) -> Optional[datetime]:
 
 def _translation_side_effect_blockers() -> List[str]:
     blockers: List[str] = []
-    if settings.TAG_TRANSLATION_LLM_ENABLED:
-        blockers.append("tag_translation_llm_enabled")
     if settings.TAG_TRANSLATION_LLM_ENABLED and settings.TAG_TRANSLATION_BG_ENABLED:
         blockers.append("tag_translation_background_llm_enabled")
     if settings.TAG_TRANSLATION_LLM_ENABLED and settings.TAG_TRANSLATION_AUTO_ENABLED:
@@ -223,7 +221,7 @@ def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[s
         "scheduled": False,
         "status": "blocked_current_phase",
         "safe_to_schedule": False,
-        "blocked_reason": "manual_sync_execute_forbids_llm_localization_current_phase",
+        "blocked_reason": "localization_waiting_for_manual_execute_finalizer",
         "side_effect_blockers": sorted(blockers if blockers is not None else _translation_side_effect_blockers()),
     }
 
@@ -352,12 +350,6 @@ def _verify_execute_gates(
         )
     _assert_translation_side_effects_disabled()
     _assert_no_active_ai_or_classification_jobs(db)
-    if not hydrated_only:
-        raise ManualSyncExecuteError(
-            "hydrated_only_required",
-            "Manual sync execute requires hydrated_only=true.",
-            status_code=400,
-        )
 
     created = _parse_datetime(plan_created_at)
     if created is None:
@@ -450,8 +442,6 @@ def _verify_execute_recheck(
         )
     _assert_translation_side_effects_disabled()
     _assert_no_active_ai_or_classification_jobs(db)
-    if not hydrated_only:
-        raise ManualSyncExecuteError("hydrated_only_required", "Manual sync execute requires hydrated_only=true.")
     current_hash = str((plan.get("integrity") or {}).get("plan_hash") or "")
     if current_hash != expected_plan_hash:
         raise ManualSyncExecuteError(
@@ -1532,6 +1522,11 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 item_failure_reason = "read_error"
             except Exception as exc:
                 item_failure_reason = _manual_public_reason_code(str(exc))
+            if (
+                bool(plan_item.get("cloud_placeholder_before_hydration"))
+                and item_failure_reason in {"read_error", "read_timeout", "stat_error"}
+            ):
+                item_failure_reason = "cloud_hydration_failed"
 
             item = _get_or_create_source_item(
                 db,

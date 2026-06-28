@@ -1923,8 +1923,10 @@ class AdminPanel {
     _manualSyncIssueLabel(code) {
         const labels = {
             AI_TAGGING_ENABLED_false: 'AI tagging is disabled for this server; manual E2E cannot complete AI tagging.',
-            AI_TAGGING_AUTO_LOCALIZATION_false: 'AI-to-localization chaining is disabled; manual execute must report stable localization reasons.',
-            TAG_TRANSLATION_LLM_ENABLED_false: 'LLM translation is disabled; new missing translations will stay blocked unless already covered.',
+            CONTENT_CLASSIFICATION_ENABLED_false: 'Content classification is disabled for this server; manual E2E cannot complete classification.',
+            AI_TAGGING_AUTO_LOCALIZATION_false: 'Background AI-to-localization chaining is disabled; manual execute finalizes localization.',
+            TAG_TRANSLATION_LLM_ENABLED_false: 'LLM translation is disabled; manual E2E cannot localize newly discovered localizable tags.',
+            TAG_TRANSLATION_LLM_PROVIDER_unconfigured: 'LLM translation is enabled but provider credentials/model/base URL are not configured for this production profile.',
             tag_translation_auto_and_background_disabled: 'Background/automatic translation workers are disabled; this is expected for manual-only sync.',
             unreviewed_proper_noun_llm_aliases_present: 'Unreviewed proper-noun translations exist; they do not create Entity truth but still need review.',
             no_dynamic_source_roots_configured: 'No source root is registered.',
@@ -2081,13 +2083,13 @@ class AdminPanel {
         }
     }
 
-    _manualSyncRequestBody() {
+    _manualSyncRequestBody({ useAdvancedHydratedOnly = false } = {}) {
         const rootSelect = document.getElementById('dynamic-sync-plan-root');
         const maxFilesEl = document.getElementById('dynamic-sync-execute-max-files') || document.getElementById('dynamic-sync-max-files');
         const hydratedEl = document.getElementById('dynamic-sync-hydrated-only');
         const body = {
             root_id: rootSelect && rootSelect.value ? parseInt(rootSelect.value, 10) : null,
-            hydrated_only: hydratedEl ? hydratedEl.checked : true,
+            hydrated_only: useAdvancedHydratedOnly ? (hydratedEl ? hydratedEl.checked : true) : false,
         };
         const maxFiles = maxFilesEl && maxFilesEl.value ? parseInt(maxFilesEl.value, 10) : null;
         if (maxFiles) body.max_files = maxFiles;
@@ -2125,7 +2127,7 @@ class AdminPanel {
                 <div><span class="text-secondary">Import</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
                 <div><span class="text-secondary">Expires</span><br><span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             </div>
-            <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
+            <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
             ${canExecute ? `<div class="mb-2 text-green-400">Plan is ready. Review counts, then click Confirm and execute once.</div>` : `<div class="mb-2 text-warning">Execute is blocked until the plan is complete, has importable hydrated items, and manual E2E readiness is satisfied.</div>`}
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
             <div><span class="text-secondary">Confirmation phrase shown for audit:</span></div>
@@ -2185,7 +2187,7 @@ class AdminPanel {
 
     async runManualSyncDryRunPlan({ source = 'operator' } = {}) {
         if (this.dynamicSyncActionInFlight) return;
-        const body = this._manualSyncRequestBody();
+        const body = this._manualSyncRequestBody({ useAdvancedHydratedOnly: source === 'advanced' });
         if (!body.root_id) {
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.select_root_first', 'Select a source root first.'), 'error');
             return;
@@ -2258,7 +2260,9 @@ class AdminPanel {
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
         const integrity = this.dynamicSyncPlan.integrity || {};
         const guiProvenance = this.dynamicSyncPlan.gui_provenance || {};
+        const limits = this.dynamicSyncPlan.limits || {};
         body.expected_plan_hash = integrity.plan_hash;
+        body.hydrated_only = !!limits.hydrated_only;
         const expected = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
         if (useExpectedConfirmation && confirmationEl) confirmationEl.value = expected;
         body.confirmation_phrase = useExpectedConfirmation ? expected : (confirmationEl ? confirmationEl.value.trim() : '');
@@ -2443,6 +2447,10 @@ class AdminPanel {
             <div>Manual update: ${badge(!!readiness.manual_update_ready)}</div>
             <div>Auto production writes: ${badge(!!production.auto_sync_enabled)}</div>
             <div>Manual sync execution: ${badge(!!production.manual_sync_enabled)}</div>
+            <div>Manual execute ready: ${badge(!!operator.manual_execute_ready)}</div>
+            <div>Classification: ${badge(!!production.classification_enabled)} | AI tagging: ${badge(!!production.ai_tagging_enabled)} | LLM localization: ${badge(!!production.tag_translation_llm_enabled)} | LLM provider: ${badge(!!production.tag_translation_llm_provider_configured)}</div>
+            <div>iCloud hydration: ${badge(!!production.cloud_placeholder_hydration_enabled)} | Auto/background sync disabled: ${badge(!production.auto_sync_enabled)}</div>
+            <div>Classification method: <span class="font-bold">${this.escapeHtml(production.content_classification_method || '-')}</span></div>
             <div class="text-red-400">${blockers.length ? `Manual blockers: ${this.escapeHtml(blockers.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' '))}` : 'Manual blockers: none'}</div>
             <div class="text-warning">${warnings.length ? `Manual warnings: ${this.escapeHtml(warnings.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' '))}` : ''}</div>
             <div class="text-secondary">${backgroundWarnings.length ? `Background-only warnings: ${this.escapeHtml(backgroundWarnings.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' '))}` : 'Background-only warnings: none'}</div>
@@ -2461,11 +2469,11 @@ class AdminPanel {
         el.innerHTML = `
             <div>AI tagging: ${badge(!!ai.enabled)} <span class="text-secondary">model=${this.escapeHtml(ai.model_name || '-')}</span></div>
             <div>AI -> localization: ${badge(!!ai.auto_tagging_localization_enabled)}</div>
-            <div>LLM translation: ${badge(!!tl.llm_enabled)} | Auto: ${badge(!!tl.auto_enabled)} | Worker: ${badge(!!tl.background_enabled)}</div>
+            <div>LLM translation: ${badge(!!tl.llm_enabled)} | Provider config: ${badge(!!(tl.llm_provider_configured || tl.llm_fallback_provider_configured))} | Auto: ${badge(!!tl.auto_enabled)} | Worker: ${badge(!!tl.background_enabled)}</div>
             <div>Worker categories: <span class="font-bold">${this.escapeHtml((tl.background_categories || []).join(', ') || '-')}</span></div>
             <div>Gap: missing=${gap.missing || 0}, general/meta=${gap.general_meta_missing || 0}, proper nouns=${gap.proper_noun_missing || 0}, needs_review=${gap.needs_review || 0}</div>
             <div>Proper-noun worker exclusion: ${badge(!!gap.worker_excludes_proper_nouns)}</div>
-            <div class="text-secondary">Manual note: AI OFF blocks full manual E2E; LLM OFF only blocks new missing translations that are not already covered.</div>
+            <div class="text-secondary">Manual note: AI, classification, and LLM provider readiness are required for the final manual E2E acceptance; automatic/background workers stay off.</div>
             <div class="text-secondary">Chain: ${(readiness.integration_chain || []).map(step => this.escapeHtml(step)).join(' -> ')}</div>
         `;
     }

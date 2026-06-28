@@ -265,17 +265,24 @@ def test_manual_sync_dry_run_plan_defers_files_that_are_still_changing(db, tmp_p
     assert plan["ledger"]["per_file_public_records"][0]["reason"] == "file_still_changing"
 
 
-def test_manual_sync_dry_run_plan_rejects_hydrated_only_false_at_service(db, tmp_path):
+def test_manual_sync_dry_run_plan_allows_cloud_aware_hydration_policy(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
+    _write_png(source_root / "cloud_backed.png")
+    monkeypatch.setattr(service, "_is_cloud_only", lambda _path: True)
 
-    with pytest.raises(ValueError, match="manual sync dry-run requires hydrated_only=true"):
-        service.plan_manual_sync_dry_run(
-            db,
-            source_path=source_root,
-            hydrated_only=False,
-            stable_age_seconds=0,
-        )
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        hydrated_only=False,
+        stable_age_seconds=0,
+    )
+
+    assert plan["limits"]["hydrated_only"] is False
+    assert plan["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read"
+    assert plan["limits"]["cloud_placeholders_detected_before_hydration"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["ledger"]["per_file_public_records"][0]["cloud_placeholder_before_hydration"] is True
 
 
 def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp_path):
@@ -292,6 +299,8 @@ def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp
     payload = response.json()
     assert payload["public_safe"] is True
     assert payload["ledger"]["db_write_performed"] is False
+    assert payload["limits"]["hydrated_only"] is False
+    assert payload["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read"
     assert payload["counts"]["state_counts"]["import_planned"] == 1
     assert "private_details" not in payload
     assert "new.png" not in str(payload)
@@ -356,7 +365,7 @@ def test_manual_sync_execute_route_records_web_admin_gui_provenance(client, db, 
     assert request["client_route"] == "/admin?tab=content#dynamic-library-sync-section"
 
 
-def test_manual_sync_dry_run_plan_route_rejects_hydrated_only_false(client, tmp_path):
+def test_manual_sync_dry_run_plan_route_defaults_to_cloud_aware_hydration(client, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     _write_png(source_root / "new.png")
@@ -371,8 +380,9 @@ def test_manual_sync_dry_run_plan_route_rejects_hydrated_only_false(client, tmp_
         },
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "manual sync dry-run requires hydrated_only=true"
+    assert response.status_code == 200
+    assert response.json()["limits"]["hydrated_only"] is False
+    assert response.json()["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read"
 
 
 @pytest.mark.parametrize("scanner_reason", ["hidden", "too_large"])
@@ -1181,12 +1191,48 @@ def test_operator_readiness_separates_manual_and_background_warnings(db, tmp_pat
     operator = readiness["manual_sync_operator_readiness"]
 
     assert operator["manual_execute_ready"] is False
-    assert [item["code"] for item in operator["manual_execute_blockers"]] == ["AI_TAGGING_ENABLED_false"]
+    blocker_codes = [item["code"] for item in operator["manual_execute_blockers"]]
+    assert "AI_TAGGING_ENABLED_false" in blocker_codes
+    assert "TAG_TRANSLATION_LLM_ENABLED_false" in blocker_codes
     background_codes = {item["code"] for item in operator["background_warnings"]}
     assert "tag_translation_auto_and_background_disabled" in background_codes
     assert all("_false" not in item["label"] for item in operator["manual_execute_blockers"])
     assert operator["normal_operator_plan_endpoint"] == "POST /api/admin/dynamic-library-sync/manual-sync/plan"
     assert operator["legacy_update_check_endpoint"] == "POST /api/admin/dynamic-library-sync/check"
+
+
+def test_operator_readiness_ready_for_manual_e2e_with_background_sync_off(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")
+    monkeypatch.setenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+
+    assert operator["manual_execute_ready"] is True
+    assert operator["manual_execute_blockers"] == []
+    assert operator["cloud_placeholder_hydration_policy"] == "cloud_aware_non_destructive_read"
+    assert readiness["production_settings"]["classification_enabled"] is True
+    assert readiness["production_settings"]["ai_tagging_enabled"] is True
+    assert readiness["production_settings"]["tag_translation_llm_enabled"] is True
+    assert readiness["production_settings"]["tag_translation_llm_provider_configured"] is True
+    background_codes = {item["code"] for item in operator["background_warnings"]}
+    assert "AI_TAGGING_AUTO_LOCALIZATION_false" in background_codes
+    assert "tag_translation_auto_and_background_disabled" in background_codes
 
 
 def test_admin_api_register_check_pending_and_fail_closed_sync(client, tmp_path, monkeypatch):

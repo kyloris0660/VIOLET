@@ -86,7 +86,7 @@ class ManualSyncDryRunPlanRequest(BaseModel):
     root_id: Optional[int] = Field(default=None, ge=1)
     source_path: Optional[str] = Field(default=None, min_length=1)
     max_files: Optional[int] = Field(default=None, ge=1, le=100000)
-    hydrated_only: bool = True
+    hydrated_only: bool = False
     stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
     gui_validation_session_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
     client_route: Optional[str] = Field(default=None, max_length=200)
@@ -95,7 +95,7 @@ class ManualSyncDryRunPlanRequest(BaseModel):
 class ManualSyncExecuteRequest(BaseModel):
     root_id: int = Field(..., ge=1)
     max_files: Optional[int] = Field(default=None, ge=1, le=100000)
-    hydrated_only: bool = True
+    hydrated_only: bool = False
     stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
     expected_plan_hash: str = Field(..., min_length=12, max_length=128)
     confirmation_phrase: str = Field(..., min_length=1, max_length=200)
@@ -218,11 +218,6 @@ def plan_manual_sync(
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
-    if body.hydrated_only is False:
-        raise HTTPException(
-            status_code=400,
-            detail="manual sync dry-run requires hydrated_only=true",
-        )
     if bool(body.root_id) == bool(body.source_path):
         raise HTTPException(
             status_code=400,

@@ -174,7 +174,7 @@ def test_s3a_m1_blank_max_files_api_plan_matches_execute_default(db, tmp_path, m
         db,
         root_id=root.id,
         max_files=None,
-        hydrated_only=True,
+        hydrated_only=False,
         stable_age_seconds=0,
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
@@ -331,13 +331,14 @@ def test_s3a_m1_execute_recheck_accepts_changed_directory_walk_order(db, tmp_pat
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
     run = create_manual_sync_execute_run(
         db,
         root_id=root.id,
         max_files=5,
-        hydrated_only=True,
+        hydrated_only=False,
         stable_age_seconds=0,
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
@@ -359,6 +360,7 @@ def test_s3a_m1_execute_is_disabled_by_default(db, tmp_path):
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
 
@@ -389,6 +391,7 @@ def test_s3a_m1_execute_rejects_stale_plan_hash(db, tmp_path, monkeypatch):
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
     _write_png(image_path, (90, 80, 70))
@@ -930,6 +933,44 @@ def test_s3a_m1_execute_translation_gate_allows_stopped_worker_and_llm_disabled(
     )
 
     assert run.status == "pending"
+
+
+def test_s3a_m1_execute_translation_gate_allows_llm_provider_when_auto_background_off(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setattr(
+        execute_service,
+        "_translation_worker_runtime_state",
+        lambda: {"status": "stopped", "thread_alive": False, "running": False},
+    )
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+    )
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    assert run.status == "pending"
+    assert execute_service._translation_side_effect_blockers() == []
 
 
 def test_s3a_m1_execute_rejects_max_files_over_cap(db, tmp_path, monkeypatch):

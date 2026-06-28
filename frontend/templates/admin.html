@@ -1207,13 +1207,10 @@
                             </div>
                             <div>
                                 <label class="block text-xs text-secondary mb-1" data-i18n="admin.dynamic_library_sync.manual_execute_max_files">Execute plan limit</label>
-                                <input type="number" id="dynamic-sync-execute-max-files" min="1" max="5" value="5" class="bg px-3 py-2 border text-xs w-full" data-i18n-placeholder="admin.dynamic_library_sync.manual_execute_max_files_placeholder" placeholder="5">
+                                <input type="number" id="dynamic-sync-execute-max-files" min="1" max="1000" value="1000" class="bg px-3 py-2 border text-xs w-full" data-i18n-placeholder="admin.dynamic_library_sync.manual_execute_max_files_placeholder" placeholder="1000">
                                 <div id="dynamic-sync-execute-cap" class="text-[10px] text-secondary mt-1">Execute cap: 5</div>
                             </div>
-                            <label class="flex items-end gap-2 text-xs pb-2">
-                                <input type="checkbox" id="dynamic-sync-hydrated-only" class="w-4 h-4 accent-primary" checked>
-                                <span data-i18n="admin.dynamic_library_sync.hydrated_only">仅本地可读文件</span>
-                            </label>
+                            <div id="dynamic-sync-hydration-policy" class="text-xs text-secondary self-end pb-2" data-i18n="admin.dynamic_library_sync.hydration_policy_cloud_aware">Hydration: enabled for iCloud placeholders</div>
                             <button id="dynamic-sync-start-btn" class="btn-primary text-xs px-3 py-2 self-end" data-i18n="admin.dynamic_library_sync.start_manual_sync">开始手动同步</button>
                         </div>
                     </div>
@@ -1299,6 +1296,10 @@
                             <label class="block text-xs text-secondary mb-1" data-i18n="admin.dynamic_library_sync.update_check_max_files">Update check limit</label>
                             <input type="number" id="dynamic-sync-check-max-files" min="1" class="bg px-3 py-2 border text-xs w-full" data-i18n-placeholder="admin.dynamic_library_sync.update_check_max_files_placeholder" placeholder="Blank = normal full check">
                         </div>
+                        <label class="flex items-end gap-2 text-xs pb-2">
+                            <input type="checkbox" id="dynamic-sync-hydrated-only" class="w-4 h-4 accent-primary" checked>
+                            <span data-i18n="admin.dynamic_library_sync.hydrated_only">Local readable only</span>
+                        </label>
                         <button id="dynamic-sync-check-btn" class="btn-primary text-xs px-3 py-2 self-end" data-i18n="admin.dynamic_library_sync.check_updates">检查更新</button>
                         <button id="dynamic-sync-dry-run-btn" class="btn-dark text-xs px-3 py-2 self-end" data-i18n="admin.dynamic_library_sync.run_dry_run">Run dry-run</button>
                             </div>

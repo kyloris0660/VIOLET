@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `e6d659b3d9bf88728bd79abba624628c2b1ae8c3`.
+- Head SHA: `c720a17ee0fe0b1854e546c60f98730e01328a7b`.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -117,6 +117,20 @@
 - Watchdog/timeout added: `True`; no-silent-spinner fix: `True`.
 - Acceptance blocker: `No GUI Execute button-triggered run newer than run #8 has completed and passed post-run validation.`.
 
+## Manual GUI E2E Readiness Fix
+
+- User-observed blocker: `Manual sync blockers: AI tagging is disabled for this server, so a manual E2E run cannot complete AI tagging.`.
+- Root cause: the launcher-managed production child process runs with `VIOLET_SKIP_DOTENV=1`, but the private production profile did not previously materialize the manual E2E component flags/provider config. That left manual AI tagging and LLM provider readiness off while automatic/background sync was correctly disabled.
+- Fix: production profile repair now carries manual E2E components for classification, AI tagging, and LLM localization provider configuration; the launcher child env enables those manual-only components and still forces automatic/scheduled/startup/service/background sync flags off.
+- Stale UI cache fix: the service worker static cache now keys off the `sw.js` cache-buster and caches versioned static requests, so a browser cannot keep serving an old `admin.js` that still shows stale manual-sync readiness text.
+- Current manual E2E readiness after repair: classification `ON`, AI tagging `ON`, LLM localization `ON`, LLM provider configured `ON`, iCloud placeholder hydration `ON`, manual blockers `none`.
+- Automatic/background safety after repair: automatic sync `OFF`, scheduled sync `OFF`, startup sync `OFF`, system-service sync `OFF`, tag translation background worker `OFF`, tag translation auto `OFF`, AI-to-localization background chaining `OFF`.
+- Normal acceptance path no longer requires local-readable-only / hydrated-only mode. The normal Web Admin flow plans with cloud-aware non-destructive iCloud placeholder hydration; the local-readable-only checkbox remains only in Advanced/Debug.
+- Browser validation before final commit: canonical URL loaded, normal operator card visible, the Start manual sync button visible, cap `1000`, historical deferred inventory separated, raw i18n keys/internal blocker constants absent. The uncommitted worktree used the previous commit hash as static cache-buster, and a stale service-worker cache was found; both are addressed by the committed service-worker cache-buster fix plus restart/pull before the user retry.
+- Browser validation after service-worker fix: clean in-app browser tab loaded `/static/js/admin.js?v=c9e662b`; canonical URL stayed `/admin?tab=content#dynamic-library-sync-section`; normal operator card and Start manual sync button were visible; execute cap showed `1000`; manual blockers were `none`; classification/AI/LLM/provider readiness were `ON`; auto/background sync disabled was visible as `ON`; raw i18n keys and raw internal blocker constants were absent. This was read-only UI readiness validation, not a GUI Execute.
+- Validator policy after this fix: GUI acceptance fails if a GUI run imports without AI tagging, skips localization without an accepted stable policy, lacks GUI provenance, or is not newer than run #8.
+- Status: `fixed_pending_user_gui_execute_retry`; S3A-M2 remains blocked for merge until the user performs a real GUI Execute on a safe new delta and `scripts/validate_s3a_m2_gui_execute_acceptance.py --min-run-id 8 --write-public-summary --update-main-report` passes.
+
 ## Validation
 
 - Reviewer status: latest exact head review pending after this UI/Computer Use URL-confidence fix; last confirmed Codex review was for `bfacd86c3fc440d655531ccca9fb5273dc38d102`.
@@ -140,7 +154,7 @@
 - Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.
 - Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.
 - SourceConcept/Entity bridge work was not run.
-- Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang; a new GUI-created run newer than run #8 must be validated before merge.
+- Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.
 - The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.
 
 No source paths, filenames, content hashes, API keys, prompts, source URLs, or original image bytes are included in this public report.

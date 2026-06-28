@@ -35,6 +35,24 @@ PUBLIC_SUMMARY_PATH = ROOT / "docs" / "reports" / "s3a-m2-gui-execute-acceptance
 PUBLIC_REPORT_JSON = ROOT / "docs" / "reports" / "s3a-m2-production-delta-e2e-summary.json"
 PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / "s3a-m2-production-delta-e2e.md"
 GUI_REQUEST_SOURCES = {"web_admin_gui"}
+MANUAL_E2E_COMPONENT_DEFAULTS = {
+    "ai_tagging_enabled": True,
+    "content_classification_enabled": True,
+    "content_classification_method": "heuristic",
+    "tag_translation_llm_enabled": True,
+    "ai_tagging_auto_localization": False,
+}
+TAG_TRANSLATION_LLM_PROFILE_KEYS = {
+    "provider": "TAG_TRANSLATION_LLM_PROVIDER",
+    "api_key": "TAG_TRANSLATION_LLM_API_KEY",
+    "model": "TAG_TRANSLATION_LLM_MODEL",
+    "base_url": "TAG_TRANSLATION_LLM_BASE_URL",
+    "fallback_enabled": "TAG_TRANSLATION_LLM_FALLBACK_ENABLED",
+    "fallback_provider": "TAG_TRANSLATION_LLM_FALLBACK_PROVIDER",
+    "fallback_api_key": "TAG_TRANSLATION_LLM_FALLBACK_API_KEY",
+    "fallback_model": "TAG_TRANSLATION_LLM_FALLBACK_MODEL",
+    "fallback_base_url": "TAG_TRANSLATION_LLM_FALLBACK_BASE_URL",
+}
 
 
 def json_default(value: Any) -> Any:
@@ -86,6 +104,42 @@ def ensure_private_output_dir(path: Path) -> Path:
     return resolved
 
 
+def manual_e2e_components(profile: Mapping[str, Any]) -> dict[str, Any]:
+    raw = profile.get("manual_e2e_components") if isinstance(profile.get("manual_e2e_components"), Mapping) else {}
+    components = dict(MANUAL_E2E_COMPONENT_DEFAULTS)
+    for key in (
+        "ai_tagging_enabled",
+        "content_classification_enabled",
+        "tag_translation_llm_enabled",
+        "ai_tagging_auto_localization",
+    ):
+        if key in raw:
+            components[key] = bool(raw.get(key))
+    if raw.get("content_classification_method") is not None:
+        method = str(raw.get("content_classification_method") or "").strip().lower()
+        components["content_classification_method"] = method or MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
+    return components
+
+
+def tag_translation_llm_profile(profile: Mapping[str, Any]) -> dict[str, str]:
+    raw = profile.get("tag_translation_llm") if isinstance(profile.get("tag_translation_llm"), Mapping) else {}
+    values = {
+        "provider": "openai_compatible",
+        "api_key": "",
+        "model": "",
+        "base_url": "",
+        "fallback_enabled": "",
+        "fallback_provider": "openai_compatible",
+        "fallback_api_key": "",
+        "fallback_model": "",
+        "fallback_base_url": "",
+    }
+    for key in TAG_TRANSLATION_LLM_PROFILE_KEYS:
+        if key in raw and raw.get(key) is not None:
+            values[key] = str(raw.get(key))
+    return values
+
+
 def apply_profile_env(profile_path: Path) -> dict[str, Any]:
     if not profile_path.exists():
         return {"loaded": False, "path_redacted": True}
@@ -93,6 +147,8 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
     if not isinstance(profile, dict):
         raise RuntimeError("production_profile_json_not_object")
     db = profile.get("db") if isinstance(profile.get("db"), dict) else {}
+    components = manual_e2e_components(profile)
+    llm_profile = tag_translation_llm_profile(profile)
     env_values = {
         "VIOLET_ENV": "production",
         "BLOMBOORU_DEBUG": "false",
@@ -115,7 +171,22 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
         "DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED": (
             "true" if bool(profile.get("manual_sync_execute_enabled")) else "false"
         ),
+        "AI_TAGGING_ENABLED": "true" if bool(components.get("ai_tagging_enabled")) else "false",
+        "CONTENT_CLASSIFICATION_ENABLED": "true" if bool(components.get("content_classification_enabled")) else "false",
+        "CONTENT_CLASSIFICATION_METHOD": str(components.get("content_classification_method") or "heuristic"),
+        "TAG_TRANSLATION_LLM_ENABLED": "true" if bool(components.get("tag_translation_llm_enabled")) else "false",
+        "AI_TAGGING_AUTO_LOCALIZATION": "true" if bool(components.get("ai_tagging_auto_localization")) else "false",
+        "DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED": "false",
+        "S3B_UNATTENDED_SYNC_ENABLED": "false",
+        "AI_AUTO_TAG_AFTER_IMPORT": "false",
+        "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT": "false",
+        "TAG_TRANSLATION_AUTO_ENABLED": "false",
+        "TAG_TRANSLATION_BACKGROUND_ENABLED": "false",
     }
+    for profile_key, env_key in TAG_TRANSLATION_LLM_PROFILE_KEYS.items():
+        value = str(llm_profile.get(profile_key) or "")
+        if value:
+            env_values[env_key] = value
     if profile.get("manual_sync_execute_max_files") is not None:
         env_values["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] = str(profile["manual_sync_execute_max_files"])
     if profile.get("manual_sync_max_duration_seconds") is not None:
@@ -134,6 +205,25 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
         "manual_sync_enabled": bool(profile.get("manual_sync_enabled")),
         "manual_sync_execute_enabled": bool(profile.get("manual_sync_execute_enabled")),
         "manual_sync_execute_max_files": profile.get("manual_sync_execute_max_files"),
+        "manual_e2e_components": {
+            "ai_tagging_enabled": bool(components.get("ai_tagging_enabled")),
+            "content_classification_enabled": bool(components.get("content_classification_enabled")),
+            "content_classification_method": str(components.get("content_classification_method") or ""),
+            "tag_translation_llm_enabled": bool(components.get("tag_translation_llm_enabled")),
+            "ai_tagging_auto_localization": bool(components.get("ai_tagging_auto_localization")),
+            "auto_or_background_sync_enabled": False,
+        },
+        "tag_translation_llm": {
+            "provider": str(llm_profile.get("provider") or "openai_compatible"),
+            "api_key_present": bool(str(llm_profile.get("api_key") or "").strip()),
+            "model_configured": bool(str(llm_profile.get("model") or "").strip()),
+            "base_url_configured": bool(str(llm_profile.get("base_url") or "").strip()),
+            "fallback_enabled": str(llm_profile.get("fallback_enabled") or "").strip().lower() in {"true", "1", "yes", "on"},
+            "fallback_api_key_present": bool(str(llm_profile.get("fallback_api_key") or "").strip()),
+            "fallback_model_configured": bool(str(llm_profile.get("fallback_model") or "").strip()),
+            "fallback_base_url_configured": bool(str(llm_profile.get("fallback_base_url") or "").strip()),
+            "secret_values_redacted": True,
+        },
         "automation_flags": {
             key: bool(value)
             for key, value in (profile.get("automation_flags") or {}).items()
@@ -274,6 +364,32 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
     )
     from scripts.run_s3a_m2_delta_e2e_with_telemetry import scan_public_output
 
+    manual_e2e_readiness = {
+        "manual_sync_enabled": bool(settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED),
+        "manual_sync_execute_enabled": bool(settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED),
+        "classification_enabled": bool(settings.CONTENT_CLASSIFICATION_ENABLED),
+        "content_classification_method": str(settings.CONTENT_CLASSIFICATION_METHOD or ""),
+        "ai_tagging_enabled": bool(settings.AI_TAGGING_ENABLED),
+        "tag_translation_llm_enabled": bool(settings.TAG_TRANSLATION_LLM_ENABLED),
+        "tag_translation_llm_provider_configured": bool(
+            settings.TAG_TRANSLATION_LLM_API_KEY
+            and settings.TAG_TRANSLATION_LLM_MODEL
+            and settings.TAG_TRANSLATION_LLM_BASE_URL
+        ),
+        "tag_translation_llm_fallback_provider_configured": bool(
+            settings.TAG_TRANSLATION_LLM_FALLBACK_ENABLED
+            and settings.TAG_TRANSLATION_LLM_FALLBACK_API_KEY
+            and settings.TAG_TRANSLATION_LLM_FALLBACK_MODEL
+            and settings.TAG_TRANSLATION_LLM_FALLBACK_BASE_URL
+        ),
+        "auto_sync_enabled": bool(settings.DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED),
+        "unattended_sync_enabled": bool(settings.S3B_UNATTENDED_SYNC_ENABLED),
+        "ai_auto_tag_after_import": bool(settings.AI_AUTO_TAG_AFTER_IMPORT),
+        "classification_auto_after_import": bool(settings.CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT),
+        "tag_translation_auto_enabled": bool(settings.TAG_TRANSLATION_AUTO_ENABLED),
+        "tag_translation_background_enabled": bool(settings.TAG_TRANSLATION_BG_ENABLED),
+    }
+
     db = open_db_session()
     try:
         run = latest_manual_execute_run(
@@ -289,6 +405,7 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
                 "validated": False,
                 "min_run_id": int(args.min_run_id),
                 "profile": profile,
+                "manual_e2e_readiness": manual_e2e_readiness,
                 "branch": git_value("branch", "--show-current"),
                 "head_sha": git_value("rev-parse", "HEAD"),
                 "gui_provenance": {
@@ -332,6 +449,30 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
         )
 
         blockers: list[str] = []
+        if not manual_e2e_readiness["manual_sync_enabled"]:
+            blockers.append("manual_sync_disabled_for_gui_acceptance")
+        if not manual_e2e_readiness["manual_sync_execute_enabled"]:
+            blockers.append("manual_sync_execute_disabled_for_gui_acceptance")
+        if not manual_e2e_readiness["classification_enabled"]:
+            blockers.append("classification_disabled_for_gui_acceptance")
+        if not manual_e2e_readiness["ai_tagging_enabled"]:
+            blockers.append("ai_tagging_disabled_for_gui_acceptance")
+        if not manual_e2e_readiness["tag_translation_llm_enabled"]:
+            blockers.append("localization_llm_disabled_for_gui_acceptance")
+        elif not (
+            manual_e2e_readiness["tag_translation_llm_provider_configured"]
+            or manual_e2e_readiness["tag_translation_llm_fallback_provider_configured"]
+        ):
+            blockers.append("localization_llm_provider_unconfigured_for_gui_acceptance")
+        if manual_e2e_readiness["auto_sync_enabled"] or manual_e2e_readiness["unattended_sync_enabled"]:
+            blockers.append("automatic_or_unattended_sync_enabled")
+        if (
+            manual_e2e_readiness["ai_auto_tag_after_import"]
+            or manual_e2e_readiness["classification_auto_after_import"]
+            or manual_e2e_readiness["tag_translation_auto_enabled"]
+            or manual_e2e_readiness["tag_translation_background_enabled"]
+        ):
+            blockers.append("background_or_auto_pipeline_enabled_for_manual_acceptance")
         if int(run.id) <= int(args.min_run_id):
             blockers.append("gui_run_not_newer_than_min_run_id")
         if not gui_provenance.get("valid"):
@@ -364,6 +505,7 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             "branch": git_value("branch", "--show-current"),
             "head_sha": git_value("rev-parse", "HEAD"),
             "profile": profile,
+            "manual_e2e_readiness": manual_e2e_readiness,
             "gui_execute_run_id": int(run.id),
             "min_run_id": int(args.min_run_id),
             "run_status": str(run.status),

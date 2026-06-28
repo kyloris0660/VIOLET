@@ -7,6 +7,7 @@ import json
 ROOT = Path(__file__).resolve().parent.parent
 ADMIN_TEMPLATE = ROOT / "frontend" / "templates" / "admin.html"
 ADMIN_JS = ROOT / "frontend" / "static" / "js" / "admin.js"
+SERVICE_WORKER_JS = ROOT / "frontend" / "static" / "sw.js"
 LOCALES = [
     ROOT / "frontend" / "static" / "locales" / "en.json",
     ROOT / "frontend" / "static" / "locales" / "zh-cn.json",
@@ -25,9 +26,15 @@ def test_dynamic_sync_operator_flow_is_primary_and_legacy_controls_are_advanced(
     advanced_index = template.index('id="dynamic-sync-advanced-controls"')
     check_index = template.index('id="dynamic-sync-check-btn"')
     dry_run_index = template.index('id="dynamic-sync-dry-run-btn"')
+    hydrated_only_index = template.index('id="dynamic-sync-hydrated-only"')
+    hydration_policy_index = template.index('id="dynamic-sync-hydration-policy"')
 
     assert operator_index < start_index < advanced_index
+    assert operator_index < hydration_policy_index < advanced_index
+    assert advanced_index < hydrated_only_index < check_index
     assert advanced_index < check_index < dry_run_index
+    assert 'id="dynamic-sync-execute-max-files" min="1" max="1000" value="1000"' in template
+    assert 'id="dynamic-sync-execute-max-files" min="1" max="5" value="5"' not in template
     assert "开始手动同步" in template
     assert "旧“检查更新”会扫描 source root" in template
 
@@ -48,6 +55,8 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
 
     assert "dynamicSyncActionInFlight" in script
     assert "_manualSyncSetProgress" in script
+    assert "useAdvancedHydratedOnly = false" in script
+    assert "cloud_aware_non_destructive_read" in script
     assert "POST /api/admin/dynamic-library-sync/manual-sync/plan" in script
     assert "POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root." in script
 
@@ -80,6 +89,7 @@ def test_dynamic_sync_new_i18n_keys_are_translated() -> None:
         "confirm_execute_btn",
         "copy_confirmation_btn",
         "advanced_controls",
+        "hydration_policy_cloud_aware",
     }
 
     for path in LOCALES:
@@ -88,3 +98,12 @@ def test_dynamic_sync_new_i18n_keys_are_translated() -> None:
         missing = required - set(sync)
         assert not missing, f"{path.name} missing {sorted(missing)}"
         assert all(not sync[key].startswith("admin.dynamic_library_sync") for key in required)
+
+
+def test_service_worker_static_cache_tracks_cache_buster() -> None:
+    script = _text(SERVICE_WORKER_JS)
+
+    assert "new URL(self.location.href).searchParams.get('v')" in script
+    assert "const CACHE_NAME = `violet-${CACHE_VERSION}`;" in script
+    assert "new Request(`${asset}?v=${CACHE_VERSION}`, { cache: 'reload' })" in script
+    assert "const CACHE_NAME = 'violet-1-41-0';" not in script

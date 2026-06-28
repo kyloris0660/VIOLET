@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -86,6 +87,193 @@ def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
 def test_s3a_m2_gui_validator_rejects_private_output_outside_manifest_tree(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="gui_acceptance_output_dir_outside_local_manifest_tree"):
         gui_validator.ensure_private_output_dir(tmp_path)
+
+
+def test_s3a_m2_gui_validator_applies_manual_e2e_profile_flags(tmp_path: Path, monkeypatch) -> None:
+    profile_path = tmp_path / "production-profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "profile_id": "production-default",
+                "repo_root": str(tmp_path),
+                "python": sys.executable,
+                "app_port": 8012,
+                "storage_root": str(tmp_path / "storage"),
+                "require_auth": True,
+                "manual_sync_enabled": True,
+                "manual_sync_execute_enabled": True,
+                "manual_sync_execute_max_files": 1000,
+                "db": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "blombooru",
+                    "user": "postgres",
+                    "password": "",
+                },
+                "tag_translation_llm": {
+                    "api_key": "test-key",
+                    "model": "test-model",
+                    "base_url": "http://127.0.0.1:1/v1",
+                },
+                "automation_flags": {
+                    "dynamic_library_auto_sync": False,
+                    "ai_auto_tag_after_import": False,
+                    "content_classification_auto_after_import": False,
+                    "tag_translation_auto": False,
+                    "tag_translation_background": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    for key in (
+        "AI_TAGGING_ENABLED",
+        "CONTENT_CLASSIFICATION_ENABLED",
+        "CONTENT_CLASSIFICATION_METHOD",
+        "TAG_TRANSLATION_LLM_ENABLED",
+        "TAG_TRANSLATION_LLM_API_KEY",
+        "TAG_TRANSLATION_LLM_MODEL",
+        "TAG_TRANSLATION_LLM_BASE_URL",
+        "DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED",
+        "TAG_TRANSLATION_BACKGROUND_ENABLED",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    public = gui_validator.apply_profile_env(profile_path)
+
+    assert os.environ["AI_TAGGING_ENABLED"] == "true"
+    assert os.environ["CONTENT_CLASSIFICATION_ENABLED"] == "true"
+    assert os.environ["CONTENT_CLASSIFICATION_METHOD"] == "heuristic"
+    assert os.environ["TAG_TRANSLATION_LLM_ENABLED"] == "true"
+    assert os.environ["TAG_TRANSLATION_LLM_API_KEY"] == "test-key"
+    assert os.environ["TAG_TRANSLATION_LLM_MODEL"] == "test-model"
+    assert os.environ["TAG_TRANSLATION_LLM_BASE_URL"] == "http://127.0.0.1:1/v1"
+    assert os.environ["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
+    assert os.environ["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "false"
+    assert public["manual_e2e_components"]["ai_tagging_enabled"] is True
+    assert public["manual_e2e_components"]["tag_translation_llm_enabled"] is True
+    assert public["tag_translation_llm"]["api_key_present"] is True
+    assert public["tag_translation_llm"]["model_configured"] is True
+    assert public["tag_translation_llm"]["base_url_configured"] is True
+    assert public["manual_e2e_components"]["auto_or_background_sync_enabled"] is False
+
+
+def test_s3a_m2_gui_validator_fails_if_gui_run_imports_without_ai_tagging(tmp_path: Path, monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    profile_path = tmp_path / "production-profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "profile_id": "production-default",
+                "repo_root": str(tmp_path),
+                "python": sys.executable,
+                "app_port": 8012,
+                "storage_root": str(tmp_path / "storage"),
+                "require_auth": True,
+                "manual_sync_enabled": True,
+                "manual_sync_execute_enabled": True,
+                "manual_sync_execute_max_files": 1000,
+                "db": {"host": "localhost", "port": 5432, "name": "blombooru", "user": "postgres", "password": ""},
+                "tag_translation_llm": {
+                    "api_key": "test-key",
+                    "model": "test-model",
+                    "base_url": "http://127.0.0.1:1/v1",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        root = DynamicSourceRoot(
+            label="gui",
+            root_path=str(tmp_path / "source"),
+            root_path_hash="guiroot",
+            is_active=True,
+        )
+        media = Media(
+            filename="gui-import.png",
+            path="media/original/gui-import.png",
+            hash="gui-import-hash",
+            file_type=FileTypeEnum.image,
+        )
+        run = DynamicSyncRun(
+            id=9,
+            run_type="manual_sync_execute",
+            mode="production_acceptance",
+            status="completed",
+            dry_run=False,
+            total_seen=1,
+            new_items=1,
+            summary_json={
+                "manual_sync_execute": {
+                    "request": {
+                        "request_source": "web_admin_gui",
+                        "gui_validation_session_id": "gui-test-session",
+                        "client_route": "/admin?tab=content#dynamic-library-sync-section",
+                    },
+                    "outcome_counts": {"imported": 1},
+                    "localization": {"status": "completed", "blocked_reason": None},
+                }
+            },
+        )
+        db.add_all([root, media, run])
+        db.flush()
+        item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="gui-import.png",
+            relative_path_hash="gui-import-relhash",
+            media_id=media.id,
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="pending",
+            localization_status="localized",
+            last_sync_run_id=run.id,
+        )
+        db.add(item)
+        db.flush()
+        db.add(
+            DynamicSyncRunItem(
+                sync_run_id=run.id,
+                source_item_id=item.id,
+                item_state="imported",
+                action="import",
+                eligible_for_db_import=True,
+                media_id=media.id,
+            )
+        )
+        db.commit()
+        monkeypatch.setattr(gui_validator, "open_db_session", lambda: Session())
+        args = SimpleNamespace(
+            profile_json=profile_path,
+            min_run_id=8,
+            run_id=None,
+            gui_validation_session_id=None,
+            allow_zero_import=False,
+        )
+
+        public, _private = gui_validator.build_validation(args)
+
+        assert public["validated"] is False
+        assert "ai_tagging_incomplete_for_imported_items" in public["blockers"]
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
 
 
 def test_s3a_m2_ai_repair_commits_before_fresh_session_audit(tmp_path: Path) -> None:
