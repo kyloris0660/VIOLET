@@ -1601,6 +1601,85 @@ def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, 
     assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 0
 
 
+def test_s3a_m2_manual_execute_ai_policy_confirms_general_but_suggests_proper_and_low_confidence(
+    db,
+    tmp_path,
+    monkeypatch,
+):
+    import app.services.ai_tagging_service as ai_tagging_service
+
+    class FakeTagger:
+        is_loaded = True
+        current_model = "unit"
+
+        def ensure_loaded(self, *_args, **_kwargs):
+            return None
+
+        def get_runtime_provenance(self, **kwargs):
+            return {"provider": "unit", **kwargs}
+
+        def predict_from_file(self, *_args, **_kwargs):
+            return [
+                {"name": "long_hair", "category": "general", "confidence": 0.92},
+                {"name": "hakurei_reimu", "category": "character", "confidence": 0.99},
+                {"name": "blue_ribbon", "category": "general", "confidence": 0.25},
+            ]
+
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("AI_GENERAL_THRESHOLD", "0.35")
+    monkeypatch.setenv("AI_CHARACTER_THRESHOLD", "0.85")
+    monkeypatch.setenv("AI_SUGGESTION_THRESHOLD", "0.20")
+    _patch_test_storage(monkeypatch, tmp_path)
+    monkeypatch.setattr(ai_tagging_service, "_get_tagger", lambda: FakeTagger())
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    rows = {
+        row.name: row
+        for row in db.query(
+            Tag.name,
+            blombooru_media_tags.c.is_suggestion,
+            blombooru_media_tags.c.is_locked,
+        )
+        .join(blombooru_media_tags, Tag.id == blombooru_media_tags.c.tag_id)
+        .all()
+    }
+    assert rows["long_hair"].is_suggestion is False
+    assert rows["long_hair"].is_locked is False
+    assert rows["hakurei_reimu"].is_suggestion is True
+    assert rows["blue_ribbon"].is_suggestion is True
+    assert db.query(Entity).count() == 0
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(SourceConcept).count() == 0
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 1
+    assert run_item.current_metadata_json["ai_tagging"]["suggestions_added"] == 2
+
+
 def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")

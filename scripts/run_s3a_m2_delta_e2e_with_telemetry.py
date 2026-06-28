@@ -1505,7 +1505,7 @@ def _tag_category_enums(names: Sequence[str]) -> list[Any]:
     return [by_value[name] for name in names if name in by_value]
 
 
-def select_delta_localization_candidates(db: Any, run_id: int, *, lang: str, limit: int) -> tuple[list[dict[str, Any]], int]:
+def select_delta_localization_candidates(db: Any, run_id: int, *, lang: str, limit: int) -> tuple[list[dict[str, Any]], int, bool]:
     from app.models import DynamicSyncRunItem, Tag, TagTranslation, blombooru_media_tags
 
     media_ids = [
@@ -1516,7 +1516,7 @@ def select_delta_localization_candidates(db: Any, run_id: int, *, lang: str, lim
         .all()
     ]
     if not media_ids:
-        return [], 0
+        return [], 0, False
     translated = db.query(TagTranslation.canonical_name).filter(
         TagTranslation.language == lang,
         TagTranslation.status != "rejected",
@@ -1552,7 +1552,7 @@ def select_delta_localization_candidates(db: Any, run_id: int, *, lang: str, lim
         }
         for tag in visual_rows[:limit]
     ]
-    return candidates, int(proper_count)
+    return candidates, int(proper_count), len(visual_rows) > limit
 
 
 def diagnose_run_localization(db: Any, run_id: int, *, lang: str = "zh-CN", job_id: int | None = None) -> dict[str, Any]:
@@ -1900,7 +1900,7 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
     job = None
     try:
         max_tags = max(int(args.localization_max_tags or 0), 1)
-        candidates, skipped_proper_nouns = select_delta_localization_candidates(
+        candidates, skipped_proper_nouns, candidate_overflow = select_delta_localization_candidates(
             db,
             int(run_id),
             lang=args.lang,
@@ -1918,6 +1918,12 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
             "backend_type": "llm_provider" if provider_available else "unavailable",
             "requested_max_tags": max_tags,
             "candidate_count": len(candidates),
+            "candidate_overflow": bool(candidate_overflow),
+            "localization_limit_status": (
+                "overflow"
+                if candidate_overflow
+                else ("exact_limit_no_overflow" if len(candidates) == max_tags else "under_limit")
+            ),
             "proper_noun_candidates_skipped": skipped_proper_nouns,
             "proper_noun_unreviewed_aliases_trusted": False,
             "translated": 0,
@@ -2057,7 +2063,7 @@ def run_delta_localization(args: argparse.Namespace, run_id: int, stage_tracker:
             db.commit()
         invalidate_translation_cache()
         status = "completed" if failed == 0 else "completed_with_failures"
-        if len(candidates) >= max_tags:
+        if candidate_overflow:
             status = "partial_localization_max_tags_reached" if failed == 0 else "partial_with_failures"
         job.status = "completed" if status in {"completed", "partial_localization_max_tags_reached"} else "failed"
         job.processed = len(candidates)
@@ -2213,6 +2219,17 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     final_totals = summary.get("final_totals") or {}
     standard_flow = summary.get("standard_pipeline_flow") or {}
     standard_steps = standard_flow.get("steps") or {}
+    incident = summary.get("ai_tag_assignment_incident") or {}
+    post_repair_ui = summary.get("post_repair_ui_validation") or incident.get("ui_verification") or {}
+    cohort = summary.get("cohort_self_audit") or {}
+    incident_after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
+    cohort_affected = cohort.get("affected") if isinstance(cohort.get("affected"), Mapping) else {}
+    cohort_baseline = cohort.get("baseline") if isinstance(cohort.get("baseline"), Mapping) else {}
+    affected_tags = cohort_affected.get("tag_assignment") if isinstance(cohort_affected.get("tag_assignment"), Mapping) else {}
+    baseline_tags = cohort_baseline.get("tag_assignment") if isinstance(cohort_baseline.get("tag_assignment"), Mapping) else {}
+    affected_classification = cohort_affected.get("classification") if isinstance(cohort_affected.get("classification"), Mapping) else {}
+    baseline_classification = cohort_baseline.get("classification") if isinstance(cohort_baseline.get("classification"), Mapping) else {}
+    affected_localization = cohort_affected.get("localization") if isinstance(cohort_affected.get("localization"), Mapping) else {}
     not_completed = summary.get("not_completed") or [
         "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
         "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
@@ -2264,6 +2281,21 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- Localizable distinct / already localized / newly localized / remaining gap: `{loc_diag.get('localizable_distinct_tags')}` / `{loc_diag.get('localizable_already_localized_or_static')}` / `{loc_diag.get('newly_localized_tags')}` / `{loc_diag.get('tags_requiring_localization_after_runner')}`.",
             f"- Proper-noun suggestion/review-only skipped: `{loc_diag.get('proper_noun_suggestion_review_only_tags_skipped')}`.",
             f"- Not eligible: `{loc_diag.get('not_eligible_for_localization', {})}`.",
+            "",
+            "## AI Tag Assignment Incident And Cohort Audit",
+            "",
+            f"- Incident status: `{incident.get('status')}`; affected runs: `{incident.get('affected_run_ids')}`; affected media: `{incident.get('affected_media_count')}`; assignments inspected: `{incident.get('assignments_inspected')}`.",
+            f"- Root cause: `{incident.get('root_cause')}`.",
+            f"- Repair converted suggestion->normal: `{(incident.get('repair') or {}).get('assignments_converted_from_suggestion_to_normal')}`; kept suggestions: `{(incident.get('repair') or {}).get('assignments_kept_suggestion')}`; duplicate rows created: `{(incident.get('repair') or {}).get('duplicate_rows_created')}`.",
+            f"- After repair high-confidence non-proper incorrect suggestions: `{incident_after.get('high_conf_nonproper_incorrect_suggestion_count')}`; normal high-confidence non-proper tags: `{incident_after.get('high_conf_nonproper_normal_count')}`.",
+            f"- Proper-noun non-suggestion violations: `{incident_after.get('proper_noun_non_suggestion_count')}`; Entity/SourceConcept truth violations: `{incident.get('entity_truth_violations_found')}`.",
+            f"- Cohort status: `{cohort.get('status')}`; baseline method: `{(cohort.get('baseline_selection') or {}).get('method')}`; affected/baseline media: `{cohort.get('affected_media_count')}` / `{cohort.get('baseline_media_count')}`.",
+            f"- S3A-M2 normal/suggestion tags per media avg: `{(affected_tags.get('normal_tag_count_per_media') or {}).get('avg')}` / `{(affected_tags.get('suggestion_tag_count_per_media') or {}).get('avg')}`.",
+            f"- Baseline normal/suggestion tags per media avg: `{(baseline_tags.get('normal_tag_count_per_media') or {}).get('avg')}` / `{(baseline_tags.get('suggestion_tag_count_per_media') or {}).get('avg')}`.",
+            f"- Classification unknown rate S3A-M2/baseline: `{affected_classification.get('unknown_or_empty_rate_percent')}` / `{baseline_classification.get('unknown_or_empty_rate_percent')}`.",
+            f"- Localization remaining gap after repair: `{affected_localization.get('localizable_remaining_gap')}`; blocker anomalies remaining: `{cohort.get('blocker_anomaly_count')}`.",
+            f"- Post-repair UI validation: `{post_repair_ui.get('status')}`; samples: `{post_repair_ui.get('sample_count')}`; normal visible pass: `{post_repair_ui.get('normal_visible_pass_count')}`; proper suggestion visible pass: `{post_repair_ui.get('proper_suggestion_visible_pass_count')}`.",
+            f"- Computer Use result: `{post_repair_ui.get('computer_use_result')}`; fallback method: `{post_repair_ui.get('method')}`.",
             "",
             "## Placeholder Hydration",
             "",
@@ -2872,6 +2904,32 @@ def refresh_completion_claims(summary: dict[str, Any]) -> dict[str, Any]:
         "passed_gui_execute_completed",
         "passed_gui_execute_not_safe_runner_execute_used",
     }
+    incident = summary.get("ai_tag_assignment_incident") or {}
+    incident_after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
+    incident_ui = incident.get("ui_verification") or summary.get("post_repair_ui_validation") or {}
+    incident_ok = (
+        str(incident.get("status") or "") in {"repaired", "passed_no_incident"}
+        and bool(incident.get("public_safe"))
+        and str(incident_ui.get("status") or "") == "passed"
+        and bool(incident_ui.get("public_safe"))
+        and _standard_int(incident_after.get("high_conf_nonproper_incorrect_suggestion_count")) == 0
+        and _standard_int(incident_after.get("proper_noun_non_suggestion_count")) == 0
+        and _standard_int(incident.get("entity_truth_violations_found")) == 0
+        and _standard_int(incident.get("localization_remaining_gap")) == 0
+        and not (
+            _standard_int(incident_after.get("high_conf_nonproper_expected_normal_count")) > 0
+            and bool(incident_after.get("all_ai_assignments_are_suggestions"))
+        )
+    )
+    cohort = summary.get("cohort_self_audit") or {}
+    cohort_ok = (
+        str(cohort.get("status") or "") in {"passed", "passed_after_repair"}
+        and bool(cohort.get("public_safe"))
+        and bool(cohort.get("normal_ai_tag_semantics_consistent_with_policy"))
+        and _standard_int(cohort.get("blocker_anomaly_count")) == 0
+        and _standard_int(cohort.get("affected_media_count")) > 0
+        and _standard_int(cohort.get("baseline_media_count")) > 0
+    )
     summary["standard_pipeline_flow"] = build_standard_pipeline_flow(summary)
     standard_pipeline_ok = str((summary.get("standard_pipeline_flow") or {}).get("status") or "") == "completed"
     target_met = bool(
@@ -2888,6 +2946,8 @@ def refresh_completion_claims(summary: dict[str, Any]) -> dict[str, Any]:
         and telemetry.get("validation_status") == "passed"
         and launcher_ok
         and standard_pipeline_ok
+        and incident_ok
+        and cohort_ok
     )
     if target_met:
         status = "target_met"
@@ -3183,9 +3243,23 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         monitor.start()
         try:
             execution = execute_manual_plan(args, plan, stage_tracker)
-            provider_state.update(manual_execute_stage_summary(execution).get("provider_provenance") or {})
-            run_id = int(execution.get("id"))
-            localization = run_delta_localization(args, run_id, stage_tracker)
+            execute_summary = manual_execute_stage_summary(execution)
+            provider_state.update(execute_summary.get("provider_provenance") or {})
+            if str(execute_summary.get("status") or "").casefold() == "completed":
+                run_id = int(execution.get("id"))
+                localization = run_delta_localization(args, run_id, stage_tracker)
+            else:
+                localization = {
+                    "stage": "localization",
+                    "status": "skipped_execute_not_completed",
+                    "executed": False,
+                    "llm_called": False,
+                    "provider_call_count": 0,
+                    "failed": 0,
+                    "skipped": 0,
+                    "reason": "manual_execute_not_completed",
+                    "public_safe": True,
+                }
         finally:
             stage_tracker.set("summary")
             telemetry = monitor.stop()

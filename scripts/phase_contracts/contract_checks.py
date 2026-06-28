@@ -34,6 +34,9 @@ SECRET_CONTEXT_KEY_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cook
 PRIVATE_PROVENANCE_KEY_RE = re.compile(
     r"(?i)(raw_filename|filename|file_name|source_url|source_urls|original_url|thumbnail_url|source_path|local_path|source_root|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
 )
+PRIVATE_CONTENT_HASH_KEY_RE = re.compile(
+    r"(?i)(^|_)(content_hash|file_hash|sha256|sha_256|md5|phash|perceptual_hash)$"
+)
 FILENAME_VALUE_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov|zip|rar|7z)\b")
 
 POSITIVE_STAGE_STATUSES = {"passed", "pass", "complete", "completed", "executed", "success", "succeeded"}
@@ -425,6 +428,11 @@ def _path_has_private_provenance_context(path: str) -> bool:
     return any(PRIVATE_PROVENANCE_KEY_RE.search(segment) for segment in segments)
 
 
+def _path_has_private_content_hash_context(path: str) -> bool:
+    segments = [segment for segment in re.split(r"[.\[\]]+", path) if segment and segment != "$" and not segment.isdigit()]
+    return any(PRIVATE_CONTENT_HASH_KEY_RE.search(segment) for segment in segments)
+
+
 def _path_has_secret_context(path: str) -> bool:
     segments = [segment for segment in re.split(r"[.\[\]]+", path) if segment and segment != "$" and not segment.isdigit()]
     return any(SECRET_CONTEXT_KEY_RE.search(segment) for segment in segments)
@@ -473,6 +481,7 @@ def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
                 findings.append(finding)
         secret_context = kind in {"value", "empty_container"} and _path_has_secret_context(raw_path)
         provenance_context = kind in {"value", "empty_container"} and _path_has_private_provenance_context(raw_path)
+        content_hash_context = kind in {"value", "empty_container"} and _path_has_private_content_hash_context(raw_path)
         if secret_context and not _safe_redacted(value):
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("secret_key_name_with_unredacted_value", key_name))
@@ -480,6 +489,10 @@ def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
         if provenance_context and not _safe_redacted(value):
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("private_provenance_value_unredacted", key_name))
+            findings.append(finding)
+        if content_hash_context and not _safe_redacted(value):
+            finding = {"path": display_path, "kind": kind}
+            finding.update(_redacted_match_payload("private_content_hash_value_unredacted", key_name))
             findings.append(finding)
         if text is not None and kind == "key" and (SECRET_KEY_NAME_RE.search(text) or PRIVATE_PROVENANCE_KEY_RE.search(text)):
             # Key names are not automatically failures; values decide whether a
@@ -6563,7 +6576,45 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             expected=True,
             actual=False,
         )
+    execute_status_for_localization = str(_get(summary, "execute.status", "") or "").casefold()
+    if execute_status_for_localization != "completed" and (
+        _as_bool(_get(summary, "localization.executed", False)) or _as_bool(_get(summary, "localization.llm_called", False))
+    ):
+        result.fail(
+            "s3a_m2_localization_ran_without_completed_execute",
+            "S3A-M2 localization must not run unless manual execute completed successfully.",
+            path="localization.executed",
+            expected=False,
+            actual=_get(summary, "localization.executed", None),
+        )
     if production_performed:
+        env_name = str(_get(summary, "readiness.production_settings.violet_env", "") or "").casefold()
+        db_name = str(_get(summary, "readiness.production_settings.db_name", "") or "")
+        db_name_normalized = db_name.casefold()
+        if env_name and env_name != "production":
+            result.fail(
+                "s3a_m2_production_acceptance_not_production_env",
+                "Production acceptance must not be claimed from a non-production VIOLET_ENV.",
+                path="readiness.production_settings.violet_env",
+                expected="production",
+                actual=env_name,
+            )
+        if not db_name:
+            result.fail(
+                "s3a_m2_production_db_identity_missing",
+                "Production acceptance must report the resolved DB identity so test DB execution cannot pass as production.",
+                path="readiness.production_settings.db_name",
+                expected="non-empty production DB name",
+                actual=db_name,
+            )
+        elif db_name_normalized == "blombooru_test" or db_name_normalized.endswith("_test") or db_name_normalized.startswith("test_"):
+            result.fail(
+                "s3a_m2_production_acceptance_on_test_db",
+                "Production acceptance must fail closed when the resolved DB identity is a test database.",
+                path="readiness.production_settings.db_name",
+                expected="production DB name",
+                actual=db_name,
+            )
         if str(_get(summary, "execute.status", "")).casefold() != "completed":
             result.fail(
                 "s3a_m2_execute_not_completed",
@@ -6613,6 +6664,16 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 path="localization_diagnosis.tags_requiring_localization_after_runner",
                 expected=0,
                 actual=_get(summary, "localization_diagnosis.tags_requiring_localization_after_runner", None),
+            )
+        if str(_get(summary, "localization.status", "") or "") == "partial_localization_max_tags_reached" and not _as_bool(
+            _get(summary, "localization.candidate_overflow", False)
+        ):
+            result.fail(
+                "s3a_m2_localization_partial_without_overflow",
+                "Localization may report partial max-tags only when the candidate query proved overflow beyond the exact limit.",
+                path="localization.candidate_overflow",
+                expected=True,
+                actual=_get(summary, "localization.candidate_overflow", None),
             )
 
     gpu_status = str(_get(summary, "gpu_telemetry.validation_status", "") or "").casefold()
@@ -6674,6 +6735,147 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             )
 
     if status == "target_met":
+        incident = _get(summary, "ai_tag_assignment_incident", {})
+        cohort = _get(summary, "cohort_self_audit", {})
+        if not isinstance(incident, Mapping):
+            result.fail(
+                "s3a_m2_ai_tag_assignment_incident_missing",
+                "S3A-M2 target_met requires an assignment-level AI tag incident/self-audit section.",
+                path="ai_tag_assignment_incident",
+            )
+            incident = {}
+        if not isinstance(cohort, Mapping):
+            result.fail(
+                "s3a_m2_cohort_self_audit_missing",
+                "S3A-M2 target_met requires cohort-level comparison against the mature pipeline.",
+                path="cohort_self_audit",
+            )
+            cohort = {}
+        incident_status = str(incident.get("status") or "")
+        if incident_status not in {"repaired", "passed_no_incident"}:
+            result.fail(
+                "s3a_m2_ai_tag_assignment_incident_not_resolved",
+                "S3A-M2 target_met requires the AI tag assignment incident to be repaired or explicitly absent after audit.",
+                path="ai_tag_assignment_incident.status",
+                expected=["repaired", "passed_no_incident"],
+                actual=incident_status,
+            )
+        incident_after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
+        expected_normal = _as_int(incident_after.get("high_conf_nonproper_expected_normal_count", 0))
+        incorrect_suggestions = _as_int(incident_after.get("high_conf_nonproper_incorrect_suggestion_count", 0))
+        normal_count = _as_int(incident_after.get("high_conf_nonproper_normal_count", 0))
+        proper_non_suggestion = _as_int(incident_after.get("proper_noun_non_suggestion_count", 0))
+        if expected_normal > 0 and _as_bool(incident_after.get("all_ai_assignments_are_suggestions", False)):
+            result.fail(
+                "s3a_m2_all_ai_tags_suggestions_with_nonproper_expected",
+                "S3A-M2 cannot pass when all AI tags are suggestions while high-confidence non-proper tags should be normal.",
+                path="ai_tag_assignment_incident.after.all_ai_assignments_are_suggestions",
+                expected=False,
+                actual=True,
+            )
+        if incorrect_suggestions != 0:
+            result.fail(
+                "s3a_m2_high_conf_nonproper_ai_tags_still_suggestions",
+                "High-confidence non-proper AI tags must be normal media tags after repair.",
+                path="ai_tag_assignment_incident.after.high_conf_nonproper_incorrect_suggestion_count",
+                expected=0,
+                actual=incorrect_suggestions,
+            )
+        if expected_normal > 0 and normal_count <= 0:
+            result.fail(
+                "s3a_m2_high_conf_nonproper_ai_tags_not_normalized",
+                "S3A-M2 target_met requires normal non-suggestion AI tag assignments for high-confidence non-proper tags.",
+                path="ai_tag_assignment_incident.after.high_conf_nonproper_normal_count",
+                expected="> 0",
+                actual=normal_count,
+            )
+        if proper_non_suggestion != 0:
+            result.fail(
+                "s3a_m2_proper_noun_ai_tags_not_review_only",
+                "AI-only proper noun tags must remain suggestion/review-only.",
+                path="ai_tag_assignment_incident.after.proper_noun_non_suggestion_count",
+                expected=0,
+                actual=proper_non_suggestion,
+            )
+        if _as_int(incident.get("entity_truth_violations_found", 0)) != 0:
+            result.fail(
+                "s3a_m2_ai_only_entity_truth_violation",
+                "AI-only proper nouns must not create SourceConcept truth, Entity truth, or confirmed entity assignments.",
+                path="ai_tag_assignment_incident.entity_truth_violations_found",
+                expected=0,
+                actual=incident.get("entity_truth_violations_found"),
+            )
+        if _as_int(incident.get("localization_remaining_gap", 0)) != 0:
+            result.fail(
+                "s3a_m2_incident_localization_gap_remaining",
+                "AI tag assignment repair must not leave unexplained localization gaps.",
+                path="ai_tag_assignment_incident.localization_remaining_gap",
+                expected=0,
+                actual=incident.get("localization_remaining_gap"),
+            )
+        ui_verification = incident.get("ui_verification")
+        if not isinstance(ui_verification, Mapping):
+            ui_verification = _get(summary, "post_repair_ui_validation", {})
+        if not isinstance(ui_verification, Mapping) or str(ui_verification.get("status") or "") != "passed":
+            result.fail(
+                "s3a_m2_post_repair_ui_validation_not_passed",
+                "S3A-M2 target_met requires post-repair UI validation showing normal tags outside suggestion grouping.",
+                path="ai_tag_assignment_incident.ui_verification.status",
+                expected="passed",
+                actual=ui_verification.get("status") if isinstance(ui_verification, Mapping) else None,
+            )
+        elif _as_int(ui_verification.get("normal_visible_pass_count", 0)) < _as_int(ui_verification.get("sample_count", 0)):
+            result.fail(
+                "s3a_m2_post_repair_ui_normal_tags_not_visible",
+                "Every post-repair UI sample with normal AI tags must show normal GENERAL/META groups.",
+                path="ai_tag_assignment_incident.ui_verification.normal_visible_pass_count",
+                expected=ui_verification.get("sample_count"),
+                actual=ui_verification.get("normal_visible_pass_count"),
+            )
+        cohort_status = str(cohort.get("status") or "")
+        if cohort_status not in {"passed", "passed_after_repair"}:
+            result.fail(
+                "s3a_m2_cohort_self_audit_not_passed",
+                "Cohort-level S3A-M2 regression audit must pass before target_met.",
+                path="cohort_self_audit.status",
+                expected=["passed", "passed_after_repair"],
+                actual=cohort_status,
+            )
+        if _as_int(cohort.get("blocker_anomaly_count", 0)) != 0:
+            result.fail(
+                "s3a_m2_cohort_blocker_anomalies_remaining",
+                "S3A-M2 target_met cannot leave cohort-level blocker anomalies unresolved.",
+                path="cohort_self_audit.blocker_anomaly_count",
+                expected=0,
+                actual=cohort.get("blocker_anomaly_count"),
+            )
+        if not _as_bool(cohort.get("normal_ai_tag_semantics_consistent_with_policy", False)):
+            result.fail(
+                "s3a_m2_cohort_ai_tag_semantics_abnormal",
+                "Cohort audit must prove normal-vs-suggestion AI tag assignment semantics match policy.",
+                path="cohort_self_audit.normal_ai_tag_semantics_consistent_with_policy",
+                expected=True,
+                actual=cohort.get("normal_ai_tag_semantics_consistent_with_policy"),
+            )
+        if _as_int(cohort.get("affected_media_count", 0)) <= 0 or _as_int(cohort.get("baseline_media_count", 0)) <= 0:
+            result.fail(
+                "s3a_m2_cohort_sample_missing",
+                "Cohort audit must include both affected S3A-M2 media and an older mature-pipeline baseline cohort.",
+                path="cohort_self_audit",
+                expected="affected_media_count > 0 and baseline_media_count > 0",
+                actual={
+                    "affected_media_count": cohort.get("affected_media_count"),
+                    "baseline_media_count": cohort.get("baseline_media_count"),
+                },
+            )
+        if not _as_bool(incident.get("public_safe", False)) or not _as_bool(cohort.get("public_safe", False)):
+            result.fail(
+                "s3a_m2_incident_or_cohort_report_not_public_safe",
+                "Incident and cohort audit summaries must be explicitly public safe.",
+                path="ai_tag_assignment_incident.public_safe",
+                expected=True,
+                actual={"incident_public_safe": incident.get("public_safe"), "cohort_public_safe": cohort.get("public_safe")},
+            )
         required_target_true = (
             "production_acceptance.performed",
             "pipeline_contract.exact_operator_approval_present",
@@ -6807,6 +7009,15 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                 path="final_totals.ai_tagged",
                 expected="> 0",
                 actual=_get(summary, "final_totals.ai_tagged", _get(summary, "ai_tagging.count", None)),
+            )
+        telemetry_root = str(_get(summary, "private_artifacts.telemetry_root", "") or "")
+        if telemetry_root and not telemetry_root.replace("\\", "/").startswith(".local_manifests/s3a_m2_delta_e2e/telemetry"):
+            result.fail(
+                "s3a_m2_telemetry_artifact_outside_approved_tree",
+                "S3A-M2 raw telemetry must stay under .local_manifests/s3a_m2_delta_e2e/telemetry.",
+                path="private_artifacts.telemetry_root",
+                expected=".local_manifests/s3a_m2_delta_e2e/telemetry",
+                actual=telemetry_root,
             )
 
     public_payloads: list[Any] = [summary]

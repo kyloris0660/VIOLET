@@ -21,6 +21,70 @@
     },
     "total_seconds": 459.593
   },
+  "ai_tag_assignment_incident": {
+    "affected_media_count": 349,
+    "affected_run_ids": [
+      7,
+      8
+    ],
+    "after": {
+      "all_ai_assignments_are_suggestions": false,
+      "classification_content_class_counts": {
+        "anime": 314,
+        "non_anime": 12,
+        "unknown": 23
+      },
+      "classification_unknown_or_empty_rate_percent": 6.59,
+      "high_conf_nonproper_expected_normal_count": 12973,
+      "high_conf_nonproper_incorrect_suggestion_count": 0,
+      "high_conf_nonproper_normal_count": 12973,
+      "proper_noun_non_suggestion_count": 0,
+      "proper_noun_suggestion_count": 207
+    },
+    "assignments_inspected": 17464,
+    "before": {
+      "all_ai_assignments_are_suggestions": true,
+      "classification_unknown_or_empty_rate_percent": 6.59,
+      "high_conf_nonproper_expected_normal_count": 12973,
+      "high_conf_nonproper_incorrect_suggestion_count": 12973,
+      "proper_noun_non_suggestion_count": 0
+    },
+    "cohort_blocker_anomaly_count": 0,
+    "discovered_by": "manual_production_ui_validation",
+    "entity_truth_violations_found": 0,
+    "localization_remaining_gap": 0,
+    "public_safe": true,
+    "repair": {
+      "assignments_converted_from_normal_to_suggestion": 0,
+      "assignments_converted_from_suggestion_to_normal": 12973,
+      "assignments_deleted_or_replaced": 0,
+      "assignments_kept_normal": 0,
+      "assignments_kept_suggestion": 4491,
+      "classification_items_changed": 0,
+      "classification_items_rechecked": 349,
+      "classification_rechecked": true,
+      "duplicate_rows_created": 0
+    },
+    "root_cause": "manual_sync_execute_forced_force_suggestions_true_for_all_ai_tags",
+    "status": "repaired",
+    "tests_contract_missed_reason": "previous gates counted ai_tagged media and proper-noun suggestion safety, but did not assert assignment-level normal-vs-suggestion semantics for high-confidence non-proper tags.",
+    "ui_verification": {
+      "any_suggestion_visible_pass_count": 8,
+      "computer_use_attempted": true,
+      "computer_use_result": "unavailable_in_current_tool_session; tool discovery exposed browser/node automation but not computer-use controls",
+      "method": "in_app_browser_playwright_against_launcher_started_production_server_with_tag_state_polling",
+      "normal_visible_pass_count": 8,
+      "proper_suggestion_visible_pass_count": 8,
+      "public_safe": true,
+      "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/incident/ui-validation-private.json",
+      "raw_ids_private": true,
+      "raw_screenshots_committed": false,
+      "sample_count": 8,
+      "samples_expect_proper_suggestions": 3,
+      "screenshot_count": 3,
+      "status": "passed"
+    }
+  },
   "ai_tagging": {
     "count": 49,
     "failed": 0,
@@ -114,6 +178,271 @@
     "failed": 0,
     "reported": true,
     "skipped": 0
+  },
+  "cohort_self_audit": {
+    "affected": {
+      "classification": {
+        "content_class_counts": {
+          "anime": 314,
+          "non_anime": 12,
+          "unknown": 23
+        },
+        "content_class_model_counts": {
+          "clip-vit-base-patch32": 349
+        },
+        "content_class_source_counts": {
+          "clip": 349
+        },
+        "dynamic_source_ai_tagging_status_counts": {
+          "ai_tagged": 349
+        },
+        "dynamic_source_classification_status_counts": {
+          "classified": 349
+        },
+        "media_count": 349,
+        "unknown_or_empty_count": 23,
+        "unknown_or_empty_rate_percent": 6.59
+      },
+      "localization": {
+        "lang": "zh-CN",
+        "localizable_covered_by_db_or_static": 1646,
+        "localizable_distinct_tags": 1646,
+        "localizable_remaining_gap": 0,
+        "proper_noun_covered_by_db_or_static": 30,
+        "proper_noun_distinct_tags": 58,
+        "proper_noun_suggestion_localization_policy": "review_only_display_strings_allowed_without_entity_truth",
+        "suggestion_only_tags_create_hidden_localization_gap": false
+      },
+      "storage": {
+        "app_storage_file_missing": 0,
+        "app_storage_file_present": 349,
+        "media_count": 349,
+        "paths_redacted": true,
+        "thumbnail_missing": 0,
+        "thumbnail_present": 349
+      },
+      "tag_assignment": {
+        "all_ai_assignments_are_suggestions": false,
+        "assignment_count": 17464,
+        "category_counts": {
+          "character": 207,
+          "general": 16905,
+          "meta": 352
+        },
+        "category_suggestion_counts": {
+          "character|suggestion=true": 207,
+          "general|suggestion=false": 12621,
+          "general|suggestion=true": 4284,
+          "meta|suggestion=false": 352
+        },
+        "confidence_bucket_counts": {
+          "0.20-0.349": 4303,
+          "0.35-0.499": 2969,
+          "0.50-0.649": 2519,
+          "0.65-0.849": 3479,
+          ">=0.85": 4194
+        },
+        "distinct_ai_tag_count": 1704,
+        "high_conf_nonproper_expected_normal_count": 12973,
+        "high_conf_nonproper_incorrect_suggestion_count": 0,
+        "high_conf_nonproper_normal_count": 12973,
+        "high_conf_nonproper_suggestion_rate_percent": 0.0,
+        "low_conf_or_edge_suggestion_count": 4284,
+        "media_count": 349,
+        "missing_confidence_count": 0,
+        "normal_tag_count_per_media": {
+          "avg": 37.172,
+          "max": 79,
+          "median": 37.0,
+          "min": 5,
+          "p95": 54
+        },
+        "proper_noun_non_suggestion_count": 0,
+        "proper_noun_suggestion_count": 207,
+        "proper_noun_suggestion_rate_percent": 100.0,
+        "rows_needing_repair_count": 0,
+        "source_counts": {
+          "ai_wd": 17464
+        },
+        "suggestion_counts": {
+          "false": 12973,
+          "true": 4491
+        },
+        "suggestion_tag_count_per_media": {
+          "avg": 12.868,
+          "max": 29,
+          "median": 12.0,
+          "min": 1,
+          "p95": 21
+        },
+        "tag_count_per_media": {
+          "avg": 50.04,
+          "max": 99,
+          "median": 49.0,
+          "min": 9,
+          "p95": 72
+        }
+      }
+    },
+    "affected_media_count": 349,
+    "anomalies": [],
+    "baseline": {
+      "classification": {
+        "content_class_counts": {
+          "anime": 182,
+          "non_anime": 2,
+          "null": 10
+        },
+        "content_class_model_counts": {
+          "null": 10,
+          "wd_tag_count_phase47_s2_no_clip_download": 184
+        },
+        "content_class_source_counts": {
+          "heuristic": 184,
+          "null": 10
+        },
+        "dynamic_source_ai_tagging_status_counts": {
+          "tagged": 184
+        },
+        "dynamic_source_classification_status_counts": {
+          "classified": 184
+        },
+        "media_count": 194,
+        "unknown_or_empty_count": 10,
+        "unknown_or_empty_rate_percent": 5.155
+      },
+      "localization": {
+        "lang": "zh-CN",
+        "localizable_covered_by_db_or_static": 1399,
+        "localizable_distinct_tags": 1403,
+        "localizable_remaining_gap": 4,
+        "proper_noun_covered_by_db_or_static": 37,
+        "proper_noun_distinct_tags": 52,
+        "proper_noun_suggestion_localization_policy": "review_only_display_strings_allowed_without_entity_truth",
+        "suggestion_only_tags_create_hidden_localization_gap": false
+      },
+      "tag_assignment": {
+        "all_ai_assignments_are_suggestions": false,
+        "assignment_count": 10000,
+        "category_counts": {
+          "character": 135,
+          "general": 9667,
+          "meta": 198
+        },
+        "category_suggestion_counts": {
+          "character|suggestion=false": 127,
+          "character|suggestion=true": 8,
+          "general|suggestion=false": 7343,
+          "general|suggestion=true": 2324,
+          "meta|suggestion=false": 198
+        },
+        "confidence_bucket_counts": {
+          "0.20-0.349": 2328,
+          "0.35-0.499": 1573,
+          "0.50-0.649": 1387,
+          "0.65-0.849": 2047,
+          ">=0.85": 2665
+        },
+        "distinct_ai_tag_count": 1455,
+        "high_conf_nonproper_expected_normal_count": 7541,
+        "high_conf_nonproper_incorrect_suggestion_count": 0,
+        "high_conf_nonproper_normal_count": 7541,
+        "high_conf_nonproper_suggestion_rate_percent": 0.0,
+        "low_conf_or_edge_suggestion_count": 2324,
+        "media_count": 194,
+        "missing_confidence_count": 0,
+        "normal_tag_count_per_media": {
+          "avg": 39.526,
+          "max": 81,
+          "median": 39.0,
+          "min": 7,
+          "p95": 61
+        },
+        "proper_noun_non_suggestion_count": 127,
+        "proper_noun_suggestion_count": 8,
+        "proper_noun_suggestion_rate_percent": 5.926,
+        "rows_needing_repair_count": 127,
+        "source_counts": {
+          "ai_wd": 10000
+        },
+        "suggestion_counts": {
+          "false": 7668,
+          "true": 2332
+        },
+        "suggestion_tag_count_per_media": {
+          "avg": 12.021,
+          "max": 26,
+          "median": 11.0,
+          "min": 1,
+          "p95": 21
+        },
+        "tag_count_per_media": {
+          "avg": 51.546,
+          "max": 97,
+          "median": 50.0,
+          "min": 9,
+          "p95": 80
+        }
+      }
+    },
+    "baseline_media_count": 194,
+    "baseline_selection": {
+      "limit": 500,
+      "media_count": 194,
+      "method": "latest older non-S3A-M2 media with source='ai_wd' before affected cohort upload window"
+    },
+    "blocker_anomaly_count": 0,
+    "entity_truth": {
+      "confirmed_or_locked_ai_entity_assignments": 0,
+      "media_entity_assignments_from_ai_tag_or_llm_suggestion": 0,
+      "media_entity_assignments_on_affected_media": 0,
+      "media_entity_candidates_from_ai_tag": 0,
+      "public_safe": true,
+      "sourceconcept_truth_from_ai_only_detected": false,
+      "violations_found": 0
+    },
+    "ledger": {
+      "expected_total_seen": 626,
+      "public_safe": true,
+      "reason_counts": {
+        "cloud_placeholder": 36,
+        "existing_media_hash": 39,
+        "hidden": 2,
+        "imported": 349,
+        "unsupported_extension": 200
+      },
+      "represented_all_planned_items": true,
+      "represented_run_items": 626,
+      "runs": [
+        {
+          "expected_total_seen": 453,
+          "represented_all_planned_items": true,
+          "represented_run_items": 453,
+          "run_id": 7,
+          "status": "completed"
+        },
+        {
+          "expected_total_seen": 173,
+          "represented_all_planned_items": true,
+          "represented_run_items": 173,
+          "run_id": 8,
+          "status": "completed"
+        }
+      ],
+      "state_counts": {
+        "imported": 349,
+        "skipped_existing_media": 39,
+        "skipped_placeholder": 36,
+        "skipped_unsupported": 202
+      }
+    },
+    "normal_ai_tag_semantics_consistent_with_policy": true,
+    "public_safe": true,
+    "run_ids": [
+      7,
+      8
+    ],
+    "status": "passed_after_repair"
   },
   "controlled_delta": {
     "cap": 1000,
@@ -349,7 +678,7 @@
     "imported": 349,
     "localized": 5
   },
-  "generated_at": "2026-06-28T02:54:11Z",
+  "generated_at": "2026-06-28T03:53:39Z",
   "gpu_telemetry": {
     "actual_provider": "DmlExecutionProvider",
     "avg_gpu_utilization_percent": 36.97,
@@ -371,7 +700,7 @@
     "status": "collected",
     "validation_status": "passed"
   },
-  "head_sha": "3c824a5803c183c77e650ce115e0e8464c3f8a9e",
+  "head_sha": "ecebcb91e891669ba6dabefd44b045e288947ba6",
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
     "ai_wd_suggestion_assignment_count": 15136,
@@ -470,6 +799,7 @@
   "localization": {
     "backend_type": "llm_provider",
     "candidate_count": 2,
+    "candidate_overflow": false,
     "duplicate_provider_outputs": 0,
     "dynamic_source_items_updated": 49,
     "errors": [],
@@ -479,6 +809,7 @@
     "ledger_artifact": ".local_manifests/s3a_m2_delta_e2e/localization-ledger.jsonl",
     "ledger_path_redacted": true,
     "llm_called": true,
+    "localization_limit_status": "under_limit",
     "proper_noun_candidates_skipped": 4,
     "proper_noun_unreviewed_aliases_trusted": false,
     "provider": "fallback(primary->fallback)",
@@ -602,6 +933,22 @@
     "source_deleted_moved_renamed": false,
     "status": "completed"
   },
+  "post_repair_ui_validation": {
+    "any_suggestion_visible_pass_count": 8,
+    "computer_use_attempted": true,
+    "computer_use_result": "unavailable_in_current_tool_session; tool discovery exposed browser/node automation but not computer-use controls",
+    "method": "in_app_browser_playwright_against_launcher_started_production_server_with_tag_state_polling",
+    "normal_visible_pass_count": 8,
+    "proper_suggestion_visible_pass_count": 8,
+    "public_safe": true,
+    "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/incident/ui-validation-private.json",
+    "raw_ids_private": true,
+    "raw_screenshots_committed": false,
+    "sample_count": 8,
+    "samples_expect_proper_suggestions": 3,
+    "screenshot_count": 3,
+    "status": "passed"
+  },
   "private_artifacts": {
     "private_artifacts_committed": false,
     "root": ".local_manifests/s3a_m2_delta_e2e",
@@ -643,7 +990,7 @@
     "based_on_origin_main": true,
     "blockers": [],
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
-    "head_sha": "3c824a5803c183c77e650ce115e0e8464c3f8a9e",
+    "head_sha": "ecebcb91e891669ba6dabefd44b045e288947ba6",
     "llm_localization": {
       "base_url_configured": true,
       "base_url_host": "api.openai.com",

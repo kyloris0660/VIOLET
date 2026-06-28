@@ -1127,7 +1127,8 @@ def _ai_tag_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
         db,
         media_id,
         dry_run=False,
-        force_suggestions=True,
+        force_suggestions=False,
+        proper_noun_suggestions=True,
         local_files_only=True,
         schedule_localization=False,
     )

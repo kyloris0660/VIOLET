@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `True`.
 - Standard pipeline flow: `completed`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `3c824a5803c183c77e650ce115e0e8464c3f8a9e`.
+- Head SHA: `ecebcb91e891669ba6dabefd44b045e288947ba6`.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -41,7 +41,22 @@
 - AI tag assignments / distinct tags: `2328` / `714`.
 - Localizable distinct / already localized / newly localized / remaining gap: `700` / `700` / `2` / `0`.
 - Proper-noun suggestion/review-only skipped: `4`.
-- Not eligible: `{'proper_noun_suggestion_review_only': 4, 'category_not_in_general_or_meta': 0}`.
+- Not eligible: `{'category_not_in_general_or_meta': 0, 'proper_noun_suggestion_review_only': 4}`.
+
+## AI Tag Assignment Incident And Cohort Audit
+
+- Incident status: `repaired`; affected runs: `[7, 8]`; affected media: `349`; assignments inspected: `17464`.
+- Root cause: `manual_sync_execute_forced_force_suggestions_true_for_all_ai_tags`.
+- Repair converted suggestion->normal: `12973`; kept suggestions: `4491`; duplicate rows created: `0`.
+- After repair high-confidence non-proper incorrect suggestions: `0`; normal high-confidence non-proper tags: `12973`.
+- Proper-noun non-suggestion violations: `0`; Entity/SourceConcept truth violations: `0`.
+- Cohort status: `passed_after_repair`; baseline method: `latest older non-S3A-M2 media with source='ai_wd' before affected cohort upload window`; affected/baseline media: `349` / `194`.
+- S3A-M2 normal/suggestion tags per media avg: `37.172` / `12.868`.
+- Baseline normal/suggestion tags per media avg: `39.526` / `12.021`.
+- Classification unknown rate S3A-M2/baseline: `6.59` / `5.155`.
+- Localization remaining gap after repair: `0`; blocker anomalies remaining: `0`.
+- Post-repair UI validation: `passed`; samples: `8`; normal visible pass: `8`; proper suggestion visible pass: `8`.
+- Computer Use result: `unavailable_in_current_tool_session; tool discovery exposed browser/node automation but not computer-use controls`; fallback method: `in_app_browser_playwright_against_launcher_started_production_server_with_tag_state_polling`.
 
 ## Placeholder Hydration
 

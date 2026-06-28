@@ -139,6 +139,34 @@ def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
         "ai_tagging": {"reported": True, "count": 3, "failed": 0, "proper_nouns_suggestion_only": True},
         "gpu_telemetry": {"status": "collected"},
         "launcher_web_admin_acceptance": {"validated": False, "status": "pending"},
+        "ai_tag_assignment_incident": {
+            "status": "repaired",
+            "public_safe": True,
+            "after": {
+                "all_ai_assignments_are_suggestions": False,
+                "high_conf_nonproper_expected_normal_count": 2,
+                "high_conf_nonproper_incorrect_suggestion_count": 0,
+                "high_conf_nonproper_normal_count": 2,
+                "proper_noun_non_suggestion_count": 0,
+            },
+            "entity_truth_violations_found": 0,
+            "localization_remaining_gap": 0,
+            "ui_verification": {
+                "status": "passed",
+                "public_safe": True,
+                "sample_count": 2,
+                "normal_visible_pass_count": 2,
+                "proper_suggestion_visible_pass_count": 1,
+            },
+        },
+        "cohort_self_audit": {
+            "status": "passed_after_repair",
+            "public_safe": True,
+            "normal_ai_tag_semantics_consistent_with_policy": True,
+            "blocker_anomaly_count": 0,
+            "affected_media_count": 3,
+            "baseline_media_count": 3,
+        },
     }
 
     pending = refresh_completion_claims(json.loads(json.dumps(summary)))

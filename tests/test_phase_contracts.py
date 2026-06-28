@@ -1606,6 +1606,10 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "skipped": 20,
             "llm_called": True,
             "provider_call_count": 2,
+            "requested_max_tags": 1500,
+            "candidate_count": 80,
+            "candidate_overflow": False,
+            "localization_limit_status": "under_limit",
         },
         "localization_diagnosis": {
             "status": "completed",
@@ -1643,6 +1647,13 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "approval_phrase_type": "s3a_m2_plan_hash_bound",
             "approval_phrase_recorded": False,
             "exact_statement": "production acceptance performed",
+        },
+        "readiness": {
+            "passed": True,
+            "production_settings": {
+                "violet_env": "production",
+                "db_name": "blombooru",
+            },
         },
         "api_runner_acceptance": {
             "dry_run_plan_generated": True,
@@ -1715,6 +1726,72 @@ def _s3a_m2_summary(**overrides: object) -> dict:
                     "produce_public_report_and_contract",
                 )
             },
+        },
+        "ai_tag_assignment_incident": {
+            "status": "repaired",
+            "discovered_by": "manual_production_ui_validation",
+            "affected_run_ids": [7, 8],
+            "affected_media_count": 100,
+            "assignments_inspected": 1000,
+            "root_cause": "manual_sync_execute_forced_force_suggestions_true_for_all_ai_tags",
+            "before": {
+                "all_ai_assignments_are_suggestions": True,
+                "high_conf_nonproper_expected_normal_count": 600,
+                "high_conf_nonproper_incorrect_suggestion_count": 600,
+                "proper_noun_non_suggestion_count": 0,
+            },
+            "repair": {
+                "assignments_converted_from_suggestion_to_normal": 600,
+                "assignments_converted_from_normal_to_suggestion": 0,
+                "assignments_kept_suggestion": 400,
+                "assignments_deleted_or_replaced": 0,
+                "duplicate_rows_created": 0,
+            },
+            "after": {
+                "all_ai_assignments_are_suggestions": False,
+                "high_conf_nonproper_expected_normal_count": 600,
+                "high_conf_nonproper_incorrect_suggestion_count": 0,
+                "high_conf_nonproper_normal_count": 600,
+                "proper_noun_non_suggestion_count": 0,
+                "proper_noun_suggestion_count": 25,
+            },
+            "entity_truth_violations_found": 0,
+            "localization_remaining_gap": 0,
+            "cohort_blocker_anomaly_count": 0,
+            "ui_verification": {
+                "status": "passed",
+                "method": "in_app_browser_playwright_against_launcher_started_production_server",
+                "computer_use_attempted": True,
+                "computer_use_result": "unavailable_in_current_tool_session",
+                "sample_count": 8,
+                "normal_visible_pass_count": 8,
+                "proper_suggestion_visible_pass_count": 8,
+                "samples_expect_proper_suggestions": 3,
+                "raw_screenshots_committed": False,
+                "raw_ids_private": True,
+                "public_safe": True,
+            },
+            "public_safe": True,
+        },
+        "post_repair_ui_validation": {
+            "status": "passed",
+            "sample_count": 8,
+            "normal_visible_pass_count": 8,
+            "proper_suggestion_visible_pass_count": 8,
+            "public_safe": True,
+        },
+        "cohort_self_audit": {
+            "status": "passed_after_repair",
+            "baseline_selection": {
+                "method": "latest older non-S3A-M2 media with source='ai_wd' before affected cohort upload window",
+                "limit": 500,
+                "media_count": 50,
+            },
+            "affected_media_count": 100,
+            "baseline_media_count": 50,
+            "blocker_anomaly_count": 0,
+            "normal_ai_tag_semantics_consistent_with_policy": True,
+            "public_safe": True,
         },
         "private_artifacts": {
             "root": ".local_manifests/s3a_m2_delta_e2e",
@@ -3760,6 +3837,17 @@ def test_s3a_m2_contract_rejects_cap_exceeded_completion() -> None:
     assert "s3a_m2_cap_exceeded_claimed_completion" in codes
 
 
+def test_s3a_m2_contract_rejects_localization_when_execute_not_completed() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["execute"]["status"] = "failed"
+    summary["localization"]["executed"] = True
+    summary["localization"]["llm_called"] = True
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_localization_ran_without_completed_execute" in _error_codes(result)
+
+
 def test_s3a_m2_contract_rejects_cpu_fallback_as_gpu_success() -> None:
     summary = copy.deepcopy(_s3a_m2_summary())
     summary["gpu_telemetry"]["actual_provider"] = "CPUExecutionProvider"
@@ -3817,6 +3905,18 @@ def test_s3a_m2_contract_rejects_unexplained_localization_gap() -> None:
     assert "s3a_m2_localization_gap_remaining" in codes
 
 
+def test_s3a_m2_contract_rejects_localization_partial_without_overflow() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["localization"]["status"] = "partial_localization_max_tags_reached"
+    summary["localization"]["candidate_count"] = summary["localization"]["requested_max_tags"]
+    summary["localization"]["candidate_overflow"] = False
+    summary["localization"]["localization_limit_status"] = "exact_limit_no_overflow"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_localization_partial_without_overflow" in _error_codes(result)
+
+
 def test_s3a_m2_contract_rejects_incomplete_standard_pipeline_step() -> None:
     summary = copy.deepcopy(_s3a_m2_summary())
     summary["standard_pipeline_flow"]["status"] = "incomplete"
@@ -3848,6 +3948,85 @@ def test_s3a_m2_contract_rejects_runner_fallback_without_reason() -> None:
     result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
 
     assert "s3a_m2_runner_fallback_missing_reason" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_test_db_production_acceptance() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["readiness"]["production_settings"]["db_name"] = "blombooru_test"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_production_acceptance_on_test_db" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_all_ai_suggestions_with_high_conf_nonproper_tags() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["ai_tag_assignment_incident"]["status"] = "blocked"
+    summary["ai_tag_assignment_incident"]["after"]["all_ai_assignments_are_suggestions"] = True
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_nonproper_expected_normal_count"] = 12
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_nonproper_incorrect_suggestion_count"] = 12
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_nonproper_normal_count"] = 0
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_ai_tag_assignment_incident_not_resolved" in codes
+    assert "s3a_m2_all_ai_tags_suggestions_with_nonproper_expected" in codes
+    assert "s3a_m2_high_conf_nonproper_ai_tags_still_suggestions" in codes
+    assert "s3a_m2_high_conf_nonproper_ai_tags_not_normalized" in codes
+
+
+def test_s3a_m2_contract_rejects_proper_noun_ai_tags_as_normal() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["ai_tag_assignment_incident"]["after"]["proper_noun_non_suggestion_count"] = 1
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_proper_noun_ai_tags_not_review_only" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_abnormal_cohort_distribution() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["cohort_self_audit"]["status"] = "blocked_anomalies_remaining"
+    summary["cohort_self_audit"]["blocker_anomaly_count"] = 1
+    summary["cohort_self_audit"]["normal_ai_tag_semantics_consistent_with_policy"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_cohort_self_audit_not_passed" in codes
+    assert "s3a_m2_cohort_blocker_anomalies_remaining" in codes
+    assert "s3a_m2_cohort_ai_tag_semantics_abnormal" in codes
+
+
+def test_s3a_m2_contract_rejects_failed_post_repair_ui_validation() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["ai_tag_assignment_incident"]["ui_verification"]["status"] = "failed"
+    summary["ai_tag_assignment_incident"]["ui_verification"]["normal_visible_pass_count"] = 7
+    summary["post_repair_ui_validation"]["status"] = "failed"
+    summary["post_repair_ui_validation"]["normal_visible_pass_count"] = 7
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_post_repair_ui_validation_not_passed" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_telemetry_outside_local_manifest_tree() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["private_artifacts"]["telemetry_root"] = "telemetry/s3a_m2"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_telemetry_artifact_outside_approved_tree" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_public_content_hash_leak() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["public_example"] = {"content_hash": "a" * 64}
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_public_payload_not_safe" in _error_codes(result)
 
 
 def test_s3a_m2_contract_rejects_public_redaction_leak() -> None:

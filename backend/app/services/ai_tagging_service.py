@@ -23,6 +23,7 @@ WD_CATEGORY_MAP = {
     "character": "character",
     "rating": "meta",
 }
+AI_PROPER_NOUN_CATEGORIES = {"character", "copyright", "artist"}
 
 
 def _get_tagger():
@@ -140,6 +141,7 @@ def run_ai_tagging(
     *,
     dry_run: bool = False,
     force_suggestions: bool = False,
+    proper_noun_suggestions: bool = False,
     local_files_only: bool = False,
     schedule_localization: bool = True,
 ) -> Dict[str, Any]:
@@ -194,7 +196,10 @@ def run_ai_tagging(
         elif confidence >= suggest_thresh:
             action = "suggestion"
 
-        if force_suggestions and action == "confirmed":
+        db_category = WD_CATEGORY_MAP.get(wd_category, "general")
+        proper_noun_override = proper_noun_suggestions and db_category in AI_PROPER_NOUN_CATEGORIES
+
+        if (force_suggestions or proper_noun_override) and action == "confirmed":
             action = "suggestion"
 
         pred_entry = {
@@ -216,7 +221,6 @@ def run_ai_tagging(
                 summary["suggestions_added"] += 1
             continue
 
-        db_category = WD_CATEGORY_MAP.get(wd_category, "general")
         tag_objects = get_or_create_tags(
             db,
             [tag_name],
@@ -227,7 +231,7 @@ def run_ai_tagging(
             continue
         tag_obj = tag_objects[0]
 
-        effective_confirm_threshold = 1.1 if force_suggestions else confirm_thresh
+        effective_confirm_threshold = 1.1 if (force_suggestions or proper_noun_override) else confirm_thresh
         added = add_ai_tag_to_media(
             db,
             media_id=media_id,
