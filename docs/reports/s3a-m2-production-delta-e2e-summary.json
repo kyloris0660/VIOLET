@@ -222,7 +222,7 @@
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
     "head_refresh_note": "report refreshed after local UI fix commit e6d659b3d9bf; final amended commit SHA must be rechecked after amend",
-    "head_sha": "a334f237b85bd78fd748869f73be641a80f32246",
+    "head_sha": "ac078ea6ade978e2577661fda19885db5d9de6e9",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": false,
     "old_server_process_from_main_or_old_branch_found": false,
@@ -1061,7 +1061,7 @@
     "watchdog_timeout_added": true,
     "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
   },
-  "head_sha": "a334f237b85bd78fd748869f73be641a80f32246",
+  "head_sha": "ac078ea6ade978e2577661fda19885db5d9de6e9",
   "head_sha_pending_final_amend": true,
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
@@ -1448,6 +1448,7 @@
   "pre_user_manual_acceptance_safety_fixes": {
     "auto_fill_production_confirmation_removed": true,
     "automatic_background_sync_remains_off": true,
+    "fix_commit_head_sha": "ac078ea6ade978e2577661fda19885db5d9de6e9",
     "gui_session_marker": "server-issued signed GUI validation session bound to Web Admin plan/execute flow",
     "historical_read_error_retryable": true,
     "latest_codex_reviewed_head": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
