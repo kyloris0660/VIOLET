@@ -15,6 +15,9 @@ class AdminPanel {
         this.dynamicSyncActionInFlight = false;
         this.dynamicSyncProgressStartedAt = null;
         this.dynamicSyncProgressTimer = null;
+        this.dynamicSyncPlanProgressTimer = null;
+        this.dynamicSyncActivePlanRequestId = null;
+        this.dynamicSyncLastPlanProgress = null;
         this.dynamicSyncLatestJob = null;
         window.adminPanel = this;
         this.init();
@@ -381,6 +384,10 @@ class AdminPanel {
         const dynamicSyncCancelBtn = document.getElementById('dynamic-sync-cancel-btn');
         if (dynamicSyncCancelBtn) {
             dynamicSyncCancelBtn.addEventListener('click', () => this.cancelManualSyncJob());
+        }
+        const dynamicSyncPlanCancelBtn = document.getElementById('dynamic-sync-plan-cancel-btn');
+        if (dynamicSyncPlanCancelBtn) {
+            dynamicSyncPlanCancelBtn.addEventListener('click', () => this.cancelManualSyncPlan());
         }
         const dynamicSyncConfirmation = document.getElementById('dynamic-sync-confirmation');
         if (dynamicSyncConfirmation) {
@@ -1904,6 +1911,118 @@ class AdminPanel {
         }
     }
 
+    _manualSyncNewPlanRequestId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return `gui-plan-${window.crypto.randomUUID()}`;
+        }
+        return `gui-plan-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    _renderManualSyncPlanProgress(progressPayload) {
+        if (!progressPayload) return;
+        this.dynamicSyncLastPlanProgress = progressPayload;
+        const labelEl = document.getElementById('dynamic-sync-progress-label');
+        const detailEl = document.getElementById('dynamic-sync-progress-detail');
+        const elapsedEl = document.getElementById('dynamic-sync-progress-elapsed');
+        const requestEl = document.getElementById('dynamic-sync-progress-request');
+        const metaEl = document.getElementById('dynamic-sync-progress-meta');
+        const countsEl = document.getElementById('dynamic-sync-progress-counts');
+        const eventsEl = document.getElementById('dynamic-sync-progress-events');
+        const cancelBtn = document.getElementById('dynamic-sync-plan-cancel-btn');
+        const status = progressPayload.status || 'running';
+        const phase = progressPayload.phase || '-';
+        const counts = progressPayload.counts || {};
+        const item = progressPayload.current_item_label || '-';
+        const index = progressPayload.current_item_index || 0;
+        this._manualSyncSetProgress({
+            visible: true,
+            inFlight: ['running', 'cancelling'].includes(status),
+        });
+        if (labelEl) labelEl.textContent = `Plan ${status}: ${phase}`;
+        if (detailEl) {
+            detailEl.textContent = `current=${item}, index=${index}, updated=${progressPayload.updated_at || progressPayload.last_progress_at || '-'}`;
+        }
+        if (elapsedEl) elapsedEl.textContent = `${Math.max(0, Math.round(progressPayload.elapsed_seconds || 0))}s`;
+        if (requestEl) requestEl.textContent = progressPayload.plan_request_id ? `request=${progressPayload.plan_request_id}` : '';
+        if (metaEl) {
+            metaEl.textContent = [
+                progressPayload.endpoint || 'manual plan',
+                progressPayload.root_id ? `root=${progressPayload.root_id}` : null,
+                progressPayload.max_files ? `cap=${progressPayload.max_files}` : null,
+                progressPayload.hydrated_only ? 'local-readable-only' : 'cloud-aware hydration',
+            ].filter(Boolean).join(' | ');
+        }
+        if (countsEl) {
+            const fields = [
+                ['seen', counts.seen || 0],
+                ['historical skipped', counts.skipped_historical || 0],
+                ['unsupported', counts.skipped_unsupported || 0],
+                ['placeholders', counts.placeholders_found || 0],
+                ['hydrated', counts.hydrated || 0],
+                ['importable', counts.importable || 0],
+                ['planned', counts.planned || 0],
+                ['failed', counts.failed || 0],
+            ];
+            countsEl.innerHTML = fields.map(([key, value]) => (
+                `<div class="bg p-2 border"><span class="text-secondary">${this.escapeHtml(key)}</span><br><span class="font-bold">${value}</span></div>`
+            )).join('');
+        }
+        if (eventsEl) {
+            const events = (progressPayload.events || []).slice(-5).reverse();
+            eventsEl.innerHTML = events.map(event => (
+                `<div>${this.escapeHtml(event.at || '-')} | ${this.escapeHtml(event.status || '-')} | ${this.escapeHtml(event.phase || '-')} | ${this.escapeHtml(event.current_item_label || '')}</div>`
+            )).join('');
+        }
+        if (cancelBtn) {
+            cancelBtn.classList.toggle('hidden', !['running', 'cancelling'].includes(status));
+            cancelBtn.disabled = status === 'cancelling';
+            cancelBtn.textContent = status === 'cancelling' ? 'Cancelling plan...' : 'Cancel plan';
+        }
+    }
+
+    _startManualSyncPlanProgressPolling(planRequestId) {
+        if (this.dynamicSyncPlanProgressTimer) {
+            window.clearInterval(this.dynamicSyncPlanProgressTimer);
+            this.dynamicSyncPlanProgressTimer = null;
+        }
+        this.dynamicSyncActivePlanRequestId = planRequestId;
+        const poll = async () => {
+            try {
+                const progress = await app.apiCall(`/api/admin/dynamic-library-sync/manual-sync/plan-progress/${encodeURIComponent(planRequestId)}`, { method: 'GET' });
+                this._renderManualSyncPlanProgress(progress);
+                if (!['running', 'cancelling'].includes(progress.status)) {
+                    this._stopManualSyncPlanProgressPolling(false);
+                }
+            } catch (_e) {
+                // The first poll may happen before the backend has seeded progress.
+            }
+        };
+        poll();
+        this.dynamicSyncPlanProgressTimer = window.setInterval(poll, 1500);
+    }
+
+    _stopManualSyncPlanProgressPolling(clearActive = true) {
+        if (this.dynamicSyncPlanProgressTimer) {
+            window.clearInterval(this.dynamicSyncPlanProgressTimer);
+            this.dynamicSyncPlanProgressTimer = null;
+        }
+        if (clearActive) {
+            this.dynamicSyncActivePlanRequestId = null;
+        }
+    }
+
+    async cancelManualSyncPlan({ silent = false } = {}) {
+        const planRequestId = this.dynamicSyncActivePlanRequestId;
+        if (!planRequestId) return;
+        try {
+            const progress = await app.apiCall(`/api/admin/dynamic-library-sync/manual-sync/plan-progress/${encodeURIComponent(planRequestId)}/cancel`, { method: 'POST' });
+            this._renderManualSyncPlanProgress(progress);
+            if (!silent) app.showNotification('Manual sync plan cancel requested.', 'success');
+        } catch (e) {
+            if (!silent) app.showNotification(`Plan cancel failed: ${e.message || e}`, 'error');
+        }
+    }
+
     _manualSyncSetControlsBusy(busy) {
         this.dynamicSyncActionInFlight = !!busy;
         const ids = [
@@ -1965,12 +2084,13 @@ class AdminPanel {
         setText('dynamic-sync-pending-deferred-scope', deferredScopeLabel);
         setText('dynamic-sync-threshold', pending.threshold || 100);
         const thresholdStatus = pending.threshold_reached
-            ? this._dynamicSyncT('admin.dynamic_library_sync.threshold_reached', 'Reached')
-            : this._dynamicSyncT('admin.dynamic_library_sync.threshold_clear', 'Clear');
+            ? 'Historical diagnostic threshold reached; not a current manual-execute blocker.'
+            : 'Historical diagnostic only; current manual plan decides execute safety.';
         setText('dynamic-sync-threshold-status', thresholdStatus);
         const thresholdEl = document.getElementById('dynamic-sync-threshold-status');
         if (thresholdEl) {
-            thresholdEl.classList.toggle('text-warning', !!pending.threshold_reached);
+            thresholdEl.classList.remove('text-warning');
+            thresholdEl.classList.add('text-secondary');
             thresholdEl.classList.toggle('text-green-400', !pending.threshold_reached);
         }
 
@@ -2215,11 +2335,13 @@ class AdminPanel {
         const dryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
         const startBtn = document.getElementById('dynamic-sync-start-btn');
         const timeoutMs = 10 * 60 * 1000;
+        const planRequestId = this._manualSyncNewPlanRequestId();
+        body.plan_request_id = planRequestId;
         const controller = new AbortController();
         const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
         if (resultEl) {
             resultEl.classList.remove('hidden');
-            resultEl.innerHTML = `<div class="text-warning">Planning current source delta... timeout=${Math.round(timeoutMs / 1000)}s</div>`;
+            resultEl.innerHTML = `<div class="text-warning">Planning current source delta... request=${this.escapeHtml(planRequestId)}, timeout=${Math.round(timeoutMs / 1000)}s</div>`;
         }
         this._manualSyncSetControlsBusy(true);
         if (dryRunBtn) dryRunBtn.disabled = true;
@@ -2227,14 +2349,27 @@ class AdminPanel {
         this._manualSyncSetProgress({
             visible: true,
             inFlight: true,
-            label: source === 'advanced' ? 'Running dry-run plan' : '正在生成手动同步计划',
-            detail: 'POST /api/admin/dynamic-library-sync/manual-sync/plan',
+            label: source === 'advanced' ? 'Running dry-run plan' : 'Planning manual sync',
+            detail: `POST /api/admin/dynamic-library-sync/manual-sync/plan request=${planRequestId}`,
+        });
+        this._renderManualSyncPlanProgress({
+            plan_request_id: planRequestId,
+            status: 'running',
+            phase: 'queued',
+            endpoint: '/api/admin/dynamic-library-sync/manual-sync/plan',
+            root_id: body.root_id,
+            max_files: body.max_files,
+            hydrated_only: body.hydrated_only,
+            current_item_index: 0,
+            counts: {},
+            events: [{ at: new Date().toISOString(), phase: 'queued', status: 'running' }],
         });
         try {
             const guiSession = await this._createManualSyncGuiSession();
             body.gui_validation_session_id = guiSession.gui_validation_session_id;
             body.gui_validation_session_token = guiSession.gui_validation_session_token;
             body.client_route = guiSession.client_route || '/admin?tab=content#dynamic-library-sync-section';
+            this._startManualSyncPlanProgressPolling(planRequestId);
             const plan = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/plan', {
                 method: 'POST',
                 headers: {
@@ -2246,6 +2381,34 @@ class AdminPanel {
             });
             this.dynamicSyncPlan = plan;
             this._renderManualSyncPlan(plan);
+            const finalCounts = plan.counts || {};
+            const finalStates = finalCounts.state_counts || {};
+            this._renderManualSyncPlanProgress({
+                plan_request_id: planRequestId,
+                status: 'completed',
+                phase: 'completed',
+                endpoint: '/api/admin/dynamic-library-sync/manual-sync/plan',
+                root_id: body.root_id,
+                max_files: (plan.limits || {}).max_files || body.max_files,
+                hydrated_only: !!((plan.limits || {}).hydrated_only),
+                current_item_index: finalCounts.total_seen || 0,
+                counts: {
+                    seen: finalCounts.total_seen || 0,
+                    skipped_historical: (plan.limits || {}).unchanged_known_files || 0,
+                    skipped_unsupported: finalStates.skipped_unsupported || 0,
+                    placeholders_found: finalStates.skipped_placeholder || 0,
+                    hydrated: 0,
+                    importable: finalCounts.estimated_import_count || 0,
+                    planned: finalCounts.estimated_import_count || 0,
+                    failed: finalStates.failed || 0,
+                },
+                events: [{ at: new Date().toISOString(), phase: 'completed', status: 'completed' }],
+            });
+            const cancelBtn = document.getElementById('dynamic-sync-plan-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.classList.add('hidden');
+                cancelBtn.disabled = true;
+            }
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: false,
@@ -2256,8 +2419,11 @@ class AdminPanel {
         } catch (e) {
             this.dynamicSyncPlan = null;
             this._updateManualSyncExecuteButton();
+            if (e.name === 'AbortError') {
+                await this.cancelManualSyncPlan({ silent: true });
+            }
             const message = e.name === 'AbortError'
-                ? 'Manual sync plan timed out; check server logs and retry only after confirming no active request remains.'
+                ? `Manual sync plan timed out for request ${planRequestId}; cancel was requested. Retry only after progress/status confirms the active request stopped.`
                 : `Manual sync plan failed: ${e.message || e}`;
             if (resultEl) {
                 resultEl.classList.remove('hidden');
@@ -2272,6 +2438,7 @@ class AdminPanel {
             });
         } finally {
             window.clearTimeout(timeoutId);
+            this._stopManualSyncPlanProgressPolling(false);
             this._manualSyncSetControlsBusy(false);
             this._updateManualSyncExecuteButton();
         }
@@ -2504,13 +2671,13 @@ class AdminPanel {
             : '<span class="text-red-400 font-bold">OFF</span>';
         el.innerHTML = `
             <div>AI tagging: ${badge(!!ai.enabled)} <span class="text-secondary">model=${this.escapeHtml(ai.model_name || '-')}</span></div>
-            <div>AI -> localization: ${badge(!!ai.auto_tagging_localization_enabled)}</div>
-            <div>LLM translation: ${badge(!!tl.llm_enabled)} | Provider config: ${badge(!!(tl.llm_provider_configured || tl.llm_fallback_provider_configured))} | Auto: ${badge(!!tl.auto_enabled)} | Worker: ${badge(!!tl.background_enabled)}</div>
-            <div>Worker categories: <span class="font-bold">${this.escapeHtml((tl.background_categories || []).join(', ') || '-')}</span></div>
+            <div>Background AI-to-localization chaining: ${badge(!!ai.auto_tagging_localization_enabled)} <span class="text-secondary">(expected OFF; manual sync finalizes localization during this run)</span></div>
+            <div>Manual E2E localization readiness: ${badge(!!tl.llm_enabled && !!(tl.llm_provider_configured || tl.llm_fallback_provider_configured))}</div>
+            <div>Background translation worker: ${badge(!!tl.background_enabled)} <span class="text-secondary">(expected OFF for manual-only sync)</span></div>
+            <div>Background worker categories: <span class="font-bold">${this.escapeHtml((tl.background_categories || []).join(', ') || '-')}</span></div>
             <div>Gap: missing=${gap.missing || 0}, general/meta=${gap.general_meta_missing || 0}, proper nouns=${gap.proper_noun_missing || 0}, needs_review=${gap.needs_review || 0}</div>
             <div>Proper-noun worker exclusion: ${badge(!!gap.worker_excludes_proper_nouns)}</div>
             <div class="text-secondary">Manual note: AI, classification, and LLM provider readiness are required for the final manual E2E acceptance; automatic/background workers stay off.</div>
-            <div class="text-secondary">Chain: ${(readiness.integration_chain || []).map(step => this.escapeHtml(step)).join(' -> ')}</div>
         `;
     }
 

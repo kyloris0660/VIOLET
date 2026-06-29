@@ -1221,11 +1221,16 @@
                                 <div id="dynamic-sync-progress-label" class="font-bold">准备中</div>
                                 <div id="dynamic-sync-progress-detail" class="text-secondary">等待请求开始。</div>
                             </div>
-                            <div class="text-secondary">
+                            <div class="text-secondary text-right">
                                 <span data-i18n="admin.dynamic_library_sync.elapsed">Elapsed</span>:
                                 <span id="dynamic-sync-progress-elapsed">0s</span>
+                                <div id="dynamic-sync-progress-request" class="font-mono text-[10px]"></div>
                             </div>
                         </div>
+                        <div id="dynamic-sync-progress-meta" class="mt-2 text-secondary"></div>
+                        <div id="dynamic-sync-progress-counts" class="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]"></div>
+                        <div id="dynamic-sync-progress-events" class="mt-2 text-[10px] text-secondary space-y-1"></div>
+                        <button id="dynamic-sync-plan-cancel-btn" class="hidden btn-dark text-xs px-3 py-1 mt-3" type="button">Cancel plan</button>
                     </div>
 
                     <div id="dynamic-sync-plan-result" class="hidden mt-3 bg-black bg-opacity-20 border p-3 text-xs"></div>

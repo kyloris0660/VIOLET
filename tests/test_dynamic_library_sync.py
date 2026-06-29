@@ -86,6 +86,15 @@ def client(db):
         app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def clear_manual_plan_progress_state():
+    yield
+    with dynamic_routes._MANUAL_PLAN_LOCK:
+        dynamic_routes._MANUAL_PLAN_PROGRESS.clear()
+        dynamic_routes._MANUAL_PLAN_CANCELLED.clear()
+        dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY.clear()
+
+
 def _seed_source_tree(root: Path) -> None:
     root.mkdir(parents=True)
     (root / "new.jpg").write_bytes(b"new image")
@@ -304,6 +313,108 @@ def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp
     assert payload["counts"]["state_counts"]["import_planned"] == 1
     assert "private_details" not in payload
     assert "new.png" not in str(payload)
+
+
+def test_manual_sync_plan_service_reports_progress_and_cancel(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+    progress_events = []
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        stable_age_seconds=0,
+        progress_callback=progress_events.append,
+        cancel_check=lambda: True,
+    )
+
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["limits"]["plan_cancelled"] is True
+    assert plan["limits"]["last_progress_stage"] == "cancelled"
+    assert plan["counts"]["failure_reasons"]["plan_cancelled"] == 1
+    assert progress_events
+    assert progress_events[-1]["status"] == "running"
+
+
+def test_manual_sync_plan_route_exposes_progress_state(client, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+    plan_request_id = "gui-plan-progress-test"
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "source_path": str(source_root),
+            "max_files": 5,
+            "stable_age_seconds": 0,
+            "plan_request_id": plan_request_id,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["plan_request_id"] == plan_request_id
+    progress_response = client.get(f"/api/admin/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}")
+    assert progress_response.status_code == 200, progress_response.text
+    progress = progress_response.json()
+    assert progress["status"] == "completed"
+    assert progress["phase"] == "completed"
+    assert progress["endpoint"] == "/api/admin/dynamic-library-sync/manual-sync/plan"
+    assert progress["counts"]["estimated_import_count"] == 1
+    assert "source_path" not in progress
+
+
+def test_manual_sync_plan_route_rejects_duplicate_active_plan(client, db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    plan_request_id = "gui-plan-active-test"
+    plan_key = f"root:{root.id}"
+    with dynamic_routes._MANUAL_PLAN_LOCK:
+        dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY[plan_key] = plan_request_id
+        dynamic_routes._MANUAL_PLAN_PROGRESS[plan_request_id] = {
+            "plan_request_id": plan_request_id,
+            "plan_key": plan_key,
+            "status": "running",
+            "phase": "scanning",
+            "started_at_epoch": dynamic_routes._now_epoch(),
+            "updated_at_epoch": dynamic_routes._now_epoch(),
+        }
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={"root_id": root.id, "max_files": 5, "stable_age_seconds": 0},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "manual_sync_plan_already_active"
+
+
+def test_manual_sync_plan_cancel_endpoint_marks_active_plan(client):
+    plan_request_id = "gui-plan-cancel-test"
+    with dynamic_routes._MANUAL_PLAN_LOCK:
+        dynamic_routes._MANUAL_PLAN_PROGRESS[plan_request_id] = {
+            "plan_request_id": plan_request_id,
+            "plan_key": "root:2",
+            "status": "running",
+            "phase": "hashing",
+            "started_at_epoch": dynamic_routes._now_epoch(),
+            "updated_at_epoch": dynamic_routes._now_epoch(),
+            "events": [],
+        }
+        dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY["root:2"] = plan_request_id
+
+    response = client.post(
+        f"/api/admin/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}/cancel"
+    )
+
+    assert response.status_code == 200, response.text
+    progress = response.json()
+    assert progress["status"] == "cancelling"
+    assert progress["cancel_requested"] is True
+    assert dynamic_routes._manual_plan_cancel_requested(plan_request_id) is True
 
 
 def test_manual_sync_plan_route_is_sync_worker_thread_endpoint() -> None:

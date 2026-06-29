@@ -47,6 +47,11 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
         'id="dynamic-sync-progress"',
         'id="dynamic-sync-progress-label"',
         'id="dynamic-sync-progress-elapsed"',
+        'id="dynamic-sync-progress-request"',
+        'id="dynamic-sync-progress-meta"',
+        'id="dynamic-sync-progress-counts"',
+        'id="dynamic-sync-progress-events"',
+        'id="dynamic-sync-plan-cancel-btn"',
         'id="dynamic-sync-confirm-execute-btn"',
         'id="dynamic-sync-copy-confirmation-btn"',
         'id="dynamic-sync-confirmation-phrase"',
@@ -60,8 +65,23 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "useAdvancedHydratedOnly = false" in script
     assert "cloud_aware_non_destructive_read" in script
     assert "POST /api/admin/dynamic-library-sync/manual-sync/plan" in script
+    assert "/api/admin/dynamic-library-sync/manual-sync/plan-progress/" in script
+    assert "plan_request_id" in script
+    assert "cancelManualSyncPlan" in script
+    assert "Manual sync plan timed out for request" in script
     assert "/api/admin/dynamic-library-sync/manual-sync/gui-session" in script
     assert "POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root." in script
+
+
+def test_dynamic_sync_ui_labels_threshold_and_localization_readiness_for_operators() -> None:
+    script = _text(ADMIN_JS)
+
+    assert "Historical diagnostic threshold reached; not a current manual-execute blocker." in script
+    assert "Historical diagnostic only; current manual plan decides execute safety." in script
+    assert "AI -> localization:" not in script
+    assert "Background AI-to-localization chaining" in script
+    assert "Manual E2E localization readiness" in script
+    assert "expected OFF; manual sync finalizes localization during this run" in script
 
 
 def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:

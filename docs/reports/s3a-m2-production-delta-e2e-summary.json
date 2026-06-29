@@ -202,7 +202,10 @@
       "GUI dry-run displays cap/source/partial scan and blocks execute on partial/no-importable plans",
       "server-side plan timeout and unchanged-known terminal skip reduce broad-root hangs",
       "contract requires GUI Execute click plus completed GUI-created run newer than runner run #8 before target_met",
-      "post-GUI validator fails closed when no newer GUI-created run exists"
+      "post-GUI validator fails closed when no newer GUI-created run exists",
+      "GUI plan progress endpoint exposes public-safe phase/count/event state for user-path dry-run",
+      "GUI plan cancel endpoint and one-active-plan-per-root lock prevent silent duplicate long scans",
+      "normal operator UI labels historical threshold inventory as diagnostic rather than current execute blocker"
     ],
     "public_safe": true,
     "runner_gui_planner_diverged": true,
@@ -218,11 +221,11 @@
     },
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
     "browser_stale_state_risk": "Observed Chrome URL omitted ?tab=content during Computer Use. The launcher requested the canonical URL, but the running production server served stale frontend JS that stripped tab=content; restart on the fixed head before retrying.",
-    "current_pr_head_before_this_fix": "e0154bc5469e1367fd573f465701dcbde027673b",
+    "current_pr_head_before_this_fix": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
-    "head_refresh_note": "report refreshed after manual sync cancellation localization guard fix commit 0d8397886e84; final report-refresh commit SHA must be rechecked after commit",
-    "head_sha": "0d8397886e84f53fc99dbde4d0820a4c81b0d0f8",
+    "head_refresh_note": "report refreshed after the user-observed 597s GUI manual plan timeout; final commit SHA must be rechecked after commit",
+    "head_sha": "PENDING_AFTER_MANUAL_PLAN_PROGRESS_FIX",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": false,
     "old_server_process_from_main_or_old_branch_found": false,
@@ -236,23 +239,19 @@
   },
   "browser_validation_current_head": {
     "attempted": true,
-    "db_name": "blombooru_test",
-    "db_reachable": false,
-    "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
-    "health_ok": false,
-    "method": "controlled Playwright Edge on VIOLET_ENV=test server 8013",
-    "port": 8012,
-    "public_safe": true,
-    "reason": "Controlled non-production browser validation server started from the PR branch but /api/health reported the test DB unreachable, so no browser assertion was trusted.",
-    "result": "passed",
-    "schema_compatible": false,
+    "status": "passed_ui_progress_fix_only",
+    "method": "controlled Playwright Edge on VIOLET_ENV=test server 8012",
     "server_env": "test",
-    "server_pids_started_and_stopped": [
-      69176,
-      63696
-    ],
+    "db_name": "blombooru_test",
+    "port": 8012,
+    "canonical_url_preserved": true,
+    "normal_operator_ui_validated": true,
+    "start_manual_sync_plan_clicked": true,
+    "gui_execute_clicked": false,
+    "reason": "This validates the UI/progress/cancel/readiness wording fix only. It does not satisfy final production GUI Execute acceptance.",
     "source_or_production_mutation": false,
-    "status": "blocked_test_server_db_unreachable"
+    "public_safe": true,
+    "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/"
   },
   "classification": {
     "count": 49,
@@ -918,7 +917,7 @@
     "imported": 349,
     "localized": 5
   },
-  "generated_at": "2026-06-28T13:24:36Z",
+  "generated_at": "2026-06-29T10:28:12.030903+00:00",
   "gpu_telemetry": {
     "actual_provider": "DmlExecutionProvider",
     "avg_gpu_utilization_percent": 36.97,
@@ -968,11 +967,20 @@
     "root_cause": "GUI dry-run used the manual-sync plan endpoint but that endpoint still performed a broad source-root walk and expensive verify/hash over unchanged known items; frontend abort/browser close did not cancel the backend request, so it kept scanning until server stop.",
     "server_role": "launcher-managed production validation server; port 8012 selected because 8000 was occupied by unrelated Clash Verge",
     "source_mutation_detected": false,
-    "status": "diagnosed_blocked_pending_final_gui_execute",
+    "status": "blocked_597s_plan_timeout_fixed_pending_revalidation",
     "stuck_jobs_found": false,
     "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
     "violet_env": "production",
-    "watchdog_timeout_added": true
+    "watchdog_timeout_added": true,
+    "latest_observed_timeout_seconds": 597,
+    "latest_observed_head_sha": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
+    "latest_endpoint_clicked": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "latest_exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
+    "progress_and_cancel_added_after_timeout": true,
+    "active_server_after_timeout_audit": false,
+    "active_request_after_timeout_audit": false,
+    "backend_continued_after_frontend_timeout": "not provable for the user attempt; no active server remained at Codex audit time",
+    "timeout_behavior_after_fix": "operator sees persistent progress, request id, phase/counts/events, can cancel plan, and duplicate active plans are rejected"
   },
   "gui_execute_acceptance": {
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
@@ -1048,7 +1056,7 @@
     "server_pid_worker": 50844,
     "server_role": "launcher-managed production validation server",
     "source_mutation_detected": false,
-    "status": "diagnosed_blocked_pending_final_gui_execute",
+    "status": "blocked_597s_plan_timeout_fixed_pending_revalidation",
     "storage_root_marker": "b369834e62908e17",
     "stuck_jobs_found": false,
     "timeout_behavior_before_fix": "No useful server-side plan timeout/correlation/progress; frontend could appear stuck for a long scan.",
@@ -1059,9 +1067,18 @@
     "url_observed": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
     "violet_env": "production",
     "watchdog_timeout_added": true,
-    "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
+    "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012.",
+    "latest_observed_timeout_seconds": 597,
+    "latest_observed_head_sha": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
+    "latest_endpoint_clicked": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "latest_exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
+    "progress_and_cancel_added_after_timeout": true,
+    "active_server_after_timeout_audit": false,
+    "active_request_after_timeout_audit": false,
+    "backend_continued_after_frontend_timeout": "not provable for the user attempt; no active server remained at Codex audit time",
+    "timeout_behavior_after_fix": "operator sees persistent progress, request id, phase/counts/events, can cancel plan, and duplicate active plans are rejected"
   },
-  "head_sha": "0d8397886e84f53fc99dbde4d0820a4c81b0d0f8",
+  "head_sha": "PENDING_AFTER_MANUAL_PLAN_PROGRESS_FIX",
   "head_sha_pending_final_amend": true,
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
@@ -1364,7 +1381,12 @@
       "post-GUI validation script confirms a completed run newer than #8"
     ],
     "standardized_pipeline_reusable_for_future_automatic_design": true,
-    "status": "manual_sync_not_yet_safe_gui_execute_unvalidated"
+    "status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
+    "operator_checks_required_before_execute": [
+      "Start manual sync shows live progress within a few seconds",
+      "Plan does not silently run; if slow, phase/count/event progress continues",
+      "No active plan remains before retry after timeout/cancel"
+    ]
   },
   "mode": "execute",
   "not_completed": [
@@ -1373,7 +1395,8 @@
     "SourceConcept/Entity bridge work was not run.",
     "Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.",
     "The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.",
-    "Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet."
+    "Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet.",
+    "Real launcher/Web Admin GUI Execute acceptance remains incomplete because the latest user-path plan timed out after about 597 seconds before Execute; progress/cancel fixes are added but need manual revalidation."
   ],
   "phase": "S3A-M2",
   "pipeline_contract": {
@@ -1615,7 +1638,12 @@
       "status": "blocking_merge"
     },
     "user_manual_gui_execute_acceptance_pending",
-    "codex_review_latest_head_pending_or_usage_limited"
+    "codex_review_latest_head_pending_or_usage_limited",
+    {
+      "code": "user_gui_plan_timeout_needs_revalidation_after_fix",
+      "status": "fixed_pending_user_path_revalidation",
+      "description": "User-path Start manual sync timed out after about 597s on head 19d686; progress/cancel/diagnostic fixes are added, but real GUI Execute acceptance still must be rerun after review/pull."
+    }
   ],
   "remaining_run": {
     "ai_tagged": 49,
@@ -1845,6 +1873,75 @@
       "command_summary": "python -m py_compile changed backend/services/routes and S3A-M2 scripts",
       "result": "passed",
       "status": "passed"
+    },
+    "launcher_web_admin": "blocked_pending_user_manual_gui_execute_after_597s_plan_timeout_progress_fix",
+    "launcher_plan_timeout_seconds_observed": 597,
+    "launcher_plan_progress_fix_added": true,
+    "launcher_execute_clicked": false,
+    "real_browser_ui_progress_fix": {
+      "status": "passed",
+      "method": "controlled Playwright Edge against VIOLET_ENV=test server on port 8012",
+      "canonical_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
+      "test_db": "blombooru_test",
+      "test_storage": "local_test_storage",
+      "normal_operator_start_clicked": true,
+      "execute_clicked": false,
+      "plan_progress_visible": true,
+      "plan_request_id_visible": true,
+      "plan_counts_visible": true,
+      "historical_threshold_labeled_diagnostic": true,
+      "ai_localization_background_wording_clear": true,
+      "confirmation_phrase_visible": true,
+      "execute_disabled_until_operator_confirmation": true,
+      "server_stopped_after_validation": true,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/"
+    }
+  },
+  "manual_gui_plan_timeout_2026_06_29": {
+    "status": "blocked_fixed_pending_revalidation",
+    "observed_head_sha": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
+    "observed_by": "user_manual_gui_acceptance",
+    "observed_elapsed_seconds": 597,
+    "ui_error": "Manual sync plan timed out; check server logs and retry only after confirming no active request remains.",
+    "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "request_payload_public_summary": {
+      "root_id": 2,
+      "effective_cap_expected": 1000,
+      "hydrated_only_default": false,
+      "request_source_expected": "web_admin_gui"
+    },
+    "planner_path": "current S3A-M2 manual-sync plan endpoint, not the old update-check endpoint",
+    "exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
+    "exact_files_visited_before_timeout": "unknown_not_recorded_by_pre_fix_backend",
+    "exact_current_candidates_before_timeout": "unknown_not_recorded_by_pre_fix_backend",
+    "active_request_after_codex_audit": false,
+    "active_server_after_codex_audit": false,
+    "active_dynamic_sync_run_after_codex_audit": false,
+    "evidence_consulted": [
+      "user-observed Web Admin timeout message and elapsed time",
+      "repo code path inspection for frontend 600s AbortController timeout",
+      "audit_active_violet_servers.py showed no V.I.O.L.E.T. listeners on 8000/8012-8024 after the aborted attempt",
+      "no fresh gui_acceptance_debug private artifact existed for the failed attempt because pre-fix plan progress was not persisted"
+    ],
+    "root_cause": "The GUI Start manual sync path used the correct manual-sync plan endpoint, but the endpoint was a single long synchronous root-walk/stat/support/hash request with no server-side progress, no cancellable request id, and no active-plan lock. The browser timeout fired at about 600 seconds, leaving the operator without stage/item evidence.",
+    "backend_continued_after_frontend_timeout": "not provable for the user attempt; post-failure server audit found no remaining listener or active managed server",
+    "fixes_added": [
+      "server-side plan progress state keyed by plan_request_id",
+      "GET plan-progress endpoint with public-safe phase/count/event state",
+      "POST plan cancel endpoint that marks cancellation and stops at safe service checkpoints",
+      "one active plan per root/source key",
+      "service progress callbacks for loading known items, scanning, stat, placeholder detection, supported check, hashing, existing-media check, planning, cancelled/completed",
+      "frontend polling panel with request id, phase, current safe item label, counters, recent events, elapsed time, and Cancel plan button",
+      "frontend timeout now sends backend cancel and tells the operator to wait for stopped/cancelled progress before retry",
+      "normal UI threshold wording changed to historical diagnostic only, not current manual-execute blocker",
+      "AI/localization readiness wording distinguishes background chaining OFF from manual E2E localization readiness"
+    ],
+    "remaining_acceptance_requirement": "A new real launcher/Web Admin GUI dry-run and Execute must be performed after this fix; do not count API/runner or Playwright execute as GUI Execute acceptance.",
+    "public_safe": true,
+    "real_browser_validation_after_fix": {
+      "status": "passed_ui_progress_fix_only",
+      "execute_clicked": false,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/"
     }
   }
 }

@@ -8,6 +8,7 @@ import os
 import secrets
 import subprocess
 import sys
+import threading
 import time
 from typing import Any, List, Optional
 
@@ -49,10 +50,172 @@ GUI_VALIDATION_SESSION_TTL_SECONDS = 2 * 60 * 60
 GUI_VALIDATION_CLIENT_HEADER = "x-violet-gui-client"
 GUI_VALIDATION_CLIENT_VALUE = "web-admin-manual-sync-v1"
 GUI_MANUAL_SYNC_ROUTE = "/admin?tab=content#dynamic-library-sync-section"
+MANUAL_SYNC_PLAN_PROGRESS_RETAIN_SECONDS = 2 * 60 * 60
+
+_MANUAL_PLAN_LOCK = threading.Lock()
+_MANUAL_PLAN_PROGRESS: dict[str, dict[str, Any]] = {}
+_MANUAL_PLAN_CANCELLED: set[str] = set()
+_ACTIVE_MANUAL_PLAN_BY_KEY: dict[str, str] = {}
 
 
 def _public_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def _now_epoch() -> float:
+    return time.time()
+
+
+def _now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _manual_plan_key(*, root_id: Optional[int], source_path: Optional[str]) -> str:
+    if root_id is not None:
+        return f"root:{int(root_id)}"
+    return f"path:{_public_hash(str(source_path or ''))}"
+
+
+def _cleanup_manual_plan_progress_locked(now_epoch: Optional[float] = None) -> None:
+    now_value = _now_epoch() if now_epoch is None else now_epoch
+    stale_ids = [
+        plan_id
+        for plan_id, progress in _MANUAL_PLAN_PROGRESS.items()
+        if now_value - float(progress.get("updated_at_epoch") or progress.get("started_at_epoch") or now_value)
+        > MANUAL_SYNC_PLAN_PROGRESS_RETAIN_SECONDS
+    ]
+    for plan_id in stale_ids:
+        _MANUAL_PLAN_PROGRESS.pop(plan_id, None)
+        _MANUAL_PLAN_CANCELLED.discard(plan_id)
+    active_stale = [
+        key for key, plan_id in _ACTIVE_MANUAL_PLAN_BY_KEY.items() if plan_id not in _MANUAL_PLAN_PROGRESS
+    ]
+    for key in active_stale:
+        _ACTIVE_MANUAL_PLAN_BY_KEY.pop(key, None)
+
+
+def _public_manual_plan_progress(plan_id: str) -> dict:
+    with _MANUAL_PLAN_LOCK:
+        progress = dict(_MANUAL_PLAN_PROGRESS.get(plan_id) or {})
+    if not progress:
+        raise HTTPException(status_code=404, detail={"code": "manual_sync_plan_progress_not_found"})
+    started = float(progress.get("started_at_epoch") or _now_epoch())
+    progress["elapsed_seconds"] = round(max(0.0, _now_epoch() - started), 3)
+    progress.pop("source_path", None)
+    return progress
+
+
+def _seed_manual_plan_progress(
+    *,
+    plan_request_id: str,
+    plan_key: str,
+    root_id: Optional[int],
+    source_path: Optional[str],
+    max_files: Optional[int],
+    hydrated_only: bool,
+    request_source: str,
+) -> None:
+    now_value = _now_epoch()
+    with _MANUAL_PLAN_LOCK:
+        _cleanup_manual_plan_progress_locked(now_value)
+        active_id = _ACTIVE_MANUAL_PLAN_BY_KEY.get(plan_key)
+        active = _MANUAL_PLAN_PROGRESS.get(active_id or "")
+        if active and active.get("status") in {"running", "cancelling"}:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "manual_sync_plan_already_active",
+                    "message": "A manual sync plan is already active for this source root. Watch or cancel the active plan before retrying.",
+                    "active_plan_request_id": active_id,
+                    "active_status": active.get("status"),
+                    "active_phase": active.get("phase"),
+                },
+            )
+        _ACTIVE_MANUAL_PLAN_BY_KEY[plan_key] = plan_request_id
+        _MANUAL_PLAN_CANCELLED.discard(plan_request_id)
+        _MANUAL_PLAN_PROGRESS[plan_request_id] = {
+            "plan_request_id": plan_request_id,
+            "plan_key": plan_key,
+            "status": "running",
+            "phase": "queued",
+            "root_id": root_id,
+            "source_public_id": _public_hash(str(source_path or root_id or "")),
+            "source_path": source_path,
+            "max_files": max_files,
+            "hydrated_only": hydrated_only,
+            "request_source": request_source,
+            "endpoint": "/api/admin/dynamic-library-sync/manual-sync/plan",
+            "started_at": _now_iso(),
+            "started_at_epoch": now_value,
+            "updated_at": _now_iso(),
+            "updated_at_epoch": now_value,
+            "counts": {},
+            "events": [],
+            "cancel_requested": False,
+        }
+
+
+def _update_manual_plan_progress(plan_request_id: str, updates: dict) -> None:
+    event = {
+        "at": _now_iso(),
+        "phase": updates.get("phase"),
+        "status": updates.get("status") or "running",
+        "current_item_index": updates.get("current_item_index"),
+        "current_item_label": updates.get("current_item_label"),
+    }
+    with _MANUAL_PLAN_LOCK:
+        progress = _MANUAL_PLAN_PROGRESS.get(plan_request_id)
+        if not progress:
+            return
+        if progress.get("status") == "cancelling" and updates.get("status") == "running":
+            updates = {**updates, "status": "cancelling", "cancel_requested": True}
+        progress.update(updates)
+        progress["updated_at"] = _now_iso()
+        progress["updated_at_epoch"] = _now_epoch()
+        events = list(progress.get("events") or [])
+        events.append({key: value for key, value in event.items() if value is not None})
+        progress["events"] = events[-12:]
+
+
+def _manual_plan_cancel_requested(plan_request_id: str) -> bool:
+    with _MANUAL_PLAN_LOCK:
+        return plan_request_id in _MANUAL_PLAN_CANCELLED
+
+
+def _finish_manual_plan_progress(
+    *,
+    plan_request_id: str,
+    plan_key: str,
+    status: str,
+    phase: str,
+    error_code: Optional[str] = None,
+    message: Optional[str] = None,
+    counts: Optional[dict] = None,
+    limits: Optional[dict] = None,
+) -> None:
+    with _MANUAL_PLAN_LOCK:
+        progress = _MANUAL_PLAN_PROGRESS.get(plan_request_id)
+        if progress is not None:
+            progress.update(
+                {
+                    "status": status,
+                    "phase": phase,
+                    "updated_at": _now_iso(),
+                    "updated_at_epoch": _now_epoch(),
+                    "ended_at": _now_iso(),
+                    "error_code": error_code,
+                    "message": message,
+                }
+            )
+            if counts is not None:
+                progress["counts"] = counts
+            if limits is not None:
+                progress["limits"] = limits
+            events = list(progress.get("events") or [])
+            events.append({"at": _now_iso(), "phase": phase, "status": status})
+            progress["events"] = events[-12:]
+        if _ACTIVE_MANUAL_PLAN_BY_KEY.get(plan_key) == plan_request_id:
+            _ACTIVE_MANUAL_PLAN_BY_KEY.pop(plan_key, None)
 
 
 def _canonical_gui_route(route: Optional[str]) -> str:
@@ -175,6 +338,7 @@ class ManualSyncDryRunPlanRequest(BaseModel):
     max_files: Optional[int] = Field(default=None, ge=1, le=100000)
     hydrated_only: bool = False
     stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
+    plan_request_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
     gui_validation_session_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
     gui_validation_session_token: Optional[str] = Field(default=None, min_length=16, max_length=256)
     client_route: Optional[str] = Field(default=None, max_length=200)
@@ -332,6 +496,35 @@ async def get_manual_sync_foundation_status(
     }
 
 
+@router.get("/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}")
+def get_manual_sync_plan_progress(
+    plan_request_id: str,
+    current_user: User = Depends(require_admin_mode),
+):
+    return _public_manual_plan_progress(plan_request_id)
+
+
+@router.post("/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}/cancel")
+def cancel_manual_sync_plan_progress(
+    plan_request_id: str,
+    current_user: User = Depends(require_admin_mode),
+):
+    with _MANUAL_PLAN_LOCK:
+        progress = _MANUAL_PLAN_PROGRESS.get(plan_request_id)
+        if not progress:
+            raise HTTPException(status_code=404, detail={"code": "manual_sync_plan_progress_not_found"})
+        _MANUAL_PLAN_CANCELLED.add(plan_request_id)
+        progress["cancel_requested"] = True
+        if progress.get("status") == "running":
+            progress["status"] = "cancelling"
+        progress["updated_at"] = _now_iso()
+        progress["updated_at_epoch"] = _now_epoch()
+        events = list(progress.get("events") or [])
+        events.append({"at": _now_iso(), "phase": progress.get("phase"), "status": "cancelling"})
+        progress["events"] = events[-12:]
+    return _public_manual_plan_progress(plan_request_id)
+
+
 @router.post("/dynamic-library-sync/manual-sync/plan")
 def plan_manual_sync(
     body: ManualSyncDryRunPlanRequest,
@@ -344,6 +537,8 @@ def plan_manual_sync(
             detail="Provide exactly one of root_id or source_path.",
         )
 
+    plan_request_id = body.plan_request_id or f"plan-{secrets.token_urlsafe(16)}"
+    plan_key = _manual_plan_key(root_id=body.root_id, source_path=body.source_path)
     try:
         source_path = body.source_path
         source_record_id = None
@@ -362,6 +557,15 @@ def plan_manual_sync(
                 "Web Admin GUI plan requires a valid signed GUI validation session. Refresh the page and retry.",
                 status_code=409,
             )
+        _seed_manual_plan_progress(
+            plan_request_id=plan_request_id,
+            plan_key=plan_key,
+            root_id=source_record_id,
+            source_path=source_path,
+            max_files=manual_sync_execute_effective_max_files(body.max_files),
+            hydrated_only=body.hydrated_only,
+            request_source=str(gui_provenance.get("request_source") or "api_or_runner"),
+        )
         plan = plan_manual_sync_dry_run(
             db,
             source_path=source_path or "",
@@ -370,16 +574,50 @@ def plan_manual_sync(
             hydrated_only=body.hydrated_only,
             stable_age_seconds=body.stable_age_seconds,
             include_private_details=False,
+            progress_callback=lambda payload: _update_manual_plan_progress(plan_request_id, payload),
+            cancel_check=lambda: _manual_plan_cancel_requested(plan_request_id),
         )
+        _finish_manual_plan_progress(
+            plan_request_id=plan_request_id,
+            plan_key=plan_key,
+            status="completed",
+            phase="completed",
+            counts=plan.get("counts"),
+            limits=plan.get("limits"),
+        )
+        if (plan.get("limits") or {}).get("plan_cancelled"):
+            raise ManualSyncExecuteError(
+                "manual_sync_plan_cancelled",
+                "Manual sync plan was cancelled before completion.",
+                status_code=409,
+            )
         if gui_provenance.get("request_source") == "web_admin_gui":
             plan["gui_provenance"] = {
                 **gui_provenance,
                 "dry_run_requested_from_gui": True,
+                "plan_request_id": plan_request_id,
             }
+        plan["plan_request_id"] = plan_request_id
         return plan
     except ManualSyncExecuteError as exc:
+        _finish_manual_plan_progress(
+            plan_request_id=plan_request_id,
+            plan_key=plan_key,
+            status="cancelled" if exc.code == "manual_sync_plan_cancelled" else "failed",
+            phase="cancelled" if exc.code == "manual_sync_plan_cancelled" else "failed",
+            error_code=exc.code,
+            message=str(exc),
+        )
         raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
     except ValueError as exc:
+        _finish_manual_plan_progress(
+            plan_request_id=plan_request_id,
+            plan_key=plan_key,
+            status="failed",
+            phase="failed",
+            error_code="manual_sync_plan_value_error",
+            message=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc))
 
 

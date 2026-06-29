@@ -15,7 +15,7 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import func, or_
@@ -533,6 +533,8 @@ def plan_manual_sync_dry_run(
     ai_profile: Optional[Dict[str, Any]] = None,
     benchmark: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     """Build a public-safe manual sync dry-run plan without DB or file writes."""
     resolved = validate_source_root_path(source_path)
@@ -560,11 +562,58 @@ def plan_manual_sync_dry_run(
     scanned_files = 0
     unchanged_known_files = 0
     plan_timeout = False
+    plan_cancelled = False
+    current_stage = "initializing"
+    last_progress_item_label: Optional[str] = None
     plan_started_monotonic = time.monotonic()
     plan_timeout_seconds = min(
         MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
         max(30, int(settings.DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS)),
     )
+
+    def _progress(phase: str, **updates: Any) -> None:
+        nonlocal current_stage, last_progress_item_label
+        current_stage = phase
+        if "current_item_label" in updates and updates["current_item_label"]:
+            last_progress_item_label = str(updates["current_item_label"])
+        if progress_callback is None:
+            return
+        counts = {
+            "seen": int(scanned_files),
+            "skipped_historical": int(unchanged_known_files),
+            "skipped_unsupported": int(reason_counts.get("unsupported_extension", 0)),
+            "placeholders_found": int(reason_counts.get("cloud_hydration_failed", 0) + reason_counts.get("cloud_placeholder", 0)),
+            "hydrated": 0,
+            "importable": int(state_counts.get("import_planned", 0)),
+            "planned": int(len(candidate_records)),
+            "failed": int(
+                reason_counts.get("read_error", 0)
+                + reason_counts.get("read_timeout", 0)
+                + reason_counts.get("stat_error", 0)
+                + reason_counts.get("source_walk_error", 0)
+            ),
+        }
+        payload = {
+            "phase": phase,
+            "status": "running",
+            "current_item_index": int(scanned_files),
+            "current_item_label": last_progress_item_label,
+            "counts": counts,
+            "elapsed_seconds": round(max(0.0, time.monotonic() - plan_started_monotonic), 3),
+            "last_progress_at": _utcnow().isoformat(),
+        }
+        payload.update(updates)
+        progress_callback(payload)
+
+    def _cancel_requested() -> bool:
+        if cancel_check is None:
+            return False
+        try:
+            return bool(cancel_check())
+        except Exception:
+            return False
+
+    _progress("loading_known_source_items")
     known_items_by_rel_hash: Dict[str, DynamicSourceItem] = {}
     if source_record_id is not None:
         known_items_by_rel_hash = {
@@ -573,8 +622,14 @@ def plan_manual_sync_dry_run(
             .filter(DynamicSourceItem.source_root_id == int(source_record_id))
             .all()
         }
+    _progress("scanning")
 
     for index, file_path in enumerate(_iter_source_files(resolved, walk_errors=walk_errors), start=1):
+        if _cancel_requested():
+            partial_scan = True
+            plan_cancelled = True
+            reason_counts["plan_cancelled"] += 1
+            break
         if time.monotonic() - plan_started_monotonic > plan_timeout_seconds:
             partial_scan = True
             plan_timeout = True
@@ -583,6 +638,7 @@ def plan_manual_sync_dry_run(
         scanned_files = index
 
         safe_label = f"file-{index:05d}"
+        _progress("scanning", current_item_index=index, current_item_label=safe_label)
         rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
         rel_hash_full = _hash_text(rel)
         rel_hash = rel_hash_full[:16]
@@ -592,6 +648,7 @@ def plan_manual_sync_dry_run(
         cloud_placeholder_before_hydration = False
 
         try:
+            _progress("stat", current_item_index=index, current_item_label=safe_label)
             metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
         except OSError:
             reason = "stat_error"
@@ -604,6 +661,8 @@ def plan_manual_sync_dry_run(
         known_item = known_items_by_rel_hash.get(rel_hash_full)
         if reason is None and _manual_plan_can_skip_unchanged_known_item(known_item, metadata):
             unchanged_known_files += 1
+            if unchanged_known_files == 1 or unchanged_known_files % 250 == 0:
+                _progress("checking_existing_ledger", current_item_index=index, current_item_label=safe_label)
             continue
 
         if len(candidate_records) >= effective_max_files:
@@ -612,17 +671,31 @@ def plan_manual_sync_dry_run(
 
         if reason is None and not hydrated_only:
             try:
+                _progress("detecting_placeholders", current_item_index=index, current_item_label=safe_label)
                 cloud_placeholder_before_hydration = bool(_is_cloud_only(file_path))
             except Exception:
                 cloud_placeholder_before_hydration = False
 
         if reason is None:
+            _progress("checking_supported", current_item_index=index, current_item_label=safe_label)
             reason = _manual_public_reason_code(_is_scannable_file(file_path, hydrated_only=hydrated_only))
 
         if reason is None:
+            if _cancel_requested():
+                partial_scan = True
+                plan_cancelled = True
+                reason_counts["plan_cancelled"] += 1
+                break
+            _progress("checking_supported", current_item_index=index, current_item_label=safe_label)
             reason = _verify_supported_image_file_with_timeout(file_path, read_timeout_seconds)
 
         if reason is None:
+            if _cancel_requested():
+                partial_scan = True
+                plan_cancelled = True
+                reason_counts["plan_cancelled"] += 1
+                break
+            _progress("hashing", current_item_index=index, current_item_label=safe_label)
             content_hash, reason = _calculate_manual_plan_file_hash(file_path, read_timeout_seconds)
 
         reason = _manual_public_reason_code(reason)
@@ -643,12 +716,14 @@ def plan_manual_sync_dry_run(
             }
         )
 
+    _progress("cancelled" if plan_cancelled else "checking_existing_media")
     existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes)
     seen_hashes: set[str] = set()
     integrity_items: List[Dict[str, Any]] = []
     unsupported_extension_counts: Counter = Counter()
     reason_extension_counts: Dict[str, Counter] = {}
     for record in candidate_records:
+        _progress("planning", current_item_label=record.get("safe_label"))
         reason = record["reason"]
         content_hash = record["content_hash"]
         media_id = None
@@ -749,6 +824,9 @@ def plan_manual_sync_dry_run(
         "plan_source": "source_delta" if source_record_id is not None else "ad_hoc_source_path",
         "plan_timeout_seconds": plan_timeout_seconds,
         "plan_timeout": plan_timeout,
+        "plan_cancelled": plan_cancelled,
+        "last_progress_stage": current_stage,
+        "last_progress_item_label": last_progress_item_label,
     }
     integrity_payload = _manual_plan_integrity_payload(
         source_record_id=source_record_id,
