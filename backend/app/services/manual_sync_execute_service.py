@@ -1380,6 +1380,43 @@ def _manual_sync_finalize_localization(
     }
 
 
+def _manual_sync_skipped_localization_result(
+    *,
+    reason: str,
+    media_ids: List[int],
+    lang: str = "zh-CN",
+) -> Dict[str, Any]:
+    safe_reason = "cancelled" if reason == "cancelled" else "stopped"
+    blocked_reason = f"manual_sync_{safe_reason}_before_localization"
+    return {
+        "scheduled": False,
+        "safe_to_schedule": False,
+        "status": f"skipped_{safe_reason}_run",
+        "background_worker_started": False,
+        "auto_translation_enabled": False,
+        "llm_called": False,
+        "provider_call_count": 0,
+        "translated": 0,
+        "failed": 0,
+        "skipped": len(media_ids),
+        "language": lang,
+        "localizable_categories": sorted(LOCALIZABLE_TAG_CATEGORIES),
+        "proper_noun_categories": sorted(PROPER_NOUN_TAG_CATEGORIES),
+        "distinct_ai_wd_tag_count": 0,
+        "localizable_distinct_tags": 0,
+        "localizable_already_localized_or_static": 0,
+        "tags_requiring_localization_after_runner": 0,
+        "proper_noun_distinct_tags": 0,
+        "proper_noun_missing_translation_stable_reason_count": 0,
+        "dynamic_source_items_updated": 0,
+        "dynamic_source_items_target_status": "unchanged",
+        "blocked_reason": blocked_reason,
+        "public_safe": True,
+        "localization_finalizer_called": False,
+        "localization_db_writes_performed": False,
+    }
+
+
 def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
     global _active_execute_run_id
 
@@ -1963,11 +2000,17 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             )
             run.summary_json = _set_stage(run.summary_json or {}, "ai_tagging", status=stage_status, processed=0, failed=0)
             db.commit()
-        localization_result = _manual_sync_finalize_localization(
-            db,
-            run=run,
-            media_ids=imported_media_ids,
-        )
+        if stop_reason or run.status in {"cancelled", "failed"}:
+            localization_result = _manual_sync_skipped_localization_result(
+                reason=stop_reason or str(run.status or "stopped"),
+                media_ids=imported_media_ids,
+            )
+        else:
+            localization_result = _manual_sync_finalize_localization(
+                db,
+                run=run,
+                media_ids=imported_media_ids,
+            )
         run.summary_json = _set_stage(
             run.summary_json or {},
             "localization",

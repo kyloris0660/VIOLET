@@ -2413,6 +2413,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
                     f"- Signed GUI provenance required: `{pre_user_acceptance.get('signed_gui_provenance_required')}`; ordinary API can satisfy GUI acceptance: `{pre_user_acceptance.get('ordinary_api_can_satisfy_gui_acceptance')}`.",
                     f"- Validator scope: `{pre_user_acceptance.get('validator_remaining_inventory_scope')}`; skipped placeholders included: `{pre_user_acceptance.get('validator_includes_skipped_placeholders')}`.",
                     f"- Localization failure reporting: `{pre_user_acceptance.get('localization_failure_reporting')}`.",
+                    f"- Cancellation before localization guard: `{pre_user_acceptance.get('cancelled_run_skips_localization_finalizer')}`; LLM calls prevented: `{pre_user_acceptance.get('cancelled_run_prevents_llm_calls')}`; localization DB writes prevented: `{pre_user_acceptance.get('cancelled_run_prevents_localization_db_writes')}`.",
                     f"- Historical read errors retryable in current delta planning: `{pre_user_acceptance.get('historical_read_error_retryable')}`.",
                     f"- Manual E2E readiness/backend gates aligned: `{pre_user_acceptance.get('manual_e2e_readiness_backend_gate_alignment')}`.",
                     f"- User manual GUI acceptance package status: `{pre_user_acceptance.get('manual_acceptance_package_status')}`.",

@@ -2374,3 +2374,70 @@ def test_s3a_m1_execute_materializes_unprocessed_items_on_cancel(db, tmp_path, m
     public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
     assert "cancel-0.png" not in str(public_status)
     assert "cancel-1.png" not in str(public_status)
+
+
+def test_s3a_m1_execute_cancel_after_ai_tagging_skips_localization_finalizer(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    _patch_test_storage(monkeypatch, tmp_path)
+    finalizer_called = False
+
+    def fake_ai_tagging(_db_arg, media_id):
+        execute_service.request_manual_sync_execute_cancel(run.id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fail_if_finalizer_runs(*_args, **_kwargs):
+        nonlocal finalizer_called
+        finalizer_called = True
+        raise AssertionError("localization finalizer must not run after cancellation")
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fail_if_finalizer_runs)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "cancel-after-ai.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert finalizer_called is False
+    assert result["status"] == "cancelled"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["status"] == "cancelled"
+    assert execute_summary["llm_calls_performed"] is False
+    assert execute_summary["localization"]["status"] == "skipped_cancelled_run"
+    assert execute_summary["localization"]["blocked_reason"] == "manual_sync_cancelled_before_localization"
+    assert execute_summary["localization"]["llm_called"] is False
+    assert execute_summary["localization"]["provider_call_count"] == 0
+    assert execute_summary["localization"]["dynamic_source_items_updated"] == 0
+    assert execute_summary["localization"]["dynamic_source_items_target_status"] == "unchanged"
+    assert execute_summary["localization"]["localization_finalizer_called"] is False
+    assert execute_summary["localization"]["localization_db_writes_performed"] is False
+    stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
+    assert stage_rows["localization"]["status"] == "skipped_cancelled_run"
+    assert stage_rows["summary"]["status"] == "cancelled"
+    source_item = db.query(DynamicSourceItem).one()
+    assert source_item.import_status == "imported"
+    assert source_item.ai_tagging_status == "ai_tagged"
+    assert source_item.localization_status == "waiting_localization"
+    assert source_item.deferred_reason is None
