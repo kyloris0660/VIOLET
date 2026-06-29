@@ -1279,7 +1279,8 @@ def _manual_sync_finalize_localization(
         else:
             try:
                 from .llm_translation_provider import get_llm_provider
-                from .tag_localization_service import upsert_translation, invalidate_translation_cache
+                from .tag_localization_service import upsert_translation
+                from ..utils.search_parser import invalidate_translation_cache
 
                 provider = get_llm_provider()
                 if not provider.is_available():
@@ -1309,19 +1310,25 @@ def _manual_sync_finalize_localization(
                                 continue
                             seen_outputs.add(canonical)
                             item = candidate_by_name[canonical]
-                            saved = upsert_translation(
-                                db,
-                                canonical_name=canonical,
-                                display_name=getattr(translation, "display_name_zh", ""),
-                                lang=lang,
-                                aliases=getattr(translation, "aliases_zh", []) or [],
-                                category=item["category"],
-                                source="llm",
-                                status="translated",
-                                confidence=getattr(translation, "confidence", None),
-                                needs_review=bool(getattr(translation, "needs_review", False)),
-                                provider=provider.get_provider_name(),
-                            )
+                            try:
+                                saved = upsert_translation(
+                                    db,
+                                    canonical_name=canonical,
+                                    display_name=getattr(translation, "display_name_zh", ""),
+                                    lang=lang,
+                                    aliases=getattr(translation, "aliases_zh", []) or [],
+                                    category=item["category"],
+                                    source="llm",
+                                    status="translated",
+                                    confidence=getattr(translation, "confidence", None),
+                                    needs_review=bool(getattr(translation, "needs_review", False)),
+                                    provider=provider.get_provider_name(),
+                                )
+                            except Exception:
+                                db.rollback()
+                                errors.append("translation_save_failed")
+                                failed += 1
+                                continue
                             if saved is None:
                                 result["skipped"] += 1
                             else:
@@ -1333,6 +1340,7 @@ def _manual_sync_finalize_localization(
                     localizable_missing = sorted(name for name in localizable if name not in covered)
             except Exception:
                 blocked_reason = "localization_execution_failed"
+                errors.append("localization_execution_failed")
                 failed += len(localizable_missing)
     else:
         blocked_reason = None
@@ -2026,9 +2034,16 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         if int(localization_result.get("failed") or 0):
             counts["localization_failed"] += int(localization_result.get("failed") or 0)
 
-        run.failed_items = int(counts["failed"] + counts["classification_failed"] + counts["ai_tagging_failed"])
+        run.failed_items = int(
+            counts["failed"]
+            + counts["classification_failed"]
+            + counts["ai_tagging_failed"]
+            + counts["localization_failed"]
+        )
         run.pending_import_items = int(unprocessed_import_planned_count)
         summary_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
+        if not stop_reason and run.status not in {"cancelled", "failed"} and int(counts["localization_failed"]):
+            summary_status = "completed_with_localization_failures"
         run.summary_json = _set_stage(run.summary_json or {}, "summary", status=summary_status, processed=1, failed=0)
         _update_execute_summary(
             run,
@@ -2048,14 +2063,14 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             source_mutation_performed=False,
             app_storage_mutation_performed=bool(imported_media_ids),
             llm_calls_performed=bool(localization_result.get("llm_called")),
-            external_provider_calls_performed=False,
+            external_provider_calls_performed=bool(localization_result.get("llm_called")),
             model_downloads_performed=False,
         )
         if stop_reason and stop_reason != "cancelled":
             run.status = "failed"
             run.error_message = f"Manual sync execute stopped safely: {stop_reason}"
         elif run.status != "cancelled":
-            run.status = "completed"
+            run.status = "completed_with_failures" if int(counts["localization_failed"]) else "completed"
         run.finished_at = _utcnow()
         db.commit()
         db.refresh(run)

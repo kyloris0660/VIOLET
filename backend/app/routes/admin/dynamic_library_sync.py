@@ -21,6 +21,7 @@ from ...config import settings
 from ...database import get_db
 from ...models import DynamicSourceRoot, DynamicSyncRun, User
 from ...services.dynamic_library_sync_service import (
+    MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS,
     assert_manual_sync_allowed,
     get_dashboard_state,
     get_pending_summary,
@@ -51,6 +52,7 @@ GUI_VALIDATION_CLIENT_HEADER = "x-violet-gui-client"
 GUI_VALIDATION_CLIENT_VALUE = "web-admin-manual-sync-v1"
 GUI_MANUAL_SYNC_ROUTE = "/admin?tab=content#dynamic-library-sync-section"
 MANUAL_SYNC_PLAN_PROGRESS_RETAIN_SECONDS = 2 * 60 * 60
+MANUAL_SYNC_PLAN_CANCEL_STALE_SECONDS = MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS + 60
 
 _MANUAL_PLAN_LOCK = threading.Lock()
 _MANUAL_PLAN_PROGRESS: dict[str, dict[str, Any]] = {}
@@ -96,6 +98,25 @@ def _cleanup_manual_plan_progress_locked(now_epoch: Optional[float] = None) -> N
 
 def _public_manual_plan_progress(plan_id: str) -> dict:
     with _MANUAL_PLAN_LOCK:
+        progress_ref = _MANUAL_PLAN_PROGRESS.get(plan_id)
+        if progress_ref and progress_ref.get("status") == "cancelling":
+            now_value = _now_epoch()
+            updated_at = float(progress_ref.get("updated_at_epoch") or progress_ref.get("started_at_epoch") or now_value)
+            if now_value - updated_at > MANUAL_SYNC_PLAN_CANCEL_STALE_SECONDS:
+                progress_ref.update(
+                    {
+                        "status": "cancel_failed",
+                        "phase": "cancel_failed",
+                        "updated_at": _now_iso(),
+                        "updated_at_epoch": now_value,
+                        "ended_at": _now_iso(),
+                        "error_code": "manual_sync_plan_cancel_stale",
+                        "message": "Cancel was requested but the planner did not report a terminal state within the watchdog window. Audit server logs before retrying.",
+                    }
+                )
+                plan_key = progress_ref.get("plan_key")
+                if plan_key and _ACTIVE_MANUAL_PLAN_BY_KEY.get(str(plan_key)) == plan_id:
+                    _ACTIVE_MANUAL_PLAN_BY_KEY.pop(str(plan_key), None)
         progress = dict(_MANUAL_PLAN_PROGRESS.get(plan_id) or {})
     if not progress:
         raise HTTPException(status_code=404, detail={"code": "manual_sync_plan_progress_not_found"})
@@ -619,6 +640,24 @@ def plan_manual_sync(
             message=str(exc),
         )
         raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - release GUI plan locks on unexpected planner failures.
+        _finish_manual_plan_progress(
+            plan_request_id=plan_request_id,
+            plan_key=plan_key,
+            status="failed",
+            phase="failed",
+            error_code="manual_sync_plan_unexpected_error",
+            message="Manual sync plan failed unexpectedly. Check server logs before retrying.",
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "manual_sync_plan_unexpected_error",
+                "message": "Manual sync plan failed unexpectedly. Check server logs before retrying.",
+            },
+        ) from exc
 
 
 @router.post("/dynamic-library-sync/manual-sync/execute")

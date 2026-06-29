@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `PENDING_AFTER_MANUAL_PLAN_PROGRESS_FIX` (observed failed GUI-plan head: `19d686a49148d90d66a4ff5e44e9272db748ec6e`; refresh after commit).
+- Head SHA: `2e42e61f40043c6051613fee39a607bb0d624463` (observed failed GUI-plan head: `32cb03698f06746ae1f829b5b37fc565c7d59c4c`).
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -77,7 +77,7 @@
 
 ## Standard Pipeline Flow
 
-- Version: `1`; future automation readiness: `manual_pipeline_evidence_incomplete`.
+- Version: `1`; future automation readiness: `manual_pipeline_backend_evidence_good_but_gui_execute_acceptance_still_required`.
 - Aggregate basis: `{'final_inventory_delta_candidates': 124, 'hydration_passes_represented': 3, 'initial_execute_run_id': 7, 'remaining_execute_run_id': 8}`.
 - capture_resource_gpu_telemetry: `completed`; completed: `True`.
 - classify_imported_media: `completed`; completed: `True`.
@@ -104,25 +104,30 @@
 
 ## GUI Acceptance Debug
 
-- Status: `blocked_597s_plan_timeout_fixed_pending_revalidation`.
+- Status: `global_elapsed_timeout_removed_pending_user_retry`.
 - Observed server: port `8012`, profile `production-default`, env `production`, DB `blombooru`.
-- Endpoint clicked: `/api/admin/dynamic-library-sync/manual-sync/plan`; plan source before fix: `gui_manual_plan_endpoint_used_legacy_registered_root_walk_verify_hash`; plan source after fix: `manual_sync_delta_candidates_with_unchanged_known_terminal_skips_timeout_and_partial_scan_execute_block`.
-- Root cause: `GUI dry-run used the manual-sync plan endpoint but that endpoint still performed a broad source-root walk and expensive verify/hash over unchanged known items; frontend abort/browser close did not cancel the backend request, so it kept scanning until server stop.`.
+- Endpoint clicked: `/api/admin/dynamic-library-sync/manual-sync/plan`; planner path: current S3A-M2 manual-sync plan endpoint, not the old update-check endpoint.
+- Corrected root cause: the normal GUI plan had a hard roughly `600s` total elapsed timeout. The latest user run was still making progress through hashing when that timeout fired, so the plan was cancelled before Execute even though there was no proven stuck file.
+- `file-00724` interpretation: last visible public-safe item label when the old global timeout fired; it is not evidence of a bad or stuck source file.
 - Stuck jobs found/cleaned: `False` / `True`.
 - Cap/UI mismatch: `backend execute cap was 1000 but frontend execute input kept stale default 5 until policy initialization; fixed to initialize from backend cap on first dashboard load`.
 - Readiness/config mismatch: `Earlier UI readiness displayed background AI/LLM flags as blockers. A later manual GUI attempt correctly stopped because the launcher-managed production profile had AI tagging disabled for manual E2E. The profile/env mapping is now repaired so manual classification, AI tagging, and LLM localization provider readiness can be ON while automatic/background sync remains OFF.`.
-- Latest user-path failure: on head `19d686a49148d90d66a4ff5e44e9272db748ec6e`, the normal `Start manual sync` plan ran silently for about `597s` and ended with `Manual sync plan timed out; check server logs and retry only after confirming no active request remains.`.
-- Exact last stage/files visited before that timeout: `unknown_not_recorded_by_pre_fix_backend`; this is now treated as the bug, not as acceptable missing evidence.
+- Latest user-path failure: on head `32cb03698f06746ae1f829b5b37fc565c7d59c4c`, the normal `Start manual sync` plan showed progress for about `597s`, reached `hashing` with `seen=724`, `unchanged ledger skips=404`, `batch candidates=319`, `importable=0`, `failed=0`, then the old global timeout requested cancellation.
 - Post-failure cleanup audit: no V.I.O.L.E.T. listeners remained on ports `8000,8012-8024`; no active server/request was visible when Codex audited after the user aborted.
-- Plan progress/cancel added: `True`; normal UI now polls a `plan_request_id`, shows phase/current safe item/counts/recent events/elapsed time, exposes Cancel plan, sends backend cancel on browser timeout, and rejects duplicate active plans per root/source.
-- Threshold UI fix: historical threshold/deferred inventory is now labelled as diagnostic, not a current manual-execute blocker; current execute safety comes from the generated manual plan.
+- Timeout policy changed: global elapsed timeout is removed as a normal failure mechanism; healthy progress may continue beyond `600s`. A `300s` no-progress watchdog can request cancellation, and stale `cancelling` progress becomes terminal `cancel_failed` after the watchdog window.
+- Per-item timeout policy: supported-image verification and content hashing already use `file_read_timeout_seconds` and record stable per-item `read_timeout` reasons before continuing; the new watchdog only handles lack of global progress between service checkpoints.
+- Batch/resume policy: GUI planning now reports `bounded_actionable_batch`; committed source-ledger terminal states may be reused only when source identity is unchanged, and Execute must revalidate source identity before writes.
+- Plan progress/cancel added: `True`; normal UI now polls a `plan_request_id`, shows phase/current safe item/counts/recent events/elapsed time, exposes Cancel plan, rejects duplicate active plans per root/source, and releases active-plan locks on unexpected planner errors.
+- UI label fix: `historical skipped` is now `unchanged ledger skips`; `planned` is now `batch candidates`.
+- Threshold UI fix: historical threshold/deferred inventory is moved out of the normal operator path and labelled as diagnostic, not a current manual-execute blocker; current execute safety comes from the generated manual plan.
 - AI/localization wording fix: `AI -> localization: OFF` is replaced by background-chaining wording and separate manual E2E localization readiness.
-- Real browser validation after fix: `passed_ui_progress_fix_only` on a controlled `VIOLET_ENV=test` server with Playwright Edge. It confirmed canonical URL, normal operator UI, Start manual sync plan click, visible `plan_request_id`, persistent progress counts/events, visible confirmation phrase, and Execute disabled until operator confirmation. It did **not** click Execute and does not satisfy final production GUI Execute acceptance.
+- Canonical routing fix: same-page `hashchange` now activates `#dynamic-library-sync-section`, so stale `admin_content_section` localStorage no longer hides the normal manual-sync section after `/admin?tab=content#dynamic-library-sync-section`.
+- Real browser validation after fix: `passed_ui_progress_timeout_policy_fix_only` on a controlled `VIOLET_ENV=test` server on port `8013` with Playwright Edge. It confirmed canonical URL/hashchange activation, normal operator UI, Start manual sync plan click, visible `plan_request_id`, persistent progress counts/events, hidden normal-path threshold, no raw i18n key, busy/duplicate-click state, and a `200` response from `/manual-sync/plan`. It did **not** click Execute and does not satisfy final production GUI Execute acceptance.
 - Acceptance blocker: `No GUI Execute button-triggered run newer than run #8 has completed and passed post-run validation.`.
 
 ## Pre-User Manual Acceptance Safety Fixes
 
-- Status: `fixed_pending_review_after_cancellation_p1`.
+- Status: `fixed_pending_user_retry_after_progress_timeout_policy_fix_and_review`.
 - Reviewer scope: current-scope P1/P2 before head `e394ee3802bc444135710ec4e77df10751104986`; latest Codex review available for `e394ee3802bc444135710ec4e77df10751104986`; later review usage-limited: `False`.
 - Operator-entered production confirmation required: `True`.
 - Signed GUI provenance required: `True`; ordinary API can satisfy GUI acceptance: `False`.
@@ -131,17 +136,17 @@
 - Cancellation before localization guard: `True`; LLM calls prevented: `True`; localization DB writes prevented: `True`.
 - Historical read errors retryable in current delta planning: `True`.
 - Manual E2E readiness/backend gates aligned: `True`.
-- User manual GUI acceptance package status: `blocked_pending_latest_codex_review_after_cancellation_p1_fix`.
+- User manual GUI acceptance package status: `blocked_pending_user_retry_after_progress_timeout_policy_fix_and_review`.
 
 ## Validation
 
 - Ledger consistency: `passed`; represented items: `173` / `173`.
 - DB count delta: media `349`, source items `391`.
 - Public redaction: `True`; findings: `0`.
-- Launcher/Web Admin: `blocked_pending_user_manual_gui_execute_after_pre_acceptance_fixes`; browser: `msedge`; dry-run clicked: `True`; execute clicked: `False`.
+- Launcher/Web Admin: `blocked_pending_user_manual_gui_execute_after_global_timeout_policy_fix`; browser: `msedge`; dry-run clicked: `True`; execute clicked: `False`.
 - Launcher dry-run request/timeout/server-stop: `True` / `True` / `True`; latest timeout observed: `597s` before Execute.
 - Plan progress endpoints/tests: `added`; cancellation endpoint/tests: `added`; duplicate active plan guard/tests: `added`.
-- Real browser validation for this UI fix: `passed`; method `Playwright Edge`, URL `http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, Execute clicked `False`.
+- Real browser validation for this UI fix: `passed`; method `Playwright Edge`, URL `http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, Execute clicked `False`.
 - Launcher fallback reason: `Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.`.
 - Latest job observed by UI/API: run `None`, status `None`, imported `None`.
 
@@ -158,7 +163,7 @@
 - Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.
 - SourceConcept/Entity bridge work was not run.
 - Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.
-- Actual launcher/Web Admin GUI Execute acceptance is still not completed after the later user-path `Start manual sync` plan timeout at about `597s`; this patch makes the plan observable/cancellable and must be revalidated before asking the user to Execute.
+- Actual launcher/Web Admin GUI Execute acceptance is still not completed after the later user-path `Start manual sync` global timeout at about `597s`; this patch removes the hard total elapsed timeout, adds progress-based cancellation, and must be revalidated before asking the user to Execute.
 - The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.
 - Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet.
 

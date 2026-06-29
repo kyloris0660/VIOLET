@@ -417,6 +417,62 @@ def test_manual_sync_plan_cancel_endpoint_marks_active_plan(client):
     assert dynamic_routes._manual_plan_cancel_requested(plan_request_id) is True
 
 
+def test_manual_sync_plan_cancel_stale_progress_becomes_terminal(client):
+    plan_request_id = "gui-plan-cancel-stale-test"
+    old_epoch = dynamic_routes._now_epoch() - dynamic_routes.MANUAL_SYNC_PLAN_CANCEL_STALE_SECONDS - 5
+    with dynamic_routes._MANUAL_PLAN_LOCK:
+        dynamic_routes._MANUAL_PLAN_PROGRESS[plan_request_id] = {
+            "plan_request_id": plan_request_id,
+            "plan_key": "root:2",
+            "status": "cancelling",
+            "phase": "hashing",
+            "started_at_epoch": old_epoch,
+            "updated_at_epoch": old_epoch,
+            "events": [],
+        }
+        dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY["root:2"] = plan_request_id
+
+    response = client.get(f"/api/admin/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}")
+
+    assert response.status_code == 200, response.text
+    progress = response.json()
+    assert progress["status"] == "cancel_failed"
+    assert progress["phase"] == "cancel_failed"
+    assert progress["error_code"] == "manual_sync_plan_cancel_stale"
+    assert "root:2" not in dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY
+
+
+def test_manual_sync_plan_route_releases_lock_on_unexpected_planner_error(client, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+    plan_request_id = "gui-plan-unexpected-error-test"
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("private path should not leak")
+
+    monkeypatch.setattr(dynamic_routes, "plan_manual_sync_dry_run", boom)
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "source_path": str(source_root),
+            "max_files": 5,
+            "stable_age_seconds": 0,
+            "plan_request_id": plan_request_id,
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "manual_sync_plan_unexpected_error"
+    progress_response = client.get(f"/api/admin/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}")
+    assert progress_response.status_code == 200
+    progress = progress_response.json()
+    assert progress["status"] == "failed"
+    assert progress["error_code"] == "manual_sync_plan_unexpected_error"
+    assert not dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY
+
+
 def test_manual_sync_plan_route_is_sync_worker_thread_endpoint() -> None:
     assert py_inspect.iscoroutinefunction(dynamic_routes.plan_manual_sync) is False
 
@@ -742,6 +798,77 @@ def test_manual_sync_dry_run_image_verify_timeout_is_item_level_failure(db, tmp_
     assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
 
 
+def test_manual_sync_dry_run_does_not_abort_healthy_progress_after_600s(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    for index in range(45):
+        _write_png(source_root / f"healthy_{index:03d}.png", (index, 20, 30))
+
+    monotonic_value = {"value": 0.0}
+
+    def fake_monotonic() -> float:
+        monotonic_value["value"] += 2.0
+        return monotonic_value["value"]
+
+    monkeypatch.setattr(service.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(service, "_verify_supported_image_file_with_timeout", lambda _path, _timeout_sec: None)
+    monkeypatch.setattr(
+        service,
+        "_calculate_manual_plan_file_hash",
+        lambda path, _timeout_sec: (calculate_file_hash(path), None),
+    )
+
+    progress_events = []
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=100,
+        stable_age_seconds=0,
+        progress_callback=progress_events.append,
+    )
+
+    assert monotonic_value["value"] > 600
+    assert plan["limits"]["global_elapsed_timeout_enabled"] is False
+    assert plan["limits"]["plan_timeout"] is False
+    assert plan["limits"]["plan_no_progress_timeout"] is False
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["counts"]["state_counts"]["import_planned"] == 45
+    assert plan["counts"]["failure_reasons"].get("plan_timeout", 0) == 0
+    assert plan["counts"]["failure_reasons"].get("plan_no_progress_timeout", 0) == 0
+
+
+def test_manual_sync_dry_run_no_progress_watchdog_stops_safely(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+
+    monotonic_value = {"value": 0.0}
+
+    def fake_monotonic() -> float:
+        monotonic_value["value"] += 1.0
+        return monotonic_value["value"]
+
+    def slow_iter(_resolved, *, walk_errors):
+        monotonic_value["value"] += service.MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS + 5
+        yield source_root / "new.png"
+
+    monkeypatch.setattr(service.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(service, "_iter_source_files", slow_iter)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["limits"]["plan_timeout"] is False
+    assert plan["limits"]["plan_no_progress_timeout"] is True
+    assert plan["limits"]["last_progress_stage"] == "no_progress_timeout"
+    assert plan["counts"]["failure_reasons"]["plan_no_progress_timeout"] == 1
+
+
 def test_manual_sync_dry_run_public_reasons_do_not_leak_oserror_paths(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -854,6 +981,9 @@ def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root
             source_status="available",
             sync_state="imported",
             import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
             media_id=media.id,
         )
     )
@@ -876,6 +1006,65 @@ def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root
     assert plan["limits"]["max_files_scope"] == "manual_sync_delta_candidates"
     assert "a_known.png" not in str(plan)
     assert "b_fresh.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    followup_path = source_root / "a_followup.png"
+    fresh_path = source_root / "b_fresh.png"
+    _write_png(followup_path, (20, 30, 40))
+    _write_png(fresh_path, (60, 70, 80))
+    followup_stat = followup_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="a_followup.png",
+        path="media/original/a_followup.png",
+        hash=calculate_file_hash(followup_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="a_followup.png",
+            relative_path_hash=service._hash_text("a_followup.png"),
+            file_size=followup_stat.st_size,
+            mtime_ns=followup_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="failed_ai_tagger_model_uncached",
+            localization_status="blocked_ai_tagging_failed",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 0
+    assert plan["limits"]["unchanged_known_files"] == 0
+    assert plan["counts"]["partial_scan"] is True
+    assert "a_followup.png" not in str(plan)
 
 
 def test_manual_sync_dry_run_reincludes_unresolved_known_items_for_registered_root(db, tmp_path):

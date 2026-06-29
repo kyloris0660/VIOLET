@@ -753,6 +753,15 @@ class AdminPanel {
 
         this.showContentSection = showSection;
 
+        const showHashSection = () => {
+            const hashSection = window.location.hash ? window.location.hash.substring(1) : '';
+            if (sections.find(section => section.id === hashSection)) {
+                showSection(hashSection, false);
+                return true;
+            }
+            return false;
+        };
+
         links.forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -760,15 +769,18 @@ class AdminPanel {
             });
         });
 
-        const hashSection = window.location.hash ? window.location.hash.substring(1) : '';
         const savedSection = localStorage.getItem('admin_content_section');
-        const initialSection = sections.find(section => section.id === hashSection)
-            ? hashSection
+        const initialSection = showHashSection()
+            ? null
             : (sections.find(section => section.id === savedSection)?.id || sections[0]?.id);
 
         if (initialSection) {
             showSection(initialSection, false);
         }
+
+        window.addEventListener('hashchange', () => {
+            showHashSection();
+        });
     }
 
     setupTabs() {
@@ -1934,6 +1946,11 @@ class AdminPanel {
         const counts = progressPayload.counts || {};
         const item = progressPayload.current_item_label || '-';
         const index = progressPayload.current_item_index || 0;
+        const progressUpdated = progressPayload.last_progress_at || progressPayload.updated_at || null;
+        const progressUpdatedMs = progressUpdated ? Date.parse(progressUpdated) : Date.now();
+        if (['running', 'cancelling'].includes(status) && !Number.isNaN(progressUpdatedMs)) {
+            this.dynamicSyncPlanLastProgressEpochMs = progressUpdatedMs;
+        }
         this._manualSyncSetProgress({
             visible: true,
             inFlight: ['running', 'cancelling'].includes(status),
@@ -1955,12 +1972,12 @@ class AdminPanel {
         if (countsEl) {
             const fields = [
                 ['seen', counts.seen || 0],
-                ['historical skipped', counts.skipped_historical || 0],
+                ['unchanged ledger skips', counts.skipped_historical || 0],
                 ['unsupported', counts.skipped_unsupported || 0],
                 ['placeholders', counts.placeholders_found || 0],
                 ['hydrated', counts.hydrated || 0],
                 ['importable', counts.importable || 0],
-                ['planned', counts.planned || 0],
+                ['batch candidates', counts.batch_candidates || counts.planned || 0],
                 ['failed', counts.failed || 0],
             ];
             countsEl.innerHTML = fields.map(([key, value]) => (
@@ -2334,14 +2351,15 @@ class AdminPanel {
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const dryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
         const startBtn = document.getElementById('dynamic-sync-start-btn');
-        const timeoutMs = 10 * 60 * 1000;
+        const noProgressTimeoutMs = 5 * 60 * 1000;
         const planRequestId = this._manualSyncNewPlanRequestId();
         body.plan_request_id = planRequestId;
         const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+        let noProgressCancelRequested = false;
+        let watchdogId = null;
         if (resultEl) {
             resultEl.classList.remove('hidden');
-            resultEl.innerHTML = `<div class="text-warning">Planning current source delta... request=${this.escapeHtml(planRequestId)}, timeout=${Math.round(timeoutMs / 1000)}s</div>`;
+            resultEl.innerHTML = `<div class="text-warning">Planning current source delta... request=${this.escapeHtml(planRequestId)}. Healthy progress may continue beyond 600s; no-progress watchdog=${Math.round(noProgressTimeoutMs / 1000)}s.</div>`;
         }
         this._manualSyncSetControlsBusy(true);
         if (dryRunBtn) dryRunBtn.disabled = true;
@@ -2370,6 +2388,15 @@ class AdminPanel {
             body.gui_validation_session_token = guiSession.gui_validation_session_token;
             body.client_route = guiSession.client_route || '/admin?tab=content#dynamic-library-sync-section';
             this._startManualSyncPlanProgressPolling(planRequestId);
+            this.dynamicSyncPlanLastProgressEpochMs = Date.now();
+            watchdogId = window.setInterval(async () => {
+                if (noProgressCancelRequested) return;
+                const lastProgress = this.dynamicSyncPlanLastProgressEpochMs || Date.now();
+                if (Date.now() - lastProgress <= noProgressTimeoutMs) return;
+                noProgressCancelRequested = true;
+                await this.cancelManualSyncPlan({ silent: true });
+                controller.abort();
+            }, 5000);
             const plan = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/plan', {
                 method: 'POST',
                 headers: {
@@ -2399,7 +2426,8 @@ class AdminPanel {
                     placeholders_found: finalStates.skipped_placeholder || 0,
                     hydrated: 0,
                     importable: finalCounts.estimated_import_count || 0,
-                    planned: finalCounts.estimated_import_count || 0,
+                    planned: finalCounts.total_seen || 0,
+                    batch_candidates: finalCounts.total_seen || 0,
                     failed: finalStates.failed || 0,
                 },
                 events: [{ at: new Date().toISOString(), phase: 'completed', status: 'completed' }],
@@ -2419,11 +2447,11 @@ class AdminPanel {
         } catch (e) {
             this.dynamicSyncPlan = null;
             this._updateManualSyncExecuteButton();
-            if (e.name === 'AbortError') {
+            if (e.name === 'AbortError' && !noProgressCancelRequested) {
                 await this.cancelManualSyncPlan({ silent: true });
             }
             const message = e.name === 'AbortError'
-                ? `Manual sync plan timed out for request ${planRequestId}; cancel was requested. Retry only after progress/status confirms the active request stopped.`
+                ? `Manual sync plan had no visible progress for ${Math.round(noProgressTimeoutMs / 1000)}s on request ${planRequestId}; cancel was requested. Retry only after progress/status confirms the active request stopped.`
                 : `Manual sync plan failed: ${e.message || e}`;
             if (resultEl) {
                 resultEl.classList.remove('hidden');
@@ -2437,7 +2465,7 @@ class AdminPanel {
                 detail: message,
             });
         } finally {
-            window.clearTimeout(timeoutId);
+            if (watchdogId) window.clearInterval(watchdogId);
             this._stopManualSyncPlanProgressPolling(false);
             this._manualSyncSetControlsBusy(false);
             this._updateManualSyncExecuteButton();

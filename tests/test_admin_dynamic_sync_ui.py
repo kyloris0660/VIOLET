@@ -28,9 +28,11 @@ def test_dynamic_sync_operator_flow_is_primary_and_legacy_controls_are_advanced(
     dry_run_index = template.index('id="dynamic-sync-dry-run-btn"')
     hydrated_only_index = template.index('id="dynamic-sync-hydrated-only"')
     hydration_policy_index = template.index('id="dynamic-sync-hydration-policy"')
+    threshold_index = template.index('id="dynamic-sync-threshold"')
 
     assert operator_index < start_index < advanced_index
     assert operator_index < hydration_policy_index < advanced_index
+    assert advanced_index < threshold_index
     assert advanced_index < hydrated_only_index < check_index
     assert advanced_index < check_index < dry_run_index
     assert 'id="dynamic-sync-execute-max-files" min="1" max="1000" value="1000"' in template
@@ -68,7 +70,9 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "/api/admin/dynamic-library-sync/manual-sync/plan-progress/" in script
     assert "plan_request_id" in script
     assert "cancelManualSyncPlan" in script
-    assert "Manual sync plan timed out for request" in script
+    assert "Manual sync plan had no visible progress" in script
+    assert "Healthy progress may continue beyond 600s" in script
+    assert "10 * 60 * 1000" not in script
     assert "/api/admin/dynamic-library-sync/manual-sync/gui-session" in script
     assert "POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root." in script
 
@@ -115,6 +119,8 @@ def test_dynamic_sync_canonical_content_url_is_preserved() -> None:
     script = _text(ADMIN_JS)
 
     assert "hashIsContentSection" in script
+    assert "showHashSection" in script
+    assert "window.addEventListener('hashchange'" in script
     assert "urlParams.set('tab', 'content')" in script
     assert "window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}${window.location.hash}`)" in script
     assert "urlParams.delete('tab')" not in script

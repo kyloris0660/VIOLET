@@ -71,6 +71,7 @@ MANUAL_SYNC_PIPELINE_STAGES: tuple[str, ...] = (
 S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX = "I APPROVE S3A-M1 MANUAL SYNC EXECUTE"
 S3A_M1_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX = "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE"
 MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS = 600
+MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS = 5 * 60
 
 MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
     {
@@ -88,7 +89,9 @@ MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
         "import_failed",
         "not_a_file",
         "path_escape",
+        "plan_no_progress_timeout",
         "plan_timeout",
+        "plan_cancelled",
         "read_error",
         "read_timeout",
         "source_missing",
@@ -562,18 +565,18 @@ def plan_manual_sync_dry_run(
     scanned_files = 0
     unchanged_known_files = 0
     plan_timeout = False
+    plan_no_progress_timeout = False
     plan_cancelled = False
     current_stage = "initializing"
     last_progress_item_label: Optional[str] = None
     plan_started_monotonic = time.monotonic()
-    plan_timeout_seconds = min(
-        MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
-        max(30, int(settings.DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS)),
-    )
+    last_progress_monotonic = plan_started_monotonic
+    plan_no_progress_timeout_seconds = MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS
 
     def _progress(phase: str, **updates: Any) -> None:
-        nonlocal current_stage, last_progress_item_label
+        nonlocal current_stage, last_progress_item_label, last_progress_monotonic
         current_stage = phase
+        last_progress_monotonic = time.monotonic()
         if "current_item_label" in updates and updates["current_item_label"]:
             last_progress_item_label = str(updates["current_item_label"])
         if progress_callback is None:
@@ -592,6 +595,7 @@ def plan_manual_sync_dry_run(
                 + reason_counts.get("stat_error", 0)
                 + reason_counts.get("source_walk_error", 0)
             ),
+            "batch_candidates": int(len(candidate_records)),
         }
         payload = {
             "phase": phase,
@@ -613,6 +617,9 @@ def plan_manual_sync_dry_run(
         except Exception:
             return False
 
+    def _no_progress_timed_out() -> bool:
+        return (time.monotonic() - last_progress_monotonic) > plan_no_progress_timeout_seconds
+
     _progress("loading_known_source_items")
     known_items_by_rel_hash: Dict[str, DynamicSourceItem] = {}
     if source_record_id is not None:
@@ -630,10 +637,10 @@ def plan_manual_sync_dry_run(
             plan_cancelled = True
             reason_counts["plan_cancelled"] += 1
             break
-        if time.monotonic() - plan_started_monotonic > plan_timeout_seconds:
+        if _no_progress_timed_out():
             partial_scan = True
-            plan_timeout = True
-            reason_counts["plan_timeout"] += 1
+            plan_no_progress_timeout = True
+            reason_counts["plan_no_progress_timeout"] += 1
             break
         scanned_files = index
 
@@ -716,7 +723,11 @@ def plan_manual_sync_dry_run(
             }
         )
 
-    _progress("cancelled" if plan_cancelled else "checking_existing_media")
+    _progress(
+        "cancelled"
+        if plan_cancelled
+        else ("no_progress_timeout" if plan_no_progress_timeout else "checking_existing_media")
+    )
     existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes)
     seen_hashes: set[str] = set()
     integrity_items: List[Dict[str, Any]] = []
@@ -821,9 +832,29 @@ def plan_manual_sync_dry_run(
         "scanned_files": scanned_files,
         "unchanged_known_files": unchanged_known_files,
         "max_files_scope": "manual_sync_delta_candidates",
+        "batch_mode": "bounded_actionable_batch",
+        "batch_candidate_cap": effective_max_files,
+        "batch_policy": {
+            "user_starts_one_manual_session": True,
+            "plan_one_bounded_batch_at_a_time": True,
+            "execute_revalidates_source_identity": True,
+            "already_imported_batches_are_reused_from_source_ledger": True,
+            "unexecuted_candidate_plan_reuse": "not_reused_without_execute_revalidation",
+            "next_batch_requires_new_plan": True,
+        },
+        "resume_policy": {
+            "reuses_committed_dynamic_source_item_states": True,
+            "revalidates_size_mtime_and_hash_before_execute": True,
+            "invalidates_on_source_identity_or_metadata_change": True,
+            "private_uncommitted_plan_items_are_not_trusted_for_execute": True,
+        },
         "plan_source": "source_delta" if source_record_id is not None else "ad_hoc_source_path",
-        "plan_timeout_seconds": plan_timeout_seconds,
+        "plan_stale_after_seconds": MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
+        "global_elapsed_timeout_enabled": False,
+        "plan_no_progress_timeout_seconds": plan_no_progress_timeout_seconds,
+        "plan_timeout_seconds": None,
         "plan_timeout": plan_timeout,
+        "plan_no_progress_timeout": plan_no_progress_timeout,
         "plan_cancelled": plan_cancelled,
         "last_progress_stage": current_stage,
         "last_progress_item_label": last_progress_item_label,
@@ -970,6 +1001,9 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         return False
     import_status = str(item.import_status or "")
     sync_state = str(item.sync_state or "")
+    classification_status = str(item.classification_status or "")
+    ai_tagging_status = str(item.ai_tagging_status or "")
+    localization_status = str(item.localization_status or "")
     reason = str(item.deferred_reason or item.failure_reason or "")
     if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
         return True
@@ -977,6 +1011,18 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         return True
     if import_status == "imported" and item.media_id is None:
         return True
+    if import_status == "imported" and item.media_id is not None:
+        classification_done = classification_status in {"classified", "classified_reused"}
+        ai_done = ai_tagging_status in {"ai_tagged", "tagged", "tagged_reused"}
+        localization_done = localization_status in {
+            "localized",
+            "completed",
+            "skipped_no_localizable_tags",
+            "skipped_no_new_tags",
+            "skipped_static_coverage",
+        }
+        if not (classification_done and ai_done and localization_done):
+            return True
     stable_non_actionable = {
         "unsupported_extension",
         "hidden",

@@ -1876,6 +1876,101 @@ def test_s3a_m2_manual_execute_ai_policy_confirms_mature_categories_and_suggests
     assert localization["llm_called"] is False
 
 
+def test_manual_sync_localization_save_failure_rolls_back_and_records_failure(db, tmp_path, monkeypatch):
+    import app.services.llm_translation_provider as llm_provider_module
+    import app.services.tag_localization_service as localization_service
+
+    class FakeProvider:
+        def is_available(self):
+            return True
+
+        async def translate_tags(self, inputs):
+            return [
+                SimpleNamespace(
+                    canonical_name=inputs[0]["name"],
+                    display_name_zh="单元测试标签",
+                    aliases_zh=[],
+                    confidence=0.9,
+                    needs_review=False,
+                )
+            ]
+
+        def get_provider_name(self):
+            return "unit"
+
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    def fake_ai_tagging(db_arg, media_id):
+        tag = Tag(name="unit_needs_localization", category=TagCategoryEnum.general)
+        db_arg.add(tag)
+        db_arg.flush()
+        db_arg.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media_id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.99,
+                is_locked=False,
+                is_suggestion=False,
+            )
+        )
+        db_arg.commit()
+        return {
+            "media_id": media_id,
+            "tags_added": 1,
+            "suggestions_added": 0,
+            "predictions": [{"name": "unit_needs_localization", "confidence": 0.99, "action": "confirmed"}],
+            "provenance": {"provider_backend": "unit"},
+        }
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(llm_provider_module, "get_llm_provider", lambda: FakeProvider())
+
+    def raise_upsert(*_args, **_kwargs):
+        raise RuntimeError("simulated db write failure")
+
+    monkeypatch.setattr(localization_service, "upsert_translation", raise_upsert)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    localization = result["manual_sync_execute"]["localization"]
+    assert result["status"] == "completed_with_failures"
+    assert localization["status"] == "blocked_localization_gap_remaining"
+    assert localization["errors"] == ["translation_save_failed"]
+    assert localization["failed"] == 1
+    assert result["failed_items"] == 1
+    assert result["manual_sync_execute"]["external_provider_calls_performed"] is True
+    assert db.query(DynamicSourceItem).one().localization_status == "deferred"
+
+
 def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
