@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `ac078ea6ade978e2577661fda19885db5d9de6e9`.
+- Head SHA: `0d8397886e84f53fc99dbde4d0820a4c81b0d0f8`.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -116,15 +116,16 @@
 
 ## Pre-User Manual Acceptance Safety Fixes
 
-- Status: `fixed_pending_user_manual_gui_acceptance_retry`.
-- Reviewer scope: current-scope P1/P2 before head `a334f237b85bd78fd748869f73be641a80f32246`; latest Codex review available for `c720a17ee0fe0b1854e546c60f98730e01328a7b`; later review usage-limited: `True`.
+- Status: `fixed_pending_review_after_cancellation_p1`.
+- Reviewer scope: current-scope P1/P2 before head `e394ee3802bc444135710ec4e77df10751104986`; latest Codex review available for `e394ee3802bc444135710ec4e77df10751104986`; later review usage-limited: `False`.
 - Operator-entered production confirmation required: `True`.
 - Signed GUI provenance required: `True`; ordinary API can satisfy GUI acceptance: `False`.
 - Validator scope: `validated_gui_run_source_root_only`; skipped placeholders included: `True`.
 - Localization failure reporting: `manual_sync_execute.localization_failed_items plus localization summary failed/gap fields`.
+- Cancellation before localization guard: `True`; LLM calls prevented: `True`; localization DB writes prevented: `True`.
 - Historical read errors retryable in current delta planning: `True`.
 - Manual E2E readiness/backend gates aligned: `True`.
-- User manual GUI acceptance package status: `ready_to_provide_after_push_and_review_request`.
+- User manual GUI acceptance package status: `blocked_pending_latest_codex_review_after_cancellation_p1_fix`.
 
 ## Validation
 
