@@ -73,6 +73,19 @@ def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
                 "request": {
                     "request_source": "web_admin_gui",
                     "gui_validation_session_id": "gui-test-session",
+                    "gui_validation_session_signature_valid": True,
+                    "client_route": "/admin?tab=content#dynamic-library-sync-section",
+                }
+            }
+        }
+    )
+    unsigned_gui_run = SimpleNamespace(
+        summary_json={
+            "manual_sync_execute": {
+                "request": {
+                    "request_source": "web_admin_gui",
+                    "gui_validation_session_id": "gui-test-session",
+                    "gui_validation_session_signature_valid": False,
                     "client_route": "/admin?tab=content#dynamic-library-sync-section",
                 }
             }
@@ -80,6 +93,7 @@ def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
     )
 
     assert gui_validator.gui_provenance_for_run(runner_run)["valid"] is False
+    assert gui_validator.gui_provenance_for_run(unsigned_gui_run)["valid"] is False
     assert gui_validator.gui_provenance_for_run(gui_run, expected_session_id="wrong-session")["valid"] is False
     assert gui_validator.gui_provenance_for_run(gui_run, expected_session_id="gui-test-session")["valid"] is True
 
@@ -87,6 +101,93 @@ def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
 def test_s3a_m2_gui_validator_rejects_private_output_outside_manifest_tree(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="gui_acceptance_output_dir_outside_local_manifest_tree"):
         gui_validator.ensure_private_output_dir(tmp_path)
+
+
+def test_s3a_m2_gui_validator_scopes_remaining_inventory_to_validated_root() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        root_gui = DynamicSourceRoot(label="gui", root_path="/safe/gui", root_path_hash="hash-gui", is_active=True)
+        root_other = DynamicSourceRoot(label="other", root_path="/safe/other", root_path_hash="hash-other", is_active=True)
+        db.add_all([root_gui, root_other])
+        db.flush()
+        run = DynamicSyncRun(id=9, run_type="manual_sync_execute", mode="production_acceptance", status="completed")
+        db.add(run)
+        db.flush()
+        imported_item = DynamicSourceItem(
+            source_root_id=root_gui.id,
+            relative_path="imported.png",
+            relative_path_hash="rel-imported",
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+        )
+        placeholder_item = DynamicSourceItem(
+            source_root_id=root_gui.id,
+            relative_path="placeholder.png",
+            relative_path_hash="rel-placeholder",
+            source_status="deferred",
+            sync_state="skipped_placeholder",
+            import_status="deferred",
+            deferred_reason="cloud_placeholder",
+        )
+        other_root_pending = DynamicSourceItem(
+            source_root_id=root_other.id,
+            relative_path="other.png",
+            relative_path_hash="rel-other",
+            source_status="available",
+            sync_state="new",
+            import_status="pending",
+        )
+        db.add_all([imported_item, placeholder_item, other_root_pending])
+        db.flush()
+        db.add_all(
+            [
+                DynamicSyncRunItem(
+                    sync_run_id=run.id,
+                    source_item_id=imported_item.id,
+                    item_state="imported",
+                    action="import",
+                    eligible_for_db_import=True,
+                ),
+                DynamicSyncRunItem(
+                    sync_run_id=run.id,
+                    source_item_id=placeholder_item.id,
+                    item_state="skipped_placeholder",
+                    reason="cloud_placeholder",
+                    action="skip",
+                    eligible_for_db_import=False,
+                ),
+            ]
+        )
+        db.commit()
+
+        summary = gui_validator.run_items_summary(db, 9, root_id=root_gui.id)
+
+        assert summary["remaining_importable_db_pending_count"] == 0
+        assert summary["remaining_placeholder_db_count"] == 1
+        assert summary["skipped_placeholder_run_item_count"] == 1
+        assert summary["source_root_ids"] == [root_gui.id]
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
 
 
 def test_s3a_m2_gui_validator_applies_manual_e2e_profile_flags(tmp_path: Path, monkeypatch) -> None:
@@ -223,6 +324,7 @@ def test_s3a_m2_gui_validator_fails_if_gui_run_imports_without_ai_tagging(tmp_pa
                     "request": {
                         "request_source": "web_admin_gui",
                         "gui_validation_session_id": "gui-test-session",
+                        "gui_validation_session_signature_valid": True,
                         "client_route": "/admin?tab=content#dynamic-library-sync-section",
                     },
                     "outcome_counts": {"imported": 1},
@@ -524,6 +626,7 @@ def test_s3a_m2_completion_claim_requires_launcher_validation() -> None:
         "gui_provenance_valid": True,
         "request_source": "web_admin_gui",
         "gui_validation_session_id_present": True,
+        "gui_validation_session_signature_valid": True,
     }
     completed = refresh_completion_claims(summary)
 

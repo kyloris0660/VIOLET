@@ -55,10 +55,29 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
 
     assert "dynamicSyncActionInFlight" in script
     assert "_manualSyncSetProgress" in script
+    assert "gui_validation_session_token" in script
+    assert "X-Violet-Gui-Client" in script
     assert "useAdvancedHydratedOnly = false" in script
     assert "cloud_aware_non_destructive_read" in script
     assert "POST /api/admin/dynamic-library-sync/manual-sync/plan" in script
+    assert "/api/admin/dynamic-library-sync/manual-sync/gui-session" in script
     assert "POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root." in script
+
+
+def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
+    template = _text(ADMIN_TEMPLATE)
+    script = _text(ADMIN_JS)
+
+    operator_index = template.index('id="dynamic-sync-operator-card"')
+    confirmation_index = template.index('id="dynamic-sync-confirmation"')
+    advanced_index = template.index('id="dynamic-sync-advanced-controls"')
+
+    assert operator_index < confirmation_index < advanced_index
+    assert "useExpectedConfirmation" not in script
+    assert "confirmationEl.value = expected" not in script
+    assert "body.confirmation_phrase = confirmation;" in script
+    assert "production_acceptance_approved = !!this.dynamicSyncProductionMode && confirmation === expected" in script
+    assert "complete && importable && matches" in script
 
 
 def test_dynamic_sync_ui_does_not_render_raw_i18n_keys_or_internal_blocker_prefixes() -> None:

@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `c720a17ee0fe0b1854e546c60f98730e01328a7b`.
+- Head SHA: `a334f237b85bd78fd748869f73be641a80f32246`.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -57,7 +57,7 @@
 - Classification unknown rate S3A-M2/baseline: `6.59` / `5.155`.
 - Localization remaining gap after repair: `0`; blocker anomalies remaining: `0`.
 - Post-repair UI validation: `passed`; samples: `8`; normal visible pass: `8`; mature proper normal visible pass: `3`; true suggestion visible pass: `8`.
-- Computer Use result: `blocked_by_browser_url_policy_after_launcher_opened_web_admin`; launcher step reached: `openManualSyncButton clicked`; Chrome title observed: `Admin Panel - V.I.O.L.E.T.`; expected URL: `http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section`; Chrome-observed URL: `http://127.0.0.1:8012/admin#dynamic-library-sync-section`.
+- Computer Use result: `unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge`; fallback method: `playwright_msedge_against_launcher_started_production_server_after_second_repair`.
 
 ## Placeholder Hydration
 
@@ -78,20 +78,20 @@
 ## Standard Pipeline Flow
 
 - Version: `1`; future automation readiness: `manual_pipeline_evidence_incomplete`.
-- Aggregate basis: `{'initial_execute_run_id': 7, 'remaining_execute_run_id': 8, 'hydration_passes_represented': 3, 'final_inventory_delta_candidates': 124}`.
-- scan_current_source_delta: `completed`; completed: `True`.
+- Aggregate basis: `{'final_inventory_delta_candidates': 124, 'hydration_passes_represented': 3, 'initial_execute_run_id': 7, 'remaining_execute_run_id': 8}`.
+- capture_resource_gpu_telemetry: `completed`; completed: `True`.
+- classify_imported_media: `completed`; completed: `True`.
 - detect_cloud_placeholders: `completed`; completed: `True`.
 - hydrate_placeholders_non_destructively: `completed`; completed: `True`.
-- rescan_after_hydration: `completed`; completed: `True`.
 - import_all_current_importable_items: `completed`; completed: `True`.
-- classify_imported_media: `completed`; completed: `True`.
+- produce_public_report_and_contract: `completed`; completed: `True`.
+- record_ledger_for_every_planned_item: `completed`; completed: `True`.
+- rescan_after_hydration: `completed`; completed: `True`.
 - run_ai_tagging: `completed`; completed: `True`.
 - run_localization_or_stable_reasons: `completed`; completed: `True`.
-- record_ledger_for_every_planned_item: `completed`; completed: `True`.
-- capture_resource_gpu_telemetry: `completed`; completed: `True`.
-- validate_public_redaction: `completed`; completed: `True`.
+- scan_current_source_delta: `completed`; completed: `True`.
 - validate_launcher_web_admin_workflow: `pending`; completed: `False`.
-- produce_public_report_and_contract: `completed`; completed: `True`.
+- validate_public_redaction: `completed`; completed: `True`.
 
 ## Telemetry
 
@@ -106,40 +106,34 @@
 
 - Status: `diagnosed_blocked_pending_final_gui_execute`.
 - Observed server: port `8012`, profile `production-default`, env `production`, DB `blombooru`.
-- Computer Use URL-confidence diagnosis: `Computer Use could see the Chrome window title after launcher Open Manual Sync, but its Windows browser policy layer could not independently read/verify the current address-bar URL. A read-only Chrome tab listing then showed the tab URL was hash-only: http://127.0.0.1:8012/admin#dynamic-library-sync-section`.
-- Expected canonical manual-sync URL: `http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section`.
-- URL mismatch cause: `launcher control already requested the canonical URL, but the running 8012 production server was still serving the older frontend setupTabs logic that removed tab=content on load. Current code preserves or restores tab=content for content-section hashes; production must be restarted on this head before retrying Computer Use`.
 - Endpoint clicked: `/api/admin/dynamic-library-sync/manual-sync/plan`; plan source before fix: `gui_manual_plan_endpoint_used_legacy_registered_root_walk_verify_hash`; plan source after fix: `manual_sync_delta_candidates_with_unchanged_known_terminal_skips_timeout_and_partial_scan_execute_block`.
 - Root cause: `GUI dry-run used the manual-sync plan endpoint but that endpoint still performed a broad source-root walk and expensive verify/hash over unchanged known items; frontend abort/browser close did not cancel the backend request, so it kept scanning until server stop.`.
 - Stuck jobs found/cleaned: `False` / `True`.
 - Cap/UI mismatch: `backend execute cap was 1000 but frontend execute input kept stale default 5 until policy initialization; fixed to initialize from backend cap on first dashboard load`.
-- Readiness/config mismatch: `UI readiness displayed background AI/LLM flags as blockers; manual execute AI can use the manual pipeline profile, but final GUI acceptance must confirm AI/localization readiness before execute and must not claim E2E if localization remains disabled`.
+- Readiness/config mismatch: `Earlier UI readiness displayed background AI/LLM flags as blockers. A later manual GUI attempt correctly stopped because the launcher-managed production profile had AI tagging disabled for manual E2E. The profile/env mapping is now repaired so manual classification, AI tagging, and LLM localization provider readiness can be ON while automatic/background sync remains OFF.`.
 - Watchdog/timeout added: `True`; no-silent-spinner fix: `True`.
 - Acceptance blocker: `No GUI Execute button-triggered run newer than run #8 has completed and passed post-run validation.`.
 
-## Manual GUI E2E Readiness Fix
+## Pre-User Manual Acceptance Safety Fixes
 
-- User-observed blocker: `Manual sync blockers: AI tagging is disabled for this server, so a manual E2E run cannot complete AI tagging.`.
-- Root cause: the launcher-managed production child process runs with `VIOLET_SKIP_DOTENV=1`, but the private production profile did not previously materialize the manual E2E component flags/provider config. That left manual AI tagging and LLM provider readiness off while automatic/background sync was correctly disabled.
-- Fix: production profile repair now carries manual E2E components for classification, AI tagging, and LLM localization provider configuration; the launcher child env enables those manual-only components and still forces automatic/scheduled/startup/service/background sync flags off.
-- Stale UI cache fix: the service worker static cache now keys off the `sw.js` cache-buster and caches versioned static requests, so a browser cannot keep serving an old `admin.js` that still shows stale manual-sync readiness text.
-- Current manual E2E readiness after repair: classification `ON`, AI tagging `ON`, LLM localization `ON`, LLM provider configured `ON`, iCloud placeholder hydration `ON`, manual blockers `none`.
-- Automatic/background safety after repair: automatic sync `OFF`, scheduled sync `OFF`, startup sync `OFF`, system-service sync `OFF`, tag translation background worker `OFF`, tag translation auto `OFF`, AI-to-localization background chaining `OFF`.
-- Normal acceptance path no longer requires local-readable-only / hydrated-only mode. The normal Web Admin flow plans with cloud-aware non-destructive iCloud placeholder hydration; the local-readable-only checkbox remains only in Advanced/Debug.
-- Browser validation before final commit: canonical URL loaded, normal operator card visible, the Start manual sync button visible, cap `1000`, historical deferred inventory separated, raw i18n keys/internal blocker constants absent. The uncommitted worktree used the previous commit hash as static cache-buster, and a stale service-worker cache was found; both are addressed by the committed service-worker cache-buster fix plus restart/pull before the user retry.
-- Browser validation after service-worker fix: clean in-app browser tab loaded `/static/js/admin.js?v=c9e662b`; canonical URL stayed `/admin?tab=content#dynamic-library-sync-section`; normal operator card and Start manual sync button were visible; execute cap showed `1000`; manual blockers were `none`; classification/AI/LLM/provider readiness were `ON`; auto/background sync disabled was visible as `ON`; raw i18n keys and raw internal blocker constants were absent. This was read-only UI readiness validation, not a GUI Execute.
-- Validator policy after this fix: GUI acceptance fails if a GUI run imports without AI tagging, skips localization without an accepted stable policy, lacks GUI provenance, or is not newer than run #8.
-- Status: `fixed_pending_user_gui_execute_retry`; S3A-M2 remains blocked for merge until the user performs a real GUI Execute on a safe new delta and `scripts/validate_s3a_m2_gui_execute_acceptance.py --min-run-id 8 --write-public-summary --update-main-report` passes.
+- Status: `fixed_pending_user_manual_gui_acceptance_retry`.
+- Reviewer scope: current-scope P1/P2 before head `a334f237b85bd78fd748869f73be641a80f32246`; latest Codex review available for `c720a17ee0fe0b1854e546c60f98730e01328a7b`; later review usage-limited: `True`.
+- Operator-entered production confirmation required: `True`.
+- Signed GUI provenance required: `True`; ordinary API can satisfy GUI acceptance: `False`.
+- Validator scope: `validated_gui_run_source_root_only`; skipped placeholders included: `True`.
+- Localization failure reporting: `manual_sync_execute.localization_failed_items plus localization summary failed/gap fields`.
+- Historical read errors retryable in current delta planning: `True`.
+- Manual E2E readiness/backend gates aligned: `True`.
+- User manual GUI acceptance package status: `ready_to_provide_after_push_and_review_request`.
 
 ## Validation
 
-- Reviewer status: latest exact head review pending after this UI/Computer Use URL-confidence fix; last confirmed Codex review was for `bfacd86c3fc440d655531ccca9fb5273dc38d102`.
 - Ledger consistency: `passed`; represented items: `173` / `173`.
 - DB count delta: media `349`, source items `391`.
 - Public redaction: `True`; findings: `0`.
-- Launcher/Web Admin: `blocked_no_gui_execute_run_found`; browser: `msedge`; dry-run clicked: `True`; execute clicked: `False`.
+- Launcher/Web Admin: `blocked_pending_user_manual_gui_execute_after_pre_acceptance_fixes`; browser: `msedge`; dry-run clicked: `True`; execute clicked: `False`.
 - Launcher dry-run request/timeout/server-stop: `True` / `True` / `True`.
-- Launcher fallback reason: `GUI dry-run hang was diagnosed before another execute attempt. The GUI plan endpoint was using a broad source-root walk/verify path; final GUI Execute acceptance remains blocked until a new GUI-created run newer than run #8 is validated.`.
+- Launcher fallback reason: `Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.`.
 - Latest job observed by UI/API: run `None`, status `None`, imported `None`.
 
 ## Safety
@@ -156,5 +150,6 @@
 - SourceConcept/Entity bridge work was not run.
 - Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.
 - The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.
+- Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet.
 
 No source paths, filenames, content hashes, API keys, prompts, source URLs, or original image bytes are included in this public report.

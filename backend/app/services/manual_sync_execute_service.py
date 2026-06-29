@@ -298,6 +298,7 @@ def _public_request_payload(
     production_acceptance_approved: bool,
     request_source: str = "api_or_runner",
     gui_validation_session_id: Optional[str] = None,
+    gui_validation_session_signature_valid: bool = False,
     client_route: Optional[str] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
@@ -315,6 +316,8 @@ def _public_request_payload(
     }
     if gui_validation_session_id:
         payload["gui_validation_session_id"] = str(gui_validation_session_id)
+        payload["gui_validation_session_id_hash"] = _hash_text(str(gui_validation_session_id))[:16]
+    payload["gui_validation_session_signature_valid"] = bool(gui_validation_session_signature_valid)
     if client_route:
         payload["client_route"] = str(client_route)
     return payload
@@ -536,6 +539,7 @@ def create_manual_sync_execute_run(
     production_acceptance_approved: bool = False,
     request_source: str = "api_or_runner",
     gui_validation_session_id: Optional[str] = None,
+    gui_validation_session_signature_valid: bool = False,
     client_route: Optional[str] = None,
 ) -> DynamicSyncRun:
     if is_manual_sync_execute_active():
@@ -612,6 +616,7 @@ def create_manual_sync_execute_run(
                     production_acceptance_approved=production_acceptance_approved,
                     request_source=request_source,
                     gui_validation_session_id=gui_validation_session_id,
+                    gui_validation_session_signature_valid=gui_validation_session_signature_valid,
                     client_route=client_route,
                 ),
                 "plan": plan,
@@ -1877,6 +1882,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                         reason = _ai_tagging_failure_reason(result.get("error"))
                         result["error"] = reason
                         item.ai_tagging_status = f"failed_{reason}"[:50]
+                        item.localization_status = "blocked_ai_tagging_failed"
                         item.failure_reason = reason
                         counts["ai_tagging_failed"] += 1
                         counts[reason] += 1
@@ -1893,6 +1899,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     elif result.get("skipped"):
                         reason = str(result.get("reason", "unknown"))
                         item.ai_tagging_status = f"skipped_{reason}"[:50]
+                        item.localization_status = "blocked_ai_tagging_skipped"
+                        item.deferred_reason = reason
                         counts["ai_tagging_skipped"] += 1
                         consecutive_failures = 0
                         _annotate_run_item_stage(
@@ -1905,6 +1913,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                         )
                     else:
                         item.ai_tagging_status = "ai_tagged"
+                        item.localization_status = "waiting_localization"
                         counts["ai_tagged"] += 1
                         consecutive_failures = 0
                         _annotate_run_item_stage(
@@ -1918,7 +1927,6 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                                 "suggestions_added": result.get("suggestions_added", 0),
                             },
                         )
-                    item.localization_status = "waiting_localization"
                 db.commit()
                 stage_processed += 1
                 processed_items += 1
@@ -1984,6 +1992,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             status=summary_status,
             current_stage="summary",
             outcome_counts=dict(sorted(counts.items())),
+            localization_failed_items=int(counts["localization_failed"]),
+            item_failure_count=int(item_failure_count),
             imported_media_ids=imported_media_ids,
             ai_provider_provenance=ai_provenance,
             stopped_by=stop_reason,

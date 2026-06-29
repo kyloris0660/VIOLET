@@ -1229,6 +1229,10 @@
                     </div>
 
                     <div id="dynamic-sync-plan-result" class="hidden mt-3 bg-black bg-opacity-20 border p-3 text-xs"></div>
+                    <input type="text" id="dynamic-sync-confirmation"
+                        class="w-full bg px-3 py-2 border text-xs font-mono mt-3"
+                        data-i18n-placeholder="admin.dynamic_library_sync.confirmation_placeholder"
+                        placeholder="Paste exact confirmation phrase from the plan summary">
                     <div id="dynamic-sync-confirm-actions" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
                         <button id="dynamic-sync-confirm-execute-btn" class="btn-danger text-xs px-3 py-2" disabled data-i18n="admin.dynamic_library_sync.confirm_execute_btn">确认并执行</button>
                         <button id="dynamic-sync-copy-confirmation-btn" class="btn-dark text-xs px-3 py-2" disabled data-i18n="admin.dynamic_library_sync.copy_confirmation_btn">复制确认短语</button>
@@ -1314,10 +1318,6 @@
                                     <button id="dynamic-sync-cancel-btn" class="btn-dark text-xs px-3 py-1" disabled data-i18n="admin.dynamic_library_sync.cancel_btn">Cancel</button>
                                 </div>
                             </div>
-                            <input type="text" id="dynamic-sync-confirmation"
-                                class="w-full bg px-3 py-2 border text-xs font-mono mb-2"
-                                data-i18n-placeholder="admin.dynamic_library_sync.confirmation_placeholder"
-                                placeholder="Paste exact confirmation phrase from the dry-run plan">
                             <div id="dynamic-sync-sync-status" class="text-xs text-secondary"></div>
                         </div>
                     </div>

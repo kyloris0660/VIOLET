@@ -11,6 +11,7 @@ class AdminPanel {
         this.dynamicSyncPollTimer = null;
         this.dynamicSyncExecuteEnabled = false;
         this.dynamicSyncGuiSessionId = null;
+        this.dynamicSyncGuiSessionToken = null;
         this.dynamicSyncActionInFlight = false;
         this.dynamicSyncProgressStartedAt = null;
         this.dynamicSyncProgressTimer = null;
@@ -363,7 +364,7 @@ class AdminPanel {
         }
         const dynamicSyncConfirmExecuteBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
         if (dynamicSyncConfirmExecuteBtn) {
-            dynamicSyncConfirmExecuteBtn.addEventListener('click', () => this.executeManualSyncPlan({ useExpectedConfirmation: true }));
+            dynamicSyncConfirmExecuteBtn.addEventListener('click', () => this.executeManualSyncPlan());
         }
         const dynamicSyncCopyConfirmationBtn = document.getElementById('dynamic-sync-copy-confirmation-btn');
         if (dynamicSyncCopyConfirmationBtn) {
@@ -2103,6 +2104,24 @@ class AdminPanel {
         return `gui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     }
 
+    async _createManualSyncGuiSession() {
+        const clientRoute = '/admin?tab=content#dynamic-library-sync-section';
+        const session = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/gui-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Violet-Gui-Client': 'web-admin-manual-sync-v1',
+            },
+            body: JSON.stringify({ client_route: clientRoute }),
+        });
+        if (!session || !session.gui_validation_session_id || !session.gui_validation_session_token) {
+            throw new Error('GUI validation session was not issued by the server.');
+        }
+        this.dynamicSyncGuiSessionId = session.gui_validation_session_id;
+        this.dynamicSyncGuiSessionToken = session.gui_validation_session_token;
+        return session;
+    }
+
     _renderManualSyncPlan(plan) {
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
@@ -2161,7 +2180,7 @@ class AdminPanel {
         btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable && matches) || active || this.dynamicSyncActionInFlight;
         const confirmBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
         if (confirmBtn) {
-            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable) || active || this.dynamicSyncActionInFlight;
+            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable && matches) || active || this.dynamicSyncActionInFlight;
         }
         const copyBtn = document.getElementById('dynamic-sync-copy-confirmation-btn');
         if (copyBtn) {
@@ -2192,9 +2211,6 @@ class AdminPanel {
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.select_root_first', 'Select a source root first.'), 'error');
             return;
         }
-        this.dynamicSyncGuiSessionId = this._newManualSyncGuiSessionId();
-        body.gui_validation_session_id = this.dynamicSyncGuiSessionId;
-        body.client_route = '/admin?tab=content#dynamic-library-sync-section';
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const dryRunBtn = document.getElementById('dynamic-sync-dry-run-btn');
         const startBtn = document.getElementById('dynamic-sync-start-btn');
@@ -2215,9 +2231,16 @@ class AdminPanel {
             detail: 'POST /api/admin/dynamic-library-sync/manual-sync/plan',
         });
         try {
+            const guiSession = await this._createManualSyncGuiSession();
+            body.gui_validation_session_id = guiSession.gui_validation_session_id;
+            body.gui_validation_session_token = guiSession.gui_validation_session_token;
+            body.client_route = guiSession.client_route || '/admin?tab=content#dynamic-library-sync-section';
             const plan = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/plan', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Violet-Gui-Client': 'web-admin-manual-sync-v1',
+                },
                 body: JSON.stringify(body),
                 signal: controller.signal,
             });
@@ -2254,7 +2277,7 @@ class AdminPanel {
         }
     }
 
-    async executeManualSyncPlan({ useExpectedConfirmation = false } = {}) {
+    async executeManualSyncPlan() {
         if (!this.dynamicSyncPlan || this.dynamicSyncActionInFlight || this._manualSyncActiveJobRunning()) return;
         const body = this._manualSyncRequestBody();
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
@@ -2264,12 +2287,22 @@ class AdminPanel {
         body.expected_plan_hash = integrity.plan_hash;
         body.hydrated_only = !!limits.hydrated_only;
         const expected = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
-        if (useExpectedConfirmation && confirmationEl) confirmationEl.value = expected;
-        body.confirmation_phrase = useExpectedConfirmation ? expected : (confirmationEl ? confirmationEl.value.trim() : '');
+        const confirmation = confirmationEl ? confirmationEl.value.trim() : '';
+        if (!expected || confirmation !== expected) {
+            app.showNotification('Enter the exact visible confirmation phrase before executing.', 'error');
+            this._updateManualSyncExecuteButton();
+            return;
+        }
+        body.confirmation_phrase = confirmation;
         body.plan_created_at = (this.dynamicSyncPlan.job || {}).created_at;
-        body.production_acceptance_approved = !!this.dynamicSyncProductionMode;
-        body.gui_validation_session_id = guiProvenance.gui_validation_session_id || this.dynamicSyncGuiSessionId || this._newManualSyncGuiSessionId();
+        body.production_acceptance_approved = !!this.dynamicSyncProductionMode && confirmation === expected;
+        body.gui_validation_session_id = guiProvenance.gui_validation_session_id || this.dynamicSyncGuiSessionId;
+        body.gui_validation_session_token = this.dynamicSyncGuiSessionToken;
         body.client_route = guiProvenance.client_route || '/admin?tab=content#dynamic-library-sync-section';
+        if (!body.gui_validation_session_id || !body.gui_validation_session_token) {
+            app.showNotification('GUI validation session is missing. Re-run Start manual sync before Execute.', 'error');
+            return;
+        }
         this._manualSyncSetControlsBusy(true);
         this._manualSyncSetProgress({
             visible: true,
@@ -2280,7 +2313,10 @@ class AdminPanel {
         try {
             const job = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/execute', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Violet-Gui-Client': 'web-admin-manual-sync-v1',
+                },
                 body: JSON.stringify(body),
             });
             this.dynamicSyncJobId = job.id;

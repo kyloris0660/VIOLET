@@ -254,12 +254,14 @@ def gui_provenance_for_run(run: Any, *, expected_session_id: str | None = None) 
     source = str(request.get("request_source") or "")
     session_id = str(request.get("gui_validation_session_id") or "")
     route = str(request.get("client_route") or "")
+    signature_valid = bool(request.get("gui_validation_session_signature_valid"))
     session_matches = expected_session_id is None or session_id == expected_session_id
     return {
-        "valid": source in GUI_REQUEST_SOURCES and bool(session_id) and session_matches,
+        "valid": source in GUI_REQUEST_SOURCES and bool(session_id) and signature_valid and session_matches,
         "request_source": source,
         "gui_validation_session_id_present": bool(session_id),
         "gui_validation_session_id_hash": public_hash(session_id) if session_id else None,
+        "gui_validation_session_signature_valid": signature_valid,
         "gui_validation_session_id_matches_expected": session_matches,
         "client_route": route,
     }
@@ -290,7 +292,7 @@ def latest_manual_execute_run(db: Any, *, min_run_id: int, run_id: int | None, g
     return None
 
 
-def run_items_summary(db: Any, run_id: int) -> dict[str, Any]:
+def run_items_summary(db: Any, run_id: int, *, root_id: int | None = None) -> dict[str, Any]:
     from app.models import DynamicSourceItem, DynamicSyncRunItem
 
     rows = db.query(DynamicSyncRunItem).filter(DynamicSyncRunItem.sync_run_id == int(run_id)).all()
@@ -298,18 +300,30 @@ def run_items_summary(db: Any, run_id: int) -> dict[str, Any]:
     reason_counts: Counter[str] = Counter()
     source_item_ids: list[int] = []
     media_ids: set[int] = set()
+    skipped_placeholder_run_item_count = 0
     for row in rows:
         state_counts[str(row.item_state or "unknown")] += 1
         reason_counts[str(row.reason or row.item_state or "unknown")] += 1
+        if str(row.item_state or "") == "skipped_placeholder" or str(row.reason or "") in {
+            "cloud_placeholder",
+            "icloud_placeholder",
+        }:
+            skipped_placeholder_run_item_count += 1
         source_item_ids.append(int(row.source_item_id))
         if row.media_id is not None:
             media_ids.add(int(row.media_id))
 
     status_rows = []
+    source_root_ids: set[int] = set()
     if source_item_ids:
         status_rows = (
             db.query(
+                DynamicSourceItem.source_root_id,
+                DynamicSourceItem.source_status,
                 DynamicSourceItem.import_status,
+                DynamicSourceItem.sync_state,
+                DynamicSourceItem.deferred_reason,
+                DynamicSourceItem.failure_reason,
                 DynamicSourceItem.classification_status,
                 DynamicSourceItem.ai_tagging_status,
                 DynamicSourceItem.localization_status,
@@ -317,29 +331,37 @@ def run_items_summary(db: Any, run_id: int) -> dict[str, Any]:
             .filter(DynamicSourceItem.id.in_(source_item_ids))
             .all()
         )
+        source_root_ids.update(int(row.source_root_id) for row in status_rows if row.source_root_id is not None)
+    if root_id is not None:
+        source_root_ids.add(int(root_id))
     import_status_counts = Counter(str(row.import_status or "unknown") for row in status_rows)
     classification_status_counts = Counter(str(row.classification_status or "unknown") for row in status_rows)
     ai_status_counts = Counter(str(row.ai_tagging_status or "unknown") for row in status_rows)
     localization_status_counts = Counter(str(row.localization_status or "unknown") for row in status_rows)
-    remaining_importable = (
+    remaining_importable_query = (
         db.query(DynamicSourceItem)
         .filter(DynamicSourceItem.import_status == "pending")
         .filter(DynamicSourceItem.source_status == "available")
         .filter(DynamicSourceItem.sync_state.in_(["new", "changed"]))
-        .count()
     )
-    remaining_placeholders = (
+    remaining_placeholders_query = (
         db.query(DynamicSourceItem)
-        .filter(DynamicSourceItem.source_status == "deferred")
-        .filter(DynamicSourceItem.deferred_reason.in_(["cloud_placeholder", "icloud_placeholder"]))
-        .count()
+        .filter(DynamicSourceItem.source_status.in_(["deferred", "failed"]))
+        .filter(DynamicSourceItem.deferred_reason.in_(["cloud_placeholder", "icloud_placeholder", "cloud_hydration_failed"]))
     )
+    if source_root_ids:
+        remaining_importable_query = remaining_importable_query.filter(DynamicSourceItem.source_root_id.in_(source_root_ids))
+        remaining_placeholders_query = remaining_placeholders_query.filter(DynamicSourceItem.source_root_id.in_(source_root_ids))
+    remaining_importable = remaining_importable_query.count()
+    remaining_placeholders = remaining_placeholders_query.count()
     return {
         "run_item_count": len(rows),
         "state_counts": dict(sorted(state_counts.items())),
         "reason_counts": dict(sorted(reason_counts.items())),
         "media_ids": sorted(media_ids),
         "source_item_count": len(source_item_ids),
+        "source_root_ids": sorted(source_root_ids),
+        "skipped_placeholder_run_item_count": int(skipped_placeholder_run_item_count),
         "import_status_counts": dict(sorted(import_status_counts.items())),
         "classification_status_counts": dict(sorted(classification_status_counts.items())),
         "ai_tagging_status_counts": dict(sorted(ai_status_counts.items())),
@@ -417,15 +439,15 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             }
             return public, {"public": public, "private": {"run_found": False}}
 
-        item_summary = run_items_summary(db, int(run.id))
-        media_ids = item_summary["media_ids"]
-        rows = assignment_rows(db, media_ids)
-        assignment_summary = summarize_assignments(rows, media_ids, settings)
-        entity_summary = entity_truth_summary(db, media_ids)
         run_payload = run.summary_json or {}
         execute_payload = run_payload.get("manual_sync_execute") if isinstance(run_payload, dict) else {}
         execute_payload = execute_payload if isinstance(execute_payload, dict) else {}
         request = execute_payload.get("request") if isinstance(execute_payload.get("request"), dict) else {}
+        item_summary = run_items_summary(db, int(run.id), root_id=request.get("root_id"))
+        media_ids = item_summary["media_ids"]
+        rows = assignment_rows(db, media_ids)
+        assignment_summary = summarize_assignments(rows, media_ids, settings)
+        entity_summary = entity_truth_summary(db, media_ids)
         gui_provenance = gui_provenance_for_run(run, expected_session_id=args.gui_validation_session_id)
         outcome = execute_payload.get("outcome_counts") if isinstance(execute_payload.get("outcome_counts"), dict) else {}
         localization_payload = execute_payload.get("localization") if isinstance(execute_payload.get("localization"), dict) else {}
@@ -434,6 +456,14 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
         classified = stage_count_from_status(item_summary["classification_status_counts"], "classified", "classified_reused")
         ai_tagged = stage_count_from_status(item_summary["ai_tagging_status_counts"], "ai_tagged", "tagged", "tagged_reused")
         localized = stage_count_from_status(item_summary["localization_status_counts"], "localized")
+        localization_status = str(localization_payload.get("status") or "unknown")
+        localization_failed = int(localization_payload.get("failed") or outcome.get("localization_failed") or 0)
+        localization_remaining_gap = int(localization_payload.get("tags_requiring_localization_after_runner") or 0)
+        localization_ok = imported <= 0 or (
+            localization_status in {"completed", "completed_existing_coverage"}
+            and localization_failed == 0
+            and localization_remaining_gap == 0
+        )
         expected_total_seen = int(run.total_seen or 0)
         ledger_ok = expected_total_seen == int(item_summary["run_item_count"])
         high_conf_expected = int(assignment_summary.get("high_conf_nonproper_expected_normal_count") or 0) + int(
@@ -487,8 +517,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             blockers.append("classification_incomplete_for_imported_items")
         if imported > 0 and ai_tagged < imported:
             blockers.append("ai_tagging_incomplete_for_imported_items")
-        if imported > 0 and localized < imported:
-            blockers.append("localization_incomplete_for_imported_items")
+        if imported > 0 and not localization_ok:
+            blockers.append("localization_incomplete_or_unaccepted_for_gui_e2e")
         if not tag_semantics_ok:
             blockers.append("ai_tag_assignment_semantics_invalid")
         if int(entity_summary.get("violations_found") or 0) != 0:
@@ -497,6 +527,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             blockers.append("remaining_importable_db_pending_items")
         if item_summary["remaining_placeholder_db_count"] > 0:
             blockers.append("remaining_placeholder_items")
+        if item_summary["skipped_placeholder_run_item_count"] > 0:
+            blockers.append("gui_run_skipped_placeholders_instead_of_hydrating")
 
         public = {
             "phase": PHASE,
@@ -520,9 +552,11 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             "localization_summary": {
                 "status": str(localization_payload.get("status") or "unknown"),
                 "translated": int(localization_payload.get("translated") or 0),
-                "failed": int(localization_payload.get("failed") or 0),
+                "failed": localization_failed,
                 "skipped": int(localization_payload.get("skipped") or 0),
+                "tags_requiring_localization_after_runner": localization_remaining_gap,
                 "blocked_reason": localization_payload.get("blocked_reason"),
+                "passed": localization_ok,
             },
             "ledger": {
                 "expected_total_seen": expected_total_seen,
@@ -539,6 +573,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             "final_inventory": {
                 "remaining_importable_db_pending_count": item_summary["remaining_importable_db_pending_count"],
                 "remaining_placeholder_db_count": item_summary["remaining_placeholder_db_count"],
+                "skipped_placeholder_run_item_count": item_summary["skipped_placeholder_run_item_count"],
+                "source_root_ids": item_summary["source_root_ids"],
             },
             "request": {
                 "root_id": request.get("root_id"),
@@ -636,6 +672,9 @@ def maybe_update_main_report(public: Mapping[str, Any]) -> None:
             ),
             "gui_validation_session_id_hash": (public.get("gui_provenance") or {}).get(
                 "gui_validation_session_id_hash"
+            ),
+            "gui_validation_session_signature_valid": (public.get("gui_provenance") or {}).get(
+                "gui_validation_session_signature_valid"
             ),
             "latest_job_status": public.get("run_status"),
             "latest_job_imported": public.get("imported"),

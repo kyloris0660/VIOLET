@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
+import secrets
 import subprocess
 import sys
-from typing import List, Optional
+import time
+from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -40,6 +44,89 @@ from ...services.manual_sync_execute_service import (
 )
 
 router = APIRouter()
+
+GUI_VALIDATION_SESSION_TTL_SECONDS = 2 * 60 * 60
+GUI_VALIDATION_CLIENT_HEADER = "x-violet-gui-client"
+GUI_VALIDATION_CLIENT_VALUE = "web-admin-manual-sync-v1"
+GUI_MANUAL_SYNC_ROUTE = "/admin?tab=content#dynamic-library-sync-section"
+
+
+def _public_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def _canonical_gui_route(route: Optional[str]) -> str:
+    value = str(route or GUI_MANUAL_SYNC_ROUTE).strip()
+    if not value.startswith("/admin"):
+        return GUI_MANUAL_SYNC_ROUTE
+    if "#dynamic-library-sync-section" not in value:
+        return GUI_MANUAL_SYNC_ROUTE
+    return value
+
+
+def _gui_session_message(session_id: str, client_route: str, expires_at: int) -> str:
+    return "\n".join(
+        [
+            "violet-manual-sync-gui-session-v1",
+            str(session_id),
+            _canonical_gui_route(client_route),
+            str(int(expires_at)),
+        ]
+    )
+
+
+def _sign_gui_session(session_id: str, client_route: str, expires_at: int) -> str:
+    digest = hmac.new(
+        settings.SECRET_KEY.encode("utf-8", errors="ignore"),
+        _gui_session_message(session_id, client_route, expires_at).encode("utf-8", errors="ignore"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"v1.{int(expires_at)}.{digest}"
+
+
+def _validate_gui_session_token(
+    *,
+    session_id: Optional[str],
+    token: Optional[str],
+    client_route: Optional[str],
+) -> bool:
+    if not session_id or not token:
+        return False
+    parts = str(token).split(".")
+    if len(parts) != 3 or parts[0] != "v1":
+        return False
+    try:
+        expires_at = int(parts[1])
+    except ValueError:
+        return False
+    if expires_at < int(time.time()):
+        return False
+    expected = _sign_gui_session(str(session_id), _canonical_gui_route(client_route), expires_at)
+    return hmac.compare_digest(expected, str(token))
+
+
+def _gui_provenance_from_body(body: Any) -> dict:
+    client_route = _canonical_gui_route(getattr(body, "client_route", None))
+    session_id = getattr(body, "gui_validation_session_id", None)
+    token = getattr(body, "gui_validation_session_token", None)
+    token_valid = _validate_gui_session_token(
+        session_id=session_id,
+        token=token,
+        client_route=client_route,
+    )
+    if not token_valid:
+        return {
+            "request_source": "api_or_runner",
+            "client_route": client_route,
+            "gui_validation_session_signature_valid": False,
+        }
+    return {
+        "request_source": "web_admin_gui",
+        "gui_validation_session_id": str(session_id),
+        "gui_validation_session_id_hash": _public_hash(str(session_id)),
+        "client_route": client_route,
+        "gui_validation_session_signature_valid": True,
+    }
 
 
 def _runtime_provenance() -> dict:
@@ -89,6 +176,7 @@ class ManualSyncDryRunPlanRequest(BaseModel):
     hydrated_only: bool = False
     stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
     gui_validation_session_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    gui_validation_session_token: Optional[str] = Field(default=None, min_length=16, max_length=256)
     client_route: Optional[str] = Field(default=None, max_length=200)
 
 
@@ -102,7 +190,39 @@ class ManualSyncExecuteRequest(BaseModel):
     plan_created_at: str = Field(..., min_length=1, max_length=80)
     production_acceptance_approved: bool = False
     gui_validation_session_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    gui_validation_session_token: Optional[str] = Field(default=None, min_length=16, max_length=256)
     client_route: Optional[str] = Field(default=None, max_length=200)
+
+
+class ManualSyncGuiSessionRequest(BaseModel):
+    client_route: Optional[str] = Field(default=None, max_length=200)
+
+
+@router.post("/dynamic-library-sync/manual-sync/gui-session")
+def create_manual_sync_gui_session(
+    body: ManualSyncGuiSessionRequest,
+    request: Request,
+    current_user: User = Depends(require_admin_mode),
+):
+    client_header = request.headers.get(GUI_VALIDATION_CLIENT_HEADER)
+    if client_header != GUI_VALIDATION_CLIENT_VALUE:
+        raise HTTPException(
+            status_code=400,
+            detail="Web Admin GUI session creation requires the manual sync browser client marker.",
+        )
+    client_route = _canonical_gui_route(body.client_route)
+    session_id = f"gui-{secrets.token_urlsafe(24)}"
+    expires_at = int(time.time()) + GUI_VALIDATION_SESSION_TTL_SECONDS
+    token = _sign_gui_session(session_id, client_route, expires_at)
+    return {
+        "request_source": "web_admin_gui",
+        "gui_validation_session_id": session_id,
+        "gui_validation_session_id_hash": _public_hash(session_id),
+        "gui_validation_session_token": token,
+        "gui_validation_session_signature_valid": True,
+        "client_route": client_route,
+        "expires_at_epoch": expires_at,
+    }
 
 
 @router.get("/dynamic-library-sync")
@@ -233,6 +353,15 @@ def plan_manual_sync(
                 raise ValueError("dynamic source record not found")
             source_path = root.root_path
             source_record_id = root.id
+        gui_provenance = _gui_provenance_from_body(body)
+        if (body.gui_validation_session_id or body.gui_validation_session_token) and not gui_provenance.get(
+            "gui_validation_session_signature_valid"
+        ):
+            raise ManualSyncExecuteError(
+                "gui_validation_session_invalid",
+                "Web Admin GUI plan requires a valid signed GUI validation session. Refresh the page and retry.",
+                status_code=409,
+            )
         plan = plan_manual_sync_dry_run(
             db,
             source_path=source_path or "",
@@ -242,11 +371,9 @@ def plan_manual_sync(
             stable_age_seconds=body.stable_age_seconds,
             include_private_details=False,
         )
-        if body.gui_validation_session_id:
+        if gui_provenance.get("request_source") == "web_admin_gui":
             plan["gui_provenance"] = {
-                "request_source": "web_admin_gui",
-                "gui_validation_session_id": body.gui_validation_session_id,
-                "client_route": body.client_route,
+                **gui_provenance,
                 "dry_run_requested_from_gui": True,
             }
         return plan
@@ -263,6 +390,15 @@ def execute_manual_sync(
     db: Session = Depends(get_db),
 ):
     try:
+        gui_provenance = _gui_provenance_from_body(body)
+        if (body.gui_validation_session_id or body.gui_validation_session_token) and not gui_provenance.get(
+            "gui_validation_session_signature_valid"
+        ):
+            raise ManualSyncExecuteError(
+                "gui_validation_session_invalid",
+                "Web Admin GUI execute requires a valid signed GUI validation session. Re-run the GUI plan before executing.",
+                status_code=409,
+            )
         run = create_manual_sync_execute_run(
             db,
             root_id=body.root_id,
@@ -273,9 +409,10 @@ def execute_manual_sync(
             confirmation_phrase=body.confirmation_phrase,
             plan_created_at=body.plan_created_at,
             production_acceptance_approved=body.production_acceptance_approved,
-            request_source="web_admin_gui",
-            gui_validation_session_id=body.gui_validation_session_id,
-            client_route=body.client_route,
+            request_source=str(gui_provenance.get("request_source") or "api_or_runner"),
+            gui_validation_session_id=gui_provenance.get("gui_validation_session_id"),
+            gui_validation_session_signature_valid=bool(gui_provenance.get("gui_validation_session_signature_valid")),
+            client_route=str(gui_provenance.get("client_route") or _canonical_gui_route(body.client_route)),
         )
         start_manual_sync_execute_run(run.id)
         return serialize_manual_sync_execute_run(run)

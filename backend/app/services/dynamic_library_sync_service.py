@@ -904,7 +904,6 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         "hidden",
         "zero_byte",
         "zero_byte_file",
-        "read_error",
         "source_missing",
         "permission_denied",
     }

@@ -2277,6 +2277,11 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     baseline_classification = cohort_baseline.get("classification") if isinstance(cohort_baseline.get("classification"), Mapping) else {}
     affected_localization = cohort_affected.get("localization") if isinstance(cohort_affected.get("localization"), Mapping) else {}
     gui_debug = summary.get("gui_acceptance_debug") if isinstance(summary.get("gui_acceptance_debug"), Mapping) else {}
+    pre_user_acceptance = (
+        summary.get("pre_user_manual_acceptance_safety_fixes")
+        if isinstance(summary.get("pre_user_manual_acceptance_safety_fixes"), Mapping)
+        else {}
+    )
     not_completed = summary.get("not_completed") or [
         "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
         "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
@@ -2396,6 +2401,24 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
                     "",
                 ]
                 if gui_debug
+                else []
+            ),
+            *(
+                [
+                    "## Pre-User Manual Acceptance Safety Fixes",
+                    "",
+                    f"- Status: `{pre_user_acceptance.get('status')}`.",
+                    f"- Reviewer scope: current-scope P1/P2 before head `{pre_user_acceptance.get('reviewer_findings_before_head')}`; latest Codex review available for `{pre_user_acceptance.get('latest_codex_reviewed_head')}`; later review usage-limited: `{pre_user_acceptance.get('review_usage_limited_after_latest_review')}`.",
+                    f"- Operator-entered production confirmation required: `{pre_user_acceptance.get('operator_entered_production_confirmation_required')}`.",
+                    f"- Signed GUI provenance required: `{pre_user_acceptance.get('signed_gui_provenance_required')}`; ordinary API can satisfy GUI acceptance: `{pre_user_acceptance.get('ordinary_api_can_satisfy_gui_acceptance')}`.",
+                    f"- Validator scope: `{pre_user_acceptance.get('validator_remaining_inventory_scope')}`; skipped placeholders included: `{pre_user_acceptance.get('validator_includes_skipped_placeholders')}`.",
+                    f"- Localization failure reporting: `{pre_user_acceptance.get('localization_failure_reporting')}`.",
+                    f"- Historical read errors retryable in current delta planning: `{pre_user_acceptance.get('historical_read_error_retryable')}`.",
+                    f"- Manual E2E readiness/backend gates aligned: `{pre_user_acceptance.get('manual_e2e_readiness_backend_gate_alignment')}`.",
+                    f"- User manual GUI acceptance package status: `{pre_user_acceptance.get('manual_acceptance_package_status')}`.",
+                    "",
+                ]
+                if pre_user_acceptance
                 else []
             ),
             "## Validation",
@@ -2521,6 +2544,7 @@ def build_standard_pipeline_flow(summary: Mapping[str, Any]) -> dict[str, Any]:
         bool(launcher.get("gui_provenance_valid"))
         and str(launcher.get("request_source") or "") == "web_admin_gui"
         and bool(launcher.get("gui_validation_session_id_present"))
+        and bool(launcher.get("gui_validation_session_signature_valid"))
     )
     launcher_gui_execute_completed = (
         launcher_status == "passed_gui_execute_completed"
@@ -3001,6 +3025,7 @@ def refresh_completion_claims(summary: dict[str, Any]) -> dict[str, Any]:
         bool(launcher.get("gui_provenance_valid"))
         and str(launcher.get("request_source") or "") == "web_admin_gui"
         and bool(launcher.get("gui_validation_session_id_present"))
+        and bool(launcher.get("gui_validation_session_signature_valid"))
     )
     launcher_ok = (
         launcher.get("validated") is True
@@ -3339,6 +3364,13 @@ def finalize_existing_report(args: argparse.Namespace) -> dict[str, Any]:
             validation.get("gui_provenance", {}).get("gui_validation_session_id_hash")
             if isinstance(validation.get("gui_provenance"), Mapping)
             else None
+        ),
+        "gui_validation_session_signature_valid": bool(
+            validation.get("gui_validation_session_signature_valid")
+            or (
+                isinstance(validation.get("gui_provenance"), Mapping)
+                and validation["gui_provenance"].get("gui_validation_session_signature_valid")
+            )
         ),
         "validated_head_sha": validation_head,
         "public_source_identity": validation_source_identity,
