@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `2e42e61f40043c6051613fee39a607bb0d624463` (observed failed GUI-plan head: `32cb03698f06746ae1f829b5b37fc565c7d59c4c`).
+- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis commit: `2e42e61f40043c6051613fee39a607bb0d624463` (observed failed GUI-plan head: `32cb03698f06746ae1f829b5b37fc565c7d59c4c`).
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 

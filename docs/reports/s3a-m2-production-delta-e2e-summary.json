@@ -230,7 +230,7 @@
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
     "head_refresh_note": "report refreshed after the user-observed 597s GUI manual plan timeout on head 32cb036; final commit SHA must be rechecked after commit",
-    "head_sha": "2e42e61f40043c6051613fee39a607bb0d624463",
+    "head_sha": "see_pr_body_after_push_self_referential_commit",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": false,
     "old_server_process_from_main_or_old_branch_found": false,
@@ -240,7 +240,8 @@
     "python_executable_name": "python.exe",
     "stale_process_cleanup_status": "managed_validation_processes_cleaned; unrelated port owners left untouched",
     "storage_root_marker": "b369834e62908e17",
-    "violet_env": "production"
+    "violet_env": "production",
+    "validation_basis_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463"
   },
   "browser_validation_current_head": {
     "attempted": true,
@@ -267,7 +268,8 @@
     "raw_i18n_key_visible": false,
     "historical_threshold_labeled_diagnostic": true,
     "test_plan_result": "completed safely in test profile; execute was blocked because the fresh test source was skipped_changing, and Execute was not clicked",
-    "validated_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463"
+    "validated_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463",
+    "head_sha_note": "validated working tree was committed as the progress-timeout fix; final PR head is in PR body/closeout"
   },
   "classification": {
     "count": 49,
@@ -1055,7 +1057,7 @@
     "db_name": "blombooru",
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "frontend_timeout_seconds": 600,
-    "head_sha": "2e42e61f40043c6051613fee39a607bb0d624463",
+    "head_sha": "see_pr_body_after_push_self_referential_commit",
     "managed_processes_stopped": [
       "server_parent_64804",
       "server_worker_50844",
@@ -1108,10 +1110,11 @@
     "no_progress_watchdog_seconds_after_fix": 300,
     "backend_no_progress_watchdog_added": true,
     "batch_resume_policy_after_fix": "Manual sync plans one bounded actionable batch, reuses committed source-ledger terminal state only when source identity is unchanged, and execute revalidates source identity before writes.",
-    "per_item_timeout_policy_after_fix": "supported-image verification and content hashing already use file_read_timeout_seconds and record read_timeout/stable per-item reasons before continuing; the new watchdog only handles lack of global progress between service checkpoints."
+    "per_item_timeout_policy_after_fix": "supported-image verification and content hashing already use file_read_timeout_seconds and record read_timeout/stable per-item reasons before continuing; the new watchdog only handles lack of global progress between service checkpoints.",
+    "validation_basis_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463"
   },
-  "head_sha": "2e42e61f40043c6051613fee39a607bb0d624463",
-  "head_sha_pending_final_amend": false,
+  "head_sha": "see_pr_body_after_push_self_referential_commit",
+  "head_sha_pending_final_amend": true,
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
     "ai_wd_suggestion_assignment_count": 3711,
@@ -2044,5 +2047,7 @@
     },
     "historical_skipped_explanation": "The UI label is now unchanged ledger skips. These are previously represented source-ledger items whose source identity/state is still terminal and non-actionable, not current failures.",
     "planned_319_explanation": "The UI label is now batch candidates. It counts candidate records accumulated for the bounded plan before final importability/dedup/existing checks; it is not the same as final importable count."
-  }
+  },
+  "head_sha_self_reference_note": "A committed report cannot embed its own final Git SHA without changing that SHA. The exact PR head is recorded in the PR body and Codex closeout after push.",
+  "validation_basis_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463"
 }
