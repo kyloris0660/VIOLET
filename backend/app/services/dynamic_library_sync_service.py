@@ -70,6 +70,10 @@ MANUAL_SYNC_PIPELINE_STAGES: tuple[str, ...] = (
 
 S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX = "I APPROVE S3A-M1 MANUAL SYNC EXECUTE"
 S3A_M1_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX = "I APPROVE S3A-M1 PRODUCTION MANUAL SYNC EXECUTE"
+S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX = "I UNDERSTAND VIOLET WILL MANUALLY IMPORT CLASSIFY AI-TAG AND LOCALIZE"
+S3A_M2_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX = (
+    "I UNDERSTAND VIOLET PRODUCTION WILL MANUALLY IMPORT CLASSIFY AI-TAG AND LOCALIZE"
+)
 MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS = 600
 MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS = 5 * 60
 
@@ -266,6 +270,10 @@ def _manual_state_for_reason(reason: str) -> str:
     reason = _manual_public_reason_code(reason) or "read_error"
     if reason in {"icloud_placeholder", "cloud_placeholder"}:
         return "skipped_placeholder"
+    if reason == "existing_media_hash":
+        return "skipped_existing_media"
+    if reason == "duplicate_hash":
+        return "skipped_duplicate"
     if reason == "zero_byte_file":
         return "skipped_zero_byte"
     if reason in {"unsupported_extension", "hidden", "too_large"}:
@@ -383,6 +391,19 @@ def _query_existing_media_by_hashes(db: Session, content_hashes: Iterable[str]) 
             if content_hash and media_id is not None:
                 existing.setdefault(str(content_hash), int(media_id))
     return existing
+
+
+def _lookup_existing_media_id_by_hash(
+    db: Session,
+    content_hash: Optional[str],
+    cache: Dict[str, Optional[int]],
+) -> Optional[int]:
+    if not content_hash:
+        return None
+    key = str(content_hash)
+    if key not in cache:
+        cache[key] = _query_existing_media_by_hashes(db, [key]).get(key)
+    return cache[key]
 
 
 def _build_manual_pipeline_stages(
@@ -517,9 +538,9 @@ def _redact_private_sync_payload(value: Any) -> Any:
 
 def manual_sync_execute_confirmation_phrase(plan_hash: str, *, production: bool = False) -> str:
     prefix = (
-        S3A_M1_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX
+        S3A_M2_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX
         if production
-        else S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX
+        else S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX
     )
     return f"{prefix} {str(plan_hash)[:12]}"
 
@@ -560,10 +581,18 @@ def plan_manual_sync_dry_run(
     private_items: List[Dict[str, Any]] = []
     candidate_records: List[Dict[str, Any]] = []
     candidate_hashes: set[str] = set()
+    candidate_seen_hashes: set[str] = set()
+    existing_media_lookup_cache: Dict[str, Optional[int]] = {}
     partial_scan = False
     walk_errors: List[str] = []
     scanned_files = 0
     unchanged_known_files = 0
+    skipped_existing_before_cap = 0
+    skipped_duplicate_before_cap = 0
+    import_candidate_count = 0
+    priority_workset_files = 0
+    priority_workset_mode = "filesystem_walk"
+    priority_workset_exhausted = False
     plan_timeout = False
     plan_no_progress_timeout = False
     plan_cancelled = False
@@ -572,6 +601,16 @@ def plan_manual_sync_dry_run(
     plan_started_monotonic = time.monotonic()
     last_progress_monotonic = plan_started_monotonic
     plan_no_progress_timeout_seconds = MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS
+    unsupported_extension_counts: Counter = Counter()
+    reason_extension_counts: Dict[str, Counter] = {}
+
+    def _record_reason_extension(reason_code: Optional[str], rel_path: str) -> None:
+        if not reason_code:
+            return
+        extension = Path(str(rel_path or "")).suffix.lower() or "<none>"
+        reason_extension_counts.setdefault(reason_code, Counter())[extension] += 1
+        if reason_code == "unsupported_extension":
+            unsupported_extension_counts[extension] += 1
 
     def _progress(phase: str, **updates: Any) -> None:
         nonlocal current_stage, last_progress_item_label, last_progress_monotonic
@@ -589,6 +628,8 @@ def plan_manual_sync_dry_run(
             "hydrated": 0,
             "importable": int(state_counts.get("import_planned", 0)),
             "planned": int(len(candidate_records)),
+            "skipped_existing": int(skipped_existing_before_cap + state_counts.get("skipped_existing_media", 0)),
+            "skipped_duplicate": int(skipped_duplicate_before_cap + state_counts.get("skipped_duplicate", 0)),
             "failed": int(
                 reason_counts.get("read_error", 0)
                 + reason_counts.get("read_timeout", 0)
@@ -630,8 +671,19 @@ def plan_manual_sync_dry_run(
             .all()
         }
     _progress("scanning")
+    priority_source_files = (
+        _manual_plan_priority_source_files(resolved, known_items_by_rel_hash)
+        if source_record_id is not None
+        else []
+    )
+    priority_workset_files = len(priority_source_files)
+    if priority_source_files:
+        priority_workset_mode = "source_delta_priority_workset"
+        source_file_iterable: Iterable[Path] = priority_source_files
+    else:
+        source_file_iterable = _iter_source_files(resolved, walk_errors=walk_errors)
 
-    for index, file_path in enumerate(_iter_source_files(resolved, walk_errors=walk_errors), start=1):
+    for index, file_path in enumerate(source_file_iterable, start=1):
         if _cancel_requested():
             partial_scan = True
             plan_cancelled = True
@@ -672,7 +724,7 @@ def plan_manual_sync_dry_run(
                 _progress("checking_existing_ledger", current_item_index=index, current_item_label=safe_label)
             continue
 
-        if len(candidate_records) >= effective_max_files:
+        if import_candidate_count >= effective_max_files:
             partial_scan = True
             break
 
@@ -709,7 +761,48 @@ def plan_manual_sync_dry_run(
         if cloud_placeholder_before_hydration and reason in {"read_error", "read_timeout", "stat_error"}:
             reason = "cloud_hydration_failed"
         if reason is None and content_hash:
+            existing_media_id = _lookup_existing_media_id_by_hash(db, content_hash, existing_media_lookup_cache)
+            if existing_media_id is not None:
+                skipped_existing_before_cap += 1
+                candidate_records.append(
+                    {
+                        "safe_label": safe_label,
+                        "relative_path": rel,
+                        "relative_path_hash": rel_hash,
+                        "relative_path_hash_full": rel_hash_full,
+                        "metadata": metadata,
+                        "reason": "existing_media_hash",
+                        "content_hash": content_hash,
+                        "media_id": existing_media_id,
+                        "cloud_placeholder_before_hydration": cloud_placeholder_before_hydration,
+                        "pre_cap_skip": True,
+                    }
+                )
+                if skipped_existing_before_cap == 1 or skipped_existing_before_cap % 250 == 0:
+                    _progress("skipping_existing_media", current_item_index=index, current_item_label=safe_label)
+                continue
+            if content_hash in candidate_seen_hashes:
+                skipped_duplicate_before_cap += 1
+                candidate_records.append(
+                    {
+                        "safe_label": safe_label,
+                        "relative_path": rel,
+                        "relative_path_hash": rel_hash,
+                        "relative_path_hash_full": rel_hash_full,
+                        "metadata": metadata,
+                        "reason": "duplicate_hash",
+                        "content_hash": content_hash,
+                        "media_id": None,
+                        "cloud_placeholder_before_hydration": cloud_placeholder_before_hydration,
+                        "pre_cap_skip": True,
+                    }
+                )
+                if skipped_duplicate_before_cap == 1 or skipped_duplicate_before_cap % 250 == 0:
+                    _progress("skipping_duplicate", current_item_index=index, current_item_label=safe_label)
+                continue
+            candidate_seen_hashes.add(content_hash)
             candidate_hashes.add(content_hash)
+            import_candidate_count += 1
         candidate_records.append(
             {
                 "safe_label": safe_label,
@@ -723,21 +816,22 @@ def plan_manual_sync_dry_run(
             }
         )
 
+    if priority_source_files and not partial_scan:
+        priority_workset_exhausted = True
+
     _progress(
         "cancelled"
         if plan_cancelled
         else ("no_progress_timeout" if plan_no_progress_timeout else "checking_existing_media")
     )
-    existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes)
+    existing_media_by_hash = _query_existing_media_by_hashes(db, candidate_hashes) if candidate_hashes else {}
     seen_hashes: set[str] = set()
     integrity_items: List[Dict[str, Any]] = []
-    unsupported_extension_counts: Counter = Counter()
-    reason_extension_counts: Dict[str, Counter] = {}
     for record in candidate_records:
         _progress("planning", current_item_label=record.get("safe_label"))
         reason = record["reason"]
         content_hash = record["content_hash"]
-        media_id = None
+        media_id = record.get("media_id")
 
         if reason is None and content_hash:
             if content_hash in existing_media_by_hash:
@@ -757,10 +851,7 @@ def plan_manual_sync_dry_run(
         state_counts[state] += 1
         if public_reason:
             reason_counts[public_reason] += 1
-            extension = Path(str(record["relative_path"] or "")).suffix.lower() or "<none>"
-            reason_extension_counts.setdefault(public_reason, Counter())[extension] += 1
-            if public_reason == "unsupported_extension":
-                unsupported_extension_counts[extension] += 1
+            _record_reason_extension(public_reason, str(record["relative_path"] or ""))
 
         metadata = record["metadata"]
         item = {
@@ -831,9 +922,20 @@ def plan_manual_sync_dry_run(
         "file_read_timeout_seconds": read_timeout_seconds,
         "scanned_files": scanned_files,
         "unchanged_known_files": unchanged_known_files,
+        "skipped_existing_before_cap": skipped_existing_before_cap,
+        "skipped_duplicate_before_cap": skipped_duplicate_before_cap,
+        "import_candidate_count": import_candidate_count,
         "max_files_scope": "manual_sync_delta_candidates",
+        "cap_semantics": "unique_importable_candidates_not_unchanged_or_existing_media",
         "batch_mode": "bounded_actionable_batch",
         "batch_candidate_cap": effective_max_files,
+        "source_delta_workset": {
+            "scan_order": priority_workset_mode,
+            "priority_workset_files": priority_workset_files,
+            "priority_workset_exhausted": priority_workset_exhausted,
+            "filesystem_walk_deferred_after_priority_workset": bool(priority_source_files),
+            "starts_from_filesystem_root_when_no_priority_workset": not bool(priority_source_files),
+        },
         "batch_policy": {
             "user_starts_one_manual_session": True,
             "plan_one_bounded_batch_at_a_time": True,
@@ -891,6 +993,8 @@ def plan_manual_sync_dry_run(
         "limits": limits,
         "counts": {
             "total_seen": len(public_items),
+            "scanned_files": scanned_files,
+            "plan_items": len(public_items),
             "estimated_import_count": import_count,
             "estimated_classification_count": import_count,
             "estimated_ai_tagging_count": import_count,
@@ -961,6 +1065,51 @@ def _iter_source_files(root_path: Path, *, walk_errors: Optional[List[str]] = No
         dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", "venv"})
         for filename in sorted(filenames):
             yield Path(dirpath) / filename
+
+
+def _source_item_file_path(root_path: Path, item: DynamicSourceItem) -> Optional[Path]:
+    rel = str(item.relative_path or "")
+    if not rel:
+        return None
+    try:
+        root_resolved = root_path.resolve()
+        candidate = (root_resolved / rel).resolve()
+        if not candidate.is_relative_to(root_resolved):
+            return None
+        return candidate
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def _manual_plan_priority_for_known_item(item: DynamicSourceItem) -> Optional[int]:
+    import_status = str(item.import_status or "")
+    sync_state = str(item.sync_state or "")
+    reason = str(item.deferred_reason or item.failure_reason or "")
+    if import_status == "pending" and item.media_id is None:
+        return 10 if sync_state == "new" else 20
+    if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
+        return 30
+    if import_status in {"failed", "deferred"} and reason in {"read_error", "read_timeout", "cloud_hydration_failed"}:
+        return 40
+    if import_status == "imported" and item.media_id is not None and _manual_plan_existing_requires_followup(item):
+        return 50
+    return None
+
+
+def _manual_plan_priority_source_files(
+    root_path: Path,
+    known_items_by_rel_hash: Dict[str, DynamicSourceItem],
+) -> List[Path]:
+    prioritized: List[tuple[int, str, Path]] = []
+    for item in known_items_by_rel_hash.values():
+        priority = _manual_plan_priority_for_known_item(item)
+        if priority is None:
+            continue
+        file_path = _source_item_file_path(root_path, item)
+        if file_path is None:
+            continue
+        prioritized.append((priority, str(item.relative_path_hash or ""), file_path))
+    return [path for _priority, _rel_hash, path in sorted(prioritized, key=lambda row: (row[0], row[1]))]
 
 
 def _metadata_for_path(path: Path, *, follow_symlinks: bool = True) -> Dict[str, Any]:

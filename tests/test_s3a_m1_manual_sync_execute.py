@@ -43,7 +43,7 @@ from app.routes.admin import content_classification as classification_routes  # 
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as planner  # noqa: E402
 from app.services import manual_sync_execute_service as execute_service  # noqa: E402
-from app.services.dynamic_library_sync_service import S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX  # noqa: E402
+from app.services.dynamic_library_sync_service import S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX  # noqa: E402
 from app.services.manual_sync_execute_service import (  # noqa: E402
     ManualSyncExecuteError,
     create_manual_sync_execute_run,
@@ -256,7 +256,7 @@ def test_s3a_m1_plan_integrity_is_public_safe_and_stable(db, tmp_path):
 
     assert first["integrity"]["plan_hash"] == second["integrity"]["plan_hash"]
     assert first["integrity"]["plan_hash"] != later["integrity"]["plan_hash"]
-    assert first["integrity"]["confirmation_phrase"].startswith(S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX)
+    assert first["integrity"]["confirmation_phrase"].startswith(S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX)
     assert first["integrity"]["hash_excludes_paths"] is True
     assert first["integrity"]["hash_includes_private_content_fingerprint"] is True
     assert "private-name.png" not in str(first)

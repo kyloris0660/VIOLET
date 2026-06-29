@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis commit: `2e42e61f40043c6051613fee39a607bb0d624463` (observed failed GUI-plan head: `32cb03698f06746ae1f829b5b37fc565c7d59c4c`).
+- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis commit before this update: `f1040fb21a1c04489b3ed31d295321f5eddc44ac` (observed zero-import partial GUI-plan head: `f1040fb21a1c04489b3ed31d295321f5eddc44ac`).
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -104,7 +104,7 @@
 
 ## GUI Acceptance Debug
 
-- Status: `global_elapsed_timeout_removed_pending_user_retry`.
+- Status: `zero_import_partial_plan_fixed_pending_user_retry`.
 - Observed server: port `8012`, profile `production-default`, env `production`, DB `blombooru`.
 - Endpoint clicked: `/api/admin/dynamic-library-sync/manual-sync/plan`; planner path: current S3A-M2 manual-sync plan endpoint, not the old update-check endpoint.
 - Corrected root cause: the normal GUI plan had a hard roughly `600s` total elapsed timeout. The latest user run was still making progress through hashing when that timeout fired, so the plan was cancelled before Execute even though there was no proven stuck file.
@@ -122,8 +122,27 @@
 - Threshold UI fix: historical threshold/deferred inventory is moved out of the normal operator path and labelled as diagnostic, not a current manual-execute blocker; current execute safety comes from the generated manual plan.
 - AI/localization wording fix: `AI -> localization: OFF` is replaced by background-chaining wording and separate manual E2E localization readiness.
 - Canonical routing fix: same-page `hashchange` now activates `#dynamic-library-sync-section`, so stale `admin_content_section` localStorage no longer hides the normal manual-sync section after `/admin?tab=content#dynamic-library-sync-section`.
-- Real browser validation after fix: `passed_ui_progress_timeout_policy_fix_only` on a controlled `VIOLET_ENV=test` server on port `8013` with Playwright Edge. It confirmed canonical URL/hashchange activation, normal operator UI, Start manual sync plan click, visible `plan_request_id`, persistent progress counts/events, hidden normal-path threshold, no raw i18n key, busy/duplicate-click state, and a `200` response from `/manual-sync/plan`. It did **not** click Execute and does not satisfy final production GUI Execute acceptance.
+- Real browser validation after latest fix: `passed_zero_import_partial_plan_ui_fix_only` on a controlled `VIOLET_ENV=test` server on port `8015` with Playwright Edge. It confirmed canonical URL, normal operator UI, zero-import partial-plan rendering, cap/workset diagnostics, hidden confirmation controls for blocked plans, disabled Execute, and no old `S3A-M1` confirmation phrase. It did **not** click Execute and does not satisfy final production GUI Execute acceptance.
 - Acceptance blocker: `No GUI Execute button-triggered run newer than run #8 has completed and passed post-run validation.`.
+
+### Latest Zero-Import Partial Plan Incident
+
+- Observed head: `f1040fb21a1c04489b3ed31d295321f5eddc44ac`.
+- Observed plan hash prefix: `b0cce6557c8866b14eb58b66`; request id: `gui-plan-2c981cd1-33d1-4c86-adaf-ab2678dcc776`.
+- Observed root scope: same registered active source root used by this S3A-M2 phase; raw root id, label, source path, and full identifier are kept out of public artifacts.
+- Observed plan source/cap/hydration: `source_delta` / `1000` / `cloud_aware_non_destructive_read`.
+- Observed counts: scanned/seen `1000`; import `0`; partial scan `True`; states `skipped_existing_media=994`, `failed=6`.
+- Execute disabled reason: the plan was partial and had no importable hydrated items. The confirmation phrase was not the deciding condition; Execute was correctly blocked by backend/frontend safety policy.
+- Current plan reuse: `not_reusable`. The plan was produced by the previous selection/cap semantics, had no writeable import items, and expired under the existing plan-staleness rule. It is diagnostic evidence only; it should not be executed.
+- Root cause: the planner selected source-root/ledger candidates, then only discovered `existing_media_hash` after those candidates had already consumed the visible batch/cap. Source-delta rows with existing media were therefore allowed to dominate the first batch before the planner reached the current actionable new items.
+- Scanner/cursor finding: the old user-facing plan did not expose a durable operator cursor or continuation point. Registered roots reused `DynamicSourceItem` metadata for skip decisions, but unchanged/existing media could still consume cap before existing-media hash classification.
+- Cap semantics before fix: effectively `files/candidates visited before final existing-media classification`.
+- Cap semantics after fix: `unique_importable_candidates_not_unchanged_or_existing_media`. Stable existing media and duplicate hashes are counted in diagnostics but do not consume the import candidate cap.
+- Source-delta workset after fix: registered roots now prioritize current actionable `DynamicSourceItem` rows such as pending new/changed items without `media_id`, cloud placeholders, retryable read/cloud failures, and imported rows with downstream follow-up. Existing changed rows with a resolved `media_id` no longer crowd out new importable work.
+- Continuation/resume model after fix: committed source-ledger states are reusable only when source identity and metadata still match. Unexecuted private plan candidates are not trusted for Execute; Execute re-plans and revalidates size/mtime/hash/source identity before DB writes. A new plan is required after code/profile changes or plan expiry.
+- Failure reason visibility: the old GUI plan did not persist public-safe per-failure reason details for the six failed rows. Future plans now surface aggregate reason and extension breakdowns in the plan/report path without exposing private filenames or paths.
+- Confirmation UX fix: plans with zero importable items no longer show a production confirmation phrase or confirmation controls. Writeable plans now use an S3A-M2 human-readable operator phrase; the old `S3A-M1` phrase label is no longer shown for new plans.
+- Real browser validation for this fix: `passed` on controlled Playwright Edge against a `VIOLET_ENV=test` server. It verified the normal operator path, canonical URL, zero-import partial-plan rendering, cap/workset diagnostics, hidden confirmation controls, disabled Execute, and no old `S3A-M1` confirmation phrase. Execute was not clicked.
 
 ## Pre-User Manual Acceptance Safety Fixes
 
@@ -136,17 +155,17 @@
 - Cancellation before localization guard: `True`; LLM calls prevented: `True`; localization DB writes prevented: `True`.
 - Historical read errors retryable in current delta planning: `True`.
 - Manual E2E readiness/backend gates aligned: `True`.
-- User manual GUI acceptance package status: `blocked_pending_user_retry_after_progress_timeout_policy_fix_and_review`.
+- User manual GUI acceptance package status: `blocked_pending_user_retry_after_zero_import_partial_plan_fix_and_review`.
 
 ## Validation
 
 - Ledger consistency: `passed`; represented items: `173` / `173`.
 - DB count delta: media `349`, source items `391`.
 - Public redaction: `True`; findings: `0`.
-- Launcher/Web Admin: `blocked_pending_user_manual_gui_execute_after_global_timeout_policy_fix`; browser: `msedge`; dry-run clicked: `True`; execute clicked: `False`.
+- Launcher/Web Admin: `blocked_pending_user_manual_gui_execute_after_zero_import_partial_plan_fix`; browser: `msedge`; dry-run clicked: `True`; execute clicked: `False`.
 - Launcher dry-run request/timeout/server-stop: `True` / `True` / `True`; latest timeout observed: `597s` before Execute.
 - Plan progress endpoints/tests: `added`; cancellation endpoint/tests: `added`; duplicate active plan guard/tests: `added`.
-- Real browser validation for this UI fix: `passed`; method `Playwright Edge`, URL `http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, Execute clicked `False`.
+- Real browser validation for latest UI fix: `passed`; method `Playwright Edge`, URL `http://127.0.0.1:8015/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, Execute clicked `False`.
 - Launcher fallback reason: `Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.`.
 - Latest job observed by UI/API: run `None`, status `None`, imported `None`.
 
@@ -163,7 +182,7 @@
 - Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.
 - SourceConcept/Entity bridge work was not run.
 - Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.
-- Actual launcher/Web Admin GUI Execute acceptance is still not completed after the later user-path `Start manual sync` global timeout at about `597s`; this patch removes the hard total elapsed timeout, adds progress-based cancellation, and must be revalidated before asking the user to Execute.
+- Actual launcher/Web Admin GUI Execute acceptance is still not completed after the later user-path zero-import partial plan (`seen=1000`, `import=0`, `partial_scan=yes`). This patch changes cap semantics/workset selection and must be revalidated before asking the user to Execute.
 - The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.
 - Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet.
 

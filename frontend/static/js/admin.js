@@ -2272,25 +2272,45 @@ class AdminPanel {
         const limits = plan.limits || {};
         const confirmationPhrase = this._manualSyncExpectedConfirmationPhrase(plan);
         const planSource = (plan.source || {}).plan_source || limits.plan_source || '-';
+        const workset = limits.source_delta_workset || {};
+        const scannedFiles = counts.scanned_files || limits.scanned_files || counts.total_seen || 0;
+        const planItems = counts.plan_items || counts.total_seen || 0;
+        const skippedExistingBeforeCap = limits.skipped_existing_before_cap || 0;
+        const skippedDuplicateBeforeCap = limits.skipped_duplicate_before_cap || 0;
         const complete = !counts.partial_scan;
         const importable = (counts.estimated_import_count || 0) > 0;
         const canExecute = complete && importable && this.dynamicSyncExecuteEnabled;
+        const requiresConfirmation = canExecute;
+        let planMessage = 'Execute is blocked until the plan is complete, has importable hydrated items, and manual E2E readiness is satisfied.';
+        if (canExecute) {
+            planMessage = 'Plan is ready. Review exactly what will be written, enter the operator confirmation, then click Confirm and execute once.';
+        } else if (!importable && counts.partial_scan) {
+            planMessage = 'No importable items were found in this partial batch. Stable existing media did not count against the import cap; re-run Start manual sync after checking the current delta diagnostics.';
+        } else if (!importable) {
+            planMessage = 'No importable hydrated items are in this plan. Execute is intentionally disabled and no confirmation is required.';
+        } else if (counts.partial_scan) {
+            planMessage = 'This plan is partial. Continue planning before executing so the batch boundary is explicit and safe.';
+        }
         resultEl.classList.remove('hidden');
         resultEl.innerHTML = `
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
                 <div><span class="text-secondary">Plan hash</span><br><span class="font-mono">${this.escapeHtml((integrity.plan_hash || '').slice(0, 24))}</span></div>
-                <div><span class="text-secondary">Seen</span><br><span class="font-bold">${counts.total_seen || 0}</span></div>
+                <div><span class="text-secondary">Scanned</span><br><span class="font-bold">${scannedFiles}</span></div>
+                <div><span class="text-secondary">Plan items</span><br><span class="font-bold">${planItems}</span></div>
                 <div><span class="text-secondary">Import</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
-                <div><span class="text-secondary">Expires</span><br><span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             </div>
-            <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
-            ${canExecute ? `<div class="mb-2 text-green-400">Plan is ready. Review counts, then click Confirm and execute once.</div>` : `<div class="mb-2 text-warning">Execute is blocked until the plan is complete, has importable hydrated items, and manual E2E readiness is satisfied.</div>`}
+            <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Cap means:</span> ${this.escapeHtml(limits.cap_semantics || 'unique importable candidates')} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
+            <div class="mb-2"><span class="text-secondary">Workset:</span> ${this.escapeHtml(workset.scan_order || '-')} | <span class="text-secondary">Priority items:</span> ${workset.priority_workset_files || 0} | <span class="text-secondary">Existing skipped before cap:</span> ${skippedExistingBeforeCap} | <span class="text-secondary">Duplicates skipped before cap:</span> ${skippedDuplicateBeforeCap}</div>
+            <div class="mb-2 text-secondary"><span class="text-secondary">Expires:</span> <span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
+            <div class="mb-2 ${canExecute ? 'text-green-400' : 'text-warning'}">${this.escapeHtml(planMessage)}</div>
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
-            <div><span class="text-secondary">Confirmation phrase shown for audit:</span></div>
-            <code id="dynamic-sync-confirmation-phrase" class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
+            ${requiresConfirmation ? `
+                <div><span class="text-secondary">Operator confirmation required for this write:</span></div>
+                <code id="dynamic-sync-confirmation-phrase" class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
+            ` : `<div class="text-secondary">No operator confirmation is needed because Execute is blocked for this plan.</div>`}
         `;
         if (confirmationEl) confirmationEl.value = '';
-        if (confirmActions) confirmActions.classList.toggle('hidden', !this.dynamicSyncPlan);
+        if (confirmActions) confirmActions.classList.toggle('hidden', !requiresConfirmation);
         if (confirmBtn) confirmBtn.disabled = !canExecute || this.dynamicSyncActionInFlight;
         if (copyBtn) copyBtn.disabled = !confirmationPhrase || this.dynamicSyncActionInFlight;
         this._updateManualSyncExecuteButton();

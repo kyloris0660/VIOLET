@@ -102,6 +102,10 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     assert "body.confirmation_phrase = confirmation;" in script
     assert "production_acceptance_approved = !!this.dynamicSyncProductionMode && confirmation === expected" in script
     assert "complete && importable && matches" in script
+    assert "No operator confirmation is needed because Execute is blocked for this plan." in script
+    assert "Operator confirmation required for this write:" in script
+    assert "requiresConfirmation = canExecute" in script
+    assert "S3A-M1 PRODUCTION MANUAL SYNC EXECUTE" not in script
 
 
 def test_dynamic_sync_ui_does_not_render_raw_i18n_keys_or_internal_blocker_prefixes() -> None:

@@ -36,8 +36,8 @@ from ..utils.logger import logger
 from ..utils.media_helpers import get_unique_filename
 from .dynamic_library_sync_service import (
     MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
-    S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX,
-    S3A_M1_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX,
+    S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX,
+    S3A_M2_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX,
     _calculate_manual_plan_file_hash,
     _hash_text,
     _manual_public_reason_code,
@@ -601,7 +601,7 @@ def create_manual_sync_execute_run(
         pending_import_items=int((plan.get("counts") or {}).get("estimated_import_count") or 0),
         started_at=now,
         summary_json={
-            "phase": "S3A-M1",
+            "phase": "S3A-M2",
             "manual_sync_execute": {
                 "status": "pending",
                 "current_stage": "queued",
@@ -644,8 +644,8 @@ def create_manual_sync_execute_run(
                     "localization_scheduled": False,
                     "translation_llm_side_effects_blocked": True,
                     "production_acceptance_pending": not production_acceptance_approved,
-                    "confirmation_prefix": S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX,
-                    "production_confirmation_prefix": S3A_M1_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX,
+                    "confirmation_prefix": S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX,
+                    "production_confirmation_prefix": S3A_M2_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX,
                 },
             },
         },

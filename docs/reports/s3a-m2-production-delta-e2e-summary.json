@@ -209,12 +209,16 @@
       "frontend hashchange handling preserves the canonical manual-sync section after same-page navigation",
       "GUI plan no longer uses a hard total elapsed 600s abort when healthy progress is still moving",
       "GUI plan uses no-progress watchdog, cancellable plan state, terminal cancel_failed state, and one-active-plan-per-root/session lock",
-      "manual source-delta plan exposes bounded batch/resume policy so current actionable candidates are separated from historical ledger skips"
+      "manual source-delta plan exposes bounded batch/resume policy so current actionable candidates are separated from historical ledger skips",
+      "manual source-delta cap now counts unique importable candidates rather than unchanged/existing media",
+      "zero-import partial plans no longer display production confirmation controls",
+      "registered-root planning prioritizes current actionable source-delta rows before historical existing-media rows"
     ],
     "public_safe": true,
     "runner_gui_planner_diverged": true,
     "same_server_profile_proven": "Browser validation for this UI fix used a controlled VIOLET_ENV=test server. Production GUI Execute remains unvalidated until the user retries on the launcher-managed production profile.",
-    "gui_path_after_fix": "Web Admin normal Start manual sync button calls /api/admin/dynamic-library-sync/manual-sync/plan with GUI session provenance, cloud-aware hydration, cap 1000, progress request id, no-progress watchdog, and execute blocked until a complete safe plan exists."
+    "gui_path_after_fix": "Web Admin normal Start manual sync button calls /api/admin/dynamic-library-sync/manual-sync/plan with GUI session provenance, cloud-aware hydration, cap 1000, progress request id, no-progress watchdog, and execute blocked until a complete safe plan exists.",
+    "gui_path_after_latest_fix": "The normal Start manual sync plan reports scanned vs plan items, cap semantics, source-delta workset, existing/duplicate skipped before cap, and blocks confirmation/execute when import=0."
   },
   "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
   "branch_profile_provenance": {
@@ -245,16 +249,16 @@
   },
   "browser_validation_current_head": {
     "attempted": true,
-    "status": "passed_ui_progress_timeout_policy_fix_only",
-    "method": "controlled Playwright Edge on VIOLET_ENV=test server 8013",
+    "status": "passed_zero_import_partial_plan_ui_fix_only",
+    "method": "controlled Playwright Edge on VIOLET_ENV=test server 8015",
     "server_env": "test",
     "db_name": "blombooru_test",
-    "port": 8013,
+    "port": 8015,
     "canonical_url_preserved": true,
     "normal_operator_ui_validated": true,
     "start_manual_sync_plan_clicked": true,
     "gui_execute_clicked": false,
-    "reason": "This validates the UI/progress/no-progress-watchdog/hashchange fix only. It does not satisfy final production GUI Execute acceptance.",
+    "reason": "This validates the zero-import partial-plan UI/cap semantics rendering only. It does not satisfy final production GUI Execute acceptance.",
     "source_or_production_mutation": false,
     "public_safe": true,
     "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
@@ -268,8 +272,12 @@
     "raw_i18n_key_visible": false,
     "historical_threshold_labeled_diagnostic": true,
     "test_plan_result": "completed safely in test profile; execute was blocked because the fresh test source was skipped_changing, and Execute was not clicked",
-    "validated_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463",
-    "head_sha_note": "validated working tree was committed as the progress-timeout fix; final PR head is in PR body/closeout"
+    "validated_head_sha": "working_tree_after_f1040fb_zero_import_plan_fix_pending_commit",
+    "head_sha_note": "validated working tree was committed as the progress-timeout fix; final PR head is in PR body/closeout",
+    "zero_import_partial_plan_rendered": true,
+    "confirmation_hidden_for_blocked_plan": true,
+    "execute_disabled_for_blocked_plan": true,
+    "old_s3a_m1_phrase_absent": true
   },
   "classification": {
     "count": 49,
@@ -994,7 +1002,7 @@
     "root_cause": "GUI dry-run used the manual-sync plan endpoint but that endpoint still performed a broad source-root walk and expensive verify/hash over unchanged known items; frontend abort/browser close did not cancel the backend request, so it kept scanning until server stop.",
     "server_role": "launcher-managed production validation server; port 8012 selected because 8000 was occupied by unrelated Clash Verge",
     "source_mutation_detected": false,
-    "status": "blocked_597s_plan_timeout_fixed_pending_revalidation",
+    "status": "zero_import_partial_plan_fixed_pending_user_retry",
     "stuck_jobs_found": false,
     "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
     "violet_env": "production",
@@ -1007,7 +1015,21 @@
     "active_server_after_timeout_audit": false,
     "active_request_after_timeout_audit": false,
     "backend_continued_after_frontend_timeout": "not provable for the user attempt; no active server remained at Codex audit time",
-    "timeout_behavior_after_fix": "operator sees persistent progress, request id, phase/counts/events, can cancel plan, and duplicate active plans are rejected"
+    "timeout_behavior_after_fix": "operator sees persistent progress, request id, phase/counts/events, can cancel plan, and duplicate active plans are rejected",
+    "latest_zero_import_plan_observed_head": "f1040fb21a1c04489b3ed31d295321f5eddc44ac",
+    "latest_zero_import_plan_hash_prefix": "b0cce6557c8866b14eb58b66",
+    "latest_zero_import_plan_counts": {
+      "seen": 1000,
+      "scanned_files": 1000,
+      "estimated_import_count": 0,
+      "partial_scan": true,
+      "state_counts": {
+        "skipped_existing_media": 994,
+        "failed": 6
+      }
+    },
+    "latest_zero_import_root_cause": "Planner let existing-media candidates consume the visible batch/cap before existing-media hash classification, so the first GUI plan was dominated by already-imported media and did not reach current actionable work.",
+    "latest_zero_import_fix": "existing/duplicate media no longer consume import-candidate cap; registered roots prioritize actionable source-delta workset before historical existing rows; zero-import blocked plans hide confirmation controls"
   },
   "gui_execute_acceptance": {
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
@@ -1422,7 +1444,7 @@
       "Plan does not silently run; if slow, phase/count/event progress continues",
       "No active plan remains before retry after timeout/cancel"
     ],
-    "latest_reason": "The user-facing plan timeout has been fixed in code and browser-validated in test, but real production launcher/Web Admin GUI Execute has still not completed and validator has not passed.",
+    "latest_reason": "The latest real GUI plan failure found a planner selection/cap semantics bug. It is fixed and browser-validated in test, but the user has not retried real production GUI Execute and validator has not passed.",
     "operator_checks_before_retry": [
       "pull latest PR head after this fix",
       "stop stale servers with violet_production_control.py stop --json and audit ports",
@@ -1685,8 +1707,8 @@
       "status": "blocking_merge"
     },
     {
-      "code": "user_gui_plan_timeout_fix_needs_manual_revalidation",
-      "detail": "The hard global timeout was removed and browser-validated in test, but the user has not yet rerun real launcher/Web Admin GUI plan+Execute on production.",
+      "code": "user_zero_import_partial_plan_fix_needs_manual_revalidation",
+      "detail": "The f1040fb GUI plan showed seen=1000/import=0/partial_scan=yes because existing media consumed the old cap; fix is implemented and needs real launcher/Web Admin retry.",
       "status": "blocking_merge"
     },
     "user_manual_gui_execute_acceptance_pending",
@@ -2049,5 +2071,75 @@
     "planned_319_explanation": "The UI label is now batch candidates. It counts candidate records accumulated for the bounded plan before final importability/dedup/existing checks; it is not the same as final importable count."
   },
   "head_sha_self_reference_note": "A committed report cannot embed its own final Git SHA without changing that SHA. The exact PR head is recorded in the PR body and Codex closeout after push.",
-  "validation_basis_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463"
+  "validation_basis_head_sha": "f1040fb21a1c04489b3ed31d295321f5eddc44ac",
+  "latest_zero_import_partial_plan_incident": {
+    "status": "fixed_pending_user_retry",
+    "observed_head_sha": "f1040fb21a1c04489b3ed31d295321f5eddc44ac",
+    "plan_hash_prefix": "b0cce6557c8866b14eb58b66",
+    "plan_request_id": "gui-plan-2c981cd1-33d1-4c86-adaf-ab2678dcc776",
+    "plan_source": "source_delta",
+    "cap": 1000,
+    "hydration_policy": "cloud_aware_non_destructive_read",
+    "observed_counts": {
+      "seen": 1000,
+      "scanned_files": 1000,
+      "estimated_import_count": 0,
+      "partial_scan": true,
+      "state_counts": {
+        "skipped_existing_media": 994,
+        "failed": 6
+      }
+    },
+    "execute_disabled_reason": [
+      "partial_scan_true",
+      "estimated_import_count_zero",
+      "no_importable_hydrated_items"
+    ],
+    "confirmation_phrase_was_deciding_condition": false,
+    "current_plan_reusable": false,
+    "current_plan_reuse_reason": "produced_by_previous_candidate_cap_semantics_no_importable_items_and_expired; diagnostic_only",
+    "root_cause": "Planner let existing-media candidates consume the visible batch/cap before existing-media hash classification, so the first GUI plan was dominated by already-imported media and did not reach current actionable work.",
+    "scanner_started_from": "registered source root/source-delta candidate order from existing ledger and filesystem-derived planning; no operator-visible durable cursor was exposed for this plan",
+    "durable_cursor_before_fix": false,
+    "cap_semantics_before_fix": "files_or_candidates_before_final_existing_media_classification",
+    "cap_semantics_after_fix": "unique_importable_candidates_not_unchanged_or_existing_media",
+    "existing_media_consumes_cap_after_fix": false,
+    "source_delta_workset_after_fix": {
+      "prioritizes_pending_without_media_id": true,
+      "prioritizes_cloud_placeholders": true,
+      "prioritizes_retryable_read_or_cloud_failures": true,
+      "prioritizes_imported_rows_with_downstream_followup": true,
+      "existing_changed_rows_with_media_id_do_not_crowd_out_new_work": true
+    },
+    "resume_policy_after_fix": {
+      "reuses_committed_dynamic_source_item_state": true,
+      "unexecuted_private_plan_reuse": "not_trusted_without_execute_revalidation",
+      "execute_revalidates_size_mtime_hash_source_identity": true,
+      "invalidates_on_source_identity_or_metadata_change": true,
+      "next_batch_requires_new_plan_after_expiry_or_code_profile_change": true
+    },
+    "failed_six_reason_breakdown": {
+      "available_from_old_plan": false,
+      "reason": "previous GUI plan did not persist public-safe per-failure details; future plans report aggregate failure reason/extension breakdowns"
+    },
+    "confirmation_ux_after_fix": {
+      "zero_import_plan_shows_confirmation": false,
+      "old_s3a_m1_phrase_shown_for_new_plans": false,
+      "write_plan_requires_operator_entered_confirmation": true,
+      "new_phrase_family": "S3A-M2 human-readable manual import/classify/AI/localize confirmation"
+    },
+    "browser_validation": {
+      "status": "passed",
+      "method": "controlled Playwright Edge on VIOLET_ENV=test server 8015",
+      "canonical_url": "http://127.0.0.1:8015/admin?tab=content#dynamic-library-sync-section",
+      "validated_zero_import_partial_rendering": true,
+      "confirmation_hidden_when_execute_blocked": true,
+      "execute_disabled": true,
+      "old_s3a_m1_phrase_absent": true,
+      "source_or_production_mutation": false,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/"
+    },
+    "public_safe": true,
+    "input_scope": "same_registered_active_input_scope_as_phase; raw identifiers excluded from public artifact"
+  }
 }

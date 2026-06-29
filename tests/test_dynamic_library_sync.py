@@ -942,7 +942,126 @@ def test_manual_sync_dry_run_existing_media_uses_candidate_hash_lookup(db, tmp_p
 
     assert queried_hashes == [{candidate_hash}]
     assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["limits"]["skipped_existing_before_cap"] == 1
     assert plan["ledger"]["per_file_public_records"][0]["media_id"] is not None
+
+
+def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_cap(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    existing_a = source_root / "a_existing.png"
+    existing_b = source_root / "b_existing.png"
+    fresh_path = source_root / "c_fresh.png"
+    _write_png(existing_a, (10, 20, 30))
+    _write_png(existing_b, (30, 40, 50))
+    _write_png(fresh_path, (60, 70, 80))
+
+    for path in (existing_a, existing_b):
+        db.add(
+            Media(
+                filename=f"{path.stem}-redacted.png",
+                path=f"media/original/{path.stem}-redacted.png",
+                hash=calculate_file_hash(path),
+                file_type=FileTypeEnum.image,
+            )
+        )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    counts = plan["counts"]
+    assert counts["state_counts"]["skipped_existing_media"] == 2
+    assert counts["state_counts"]["import_planned"] == 1
+    assert counts["estimated_import_count"] == 1
+    assert counts["partial_scan"] is False
+    assert counts["plan_items"] == 3
+    assert counts["scanned_files"] == 3
+    assert plan["limits"]["skipped_existing_before_cap"] == 2
+    assert plan["limits"]["cap_semantics"] == "unique_importable_candidates_not_unchanged_or_existing_media"
+
+
+def test_manual_sync_dry_run_registered_root_prioritizes_pending_new_before_changed_existing(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    changed_existing = source_root / "a_changed_existing.png"
+    pending_new = source_root / "z_pending_new.png"
+    _write_png(changed_existing, (10, 20, 30))
+    _write_png(pending_new, (60, 70, 80))
+    existing_stat = changed_existing.stat()
+    pending_stat = pending_new.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="a_changed_existing.png",
+        path="media/original/a_changed_existing.png",
+        hash=calculate_file_hash(changed_existing),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add_all(
+        [
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path="a_changed_existing.png",
+                relative_path_hash=service._hash_text("a_changed_existing.png"),
+                file_size=existing_stat.st_size,
+                mtime_ns=existing_stat.st_mtime_ns,
+                content_hash=media.hash,
+                media_id=media.id,
+                source_status="available",
+                sync_state="changed",
+                import_status="pending",
+                classification_status="waiting_import",
+                ai_tagging_status="waiting_import",
+                localization_status="waiting_ai_tags",
+            ),
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path="z_pending_new.png",
+                relative_path_hash=service._hash_text("z_pending_new.png"),
+                file_size=pending_stat.st_size,
+                mtime_ns=pending_stat.st_mtime_ns,
+                source_status="available",
+                sync_state="new",
+                import_status="pending",
+                classification_status="waiting_import",
+                ai_tagging_status="waiting_import",
+                localization_status="waiting_ai_tags",
+            ),
+        ]
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 0
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_delta_priority_workset"
+    assert plan["limits"]["source_delta_workset"]["priority_workset_files"] == 1
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_deferred_after_priority_workset"] is True
+    assert "a_changed_existing.png" not in str(plan)
+    assert "z_pending_new.png" not in str(plan)
 
 
 def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root(db, tmp_path):
@@ -1063,7 +1182,8 @@ def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(
     assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
     assert plan["counts"]["state_counts"]["import_planned"] == 0
     assert plan["limits"]["unchanged_known_files"] == 0
-    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_delta_priority_workset"
     assert "a_followup.png" not in str(plan)
 
 
