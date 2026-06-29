@@ -143,6 +143,50 @@ def _assert_translation_side_effects_disabled() -> None:
         )
 
 
+def _translation_llm_provider_configured() -> bool:
+    primary_ready = bool(
+        settings.TAG_TRANSLATION_LLM_API_KEY
+        and settings.TAG_TRANSLATION_LLM_MODEL
+        and settings.TAG_TRANSLATION_LLM_BASE_URL
+    )
+    fallback_ready = bool(
+        settings.TAG_TRANSLATION_LLM_FALLBACK_ENABLED
+        and settings.TAG_TRANSLATION_LLM_FALLBACK_API_KEY
+        and settings.TAG_TRANSLATION_LLM_FALLBACK_MODEL
+        and settings.TAG_TRANSLATION_LLM_FALLBACK_BASE_URL
+    )
+    return primary_ready or fallback_ready
+
+
+def _assert_manual_e2e_components_ready_for_production() -> None:
+    if not settings.IS_PRODUCTION_ENV:
+        return
+    if not settings.CONTENT_CLASSIFICATION_ENABLED:
+        raise ManualSyncExecuteError(
+            "manual_sync_classification_disabled",
+            "Production manual E2E execute requires content classification to be enabled.",
+            status_code=409,
+        )
+    if not settings.AI_TAGGING_ENABLED:
+        raise ManualSyncExecuteError(
+            "manual_sync_ai_tagging_disabled",
+            "Production manual E2E execute requires AI tagging to be enabled.",
+            status_code=409,
+        )
+    if not settings.TAG_TRANSLATION_LLM_ENABLED:
+        raise ManualSyncExecuteError(
+            "manual_sync_localization_llm_disabled",
+            "Production manual E2E execute requires tag localization LLM to be enabled or an accepted stable policy.",
+            status_code=409,
+        )
+    if not _translation_llm_provider_configured():
+        raise ManualSyncExecuteError(
+            "manual_sync_localization_llm_provider_unconfigured",
+            "Production manual E2E execute requires a configured tag localization LLM provider.",
+            status_code=409,
+        )
+
+
 def _assert_no_active_ai_or_classification_jobs(db: Optional[Session] = None) -> None:
     from .ai_tagging_job_service import is_ai_job_active
     from .classification_job_service import is_classification_job_active
@@ -415,6 +459,7 @@ def _verify_execute_gates(
                 "Manual sync execute requires the exact confirmation phrase from the dry-run plan.",
                 status_code=409,
             )
+    _assert_manual_e2e_components_ready_for_production()
 
 
 def _verify_execute_recheck(
@@ -443,6 +488,7 @@ def _verify_execute_recheck(
             "Automatic or unattended sync flags became enabled before execute.",
             status_code=409,
         )
+    _assert_manual_e2e_components_ready_for_production()
     _assert_translation_side_effects_disabled()
     _assert_no_active_ai_or_classification_jobs(db)
     current_hash = str((plan.get("integrity") or {}).get("plan_hash") or "")
@@ -993,8 +1039,14 @@ def _materialize_deferred_unprocessed_items(
             metadata={"suffix": Path(relative_path).suffix.lower()},
             content_hash=None,
         )
+        planned_state = str(plan_item.get("state") or "")
+        media_id = int(plan_item.get("media_id") or item.media_id or 0)
         item.sync_state = "deferred_unprocessed"
-        item.import_status = "deferred"
+        if planned_state == "downstream_followup_planned" and media_id > 0:
+            item.media_id = media_id
+            item.import_status = "imported"
+        else:
+            item.import_status = "deferred"
         item.classification_status = "deferred"
         item.ai_tagging_status = "deferred"
         item.localization_status = "deferred"
@@ -1008,6 +1060,7 @@ def _materialize_deferred_unprocessed_items(
             action="defer",
             reason=reason,
             eligible=False,
+            media_id=media_id if media_id > 0 else None,
             current_metadata=metadata,
         )
         created += 1
@@ -1455,6 +1508,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
 
     counts: Counter[str] = Counter()
     imported_media_ids: List[int] = []
+    downstream_media_ids: List[int] = []
     ai_provenance: Optional[Dict[str, Any]] = None
 
     try:
@@ -1520,6 +1574,14 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         stop_reason: Optional[str] = None
         processed_plan_items = 0
         run.total_seen = len(private_items)
+
+        def _append_downstream_media_id(media_id: Optional[int]) -> None:
+            if media_id is None:
+                return
+            value = int(media_id)
+            if value not in downstream_media_ids:
+                downstream_media_ids.append(value)
+
         for plan_item in private_items:
             if _is_cancel_requested(run_id):
                 run.status = "cancelled"
@@ -1551,7 +1613,12 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     expected_hash = str(plan_item.get("content_hash") or "")
                     if (
                         item_failure_reason is None
-                        and state in {"import_planned", "skipped_existing_media", "skipped_duplicate"}
+                        and state in {
+                            "import_planned",
+                            "skipped_existing_media",
+                            "skipped_duplicate",
+                            "downstream_followup_planned",
+                        }
                         and not expected_hash
                     ):
                         item_failure_reason = "plan_integrity_missing_content_hash"
@@ -1615,6 +1682,61 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     break
                 continue
 
+            if state == "downstream_followup_planned":
+                media_id = int(plan_item.get("media_id") or item.media_id or 0)
+                if media_id <= 0:
+                    _mark_item_failed(
+                        db,
+                        run=run,
+                        item=item,
+                        reason="existing_media_hash",
+                        metadata={**metadata, "safe_label": plan_item.get("safe_label"), "followup": "missing_media_id"},
+                    )
+                    counts["failed"] += 1
+                    counts["existing_media_hash"] += 1
+                    item_failure_count += 1
+                    consecutive_failures += 1
+                    processed_items += 1
+                    processed_plan_items += 1
+                    run.failed_items = int(counts["failed"])
+                    db.commit()
+                    continue
+                item.media_id = media_id
+                item.sync_state = "downstream_followup_planned"
+                item.import_status = "imported"
+                item.failure_reason = None
+                item.deferred_reason = "downstream_followup"
+                _record_run_item(
+                    db,
+                    run=run,
+                    item=item,
+                    state="downstream_followup_planned",
+                    action="downstream_followup",
+                    reason="downstream_followup",
+                    eligible=False,
+                    media_id=media_id,
+                    current_metadata={
+                        **metadata,
+                        "safe_label": plan_item.get("safe_label"),
+                        "downstream_followup": plan_item.get("downstream_followup") or {},
+                    },
+                )
+                counts["downstream_followup_planned"] += 1
+                _append_downstream_media_id(media_id)
+                processed_items += 1
+                processed_plan_items += 1
+                consecutive_failures = 0
+                db.commit()
+                stop_reason = _budget_stop_reason(
+                    started_at=run.started_at or _utcnow(),
+                    processed_items=processed_items,
+                    failed_items=item_failure_count,
+                    consecutive_failures=consecutive_failures,
+                )
+                if stop_reason:
+                    break
+                continue
+
             if state != "import_planned":
                 _mark_item_skipped(db, run=run, item=item, state=state, reason=reason, metadata=metadata)
                 counts[state] += 1
@@ -1637,6 +1759,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 db.commit()
                 media_id, bytes_copied = _copy_and_import_media(db, source_file)
                 imported_media_ids.append(media_id)
+                _append_downstream_media_id(media_id)
                 item = _get_or_create_source_item(
                     db,
                     root=root,
@@ -1797,7 +1920,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         def _run_classification_stage() -> None:
             nonlocal consecutive_failures, item_failure_count, processed_items, stop_reason
             stage_processed = 0
-            for media_id in imported_media_ids:
+            for media_id in downstream_media_ids:
                 if stop_reason or run.status == "cancelled":
                     break
                 if _is_cancel_requested(run_id):
@@ -1805,6 +1928,24 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     stop_reason = "cancelled"
                     break
                 item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
+                if item and str(item.classification_status or "") in {"classified", "classified_reused"}:
+                    counts["classified_reused"] += 1
+                    consecutive_failures = 0
+                    _annotate_run_item_stage(
+                        db,
+                        run=run,
+                        item=item,
+                        stage="classification",
+                        status="classified_reused",
+                        extra={"method": classification_method},
+                    )
+                    db.commit()
+                    stage_processed += 1
+                    processed_items += 1
+                    stop_reason = _check_stop_budget()
+                    if stop_reason:
+                        break
+                    continue
                 if classification_method != "clip":
                     blocked_reason = _heuristic_classification_ai_tag_block_reason(db, item, media_id)
                     if blocked_reason:
@@ -1902,13 +2043,35 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         def _run_ai_tagging_stage() -> None:
             nonlocal ai_provenance, consecutive_failures, item_failure_count, processed_items, stop_reason
             stage_processed = 0
-            for media_id in imported_media_ids:
+            for media_id in downstream_media_ids:
                 if stop_reason or run.status == "cancelled":
                     break
                 if _is_cancel_requested(run_id):
                     run.status = "cancelled"
                     stop_reason = "cancelled"
                     break
+                item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
+                if (
+                    item
+                    and str(item.ai_tagging_status or "") in {"ai_tagged", "tagged", "tagged_reused"}
+                    and _has_ai_wd_tags(db, media_id)
+                ):
+                    counts["ai_tagged_reused"] += 1
+                    consecutive_failures = 0
+                    _annotate_run_item_stage(
+                        db,
+                        run=run,
+                        item=item,
+                        stage="ai_tagging",
+                        status="tagged_reused",
+                    )
+                    db.commit()
+                    stage_processed += 1
+                    processed_items += 1
+                    stop_reason = _check_stop_budget()
+                    if stop_reason:
+                        break
+                    continue
                 try:
                     result = _ai_tag_imported_media(db, media_id)
                 except Exception as exc:
@@ -1921,7 +2084,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     }
                 if ai_provenance is None and result.get("provenance"):
                     ai_provenance = result.get("provenance")
-                item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
+                item = item or db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media_id).first()
                 if item:
                     if result.get("error"):
                         reason = _ai_tagging_failure_reason(result.get("error"))
@@ -2008,16 +2171,20 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             )
             run.summary_json = _set_stage(run.summary_json or {}, "ai_tagging", status=stage_status, processed=0, failed=0)
             db.commit()
+        if not stop_reason and run.status not in {"cancelled", "failed"} and _is_cancel_requested(run_id):
+            run.status = "cancelled"
+            stop_reason = "cancelled"
+            db.commit()
         if stop_reason or run.status in {"cancelled", "failed"}:
             localization_result = _manual_sync_skipped_localization_result(
                 reason=stop_reason or str(run.status or "stopped"),
-                media_ids=imported_media_ids,
+                media_ids=downstream_media_ids,
             )
         else:
             localization_result = _manual_sync_finalize_localization(
                 db,
                 run=run,
-                media_ids=imported_media_ids,
+                media_ids=downstream_media_ids,
             )
         run.summary_json = _set_stage(
             run.summary_json or {},
@@ -2053,6 +2220,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             localization_failed_items=int(counts["localization_failed"]),
             item_failure_count=int(item_failure_count),
             imported_media_ids=imported_media_ids,
+            downstream_media_ids=downstream_media_ids,
             ai_provider_provenance=ai_provenance,
             stopped_by=stop_reason,
             stop_reason=stop_reason,

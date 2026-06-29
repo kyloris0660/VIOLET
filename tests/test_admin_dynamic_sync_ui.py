@@ -75,6 +75,10 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "10 * 60 * 1000" not in script
     assert "/api/admin/dynamic-library-sync/manual-sync/gui-session" in script
     assert "POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root." in script
+    assert "Filesystem fallback:" in script
+    assert "Fast skip identity:" in script
+    assert "Actionable:" in script
+    assert "source item ledger" in script
 
 
 def test_dynamic_sync_ui_labels_threshold_and_localization_readiness_for_operators() -> None:
@@ -101,7 +105,7 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     assert "confirmationEl.value = expected" not in script
     assert "body.confirmation_phrase = confirmation;" in script
     assert "production_acceptance_approved = !!this.dynamicSyncProductionMode && confirmation === expected" in script
-    assert "complete && importable && matches" in script
+    assert "complete && actionable && matches" in script
     assert "No operator confirmation is needed because Execute is blocked for this plan." in script
     assert "Operator confirmation required for this write:" in script
     assert "requiresConfirmation = canExecute" in script

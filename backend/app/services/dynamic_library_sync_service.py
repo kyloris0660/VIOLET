@@ -51,6 +51,7 @@ MANUAL_SYNC_FILE_STATES: tuple[str, ...] = (
     "skipped_path_policy_error",
     "skipped_duplicate",
     "skipped_existing_media",
+    "downstream_followup_planned",
     "import_planned",
     "imported_in_test",
     "classified_in_test",
@@ -85,6 +86,7 @@ MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
         "content_changed_after_plan",
         "corrupted_image",
         "duplicate_hash",
+        "downstream_followup",
         "existing_media_hash",
         "file_still_changing",
         "hidden",
@@ -274,6 +276,8 @@ def _manual_state_for_reason(reason: str) -> str:
         return "skipped_existing_media"
     if reason == "duplicate_hash":
         return "skipped_duplicate"
+    if reason == "downstream_followup":
+        return "downstream_followup_planned"
     if reason == "zero_byte_file":
         return "skipped_zero_byte"
     if reason in {"unsupported_extension", "hidden", "too_large"}:
@@ -414,6 +418,8 @@ def _build_manual_pipeline_stages(
     estimated_runtime_seconds: float,
 ) -> List[Dict[str, Any]]:
     import_count = int(state_counts.get("import_planned", 0))
+    downstream_followup_count = int(state_counts.get("downstream_followup_planned", 0))
+    downstream_count = import_count + downstream_followup_count
     duration_limited = estimated_runtime_seconds > max_duration_seconds
     stage_rows = [
         {
@@ -421,7 +427,7 @@ def _build_manual_pipeline_stages(
             "state": "completed",
             "writes_enabled": False,
             "input_count": int(sum(state_counts.values())),
-            "output_count": import_count,
+            "output_count": downstream_count,
         },
         {
             "name": "import",
@@ -433,13 +439,15 @@ def _build_manual_pipeline_stages(
             "name": "classification",
             "state": "planned",
             "writes_enabled": False,
-            "estimated_count": import_count,
+            "estimated_count": downstream_count,
+            "followup_count": downstream_followup_count,
         },
         {
             "name": "ai_tagging",
             "state": "planned",
             "writes_enabled": False,
-            "estimated_count": import_count,
+            "estimated_count": downstream_count,
+            "followup_count": downstream_followup_count,
             "profile_id": ai_profile.get("profile_id"),
             "batch_size": ai_profile.get("batch_size"),
             "concurrency": ai_profile.get("concurrency"),
@@ -448,7 +456,8 @@ def _build_manual_pipeline_stages(
             "name": "localization",
             "state": "handoff_planned",
             "writes_enabled": False,
-            "estimated_count": import_count,
+            "estimated_count": downstream_count,
+            "followup_count": downstream_followup_count,
             "llm_calls_enabled": False,
         },
         {
@@ -590,9 +599,13 @@ def plan_manual_sync_dry_run(
     skipped_existing_before_cap = 0
     skipped_duplicate_before_cap = 0
     import_candidate_count = 0
+    actionable_candidate_count = 0
     priority_workset_files = 0
     priority_workset_mode = "filesystem_walk"
+    priority_workset_processed = 0
     priority_workset_exhausted = False
+    filesystem_walk_after_priority_workset = False
+    filesystem_walk_completed = False
     plan_timeout = False
     plan_no_progress_timeout = False
     plan_cancelled = False
@@ -678,12 +691,28 @@ def plan_manual_sync_dry_run(
     )
     priority_workset_files = len(priority_source_files)
     if priority_source_files:
-        priority_workset_mode = "source_delta_priority_workset"
-        source_file_iterable: Iterable[Path] = priority_source_files
-    else:
-        source_file_iterable = _iter_source_files(resolved, walk_errors=walk_errors)
+        priority_workset_mode = "source_delta_priority_workset_then_filesystem_walk"
 
-    for index, file_path in enumerate(source_file_iterable, start=1):
+    processed_path_identities: set[str] = set()
+
+    def _source_file_batches() -> Iterable[tuple[Path, str]]:
+        nonlocal filesystem_walk_after_priority_workset, filesystem_walk_completed
+        for priority_path in priority_source_files:
+            path_identity = _normalized_path_identity(priority_path)
+            processed_path_identities.add(path_identity)
+            yield priority_path, "source_delta_priority_workset"
+        if priority_source_files:
+            filesystem_walk_after_priority_workset = True
+            _progress("scanning_filesystem_after_priority_workset")
+        for walked_path in _iter_source_files(resolved, walk_errors=walk_errors):
+            path_identity = _normalized_path_identity(walked_path)
+            if path_identity in processed_path_identities:
+                continue
+            processed_path_identities.add(path_identity)
+            yield walked_path, "filesystem_walk"
+        filesystem_walk_completed = True
+
+    for index, (file_path, scan_source) in enumerate(_source_file_batches(), start=1):
         if _cancel_requested():
             partial_scan = True
             plan_cancelled = True
@@ -695,9 +724,11 @@ def plan_manual_sync_dry_run(
             reason_counts["plan_no_progress_timeout"] += 1
             break
         scanned_files = index
+        if scan_source == "source_delta_priority_workset":
+            priority_workset_processed += 1
 
         safe_label = f"file-{index:05d}"
-        _progress("scanning", current_item_index=index, current_item_label=safe_label)
+        _progress("scanning", current_item_index=index, current_item_label=safe_label, scan_source=scan_source)
         rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
         rel_hash_full = _hash_text(rel)
         rel_hash = rel_hash_full[:16]
@@ -724,7 +755,7 @@ def plan_manual_sync_dry_run(
                 _progress("checking_existing_ledger", current_item_index=index, current_item_label=safe_label)
             continue
 
-        if import_candidate_count >= effective_max_files:
+        if actionable_candidate_count >= effective_max_files:
             partial_scan = True
             break
 
@@ -762,6 +793,33 @@ def plan_manual_sync_dry_run(
             reason = "cloud_hydration_failed"
         if reason is None and content_hash:
             existing_media_id = _lookup_existing_media_id_by_hash(db, content_hash, existing_media_lookup_cache)
+            if (
+                known_item is not None
+                and known_item.media_id is not None
+                and _manual_plan_existing_requires_followup(known_item)
+                and (
+                    existing_media_id == int(known_item.media_id)
+                    or (str(known_item.content_hash or "") and str(known_item.content_hash) == str(content_hash))
+                )
+            ):
+                actionable_candidate_count += 1
+                candidate_records.append(
+                    {
+                        "safe_label": safe_label,
+                        "relative_path": rel,
+                        "relative_path_hash": rel_hash,
+                        "relative_path_hash_full": rel_hash_full,
+                        "metadata": metadata,
+                        "reason": "downstream_followup",
+                        "content_hash": content_hash,
+                        "media_id": int(known_item.media_id),
+                        "cloud_placeholder_before_hydration": cloud_placeholder_before_hydration,
+                        "followup": _manual_plan_followup_payload(known_item),
+                        "scan_source": scan_source,
+                    }
+                )
+                _progress("planning_downstream_followup", current_item_index=index, current_item_label=safe_label)
+                continue
             if existing_media_id is not None:
                 skipped_existing_before_cap += 1
                 candidate_records.append(
@@ -776,6 +834,7 @@ def plan_manual_sync_dry_run(
                         "media_id": existing_media_id,
                         "cloud_placeholder_before_hydration": cloud_placeholder_before_hydration,
                         "pre_cap_skip": True,
+                        "scan_source": scan_source,
                     }
                 )
                 if skipped_existing_before_cap == 1 or skipped_existing_before_cap % 250 == 0:
@@ -795,6 +854,7 @@ def plan_manual_sync_dry_run(
                         "media_id": None,
                         "cloud_placeholder_before_hydration": cloud_placeholder_before_hydration,
                         "pre_cap_skip": True,
+                        "scan_source": scan_source,
                     }
                 )
                 if skipped_duplicate_before_cap == 1 or skipped_duplicate_before_cap % 250 == 0:
@@ -803,6 +863,7 @@ def plan_manual_sync_dry_run(
             candidate_seen_hashes.add(content_hash)
             candidate_hashes.add(content_hash)
             import_candidate_count += 1
+            actionable_candidate_count += 1
         candidate_records.append(
             {
                 "safe_label": safe_label,
@@ -813,11 +874,14 @@ def plan_manual_sync_dry_run(
                 "reason": reason,
                 "content_hash": content_hash,
                 "cloud_placeholder_before_hydration": cloud_placeholder_before_hydration,
+                "scan_source": scan_source,
             }
         )
 
-    if priority_source_files and not partial_scan:
+    if priority_source_files and priority_workset_processed >= priority_workset_files:
         priority_workset_exhausted = True
+    if not filesystem_walk_completed and not (plan_cancelled or plan_no_progress_timeout):
+        partial_scan = True
 
     _progress(
         "cancelled"
@@ -866,7 +930,10 @@ def plan_manual_sync_dry_run(
             "file_size": metadata.get("file_size"),
             "content_hash_computed": bool(content_hash),
             "cloud_placeholder_before_hydration": bool(record.get("cloud_placeholder_before_hydration")),
+            "scan_source": str(record.get("scan_source") or ""),
         }
+        if state == "downstream_followup_planned":
+            item["downstream_followup"] = dict(record.get("followup") or {})
         public_items.append(item)
         integrity_items.append(
             {
@@ -878,6 +945,8 @@ def plan_manual_sync_dry_run(
                 "reason": public_reason,
                 "content_hash": content_hash,
                 "cloud_placeholder_before_hydration": bool(record.get("cloud_placeholder_before_hydration")),
+                "scan_source": str(record.get("scan_source") or ""),
+                "downstream_followup": dict(record.get("followup") or {}),
             }
         )
         if include_private_details:
@@ -896,6 +965,8 @@ def plan_manual_sync_dry_run(
         reason_counts["source_walk_error"] += len(walk_errors)
 
     import_count = int(state_counts.get("import_planned", 0))
+    downstream_followup_count = int(state_counts.get("downstream_followup_planned", 0))
+    downstream_stage_count = import_count + downstream_followup_count
     estimated_runtime_seconds = _estimate_manual_sync_runtime_seconds(
         import_count=import_count,
         ai_profile=profile,
@@ -925,16 +996,26 @@ def plan_manual_sync_dry_run(
         "skipped_existing_before_cap": skipped_existing_before_cap,
         "skipped_duplicate_before_cap": skipped_duplicate_before_cap,
         "import_candidate_count": import_candidate_count,
-        "max_files_scope": "manual_sync_delta_candidates",
-        "cap_semantics": "unique_importable_candidates_not_unchanged_or_existing_media",
+        "actionable_candidate_count": actionable_candidate_count,
+        "downstream_followup_count": downstream_followup_count,
+        "max_files_scope": "manual_sync_actionable_delta_candidates",
+        "cap_semantics": "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media",
         "batch_mode": "bounded_actionable_batch",
         "batch_candidate_cap": effective_max_files,
         "source_delta_workset": {
             "scan_order": priority_workset_mode,
             "priority_workset_files": priority_workset_files,
+            "priority_workset_processed": priority_workset_processed,
             "priority_workset_exhausted": priority_workset_exhausted,
-            "filesystem_walk_deferred_after_priority_workset": bool(priority_source_files),
+            "filesystem_walk_after_priority_workset": filesystem_walk_after_priority_workset,
+            "filesystem_walk_completed": filesystem_walk_completed,
+            "filesystem_walk_deferred_after_priority_workset": bool(priority_source_files)
+            and not filesystem_walk_after_priority_workset,
             "starts_from_filesystem_root_when_no_priority_workset": not bool(priority_source_files),
+            "durable_global_filesystem_cursor": False,
+            "incremental_source_ledger_used": bool(source_record_id is not None),
+            "fast_skip_identity": ["source_root_id", "relative_path_hash", "file_size", "mtime_ns"],
+            "hash_revalidation_identity": ["content_hash"],
         },
         "batch_policy": {
             "user_starts_one_manual_session": True,
@@ -996,9 +1077,10 @@ def plan_manual_sync_dry_run(
             "scanned_files": scanned_files,
             "plan_items": len(public_items),
             "estimated_import_count": import_count,
-            "estimated_classification_count": import_count,
-            "estimated_ai_tagging_count": import_count,
-            "estimated_localization_workload": import_count,
+            "estimated_downstream_followup_count": downstream_followup_count,
+            "estimated_classification_count": downstream_stage_count,
+            "estimated_ai_tagging_count": downstream_stage_count,
+            "estimated_localization_workload": downstream_stage_count,
             "state_counts": state_counts_public,
             "failure_reasons": reason_counts_public,
             "partial_scan": partial_scan,
@@ -1183,6 +1265,29 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
     if reason in stable_non_actionable:
         return False
     return import_status in {"deferred", "failed"} or sync_state in {"failed", "deferred"}
+
+
+def _manual_plan_followup_payload(item: DynamicSourceItem) -> Dict[str, Any]:
+    classification_status = str(item.classification_status or "")
+    ai_tagging_status = str(item.ai_tagging_status or "")
+    localization_status = str(item.localization_status or "")
+    classification_done = classification_status in {"classified", "classified_reused"}
+    ai_done = ai_tagging_status in {"ai_tagged", "tagged", "tagged_reused"}
+    localization_done = localization_status in {
+        "localized",
+        "completed",
+        "skipped_no_localizable_tags",
+        "skipped_no_new_tags",
+        "skipped_static_coverage",
+    }
+    return {
+        "classification_required": not classification_done,
+        "ai_tagging_required": not ai_done,
+        "localization_required": not localization_done,
+        "classification_status": classification_status or "unknown",
+        "ai_tagging_status": ai_tagging_status or "unknown",
+        "localization_status": localization_status or "unknown",
+    }
 
 
 def _manual_plan_can_skip_unchanged_known_item(

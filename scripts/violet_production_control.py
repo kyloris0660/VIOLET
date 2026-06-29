@@ -489,12 +489,31 @@ def _auth_policy_bool(value: Any, *, default: bool = True) -> bool:
     return default
 
 
+def _coerce_optional_positive_int(
+    value: Any,
+    *,
+    minimum: int = 1,
+    maximum: int | None = None,
+) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed < minimum:
+        return None
+    if maximum is not None and parsed > maximum:
+        return maximum
+    return parsed
+
+
 def _coerce_manual_e2e_components(value: Any) -> dict[str, Any]:
     components = dict(MANUAL_E2E_COMPONENT_DEFAULTS)
     if isinstance(value, Mapping):
         for key in MANUAL_E2E_COMPONENT_ENV:
             if key in value:
-                components[key] = bool(value.get(key))
+                components[key] = _auth_policy_bool(value.get(key), default=bool(MANUAL_E2E_COMPONENT_DEFAULTS[key]))
         if value.get("content_classification_method") is not None:
             method = str(value.get("content_classification_method") or "").strip().lower()
             components["content_classification_method"] = method or MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
@@ -714,32 +733,38 @@ def _coerce_profile_payload(
         if key in payload and payload.get(key) is not None:
             profile[key] = str(payload.get(key))
     if "app_port" in payload:
-        profile["app_port"] = payload.get("app_port")
+        profile["app_port"] = _coerce_optional_positive_int(payload.get("app_port"), minimum=1, maximum=65535) or DEFAULT_PORT
     if "safe_startup" in payload:
-        profile["safe_startup"] = bool(payload.get("safe_startup"))
+        profile["safe_startup"] = _auth_policy_bool(payload.get("safe_startup"), default=True)
     if "require_auth" in payload:
         profile["require_auth"] = _auth_policy_bool(payload.get("require_auth"), default=True)
     if "manual_sync_enabled" in payload:
-        profile["manual_sync_enabled"] = bool(payload.get("manual_sync_enabled"))
+        profile["manual_sync_enabled"] = _auth_policy_bool(payload.get("manual_sync_enabled"), default=False)
     if "manual_sync_execute_enabled" in payload:
-        profile["manual_sync_execute_enabled"] = bool(payload.get("manual_sync_execute_enabled"))
+        profile["manual_sync_execute_enabled"] = _auth_policy_bool(payload.get("manual_sync_execute_enabled"), default=False)
     if "manual_sync_execute_max_files" in payload:
-        profile["manual_sync_execute_max_files"] = payload.get("manual_sync_execute_max_files")
+        profile["manual_sync_execute_max_files"] = _coerce_optional_positive_int(
+            payload.get("manual_sync_execute_max_files"),
+            minimum=1,
+        )
     if "manual_sync_max_duration_seconds" in payload:
-        profile["manual_sync_max_duration_seconds"] = payload.get("manual_sync_max_duration_seconds")
+        profile["manual_sync_max_duration_seconds"] = _coerce_optional_positive_int(
+            payload.get("manual_sync_max_duration_seconds"),
+            minimum=1,
+        )
     if isinstance(payload.get("db"), Mapping):
         db = dict(profile["db"])
         for key in ("host", "name", "user", "password"):
             if key in payload["db"] and payload["db"].get(key) is not None:
                 db[key] = str(payload["db"].get(key))
         if "port" in payload["db"]:
-            db["port"] = payload["db"].get("port")
+            db["port"] = _coerce_optional_positive_int(payload["db"].get("port"), minimum=1, maximum=65535) or 5432
         profile["db"] = db
     if isinstance(payload.get("automation_flags"), Mapping):
         flags = dict(profile["automation_flags"])
         for key in PROFILE_AUTOMATION_FLAGS:
             if key in payload["automation_flags"]:
-                flags[key] = bool(payload["automation_flags"].get(key))
+                flags[key] = _auth_policy_bool(payload["automation_flags"].get(key), default=False)
         profile["automation_flags"] = flags
     if "manual_e2e_components" in payload:
         profile["manual_e2e_components"] = _coerce_manual_e2e_components(payload.get("manual_e2e_components"))
@@ -813,10 +838,12 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
     if profile.get("manual_sync_max_duration_seconds") is not None:
         profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] = str(profile.get("manual_sync_max_duration_seconds"))
     if profile.get("manual_sync_enabled") is not None:
-        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] = "true" if bool(profile.get("manual_sync_enabled")) else "false"
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] = (
+            "true" if _auth_policy_bool(profile.get("manual_sync_enabled"), default=False) else "false"
+        )
     if profile.get("manual_sync_execute_enabled") is not None:
         profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] = (
-            "true" if bool(profile.get("manual_sync_execute_enabled")) else "false"
+            "true" if _auth_policy_bool(profile.get("manual_sync_execute_enabled"), default=False) else "false"
         )
     manual_components = _coerce_manual_e2e_components(profile.get("manual_e2e_components"))
     for component_key, env_key in MANUAL_E2E_COMPONENT_ENV.items():
@@ -827,8 +854,7 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
     llm_profile = _coerce_tag_translation_llm_profile(profile.get("tag_translation_llm"))
     for profile_key, env_key in TAG_TRANSLATION_LLM_PROFILE_KEYS.items():
         value = str(llm_profile.get(profile_key) or "")
-        if value:
-            profile_env[env_key] = value
+        profile_env[env_key] = value
     for flag in AUTOMATION_FLAGS:
         profile_env[flag] = "false"
     for flag in DANGEROUS_PRODUCTION_FLAGS:
@@ -1961,13 +1987,23 @@ def profile_update(
     if "require_auth" in updates and updates["require_auth"] is not None:
         profile["require_auth"] = _auth_policy_bool(updates["require_auth"], default=True)
     if "manual_sync_enabled" in updates and updates["manual_sync_enabled"] is not None:
-        profile["manual_sync_enabled"] = bool(updates["manual_sync_enabled"])
+        profile["manual_sync_enabled"] = _auth_policy_bool(updates["manual_sync_enabled"], default=False)
     if "manual_sync_execute_enabled" in updates and updates["manual_sync_execute_enabled"] is not None:
-        profile["manual_sync_execute_enabled"] = bool(updates["manual_sync_execute_enabled"])
+        profile["manual_sync_execute_enabled"] = _auth_policy_bool(updates["manual_sync_execute_enabled"], default=False)
     if "manual_sync_execute_max_files" in updates and updates["manual_sync_execute_max_files"] is not None:
-        profile["manual_sync_execute_max_files"] = updates["manual_sync_execute_max_files"]
+        profile["manual_sync_execute_max_files"] = _coerce_optional_positive_int(
+            updates["manual_sync_execute_max_files"],
+            minimum=1,
+        )
     if "manual_sync_max_duration_seconds" in updates and updates["manual_sync_max_duration_seconds"] is not None:
-        profile["manual_sync_max_duration_seconds"] = updates["manual_sync_max_duration_seconds"]
+        profile["manual_sync_max_duration_seconds"] = _coerce_optional_positive_int(
+            updates["manual_sync_max_duration_seconds"],
+            minimum=1,
+        )
+    if "manual_e2e_components" in updates:
+        profile["manual_e2e_components"] = _coerce_manual_e2e_components(updates.get("manual_e2e_components"))
+    if "tag_translation_llm" in updates:
+        profile["tag_translation_llm"] = _coerce_tag_translation_llm_profile(updates.get("tag_translation_llm"))
     db_updates = updates.get("db")
     if isinstance(db_updates, Mapping):
         db = dict(profile["db"])
@@ -1975,8 +2011,9 @@ def profile_update(
             if key in db_updates and db_updates[key] is not None:
                 db[key] = str(db_updates[key])
         if "port" in db_updates and db_updates["port"] is not None:
-            db["port"] = db_updates["port"]
+            db["port"] = _coerce_optional_positive_int(db_updates["port"], minimum=1, maximum=65535) or 5432
         profile["db"] = db
+    profile = _repair_profile_invariants(profile, repo_root=repo_root, profile_id=profile_id)
     write_production_profile(profile, repo_root=repo_root, profile_path=path)
     result = profile_status(repo_root=repo_root, profile_id=profile_id, profile_path=path, base_env=base_env)
     result.message = "Production profile updated."

@@ -576,6 +576,92 @@ def test_profile_update_persists_manual_sync_phase_controls(tmp_path, safe_backe
     assert env_payload["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
 
 
+def test_profile_update_persists_nested_manual_e2e_and_llm_sections(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    payload, error = control._profile_update_stdin_payload(
+        json.dumps(
+            {
+                "manual_sync_enabled": "true",
+                "manual_sync_execute_enabled": "true",
+                "manual_sync_execute_max_files": "1000",
+                "manual_sync_max_duration_seconds": "7200",
+                "manual_e2e_components": {
+                    "ai_tagging_enabled": "true",
+                    "content_classification_enabled": "true",
+                    "content_classification_method": "heuristic",
+                    "tag_translation_llm_enabled": "true",
+                    "ai_tagging_auto_localization": "false",
+                },
+                "tag_translation_llm": {
+                    "provider": "openai_compatible",
+                    "api_key": "profile-key",
+                    "model": "profile-model",
+                    "base_url": "http://127.0.0.1:9/v1",
+                    "fallback_enabled": "false",
+                    "fallback_api_key": "",
+                    "fallback_model": "",
+                    "fallback_base_url": "",
+                },
+            }
+        )
+    )
+    assert error is None
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates=payload,
+    )
+
+    profile, _path, _errors = control.load_production_profile(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+    assert result.ok is True
+    assert profile["manual_sync_execute_max_files"] == 1000
+    assert profile["manual_sync_max_duration_seconds"] == 7200
+    assert profile["manual_e2e_components"]["ai_tagging_auto_localization"] is False
+    assert profile["tag_translation_llm"]["api_key"] == "profile-key"
+    assert env_payload["TAG_TRANSLATION_LLM_API_KEY"] == "profile-key"
+    assert env_payload["TAG_TRANSLATION_LLM_FALLBACK_API_KEY"] == ""
+    assert env_payload["AI_TAGGING_AUTO_LOCALIZATION"] == "false"
+
+
+def test_profile_to_env_parses_string_false_without_enabling_manual_or_auto_flags(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    storage = tmp_path / "storage"
+    storage.mkdir()
+    profile = control._coerce_profile_payload(
+        {
+            "repo_root": str(repo),
+            "python": sys.executable,
+            "storage_root": str(storage),
+            "manual_sync_enabled": "false",
+            "manual_sync_execute_enabled": "false",
+            "manual_e2e_components": {
+                "ai_tagging_auto_localization": "false",
+            },
+            "automation_flags": {
+                "dynamic_library_auto_sync": "false",
+                "ai_auto_tag_after_import": "false",
+                "content_classification_auto_after_import": "false",
+                "tag_translation_auto": "false",
+                "tag_translation_background": "false",
+            },
+        },
+        repo_root=repo,
+    )
+
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] == "false"
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] == "false"
+    assert env_payload["AI_TAGGING_AUTO_LOCALIZATION"] == "false"
+    assert env_payload["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
+
+
 def test_profile_update_can_clear_existing_db_password_explicitly(tmp_path, safe_backends):
     repo, storage, _env = _write_fake_repo(tmp_path)
     _write_fake_profile(repo, storage, db_password="old-secret")

@@ -259,6 +259,58 @@ def test_s3a_m2_gui_validator_applies_manual_e2e_profile_flags(tmp_path: Path, m
     assert public["manual_e2e_components"]["auto_or_background_sync_enabled"] is False
 
 
+def test_s3a_m2_gui_validator_clears_profile_controlled_llm_env_when_absent(tmp_path: Path, monkeypatch) -> None:
+    profile_path = tmp_path / "production-profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "profile_id": "production-default",
+                "repo_root": str(tmp_path),
+                "python": sys.executable,
+                "app_port": 8012,
+                "storage_root": str(tmp_path / "storage"),
+                "require_auth": True,
+                "manual_sync_enabled": "true",
+                "manual_sync_execute_enabled": "true",
+                "manual_e2e_components": {
+                    "ai_tagging_enabled": "true",
+                    "content_classification_enabled": "true",
+                    "tag_translation_llm_enabled": "true",
+                    "ai_tagging_auto_localization": "false",
+                },
+                "db": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "blombooru",
+                    "user": "postgres",
+                    "password": "",
+                },
+                "tag_translation_llm": {
+                    "provider": "openai_compatible",
+                    "api_key": "",
+                    "model": "",
+                    "base_url": "",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "stale-shell-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "stale-shell-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://stale.example/v1")
+
+    public = gui_validator.apply_profile_env(profile_path)
+
+    assert "TAG_TRANSLATION_LLM_API_KEY" not in os.environ
+    assert "TAG_TRANSLATION_LLM_MODEL" not in os.environ
+    assert "TAG_TRANSLATION_LLM_BASE_URL" not in os.environ
+    assert public["manual_sync_enabled"] is True
+    assert public["manual_sync_execute_enabled"] is True
+    assert public["tag_translation_llm"]["api_key_present"] is False
+    assert public["tag_translation_llm"]["model_configured"] is False
+    assert public["tag_translation_llm"]["base_url_configured"] is False
+
+
 def test_s3a_m2_gui_validator_fails_if_gui_run_imports_without_ai_tagging(tmp_path: Path, monkeypatch) -> None:
     engine = create_engine(
         "sqlite://",

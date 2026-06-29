@@ -104,6 +104,19 @@ def ensure_private_output_dir(path: Path) -> Path:
     return resolved
 
 
+def bool_from_profile(value: Any, *, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "on"}:
+        return True
+    if text in {"false", "0", "no", "off"}:
+        return False
+    return default
+
+
 def manual_e2e_components(profile: Mapping[str, Any]) -> dict[str, Any]:
     raw = profile.get("manual_e2e_components") if isinstance(profile.get("manual_e2e_components"), Mapping) else {}
     components = dict(MANUAL_E2E_COMPONENT_DEFAULTS)
@@ -114,7 +127,7 @@ def manual_e2e_components(profile: Mapping[str, Any]) -> dict[str, Any]:
         "ai_tagging_auto_localization",
     ):
         if key in raw:
-            components[key] = bool(raw.get(key))
+            components[key] = bool_from_profile(raw.get(key), default=bool(MANUAL_E2E_COMPONENT_DEFAULTS[key]))
     if raw.get("content_classification_method") is not None:
         method = str(raw.get("content_classification_method") or "").strip().lower()
         components["content_classification_method"] = method or MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
@@ -153,7 +166,7 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
         "VIOLET_ENV": "production",
         "BLOMBOORU_DEBUG": "false",
         "APP_PORT": str(profile.get("app_port") or ""),
-        "BLOMBOORU_REQUIRE_AUTH": "true" if bool(profile.get("require_auth", True)) else "false",
+        "BLOMBOORU_REQUIRE_AUTH": "true" if bool_from_profile(profile.get("require_auth", True), default=True) else "false",
         "VIOLET_STORAGE_ROOT": str(profile.get("storage_root") or ""),
         "VIOLET_CANONICAL_REPO_ROOT": str(profile.get("repo_root") or ROOT),
         "VIOLET_PRODUCTION_PYTHON": str(profile.get("python") or ""),
@@ -167,9 +180,9 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
         "POSTGRES_DB": str(db.get("name") or "blombooru"),
         "POSTGRES_USER": str(db.get("user") or "postgres"),
         "POSTGRES_PASSWORD": str(db.get("password") or ""),
-        "DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED": "true" if bool(profile.get("manual_sync_enabled")) else "false",
+        "DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED": "true" if bool_from_profile(profile.get("manual_sync_enabled")) else "false",
         "DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED": (
-            "true" if bool(profile.get("manual_sync_execute_enabled")) else "false"
+            "true" if bool_from_profile(profile.get("manual_sync_execute_enabled")) else "false"
         ),
         "AI_TAGGING_ENABLED": "true" if bool(components.get("ai_tagging_enabled")) else "false",
         "CONTENT_CLASSIFICATION_ENABLED": "true" if bool(components.get("content_classification_enabled")) else "false",
@@ -185,15 +198,21 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
     }
     for profile_key, env_key in TAG_TRANSLATION_LLM_PROFILE_KEYS.items():
         value = str(llm_profile.get(profile_key) or "")
-        if value:
-            env_values[env_key] = value
+        env_values[env_key] = value
     if profile.get("manual_sync_execute_max_files") is not None:
         env_values["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] = str(profile["manual_sync_execute_max_files"])
     if profile.get("manual_sync_max_duration_seconds") is not None:
         env_values["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] = str(profile["manual_sync_max_duration_seconds"])
-    for key, value in env_values.items():
-        if value != "":
+    profile_controlled_keys = set(env_values) | set(TAG_TRANSLATION_LLM_PROFILE_KEYS.values()) | {
+        "DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES",
+        "DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS",
+    }
+    for key in sorted(profile_controlled_keys):
+        value = str(env_values.get(key) or "")
+        if value:
             os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
     return {
         "loaded": True,
         "path_redacted": True,
@@ -202,8 +221,8 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
         "violet_env": "production",
         "db_name": str(db.get("name") or ""),
         "storage_root_public_marker": public_hash(str(profile.get("storage_root") or "")),
-        "manual_sync_enabled": bool(profile.get("manual_sync_enabled")),
-        "manual_sync_execute_enabled": bool(profile.get("manual_sync_execute_enabled")),
+        "manual_sync_enabled": bool_from_profile(profile.get("manual_sync_enabled")),
+        "manual_sync_execute_enabled": bool_from_profile(profile.get("manual_sync_execute_enabled")),
         "manual_sync_execute_max_files": profile.get("manual_sync_execute_max_files"),
         "manual_e2e_components": {
             "ai_tagging_enabled": bool(components.get("ai_tagging_enabled")),

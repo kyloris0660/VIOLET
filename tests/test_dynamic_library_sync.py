@@ -983,7 +983,10 @@ def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_ca
     assert counts["plan_items"] == 3
     assert counts["scanned_files"] == 3
     assert plan["limits"]["skipped_existing_before_cap"] == 2
-    assert plan["limits"]["cap_semantics"] == "unique_importable_candidates_not_unchanged_or_existing_media"
+    assert (
+        plan["limits"]["cap_semantics"]
+        == "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media"
+    )
 
 
 def test_manual_sync_dry_run_registered_root_prioritizes_pending_new_before_changed_existing(db, tmp_path):
@@ -1050,16 +1053,18 @@ def test_manual_sync_dry_run_registered_root_prioritizes_pending_new_before_chan
         db,
         source_path=source_root,
         source_record_id=root.id,
-        max_files=1,
+        max_files=2,
         stable_age_seconds=0,
     )
 
     assert plan["counts"]["state_counts"]["import_planned"] == 1
     assert plan["counts"]["state_counts"]["skipped_existing_media"] == 0
     assert plan["counts"]["partial_scan"] is False
-    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_delta_priority_workset"
+    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_delta_priority_workset_then_filesystem_walk"
     assert plan["limits"]["source_delta_workset"]["priority_workset_files"] == 1
-    assert plan["limits"]["source_delta_workset"]["filesystem_walk_deferred_after_priority_workset"] is True
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is True
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_completed"] is True
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_deferred_after_priority_workset"] is False
     assert "a_changed_existing.png" not in str(plan)
     assert "z_pending_new.png" not in str(plan)
 
@@ -1122,7 +1127,7 @@ def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root
     assert plan["counts"]["partial_scan"] is False
     assert plan["limits"]["scanned_files"] == 2
     assert plan["limits"]["unchanged_known_files"] == 1
-    assert plan["limits"]["max_files_scope"] == "manual_sync_delta_candidates"
+    assert plan["limits"]["max_files_scope"] == "manual_sync_actionable_delta_candidates"
     assert "a_known.png" not in str(plan)
     assert "b_fresh.png" not in str(plan)
 
@@ -1175,15 +1180,18 @@ def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(
         db,
         source_path=source_root,
         source_record_id=root.id,
-        max_files=1,
+        max_files=2,
         stable_age_seconds=0,
     )
 
-    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
-    assert plan["counts"]["state_counts"]["import_planned"] == 0
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
     assert plan["limits"]["unchanged_known_files"] == 0
     assert plan["counts"]["partial_scan"] is False
-    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_delta_priority_workset"
+    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_delta_priority_workset_then_filesystem_walk"
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is True
+    assert plan["counts"]["estimated_downstream_followup_count"] == 1
+    assert plan["counts"]["estimated_ai_tagging_count"] == 2
     assert "a_followup.png" not in str(plan)
 
 

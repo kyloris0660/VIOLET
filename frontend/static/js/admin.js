@@ -2277,17 +2277,19 @@ class AdminPanel {
         const planItems = counts.plan_items || counts.total_seen || 0;
         const skippedExistingBeforeCap = limits.skipped_existing_before_cap || 0;
         const skippedDuplicateBeforeCap = limits.skipped_duplicate_before_cap || 0;
+        const downstreamFollowup = counts.estimated_downstream_followup_count || limits.downstream_followup_count || 0;
+        const actionableCount = (counts.estimated_import_count || 0) + downstreamFollowup;
         const complete = !counts.partial_scan;
-        const importable = (counts.estimated_import_count || 0) > 0;
-        const canExecute = complete && importable && this.dynamicSyncExecuteEnabled;
+        const actionable = actionableCount > 0;
+        const canExecute = complete && actionable && this.dynamicSyncExecuteEnabled;
         const requiresConfirmation = canExecute;
-        let planMessage = 'Execute is blocked until the plan is complete, has importable hydrated items, and manual E2E readiness is satisfied.';
+        let planMessage = 'Execute is blocked until the plan is complete, has importable or downstream follow-up items, and manual E2E readiness is satisfied.';
         if (canExecute) {
             planMessage = 'Plan is ready. Review exactly what will be written, enter the operator confirmation, then click Confirm and execute once.';
-        } else if (!importable && counts.partial_scan) {
+        } else if (!actionable && counts.partial_scan) {
             planMessage = 'No importable items were found in this partial batch. Stable existing media did not count against the import cap; re-run Start manual sync after checking the current delta diagnostics.';
-        } else if (!importable) {
-            planMessage = 'No importable hydrated items are in this plan. Execute is intentionally disabled and no confirmation is required.';
+        } else if (!actionable) {
+            planMessage = 'No importable hydrated or downstream follow-up items are in this plan. Execute is intentionally disabled and no confirmation is required.';
         } else if (counts.partial_scan) {
             planMessage = 'This plan is partial. Continue planning before executing so the batch boundary is explicit and safe.';
         }
@@ -2299,8 +2301,10 @@ class AdminPanel {
                 <div><span class="text-secondary">Plan items</span><br><span class="font-bold">${planItems}</span></div>
                 <div><span class="text-secondary">Import</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
             </div>
-            <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Cap means:</span> ${this.escapeHtml(limits.cap_semantics || 'unique importable candidates')} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
-            <div class="mb-2"><span class="text-secondary">Workset:</span> ${this.escapeHtml(workset.scan_order || '-')} | <span class="text-secondary">Priority items:</span> ${workset.priority_workset_files || 0} | <span class="text-secondary">Existing skipped before cap:</span> ${skippedExistingBeforeCap} | <span class="text-secondary">Duplicates skipped before cap:</span> ${skippedDuplicateBeforeCap}</div>
+            <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Actionable cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Cap means:</span> ${this.escapeHtml(limits.cap_semantics || 'unique importable/downstream candidates')} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
+            <div class="mb-2"><span class="text-secondary">Workset:</span> ${this.escapeHtml(workset.scan_order || '-')} | <span class="text-secondary">Priority items:</span> ${workset.priority_workset_processed || 0}/${workset.priority_workset_files || 0} | <span class="text-secondary">Filesystem fallback:</span> ${workset.filesystem_walk_after_priority_workset ? 'ran' : (workset.starts_from_filesystem_root_when_no_priority_workset ? 'root walk' : 'not reached')} | <span class="text-secondary">Filesystem complete:</span> ${workset.filesystem_walk_completed ? 'yes' : 'no'}</div>
+            <div class="mb-2"><span class="text-secondary">Incremental ledger:</span> ${workset.incremental_source_ledger_used ? 'source item ledger' : 'ad-hoc root scan'} | <span class="text-secondary">Fast skip identity:</span> ${this.escapeHtml((workset.fast_skip_identity || []).join('+') || '-')} | <span class="text-secondary">Actionable:</span> ${actionableCount} (${counts.estimated_import_count || 0} import, ${downstreamFollowup} follow-up)</div>
+            <div class="mb-2"><span class="text-secondary">Existing skipped before cap:</span> ${skippedExistingBeforeCap} | <span class="text-secondary">Duplicates skipped before cap:</span> ${skippedDuplicateBeforeCap} | <span class="text-secondary">Unchanged ledger skips:</span> ${limits.unchanged_known_files || 0}</div>
             <div class="mb-2 text-secondary"><span class="text-secondary">Expires:</span> <span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             <div class="mb-2 ${canExecute ? 'text-green-400' : 'text-warning'}">${this.escapeHtml(planMessage)}</div>
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
@@ -2332,12 +2336,12 @@ class AdminPanel {
         const matches = confirmationEl && confirmationEl.value.trim() === expected;
         const counts = (this.dynamicSyncPlan || {}).counts || {};
         const complete = this.dynamicSyncPlan && !counts.partial_scan;
-        const importable = (counts.estimated_import_count || 0) > 0;
+        const actionable = ((counts.estimated_import_count || 0) + (counts.estimated_downstream_followup_count || 0)) > 0;
         const active = this._manualSyncActiveJobRunning();
-        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable && matches) || active || this.dynamicSyncActionInFlight;
+        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches) || active || this.dynamicSyncActionInFlight;
         const confirmBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
         if (confirmBtn) {
-            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && importable && matches) || active || this.dynamicSyncActionInFlight;
+            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches) || active || this.dynamicSyncActionInFlight;
         }
         const copyBtn = document.getElementById('dynamic-sync-copy-confirmation-btn');
         if (copyBtn) {
