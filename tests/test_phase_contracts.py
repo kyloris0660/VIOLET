@@ -1724,8 +1724,42 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             "gui_validation_session_id_present": True,
             "gui_validation_session_id_hash": "session-hash",
             "gui_validation_session_signature_valid": True,
+            "gui_plan_hash_bound": True,
+            "gui_plan_flow_verified": True,
+            "gui_plan_request_id_present": True,
+            "runtime_head_matches_current": True,
             "validated_head_sha": "head-abc123",
             "public_source_identity": "source-abc123",
+        },
+        "scanner_incremental_model": {
+            "model": "hybrid_source_ledger_metadata_fast_path_with_filesystem_fallback",
+            "durable_state_tables": [
+                "blombooru_dynamic_source_items",
+                "blombooru_dynamic_sync_runs",
+                "blombooru_dynamic_sync_run_items",
+            ],
+            "durable_global_filesystem_cursor": False,
+            "starts_from_root_each_run": "metadata_fallback_only_after_source_ledger_priority_workset",
+            "stable_known_files_fast_skipped_without_hash": True,
+            "hash_only_when": [
+                "new_source_path",
+                "metadata_changed",
+                "downstream_followup",
+                "ambiguous_existing_media",
+                "execute_integrity_revalidation",
+            ],
+            "cap_semantics": "actionable candidates only; unchanged existing media excluded",
+            "next_batch_continuation": "after execute committed DynamicSourceItem states are reused by the next plan",
+            "invalidation_policy": [
+                "source_root_id",
+                "relative_path_hash",
+                "file_size",
+                "mtime_ns",
+                "content_hash_mismatch",
+                "hydration_policy",
+                "profile_or_pipeline_settings",
+            ],
+            "public_safe": True,
         },
         "standard_pipeline_flow": {
             "version": 1,
@@ -4092,6 +4126,26 @@ def test_s3a_m2_contract_rejects_gui_execute_completion_without_signed_session()
     assert "s3a_m2_gui_execute_claim_without_gui_provenance" in _error_codes(result)
 
 
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_bound_plan_flow() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_plan_hash_bound"] = False
+    summary["launcher_web_admin_acceptance"]["gui_plan_flow_verified"] = False
+    summary["launcher_web_admin_acceptance"]["gui_plan_request_id_present"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_bound_plan_flow" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_current_head_runtime() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["runtime_head_matches_current"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_current_head_runtime" in _error_codes(result)
+
+
 def test_s3a_m2_contract_rejects_missing_deferred_failed_inventory_postmortem() -> None:
     summary = copy.deepcopy(_s3a_m2_summary())
     summary.pop("deferred_failed_inventory")
@@ -4108,6 +4162,27 @@ def test_s3a_m2_contract_rejects_missing_manual_sync_safety_judgement() -> None:
     result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
 
     assert "s3a_m2_manual_sync_safety_judgement_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_scanner_incremental_model() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary.pop("scanner_incremental_model")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_scanner_without_metadata_fast_skip() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["scanner_incremental_model"]["stable_known_files_fast_skipped_without_hash"] = False
+    summary["scanner_incremental_model"]["cap_semantics"] = "raw files visited"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_scanner_does_not_fast_skip_stable_known_files" in codes
+    assert "s3a_m2_scanner_cap_semantics_not_actionable" in codes
 
 
 def test_s3a_m2_contract_rejects_safe_judgement_without_gui_execute() -> None:

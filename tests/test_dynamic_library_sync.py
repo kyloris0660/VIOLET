@@ -518,6 +518,8 @@ def test_manual_sync_execute_route_records_web_admin_gui_provenance(client, db, 
     assert plan["gui_provenance"]["request_source"] == "web_admin_gui"
     assert plan["gui_provenance"]["gui_validation_session_id"] == session_id
     assert plan["gui_provenance"]["gui_validation_session_signature_valid"] is True
+    assert plan["gui_provenance"]["gui_plan_flow_bound"] is True
+    assert plan["gui_provenance"]["plan_request_id"]
 
     execute_response = client.post(
         "/api/admin/dynamic-library-sync/manual-sync/execute",
@@ -530,6 +532,7 @@ def test_manual_sync_execute_route_records_web_admin_gui_provenance(client, db, 
             "confirmation_phrase": plan["integrity"]["confirmation_phrase"],
             "plan_created_at": plan["job"]["created_at"],
             "production_acceptance_approved": False,
+            "plan_request_id": plan["plan_request_id"],
             "gui_validation_session_id": session_id,
             "gui_validation_session_token": session_token,
             "client_route": "/admin?tab=content#dynamic-library-sync-section",
@@ -541,7 +544,79 @@ def test_manual_sync_execute_route_records_web_admin_gui_provenance(client, db, 
     assert request["request_source"] == "web_admin_gui"
     assert request["gui_validation_session_id"] == session_id
     assert request["gui_validation_session_signature_valid"] is True
+    assert request["gui_plan_hash_bound"] is True
+    assert request["gui_plan_flow_verified"] is True
+    assert request["gui_plan_request_id"] == plan["plan_request_id"]
+    assert request["runtime_git_head"]
     assert request["client_route"] == "/admin?tab=content#dynamic-library-sync-section"
+
+    replay_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/execute",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "expected_plan_hash": plan["integrity"]["plan_hash"],
+            "confirmation_phrase": plan["integrity"]["confirmation_phrase"],
+            "plan_created_at": plan["job"]["created_at"],
+            "production_acceptance_approved": False,
+            "plan_request_id": plan["plan_request_id"],
+            "gui_validation_session_id": session_id,
+            "gui_validation_session_token": session_token,
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+
+    assert replay_response.status_code == 409
+    assert replay_response.json()["detail"]["code"] == "gui_plan_flow_already_used"
+
+
+def test_manual_sync_execute_route_rejects_gui_session_without_bound_plan_flow(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "fresh.png", (10, 20, 30))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    plain_plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    session_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/gui-session",
+        headers={"X-Violet-Gui-Client": "web-admin-manual-sync-v1"},
+        json={"client_route": "/admin?tab=content#dynamic-library-sync-section"},
+    )
+    assert session_response.status_code == 200, session_response.text
+    session = session_response.json()
+
+    execute_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/execute",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "expected_plan_hash": plain_plan["integrity"]["plan_hash"],
+            "confirmation_phrase": plain_plan["integrity"]["confirmation_phrase"],
+            "plan_created_at": plain_plan["job"]["created_at"],
+            "production_acceptance_approved": False,
+            "plan_request_id": "gui-plan-scripted-without-plan",
+            "gui_validation_session_id": session["gui_validation_session_id"],
+            "gui_validation_session_token": session["gui_validation_session_token"],
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+
+    assert execute_response.status_code == 409
+    assert execute_response.json()["detail"]["code"] == "gui_plan_flow_not_bound"
 
 
 def test_manual_sync_gui_provenance_rejects_unsigned_session_marker(client, db, tmp_path, monkeypatch):
@@ -668,6 +743,7 @@ def test_manual_sync_execute_route_requires_operator_entered_production_phrase(c
             "confirmation_phrase": plan["integrity"]["confirmation_phrase"],
             "plan_created_at": plan["job"]["created_at"],
             "production_acceptance_approved": True,
+            "plan_request_id": plan["plan_request_id"],
             "gui_validation_session_id": session["gui_validation_session_id"],
             "gui_validation_session_token": session["gui_validation_session_token"],
             "client_route": "/admin?tab=content#dynamic-library-sync-section",
@@ -1193,6 +1269,86 @@ def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(
     assert plan["counts"]["estimated_downstream_followup_count"] == 1
     assert plan["counts"]["estimated_ai_tagging_count"] == 2
     assert "a_followup.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_cap_limited_batch_is_executable_and_continuable(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    file_count = 1001
+    cap = 1000
+    for index in range(file_count):
+        (source_root / f"item_{index:04d}.png").write_bytes(f"image-{index}".encode("ascii"))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+
+    monkeypatch.setattr(service, "_verify_supported_image_file_with_timeout", lambda _path, _timeout_sec: None)
+    monkeypatch.setattr(
+        service,
+        "_calculate_manual_plan_file_hash",
+        lambda path, _timeout_sec: (f"hash-{Path(path).stem}", None),
+    )
+
+    first_plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=cap,
+        stable_age_seconds=0,
+    )
+
+    assert first_plan["counts"]["state_counts"]["import_planned"] == cap
+    assert first_plan["counts"]["partial_scan"] is True
+    assert first_plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
+    assert first_plan["counts"]["cap_limited_batch"] is True
+    assert first_plan["counts"]["batch_executable"] is True
+    assert first_plan["limits"]["continuation"]["more_batches_remain"] is True
+    assert first_plan["limits"]["cap_semantics"] == "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media"
+
+    for index in range(cap):
+        file_path = source_root / f"item_{index:04d}.png"
+        stat = file_path.stat()
+        media = Media(
+            filename=f"imported-{index}.png",
+            path=f"media/original/imported-{index}.png",
+            hash=f"hash-item_{index:04d}",
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=f"item_{index:04d}.png",
+                relative_path_hash=service._hash_text(f"item_{index:04d}.png"),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=media.hash,
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
+            )
+        )
+    db.commit()
+
+    second_plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=cap,
+        stable_age_seconds=0,
+    )
+
+    assert second_plan["counts"]["state_counts"]["import_planned"] == 1
+    assert second_plan["counts"]["partial_scan"] is False
+    assert second_plan["limits"]["fast_skipped_from_ledger"] == cap
+    assert second_plan["limits"]["hash_required_count"] == 1
+    assert second_plan["limits"]["root_scan_state"]["current_scan_mode"] == (
+        "incremental_source_ledger_priority_then_filesystem_metadata_walk"
+    )
+    assert second_plan["limits"]["source_delta_workset"]["stable_known_entries_do_not_consume_actionable_cap"] is True
 
 
 def test_manual_sync_dry_run_reincludes_unresolved_known_items_for_registered_root(db, tmp_path):

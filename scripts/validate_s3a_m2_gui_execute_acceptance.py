@@ -274,13 +274,28 @@ def gui_provenance_for_run(run: Any, *, expected_session_id: str | None = None) 
     session_id = str(request.get("gui_validation_session_id") or "")
     route = str(request.get("client_route") or "")
     signature_valid = bool(request.get("gui_validation_session_signature_valid"))
+    plan_hash_bound = bool(request.get("gui_plan_hash_bound"))
+    plan_flow_verified = bool(request.get("gui_plan_flow_verified"))
+    plan_request_id = str(request.get("gui_plan_request_id") or "")
     session_matches = expected_session_id is None or session_id == expected_session_id
     return {
-        "valid": source in GUI_REQUEST_SOURCES and bool(session_id) and signature_valid and session_matches,
+        "valid": bool(
+            source in GUI_REQUEST_SOURCES
+            and bool(session_id)
+            and signature_valid
+            and session_matches
+            and plan_hash_bound
+            and plan_flow_verified
+            and bool(plan_request_id)
+        ),
         "request_source": source,
         "gui_validation_session_id_present": bool(session_id),
         "gui_validation_session_id_hash": public_hash(session_id) if session_id else None,
         "gui_validation_session_signature_valid": signature_valid,
+        "gui_plan_hash_bound": plan_hash_bound,
+        "gui_plan_flow_verified": plan_flow_verified,
+        "gui_plan_request_id_present": bool(plan_request_id),
+        "gui_plan_request_id_hash": public_hash(plan_request_id) if plan_request_id else None,
         "gui_validation_session_id_matches_expected": session_matches,
         "client_route": route,
     }
@@ -462,6 +477,14 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
         execute_payload = run_payload.get("manual_sync_execute") if isinstance(run_payload, dict) else {}
         execute_payload = execute_payload if isinstance(execute_payload, dict) else {}
         request = execute_payload.get("request") if isinstance(execute_payload.get("request"), dict) else {}
+        runtime_provenance = (
+            execute_payload.get("runtime_provenance")
+            if isinstance(execute_payload.get("runtime_provenance"), dict)
+            else {}
+        )
+        current_head = git_value("rev-parse", "HEAD")
+        run_head = str(request.get("runtime_git_head") or runtime_provenance.get("git_head") or "")
+        run_head_matches_current = bool(run_head and current_head and run_head == current_head)
         item_summary = run_items_summary(db, int(run.id), root_id=request.get("root_id"))
         media_ids = item_summary["media_ids"]
         rows = assignment_rows(db, media_ids)
@@ -526,6 +549,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             blockers.append("gui_run_not_newer_than_min_run_id")
         if not gui_provenance.get("valid"):
             blockers.append("gui_run_provenance_missing_or_not_web_admin")
+        if not getattr(args, "allow_older_head", False) and not run_head_matches_current:
+            blockers.append("gui_run_head_does_not_match_current_head")
         if str(run.status) != "completed":
             blockers.append("gui_run_not_completed")
         if not ledger_ok:
@@ -558,6 +583,13 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             "profile": profile,
             "manual_e2e_readiness": manual_e2e_readiness,
             "gui_execute_run_id": int(run.id),
+            "runtime_provenance": {
+                "current_head_sha": current_head,
+                "run_head_sha": run_head,
+                "run_head_matches_current": run_head_matches_current,
+                "older_head_allowed": bool(getattr(args, "allow_older_head", False)),
+                "run_branch": request.get("runtime_git_branch") or runtime_provenance.get("git_branch"),
+            },
             "min_run_id": int(args.min_run_id),
             "run_status": str(run.status),
             "run_type": str(run.run_type),
@@ -695,6 +727,12 @@ def maybe_update_main_report(public: Mapping[str, Any]) -> None:
             "gui_validation_session_signature_valid": (public.get("gui_provenance") or {}).get(
                 "gui_validation_session_signature_valid"
             ),
+            "gui_plan_hash_bound": (public.get("gui_provenance") or {}).get("gui_plan_hash_bound"),
+            "gui_plan_flow_verified": (public.get("gui_provenance") or {}).get("gui_plan_flow_verified"),
+            "gui_plan_request_id_present": (public.get("gui_provenance") or {}).get("gui_plan_request_id_present"),
+            "runtime_head_matches_current": (public.get("runtime_provenance") or {}).get(
+                "run_head_matches_current"
+            ),
             "latest_job_status": public.get("run_status"),
             "latest_job_imported": public.get("imported"),
             "validated_head_sha": public.get("head_sha"),
@@ -722,6 +760,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", type=int, default=None)
     parser.add_argument("--allow-zero-import", action="store_true")
     parser.add_argument("--gui-validation-session-id", default=None)
+    parser.add_argument("--allow-older-head", action="store_true", help="Diagnostic only: allow a GUI run from an older git head.")
     parser.add_argument("--write-public-summary", action="store_true")
     parser.add_argument("--update-main-report", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=LOCAL_OUTPUT_DIR)

@@ -56,6 +56,48 @@ def test_s3a_m2_incident_diagnostic_requires_explicit_or_reported_run_ids(tmp_pa
         load_run_ids_from_summary(empty_summary)
 
 
+def test_s3a_m2_runner_preserves_manual_llm_readiness_during_execute(monkeypatch) -> None:
+    expected_hash = "abcdef123456"
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "true")
+
+    class FakeDb:
+        def close(self) -> None:
+            pass
+
+    def fake_create(_db, *, args, plan, expected_hash):
+        assert os.environ["TAG_TRANSLATION_LLM_ENABLED"] == "true"
+        assert os.environ["TAG_TRANSLATION_AUTO_ENABLED"] == "false"
+        assert os.environ["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "false"
+        return SimpleNamespace(id=42)
+
+    def fake_execute(_db, *, run_id):
+        assert run_id == 42
+        assert os.environ["TAG_TRANSLATION_LLM_ENABLED"] == "true"
+        return {"status": "completed"}
+
+    from app.services import manual_sync_execute_service as execute_service
+
+    monkeypatch.setattr(s3a_m2_runner, "open_db_session", lambda: FakeDb())
+    monkeypatch.setattr(s3a_m2_runner, "_create_s3a_m2_execute_run_from_plan", fake_create)
+    monkeypatch.setattr(execute_service, "execute_manual_sync_run", fake_execute)
+
+    args = SimpleNamespace(
+        expected_plan_hash=expected_hash,
+        s3a_m2_approval_phrase=s3a_m2_approval_phrase(expected_hash),
+        plan_source="source-delta",
+    )
+    plan = {"integrity": {"plan_hash": expected_hash, "confirmation_phrase": "ok", "production_confirmation_phrase": "ok"}}
+
+    result = s3a_m2_runner.execute_manual_plan(args, plan, StageTracker())
+
+    assert result["status"] == "completed"
+    assert os.environ["TAG_TRANSLATION_LLM_ENABLED"] == "true"
+    assert os.environ["TAG_TRANSLATION_AUTO_ENABLED"] == "true"
+    assert os.environ["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "true"
+
+
 def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
     runner_run = SimpleNamespace(
         summary_json={
@@ -74,6 +116,9 @@ def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
                     "request_source": "web_admin_gui",
                     "gui_validation_session_id": "gui-test-session",
                     "gui_validation_session_signature_valid": True,
+                    "gui_plan_hash_bound": True,
+                    "gui_plan_flow_verified": True,
+                    "gui_plan_request_id": "gui-plan-test",
                     "client_route": "/admin?tab=content#dynamic-library-sync-section",
                 }
             }
@@ -86,6 +131,9 @@ def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
                     "request_source": "web_admin_gui",
                     "gui_validation_session_id": "gui-test-session",
                     "gui_validation_session_signature_valid": False,
+                    "gui_plan_hash_bound": True,
+                    "gui_plan_flow_verified": True,
+                    "gui_plan_request_id": "gui-plan-test",
                     "client_route": "/admin?tab=content#dynamic-library-sync-section",
                 }
             }
@@ -96,6 +144,20 @@ def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:
     assert gui_validator.gui_provenance_for_run(unsigned_gui_run)["valid"] is False
     assert gui_validator.gui_provenance_for_run(gui_run, expected_session_id="wrong-session")["valid"] is False
     assert gui_validator.gui_provenance_for_run(gui_run, expected_session_id="gui-test-session")["valid"] is True
+
+    unbound_gui_run = SimpleNamespace(
+        summary_json={
+            "manual_sync_execute": {
+                "request": {
+                    "request_source": "web_admin_gui",
+                    "gui_validation_session_id": "gui-test-session",
+                    "gui_validation_session_signature_valid": True,
+                    "client_route": "/admin?tab=content#dynamic-library-sync-section",
+                }
+            }
+        }
+    )
+    assert gui_validator.gui_provenance_for_run(unbound_gui_run)["valid"] is False
 
 
 def test_s3a_m2_gui_validator_rejects_private_output_outside_manifest_tree(tmp_path: Path) -> None:
@@ -377,6 +439,11 @@ def test_s3a_m2_gui_validator_fails_if_gui_run_imports_without_ai_tagging(tmp_pa
                         "request_source": "web_admin_gui",
                         "gui_validation_session_id": "gui-test-session",
                         "gui_validation_session_signature_valid": True,
+                        "gui_plan_hash_bound": True,
+                        "gui_plan_flow_verified": True,
+                        "gui_plan_request_id": "gui-plan-test",
+                        "runtime_git_head": "test-head",
+                        "runtime_git_branch": "test-branch",
                         "client_route": "/admin?tab=content#dynamic-library-sync-section",
                     },
                     "outcome_counts": {"imported": 1},
@@ -412,12 +479,18 @@ def test_s3a_m2_gui_validator_fails_if_gui_run_imports_without_ai_tagging(tmp_pa
         )
         db.commit()
         monkeypatch.setattr(gui_validator, "open_db_session", lambda: Session())
+        monkeypatch.setattr(
+            gui_validator,
+            "git_value",
+            lambda *args: "test-head" if args == ("rev-parse", "HEAD") else "test-branch",
+        )
         args = SimpleNamespace(
             profile_json=profile_path,
             min_run_id=8,
             run_id=None,
             gui_validation_session_id=None,
             allow_zero_import=False,
+            allow_older_head=False,
         )
 
         public, _private = gui_validator.build_validation(args)

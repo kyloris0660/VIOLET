@@ -506,6 +506,96 @@ def _estimate_manual_sync_runtime_seconds(
     )
 
 
+def _isoformat_or_none(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            return str(value)
+    return str(value)
+
+
+def _manual_plan_root_scan_state(
+    db: Session,
+    *,
+    source_record_id: Optional[int],
+    known_items_by_rel_hash: Dict[str, DynamicSourceItem],
+) -> Dict[str, Any]:
+    """Public-safe root scan basis for the operator UI.
+
+    S3A-M2 uses the existing source-item ledger as the durable source index.
+    This avoids a schema migration while still keeping repeated scans from
+    relying on content hashing over stable known files.
+    """
+    root = db.get(DynamicSourceRoot, int(source_record_id)) if source_record_id is not None else None
+    latest_run = None
+    if source_record_id is not None:
+        latest_run = (
+            db.query(DynamicSyncRun)
+            .join(DynamicSyncRunItem, DynamicSyncRunItem.sync_run_id == DynamicSyncRun.id)
+            .join(DynamicSourceItem, DynamicSyncRunItem.source_item_id == DynamicSourceItem.id)
+            .filter(DynamicSourceItem.source_root_id == int(source_record_id))
+            .filter(DynamicSyncRun.status.in_(("completed", "completed_with_failures", "cancelled", "failed")))
+            .order_by(DynamicSyncRun.id.desc())
+            .first()
+        )
+    last_seen_values = [
+        value
+        for value in (getattr(item, "last_seen_at", None) for item in known_items_by_rel_hash.values())
+        if value is not None
+    ]
+    last_checked_values = [
+        value
+        for value in (getattr(item, "last_checked_at", None) for item in known_items_by_rel_hash.values())
+        if value is not None
+    ]
+    return {
+        "model": "hybrid_source_ledger_metadata_fast_path_with_filesystem_fallback",
+        "durable_global_filesystem_cursor": False,
+        "durable_state_tables": [
+            "blombooru_dynamic_source_items",
+            "blombooru_dynamic_sync_runs",
+            "blombooru_dynamic_sync_run_items",
+        ],
+        "known_source_items": int(len(known_items_by_rel_hash)),
+        "root_last_checked_at": _isoformat_or_none(getattr(root, "last_checked_at", None)),
+        "last_successful_or_terminal_run_id": int(latest_run.id) if latest_run is not None else None,
+        "last_successful_or_terminal_run_status": str(latest_run.status) if latest_run is not None else None,
+        "last_successful_or_terminal_run_finished_at": _isoformat_or_none(
+            getattr(latest_run, "finished_at", None) if latest_run is not None else None
+        ),
+        "latest_source_item_seen_at": _isoformat_or_none(max(last_seen_values)) if last_seen_values else None,
+        "latest_source_item_checked_at": _isoformat_or_none(max(last_checked_values)) if last_checked_values else None,
+        "fast_precheck_identity": ["source_root_id", "relative_path_hash", "file_size", "mtime_ns"],
+        "hash_only_when": [
+            "new_source_path",
+            "metadata_changed",
+            "downstream_followup",
+            "ambiguous_existing_media",
+            "execute_integrity_revalidation",
+        ],
+        "cache_invalidated_by": [
+            "source_root_id",
+            "relative_path_hash",
+            "file_size",
+            "mtime_ns",
+            "content_hash_mismatch",
+            "hydration_policy",
+            "profile_or_pipeline_settings",
+        ],
+        "moved_deleted_renamed_handling": (
+            "old source ledger rows remain historical until a check/run marks missing; "
+            "a new relative path appears as new work"
+        ),
+        "cloud_placeholder_handling": (
+            "cloud-aware plan detects placeholders and hydrates by approved non-destructive reads "
+            "when hydrated_only=false"
+        ),
+    }
+
+
 def _manual_plan_integrity_payload(
     *,
     source_record_id: Optional[int],
@@ -593,8 +683,12 @@ def plan_manual_sync_dry_run(
     candidate_seen_hashes: set[str] = set()
     existing_media_lookup_cache: Dict[str, Optional[int]] = {}
     partial_scan = False
+    partial_scan_reason: Optional[str] = None
+    plan_cap_limited = False
     walk_errors: List[str] = []
     scanned_files = 0
+    stat_required_count = 0
+    hash_required_count = 0
     unchanged_known_files = 0
     skipped_existing_before_cap = 0
     skipped_duplicate_before_cap = 0
@@ -716,11 +810,13 @@ def plan_manual_sync_dry_run(
         if _cancel_requested():
             partial_scan = True
             plan_cancelled = True
+            partial_scan_reason = "cancelled"
             reason_counts["plan_cancelled"] += 1
             break
         if _no_progress_timed_out():
             partial_scan = True
             plan_no_progress_timeout = True
+            partial_scan_reason = "no_progress_timeout"
             reason_counts["plan_no_progress_timeout"] += 1
             break
         scanned_files = index
@@ -740,6 +836,7 @@ def plan_manual_sync_dry_run(
         try:
             _progress("stat", current_item_index=index, current_item_label=safe_label)
             metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
+            stat_required_count += 1
         except OSError:
             reason = "stat_error"
 
@@ -757,6 +854,8 @@ def plan_manual_sync_dry_run(
 
         if actionable_candidate_count >= effective_max_files:
             partial_scan = True
+            plan_cap_limited = True
+            partial_scan_reason = "cap_limited_actionable_batch"
             break
 
         if reason is None and not hydrated_only:
@@ -774,6 +873,7 @@ def plan_manual_sync_dry_run(
             if _cancel_requested():
                 partial_scan = True
                 plan_cancelled = True
+                partial_scan_reason = "cancelled"
                 reason_counts["plan_cancelled"] += 1
                 break
             _progress("checking_supported", current_item_index=index, current_item_label=safe_label)
@@ -783,9 +883,11 @@ def plan_manual_sync_dry_run(
             if _cancel_requested():
                 partial_scan = True
                 plan_cancelled = True
+                partial_scan_reason = "cancelled"
                 reason_counts["plan_cancelled"] += 1
                 break
             _progress("hashing", current_item_index=index, current_item_label=safe_label)
+            hash_required_count += 1
             content_hash, reason = _calculate_manual_plan_file_hash(file_path, read_timeout_seconds)
 
         reason = _manual_public_reason_code(reason)
@@ -882,6 +984,9 @@ def plan_manual_sync_dry_run(
         priority_workset_exhausted = True
     if not filesystem_walk_completed and not (plan_cancelled or plan_no_progress_timeout):
         partial_scan = True
+        partial_scan_reason = partial_scan_reason or (
+            "cap_limited_actionable_batch" if plan_cap_limited else "filesystem_walk_incomplete"
+        )
 
     _progress(
         "cancelled"
@@ -962,11 +1067,21 @@ def plan_manual_sync_dry_run(
 
     if walk_errors:
         partial_scan = True
+        partial_scan_reason = "source_walk_error"
         reason_counts["source_walk_error"] += len(walk_errors)
 
     import_count = int(state_counts.get("import_planned", 0))
     downstream_followup_count = int(state_counts.get("downstream_followup_planned", 0))
     downstream_stage_count = import_count + downstream_followup_count
+    unsafe_partial_scan = bool(
+        plan_cancelled
+        or plan_no_progress_timeout
+        or walk_errors
+        or (partial_scan and partial_scan_reason not in {None, "cap_limited_actionable_batch"})
+    )
+    cap_limited_batch = bool(partial_scan and partial_scan_reason == "cap_limited_actionable_batch")
+    batch_executable = bool(downstream_stage_count > 0 and not unsafe_partial_scan)
+    more_batches_remain = bool(cap_limited_batch)
     estimated_runtime_seconds = _estimate_manual_sync_runtime_seconds(
         import_count=import_count,
         ai_profile=profile,
@@ -981,6 +1096,11 @@ def plan_manual_sync_dry_run(
     state_counts_public = _public_counter(state_counts, MANUAL_SYNC_FILE_STATES)
     reason_counts_public = dict(sorted((key, int(value)) for key, value in reason_counts.items()))
     source_identity_hash = _public_source_identity(resolved)
+    root_scan_state = _manual_plan_root_scan_state(
+        db,
+        source_record_id=source_record_id,
+        known_items_by_rel_hash=known_items_by_rel_hash,
+    )
     limits = {
         "max_files": effective_max_files,
         "hydrated_only": hydrated_only,
@@ -992,7 +1112,10 @@ def plan_manual_sync_dry_run(
         "max_duration_seconds": max_duration_seconds,
         "file_read_timeout_seconds": read_timeout_seconds,
         "scanned_files": scanned_files,
+        "stat_required_count": stat_required_count,
+        "hash_required_count": hash_required_count,
         "unchanged_known_files": unchanged_known_files,
+        "fast_skipped_from_ledger": unchanged_known_files,
         "skipped_existing_before_cap": skipped_existing_before_cap,
         "skipped_duplicate_before_cap": skipped_duplicate_before_cap,
         "import_candidate_count": import_candidate_count,
@@ -1002,6 +1125,37 @@ def plan_manual_sync_dry_run(
         "cap_semantics": "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media",
         "batch_mode": "bounded_actionable_batch",
         "batch_candidate_cap": effective_max_files,
+        "batch_executable": batch_executable,
+        "cap_limited_batch": cap_limited_batch,
+        "more_batches_remain": more_batches_remain,
+        "unsafe_partial_scan": unsafe_partial_scan,
+        "partial_scan_reason": partial_scan_reason,
+        "continuation": {
+            "more_batches_remain": more_batches_remain,
+            "next_batch_requires_new_plan": True,
+            "next_batch_start_basis": (
+                "source_ledger_after_executed_batch_plus_metadata_filesystem_fallback"
+                if more_batches_remain
+                else "root_exhausted_or_no_continuation_required"
+            ),
+            "current_batch_actionable_count": downstream_stage_count,
+            "cap_limited_after_actionable_count": actionable_candidate_count if cap_limited_batch else 0,
+        },
+        "root_scan_state": {
+            **root_scan_state,
+            "current_scan_mode": (
+                "incremental_source_ledger_priority_then_filesystem_metadata_walk"
+                if source_record_id is not None
+                else "ad_hoc_filesystem_metadata_walk"
+            ),
+            "current_scan_start_basis": priority_workset_mode,
+            "ledger_evidence_reused": bool(source_record_id is not None),
+            "fast_skipped_from_ledger": unchanged_known_files,
+            "files_stat_checked": stat_required_count,
+            "files_hash_checked": hash_required_count,
+            "new_or_changed_actionable_candidates": downstream_stage_count,
+            "more_batches_remain": more_batches_remain,
+        },
         "source_delta_workset": {
             "scan_order": priority_workset_mode,
             "priority_workset_files": priority_workset_files,
@@ -1014,12 +1168,15 @@ def plan_manual_sync_dry_run(
             "starts_from_filesystem_root_when_no_priority_workset": not bool(priority_source_files),
             "durable_global_filesystem_cursor": False,
             "incremental_source_ledger_used": bool(source_record_id is not None),
+            "source_index_model": "dynamic_source_item_ledger_metadata_fast_path",
             "fast_skip_identity": ["source_root_id", "relative_path_hash", "file_size", "mtime_ns"],
             "hash_revalidation_identity": ["content_hash"],
+            "stable_known_entries_do_not_consume_actionable_cap": True,
         },
         "batch_policy": {
             "user_starts_one_manual_session": True,
             "plan_one_bounded_batch_at_a_time": True,
+            "cap_limited_batches_are_executable": True,
             "execute_revalidates_source_identity": True,
             "already_imported_batches_are_reused_from_source_ledger": True,
             "unexecuted_candidate_plan_reuse": "not_reused_without_execute_revalidation",
@@ -1084,6 +1241,11 @@ def plan_manual_sync_dry_run(
             "state_counts": state_counts_public,
             "failure_reasons": reason_counts_public,
             "partial_scan": partial_scan,
+            "partial_scan_reason": partial_scan_reason,
+            "unsafe_partial_scan": unsafe_partial_scan,
+            "cap_limited_batch": cap_limited_batch,
+            "batch_executable": batch_executable,
+            "more_batches_remain": more_batches_remain,
             "unsupported_extension_breakdown": dict(
                 sorted((key, int(value)) for key, value in unsupported_extension_counts.items())
             ),

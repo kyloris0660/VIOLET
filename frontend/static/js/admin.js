@@ -19,6 +19,11 @@ class AdminPanel {
         this.dynamicSyncActivePlanRequestId = null;
         this.dynamicSyncLastPlanProgress = null;
         this.dynamicSyncLatestJob = null;
+        this.dynamicSyncRoots = [];
+        this.dynamicSyncPendingSummary = {};
+        this.dynamicSyncOperatorReadiness = {};
+        this.dynamicSyncManualWarnings = [];
+        this.dynamicSyncBackgroundWarnings = [];
         window.adminPanel = this;
         this.init();
     }
@@ -364,6 +369,14 @@ class AdminPanel {
         const dynamicSyncStartBtn = document.getElementById('dynamic-sync-start-btn');
         if (dynamicSyncStartBtn) {
             dynamicSyncStartBtn.addEventListener('click', () => this.startManualSyncFlow());
+        }
+        const dynamicSyncPlanRoot = document.getElementById('dynamic-sync-plan-root');
+        if (dynamicSyncPlanRoot) {
+            dynamicSyncPlanRoot.addEventListener('change', () => {
+                this.dynamicSyncPlan = null;
+                this._renderManualSyncOperatorSummary();
+                this._updateManualSyncExecuteButton();
+            });
         }
         const dynamicSyncConfirmExecuteBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
         if (dynamicSyncConfirmExecuteBtn) {
@@ -2116,6 +2129,11 @@ class AdminPanel {
         const manualBlockers = operatorReadiness.manual_execute_blockers || [];
         const manualWarnings = operatorReadiness.manual_execute_warnings || [];
         const backgroundWarnings = operatorReadiness.background_warnings || [];
+        this.dynamicSyncRoots = roots;
+        this.dynamicSyncPendingSummary = pending;
+        this.dynamicSyncOperatorReadiness = operatorReadiness;
+        this.dynamicSyncManualWarnings = manualWarnings;
+        this.dynamicSyncBackgroundWarnings = backgroundWarnings;
         if (warning) {
             if (manualBlockers.length || warnings.length) {
                 warning.classList.remove('hidden');
@@ -2186,9 +2204,34 @@ class AdminPanel {
                 syncStatus.textContent += ` Runtime: ${runtimeBits}.`;
             }
         }
+        this._renderManualSyncOperatorSummary();
+        this._updateManualSyncExecuteButton();
+        this.loadLatestManualSyncJob();
+    }
+
+    _selectedDynamicSyncRoot() {
+        const select = document.getElementById('dynamic-sync-plan-root');
+        const roots = this.dynamicSyncRoots || [];
+        const selectedId = select && select.value ? String(select.value) : '';
+        return (
+            roots.find(root => String(root.id) === selectedId)
+            || roots.find(root => root.is_active)
+            || roots[0]
+            || null
+        );
+    }
+
+    _renderManualSyncOperatorSummary() {
         const operatorSummary = document.getElementById('dynamic-sync-operator-summary');
+        const activeState = document.getElementById('dynamic-sync-active-state');
+        const root = this._selectedDynamicSyncRoot();
+        const pending = this.dynamicSyncPendingSummary || {};
+        const operatorReadiness = this.dynamicSyncOperatorReadiness || {};
+        const manualBlockers = operatorReadiness.manual_execute_blockers || [];
+        const manualWarnings = this.dynamicSyncManualWarnings || [];
+        const backgroundWarnings = this.dynamicSyncBackgroundWarnings || [];
         if (operatorSummary) {
-            const rootLabel = roots.find(root => root.is_active)?.label || roots[0]?.label || 'not configured';
+            const rootLabel = root?.label || 'not configured';
             const blockerText = manualBlockers.length
                 ? `Blocked: ${manualBlockers.map(item => item.label || this._manualSyncIssueLabel(item.code)).join(' ')}`
                 : 'Ready to generate a bounded manual sync plan. Execute still requires reviewing the plan summary.';
@@ -2197,15 +2240,12 @@ class AdminPanel {
                 : '';
             operatorSummary.textContent = `Root: ${rootLabel}. ${blockerText} ${historicalText}`.trim();
         }
-        const activeState = document.getElementById('dynamic-sync-active-state');
         if (activeState) {
             const warningsText = [...manualWarnings, ...backgroundWarnings]
                 .map(item => item.label || this._manualSyncIssueLabel(item.code))
                 .join(' ');
             activeState.textContent = warningsText || 'No background worker warning is blocking the normal manual button.';
         }
-        this._updateManualSyncExecuteButton();
-        this.loadLatestManualSyncJob();
     }
 
     _renderManualSyncRootOptions(roots) {
@@ -2273,19 +2313,26 @@ class AdminPanel {
         const confirmationPhrase = this._manualSyncExpectedConfirmationPhrase(plan);
         const planSource = (plan.source || {}).plan_source || limits.plan_source || '-';
         const workset = limits.source_delta_workset || {};
+        const rootScan = limits.root_scan_state || {};
+        const continuation = limits.continuation || {};
         const scannedFiles = counts.scanned_files || limits.scanned_files || counts.total_seen || 0;
         const planItems = counts.plan_items || counts.total_seen || 0;
         const skippedExistingBeforeCap = limits.skipped_existing_before_cap || 0;
         const skippedDuplicateBeforeCap = limits.skipped_duplicate_before_cap || 0;
         const downstreamFollowup = counts.estimated_downstream_followup_count || limits.downstream_followup_count || 0;
         const actionableCount = (counts.estimated_import_count || 0) + downstreamFollowup;
-        const complete = !counts.partial_scan;
+        const batchExecutable = !!(counts.batch_executable || limits.batch_executable);
+        const capLimitedBatch = !!(counts.cap_limited_batch || limits.cap_limited_batch);
+        const unsafePartial = !!(counts.unsafe_partial_scan || limits.unsafe_partial_scan);
+        const complete = !counts.partial_scan || batchExecutable;
         const actionable = actionableCount > 0;
-        const canExecute = complete && actionable && this.dynamicSyncExecuteEnabled;
+        const canExecute = batchExecutable && actionable && this.dynamicSyncExecuteEnabled;
         const requiresConfirmation = canExecute;
         let planMessage = 'Execute is blocked until the plan is complete, has importable or downstream follow-up items, and manual E2E readiness is satisfied.';
         if (canExecute) {
-            planMessage = 'Plan is ready. Review exactly what will be written, enter the operator confirmation, then click Confirm and execute once.';
+            planMessage = capLimitedBatch
+                ? 'This safe bounded batch is ready to execute. More manual sync work remains after this batch; run Start manual sync again after completion.'
+                : 'Plan is ready. Review exactly what will be written, enter the operator confirmation, then click Confirm and execute once.';
         } else if (!actionable && counts.partial_scan) {
             planMessage = 'No importable items were found in this partial batch. Stable existing media did not count against the import cap; re-run Start manual sync after checking the current delta diagnostics.';
         } else if (!actionable) {
@@ -2302,9 +2349,11 @@ class AdminPanel {
                 <div><span class="text-secondary">Import</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
             </div>
             <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Actionable cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Cap means:</span> ${this.escapeHtml(limits.cap_semantics || 'unique importable/downstream candidates')} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
+            <div class="mb-2"><span class="text-secondary">Batch:</span> ${batchExecutable ? 'executable bounded batch' : 'not executable'} | <span class="text-secondary">Partial reason:</span> ${this.escapeHtml(counts.partial_scan_reason || limits.partial_scan_reason || '-')} | <span class="text-secondary">More batches:</span> ${continuation.more_batches_remain ? 'yes' : 'no'}</div>
             <div class="mb-2"><span class="text-secondary">Workset:</span> ${this.escapeHtml(workset.scan_order || '-')} | <span class="text-secondary">Priority items:</span> ${workset.priority_workset_processed || 0}/${workset.priority_workset_files || 0} | <span class="text-secondary">Filesystem fallback:</span> ${workset.filesystem_walk_after_priority_workset ? 'ran' : (workset.starts_from_filesystem_root_when_no_priority_workset ? 'root walk' : 'not reached')} | <span class="text-secondary">Filesystem complete:</span> ${workset.filesystem_walk_completed ? 'yes' : 'no'}</div>
             <div class="mb-2"><span class="text-secondary">Incremental ledger:</span> ${workset.incremental_source_ledger_used ? 'source item ledger' : 'ad-hoc root scan'} | <span class="text-secondary">Fast skip identity:</span> ${this.escapeHtml((workset.fast_skip_identity || []).join('+') || '-')} | <span class="text-secondary">Actionable:</span> ${actionableCount} (${counts.estimated_import_count || 0} import, ${downstreamFollowup} follow-up)</div>
-            <div class="mb-2"><span class="text-secondary">Existing skipped before cap:</span> ${skippedExistingBeforeCap} | <span class="text-secondary">Duplicates skipped before cap:</span> ${skippedDuplicateBeforeCap} | <span class="text-secondary">Unchanged ledger skips:</span> ${limits.unchanged_known_files || 0}</div>
+            <div class="mb-2"><span class="text-secondary">Scan model:</span> ${this.escapeHtml(rootScan.model || '-')} | <span class="text-secondary">Start basis:</span> ${this.escapeHtml(rootScan.current_scan_start_basis || '-')} | <span class="text-secondary">Root last checked:</span> ${this.escapeHtml(rootScan.root_last_checked_at || '-')} | <span class="text-secondary">Last run:</span> ${rootScan.last_successful_or_terminal_run_id || '-'}</div>
+            <div class="mb-2"><span class="text-secondary">Fast-skipped:</span> ${limits.fast_skipped_from_ledger || 0} | <span class="text-secondary">Stat checked:</span> ${limits.stat_required_count || 0} | <span class="text-secondary">Hash checked:</span> ${limits.hash_required_count || 0} | <span class="text-secondary">Existing skipped before cap:</span> ${skippedExistingBeforeCap} | <span class="text-secondary">Duplicates skipped before cap:</span> ${skippedDuplicateBeforeCap}</div>
             <div class="mb-2 text-secondary"><span class="text-secondary">Expires:</span> <span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             <div class="mb-2 ${canExecute ? 'text-green-400' : 'text-warning'}">${this.escapeHtml(planMessage)}</div>
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
@@ -2335,7 +2384,8 @@ class AdminPanel {
         const expected = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
         const matches = confirmationEl && confirmationEl.value.trim() === expected;
         const counts = (this.dynamicSyncPlan || {}).counts || {};
-        const complete = this.dynamicSyncPlan && !counts.partial_scan;
+        const limits = (this.dynamicSyncPlan || {}).limits || {};
+        const complete = this.dynamicSyncPlan && (!counts.partial_scan || counts.batch_executable || limits.batch_executable);
         const actionable = ((counts.estimated_import_count || 0) + (counts.estimated_downstream_followup_count || 0)) > 0;
         const active = this._manualSyncActiveJobRunning();
         btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches) || active || this.dynamicSyncActionInFlight;
@@ -2514,6 +2564,7 @@ class AdminPanel {
         }
         body.confirmation_phrase = confirmation;
         body.plan_created_at = (this.dynamicSyncPlan.job || {}).created_at;
+        body.plan_request_id = this.dynamicSyncPlan.plan_request_id;
         body.production_acceptance_approved = !!this.dynamicSyncProductionMode && confirmation === expected;
         body.gui_validation_session_id = guiProvenance.gui_validation_session_id || this.dynamicSyncGuiSessionId;
         body.gui_validation_session_token = this.dynamicSyncGuiSessionToken;

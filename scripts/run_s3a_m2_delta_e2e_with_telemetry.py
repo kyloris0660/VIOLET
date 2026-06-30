@@ -1447,9 +1447,11 @@ def execute_manual_plan(args: argparse.Namespace, plan: Mapping[str, Any], stage
     )
     stage_tracker.set("manual_execute_import_classification_ai")
     db = open_db_session()
-    previous_llm_enabled = os.environ.get("TAG_TRANSLATION_LLM_ENABLED")
+    previous_translation_auto = os.environ.get("TAG_TRANSLATION_AUTO_ENABLED")
+    previous_translation_background = os.environ.get("TAG_TRANSLATION_BACKGROUND_ENABLED")
     try:
-        os.environ["TAG_TRANSLATION_LLM_ENABLED"] = "false"
+        os.environ["TAG_TRANSLATION_AUTO_ENABLED"] = "false"
+        os.environ["TAG_TRANSLATION_BACKGROUND_ENABLED"] = "false"
         if args.plan_source in {"ledger-pending", "source-delta"}:
             run = _create_s3a_m2_execute_run_from_plan(db, args=args, plan=plan, expected_hash=expected_hash)
         else:
@@ -1463,13 +1465,17 @@ def execute_manual_plan(args: argparse.Namespace, plan: Mapping[str, Any], stage
                 confirmation_phrase=str(service_phrase or ""),
                 plan_created_at=str(args.plan_created_at),
                 production_acceptance_approved=bool(settings.IS_PRODUCTION_ENV),
-            )
+        )
         return execute_manual_sync_run(db, run_id=int(run.id))
     finally:
-        if previous_llm_enabled is None:
-            os.environ.pop("TAG_TRANSLATION_LLM_ENABLED", None)
+        if previous_translation_auto is None:
+            os.environ.pop("TAG_TRANSLATION_AUTO_ENABLED", None)
         else:
-            os.environ["TAG_TRANSLATION_LLM_ENABLED"] = previous_llm_enabled
+            os.environ["TAG_TRANSLATION_AUTO_ENABLED"] = previous_translation_auto
+        if previous_translation_background is None:
+            os.environ.pop("TAG_TRANSLATION_BACKGROUND_ENABLED", None)
+        else:
+            os.environ["TAG_TRANSLATION_BACKGROUND_ENABLED"] = previous_translation_background
         db.close()
 
 

@@ -26,6 +26,7 @@ from app.models import (  # noqa: E402
     ClassificationJob,
     ContentClassEnum,
     DynamicSourceItem,
+    DynamicSourceRoot,
     DynamicSyncRun,
     DynamicSyncRunItem,
     Entity,
@@ -349,6 +350,8 @@ def test_s3a_m1_execute_recheck_accepts_changed_directory_walk_order(db, tmp_pat
 
     assert result["status"] == "completed"
     assert db.get(DynamicSyncRun, run.id).status == "completed"
+    db.refresh(root)
+    assert root.last_checked_at is not None
 
 
 def test_s3a_m1_execute_is_disabled_by_default(db, tmp_path):
@@ -430,6 +433,42 @@ def test_s3a_m1_execute_rejects_partial_scan_plan(db, tmp_path, monkeypatch):
             production_acceptance_approved=False,
         )
 
+    assert exc.value.code == "manual_sync_plan_partial_scan"
+
+
+def test_manual_sync_execute_gate_allows_safe_cap_limited_batch(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    for index in range(2):
+        _write_png(source_root / f"new_{index}.png", (10 + index, 20, 30))
+    plan = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=1, stable_age_seconds=0)
+
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
+    assert plan["counts"]["batch_executable"] is True
+
+    execute_service._verify_execute_gates(
+        db=db,
+        plan=plan,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+        hydrated_only=True,
+        production_acceptance_approved=False,
+    )
+
+    plan["counts"]["unsafe_partial_scan"] = True
+    plan["counts"]["partial_scan_reason"] = "no_progress_timeout"
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        execute_service._verify_execute_gates(
+            db=db,
+            plan=plan,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+            hydrated_only=True,
+            production_acceptance_approved=False,
+        )
     assert exc.value.code == "manual_sync_plan_partial_scan"
 
 
@@ -2014,9 +2053,11 @@ def test_manual_sync_execute_processes_imported_downstream_followup(db, tmp_path
         ai_calls.append(media_id)
         return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
 
-    def fake_localization(_db_arg, *, run, media_ids):
+    def fake_localization(_db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
         localization_calls.append(list(media_ids))
-        item = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media.id).one()
+        assert source_item_ids
+        assert cancel_check is not None
+        item = db.get(DynamicSourceItem, int(source_item_ids[0]))
         item.localization_status = "localized"
         return {
             "status": "completed",
@@ -2071,6 +2112,115 @@ def test_manual_sync_execute_processes_imported_downstream_followup(db, tmp_path
     assert source_item.import_status == "imported"
     assert source_item.ai_tagging_status == "ai_tagged"
     assert source_item.localization_status == "localized"
+
+
+def test_manual_sync_execute_scopes_downstream_followup_to_planned_source_item(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    planned_path = source_root / "followup.png"
+    other_path = source_root / "other-copy.png"
+    _write_png(planned_path, (30, 40, 50))
+    _write_png(other_path, (30, 40, 50))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="followup.png",
+        path="media/original/followup.png",
+        hash=calculate_file_hash(planned_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    planned_stat = planned_path.stat()
+    other_stat = other_path.stat()
+    planned_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="followup.png",
+        relative_path_hash=planner._hash_text("followup.png"),
+        file_size=planned_stat.st_size,
+        mtime_ns=planned_stat.st_mtime_ns,
+        content_hash=media.hash,
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="failed_ai_tagger_model_uncached",
+        localization_status="blocked_ai_tagging_failed",
+        media_id=media.id,
+    )
+    other_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="other-copy.png",
+        relative_path_hash=planner._hash_text("other-copy.png"),
+        file_size=other_stat.st_size,
+        mtime_ns=other_stat.st_mtime_ns,
+        content_hash=media.hash,
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="ai_tagged",
+        localization_status="localized",
+        media_id=media.id,
+    )
+    db.add_all([planned_item, other_item])
+    db.commit()
+
+    def fake_ai_tagging(_db_arg, media_id):
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(_db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        assert source_item_ids == [planned_item.id]
+        item = db.get(DynamicSourceItem, planned_item.id)
+        item.localization_status = "localized"
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": 1,
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    db.refresh(planned_item)
+    db.refresh(other_item)
+    assert planned_item.ai_tagging_status == "ai_tagged"
+    assert planned_item.localization_status == "localized"
+    assert other_item.ai_tagging_status == "ai_tagged"
+    assert other_item.localization_status == "localized"
+    run_item = db.query(DynamicSyncRunItem).filter(DynamicSyncRunItem.source_item_id == planned_item.id).one()
+    assert run_item.current_metadata_json["ai_tagging"]["status"] == "ai_tagged"
+    assert result["manual_sync_execute"]["downstream_targets"] == [
+        {"media_id": media.id, "source_item_id": planned_item.id}
+    ]
 
 
 def test_manual_sync_execute_production_gate_rejects_unconfigured_localization_provider(db, tmp_path, monkeypatch):
@@ -2680,3 +2830,73 @@ def test_s3a_m1_execute_cancel_after_ai_tagging_skips_localization_finalizer(db,
     assert source_item.ai_tagging_status == "ai_tagged"
     assert source_item.localization_status == "waiting_localization"
     assert source_item.deferred_reason is None
+
+
+def test_manual_sync_localization_finalizer_honors_late_cancel_before_provider_call(db, monkeypatch):
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path="/redacted/source",
+        root_path_hash="root-hash",
+        is_active=True,
+    )
+    media = Media(
+        filename="localized.png",
+        path="media/original/localized.png",
+        hash="localized-hash",
+        file_type=FileTypeEnum.image,
+    )
+    tag = Tag(name="new_general_tag_for_cancel", category=TagCategoryEnum.general)
+    run = DynamicSyncRun(run_type="manual_sync_execute", mode="dev_test_execute", status="running", dry_run=False)
+    db.add_all([root, media, tag, run])
+    db.flush()
+    source_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="localized.png",
+        relative_path_hash="localized-relhash",
+        media_id=media.id,
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="ai_tagged",
+        localization_status="waiting_localization",
+    )
+    db.add(source_item)
+    db.flush()
+    db.execute(
+        blombooru_media_tags.insert().values(
+            media_id=media.id,
+            tag_id=tag.id,
+            source="ai_wd",
+            confidence=0.9,
+            is_suggestion=False,
+        )
+    )
+    db.commit()
+
+    cancel_checks = {"count": 0}
+
+    def late_cancel() -> bool:
+        cancel_checks["count"] += 1
+        return cancel_checks["count"] >= 2
+
+    def fail_provider_call():
+        raise AssertionError("LLM provider must not be initialized after late cancel")
+
+    monkeypatch.setattr(execute_service, "_covered_translation_names", lambda _db, *, lang: set())
+    monkeypatch.setattr("app.services.llm_translation_provider.get_llm_provider", fail_provider_call)
+
+    result = execute_service._manual_sync_finalize_localization(
+        db,
+        run=run,
+        media_ids=[media.id],
+        source_item_ids=[source_item.id],
+        cancel_check=late_cancel,
+    )
+
+    assert result["status"] == "skipped_cancelled_run"
+    assert result["llm_called"] is False
+    assert result["provider_call_count"] == 0
+    assert result["localization_db_writes_performed"] is False
+    assert db.get(DynamicSourceItem, source_item.id).localization_status == "waiting_localization"

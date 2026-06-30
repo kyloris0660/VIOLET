@@ -78,7 +78,16 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "Filesystem fallback:" in script
     assert "Fast skip identity:" in script
     assert "Actionable:" in script
+    assert "Batch:" in script
+    assert "Scan model:" in script
+    assert "Root last checked:" in script
+    assert "Fast-skipped:" in script
+    assert "More batches:" in script
     assert "source item ledger" in script
+    assert "dynamicSyncRoots = []" in script
+    assert "_selectedDynamicSyncRoot" in script
+    assert "_renderManualSyncOperatorSummary" in script
+    assert "dynamicSyncPlanRoot.addEventListener('change'" in script
 
 
 def test_dynamic_sync_ui_labels_threshold_and_localization_readiness_for_operators() -> None:
@@ -106,6 +115,7 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     assert "body.confirmation_phrase = confirmation;" in script
     assert "production_acceptance_approved = !!this.dynamicSyncProductionMode && confirmation === expected" in script
     assert "complete && actionable && matches" in script
+    assert "batchExecutable && actionable" in script
     assert "No operator confirmation is needed because Execute is blocked for this plan." in script
     assert "Operator confirmation required for this write:" in script
     assert "requiresConfirmation = canExecute" in script

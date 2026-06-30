@@ -6494,6 +6494,7 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             "gui_hang_root_cause": Mapping,
             "api_vs_gui_divergence": Mapping,
             "branch_profile_provenance": Mapping,
+            "scanner_incremental_model": Mapping,
             "localization_diagnosis": Mapping,
             "unsupported_inventory": Mapping,
             "manual_sync_safety_judgement": Mapping,
@@ -6624,6 +6625,47 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                         path=f"branch_profile_provenance.{key}",
                         expected="non-empty",
                         actual=provenance.get(key),
+                    )
+
+        scanner_model = _get(summary, "scanner_incremental_model", {})
+        if isinstance(scanner_model, Mapping):
+            required_scanner_paths = (
+                "model",
+                "durable_state_tables",
+                "durable_global_filesystem_cursor",
+                "starts_from_root_each_run",
+                "stable_known_files_fast_skipped_without_hash",
+                "hash_only_when",
+                "cap_semantics",
+                "next_batch_continuation",
+                "invalidation_policy",
+            )
+            for key in required_scanner_paths:
+                if key not in scanner_model:
+                    result.fail(
+                        "s3a_m2_scanner_incremental_model_incomplete",
+                        "S3A-M2 must explain the durable source-ledger/checkpoint model that prevents repeated root-wide duplicate hashing.",
+                        path=f"scanner_incremental_model.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+            if status == "target_met":
+                if not _as_bool(scanner_model.get("stable_known_files_fast_skipped_without_hash")):
+                    result.fail(
+                        "s3a_m2_scanner_does_not_fast_skip_stable_known_files",
+                        "S3A-M2 target_met requires stable known files to be skipped by source ledger metadata without content hashing.",
+                        path="scanner_incremental_model.stable_known_files_fast_skipped_without_hash",
+                        expected=True,
+                        actual=scanner_model.get("stable_known_files_fast_skipped_without_hash"),
+                    )
+                cap_semantics = str(scanner_model.get("cap_semantics") or "")
+                if "actionable" not in cap_semantics or "unchanged" not in cap_semantics:
+                    result.fail(
+                        "s3a_m2_scanner_cap_semantics_not_actionable",
+                        "S3A-M2 cap semantics must be based on actionable candidates and must not be consumed by unchanged existing media.",
+                        path="scanner_incremental_model.cap_semantics",
+                        expected="actionable candidates; unchanged existing media excluded",
+                        actual=cap_semantics,
                     )
 
         safety_judgement = _get(summary, "manual_sync_safety_judgement", {})
@@ -7010,6 +7052,35 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                     "gui_validation_session_id_present": gui_session_present,
                     "gui_validation_session_signature_valid": gui_session_signature_valid,
                 },
+            )
+        gui_plan_hash_bound = _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_plan_hash_bound", False))
+        gui_plan_flow_verified = _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_plan_flow_verified", False))
+        gui_plan_request_id_present = _as_bool(
+            _get(summary, "launcher_web_admin_acceptance.gui_plan_request_id_present", False)
+        )
+        if not (gui_plan_hash_bound and gui_plan_flow_verified and gui_plan_request_id_present):
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_bound_plan_flow",
+                "GUI Execute acceptance must bind the Web Admin session to the browser-generated plan request id and plan hash.",
+                path="launcher_web_admin_acceptance",
+                expected={
+                    "gui_plan_hash_bound": True,
+                    "gui_plan_flow_verified": True,
+                    "gui_plan_request_id_present": True,
+                },
+                actual={
+                    "gui_plan_hash_bound": gui_plan_hash_bound,
+                    "gui_plan_flow_verified": gui_plan_flow_verified,
+                    "gui_plan_request_id_present": gui_plan_request_id_present,
+                },
+            )
+        if not _as_bool(_get(summary, "launcher_web_admin_acceptance.runtime_head_matches_current", False)):
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_current_head_runtime",
+                "GUI Execute acceptance must validate that the GUI-created run was produced by the current report head.",
+                path="launcher_web_admin_acceptance.runtime_head_matches_current",
+                expected=True,
+                actual=_get(summary, "launcher_web_admin_acceptance.runtime_head_matches_current", None),
             )
     if launcher_status_any == "passed_gui_execute_not_safe_runner_execute_used":
         if launcher_execute_clicked:
