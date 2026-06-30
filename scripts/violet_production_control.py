@@ -63,7 +63,7 @@ PROFILE_AUTOMATION_FLAGS = {
 MANUAL_E2E_COMPONENT_DEFAULTS = {
     "ai_tagging_enabled": True,
     "content_classification_enabled": True,
-    "content_classification_method": "heuristic",
+    "content_classification_method": "clip",
     "tag_translation_llm_enabled": True,
     "ai_tagging_auto_localization": False,
 }

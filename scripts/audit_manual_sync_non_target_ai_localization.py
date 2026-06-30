@@ -34,11 +34,22 @@ from app.models import (  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / "s3a_m2_delta_e2e" / "non_target_ai_audit"
 TARGET_CLASSES = {"anime", "illustration"}
+CONFIRMED_NON_TARGET_CLASSES = {"non_anime"}
+UNKNOWN_OR_UNCERTAIN_CLASSES = {"", "none", "null", "unknown", "unclassified", "uncertain"}
 
 
 def _content_class(value: Any) -> str:
     value = getattr(value, "value", value)
     return str(value or "unclassified").strip().lower()
+
+
+def _content_class_group(value: Any) -> str:
+    content_class = _content_class(value)
+    if content_class in TARGET_CLASSES:
+        return "target"
+    if content_class in CONFIRMED_NON_TARGET_CLASSES:
+        return "confirmed_non_target"
+    return "unknown_or_uncertain"
 
 
 def _parse_run_ids(raw: str) -> list[int]:
@@ -152,40 +163,54 @@ def audit(run_ids: list[int]) -> dict[str, Any]:
             )
 
         assignment_counts: Counter[str] = Counter()
-        non_target_media_with_ai: set[int] = set()
+        confirmed_non_target_media_with_ai: set[int] = set()
+        unknown_or_uncertain_media_with_ai: set[int] = set()
+        unclassified_media_with_ai: set[int] = set()
         target_media_with_ai: set[int] = set()
         for row in assignments:
             cls = class_by_media.get(int(row.media_id), "unclassified")
+            class_group = _content_class_group(cls)
             category = getattr(row.category, "value", row.category)
             suggestion = "suggestion" if row.is_suggestion else "normal"
             count = int(row.count or 0)
             assignment_counts[f"{cls}:{category}:{suggestion}"] += count
-            if cls in TARGET_CLASSES:
+            if class_group == "target":
                 target_media_with_ai.add(int(row.media_id))
+            elif class_group == "confirmed_non_target":
+                confirmed_non_target_media_with_ai.add(int(row.media_id))
             else:
-                non_target_media_with_ai.add(int(row.media_id))
+                unknown_or_uncertain_media_with_ai.add(int(row.media_id))
+                if cls == "unclassified":
+                    unclassified_media_with_ai.add(int(row.media_id))
 
-        non_target_tag_rows = []
-        if non_target_media_with_ai:
-            non_target_tag_rows = (
+        confirmed_non_target_tag_rows = []
+        if confirmed_non_target_media_with_ai:
+            confirmed_non_target_tag_rows = (
                 db.query(Tag.id, Tag.category)
                 .join(blombooru_media_tags, Tag.id == blombooru_media_tags.c.tag_id)
-                .filter(blombooru_media_tags.c.media_id.in_(sorted(non_target_media_with_ai)))
+                .filter(blombooru_media_tags.c.media_id.in_(sorted(confirmed_non_target_media_with_ai)))
                 .filter(blombooru_media_tags.c.source == "ai_wd")
                 .distinct()
                 .all()
             )
-        translated_non_target_distinct_tags = 0
-        if non_target_tag_rows:
-            translated_non_target_distinct_tags = int(
+        translated_confirmed_non_target_distinct_tags = 0
+        if confirmed_non_target_tag_rows:
+            translated_confirmed_non_target_distinct_tags = int(
                 db.query(func.count(func.distinct(TagTranslation.canonical_name)))
                 .join(Tag, Tag.name == TagTranslation.canonical_name)
-                .filter(Tag.id.in_([int(row.id) for row in non_target_tag_rows]))
+                .filter(Tag.id.in_([int(row.id) for row in confirmed_non_target_tag_rows]))
                 .filter(TagTranslation.language == "zh-CN")
                 .filter(TagTranslation.status != "rejected")
                 .scalar()
                 or 0
             )
+
+        confirmed_non_target_assignment_count = int(
+            sum(value for key, value in assignment_counts.items() if key.split(":", 1)[0] in CONFIRMED_NON_TARGET_CLASSES)
+        )
+        unknown_or_uncertain_assignment_count = int(
+            sum(value for key, value in assignment_counts.items() if key.split(":", 1)[0] in UNKNOWN_OR_UNCERTAIN_CLASSES)
+        )
 
         return {
             "audit": "manual_sync_non_target_ai_localization_v1",
@@ -206,6 +231,8 @@ def audit(run_ids: list[int]) -> dict[str, Any]:
                 for run in runs
             ],
             "target_content_classes": sorted(TARGET_CLASSES),
+            "confirmed_non_target_content_classes": sorted(CONFIRMED_NON_TARGET_CLASSES),
+            "unknown_or_uncertain_content_classes": sorted(value for value in UNKNOWN_OR_UNCERTAIN_CLASSES if value),
             "media_count": len(media_ids),
             "media_by_content_class": dict(sorted(Counter(class_by_media.values()).items())),
             "media_by_run_and_content_class": {
@@ -223,12 +250,20 @@ def audit(run_ids: list[int]) -> dict[str, Any]:
             "ai_wd_assignment_count": int(sum(assignment_counts.values())),
             "ai_wd_assignments_by_content_class_category_suggestion": dict(sorted(assignment_counts.items())),
             "target_media_with_ai_count": len(target_media_with_ai),
-            "non_target_media_with_ai_count": len(non_target_media_with_ai),
-            "non_target_ai_wd_assignment_count": int(
-                sum(value for key, value in assignment_counts.items() if key.split(":", 1)[0] not in TARGET_CLASSES)
-            ),
-            "non_target_distinct_ai_wd_tags": len(non_target_tag_rows),
-            "non_target_distinct_ai_wd_tags_with_zh_cn_translation": translated_non_target_distinct_tags,
+            "confirmed_non_target_media_with_ai_count": len(confirmed_non_target_media_with_ai),
+            "confirmed_non_target_ai_wd_assignment_count": confirmed_non_target_assignment_count,
+            "confirmed_non_target_distinct_ai_wd_tags": len(confirmed_non_target_tag_rows),
+            "confirmed_non_target_distinct_ai_wd_tags_with_zh_cn_translation": translated_confirmed_non_target_distinct_tags,
+            "unknown_or_uncertain_media_with_ai_count": len(unknown_or_uncertain_media_with_ai),
+            "unknown_or_uncertain_ai_wd_assignment_count": unknown_or_uncertain_assignment_count,
+            "unclassified_media_with_ai_count": len(unclassified_media_with_ai),
+            "non_target_media_with_ai_count": len(confirmed_non_target_media_with_ai),
+            "non_target_ai_wd_assignment_count": confirmed_non_target_assignment_count,
+            "repair_policy": {
+                "default_repair_scope": "confirmed_non_target_only",
+                "unknown_or_uncertain_default_action": "do_not_remove_ai_tags_by_default",
+                "requires_project_owner_approval_before_db_repair": True,
+            },
             "public_safe": True,
             "private_paths_printed": False,
             "content_hashes_printed": False,

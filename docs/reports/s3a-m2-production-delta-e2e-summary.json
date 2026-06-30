@@ -1837,11 +1837,11 @@
     "future_manual_sync_safe_for_normal_use": false,
     "gpu_inference_path_reliable_for_manual_sync": true,
     "gui_execute_works_end_to_end": false,
-    "latest_reason": "Job #13 proves the staged UI and full pipeline can complete with plan expensive operations 0/0/0/0, but it is partial acceptance only because the user had to use Advanced exact-phrase execute and existing non-target AI/localization contamination remains unrepaired.",
+    "latest_reason": "Job #13 proves the staged UI and full pipeline can complete with plan expensive operations 0/0/0/0, but it is partial acceptance only because the user had to use Advanced exact-phrase execute and existing confirmed non-target AI/localization contamination remains unrepaired.",
     "manual_sync_safety_status": "manual_sync_not_safe_blockers_remaining",
     "operator_checks_before_retry": [
       "wait for this follow-up head to be pushed and reviewed",
-      "approve or complete the deterministic non-target AI/localization DB repair for #7/#8 before merge",
+      "approve or complete the deterministic confirmed non-target AI/localization DB repair for #7/#8 before merge",
       "pull latest PR head and verify normal Start manual sync no longer exposes/requires Advanced exact phrase",
       "use a small JPG/PNG batch and stop if non-target media are selected for AI/localization",
       "run the GUI validator after a normal-flow execute completes"
@@ -1860,7 +1860,7 @@
     },
     "project_can_return_to_pixiv_source_roadmap": false,
     "public_safe": true,
-    "reason": "A real Web Admin smoke test completed a batch through the full stages, but the normal confirmation flow was not wired to execute before this fix and historical #7/#8 non-target media have AI/localization DB contamination that requires approved repair before merge.",
+    "reason": "A real Web Admin smoke test completed a batch through the full stages, but the normal confirmation flow was not wired to execute before this fix and historical #7/#8 confirmed non-target media have AI/localization DB contamination that requires approved repair before merge.",
     "safe_conditions_before_execute": [
       "branch/head/provenance match the PR branch",
       "managed production server is freshly started from the intended profile",
@@ -1878,8 +1878,15 @@
     "ai_wd_assignment_count": 20675,
     "audit": "manual_sync_non_target_ai_localization_v1",
     "db_writes_performed": false,
-    "diagnosis": "Historical runs #7/#8 contain non-target/unknown media that received ai_wd tags and localization. Job #13 imported only anime-classified media, but future manual execute still needed a hard classification gate before AI/localization.",
-    "future_pipeline_fix": "manual_sync_execute now runs classification before AI tagging and skips AI/localization for media outside DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES with stable non-failure statuses.",
+    "confirmed_non_target_ai_wd_assignment_count": 429,
+    "confirmed_non_target_content_classes": [
+      "non_anime"
+    ],
+    "confirmed_non_target_distinct_ai_wd_tags": 238,
+    "confirmed_non_target_distinct_ai_wd_tags_with_zh_cn_translation": 237,
+    "confirmed_non_target_media_with_ai_count": 12,
+    "diagnosis": "Historical runs #7/#8 contain confirmed non_anime media that received ai_wd tags and localization. Unknown is not non-target; unknown/uncertain media are reported separately and are not default destructive repair candidates. Job #13 imported only anime-classified media.",
+    "future_pipeline_fix": "manual_sync_execute now runs classification before AI tagging; confirmed non_anime skips AI/localization, classified unknown remains downstream-eligible, and classifier-unavailable/unclassified rows become classification blockers instead of non-target skips.",
     "job_13_non_target_media_with_ai_count": 0,
     "media_by_content_class": {
       "anime": 379,
@@ -1902,20 +1909,18 @@
       }
     },
     "media_count": 414,
-    "non_target_ai_wd_assignment_count": 1645,
-    "non_target_distinct_ai_wd_tags": 530,
-    "non_target_distinct_ai_wd_tags_with_zh_cn_translation": 529,
-    "non_target_media_with_ai_count": 35,
+    "non_target_ai_wd_assignment_count": 429,
+    "non_target_media_with_ai_count": 12,
     "proposed_repair": {
       "actions": [
         "backup/export affected ai_wd assignment aggregates and row identities privately",
-        "remove or invalidate ai_wd-generated media-tag assignments on non-target media only",
-        "preserve manually assigned tags and target/anime media tags",
-        "mark affected non-target source items with ai_tagging_skipped_non_target and localization_not_applicable_non_target where appropriate",
-        "clear localization follow-up only when it came solely from invalid non-target AI tags",
+        "remove or invalidate ai_wd-generated media-tag assignments on confirmed non_anime media only",
+        "preserve manually assigned tags and target/anime/unknown media tags",
+        "mark affected confirmed non-target source items with ai_tagging_skipped_non_target and localization_not_applicable_non_target where appropriate",
+        "clear localization follow-up only when it came solely from invalid confirmed non-target AI tags",
         "verify Entity/SourceConcept truth violations remain zero"
       ],
-      "scope": "affected S3A-M2 run #7/#8 media where content_class is non_anime or unknown and ai_wd assignments were generated by manual sync",
+      "scope": "affected S3A-M2 run #7/#8 media where content_class is confirmed non_anime and ai_wd assignments were generated by manual sync; unknown media are excluded by default",
       "status": "not_executed_requires_project_owner_approval"
     },
     "public_safe": true,
@@ -1933,12 +1938,17 @@
         "deferred_existing_media_rows": 35
       },
       "7": {
-        "non_target_or_unknown_classified_ai_tagged_localized": 27
+        "confirmed_non_target_classified_ai_tagged_localized": 7,
+        "unknown_classified_ai_tagged_localized": 20
       },
       "8": {
-        "non_target_or_unknown_classified_ai_tagged_localized": 8
+        "confirmed_non_target_classified_ai_tagged_localized": 5,
+        "unknown_classified_ai_tagged_localized": 3
       }
-    }
+    },
+    "unknown_or_uncertain_ai_wd_assignment_count": 1216,
+    "unknown_or_uncertain_media_with_ai_count": 23,
+    "unknown_or_uncertain_default_action": "do_not_remove_ai_tags_by_default"
   },
   "not_completed": [
     "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
@@ -2197,8 +2207,8 @@
   },
   "remaining_blockers": [
     {
-      "code": "non_target_ai_localization_contamination_unrepaired",
-      "detail": "Read-only audit found 35 non-target/unknown S3A-M2 media from runs #7/#8 with 1645 ai_wd assignments; repair requires explicit project-owner approval and private backup/ledger.",
+      "code": "confirmed_non_target_ai_localization_contamination_unrepaired",
+      "detail": "Read-only audit found 12 confirmed non_anime S3A-M2 media from runs #7/#8 with 429 ai_wd assignments; repair requires explicit project-owner approval and private backup/ledger. The 23 unknown media with 1216 ai_wd assignments are not non-target and are excluded from default destructive repair.",
       "status": "blocking_merge"
     },
     {

@@ -195,19 +195,23 @@
 - Audit mode: read-only, aggregate only; raw private artifact: `.local_manifests/s3a_m2_delta_e2e/non_target_ai_audit/manual-sync-non-target-ai-audit-runs-7-8-13.json`.
 - Runs audited: `[7, 8, 13]`; DB writes performed: `False`.
 - Media by content class: `anime=379`, `non_anime=12`, `unknown=23`.
-- Run #13 content class: `anime=65`; no non-target media were imported by the latest smoke test.
-- Historical #7/#8 non-target/unknown media with `ai_wd` assignments: `35`.
-- Non-target `ai_wd` assignment count: `1645`; distinct non-target AI tags: `530`; distinct non-target AI tags with zh-CN translation coverage: `529`.
-- Diagnosis: #7/#8 historical S3A-M2 runs let non-target/unknown classified media pass into WD anime tagging and localization. Job #13 did not add new non-target contamination, but future manual execute needed a hard classification gate.
-- Future-run fix: manual execute now runs classification before AI tagging and skips AI/localization for media outside `DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES` (default `anime,illustration`) with stable statuses `ai_tagging_skipped_non_target` and `localization_not_applicable_non_target`; this is not counted as failure.
+- Run #13 content class: `anime=65`; no confirmed non-target media were imported by the latest smoke test.
+- Historical #7/#8 confirmed non-target media with `ai_wd` assignments: `12` (`non_anime` only).
+- Confirmed non-target `ai_wd` assignment count: `429`; distinct confirmed non-target AI tags: `238`; distinct confirmed non-target AI tags with zh-CN translation coverage: `237`.
+- Historical #7/#8 unknown/uncertain media with `ai_wd` assignments: `23`; unknown/uncertain `ai_wd` assignment count: `1216`.
+- Diagnosis: #7/#8 historical S3A-M2 runs let confirmed `non_anime` media pass into WD anime tagging and localization. Unknown is not non-target; those 23 unknown media are reported separately and are not destructive repair candidates by default.
+- Future-run fix: manual execute now runs classification before AI tagging. Confirmed `non_anime` skips AI/localization with stable statuses `ai_tagging_skipped_non_target` and `localization_not_applicable_non_target`; classified `unknown` remains downstream-eligible and classification-unavailable/unclassified rows are deferred with a classification blocker instead of being labeled non-target.
 - Production DB repair status: `not_executed_requires_project_owner_approval`.
-- Proposed deterministic repair: privately back up/export affected row identities, remove or invalidate only `source='ai_wd'` assignments on non-target #7/#8 media, preserve manual tags and target/anime tags, mark source items non-applicable where appropriate, and verify Entity/SourceConcept truth violations remain `0`.
+- Proposed deterministic repair: privately back up/export affected row identities, remove or invalidate only `source='ai_wd'` assignments on confirmed `non_anime` #7/#8 media after project-owner approval, preserve manual tags and target/anime/unknown media tags, mark confirmed non-target source items non-applicable where appropriate, and verify Entity/SourceConcept truth violations remain `0`.
 - Merge blocker: unresolved until the project owner explicitly approves and the repair is executed/validated, or explicitly accepts the historical contamination as deferred debt.
 
 ### Latest Correctness Fixes
 
 - Normal confirmation flow: fixed; normal operator confirmation now starts the full pipeline without the Advanced exact phrase.
-- Classification gate: fixed; manual E2E production readiness requires `CONTENT_CLASSIFICATION_METHOD=clip`, and AI/localization only run for configured target visual classes.
+- Classification gate: fixed; manual E2E production readiness requires `CONTENT_CLASSIFICATION_METHOD=clip`; confirmed non-target media are skipped, classified unknown remains eligible, and classifier-unavailable rows are deferred as classification blockers.
+- Unknown/non-target semantic correction: fixed after review of head `46156d1a9b147574958483176120eab4fa358a45`; `unknown`, `unclassified`, and null content class are no longer collapsed into confirmed `non_anime`. Classification unavailable now blocks/deferred downstream stages with `classification_not_completed`; classified `unknown` stays eligible for AI/localization under the current project-owner ruling.
+- Localization truthfulness: fixed; deferred localization gaps now produce `completed_with_followup_required` instead of a plain completed job, successful translation saves recompute the remaining gap, and cancellation after localization side effects preserves LLM/provider/DB-write counters.
+- Production launcher readiness: fixed; the production manual E2E profile default classification method is `clip` while automatic/background sync flags remain off.
 - Old-mtime unseen files: fixed; files absent from `DynamicSourceItem` are not skipped solely because preserved mtime is older than watermark minus safety lookback. Known stable old files may still fast-skip by ledger identity.
 - Duplicate/existing visibility: fixed; latest job summary now shows imported, stable skipped/not-applicable, failed, and per-reason breakdown.
 - Governance follow-up: future non-trivial feature work should start plan-only, include mature prior-art/design references for common engineering domains, and use realistic product-path/performance validation. Reports remain supporting evidence, not proof.
@@ -248,7 +252,7 @@
 
 - Manual sync safety judgement: `manual_sync_not_safe_blockers_remaining`.
 - Remaining blockers:
-  - `non_target_ai_localization_contamination_unrepaired`: #7/#8 non-target `ai_wd` assignments require approved deterministic repair or explicit acceptance as deferred debt.
+  - `confirmed_non_target_ai_localization_contamination_unrepaired`: #7/#8 confirmed `non_anime` `ai_wd` assignments require approved deterministic repair or explicit acceptance as deferred debt. Unknown #7/#8 AI tags are not included in default destructive repair.
   - `normal_flow_gui_execute_retry_required_after_fix`: job #13 completed via Advanced execute; a normal-flow retry on the fixed head is still required.
   - `gui_validator_after_normal_flow_run_pending`: the GUI acceptance validator must pass on a normal-flow GUI execute run after the fix.
 - The user should not treat S3A-M2 as complete or safe to merge from job #13 alone.

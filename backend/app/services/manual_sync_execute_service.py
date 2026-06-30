@@ -77,6 +77,9 @@ MANUAL_SYNC_EXECUTE_MAX_FILES = 5
 _ACTIVE_JOB_STATUSES = ("pending", "running", "cancelling")
 LOCALIZABLE_TAG_CATEGORIES = {"general", "meta"}
 PROPER_NOUN_TAG_CATEGORIES = {"character", "copyright", "artist"}
+CONFIRMED_NON_TARGET_CONTENT_CLASSES = {"non_anime"}
+UNKNOWN_OR_UNCERTAIN_CONTENT_CLASSES = {"", "none", "null", "unknown", "unclassified", "uncertain"}
+CLASSIFICATION_DONE_STATUSES = {"classified", "classified_reused"}
 
 
 def _manual_sync_target_content_classes() -> set[str]:
@@ -93,10 +96,29 @@ def _media_content_class_value(media: Optional[Media]) -> str:
     return str(value or "unclassified").strip().lower()
 
 
-def _manual_sync_media_is_target_for_ai(media: Optional[Media]) -> bool:
+def _manual_sync_media_ai_eligibility(
+    media: Optional[Media],
+    source_item: Optional[DynamicSourceItem] = None,
+) -> tuple[str, str]:
+    """Return manual-sync AI/localization eligibility without collapsing unknown into non-target."""
     if not settings.CONTENT_CLASSIFICATION_ENABLED:
-        return True
-    return _media_content_class_value(media) in _manual_sync_target_content_classes()
+        return ("eligible", "classification_disabled")
+
+    content_class = _media_content_class_value(media)
+    if content_class in _manual_sync_target_content_classes():
+        return ("eligible", "target_content_class")
+    if content_class in CONFIRMED_NON_TARGET_CONTENT_CLASSES:
+        return ("non_target", "confirmed_non_target_content_class")
+
+    classification_status = str(getattr(source_item, "classification_status", "") or "").strip().lower()
+    if content_class in UNKNOWN_OR_UNCERTAIN_CONTENT_CLASSES and classification_status not in CLASSIFICATION_DONE_STATUSES:
+        return ("classification_blocked", "classification_not_completed")
+
+    return ("eligible_unknown", "content_class_unknown_or_uncertain")
+
+
+def _manual_sync_media_is_target_for_ai(media: Optional[Media]) -> bool:
+    return _manual_sync_media_ai_eligibility(media)[0] in {"eligible", "eligible_unknown"}
 
 
 def _manual_sync_execute_skip_state_for_reason(reason: Optional[str]) -> Optional[str]:
@@ -1469,16 +1491,29 @@ def _manual_sync_finalize_localization(
     llm_called = False
     errors: list[str] = []
 
+    def _cancelled_localization_result() -> Dict[str, Any]:
+        cancelled = _manual_sync_skipped_localization_result(reason="cancelled", media_ids=media_ids, lang=lang)
+        cancelled.update(
+            {
+                "llm_called": llm_called,
+                "provider_call_count": provider_call_count,
+                "translated": translated,
+                "failed": failed,
+                "skipped": result.get("skipped", 0),
+                "errors": sorted(set(errors)),
+                "blocked_reason": "manual_sync_cancelled_during_localization",
+                "localization_finalizer_called": True,
+                "localization_db_writes_performed": bool(translated),
+            }
+        )
+        return cancelled
+
     if localizable_missing:
         if not settings.TAG_TRANSLATION_LLM_ENABLED:
             blocked_reason = "localization_backend_disabled"
         else:
             if cancel_check is not None and cancel_check():
-                return _manual_sync_skipped_localization_result(
-                    reason="cancelled",
-                    media_ids=media_ids,
-                    lang=lang,
-                )
+                return _cancelled_localization_result()
             try:
                 from .llm_translation_provider import get_llm_provider
                 from .tag_localization_service import upsert_translation
@@ -1496,11 +1531,7 @@ def _manual_sync_finalize_localization(
                     }
                     for start in range(0, len(localizable_missing), batch_size):
                         if cancel_check is not None and cancel_check():
-                            return _manual_sync_skipped_localization_result(
-                                reason="cancelled",
-                                media_ids=media_ids,
-                                lang=lang,
-                            )
+                            return _cancelled_localization_result()
                         batch_names = localizable_missing[start : start + batch_size]
                         inputs = [candidate_by_name[name] for name in batch_names]
                         provider_call_count += 1
@@ -1514,11 +1545,7 @@ def _manual_sync_finalize_localization(
                         seen_outputs: set[str] = set()
                         for translation in translations:
                             if cancel_check is not None and cancel_check():
-                                return _manual_sync_skipped_localization_result(
-                                    reason="cancelled",
-                                    media_ids=media_ids,
-                                    lang=lang,
-                                )
+                                return _cancelled_localization_result()
                             canonical = str(getattr(translation, "canonical_name", "") or "")
                             if canonical not in candidate_by_name or canonical in seen_outputs:
                                 continue
@@ -1559,7 +1586,7 @@ def _manual_sync_finalize_localization(
     else:
         blocked_reason = None
     if cancel_check is not None and cancel_check():
-        return _manual_sync_skipped_localization_result(reason="cancelled", media_ids=media_ids, lang=lang)
+        return _cancelled_localization_result()
 
     if localizable_missing or failed:
         target_status = "deferred"
@@ -1601,6 +1628,8 @@ def _manual_sync_finalize_localization(
         "proper_noun_missing_translation_reason": "proper_noun_translation_not_required_for_current_media_tag_layer",
         "dynamic_source_items_updated": int(updated_items or 0),
         "dynamic_source_items_target_status": target_status,
+        "localization_finalizer_called": True,
+        "localization_db_writes_performed": bool(translated),
     }
 
 
@@ -2292,7 +2321,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     and _has_ai_wd_tags(db, media_id)
                 ):
                     media = db.get(Media, media_id)
-                    if not _manual_sync_media_is_target_for_ai(media):
+                    eligibility, eligibility_reason = _manual_sync_media_ai_eligibility(media, item)
+                    if eligibility == "non_target":
                         item.ai_tagging_status = "ai_tagging_skipped_non_target"
                         item.localization_status = "localization_not_applicable_non_target"
                         item.deferred_reason = "non_target_content_class"
@@ -2306,6 +2336,29 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                             stage="ai_tagging",
                             status="skipped",
                             reason="ai_tagging_skipped_non_target",
+                            extra={"content_class": _media_content_class_value(media)},
+                        )
+                        db.commit()
+                        stage_processed += 1
+                        processed_items += 1
+                        stop_reason = _check_stop_budget()
+                        if stop_reason:
+                            break
+                        continue
+                    if eligibility == "classification_blocked":
+                        item.ai_tagging_status = "blocked_classification_not_completed"
+                        item.localization_status = "blocked_classification_not_completed"
+                        item.deferred_reason = "classification_not_completed"
+                        counts["ai_tagging_deferred_classification_not_completed"] += 1
+                        counts["localization_deferred"] += 1
+                        consecutive_failures = 0
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="ai_tagging",
+                            status="deferred",
+                            reason=eligibility_reason,
                             extra={"content_class": _media_content_class_value(media)},
                         )
                         db.commit()
@@ -2340,7 +2393,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                         break
                     continue
                 media = db.get(Media, media_id)
-                if not _manual_sync_media_is_target_for_ai(media):
+                eligibility, eligibility_reason = _manual_sync_media_ai_eligibility(media, item)
+                if eligibility == "non_target":
                     if item:
                         item.ai_tagging_status = "ai_tagging_skipped_non_target"
                         item.localization_status = "localization_not_applicable_non_target"
@@ -2355,6 +2409,30 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                             stage="ai_tagging",
                             status="skipped",
                             reason="ai_tagging_skipped_non_target",
+                            extra={"content_class": _media_content_class_value(media)},
+                        )
+                    db.commit()
+                    stage_processed += 1
+                    processed_items += 1
+                    stop_reason = _check_stop_budget()
+                    if stop_reason:
+                        break
+                    continue
+                if eligibility == "classification_blocked":
+                    if item:
+                        item.ai_tagging_status = "blocked_classification_not_completed"
+                        item.localization_status = "blocked_classification_not_completed"
+                        item.deferred_reason = "classification_not_completed"
+                        counts["ai_tagging_deferred_classification_not_completed"] += 1
+                        counts["localization_deferred"] += 1
+                        consecutive_failures = 0
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="ai_tagging",
+                            status="deferred",
+                            reason=eligibility_reason,
                             extra={"content_class": _media_content_class_value(media)},
                         )
                     db.commit()
@@ -2480,7 +2558,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 if media_id <= 0:
                     continue
                 media = db.get(Media, media_id)
-                if not _manual_sync_media_is_target_for_ai(media):
+                eligibility, eligibility_reason = _manual_sync_media_ai_eligibility(media, item)
+                if eligibility == "non_target":
                     item.localization_status = "localization_not_applicable_non_target"
                     item.deferred_reason = "non_target_content_class"
                     counts["localization_not_applicable_non_target"] += 1
@@ -2491,6 +2570,20 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                         stage="localization",
                         status="skipped",
                         reason="localization_not_applicable_non_target",
+                        extra={"content_class": _media_content_class_value(media)},
+                    )
+                    continue
+                if eligibility == "classification_blocked":
+                    item.localization_status = "blocked_classification_not_completed"
+                    item.deferred_reason = "classification_not_completed"
+                    counts["localization_deferred"] += 1
+                    _annotate_run_item_stage(
+                        db,
+                        run=run,
+                        item=item,
+                        stage="localization",
+                        status="deferred",
+                        reason=eligibility_reason,
                         extra={"content_class": _media_content_class_value(media)},
                     )
                     continue
@@ -2537,8 +2630,16 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         )
         run.pending_import_items = int(unprocessed_import_planned_count)
         summary_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
+        localization_incomplete = bool(
+            int(counts["localization_deferred"])
+            or str(localization_result.get("status") or "").startswith("blocked_")
+            or localization_result.get("dynamic_source_items_target_status") == "deferred"
+            or int(localization_result.get("tags_requiring_localization_after_runner") or 0)
+        )
         if not stop_reason and run.status not in {"cancelled", "failed"} and int(counts["localization_failed"]):
             summary_status = "completed_with_localization_failures"
+        elif not stop_reason and run.status not in {"cancelled", "failed"} and localization_incomplete:
+            summary_status = "completed_with_followup_required"
         run.summary_json = _set_stage(run.summary_json or {}, "summary", status=summary_status, processed=1, failed=0)
         _update_execute_summary(
             run,
@@ -2567,7 +2668,12 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             run.status = "failed"
             run.error_message = f"Manual sync execute stopped safely: {stop_reason}"
         elif run.status != "cancelled":
-            run.status = "completed_with_failures" if int(counts["localization_failed"]) else "completed"
+            if int(counts["localization_failed"]):
+                run.status = "completed_with_failures"
+            elif localization_incomplete:
+                run.status = "completed_with_followup_required"
+            else:
+                run.status = "completed"
         run.finished_at = _utcnow()
         root.last_checked_at = run.finished_at
         db.commit()

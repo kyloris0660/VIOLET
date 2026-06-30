@@ -180,7 +180,7 @@ def test_profile_to_env_allows_manual_sync_phase_caps_without_automation(tmp_pat
     assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] == "true"
     assert env["AI_TAGGING_ENABLED"] == "true"
     assert env["CONTENT_CLASSIFICATION_ENABLED"] == "true"
-    assert env["CONTENT_CLASSIFICATION_METHOD"] == "heuristic"
+    assert env["CONTENT_CLASSIFICATION_METHOD"] == "clip"
     assert env["TAG_TRANSLATION_LLM_ENABLED"] == "true"
     assert env["TAG_TRANSLATION_LLM_API_KEY"] == "test-key"
     assert env["TAG_TRANSLATION_LLM_MODEL"] == "test-model"

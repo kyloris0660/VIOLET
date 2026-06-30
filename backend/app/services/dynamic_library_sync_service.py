@@ -540,7 +540,11 @@ def _manual_plan_root_scan_state(
             .join(DynamicSyncRunItem, DynamicSyncRunItem.sync_run_id == DynamicSyncRun.id)
             .join(DynamicSourceItem, DynamicSyncRunItem.source_item_id == DynamicSourceItem.id)
             .filter(DynamicSourceItem.source_root_id == int(source_record_id))
-            .filter(DynamicSyncRun.status.in_(("completed", "completed_with_failures", "cancelled", "failed")))
+            .filter(
+                DynamicSyncRun.status.in_(
+                    ("completed", "completed_with_failures", "completed_with_followup_required", "cancelled", "failed")
+                )
+            )
             .order_by(DynamicSyncRun.id.desc())
             .first()
         )

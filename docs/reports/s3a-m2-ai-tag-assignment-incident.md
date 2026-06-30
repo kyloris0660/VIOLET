@@ -47,11 +47,12 @@ No private filenames, paths, content hashes, prompts, API keys, source URLs, or 
 - Read-only audit artifact: `.local_manifests/s3a_m2_delta_e2e/non_target_ai_audit/manual-sync-non-target-ai-audit-runs-7-8-13.json`.
 - Runs audited: `[7, 8, 13]`; DB writes performed by audit: `False`.
 - Aggregate media scope: `414` media; content classes `anime=379`, `non_anime=12`, `unknown=23`.
-- Job #13 result: `anime=65`; non-target media with AI tags from this latest job: `0`.
-- Historical #7/#8 impact: `35` non-target/unknown media received `source='ai_wd'` assignments.
-- Non-target AI assignment count: `1645`; distinct non-target AI tags: `530`; zh-CN coverage among those tags: `529`.
-- Root cause class: manual execute treated AI/localization as downstream stages for every imported media row instead of enforcing classification as the gate for WD/anime-tagging applicability.
-- Future-run prevention: manual execute now performs classification before AI tagging and skips AI/localization for media outside `DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES` with stable statuses `ai_tagging_skipped_non_target` and `localization_not_applicable_non_target`.
+- Job #13 result: `anime=65`; confirmed non-target media with AI tags from this latest job: `0`.
+- Historical #7/#8 confirmed non-target impact: `12` `non_anime` media received `source='ai_wd'` assignments.
+- Confirmed non-target AI assignment count: `429`; distinct confirmed non-target AI tags: `238`; zh-CN coverage among those tags: `237`.
+- Historical #7/#8 unknown/uncertain media with AI tags: `23`; unknown/uncertain AI assignment count: `1216`. Unknown is not non-target and is not included in default destructive repair candidates.
+- Root cause class: manual execute treated AI/localization as downstream stages for every imported media row instead of enforcing classification as the gate for confirmed non-target WD/anime-tagging applicability.
+- Future-run prevention: manual execute now performs classification before AI tagging; confirmed `non_anime` skips AI/localization, classified `unknown` remains downstream-eligible, and classifier-unavailable/unclassified rows become classification blockers instead of non-target skips.
 - Repair status: `not_executed_requires_project_owner_approval`.
-- Proposed repair: back up affected row identities privately, remove/invalidate only AI-generated `ai_wd` media-tag assignments on non-target #7/#8 media, preserve manual tags and target/anime media tags, mark affected source rows non-applicable where appropriate, and re-run aggregate validation plus Entity/SourceConcept truth checks.
-- Remaining blocker: the historical non-target assignment pollution is not repaired yet, so this PR is not safe to merge solely on the basis of job #13 completion.
+- Proposed repair: back up affected row identities privately, remove/invalidate only AI-generated `ai_wd` media-tag assignments on confirmed `non_anime` #7/#8 media after project-owner approval, preserve manual tags and target/anime/unknown media tags, mark affected confirmed non-target source rows non-applicable where appropriate, and re-run aggregate validation plus Entity/SourceConcept truth checks.
+- Remaining blocker: the historical confirmed non-target assignment pollution is not repaired yet, so this PR is not safe to merge solely on the basis of job #13 completion.

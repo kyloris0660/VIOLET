@@ -23,6 +23,7 @@ from app.database import Base
 from app.enums import FileTypeEnum, TagCategoryEnum
 from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, blombooru_media_tags
 import scripts.run_s3a_m2_delta_e2e_with_telemetry as s3a_m2_runner
+import scripts.audit_manual_sync_non_target_ai_localization as non_target_audit
 from scripts.run_s3a_m2_delta_e2e_with_telemetry import (
     _placeholder_rows_from_plan,
     build_standard_pipeline_flow,
@@ -43,6 +44,14 @@ def test_s3a_m2_approval_phrase_is_plan_hash_bound() -> None:
     phrase = s3a_m2_approval_phrase("abcdef1234567890")
 
     assert phrase == "I APPROVE S3A-M2 PRODUCTION DELTA E2E abcdef123456"
+
+
+def test_s3a_m2_non_target_audit_keeps_unknown_separate() -> None:
+    assert non_target_audit._content_class_group("anime") == "target"
+    assert non_target_audit._content_class_group("illustration") == "target"
+    assert non_target_audit._content_class_group("non_anime") == "confirmed_non_target"
+    assert non_target_audit._content_class_group("unknown") == "unknown_or_uncertain"
+    assert non_target_audit._content_class_group(None) == "unknown_or_uncertain"
 
 
 def test_s3a_m2_incident_diagnostic_requires_explicit_or_reported_run_ids(tmp_path: Path) -> None:
