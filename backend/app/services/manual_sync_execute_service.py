@@ -27,6 +27,7 @@ from ..models import (
     DynamicSourceRoot,
     DynamicSyncRun,
     DynamicSyncRunItem,
+    Media,
     Tag,
     TagTranslation,
     blombooru_media_tags,
@@ -34,6 +35,7 @@ from ..models import (
 from ..routes.media import process_and_save_media
 from ..schemas import RatingEnum
 from ..utils.logger import logger
+from ..utils.local_library_scanner import _is_scannable_file
 from ..utils.media_helpers import get_unique_filename
 from .dynamic_library_sync_service import (
     MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
@@ -75,6 +77,38 @@ MANUAL_SYNC_EXECUTE_MAX_FILES = 5
 _ACTIVE_JOB_STATUSES = ("pending", "running", "cancelling")
 LOCALIZABLE_TAG_CATEGORIES = {"general", "meta"}
 PROPER_NOUN_TAG_CATEGORIES = {"character", "copyright", "artist"}
+
+
+def _manual_sync_target_content_classes() -> set[str]:
+    return {
+        str(value).strip().lower()
+        for value in settings.DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES
+        if str(value).strip()
+    }
+
+
+def _media_content_class_value(media: Optional[Media]) -> str:
+    value = getattr(media, "content_class", None)
+    value = getattr(value, "value", value)
+    return str(value or "unclassified").strip().lower()
+
+
+def _manual_sync_media_is_target_for_ai(media: Optional[Media]) -> bool:
+    if not settings.CONTENT_CLASSIFICATION_ENABLED:
+        return True
+    return _media_content_class_value(media) in _manual_sync_target_content_classes()
+
+
+def _manual_sync_execute_skip_state_for_reason(reason: Optional[str]) -> Optional[str]:
+    if reason in {"unsupported_extension", "hidden", "too_large", "zero_byte", "zero_byte_file"}:
+        return "skipped_unsupported"
+    if reason in {"cloud_placeholder", "icloud_placeholder"}:
+        return "skipped_placeholder"
+    if reason == "existing_media_hash":
+        return "skipped_existing_media"
+    if reason == "duplicate_hash":
+        return "skipped_duplicate"
+    return None
 
 
 def is_manual_sync_execute_active() -> bool:
@@ -167,6 +201,12 @@ def _assert_manual_e2e_components_ready_for_production() -> None:
         raise ManualSyncExecuteError(
             "manual_sync_classification_disabled",
             "Production manual E2E execute requires content classification to be enabled.",
+            status_code=409,
+        )
+    if str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower() != "clip":
+        raise ManualSyncExecuteError(
+            "manual_sync_classification_gate_requires_clip",
+            "Production manual E2E execute requires classification-before-AI gating; use CONTENT_CLASSIFICATION_METHOD=clip.",
             status_code=409,
         )
     if not settings.AI_TAGGING_ENABLED:
@@ -1640,6 +1680,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         execute_payload = summary.get("manual_sync_execute") or {}
         request = (execute_payload.get("request") or {})
         root_id = int(request.get("root_id") or 0)
+        request_hydrated_only = bool(request.get("hydrated_only", True))
         root = db.get(DynamicSourceRoot, root_id)
         if root is None or not root.is_active:
             raise ManualSyncExecuteError(
@@ -1751,16 +1792,30 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             metadata: Dict[str, Any] = {}
             current_content_hash = plan_item.get("content_hash")
             state = str(plan_item.get("state") or "failed")
+            downstream_source_item_id = int(
+                ((plan_item.get("downstream_followup") or {}).get("source_item_id") or 0)
+            )
             source_file: Optional[Path] = None
             item_failure_reason: Optional[str] = None
             try:
                 source_file = _safe_source_file(root_path, relative_path)
                 rel, preflight_reason = _relative_identity_and_preflight_reason(root_path, source_file)
                 if not source_file.exists() or not source_file.is_file():
-                    item_failure_reason = "source_missing"
+                    if state == "downstream_followup_planned":
+                        metadata = {
+                            "file_size": plan_item.get("file_size"),
+                            "mtime_ns": plan_item.get("mtime_ns"),
+                            "source_file_available": False,
+                        }
+                    else:
+                        item_failure_reason = "source_missing"
                 else:
                     metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
                     item_failure_reason = _manual_public_reason_code(preflight_reason)
+                    if item_failure_reason is None and state == "import_planned":
+                        item_failure_reason = _manual_public_reason_code(
+                            _is_scannable_file(source_file, hydrated_only=request_hydrated_only)
+                        )
                     expected_hash = str(plan_item.get("content_hash") or "")
                     if (
                         item_failure_reason is None
@@ -1813,9 +1868,30 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 metadata=metadata,
                 content_hash=str(current_content_hash) if current_content_hash else None,
             )
+            if state == "downstream_followup_planned" and downstream_source_item_id > 0:
+                planned_source_item = db.get(DynamicSourceItem, downstream_source_item_id)
+                if planned_source_item is not None and planned_source_item.source_root_id == root.id:
+                    item = planned_source_item
 
             reason = _manual_public_reason_code(plan_item.get("reason"))
             if item_failure_reason:
+                stable_skip_state = _manual_sync_execute_skip_state_for_reason(item_failure_reason)
+                if stable_skip_state:
+                    _mark_item_skipped(
+                        db,
+                        run=run,
+                        item=item,
+                        state=stable_skip_state,
+                        reason=item_failure_reason,
+                        metadata={**metadata, "safe_label": plan_item.get("safe_label")},
+                    )
+                    counts[stable_skip_state] += 1
+                    counts[item_failure_reason] += 1
+                    processed_items += 1
+                    processed_plan_items += 1
+                    consecutive_failures = 0
+                    db.commit()
+                    continue
                 failure_metadata = {**metadata, "safe_label": plan_item.get("safe_label")}
                 _mark_item_failed(
                     db,
@@ -1864,6 +1940,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 item.media_id = media_id
                 item.sync_state = "downstream_followup_planned"
                 item.import_status = "imported"
+                item.last_sync_run_id = run.id
                 item.failure_reason = None
                 item.deferred_reason = "downstream_followup"
                 _record_run_item(
@@ -2063,11 +2140,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         db.commit()
 
         classification_method = str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower()
-        classification_order = (
-            "ai_tagging_before_classification"
-            if classification_method != "clip"
-            else "classification_before_ai_tagging"
-        )
+        classification_order = "classification_before_ai_tagging"
 
         def _check_stop_budget() -> Optional[str]:
             return _budget_stop_reason(
@@ -2107,7 +2180,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     if stop_reason:
                         break
                     continue
-                if classification_method != "clip":
+                if settings.CONTENT_CLASSIFICATION_ENABLED and classification_method != "clip":
                     blocked_reason = _heuristic_classification_ai_tag_block_reason(db, item, media_id)
                     if blocked_reason:
                         if item:
@@ -2218,7 +2291,39 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     and str(item.ai_tagging_status or "") in {"ai_tagged", "tagged", "tagged_reused"}
                     and _has_ai_wd_tags(db, media_id)
                 ):
+                    media = db.get(Media, media_id)
+                    if not _manual_sync_media_is_target_for_ai(media):
+                        item.ai_tagging_status = "ai_tagging_skipped_non_target"
+                        item.localization_status = "localization_not_applicable_non_target"
+                        item.deferred_reason = "non_target_content_class"
+                        counts["ai_tagging_skipped_non_target"] += 1
+                        counts["localization_not_applicable_non_target"] += 1
+                        consecutive_failures = 0
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="ai_tagging",
+                            status="skipped",
+                            reason="ai_tagging_skipped_non_target",
+                            extra={"content_class": _media_content_class_value(media)},
+                        )
+                        db.commit()
+                        stage_processed += 1
+                        processed_items += 1
+                        stop_reason = _check_stop_budget()
+                        if stop_reason:
+                            break
+                        continue
                     counts["ai_tagged_reused"] += 1
+                    if str(item.localization_status or "") not in {
+                        "localized",
+                        "completed",
+                        "skipped_no_localizable_tags",
+                        "skipped_no_new_tags",
+                        "skipped_static_coverage",
+                    }:
+                        item.localization_status = "waiting_localization"
                     consecutive_failures = 0
                     _annotate_run_item_stage(
                         db,
@@ -2227,6 +2332,31 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                         stage="ai_tagging",
                         status="tagged_reused",
                     )
+                    db.commit()
+                    stage_processed += 1
+                    processed_items += 1
+                    stop_reason = _check_stop_budget()
+                    if stop_reason:
+                        break
+                    continue
+                media = db.get(Media, media_id)
+                if not _manual_sync_media_is_target_for_ai(media):
+                    if item:
+                        item.ai_tagging_status = "ai_tagging_skipped_non_target"
+                        item.localization_status = "localization_not_applicable_non_target"
+                        item.deferred_reason = "non_target_content_class"
+                        counts["ai_tagging_skipped_non_target"] += 1
+                        counts["localization_not_applicable_non_target"] += 1
+                        consecutive_failures = 0
+                        _annotate_run_item_stage(
+                            db,
+                            run=run,
+                            item=item,
+                            stage="ai_tagging",
+                            status="skipped",
+                            reason="ai_tagging_skipped_non_target",
+                            extra={"content_class": _media_content_class_value(media)},
+                        )
                     db.commit()
                     stage_processed += 1
                     processed_items += 1
@@ -2314,12 +2444,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             db.commit()
 
         if not stop_reason and run.status != "cancelled":
-            if classification_method == "clip":
-                _run_classification_stage()
-                _run_ai_tagging_stage()
-            else:
-                _run_ai_tagging_stage()
-                _run_classification_stage()
+            _run_classification_stage()
+            _run_ai_tagging_stage()
         else:
             stage_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
             run.summary_json = _set_stage(
@@ -2343,13 +2469,44 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 media_ids=downstream_media_ids,
             )
         else:
+            localization_targets: List[Dict[str, int]] = []
+            for target in downstream_targets:
+                item = _target_source_item(target)
+                if item is None:
+                    continue
+                if str(item.localization_status or "") != "waiting_localization":
+                    continue
+                media_id = int(target.get("media_id") or 0)
+                if media_id <= 0:
+                    continue
+                media = db.get(Media, media_id)
+                if not _manual_sync_media_is_target_for_ai(media):
+                    item.localization_status = "localization_not_applicable_non_target"
+                    item.deferred_reason = "non_target_content_class"
+                    counts["localization_not_applicable_non_target"] += 1
+                    _annotate_run_item_stage(
+                        db,
+                        run=run,
+                        item=item,
+                        stage="localization",
+                        status="skipped",
+                        reason="localization_not_applicable_non_target",
+                        extra={"content_class": _media_content_class_value(media)},
+                    )
+                    continue
+                localization_targets.append(target)
+            db.commit()
             localization_result = _manual_sync_finalize_localization(
                 db,
                 run=run,
-                media_ids=downstream_media_ids,
+                media_ids=[
+                    int(target.get("media_id") or 0)
+                    for target in localization_targets
+                    if int(target.get("media_id") or 0) > 0
+                ],
                 source_item_ids=[
                     int(target.get("source_item_id") or 0)
-                    for target in downstream_targets
+                    for target in localization_targets
                     if int(target.get("source_item_id") or 0) > 0
                 ],
                 cancel_check=lambda: _is_cancel_requested(run_id),

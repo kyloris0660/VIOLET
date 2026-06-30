@@ -920,8 +920,12 @@ def _plan_manual_sync_incremental_dry_run(
 
         mtime_ns = metadata.get("mtime_ns")
         in_mtime_window = bool(mtime_cutoff_ns is None or (mtime_ns is not None and int(mtime_ns) >= int(mtime_cutoff_ns)))
-        if scan_source == "mtime_window_metadata" and not in_mtime_window and not (
-            known_item is not None and _manual_plan_existing_requires_followup(known_item)
+        if (
+            scan_source == "mtime_window_metadata"
+            and known_item is not None
+            and not in_mtime_window
+            and not _manual_plan_existing_requires_followup(known_item)
+            and _manual_plan_can_skip_unchanged_known_item(known_item, metadata)
         ):
             stable_old_files_skipped += 1
             continue
@@ -1036,6 +1040,7 @@ def _plan_manual_sync_incremental_dry_run(
                     "content_hash": None,
                     "mtime_ns": metadata.get("mtime_ns"),
                     "cloud_placeholder_before_hydration": False,
+                    "downstream_followup": dict(record.get("followup") or {}),
                 }
             )
 
@@ -1750,6 +1755,7 @@ def plan_manual_sync_dry_run(
                     "content_hash": content_hash,
                     "mtime_ns": metadata.get("mtime_ns"),
                     "cloud_placeholder_before_hydration": bool(record.get("cloud_placeholder_before_hydration")),
+                    "downstream_followup": dict(record.get("followup") or {}),
                 }
             )
 
@@ -2099,13 +2105,20 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         return True
     if import_status == "imported" and item.media_id is not None:
         classification_done = classification_status in {"classified", "classified_reused"}
-        ai_done = ai_tagging_status in {"ai_tagged", "tagged", "tagged_reused"}
+        ai_done = ai_tagging_status in {
+            "ai_tagged",
+            "tagged",
+            "tagged_reused",
+            "ai_tagging_skipped_non_target",
+            "skipped_non_target",
+        }
         localization_done = localization_status in {
             "localized",
             "completed",
             "skipped_no_localizable_tags",
             "skipped_no_new_tags",
             "skipped_static_coverage",
+            "localization_not_applicable_non_target",
         }
         if not (classification_done and ai_done and localization_done):
             return True
@@ -2116,6 +2129,8 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         "zero_byte_file",
         "source_missing",
         "permission_denied",
+        "existing_media_hash",
+        "duplicate_hash",
     }
     if reason in stable_non_actionable:
         return False
@@ -2127,15 +2142,23 @@ def _manual_plan_followup_payload(item: DynamicSourceItem) -> Dict[str, Any]:
     ai_tagging_status = str(item.ai_tagging_status or "")
     localization_status = str(item.localization_status or "")
     classification_done = classification_status in {"classified", "classified_reused"}
-    ai_done = ai_tagging_status in {"ai_tagged", "tagged", "tagged_reused"}
+    ai_done = ai_tagging_status in {
+        "ai_tagged",
+        "tagged",
+        "tagged_reused",
+        "ai_tagging_skipped_non_target",
+        "skipped_non_target",
+    }
     localization_done = localization_status in {
         "localized",
         "completed",
         "skipped_no_localizable_tags",
         "skipped_no_new_tags",
         "skipped_static_coverage",
+        "localization_not_applicable_non_target",
     }
     return {
+        "source_item_id": int(item.id) if item.id is not None else None,
         "classification_required": not classification_done,
         "ai_tagging_required": not ai_done,
         "localization_required": not localization_done,
@@ -2774,6 +2797,15 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
                 "scope": "manual_execute",
             }
         )
+    if str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower() != "clip":
+        blockers.append("CONTENT_CLASSIFICATION_METHOD_not_clip")
+        manual_execute_blockers.append(
+            {
+                "code": "CONTENT_CLASSIFICATION_METHOD_not_clip",
+                "label": "Manual E2E requires classification-before-AI gating; set CONTENT_CLASSIFICATION_METHOD=clip for production acceptance.",
+                "scope": "manual_execute",
+            }
+        )
     if not (settings.TAG_TRANSLATION_AUTO_ENABLED or settings.TAG_TRANSLATION_BG_ENABLED):
         background_warnings.append(
             {
@@ -2833,6 +2865,7 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
                 and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED
                 and settings.AI_TAGGING_ENABLED
                 and settings.CONTENT_CLASSIFICATION_ENABLED
+                and str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower() == "clip"
                 and settings.TAG_TRANSLATION_LLM_ENABLED
                 and (
                     ai_localization["tag_localization"]["llm_provider_configured"]

@@ -196,6 +196,8 @@
     "api_runner_proved_backend_only": true,
     "contract_tests_missed_ui_request_provenance": true,
     "different_flags_or_config": "GUI readiness displayed background AI/LLM flags as blockers. Manual execute can use the manual pipeline profile, but final GUI E2E must verify AI/localization readiness before execute.",
+    "gui_path_after_fix": "Web Admin normal Start manual sync button calls /api/admin/dynamic-library-sync/manual-sync/plan with GUI session provenance, cloud-aware hydration, cap 1000, progress request id, no-progress watchdog, and execute blocked until a complete safe plan exists.",
+    "gui_path_after_latest_fix": "The normal Start manual sync plan reports actionable-cap semantics, priority workset plus filesystem fallback, fast source-ledger skip identity, downstream follow-up counts, and blocks confirmation/execute unless a complete safe actionable plan exists.",
     "gui_path_before_fix": "Web Admin dry-run button called /api/admin/dynamic-library-sync/manual-sync/plan, which was still a broad source-root planning path and did not carry all private S3A-M2 runner context or progress semantics.",
     "prevention_added": [
       "dashboard runtime provenance exposed and shown in UI",
@@ -221,9 +223,7 @@
     ],
     "public_safe": true,
     "runner_gui_planner_diverged": true,
-    "same_server_profile_proven": "Browser validation for this UI fix used a controlled VIOLET_ENV=test server. Production GUI Execute remains unvalidated until the user retries on the launcher-managed production profile.",
-    "gui_path_after_fix": "Web Admin normal Start manual sync button calls /api/admin/dynamic-library-sync/manual-sync/plan with GUI session provenance, cloud-aware hydration, cap 1000, progress request id, no-progress watchdog, and execute blocked until a complete safe plan exists.",
-    "gui_path_after_latest_fix": "The normal Start manual sync plan reports actionable-cap semantics, priority workset plus filesystem fallback, fast source-ledger skip identity, downstream follow-up counts, and blocks confirmation/execute unless a complete safe actionable plan exists."
+    "same_server_profile_proven": "Browser validation for this UI fix used a controlled VIOLET_ENV=test server. Production GUI Execute remains unvalidated until the user retries on the launcher-managed production profile."
   },
   "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
   "branch_profile_provenance": {
@@ -238,7 +238,7 @@
     "current_pr_head_before_this_fix": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
-    "head_refresh_note": "report refreshed after the user-observed 597s GUI manual plan timeout on head 32cb036; final commit SHA must be rechecked after commit",
+    "head_refresh_note": "report refreshed after user real Web Admin smoke test on head 69fab773 and follow-up fixes in working tree",
     "head_sha": "see_pr_body_after_push_self_referential_commit",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": false,
@@ -249,114 +249,72 @@
     "python_executable_name": "python.exe",
     "stale_process_cleanup_status": "managed_validation_processes_cleaned; unrelated port owners left untouched",
     "storage_root_marker": "b369834e62908e17",
-    "violet_env": "production",
-    "validation_basis_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463"
-  },
-  "scanner_incremental_model": {
-    "model": "hybrid_source_ledger_metadata_fast_path_with_filesystem_fallback",
-    "durable_state_tables": [
-      "blombooru_dynamic_source_items",
-      "blombooru_dynamic_sync_runs",
-      "blombooru_dynamic_sync_run_items"
-    ],
-    "durable_global_filesystem_cursor": false,
-    "starts_from_root_each_run": "registered roots first use the DynamicSourceItem priority workset; filesystem enumeration is metadata fallback for files missing from the source ledger or changed since the ledger snapshot",
-    "stable_known_files_fast_skipped_without_hash": true,
-    "hash_old_stable_files": false,
-    "hash_only_when": [
-      "new_source_path",
-      "metadata_changed",
-      "downstream_followup",
-      "ambiguous_existing_media",
-      "execute_integrity_revalidation"
-    ],
-    "cap_semantics": "actionable candidates only; unchanged existing media excluded from the execute cap",
-    "next_batch_continuation": "after a cap-limited batch executes, committed DynamicSourceItem rows become the next plan checkpoint; unexecuted private plan rows are never trusted without execute-time revalidation",
-    "invalidation_policy": [
-      "source_root_id",
-      "relative_path_hash",
-      "file_size",
-      "mtime_ns",
-      "content_hash_mismatch",
-      "hydration_policy",
-      "profile_or_pipeline_settings"
-    ],
-    "previous_994_existing_explanation": "The f1040fb plan selected known/root candidates and only discovered existing media after hash classification, so existing rows consumed the visible cap. The fixed model uses source-ledger metadata fast skip and actionable cap semantics so stable existing rows are diagnostics, not batch capacity.",
-    "operator_visible_fields": [
-      "Root last checked",
-      "Scan model",
-      "Start basis",
-      "Fast-skipped",
-      "Stat checked",
-      "Hash checked",
-      "Batch",
-      "More batches"
-    ],
-    "public_safe": true
+    "validation_basis_head_sha": "69fab773d52ddf67b736d06485c485ea626be2c7",
+    "violet_env": "production"
   },
   "browser_validation_current_head": {
+    "actionable_followup_visible": true,
     "attempted": true,
-    "status": "passed_real_browser_gui_plan_flow_current_fix_only",
-    "method": "Playwright Edge against controlled VIOLET_ENV=test server on port 8015",
-    "server_env": "test",
-    "db_name": "blombooru_test",
-    "port": 8015,
     "canonical_url": "http://127.0.0.1:8015/admin?tab=content#dynamic-library-sync-section",
     "canonical_url_preserved": true,
-    "normal_operator_ui_validated": true,
-    "selected_root_summary_matches_dropdown": true,
-    "start_manual_sync_plan_clicked": true,
-    "plan_endpoint": "/api/admin/dynamic-library-sync/manual-sync/plan",
-    "plan_endpoint_status": 200,
-    "plan_request_had_gui_session": true,
-    "gui_plan_hash_bound": true,
-    "gui_plan_flow_bound": true,
-    "gui_plan_request_id_hash_present": true,
-    "mock_plan_rendered_for_workset_ui": false,
+    "db_name": "blombooru_test",
+    "execute_disabled_before_operator_phrase": true,
+    "fast_skip_identity_visible": true,
+    "filesystem_complete_visible": true,
+    "filesystem_fallback_visible": true,
     "gui_execute_clicked": false,
-    "reason": "This validates the real browser normal operator plan flow, GUI plan provenance binding, incremental workset UI, and confirmation gating only. It does not satisfy final production GUI Execute acceptance.",
-    "source_or_production_mutation": false,
-    "public_safe": true,
-    "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
+    "gui_plan_flow_bound": true,
+    "gui_plan_hash_bound": true,
+    "gui_plan_request_id_hash_present": true,
+    "head_sha_note": "validated working tree after exact-head ebed72c review-fix edits; pushed PR head is recorded in the PR body/closeout after commit",
+    "method": "Playwright Edge against controlled VIOLET_ENV=test server on port 8015",
+    "mock_plan_rendered_for_workset_ui": false,
+    "normal_operator_ui_validated": true,
+    "operator_confirmation_visible_for_actionable_plan": true,
     "plan_counts_public": {
-      "total_seen": 2,
-      "estimated_import_count": 2,
+      "batch_executable": true,
       "estimated_downstream_followup_count": 0,
+      "estimated_import_count": 2,
+      "more_batches_remain": false,
       "partial_scan": false,
       "partial_scan_reason": null,
-      "batch_executable": true,
-      "more_batches_remain": false
+      "total_seen": 2
     },
+    "plan_endpoint": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "plan_endpoint_status": 200,
     "plan_limits_public": {
+      "cap_semantics": "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media",
+      "current_scan_mode": "incremental_source_ledger_priority_then_filesystem_metadata_walk",
+      "current_scan_start_basis": "filesystem_walk",
+      "fast_skipped_from_ledger": 0,
+      "hash_required_count": 2,
+      "hydration_policy": "cloud_aware_non_destructive_read",
       "max_files": 1000,
       "max_files_scope": "manual_sync_actionable_delta_candidates",
-      "cap_semantics": "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media",
-      "hydration_policy": "cloud_aware_non_destructive_read",
-      "fast_skipped_from_ledger": 0,
-      "stat_required_count": 2,
-      "hash_required_count": 2,
-      "current_scan_mode": "incremental_source_ledger_priority_then_filesystem_metadata_walk",
-      "current_scan_start_basis": "filesystem_walk"
+      "stat_required_count": 2
     },
-    "workset_line_visible": true,
-    "filesystem_fallback_visible": true,
-    "filesystem_complete_visible": true,
-    "fast_skip_identity_visible": true,
-    "actionable_followup_visible": true,
-    "root_last_checked_visible": true,
-    "start_button_busy_duplicate_click_guard_visible": true,
-    "operator_confirmation_visible_for_actionable_plan": true,
-    "execute_disabled_before_operator_phrase": true,
-    "raw_i18n_key_visible": false,
-    "raw_internal_blockers_visible": false,
-    "server_stopped_after_validation": true,
-    "validated_base_head_sha": "ebed72c3794d088e8813d7b7390412ef825ee72a",
-    "head_sha_note": "validated working tree after exact-head ebed72c review-fix edits; pushed PR head is recorded in the PR body/closeout after commit",
+    "plan_request_had_gui_session": true,
+    "port": 8015,
+    "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
     "private_artifact_types": [
       "json_summary",
       "screenshot",
       "server_logs"
-    ]
+    ],
+    "public_safe": true,
+    "raw_i18n_key_visible": false,
+    "raw_internal_blockers_visible": false,
+    "reason": "This validates the real browser normal operator plan flow, GUI plan provenance binding, incremental workset UI, and confirmation gating only. It does not satisfy final production GUI Execute acceptance.",
+    "root_last_checked_visible": true,
+    "selected_root_summary_matches_dropdown": true,
+    "server_env": "test",
+    "server_stopped_after_validation": true,
+    "source_or_production_mutation": false,
+    "start_button_busy_duplicate_click_guard_visible": true,
+    "start_manual_sync_plan_clicked": true,
+    "status": "passed_real_browser_gui_plan_flow_current_fix_only",
+    "validated_base_head_sha": "ebed72c3794d088e8813d7b7390412ef825ee72a",
+    "workset_line_visible": true
   },
   "classification": {
     "count": 49,
@@ -989,13 +947,13 @@
       "why_earlier_evidence_missed": "Earlier validation observed latest job #8 but did not require a GUI-created run newer than the runner/API executes."
     },
     {
-      "event": "manual_gui_global_timeout_while_progressing",
-      "what_happened": "User clicked normal Start manual sync on head 32cb036; progress reached hashing with seen=724 and batch_candidates=319, then the old ~600s global timeout cancelled before Execute.",
       "detected_by": "user manual GUI acceptance observation",
-      "public_safe": true,
-      "why_earlier_evidence_missed": "API/runner paths did not exercise a human-scale GUI plan over the production root long enough to hit the old total elapsed timeout.",
+      "event": "manual_gui_global_timeout_while_progressing",
       "production_impact": "No Execute was clicked; no production DB/storage writes occurred from this failed GUI plan attempt.",
-      "repair_or_prevention": "Removed hard global timeout, added no-progress watchdog, terminal cancel state, lock release, batch/resume policy reporting, threshold UI cleanup, and hashchange section activation. Prevention: focused tests plus real-browser UI validation of progress/busy/canonical URL; final production GUI Execute acceptance still required"
+      "public_safe": true,
+      "repair_or_prevention": "Removed hard global timeout, added no-progress watchdog, terminal cancel state, lock release, batch/resume policy reporting, threshold UI cleanup, and hashchange section activation. Prevention: focused tests plus real-browser UI validation of progress/busy/canonical URL; final production GUI Execute acceptance still required",
+      "what_happened": "User clicked normal Start manual sync on head 32cb036; progress reached hashing with seen=724 and batch_candidates=319, then the old ~600s global timeout cancelled before Execute.",
+      "why_earlier_evidence_missed": "API/runner paths did not exercise a human-scale GUI plan over the production root long enough to hit the old total elapsed timeout."
     }
   ],
   "final_inventory": {
@@ -1032,6 +990,15 @@
     "localized": 5
   },
   "generated_at": "2026-06-29T10:28:12.030903+00:00",
+  "governance_followup": {
+    "future_feature_work_plan_only_first": true,
+    "implementation_after_plan_review": true,
+    "long_english_prompts_need_chinese_user_explanation": true,
+    "prior_art_research_required_for_common_engineering_domains": true,
+    "proof_requires_contracts_browser_tests_reviewer_state_and_user_acceptance_as_scope_demands": true,
+    "realistic_product_path_and_performance_validation_required": true,
+    "reports_are_not_proof": true
+  },
   "gpu_telemetry": {
     "actual_provider": "DmlExecutionProvider",
     "avg_gpu_utilization_percent": 36.97,
@@ -1057,6 +1024,9 @@
     "acceptance_blocker": "No GUI Execute button-triggered run newer than run #8 has completed and passed post-run validation.",
     "active_db_sessions_after_cleanup": 0,
     "active_dynamic_sync_runs_after_cleanup": 0,
+    "active_request_after_timeout_audit": false,
+    "active_server_after_timeout_audit": false,
+    "backend_continued_after_frontend_timeout": "not provable for the user attempt; no active server remained at Codex audit time",
     "branch_profile_stale_state_audit_required_before_retry": true,
     "cap_ui_mismatch": "backend execute cap was 1000 but frontend execute input kept stale default 5 until policy initialization; fixed to initialize from backend cap on first dashboard load",
     "computer_use_chrome_observed_url": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
@@ -1068,6 +1038,24 @@
     "deferred_failed_inventory_explained": true,
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
+    "latest_endpoint_clicked": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "latest_exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
+    "latest_observed_head_sha": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
+    "latest_observed_timeout_seconds": 597,
+    "latest_zero_import_fix": "existing/duplicate media no longer consume import-candidate cap; registered roots prioritize actionable source-delta workset before historical existing rows; zero-import blocked plans hide confirmation controls",
+    "latest_zero_import_plan_counts": {
+      "estimated_import_count": 0,
+      "partial_scan": true,
+      "scanned_files": 1000,
+      "seen": 1000,
+      "state_counts": {
+        "failed": 6,
+        "skipped_existing_media": 994
+      }
+    },
+    "latest_zero_import_plan_hash_prefix": "b0cce6557c8866b14eb58b66",
+    "latest_zero_import_plan_observed_head": "f1040fb21a1c04489b3ed31d295321f5eddc44ac",
+    "latest_zero_import_root_cause": "Planner let existing-media candidates consume the visible batch/cap before existing-media hash classification, so the first GUI plan was dominated by already-imported media and did not reach current actionable work.",
     "managed_processes_cleaned": true,
     "manual_sync_safety_status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
     "no_silent_spinner_fix": true,
@@ -1076,6 +1064,7 @@
     "plan_source_before_fix": "gui_manual_plan_endpoint_used_legacy_registered_root_walk_verify_hash",
     "private_debug_artifacts": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
     "profile_id": "production-default",
+    "progress_and_cancel_added_after_timeout": true,
     "public_safe": true,
     "readiness_config_mismatch": "Earlier UI readiness displayed background AI/LLM flags as blockers. A later manual GUI attempt correctly stopped because the launcher-managed production profile had AI tagging disabled for manual E2E. The profile/env mapping is now repaired so manual classification, AI tagging, and LLM localization provider readiness can be ON while automatic/background sync remains OFF.",
     "root_cause": "GUI dry-run used the manual-sync plan endpoint but that endpoint still performed a broad source-root walk and expensive verify/hash over unchanged known items; frontend abort/browser close did not cancel the backend request, so it kept scanning until server stop.",
@@ -1083,32 +1072,10 @@
     "source_mutation_detected": false,
     "status": "zero_import_partial_plan_fixed_pending_user_retry",
     "stuck_jobs_found": false,
+    "timeout_behavior_after_fix": "operator sees persistent progress, request id, phase/counts/events, can cancel plan, and duplicate active plans are rejected",
     "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
     "violet_env": "production",
-    "watchdog_timeout_added": true,
-    "latest_observed_timeout_seconds": 597,
-    "latest_observed_head_sha": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
-    "latest_endpoint_clicked": "/api/admin/dynamic-library-sync/manual-sync/plan",
-    "latest_exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
-    "progress_and_cancel_added_after_timeout": true,
-    "active_server_after_timeout_audit": false,
-    "active_request_after_timeout_audit": false,
-    "backend_continued_after_frontend_timeout": "not provable for the user attempt; no active server remained at Codex audit time",
-    "timeout_behavior_after_fix": "operator sees persistent progress, request id, phase/counts/events, can cancel plan, and duplicate active plans are rejected",
-    "latest_zero_import_plan_observed_head": "f1040fb21a1c04489b3ed31d295321f5eddc44ac",
-    "latest_zero_import_plan_hash_prefix": "b0cce6557c8866b14eb58b66",
-    "latest_zero_import_plan_counts": {
-      "seen": 1000,
-      "scanned_files": 1000,
-      "estimated_import_count": 0,
-      "partial_scan": true,
-      "state_counts": {
-        "skipped_existing_media": 994,
-        "failed": 6
-      }
-    },
-    "latest_zero_import_root_cause": "Planner let existing-media candidates consume the visible batch/cap before existing-media hash classification, so the first GUI plan was dominated by already-imported media and did not reach current actionable work.",
-    "latest_zero_import_fix": "existing/duplicate media no longer consume import-candidate cap; registered roots prioritize actionable source-delta workset before historical existing rows; zero-import blocked plans hide confirmation controls"
+    "watchdog_timeout_added": true
   },
   "gui_execute_acceptance": {
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
@@ -1119,8 +1086,12 @@
       ],
       "required": true
     },
-    "head_sha": "bfacd86c3fc440d655531ccca9fb5273dc38d102",
+    "head_sha": "69fab773d52ddf67b736d06485c485ea626be2c7",
+    "latest_gui_smoke_full_acceptance": false,
+    "latest_gui_smoke_run_completed": true,
+    "latest_gui_smoke_run_id": 13,
     "min_run_id": 8,
+    "normal_confirmation_flow_fixed_after_smoke": true,
     "phase": "S3A-M2",
     "profile": {
       "app_port": "8012",
@@ -1142,13 +1113,19 @@
       "violet_env": "production"
     },
     "public_safe": true,
-    "status": "blocked_no_gui_execute_run_found",
+    "status": "partial_smoke_completed_normal_flow_fix_pending_retry",
     "validated": false
   },
   "gui_hang_root_cause": {
+    "active_request_after_timeout_audit": false,
+    "active_server_after_timeout_audit": false,
+    "backend_continued_after_frontend_timeout": "not provable for the user attempt; no active server remained at Codex audit time",
+    "backend_global_elapsed_timeout_enabled_after_fix": false,
     "backend_kept_scanning": true,
+    "backend_no_progress_watchdog_added": true,
     "backend_plan_timeout_added": false,
     "backend_request_sent": true,
+    "batch_resume_policy_after_fix": "Manual sync plans one bounded actionable batch, reuses committed source-ledger terminal state only when source identity is unchanged, and execute revalidates source identity before writes.",
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
     "button_clicked": "dynamic-sync-dry-run-btn",
     "canonical_url": "/admin?tab=content#dynamic-library-sync-section",
@@ -1157,20 +1134,29 @@
     "db_active_runs_after_cleanup": 0,
     "db_name": "blombooru",
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "frontend_global_elapsed_timeout_enabled_after_fix": false,
     "frontend_timeout_seconds": 600,
+    "frontend_timeout_seconds_before_fix": 600,
     "head_sha": "see_pr_body_after_push_self_referential_commit",
+    "latest_endpoint_clicked": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "latest_exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
+    "latest_observed_head_sha": "32cb03698f06746ae1f829b5b37fc565c7d59c4c",
+    "latest_observed_timeout_seconds": 597,
     "managed_processes_stopped": [
       "server_parent_64804",
       "server_worker_50844",
       "launcher_validation_process_tree"
     ],
+    "no_progress_watchdog_seconds_after_fix": 300,
     "not_root_cause": [
       "ordinary update-check endpoint was not the button clicked in the captured dry-run",
       "no active execute job remained",
       "no DB running/cancelling DynamicSyncRun row remained after cleanup"
     ],
+    "per_item_timeout_policy_after_fix": "supported-image verification and content hashing already use file_read_timeout_seconds and record read_timeout/stable per-item reasons before continuing; the new watchdog only handles lack of global progress between service checkpoints.",
     "port": 8012,
     "profile_id": "production-default",
+    "progress_and_cancel_added_after_timeout": true,
     "progress_feedback_added": true,
     "public_safe": true,
     "request_payload_public_summary": {
@@ -1187,35 +1173,21 @@
     "status": "global_elapsed_timeout_removed_pending_user_retry",
     "storage_root_marker": "b369834e62908e17",
     "stuck_jobs_found": false,
+    "timeout_behavior_after_fix": "Healthy progress may continue beyond 600s. No-progress timeout/cancel is based on last_progress_at, cancellation reaches a terminal state, and retry is blocked until active state is terminal.",
     "timeout_behavior_before_fix": "The normal GUI plan could abort on total elapsed time even if counters/stage were still advancing.",
     "unrelated_processes_left_running": [
       "port_8000_and_8016_owned_by_non_project_network_proxy_process"
     ],
     "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
     "url_observed": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
+    "validation_basis_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463",
     "violet_env": "production",
     "watchdog_timeout_added": true,
-    "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012.",
-    "latest_observed_timeout_seconds": 597,
-    "latest_observed_head_sha": "32cb03698f06746ae1f829b5b37fc565c7d59c4c",
-    "latest_endpoint_clicked": "/api/admin/dynamic-library-sync/manual-sync/plan",
-    "latest_exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
-    "progress_and_cancel_added_after_timeout": true,
-    "active_server_after_timeout_audit": false,
-    "active_request_after_timeout_audit": false,
-    "backend_continued_after_frontend_timeout": "not provable for the user attempt; no active server remained at Codex audit time",
-    "timeout_behavior_after_fix": "Healthy progress may continue beyond 600s. No-progress timeout/cancel is based on last_progress_at, cancellation reaches a terminal state, and retry is blocked until active state is terminal.",
-    "frontend_timeout_seconds_before_fix": 600,
-    "frontend_global_elapsed_timeout_enabled_after_fix": false,
-    "backend_global_elapsed_timeout_enabled_after_fix": false,
-    "no_progress_watchdog_seconds_after_fix": 300,
-    "backend_no_progress_watchdog_added": true,
-    "batch_resume_policy_after_fix": "Manual sync plans one bounded actionable batch, reuses committed source-ledger terminal state only when source identity is unchanged, and execute revalidates source identity before writes.",
-    "per_item_timeout_policy_after_fix": "supported-image verification and content hashing already use file_read_timeout_seconds and record read_timeout/stable per-item reasons before continuing; the new watchdog only handles lack of global progress between service checkpoints.",
-    "validation_basis_head_sha": "2e42e61f40043c6051613fee39a607bb0d624463"
+    "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
   },
   "head_sha": "see_pr_body_after_push_self_referential_commit",
   "head_sha_pending_final_amend": true,
+  "head_sha_self_reference_note": "A committed report cannot embed its own final Git SHA without changing that SHA. The exact PR head is recorded in the PR body and Codex closeout after push.",
   "initial_localization_diagnosis": {
     "ai_wd_assignment_count": 15136,
     "ai_wd_suggestion_assignment_count": 3711,
@@ -1286,9 +1258,191 @@
     "public_safe": true,
     "status": "passed"
   },
+  "latest_69fab_followup_fixes": {
+    "classification_gate_before_ai_localization": {
+      "classification_method_required_for_production_manual_e2e": "clip",
+      "fixed": true,
+      "non_target_ai_status": "ai_tagging_skipped_non_target",
+      "non_target_localization_status": "localization_not_applicable_non_target",
+      "target_content_classes_default": [
+        "anime",
+        "illustration"
+      ]
+    },
+    "normal_confirmation_flow": {
+      "details": "Start manual sync now calls executeManualSyncPlan with operatorConfirmedFullChain after the browser confirmation; advanced exact phrase controls are hidden for normal incremental plans and remain Advanced/Diagnostics only.",
+      "execute_advanced_phrase_required_after_fix": false,
+      "fixed": true,
+      "real_browser_test": "tests/e2e/admin-content.spec.ts::dynamic library sync normal confirmation starts full pipeline without advanced phrase"
+    },
+    "old_mtime_unseen_file_discovery": {
+      "details": "Known stable old files may fast-skip by ledger identity, but files missing from DynamicSourceItem are not skipped solely because preserved mtime is older than watermark minus safety lookback.",
+      "fixed": true
+    },
+    "outcome_breakdown_ui": {
+      "details": "Latest-job rendering now shows imported, stable skipped/not-applicable, failed, and per-reason outcome breakdown in the normal completion summary.",
+      "fixed": true
+    }
+  },
+  "latest_gui_manual_sync_smoke_test": {
+    "advanced_exact_phrase_required_observed": true,
+    "blockers": [
+      "normal_confirmation_flow_did_not_start_execute_before_fix",
+      "non_target_ai_localization_contamination_requires_repair_approval",
+      "normal_flow_retry_required_after_fix"
+    ],
+    "elapsed_seconds_observed": 129,
+    "execute_plan_limit": 100,
+    "failed": 0,
+    "final_status": "completed",
+    "full_gui_acceptance_complete": false,
+    "head_sha": "69fab773d52ddf67b736d06485c485ea626be2c7",
+    "imported": 65,
+    "method": "user_real_web_admin_manual_sync_smoke_test",
+    "normal_confirmation_popup_visible": true,
+    "normal_confirmation_started_execute": false,
+    "normal_stage_ui_visible": true,
+    "outcome_breakdown": {
+      "duplicate": 0,
+      "failed": 0,
+      "imported": 65,
+      "placeholder_or_hydration_skipped": 0,
+      "skipped_existing_media": 35,
+      "unsupported": 0
+    },
+    "pipeline_stages_visible": [
+      "plan",
+      "import",
+      "classification",
+      "ai_tagging",
+      "localization",
+      "complete"
+    ],
+    "plan_expensive_operation_counters": {
+      "content_reads": 0,
+      "decodes": 0,
+      "hashes": 0,
+      "hydrations": 0
+    },
+    "plan_hash_prefix_observed": "44beb57e2770",
+    "public_safe": true,
+    "result": "partial_success_with_blockers",
+    "run_id": 13,
+    "seen": 100,
+    "stage_completion": {
+      "ai_tagging": "completed",
+      "classification": "completed",
+      "complete": "completed",
+      "import": "completed",
+      "localization": "completed",
+      "plan": "completed"
+    }
+  },
+  "latest_zero_import_partial_plan_incident": {
+    "browser_validation": {
+      "actionable_followup_visible": true,
+      "attempted": true,
+      "canonical_url": "http://127.0.0.1:8015/admin?tab=content#dynamic-library-sync-section",
+      "canonical_url_preserved": true,
+      "db_name": "blombooru_test",
+      "execute_disabled_before_operator_phrase": true,
+      "execute_enabled_after_operator_phrase": true,
+      "fast_skip_identity_visible": true,
+      "filesystem_complete_visible": true,
+      "filesystem_fallback_visible": true,
+      "gui_execute_clicked": false,
+      "head_sha_note": "validated working tree after b53249c review-fix edits; final PR head is recorded in the PR body/closeout after push",
+      "method": "Playwright Edge against controlled VIOLET_ENV=test server on port 8015",
+      "mock_plan_rendered_for_workset_ui": true,
+      "normal_operator_ui_validated": true,
+      "operator_confirmation_visible_for_actionable_plan": true,
+      "port": 8015,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
+      "public_safe": true,
+      "raw_i18n_key_visible": false,
+      "raw_internal_blockers_visible": false,
+      "reason": "This validates the normal operator UI rendering for priority-workset/filesystem-fallback/actionable-follow-up evidence only. It does not satisfy final production GUI Execute acceptance.",
+      "server_env": "test",
+      "server_stopped_after_validation": true,
+      "source_or_production_mutation": false,
+      "start_button_busy_duplicate_click_guard_visible": true,
+      "start_manual_sync_plan_clicked": false,
+      "status": "passed_incremental_workset_ui_fix_only",
+      "validated_base_head_sha": "b53249cb88180d8d683b7a77b09635c4668ae296",
+      "workset_line_visible": true
+    },
+    "cap": 1000,
+    "cap_semantics_after_fix": "unique_actionable_import_or_downstream_followup_candidates_not_stable_existing_or_duplicate_media",
+    "cap_semantics_before_fix": "files_or_candidates_before_final_existing_media_classification",
+    "confirmation_phrase_was_deciding_condition": false,
+    "confirmation_ux_after_fix": {
+      "new_phrase_family": "S3A-M2 human-readable manual import/classify/AI/localize confirmation",
+      "old_s3a_m1_phrase_shown_for_new_plans": false,
+      "write_plan_requires_operator_entered_confirmation": true,
+      "zero_import_plan_shows_confirmation": false
+    },
+    "current_plan_reusable": false,
+    "current_plan_reuse_reason": "produced_by_previous_candidate_cap_semantics_no_importable_items_and_expired; diagnostic_only",
+    "downstream_followup_hidden_as_existing_media_after_fix": false,
+    "durable_cursor_after_fix": "bounded DynamicSourceItem source-ledger checkpoint model; no single global filesystem watermark yet",
+    "durable_cursor_before_fix": false,
+    "execute_disabled_reason": [
+      "partial_scan_true",
+      "estimated_import_count_zero",
+      "no_importable_hydrated_items"
+    ],
+    "existing_media_consumes_cap_after_fix": false,
+    "failed_six_reason_breakdown": {
+      "available_from_old_plan": false,
+      "reason": "previous GUI plan did not persist public-safe per-failure details; future plans report aggregate failure reason/extension breakdowns"
+    },
+    "hydration_policy": "cloud_aware_non_destructive_read",
+    "input_scope": "same_registered_active_input_scope_as_phase; raw identifiers excluded from public artifact",
+    "observed_counts": {
+      "estimated_import_count": 0,
+      "partial_scan": true,
+      "scanned_files": 1000,
+      "seen": 1000,
+      "state_counts": {
+        "failed": 6,
+        "skipped_existing_media": 994
+      }
+    },
+    "observed_head_sha": "f1040fb21a1c04489b3ed31d295321f5eddc44ac",
+    "plan_hash_prefix": "b0cce6557c8866b14eb58b66",
+    "plan_request_id": "gui-plan-2c981cd1-33d1-4c86-adaf-ab2678dcc776",
+    "plan_source": "source_delta",
+    "priority_workset_can_hide_new_files_after_fix": false,
+    "priority_workset_falls_through_to_filesystem_walk_after_fix": true,
+    "public_safe": true,
+    "resume_policy_after_fix": {
+      "execute_revalidates_size_mtime_hash_source_identity": true,
+      "invalidates_on_source_identity_or_metadata_change": true,
+      "next_batch_requires_new_plan_after_expiry_or_code_profile_change": true,
+      "reuses_committed_dynamic_source_item_state": true,
+      "unexecuted_private_plan_reuse": "not_trusted_without_execute_revalidation"
+    },
+    "root_cause": "Planner let existing-media candidates consume the visible batch/cap before existing-media hash classification, so the first GUI plan was dominated by already-imported media and did not reach current actionable work.",
+    "scanner_started_from": "priority DynamicSourceItem source-delta workset, then filesystem fallback for files not yet in the ledger after this fix",
+    "source_delta_workset_after_fix": {
+      "continues_to_filesystem_walk_after_priority_workset": true,
+      "existing_changed_rows_with_media_id_do_not_crowd_out_new_work": true,
+      "filesystem_files_not_in_dynamic_source_item_are_reached": true,
+      "prioritizes_cloud_placeholders": true,
+      "prioritizes_imported_rows_with_downstream_followup": true,
+      "prioritizes_pending_without_media_id": true,
+      "prioritizes_retryable_read_or_cloud_failures": true
+    },
+    "status": "fixed_pending_reviewer_recheck_and_user_retry"
+  },
   "launcher_web_admin_acceptance": {
     "acceptance_blocker": "User-performed GUI Execute run newer than #8 has not completed yet.",
     "browser": "msedge",
+    "browser_plan_clicked": true,
+    "browser_plan_endpoint_status": 200,
+    "browser_plan_gui_flow_bound": true,
+    "browser_plan_selected_root_summary_matches_dropdown": true,
+    "browser_plan_validation_status": "passed_real_browser_gui_plan_flow_current_fix_only",
     "computer_use_chrome_observed_url": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
     "computer_use_expected_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
     "computer_use_result": "blocked_by_browser_url_policy_after_launcher_opened_web_admin",
@@ -1322,12 +1476,7 @@
     "target_path": "/admin?tab=content#dynamic-library-sync-section",
     "update_check_limit_separated": true,
     "validated": false,
-    "validated_head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
-    "browser_plan_validation_status": "passed_real_browser_gui_plan_flow_current_fix_only",
-    "browser_plan_clicked": true,
-    "browser_plan_endpoint_status": 200,
-    "browser_plan_gui_flow_bound": true,
-    "browser_plan_selected_root_summary_matches_dropdown": true
+    "validated_head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b"
   },
   "ledger_consistency": {
     "expected_plan_items": 173,
@@ -1502,6 +1651,179 @@
       "requires_gui_created_run_newer_than_8": true
     }
   },
+  "manual_gui_plan_timeout_2026_06_29": {
+    "active_dynamic_sync_run_after_codex_audit": false,
+    "active_request_after_codex_audit": false,
+    "active_server_after_codex_audit": false,
+    "backend_continued_after_frontend_timeout": "not proven for the user attempt; this fix makes future plans expose terminal cancelled/cancel_failed/completed state",
+    "batch_planning_after_fix": {
+      "already_imported_batches_reused_from_ledger": true,
+      "candidate_cap": 1000,
+      "execute_revalidates_source_identity": true,
+      "mode": "bounded_actionable_batch",
+      "next_batch_requires_new_plan": true
+    },
+    "corrected_root_cause": "The old normal GUI plan path had a hard approximately-600s total elapsed timeout. It fired while progress was still moving through hashing, so the user path failed even though there was no proven stuck file.",
+    "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
+    "evidence_consulted": [
+      "user-observed Web Admin timeout message and elapsed time",
+      "repo code path inspection for frontend 600s AbortController timeout",
+      "audit_active_violet_servers.py showed no V.I.O.L.E.T. listeners on 8000/8012-8024 after the aborted attempt",
+      "no fresh gui_acceptance_debug private artifact existed for the failed attempt because pre-fix plan progress was not persisted"
+    ],
+    "exact_current_candidates_before_timeout": "unknown_not_recorded_by_pre_fix_backend",
+    "exact_files_visited_before_timeout": "unknown_not_recorded_by_pre_fix_backend",
+    "exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
+    "file_00724_interpretation": "last visible public-safe item label when the old global elapsed timeout fired; not evidence of a stuck file",
+    "file_00724_root_cause_evidence": false,
+    "fixes_added": [
+      "removed frontend hard total elapsed 600s abort for healthy progress",
+      "removed backend global elapsed plan timeout as a normal failure mechanism",
+      "added 300s no-progress watchdog and public plan_no_progress_timeout reason",
+      "added terminal cancel_failed state and active-plan lock release for stale cancelling progress",
+      "added finally-style route failure handling so unexpected planner errors release locks",
+      "re-includes imported ledger items whose classification/AI/localization downstream stages still need follow-up",
+      "renamed historical skipped to unchanged ledger skips and planned to batch candidates in progress UI",
+      "moved ambiguous threshold status out of normal operator path into Advanced/Diagnostics",
+      "added hashchange handling so canonical manual-sync section survives same-page navigation after login"
+    ],
+    "historical_skipped_explanation": "The UI label is now unchanged ledger skips. These are previously represented source-ledger items whose source identity/state is still terminal and non-actionable, not current failures.",
+    "observed_by": "user_manual_gui_acceptance",
+    "observed_elapsed_seconds": 597,
+    "observed_head_sha": "32cb03698f06746ae1f829b5b37fc565c7d59c4c",
+    "observed_progress_snapshot_public": {
+      "batch_candidates": 319,
+      "current_item_index": 724,
+      "current_item_label": "file-00724",
+      "elapsed_seconds_approx": 597,
+      "failed": 0,
+      "hydrated": 0,
+      "importable": 0,
+      "phase": "cancelling: hashing",
+      "placeholders": 0,
+      "seen": 724,
+      "unchanged_ledger_skips": 404,
+      "unsupported": 0
+    },
+    "planned_319_explanation": "The UI label is now batch candidates. It counts candidate records accumulated for the bounded plan before final importability/dedup/existing checks; it is not the same as final importable count.",
+    "planner_path": "current S3A-M2 manual-sync plan endpoint, not the old update-check endpoint",
+    "public_safe": true,
+    "real_browser_validation_after_fix": {
+      "execute_clicked": false,
+      "plan_response_status": 200,
+      "port": 8013,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
+      "status": "passed_ui_progress_fix_only"
+    },
+    "remaining_acceptance_requirement": "A new real launcher/Web Admin GUI dry-run and Execute must be performed after this fix; do not count API/runner or Playwright execute as GUI Execute acceptance.",
+    "request_payload_public_summary": {
+      "cloud_aware_hydration": true,
+      "effective_cap": 1000,
+      "hydrated_only_default": false,
+      "request_source_expected": "web_admin_gui",
+      "root_id": 2
+    },
+    "resume_checkpoint_policy_after_fix": {
+      "changed_source_becomes_new_changed_work": true,
+      "invalidate_on_size_mtime_hash_root_relative_path_profile_cap_hydration_or_settings_change": true,
+      "reuse_committed_source_item_state": true,
+      "reuse_private_unexecuted_plan_for_execute": false
+    },
+    "root_cause": "global_elapsed_timeout_fired_while_healthy_progress_was_still_moving",
+    "status": "global_elapsed_timeout_removed_pending_user_retry",
+    "timeout_policy_after_fix": {
+      "cancel_stale_terminal_state_seconds": 360,
+      "explicit_user_cancel": true,
+      "global_elapsed_timeout_enabled": false,
+      "healthy_progress_can_continue_beyond_600s": true,
+      "no_progress_watchdog_seconds": 300,
+      "per_item_timeout_policy": "supported-image verification and content hashing already use file_read_timeout_seconds and record read_timeout/stable per-item reasons before continuing; the new watchdog only handles lack of global progress between service checkpoints."
+    },
+    "ui_error": "Manual sync plan timed out; cancel was requested before Execute."
+  },
+  "manual_sync_product_flow_redesign": {
+    "execute_boundary": {
+      "handles_cloud_placeholder_hydration": true,
+      "handles_duplicate_existing_detection": true,
+      "handles_hash_integrity": true,
+      "handles_source_identity_revalidation": true,
+      "handles_unsupported_corrupt_item_reasons": true,
+      "runs_import_classification_ai_localization_summary": true
+    },
+    "mature_pattern_references": [
+      "metadata_fast_path_before_hash_or_content_read",
+      "mtime_watermark_plus_safety_lookback",
+      "persistent_source_index",
+      "bounded_batches_and_execute_time_revalidation",
+      "advanced_full_rescan_as_repair_mode"
+    ],
+    "normal_plan_boundary": {
+      "candidate_discovery_only": true,
+      "content_reads": 0,
+      "deep_supported_image_validation": false,
+      "hashes": 0,
+      "hydrations": 0,
+      "image_decodes": 0,
+      "uses_metadata_fast_path": true,
+      "uses_mtime_watermark": true,
+      "uses_safety_lookback_seconds": 604800,
+      "uses_source_ledger": true
+    },
+    "performance_budget": {
+      "average_ms_per_metadata_candidate_warn_gt": 100,
+      "normal_plan_expensive_operations_expected": 0,
+      "small_delta_plan_target": "milliseconds_to_seconds",
+      "under_1000_metadata_candidates_blocker_seconds": 30
+    },
+    "previous_tests_missed_reason": "tests validated plan/report/gates but did not assert normal Plan operation counters or one-action staged UI pipeline behavior",
+    "production_gui_execute_acceptance_complete": false,
+    "public_safe": true,
+    "root_cause": "normal Plan performed import-time deep validation in checking_supported, so the user-facing planning stage could open/read/decode source files or stall on iCloud/Windows Cloud Files before Execute began",
+    "safe_to_ask_user_retry": false,
+    "status": "implemented_pending_current_head_review_and_final_production_gui_execute",
+    "triggering_incident": {
+      "batch_candidates": 262,
+      "elapsed_seconds_approx": 3727,
+      "head_sha": "cccef9ddbd6312ae9ef2909d194fe47e2e9062db",
+      "importable": 0,
+      "last_stage": "checking_supported",
+      "plan_request_id": "gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380",
+      "seen": 263,
+      "user_cancelled_before_execute": true
+    },
+    "ui_flow": {
+      "advanced_diagnostics_separated": true,
+      "exact_audit_phrase_advanced_only": true,
+      "human_readable_confirmation_before_writes": true,
+      "one_primary_start_action": true,
+      "stage_strip": [
+        "Plan",
+        "Import",
+        "Classification",
+        "AI tagging",
+        "Localization",
+        "Complete"
+      ],
+      "zero_import_plan_shows_execute_confirmation": false
+    },
+    "validation": {
+      "browser_validation": {
+        "advanced_diagnostics_separated": true,
+        "db_name": "blombooru_test",
+        "method": "Playwright Edge",
+        "normal_operator_stage_flow_visible": true,
+        "port": 8013,
+        "production_execute_clicked": false,
+        "result": "2 passed in 3.2s",
+        "server_env": "test",
+        "server_stopped_after_validation": true,
+        "status": "passed_p0_normal_operator_ui_stage_flow"
+      },
+      "focused_tests": "142 passed in 90.66s latest rerun",
+      "full_chain_test": "test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_summary passed",
+      "large_stable_ledger_test": "test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_expensive_reads passed"
+    }
+  },
   "manual_sync_safety_judgement": {
     "api_runner_e2e_reliable": true,
     "automatic_sync_remaining_prerequisites": [
@@ -1512,10 +1834,33 @@
     ],
     "can_user_use_launcher_web_admin_now": false,
     "evidence_based": true,
+    "future_manual_sync_safe_for_normal_use": false,
     "gpu_inference_path_reliable_for_manual_sync": true,
     "gui_execute_works_end_to_end": false,
+    "latest_reason": "Job #13 proves the staged UI and full pipeline can complete with plan expensive operations 0/0/0/0, but it is partial acceptance only because the user had to use Advanced exact-phrase execute and existing non-target AI/localization contamination remains unrepaired.",
+    "manual_sync_safety_status": "manual_sync_not_safe_blockers_remaining",
+    "operator_checks_before_retry": [
+      "wait for this follow-up head to be pushed and reviewed",
+      "approve or complete the deterministic non-target AI/localization DB repair for #7/#8 before merge",
+      "pull latest PR head and verify normal Start manual sync no longer exposes/requires Advanced exact phrase",
+      "use a small JPG/PNG batch and stop if non-target media are selected for AI/localization",
+      "run the GUI validator after a normal-flow execute completes"
+    ],
+    "operator_checks_required_before_execute": [
+      "Start manual sync shows live progress within a few seconds",
+      "Plan does not silently run; if slow, phase/count/event progress continues",
+      "No active plan remains before retry after timeout/cancel"
+    ],
+    "p0_normal_flow_redesign": {
+      "execute_handles_import_time_validation": true,
+      "implemented": true,
+      "normal_plan_expensive_operations_expected_zero": true,
+      "normal_plan_is_candidate_discovery_only": true,
+      "real_production_gui_execute_still_pending": true
+    },
+    "project_can_return_to_pixiv_source_roadmap": false,
     "public_safe": true,
-    "reason": "Final user-performed launcher/Web Admin GUI Execute acceptance is still pending; the P0 normal Plan/Execute boundary and staged operator UI redesign is implemented and validated in test, but current head still needs review before asking the user to retry.",
+    "reason": "A real Web Admin smoke test completed a batch through the full stages, but the normal confirmation flow was not wired to execute before this fix and historical #7/#8 non-target media have AI/localization DB contamination that requires approved repair before merge.",
     "safe_conditions_before_execute": [
       "branch/head/provenance match the PR branch",
       "managed production server is freshly started from the intended profile",
@@ -1526,34 +1871,75 @@
       "post-GUI validation script confirms a completed run newer than #8"
     ],
     "standardized_pipeline_reusable_for_future_automatic_design": true,
-    "status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
-    "operator_checks_required_before_execute": [
-      "Start manual sync shows live progress within a few seconds",
-      "Plan does not silently run; if slow, phase/count/event progress continues",
-      "No active plan remains before retry after timeout/cancel"
-    ],
-    "latest_reason": "P0 normal Plan architecture failure has been fixed by moving import-time validation out of Plan, adding incremental source-ledger/mtime candidate discovery, and validating the staged UI in a controlled browser. No real production GUI Execute run newer than #8 has completed and passed the validator.",
-    "operator_checks_before_retry": [
-      "wait for this P0 redesign head to be pushed and reviewed",
-      "pull latest PR head after review",
-      "stop stale servers with violet_production_control.py stop --json and audit ports",
-      "confirm production profile DB/storage and automation flags OFF",
-      "confirm normal UI shows canonical /admin?tab=content#dynamic-library-sync-section",
-      "confirm Start manual sync shows stage progress within seconds",
-      "stop if no-progress watchdog fires, counts look runaway, or Execute safety is unclear"
-    ],
-    "manual_sync_safety_status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
-    "future_manual_sync_safe_for_normal_use": false,
-    "project_can_return_to_pixiv_source_roadmap": false,
-    "p0_normal_flow_redesign": {
-      "implemented": true,
-      "normal_plan_is_candidate_discovery_only": true,
-      "normal_plan_expensive_operations_expected_zero": true,
-      "execute_handles_import_time_validation": true,
-      "real_production_gui_execute_still_pending": true
-    }
+    "status": "manual_sync_not_safe_blockers_remaining"
   },
   "mode": "execute",
+  "non_target_ai_localization_audit": {
+    "ai_wd_assignment_count": 20675,
+    "audit": "manual_sync_non_target_ai_localization_v1",
+    "db_writes_performed": false,
+    "diagnosis": "Historical runs #7/#8 contain non-target/unknown media that received ai_wd tags and localization. Job #13 imported only anime-classified media, but future manual execute still needed a hard classification gate before AI/localization.",
+    "future_pipeline_fix": "manual_sync_execute now runs classification before AI tagging and skips AI/localization for media outside DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES with stable non-failure statuses.",
+    "job_13_non_target_media_with_ai_count": 0,
+    "media_by_content_class": {
+      "anime": 379,
+      "non_anime": 12,
+      "unknown": 23
+    },
+    "media_by_run_and_content_class": {
+      "13": {
+        "anime": 65
+      },
+      "7": {
+        "anime": 273,
+        "non_anime": 7,
+        "unknown": 20
+      },
+      "8": {
+        "anime": 41,
+        "non_anime": 5,
+        "unknown": 3
+      }
+    },
+    "media_count": 414,
+    "non_target_ai_wd_assignment_count": 1645,
+    "non_target_distinct_ai_wd_tags": 530,
+    "non_target_distinct_ai_wd_tags_with_zh_cn_translation": 529,
+    "non_target_media_with_ai_count": 35,
+    "proposed_repair": {
+      "actions": [
+        "backup/export affected ai_wd assignment aggregates and row identities privately",
+        "remove or invalidate ai_wd-generated media-tag assignments on non-target media only",
+        "preserve manually assigned tags and target/anime media tags",
+        "mark affected non-target source items with ai_tagging_skipped_non_target and localization_not_applicable_non_target where appropriate",
+        "clear localization follow-up only when it came solely from invalid non-target AI tags",
+        "verify Entity/SourceConcept truth violations remain zero"
+      ],
+      "scope": "affected S3A-M2 run #7/#8 media where content_class is non_anime or unknown and ai_wd assignments were generated by manual sync",
+      "status": "not_executed_requires_project_owner_approval"
+    },
+    "public_safe": true,
+    "raw_private_artifact": ".local_manifests/s3a_m2_delta_e2e/non_target_ai_audit/manual-sync-non-target-ai-audit-runs-7-8-13.json",
+    "repair_approval_required": true,
+    "repair_required_before_merge": true,
+    "run_ids": [
+      7,
+      8,
+      13
+    ],
+    "source_item_stage_counts_highlights": {
+      "13": {
+        "anime_classified_ai_tagged_localized": 65,
+        "deferred_existing_media_rows": 35
+      },
+      "7": {
+        "non_target_or_unknown_classified_ai_tagged_localized": 27
+      },
+      "8": {
+        "non_target_or_unknown_classified_ai_tagged_localized": 8
+      }
+    }
+  },
   "not_completed": [
     "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
     "Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.",
@@ -1636,16 +2022,21 @@
   "pre_user_manual_acceptance_safety_fixes": {
     "auto_fill_production_confirmation_removed": true,
     "automatic_background_sync_remains_off": true,
+    "backend_llm_provider_gate_fail_closed": true,
+    "cancellation_fix_commit_head_sha": "0d8397886e84f53fc99dbde4d0820a4c81b0d0f8",
+    "cancellation_rechecked_immediately_before_localization_finalizer": true,
     "cancelled_run_blocked_reason": "manual_sync_cancelled_before_localization",
     "cancelled_run_localization_status": "skipped_cancelled_run",
     "cancelled_run_prevents_llm_calls": true,
     "cancelled_run_prevents_localization_db_writes": true,
     "cancelled_run_skips_localization_finalizer": true,
-    "cancellation_fix_commit_head_sha": "0d8397886e84f53fc99dbde4d0820a4c81b0d0f8",
+    "downstream_followup_executable": true,
+    "existing_duplicate_do_not_consume_actionable_cap": true,
     "fix_commit_head_sha": "ac078ea6ade978e2577661fda19885db5d9de6e9",
     "gui_session_marker": "server-issued signed GUI validation session bound to Web Admin plan/execute flow",
     "historical_read_error_retryable": true,
     "latest_codex_reviewed_head": "e394ee3802bc444135710ec4e77df10751104986",
+    "latest_user_path_failure_head": "32cb03698f06746ae1f829b5b37fc565c7d59c4c",
     "localization_architecture_policy": "validator accepts completed/existing-coverage localization with zero failed calls and zero remaining localizable-tag gap",
     "localization_failure_reporting": "manual_sync_execute.localization_failed_items plus localization summary failed/gap fields",
     "manual_acceptance_package_status": "blocked_pending_user_retry_after_progress_timeout_policy_fix_and_review",
@@ -1658,37 +2049,32 @@
       "public_redaction"
     ],
     "manual_e2e_readiness_backend_gate_alignment": true,
+    "manual_plan_batch_mode": "bounded_actionable_batch",
+    "manual_plan_cancel_stale_terminal_state": true,
+    "manual_plan_global_elapsed_timeout_removed": true,
+    "manual_plan_hashchange_canonical_section_fix": true,
+    "manual_plan_no_progress_watchdog_seconds": 300,
+    "manual_plan_resume_policy": "reuse committed DynamicSourceItem state only when source identity/status remains valid; execute revalidates size/mtime/hash before writing",
+    "manual_plan_unexpected_error_releases_lock": true,
     "operator_entered_production_confirmation_required": true,
     "ordinary_api_can_satisfy_gui_acceptance": false,
+    "priority_workset_filesystem_fallback": true,
     "private_gui_validator_output_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance/",
+    "profile_booleans_and_caps_coerced": true,
+    "profile_update_persists_nested_manual_e2e_and_llm_sections": true,
     "public_safe": true,
     "review_usage_limited_after_latest_review": false,
     "reviewer_findings_before_head": "e394ee3802bc444135710ec4e77df10751104986",
+    "reviewer_scope": "current-scope b53249c P1/P2 scanner/workset/follow-up/cancel/profile readiness findings",
     "signed_gui_provenance_required": true,
     "stable_historical_unsupported_inventory_does_not_consume_current_delta_cap": true,
     "status": "fixed_pending_codex_re_review_after_incremental_scanner_commit",
+    "user_manual_gui_acceptance_package_status": "do_not_ask_user_to_retry_until_new_head_reviewed_or_explicitly_accepted_by_project_owner",
+    "validator_clears_stale_profile_env_when_absent": true,
     "validator_includes_skipped_placeholders": true,
     "validator_remaining_inventory_scope": "validated_gui_run_source_root_only",
     "validator_requires_gui_run_newer_than_run_8": true,
-    "validator_requires_signed_gui_session": true,
-    "manual_plan_global_elapsed_timeout_removed": true,
-    "manual_plan_no_progress_watchdog_seconds": 300,
-    "manual_plan_cancel_stale_terminal_state": true,
-    "manual_plan_unexpected_error_releases_lock": true,
-    "manual_plan_hashchange_canonical_section_fix": true,
-    "manual_plan_batch_mode": "bounded_actionable_batch",
-    "manual_plan_resume_policy": "reuse committed DynamicSourceItem state only when source identity/status remains valid; execute revalidates size/mtime/hash before writing",
-    "latest_user_path_failure_head": "32cb03698f06746ae1f829b5b37fc565c7d59c4c",
-    "reviewer_scope": "current-scope b53249c P1/P2 scanner/workset/follow-up/cancel/profile readiness findings",
-    "priority_workset_filesystem_fallback": true,
-    "existing_duplicate_do_not_consume_actionable_cap": true,
-    "downstream_followup_executable": true,
-    "cancellation_rechecked_immediately_before_localization_finalizer": true,
-    "profile_update_persists_nested_manual_e2e_and_llm_sections": true,
-    "profile_booleans_and_caps_coerced": true,
-    "backend_llm_provider_gate_fail_closed": true,
-    "validator_clears_stale_profile_env_when_absent": true,
-    "user_manual_gui_acceptance_package_status": "do_not_ask_user_to_retry_until_new_head_reviewed_or_explicitly_accepted_by_project_owner"
+    "validator_requires_signed_gui_session": true
   },
   "private_artifacts": {
     "private_artifacts_committed": false,
@@ -1811,18 +2197,20 @@
   },
   "remaining_blockers": [
     {
-      "code": "gui_execute_run_newer_than_8_missing",
-      "detail": "No GUI-created manual sync execute run newer than #8 has completed and passed validation.",
+      "code": "non_target_ai_localization_contamination_unrepaired",
+      "detail": "Read-only audit found 35 non-target/unknown S3A-M2 media from runs #7/#8 with 1645 ai_wd assignments; repair requires explicit project-owner approval and private backup/ledger.",
       "status": "blocking_merge"
     },
-    "user_manual_gui_execute_acceptance_pending",
-    "codex_review_latest_head_pending_after_ebed72c_followup_fixes",
     {
-      "code": "codex_re_review_required_after_ebed72c_cap_gui_provenance_fix",
-      "detail": "Exact-head ebed72c review findings were fixed locally and real-browser validated: executable cap-limited batches, LLM readiness preservation, GUI plan-flow binding, current-head validator, downstream source-item scoping, cancellation-before-localization, source-ledger scanner model proof, and selected-root UI summary. The pushed follow-up head must be reviewed before asking the user to run production GUI Execute again.",
-      "status": "blocking_user_retry"
+      "code": "normal_flow_gui_execute_retry_required_after_fix",
+      "detail": "Job #13 completed only after Advanced exact-phrase execute; normal confirmation flow is fixed in code and browser-tested, but production user retry is still required.",
+      "status": "blocking_final_gui_acceptance"
     },
-    "final production launcher/Web Admin GUI Execute must be retried only after P0 normal-flow redesign head is pushed/reviewed; no GUI-created execute run newer than run #8 has passed validator"
+    {
+      "code": "gui_validator_after_normal_flow_run_pending",
+      "detail": "A normal-flow GUI execute run on the fixed head must pass validate_s3a_m2_gui_execute_acceptance.py before S3A-M2 can be complete.",
+      "status": "blocking_merge"
+    }
   ],
   "remaining_run": {
     "ai_tagged": 49,
@@ -1867,6 +2255,115 @@
     "sourceconcept_entity_bridge": false,
     "startup_sync_enabled": false,
     "system_service_enabled": false
+  },
+  "scanner_incremental_model": {
+    "cap_semantics": "actionable candidates only; unchanged existing media excluded from the execute cap",
+    "durable_global_filesystem_cursor": false,
+    "durable_state_tables": [
+      "blombooru_dynamic_source_items",
+      "blombooru_dynamic_sync_runs",
+      "blombooru_dynamic_sync_run_items"
+    ],
+    "hash_old_stable_files": false,
+    "hash_only_when": [
+      "new_source_path",
+      "metadata_changed",
+      "downstream_followup",
+      "ambiguous_existing_media",
+      "execute_integrity_revalidation"
+    ],
+    "invalidation_policy": [
+      "source_root_id",
+      "relative_path_hash",
+      "file_size",
+      "mtime_ns",
+      "content_hash_mismatch",
+      "hydration_policy",
+      "profile_or_pipeline_settings"
+    ],
+    "model": "hybrid_source_ledger_metadata_fast_path_with_filesystem_fallback",
+    "next_batch_continuation": "after a cap-limited batch executes, committed DynamicSourceItem rows become the next plan checkpoint; unexecuted private plan rows are never trusted without execute-time revalidation",
+    "operator_visible_fields": [
+      "Root last checked",
+      "Scan model",
+      "Start basis",
+      "Fast-skipped",
+      "Stat checked",
+      "Hash checked",
+      "Batch",
+      "More batches"
+    ],
+    "previous_994_existing_explanation": "The f1040fb plan selected known/root candidates and only discovered existing media after hash classification, so existing rows consumed the visible cap. The fixed model uses source-ledger metadata fast skip and actionable cap semantics so stable existing rows are diagnostics, not batch capacity.",
+    "public_safe": true,
+    "stable_known_files_fast_skipped_without_hash": true,
+    "starts_from_root_each_run": "registered roots first use the DynamicSourceItem priority workset; filesystem enumeration is metadata fallback for files missing from the source ledger or changed since the ledger snapshot"
+  },
+  "scanner_planner_model": {
+    "cached_evidence_invalidates_on": [
+      "source_root_id change",
+      "relative_path_hash or source path identity change",
+      "file size change",
+      "mtime_ns change",
+      "content hash mismatch when revalidated",
+      "source missing/deleted/moved",
+      "hydration policy/profile/cap/manual E2E setting change for unexecuted plan"
+    ],
+    "cap_semantics": "actionable importable or downstream-follow-up candidates; stable existing/duplicate/unchanged rows do not consume the user-visible execute cap",
+    "downstream_followup_executable": true,
+    "downstream_followup_states": [
+      "downstream_followup_planned",
+      "classification_required",
+      "ai_tagging_required",
+      "localization_required_or_stable_reason"
+    ],
+    "durable_cursor_note": "There is not yet a single global filesystem watermark. The implemented bounded alternative uses DynamicSourceItem as a durable source ledger plus priority workset and filesystem fallback for files not yet in the ledger.",
+    "durable_global_filesystem_cursor": false,
+    "existing_duplicate_consume_cap": false,
+    "fast_precheck_metadata": [
+      "source_root_id",
+      "relative_path_hash",
+      "file_size",
+      "mtime_ns",
+      "sync/import/classification/ai/localization status",
+      "existing media_id/content_hash when already known"
+    ],
+    "hash_when": [
+      "new or metadata-changed supported file",
+      "execute revalidation before write",
+      "duplicate/existing-media verification when cached identity is not enough",
+      "downstream follow-up source integrity recheck"
+    ],
+    "last_successful_scan_boundary": "represented by DynamicSourceItem source identity/state, not a single operator-visible filesystem cursor",
+    "moved_deleted_modified_handling": {
+      "deleted_or_missing": "source_missing/path_missing stable item reason; not executable until visible again",
+      "modified": "metadata mismatch forces hash/revalidation and becomes changed/importable or duplicate/existing as appropriate",
+      "moved": "old ledger row becomes missing/stale and the new relative identity is discovered by filesystem fallback"
+    },
+    "priority_workset_can_hide_new_files": false,
+    "priority_workset_falls_through_to_filesystem_walk": true,
+    "public_safe": true,
+    "scan_start_order": [
+      "priority DynamicSourceItem rows for current actionable work",
+      "filesystem walk fallback after priority workset is exhausted or below cap"
+    ],
+    "skip_hash_when": [
+      "known stable DynamicSourceItem has unchanged root/relative identity/size/mtime and no downstream follow-up",
+      "stable unsupported/hidden/non-actionable historical rows are represented in diagnostics only"
+    ],
+    "starts_from_root_every_time": false,
+    "status": "implemented_bounded_source_ledger_model_pending_real_gui_execute_revalidation",
+    "ui_fields_exposed": [
+      "Actionable cap",
+      "Cap means",
+      "Workset",
+      "Priority items",
+      "Filesystem fallback",
+      "Filesystem complete",
+      "Incremental ledger",
+      "Fast skip identity",
+      "Actionable import/follow-up split",
+      "Unchanged ledger skips"
+    ]
   },
   "skipped_failed_deferred": {
     "deferred": 0,
@@ -2000,9 +2497,9 @@
           "execute_clicked": false,
           "fallback_reason": "GUI dry-run hang was diagnosed before another execute attempt. The GUI plan endpoint was using a broad source-root walk/verify path; final GUI Execute acceptance remains blocked until a new GUI-created run newer than run #8 is validated.",
           "gui_execute_completed": false,
-          "previous_execute_run_id": 8,
+          "latest_scanner_workset_fix": "priority workset now falls through to filesystem walk; stable existing/duplicate rows do not consume actionable cap; downstream follow-up rows execute through later stages",
           "latest_user_path_plan_failure": "zero-import partial plan on f1040fb showed old cap/workset behavior; fixed pending re-review and user retry",
-          "latest_scanner_workset_fix": "priority workset now falls through to filesystem walk; stable existing/duplicate rows do not consume actionable cap; downstream follow-up rows execute through later stages"
+          "previous_execute_run_id": 8
         },
         "status": "pending"
       },
@@ -2017,6 +2514,7 @@
     "version": 1
   },
   "status": "completed_with_followup_required",
+  "target_met": false,
   "title": "Production Delta Manual Sync E2E + GPU Telemetry",
   "unsupported_inventory": {
     "current_image_pipeline_importable_under_existing_rules": 0,
@@ -2045,53 +2543,7 @@
     "risk_to_future_manual_sync": "They can keep historical deferred/failed counters high unless the UI separates unsupported historical inventory from current actionable delta."
   },
   "validation": {
-    "pre_user_acceptance_focused_tests": {
-      "status": "passed",
-      "command_summary": "pytest tests/test_admin_dynamic_sync_ui.py tests/test_dynamic_library_sync.py plus S3A-M2/phase/manual-execute focused tests",
-      "result": "64 passed + 296 passed"
-    },
-    "pre_user_acceptance_py_compile": {
-      "status": "passed",
-      "command_summary": "python -m py_compile changed backend/services/routes and S3A-M2 scripts",
-      "result": "passed"
-    },
-    "launcher_web_admin": "blocked_pending_reviewer_recheck_and_user_manual_gui_execute_after_incremental_scanner_workset_fix",
-    "launcher_plan_timeout_seconds_observed": 597,
-    "launcher_plan_progress_fix_added": true,
-    "launcher_execute_clicked": false,
-    "real_browser_ui_progress_fix": {
-      "status": "passed",
-      "method": "Playwright Edge against controlled VIOLET_ENV=test server on port 8013",
-      "canonical_url": "http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section",
-      "test_db": "blombooru_test",
-      "test_storage": "local_test_storage",
-      "normal_operator_start_clicked": true,
-      "execute_clicked": false,
-      "plan_response_status": 200,
-      "plan_progress_visible": true,
-      "plan_request_id_visible": true,
-      "plan_counts_visible": true,
-      "start_button_busy_state_visible": true,
-      "hashchange_section_activation_validated": true,
-      "historical_threshold_labeled_diagnostic": true,
-      "ai_localization_background_wording_clear": true,
-      "server_stopped_after_validation": true,
-      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/"
-    },
-    "progress_timeout_policy_tests": {
-      "status": "passed",
-      "commands": [
-        "python -m pytest tests/test_admin_dynamic_sync_ui.py tests/test_dynamic_library_sync.py -q -> 64 passed in 34.65s",
-        "python -m pytest tests/test_s3a_m1_manual_sync_execute.py::test_s3a_m1_execute_cancel_after_ai_tagging_skips_localization_finalizer tests/test_s3a_m1_manual_sync_execute.py::test_manual_sync_localization_save_failure_rolls_back_and_records_failure tests/test_s3a_m1_manual_sync_execute.py::test_s3a_m2_manual_execute_ai_policy_confirms_mature_categories_and_suggests_low_confidence tests/test_s3a_m2_delta_e2e.py tests/test_phase_contracts.py -q -> 296 passed in 24.68s",
-        "python -m py_compile changed backend/services/routes and S3A-M2 scripts -> passed",
-        "python -m json.tool docs/reports/s3a-m2-production-delta-e2e-summary.json -> passed",
-        "python scripts/check_phase_contract.py --contract s3a_m2_production_delta_e2e_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed with target_met_claimed=false",
-        "python scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed",
-        "git diff --check -> passed with CRLF warnings only"
-      ]
-    },
     "incremental_scanner_workset_fix_tests": {
-      "status": "passed",
       "commands": [
         "python -m py_compile backend/app/services/dynamic_library_sync_service.py backend/app/services/manual_sync_execute_service.py scripts/violet_production_control.py scripts/validate_s3a_m2_gui_execute_acceptance.py -> passed",
         "python -m pytest tests/test_dynamic_library_sync.py tests/test_admin_dynamic_sync_ui.py -q -> 66 passed in 47.02s",
@@ -2103,378 +2555,86 @@
         "python -m json.tool docs/reports/s3a-m2-production-delta-e2e-summary.json -> passed",
         "python scripts/check_python_env.py --expected-python .\\venv\\Scripts\\python.exe -> passed; sys.executable=venv\\Scripts\\python.exe",
         "git diff --check -> passed with CRLF warnings only"
-      ]
+      ],
+      "status": "passed"
+    },
+    "launcher_execute_clicked": false,
+    "launcher_plan_progress_fix_added": true,
+    "launcher_plan_timeout_seconds_observed": 597,
+    "launcher_web_admin": "blocked_pending_reviewer_recheck_and_user_manual_gui_execute_after_incremental_scanner_workset_fix",
+    "pre_user_acceptance_focused_tests": {
+      "command_summary": "pytest tests/test_admin_dynamic_sync_ui.py tests/test_dynamic_library_sync.py plus S3A-M2/phase/manual-execute focused tests",
+      "result": "64 passed + 296 passed",
+      "status": "passed"
+    },
+    "pre_user_acceptance_py_compile": {
+      "command_summary": "python -m py_compile changed backend/services/routes and S3A-M2 scripts",
+      "result": "passed",
+      "status": "passed"
+    },
+    "progress_timeout_policy_tests": {
+      "commands": [
+        "python -m pytest tests/test_admin_dynamic_sync_ui.py tests/test_dynamic_library_sync.py -q -> 64 passed in 34.65s",
+        "python -m pytest tests/test_s3a_m1_manual_sync_execute.py::test_s3a_m1_execute_cancel_after_ai_tagging_skips_localization_finalizer tests/test_s3a_m1_manual_sync_execute.py::test_manual_sync_localization_save_failure_rolls_back_and_records_failure tests/test_s3a_m1_manual_sync_execute.py::test_s3a_m2_manual_execute_ai_policy_confirms_mature_categories_and_suggests_low_confidence tests/test_s3a_m2_delta_e2e.py tests/test_phase_contracts.py -q -> 296 passed in 24.68s",
+        "python -m py_compile changed backend/services/routes and S3A-M2 scripts -> passed",
+        "python -m json.tool docs/reports/s3a-m2-production-delta-e2e-summary.json -> passed",
+        "python scripts/check_phase_contract.py --contract s3a_m2_production_delta_e2e_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed with target_met_claimed=false",
+        "python scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed",
+        "git diff --check -> passed with CRLF warnings only"
+      ],
+      "status": "passed"
     },
     "real_browser_incremental_workset_ui_fix": {
-      "attempted": true,
-      "status": "passed_incremental_workset_ui_fix_only",
-      "method": "Playwright Edge against controlled VIOLET_ENV=test server on port 8015",
-      "server_env": "test",
-      "db_name": "blombooru_test",
-      "port": 8015,
-      "canonical_url_preserved": true,
-      "normal_operator_ui_validated": true,
-      "start_manual_sync_plan_clicked": false,
-      "mock_plan_rendered_for_workset_ui": true,
-      "gui_execute_clicked": false,
-      "reason": "This validates the normal operator UI rendering for priority-workset/filesystem-fallback/actionable-follow-up evidence only. It does not satisfy final production GUI Execute acceptance.",
-      "source_or_production_mutation": false,
-      "public_safe": true,
-      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
-      "canonical_url": "http://127.0.0.1:8015/admin?tab=content#dynamic-library-sync-section",
-      "workset_line_visible": true,
-      "filesystem_fallback_visible": true,
-      "filesystem_complete_visible": true,
-      "fast_skip_identity_visible": true,
       "actionable_followup_visible": true,
-      "start_button_busy_duplicate_click_guard_visible": true,
-      "operator_confirmation_visible_for_actionable_plan": true,
+      "attempted": true,
+      "canonical_url": "http://127.0.0.1:8015/admin?tab=content#dynamic-library-sync-section",
+      "canonical_url_preserved": true,
+      "db_name": "blombooru_test",
       "execute_disabled_before_operator_phrase": true,
       "execute_enabled_after_operator_phrase": true,
+      "fast_skip_identity_visible": true,
+      "filesystem_complete_visible": true,
+      "filesystem_fallback_visible": true,
+      "gui_execute_clicked": false,
+      "head_sha_note": "validated working tree after b53249c review-fix edits; final PR head is recorded in the PR body/closeout after push",
+      "method": "Playwright Edge against controlled VIOLET_ENV=test server on port 8015",
+      "mock_plan_rendered_for_workset_ui": true,
+      "normal_operator_ui_validated": true,
+      "operator_confirmation_visible_for_actionable_plan": true,
+      "port": 8015,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
+      "public_safe": true,
       "raw_i18n_key_visible": false,
       "raw_internal_blockers_visible": false,
+      "reason": "This validates the normal operator UI rendering for priority-workset/filesystem-fallback/actionable-follow-up evidence only. It does not satisfy final production GUI Execute acceptance.",
+      "server_env": "test",
       "server_stopped_after_validation": true,
+      "source_or_production_mutation": false,
+      "start_button_busy_duplicate_click_guard_visible": true,
+      "start_manual_sync_plan_clicked": false,
+      "status": "passed_incremental_workset_ui_fix_only",
       "validated_base_head_sha": "b53249cb88180d8d683b7a77b09635c4668ae296",
-      "head_sha_note": "validated working tree after b53249c review-fix edits; final PR head is recorded in the PR body/closeout after push"
+      "workset_line_visible": true
+    },
+    "real_browser_ui_progress_fix": {
+      "ai_localization_background_wording_clear": true,
+      "canonical_url": "http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section",
+      "execute_clicked": false,
+      "hashchange_section_activation_validated": true,
+      "historical_threshold_labeled_diagnostic": true,
+      "method": "Playwright Edge against controlled VIOLET_ENV=test server on port 8013",
+      "normal_operator_start_clicked": true,
+      "plan_counts_visible": true,
+      "plan_progress_visible": true,
+      "plan_request_id_visible": true,
+      "plan_response_status": 200,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
+      "server_stopped_after_validation": true,
+      "start_button_busy_state_visible": true,
+      "status": "passed",
+      "test_db": "blombooru_test",
+      "test_storage": "local_test_storage"
     }
   },
-  "manual_gui_plan_timeout_2026_06_29": {
-    "status": "global_elapsed_timeout_removed_pending_user_retry",
-    "observed_head_sha": "32cb03698f06746ae1f829b5b37fc565c7d59c4c",
-    "observed_by": "user_manual_gui_acceptance",
-    "observed_elapsed_seconds": 597,
-    "ui_error": "Manual sync plan timed out; cancel was requested before Execute.",
-    "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
-    "request_payload_public_summary": {
-      "root_id": 2,
-      "effective_cap": 1000,
-      "hydrated_only_default": false,
-      "cloud_aware_hydration": true,
-      "request_source_expected": "web_admin_gui"
-    },
-    "planner_path": "current S3A-M2 manual-sync plan endpoint, not the old update-check endpoint",
-    "exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
-    "exact_files_visited_before_timeout": "unknown_not_recorded_by_pre_fix_backend",
-    "exact_current_candidates_before_timeout": "unknown_not_recorded_by_pre_fix_backend",
-    "active_request_after_codex_audit": false,
-    "active_server_after_codex_audit": false,
-    "active_dynamic_sync_run_after_codex_audit": false,
-    "evidence_consulted": [
-      "user-observed Web Admin timeout message and elapsed time",
-      "repo code path inspection for frontend 600s AbortController timeout",
-      "audit_active_violet_servers.py showed no V.I.O.L.E.T. listeners on 8000/8012-8024 after the aborted attempt",
-      "no fresh gui_acceptance_debug private artifact existed for the failed attempt because pre-fix plan progress was not persisted"
-    ],
-    "root_cause": "global_elapsed_timeout_fired_while_healthy_progress_was_still_moving",
-    "backend_continued_after_frontend_timeout": "not proven for the user attempt; this fix makes future plans expose terminal cancelled/cancel_failed/completed state",
-    "fixes_added": [
-      "removed frontend hard total elapsed 600s abort for healthy progress",
-      "removed backend global elapsed plan timeout as a normal failure mechanism",
-      "added 300s no-progress watchdog and public plan_no_progress_timeout reason",
-      "added terminal cancel_failed state and active-plan lock release for stale cancelling progress",
-      "added finally-style route failure handling so unexpected planner errors release locks",
-      "re-includes imported ledger items whose classification/AI/localization downstream stages still need follow-up",
-      "renamed historical skipped to unchanged ledger skips and planned to batch candidates in progress UI",
-      "moved ambiguous threshold status out of normal operator path into Advanced/Diagnostics",
-      "added hashchange handling so canonical manual-sync section survives same-page navigation after login"
-    ],
-    "remaining_acceptance_requirement": "A new real launcher/Web Admin GUI dry-run and Execute must be performed after this fix; do not count API/runner or Playwright execute as GUI Execute acceptance.",
-    "public_safe": true,
-    "real_browser_validation_after_fix": {
-      "status": "passed_ui_progress_fix_only",
-      "execute_clicked": false,
-      "port": 8013,
-      "plan_response_status": 200,
-      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/"
-    },
-    "observed_progress_snapshot_public": {
-      "phase": "cancelling: hashing",
-      "current_item_label": "file-00724",
-      "current_item_index": 724,
-      "seen": 724,
-      "unchanged_ledger_skips": 404,
-      "unsupported": 0,
-      "placeholders": 0,
-      "hydrated": 0,
-      "importable": 0,
-      "batch_candidates": 319,
-      "failed": 0,
-      "elapsed_seconds_approx": 597
-    },
-    "file_00724_root_cause_evidence": false,
-    "file_00724_interpretation": "last visible public-safe item label when the old global elapsed timeout fired; not evidence of a stuck file",
-    "corrected_root_cause": "The old normal GUI plan path had a hard approximately-600s total elapsed timeout. It fired while progress was still moving through hashing, so the user path failed even though there was no proven stuck file.",
-    "timeout_policy_after_fix": {
-      "global_elapsed_timeout_enabled": false,
-      "healthy_progress_can_continue_beyond_600s": true,
-      "no_progress_watchdog_seconds": 300,
-      "cancel_stale_terminal_state_seconds": 360,
-      "per_item_timeout_policy": "supported-image verification and content hashing already use file_read_timeout_seconds and record read_timeout/stable per-item reasons before continuing; the new watchdog only handles lack of global progress between service checkpoints.",
-      "explicit_user_cancel": true
-    },
-    "batch_planning_after_fix": {
-      "mode": "bounded_actionable_batch",
-      "candidate_cap": 1000,
-      "already_imported_batches_reused_from_ledger": true,
-      "next_batch_requires_new_plan": true,
-      "execute_revalidates_source_identity": true
-    },
-    "resume_checkpoint_policy_after_fix": {
-      "reuse_committed_source_item_state": true,
-      "reuse_private_unexecuted_plan_for_execute": false,
-      "invalidate_on_size_mtime_hash_root_relative_path_profile_cap_hydration_or_settings_change": true,
-      "changed_source_becomes_new_changed_work": true
-    },
-    "historical_skipped_explanation": "The UI label is now unchanged ledger skips. These are previously represented source-ledger items whose source identity/state is still terminal and non-actionable, not current failures.",
-    "planned_319_explanation": "The UI label is now batch candidates. It counts candidate records accumulated for the bounded plan before final importability/dedup/existing checks; it is not the same as final importable count."
-  },
-  "head_sha_self_reference_note": "A committed report cannot embed its own final Git SHA without changing that SHA. The exact PR head is recorded in the PR body and Codex closeout after push.",
-  "validation_basis_head_sha": "cccef9ddbd6312ae9ef2909d194fe47e2e9062db",
-  "latest_zero_import_partial_plan_incident": {
-    "status": "fixed_pending_reviewer_recheck_and_user_retry",
-    "observed_head_sha": "f1040fb21a1c04489b3ed31d295321f5eddc44ac",
-    "plan_hash_prefix": "b0cce6557c8866b14eb58b66",
-    "plan_request_id": "gui-plan-2c981cd1-33d1-4c86-adaf-ab2678dcc776",
-    "plan_source": "source_delta",
-    "cap": 1000,
-    "hydration_policy": "cloud_aware_non_destructive_read",
-    "observed_counts": {
-      "seen": 1000,
-      "scanned_files": 1000,
-      "estimated_import_count": 0,
-      "partial_scan": true,
-      "state_counts": {
-        "skipped_existing_media": 994,
-        "failed": 6
-      }
-    },
-    "execute_disabled_reason": [
-      "partial_scan_true",
-      "estimated_import_count_zero",
-      "no_importable_hydrated_items"
-    ],
-    "confirmation_phrase_was_deciding_condition": false,
-    "current_plan_reusable": false,
-    "current_plan_reuse_reason": "produced_by_previous_candidate_cap_semantics_no_importable_items_and_expired; diagnostic_only",
-    "root_cause": "Planner let existing-media candidates consume the visible batch/cap before existing-media hash classification, so the first GUI plan was dominated by already-imported media and did not reach current actionable work.",
-    "scanner_started_from": "priority DynamicSourceItem source-delta workset, then filesystem fallback for files not yet in the ledger after this fix",
-    "durable_cursor_before_fix": false,
-    "cap_semantics_before_fix": "files_or_candidates_before_final_existing_media_classification",
-    "cap_semantics_after_fix": "unique_actionable_import_or_downstream_followup_candidates_not_stable_existing_or_duplicate_media",
-    "existing_media_consumes_cap_after_fix": false,
-    "source_delta_workset_after_fix": {
-      "prioritizes_pending_without_media_id": true,
-      "prioritizes_cloud_placeholders": true,
-      "prioritizes_retryable_read_or_cloud_failures": true,
-      "prioritizes_imported_rows_with_downstream_followup": true,
-      "existing_changed_rows_with_media_id_do_not_crowd_out_new_work": true,
-      "continues_to_filesystem_walk_after_priority_workset": true,
-      "filesystem_files_not_in_dynamic_source_item_are_reached": true
-    },
-    "resume_policy_after_fix": {
-      "reuses_committed_dynamic_source_item_state": true,
-      "unexecuted_private_plan_reuse": "not_trusted_without_execute_revalidation",
-      "execute_revalidates_size_mtime_hash_source_identity": true,
-      "invalidates_on_source_identity_or_metadata_change": true,
-      "next_batch_requires_new_plan_after_expiry_or_code_profile_change": true
-    },
-    "failed_six_reason_breakdown": {
-      "available_from_old_plan": false,
-      "reason": "previous GUI plan did not persist public-safe per-failure details; future plans report aggregate failure reason/extension breakdowns"
-    },
-    "confirmation_ux_after_fix": {
-      "zero_import_plan_shows_confirmation": false,
-      "old_s3a_m1_phrase_shown_for_new_plans": false,
-      "write_plan_requires_operator_entered_confirmation": true,
-      "new_phrase_family": "S3A-M2 human-readable manual import/classify/AI/localize confirmation"
-    },
-    "browser_validation": {
-      "attempted": true,
-      "status": "passed_incremental_workset_ui_fix_only",
-      "method": "Playwright Edge against controlled VIOLET_ENV=test server on port 8015",
-      "server_env": "test",
-      "db_name": "blombooru_test",
-      "port": 8015,
-      "canonical_url_preserved": true,
-      "normal_operator_ui_validated": true,
-      "start_manual_sync_plan_clicked": false,
-      "mock_plan_rendered_for_workset_ui": true,
-      "gui_execute_clicked": false,
-      "reason": "This validates the normal operator UI rendering for priority-workset/filesystem-fallback/actionable-follow-up evidence only. It does not satisfy final production GUI Execute acceptance.",
-      "source_or_production_mutation": false,
-      "public_safe": true,
-      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
-      "canonical_url": "http://127.0.0.1:8015/admin?tab=content#dynamic-library-sync-section",
-      "workset_line_visible": true,
-      "filesystem_fallback_visible": true,
-      "filesystem_complete_visible": true,
-      "fast_skip_identity_visible": true,
-      "actionable_followup_visible": true,
-      "start_button_busy_duplicate_click_guard_visible": true,
-      "operator_confirmation_visible_for_actionable_plan": true,
-      "execute_disabled_before_operator_phrase": true,
-      "execute_enabled_after_operator_phrase": true,
-      "raw_i18n_key_visible": false,
-      "raw_internal_blockers_visible": false,
-      "server_stopped_after_validation": true,
-      "validated_base_head_sha": "b53249cb88180d8d683b7a77b09635c4668ae296",
-      "head_sha_note": "validated working tree after b53249c review-fix edits; final PR head is recorded in the PR body/closeout after push"
-    },
-    "public_safe": true,
-    "input_scope": "same_registered_active_input_scope_as_phase; raw identifiers excluded from public artifact",
-    "durable_cursor_after_fix": "bounded DynamicSourceItem source-ledger checkpoint model; no single global filesystem watermark yet",
-    "priority_workset_falls_through_to_filesystem_walk_after_fix": true,
-    "priority_workset_can_hide_new_files_after_fix": false,
-    "downstream_followup_hidden_as_existing_media_after_fix": false
-  },
-  "scanner_planner_model": {
-    "status": "implemented_bounded_source_ledger_model_pending_real_gui_execute_revalidation",
-    "starts_from_root_every_time": false,
-    "durable_global_filesystem_cursor": false,
-    "durable_cursor_note": "There is not yet a single global filesystem watermark. The implemented bounded alternative uses DynamicSourceItem as a durable source ledger plus priority workset and filesystem fallback for files not yet in the ledger.",
-    "scan_start_order": [
-      "priority DynamicSourceItem rows for current actionable work",
-      "filesystem walk fallback after priority workset is exhausted or below cap"
-    ],
-    "priority_workset_can_hide_new_files": false,
-    "priority_workset_falls_through_to_filesystem_walk": true,
-    "last_successful_scan_boundary": "represented by DynamicSourceItem source identity/state, not a single operator-visible filesystem cursor",
-    "fast_precheck_metadata": [
-      "source_root_id",
-      "relative_path_hash",
-      "file_size",
-      "mtime_ns",
-      "sync/import/classification/ai/localization status",
-      "existing media_id/content_hash when already known"
-    ],
-    "hash_when": [
-      "new or metadata-changed supported file",
-      "execute revalidation before write",
-      "duplicate/existing-media verification when cached identity is not enough",
-      "downstream follow-up source integrity recheck"
-    ],
-    "skip_hash_when": [
-      "known stable DynamicSourceItem has unchanged root/relative identity/size/mtime and no downstream follow-up",
-      "stable unsupported/hidden/non-actionable historical rows are represented in diagnostics only"
-    ],
-    "cached_evidence_invalidates_on": [
-      "source_root_id change",
-      "relative_path_hash or source path identity change",
-      "file size change",
-      "mtime_ns change",
-      "content hash mismatch when revalidated",
-      "source missing/deleted/moved",
-      "hydration policy/profile/cap/manual E2E setting change for unexecuted plan"
-    ],
-    "moved_deleted_modified_handling": {
-      "deleted_or_missing": "source_missing/path_missing stable item reason; not executable until visible again",
-      "moved": "old ledger row becomes missing/stale and the new relative identity is discovered by filesystem fallback",
-      "modified": "metadata mismatch forces hash/revalidation and becomes changed/importable or duplicate/existing as appropriate"
-    },
-    "cap_semantics": "actionable importable or downstream-follow-up candidates; stable existing/duplicate/unchanged rows do not consume the user-visible execute cap",
-    "existing_duplicate_consume_cap": false,
-    "downstream_followup_executable": true,
-    "downstream_followup_states": [
-      "downstream_followup_planned",
-      "classification_required",
-      "ai_tagging_required",
-      "localization_required_or_stable_reason"
-    ],
-    "ui_fields_exposed": [
-      "Actionable cap",
-      "Cap means",
-      "Workset",
-      "Priority items",
-      "Filesystem fallback",
-      "Filesystem complete",
-      "Incremental ledger",
-      "Fast skip identity",
-      "Actionable import/follow-up split",
-      "Unchanged ledger skips"
-    ],
-    "public_safe": true
-  },
-  "manual_sync_product_flow_redesign": {
-    "status": "implemented_pending_current_head_review_and_final_production_gui_execute",
-    "triggering_incident": {
-      "head_sha": "cccef9ddbd6312ae9ef2909d194fe47e2e9062db",
-      "plan_request_id": "gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380",
-      "elapsed_seconds_approx": 3727,
-      "seen": 263,
-      "batch_candidates": 262,
-      "importable": 0,
-      "last_stage": "checking_supported",
-      "user_cancelled_before_execute": true
-    },
-    "root_cause": "normal Plan performed import-time deep validation in checking_supported, so the user-facing planning stage could open/read/decode source files or stall on iCloud/Windows Cloud Files before Execute began",
-    "previous_tests_missed_reason": "tests validated plan/report/gates but did not assert normal Plan operation counters or one-action staged UI pipeline behavior",
-    "normal_plan_boundary": {
-      "candidate_discovery_only": true,
-      "uses_source_ledger": true,
-      "uses_mtime_watermark": true,
-      "uses_safety_lookback_seconds": 604800,
-      "uses_metadata_fast_path": true,
-      "content_reads": 0,
-      "hashes": 0,
-      "image_decodes": 0,
-      "hydrations": 0,
-      "deep_supported_image_validation": false
-    },
-    "execute_boundary": {
-      "handles_source_identity_revalidation": true,
-      "handles_hash_integrity": true,
-      "handles_cloud_placeholder_hydration": true,
-      "handles_duplicate_existing_detection": true,
-      "handles_unsupported_corrupt_item_reasons": true,
-      "runs_import_classification_ai_localization_summary": true
-    },
-    "ui_flow": {
-      "one_primary_start_action": true,
-      "stage_strip": [
-        "Plan",
-        "Import",
-        "Classification",
-        "AI tagging",
-        "Localization",
-        "Complete"
-      ],
-      "advanced_diagnostics_separated": true,
-      "exact_audit_phrase_advanced_only": true,
-      "human_readable_confirmation_before_writes": true,
-      "zero_import_plan_shows_execute_confirmation": false
-    },
-    "performance_budget": {
-      "small_delta_plan_target": "milliseconds_to_seconds",
-      "under_1000_metadata_candidates_blocker_seconds": 30,
-      "average_ms_per_metadata_candidate_warn_gt": 100,
-      "normal_plan_expensive_operations_expected": 0
-    },
-    "validation": {
-      "focused_tests": "142 passed in 90.66s latest rerun",
-      "full_chain_test": "test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_summary passed",
-      "large_stable_ledger_test": "test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_expensive_reads passed",
-      "browser_validation": {
-        "status": "passed_p0_normal_operator_ui_stage_flow",
-        "method": "Playwright Edge",
-        "server_env": "test",
-        "db_name": "blombooru_test",
-        "port": 8013,
-        "normal_operator_stage_flow_visible": true,
-        "advanced_diagnostics_separated": true,
-        "production_execute_clicked": false,
-        "server_stopped_after_validation": true,
-        "result": "2 passed in 3.2s"
-      }
-    },
-    "mature_pattern_references": [
-      "metadata_fast_path_before_hash_or_content_read",
-      "mtime_watermark_plus_safety_lookback",
-      "persistent_source_index",
-      "bounded_batches_and_execute_time_revalidation",
-      "advanced_full_rescan_as_repair_mode"
-    ],
-    "production_gui_execute_acceptance_complete": false,
-    "safe_to_ask_user_retry": false,
-    "public_safe": true
-  }
+  "validation_basis_head_sha": "cccef9ddbd6312ae9ef2909d194fe47e2e9062db"
 }

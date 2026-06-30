@@ -40,3 +40,18 @@
 - Blocker anomalies remaining: `0`.
 
 No private filenames, paths, content hashes, prompts, API keys, source URLs, or raw media identifiers are included in this public incident report.
+
+## Non-Target AI / Localization Follow-Up Incident
+
+- Discovery: real production Web Admin smoke test for job `#13` made the staged pipeline usable enough for manual UI inspection, and the project owner observed that non-anime/non-target images must not enter WD anime tagging or localization.
+- Read-only audit artifact: `.local_manifests/s3a_m2_delta_e2e/non_target_ai_audit/manual-sync-non-target-ai-audit-runs-7-8-13.json`.
+- Runs audited: `[7, 8, 13]`; DB writes performed by audit: `False`.
+- Aggregate media scope: `414` media; content classes `anime=379`, `non_anime=12`, `unknown=23`.
+- Job #13 result: `anime=65`; non-target media with AI tags from this latest job: `0`.
+- Historical #7/#8 impact: `35` non-target/unknown media received `source='ai_wd'` assignments.
+- Non-target AI assignment count: `1645`; distinct non-target AI tags: `530`; zh-CN coverage among those tags: `529`.
+- Root cause class: manual execute treated AI/localization as downstream stages for every imported media row instead of enforcing classification as the gate for WD/anime-tagging applicability.
+- Future-run prevention: manual execute now performs classification before AI tagging and skips AI/localization for media outside `DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES` with stable statuses `ai_tagging_skipped_non_target` and `localization_not_applicable_non_target`.
+- Repair status: `not_executed_requires_project_owner_approval`.
+- Proposed repair: back up affected row identities privately, remove/invalidate only AI-generated `ai_wd` media-tag assignments on non-target #7/#8 media, preserve manual tags and target/anime media tags, mark affected source rows non-applicable where appropriate, and re-run aggregate validation plus Entity/SourceConcept truth checks.
+- Remaining blocker: the historical non-target assignment pollution is not repaired yet, so this PR is not safe to merge solely on the basis of job #13 completion.

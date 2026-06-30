@@ -667,6 +667,17 @@ class Settings:
         return max(0, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_SAFETY_LOOKBACK_SECONDS", "604800")))
 
     @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES(self) -> List[str]:
+        """Content classes eligible for WD/anime tagging in manual E2E sync."""
+        raw = os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES", "anime,illustration")
+        values: List[str] = []
+        for value in raw.replace("|", ",").split(","):
+            normalized = value.strip().lower()
+            if normalized and normalized not in values:
+                values.append(normalized)
+        return values
+
+    @property
     def DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS(self) -> int:
         """Recommended execution time cap for a later manual sync acceptance run."""
         return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS", "600")))

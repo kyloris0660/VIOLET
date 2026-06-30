@@ -1325,6 +1325,107 @@ def test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_exp
     assert plan["limits"]["root_scan_state"]["current_scan_mode"] == "incremental_watermark_candidate_discovery"
 
 
+def test_manual_sync_dry_run_discovers_unseen_old_mtime_file_under_watermark(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    old_imported_path = source_root / "old_imported.png"
+    unseen_preserved_mtime_path = source_root / "copied_icloud_old_capture.png"
+    _write_png(old_imported_path, (20, 30, 40))
+    _write_png(unseen_preserved_mtime_path, (60, 70, 80))
+    old_ns = 1_800_000_000_000_000_000
+    older_ns = old_ns - (30 * 24 * 60 * 60 * 1_000_000_000)
+    os.utime(old_imported_path, ns=(old_ns, old_ns))
+    os.utime(unseen_preserved_mtime_path, ns=(older_ns, older_ns))
+    old_stat = old_imported_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="old-imported.png",
+        path="media/original/old-imported.png",
+        hash=calculate_file_hash(old_imported_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=old_imported_path.name,
+            relative_path_hash=service._hash_text(old_imported_path.name),
+            file_size=old_stat.st_size,
+            mtime_ns=old_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    assert plan["limits"]["source_mtime_watermark_ns"] == old_ns
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["plan_items"] == 1
+    assert plan["limits"]["fast_skipped_from_ledger"] == 1
+    assert plan["limits"]["stable_old_files_skipped"] == 0
+    assert "copied_icloud_old_capture.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_treats_unchanged_duplicate_ledger_rows_as_stable_skip(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    duplicate_path = source_root / "duplicate.png"
+    fresh_path = source_root / "fresh.png"
+    _write_png(duplicate_path, (20, 30, 40))
+    _write_png(fresh_path, (60, 70, 80))
+    duplicate_stat = duplicate_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=duplicate_path.name,
+            relative_path_hash=service._hash_text(duplicate_path.name),
+            file_size=duplicate_stat.st_size,
+            mtime_ns=duplicate_stat.st_mtime_ns,
+            content_hash="duplicate-content",
+            source_status="available",
+            sync_state="skipped_existing_media",
+            import_status="deferred",
+            classification_status="deferred",
+            ai_tagging_status="deferred",
+            localization_status="deferred",
+            deferred_reason="existing_media_hash",
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["plan_items"] == 1
+    assert plan["limits"]["fast_skipped_from_ledger"] == 1
+    assert "duplicate.png" not in str(plan)
+    assert "fresh.png" not in str(plan)
+
+
 def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(db, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -2093,7 +2194,7 @@ def test_operator_readiness_separates_manual_and_background_warnings(db, tmp_pat
 def test_operator_readiness_ready_for_manual_e2e_with_background_sync_off(db, tmp_path, monkeypatch):
     monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
-    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
     monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "false")
     monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
     monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")

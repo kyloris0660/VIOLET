@@ -116,12 +116,14 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     assert "window.confirm(confirmationText)" in script
     assert "body.confirmation_phrase = operatorConfirmedFullChain ? '' : confirmation;" in script
     assert "body.operator_confirmation_statement = operatorConfirmedFullChain ? operatorStatement : null;" in script
+    assert "allowDuringPlanFlow" in script
     assert "production_acceptance_approved = !!this.dynamicSyncProductionMode && (operatorConfirmedFullChain || confirmation === expected)" in script
     assert "complete && actionable && matches" in script
     assert "batchExecutable && actionable" in script
-    assert "No operator confirmation is needed because Execute is blocked for this plan." in script
-    assert "Operator confirmation required before writes:" in script
-    assert "Advanced exact audit phrase" in script
+    assert "此计划不可执行，因此不需要操作员确认。" in script
+    assert "写入前需要操作员确认：" in script
+    assert "高级诊断：精确审计短语" in script
+    assert "showAdvancedExecute" in script
     assert "requiresConfirmation = canExecute" in script
     assert "S3A-M1 PRODUCTION MANUAL SYNC EXECUTE" not in script
 

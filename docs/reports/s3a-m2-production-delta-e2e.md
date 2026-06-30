@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis commit before this update: `cccef9ddbd6312ae9ef2909d194fe47e2e9062db` (P0 normal-flow redesign working tree after the failed `gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380` acceptance attempt).
+- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis before this update: `69fab773d52ddf67b736d06485c485ea626be2c7` plus working-tree fixes for the latest GUI smoke-test blockers.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -175,6 +175,43 @@
 - Real browser proof: Playwright Edge against a controlled `VIOLET_ENV=test`, `blombooru_test`, isolated-storage server on port `8013` validated the Dynamic Library Sync normal operator UI, stage strip, hidden advanced execute controls, localized Advanced/Diagnostics separation, and no replacement of this with production/API runner evidence. Execute was not clicked.
 - Current acceptance status after this redesign: final production GUI Execute acceptance is still not complete. The user should not retry until this PR head is pushed, reports/PR body are refreshed, contracts/redaction pass, and current-head reviewer feedback is requested/checked.
 
+### Latest Web Admin Smoke Test On Head 69fab773
+
+- Evidence source: real user-performed production Web Admin manual-sync smoke test on head `69fab773d52ddf67b736d06485c485ea626be2c7`.
+- Result: `partial_success_with_blockers`.
+- Job: `#13`; final status: `completed`; observed elapsed time: about `129s`.
+- Plan limit / observed plan hash prefix: `100` / `44beb57e2770`.
+- Visible stage UI: `Plan -> Import -> Classification -> AI tagging -> Localization -> Complete`; all stages reached completed state.
+- Plan expensive-operation counters: content reads / hashes / decodes / hydrations = `0 / 0 / 0 / 0`.
+- Counts: `seen=100`, `imported=65`, `failed=0`.
+- Outcome breakdown: `imported=65`, `skipped_existing_media=35`, duplicate `0`, unsupported `0`, placeholder/hydration skipped `0`, failed `0`.
+- Explanation for `seen=100` but `imported=65`: the 35 non-imported rows were represented as stable `skipped_existing_media` with `existing_media_hash`; no candidate was silently lost and no failure was recorded.
+- Acceptance limitation: the normal browser confirmation popup appeared, but the normal flow did not start Execute. The user still had to use the lower Advanced/Diagnostics exact-phrase execute control. This is not full normal-flow GUI acceptance.
+- Fix made after the smoke test: normal `Start manual sync` now submits a human-readable operator confirmation statement to `executeManualSyncPlan()` after the browser confirmation; Advanced exact phrase remains collapsed/advanced-only and is no longer required for normal incremental flow.
+- Real browser regression for the fix: Playwright Edge against an isolated `VIOLET_ENV=test` server clicked normal `Start manual sync`, accepted the browser confirmation, and verified `/api/admin/dynamic-library-sync/manual-sync/execute` started without touching the Advanced exact-phrase control.
+
+### Non-Target AI / Localization Audit
+
+- Audit mode: read-only, aggregate only; raw private artifact: `.local_manifests/s3a_m2_delta_e2e/non_target_ai_audit/manual-sync-non-target-ai-audit-runs-7-8-13.json`.
+- Runs audited: `[7, 8, 13]`; DB writes performed: `False`.
+- Media by content class: `anime=379`, `non_anime=12`, `unknown=23`.
+- Run #13 content class: `anime=65`; no non-target media were imported by the latest smoke test.
+- Historical #7/#8 non-target/unknown media with `ai_wd` assignments: `35`.
+- Non-target `ai_wd` assignment count: `1645`; distinct non-target AI tags: `530`; distinct non-target AI tags with zh-CN translation coverage: `529`.
+- Diagnosis: #7/#8 historical S3A-M2 runs let non-target/unknown classified media pass into WD anime tagging and localization. Job #13 did not add new non-target contamination, but future manual execute needed a hard classification gate.
+- Future-run fix: manual execute now runs classification before AI tagging and skips AI/localization for media outside `DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES` (default `anime,illustration`) with stable statuses `ai_tagging_skipped_non_target` and `localization_not_applicable_non_target`; this is not counted as failure.
+- Production DB repair status: `not_executed_requires_project_owner_approval`.
+- Proposed deterministic repair: privately back up/export affected row identities, remove or invalidate only `source='ai_wd'` assignments on non-target #7/#8 media, preserve manual tags and target/anime tags, mark source items non-applicable where appropriate, and verify Entity/SourceConcept truth violations remain `0`.
+- Merge blocker: unresolved until the project owner explicitly approves and the repair is executed/validated, or explicitly accepts the historical contamination as deferred debt.
+
+### Latest Correctness Fixes
+
+- Normal confirmation flow: fixed; normal operator confirmation now starts the full pipeline without the Advanced exact phrase.
+- Classification gate: fixed; manual E2E production readiness requires `CONTENT_CLASSIFICATION_METHOD=clip`, and AI/localization only run for configured target visual classes.
+- Old-mtime unseen files: fixed; files absent from `DynamicSourceItem` are not skipped solely because preserved mtime is older than watermark minus safety lookback. Known stable old files may still fast-skip by ledger identity.
+- Duplicate/existing visibility: fixed; latest job summary now shows imported, stable skipped/not-applicable, failed, and per-reason breakdown.
+- Governance follow-up: future non-trivial feature work should start plan-only, include mature prior-art/design references for common engineering domains, and use realistic product-path/performance validation. Reports remain supporting evidence, not proof.
+
 ## Pre-User Manual Acceptance Safety Fixes
 
 - Status: `fixed_pending_codex_re_review_after_ebed72c_followup_commit`.
@@ -203,8 +240,18 @@
 - Launcher dry-run request/timeout/server-stop: `True` / `True` / `True`; latest timeout observed: `597s` before Execute.
 - Plan progress endpoints/tests: `added`; cancellation endpoint/tests: `added`; duplicate active plan guard/tests: `added`.
 - Real browser validation for latest UI fix: `passed_p0_normal_operator_ui_stage_flow`; method `Playwright Edge`, URL `http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, normal staged workflow visible `True`, Advanced/Diagnostics separated `True`, Execute clicked `False`.
+- Real browser validation for latest normal-confirmation fix: `passed`; method `Playwright Edge`, URL `http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, normal Start manual sync clicked, browser confirmation accepted, `/manual-sync/execute` observed, Advanced exact phrase not used.
 - Launcher fallback reason: `Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.`.
-- Latest job observed by UI/API: run `None`, status `None`, imported `None`.
+- Latest job observed by real user smoke test: run `13`, status `completed`, imported `65`; full normal-flow GUI acceptance remains `False` because Advanced execute was still required before the fix.
+
+## Current Merge / Retry Status
+
+- Manual sync safety judgement: `manual_sync_not_safe_blockers_remaining`.
+- Remaining blockers:
+  - `non_target_ai_localization_contamination_unrepaired`: #7/#8 non-target `ai_wd` assignments require approved deterministic repair or explicit acceptance as deferred debt.
+  - `normal_flow_gui_execute_retry_required_after_fix`: job #13 completed via Advanced execute; a normal-flow retry on the fixed head is still required.
+  - `gui_validator_after_normal_flow_run_pending`: the GUI acceptance validator must pass on a normal-flow GUI execute run after the fix.
+- The user should not treat S3A-M2 as complete or safe to merge from job #13 alone.
 
 ## Safety
 

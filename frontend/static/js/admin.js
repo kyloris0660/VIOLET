@@ -2348,29 +2348,30 @@ class AdminPanel {
         const batchExecutable = !!(counts.batch_executable || limits.batch_executable);
         const capLimitedBatch = !!(counts.cap_limited_batch || limits.cap_limited_batch);
         const unsafePartial = !!(counts.unsafe_partial_scan || limits.unsafe_partial_scan);
+        const showAdvancedExecute = this.dynamicSyncLastPlanSource === 'advanced' || limits.plan_mode === 'advanced_full_rescan';
         const complete = !counts.partial_scan || batchExecutable;
         const actionable = actionableCount > 0;
         const canExecute = batchExecutable && actionable && this.dynamicSyncExecuteEnabled;
         const requiresConfirmation = canExecute;
-        let planMessage = 'Execute is blocked until the plan is complete, has importable or downstream follow-up items, and manual E2E readiness is satisfied.';
+        let planMessage = '执行会保持禁用，直到计划安全完成、存在可写入项目，并且手动 E2E 就绪。';
         if (canExecute) {
             planMessage = capLimitedBatch
-                ? 'This safe bounded batch is ready to execute. More manual sync work remains after this batch; run Start manual sync again after completion.'
-                : 'Plan is ready. Review exactly what will be written, enter the operator confirmation, then click Confirm and execute once.';
+                ? '这个安全的有界批次已可执行。本批次完成后仍有后续工作，请再次点击“开始手动同步”继续下一批。'
+                : '计划已就绪。普通流程会在你确认浏览器弹窗后自动执行完整链路。';
         } else if (!actionable && counts.partial_scan) {
-            planMessage = 'No importable items were found in this partial batch. Stable existing media did not count against the import cap; re-run Start manual sync after checking the current delta diagnostics.';
+            planMessage = '这个部分批次没有找到可导入项目。稳定既有媒体不会占用导入 cap；请先查看当前增量诊断再重试。';
         } else if (!actionable) {
-            planMessage = 'No importable hydrated or downstream follow-up items are in this plan. Execute is intentionally disabled and no confirmation is required.';
+            planMessage = '这个计划没有可导入项目或后续补处理项目。执行已按预期禁用，不需要确认。';
         } else if (counts.partial_scan) {
-            planMessage = 'This plan is partial. Continue planning before executing so the batch boundary is explicit and safe.';
+            planMessage = '这个计划仍是部分扫描。需要先形成明确安全的批次边界，再执行。';
         }
         resultEl.classList.remove('hidden');
         resultEl.innerHTML = `
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
-                <div><span class="text-secondary">Plan hash</span><br><span class="font-mono">${this.escapeHtml((integrity.plan_hash || '').slice(0, 24))}</span></div>
-                <div><span class="text-secondary">Scanned</span><br><span class="font-bold">${scannedFiles}</span></div>
-                <div><span class="text-secondary">Plan items</span><br><span class="font-bold">${planItems}</span></div>
-                <div><span class="text-secondary">Import</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
+                <div><span class="text-secondary">计划哈希</span><br><span class="font-mono">${this.escapeHtml((integrity.plan_hash || '').slice(0, 24))}</span></div>
+                <div><span class="text-secondary">元数据检查</span><br><span class="font-bold">${scannedFiles}</span></div>
+                <div><span class="text-secondary">本批计划项</span><br><span class="font-bold">${planItems}</span></div>
+                <div><span class="text-secondary">预计导入</span><br><span class="font-bold">${counts.estimated_import_count || 0}</span></div>
             </div>
             <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Actionable cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Cap means:</span> ${this.escapeHtml(limits.cap_semantics || 'unique importable/downstream candidates')} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
             <div class="mb-2"><span class="text-secondary">Batch:</span> ${batchExecutable ? 'executable bounded batch' : 'not executable'} | <span class="text-secondary">Partial reason:</span> ${this.escapeHtml(counts.partial_scan_reason || limits.partial_scan_reason || '-')} | <span class="text-secondary">More batches:</span> ${continuation.more_batches_remain ? 'yes' : 'no'}</div>
@@ -2382,16 +2383,16 @@ class AdminPanel {
             <div class="mb-2 ${canExecute ? 'text-green-400' : 'text-warning'}">${this.escapeHtml(planMessage)}</div>
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
             ${requiresConfirmation ? `
-                <div><span class="text-secondary">Operator confirmation required before writes:</span></div>
+                <div><span class="text-secondary">写入前需要操作员确认：</span></div>
                 <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(operatorStatement || '')}</code>
                 <details class="mt-2 text-xs text-secondary">
-                    <summary>Advanced exact audit phrase</summary>
+                    <summary>高级诊断：精确审计短语</summary>
                     <code id="dynamic-sync-confirmation-phrase" class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
                 </details>
-            ` : `<div class="text-secondary">No operator confirmation is needed because Execute is blocked for this plan.</div>`}
+            ` : `<div class="text-secondary">此计划不可执行，因此不需要操作员确认。</div>`}
         `;
         if (confirmationEl) confirmationEl.value = '';
-        if (confirmActions) confirmActions.classList.toggle('hidden', !requiresConfirmation);
+        if (confirmActions) confirmActions.classList.toggle('hidden', !requiresConfirmation || !showAdvancedExecute);
         if (confirmBtn) confirmBtn.disabled = !canExecute || this.dynamicSyncActionInFlight;
         if (copyBtn) copyBtn.disabled = !confirmationPhrase || this.dynamicSyncActionInFlight;
         this._updateManualSyncExecuteButton();
@@ -2460,24 +2461,25 @@ class AdminPanel {
         const importCount = counts.estimated_import_count || 0;
         const followupCount = counts.estimated_downstream_followup_count || 0;
         const confirmationText = [
-            'Confirm and start the full manual sync pipeline?',
-            `This batch will process ${importCount} imports and ${followupCount} follow-up items.`,
-            `Batch cap: ${limits.max_files || 'server default'}`,
-            `Plan hash: ${((plan.integrity || {}).plan_hash || '').slice(0, 12)}`,
-            'Stages: import -> classification -> AI tagging -> localization -> report.',
-            'Automatic/scheduled/startup/service sync stays OFF.',
-            statement ? `Operator statement: ${statement}` : '',
+            '确认开始完整手动同步流程？',
+            `本批次将处理 ${importCount} 个导入项目和 ${followupCount} 个后续补处理项目。`,
+            `批次上限：${limits.max_files || 'server default'}`,
+            `计划哈希：${((plan.integrity || {}).plan_hash || '').slice(0, 12)}`,
+            '阶段：导入 -> 分类 -> AI 标签 -> 本地化 -> 报告。',
+            '自动/计划/启动/系统服务同步保持关闭。',
+            statement ? `操作员确认声明：${statement}` : '',
         ].filter(Boolean).join('\n');
         if (!window.confirm(confirmationText)) {
-            app.showNotification('Manual sync plan was not executed.', 'warning');
+            app.showNotification('手动同步计划未执行。', 'warning');
             return false;
         }
-        await this.executeManualSyncPlan({ operatorConfirmedFullChain: true });
+        await this.executeManualSyncPlan({ operatorConfirmedFullChain: true, allowDuringPlanFlow: true });
         return true;
     }
 
     async runManualSyncDryRunPlan({ source = 'operator', autoExecute = false } = {}) {
         if (this.dynamicSyncActionInFlight) return;
+        this.dynamicSyncLastPlanSource = source;
         const body = this._manualSyncRequestBody({ useAdvancedHydratedOnly: source === 'advanced' });
         if (!body.root_id) {
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.select_root_first', 'Select a source root first.'), 'error');
@@ -2620,8 +2622,8 @@ class AdminPanel {
         }
     }
 
-    async executeManualSyncPlan({ operatorConfirmedFullChain = false } = {}) {
-        if (!this.dynamicSyncPlan || this.dynamicSyncActionInFlight || this._manualSyncActiveJobRunning()) return;
+    async executeManualSyncPlan({ operatorConfirmedFullChain = false, allowDuringPlanFlow = false } = {}) {
+        if (!this.dynamicSyncPlan || (!allowDuringPlanFlow && this.dynamicSyncActionInFlight) || this._manualSyncActiveJobRunning()) return;
         const body = this._manualSyncRequestBody();
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
         const integrity = this.dynamicSyncPlan.integrity || {};
@@ -2629,6 +2631,8 @@ class AdminPanel {
         const limits = this.dynamicSyncPlan.limits || {};
         body.expected_plan_hash = integrity.plan_hash;
         body.hydrated_only = !!limits.hydrated_only;
+        body.plan_mode = limits.plan_mode || body.plan_mode || 'incremental';
+        body.max_files = limits.max_files || body.max_files;
         const expected = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
         const operatorStatement = this._manualSyncExpectedOperatorStatement(this.dynamicSyncPlan);
         const confirmation = confirmationEl ? confirmationEl.value.trim() : '';
@@ -2724,6 +2728,32 @@ class AdminPanel {
         const outcomes = execute.outcome_counts || {};
         const active = ['pending', 'running', 'cancelling'].includes(job.status);
         const currentStage = execute.current_stage || 'import';
+        const stableSkipped = [
+            'skipped_existing_media',
+            'skipped_duplicate',
+            'skipped_unsupported',
+            'skipped_placeholder',
+            'ai_tagging_skipped_non_target',
+            'localization_not_applicable_non_target',
+            'deferred_unprocessed',
+        ].reduce((total, key) => total + (Number(outcomes[key]) || 0), 0);
+        const outcomeLabels = {
+            imported: '导入',
+            skipped_existing_media: '已存在/重复内容',
+            skipped_duplicate: '批内重复',
+            skipped_unsupported: '不支持',
+            skipped_placeholder: '云占位',
+            ai_tagging_skipped_non_target: '非目标跳过 AI',
+            localization_not_applicable_non_target: '非目标本地化不适用',
+            classified: '已分类',
+            ai_tagged: 'AI 标签',
+            localized: '已本地化',
+            failed: '失败',
+        };
+        const visibleOutcomes = Object.entries(outcomes)
+            .filter(([, value]) => value)
+            .map(([key, value]) => `${this.escapeHtml(outcomeLabels[key] || key)}=${value}`)
+            .join('，') || '-';
         const stageOrder = ['plan', 'import', 'classification', 'ai_tagging', 'localization', 'summary'];
         const stageStatus = {};
         if (job.status === 'completed' || job.status === 'completed_with_failures') {
@@ -2741,9 +2771,9 @@ class AdminPanel {
         }
         this._renderManualSyncStageStrip(stageStatus);
         statusEl.innerHTML = `
-            <div>Latest manual sync job #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | stage=${this.escapeHtml(execute.current_stage || '-')}</div>
-            <div>seen=${job.total_seen || 0}, imported=${job.new_items || 0}, failed=${job.failed_items || 0}</div>
-            <div class="text-secondary">${Object.entries(outcomes).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
+            <div>最新手动同步任务 #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | 当前阶段=${this.escapeHtml(execute.current_stage || '-')}</div>
+            <div>计划项=${job.total_seen || 0}，导入=${job.new_items || 0}，稳定跳过/不适用=${stableSkipped}，失败=${job.failed_items || 0}</div>
+            <div class="text-secondary">结果拆解：${visibleOutcomes}</div>
         `;
         if (cancelBtn) cancelBtn.disabled = !active;
         if (active) {
