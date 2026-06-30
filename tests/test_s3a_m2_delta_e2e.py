@@ -315,7 +315,7 @@ def test_s3a_m2_gui_validator_applies_manual_e2e_profile_flags(tmp_path: Path, m
 
     assert os.environ["AI_TAGGING_ENABLED"] == "true"
     assert os.environ["CONTENT_CLASSIFICATION_ENABLED"] == "true"
-    assert os.environ["CONTENT_CLASSIFICATION_METHOD"] == "heuristic"
+    assert os.environ["CONTENT_CLASSIFICATION_METHOD"] == "clip"
     assert os.environ["TAG_TRANSLATION_LLM_ENABLED"] == "true"
     assert os.environ["TAG_TRANSLATION_LLM_API_KEY"] == "test-key"
     assert os.environ["TAG_TRANSLATION_LLM_MODEL"] == "test-model"
@@ -323,11 +323,54 @@ def test_s3a_m2_gui_validator_applies_manual_e2e_profile_flags(tmp_path: Path, m
     assert os.environ["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
     assert os.environ["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "false"
     assert public["manual_e2e_components"]["ai_tagging_enabled"] is True
+    assert public["manual_e2e_components"]["content_classification_method"] == "clip"
     assert public["manual_e2e_components"]["tag_translation_llm_enabled"] is True
     assert public["tag_translation_llm"]["api_key_present"] is True
     assert public["tag_translation_llm"]["model_configured"] is True
     assert public["tag_translation_llm"]["base_url_configured"] is True
     assert public["manual_e2e_components"]["auto_or_background_sync_enabled"] is False
+
+
+def test_s3a_m2_gui_validator_migrates_legacy_profile_heuristic_to_clip(tmp_path: Path, monkeypatch) -> None:
+    profile_path = tmp_path / "production-profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "profile_id": "production-default",
+                "repo_root": str(tmp_path),
+                "python": sys.executable,
+                "app_port": 8012,
+                "storage_root": str(tmp_path / "storage"),
+                "require_auth": True,
+                "manual_sync_enabled": True,
+                "manual_sync_execute_enabled": True,
+                "manual_e2e_components": {
+                    "ai_tagging_enabled": True,
+                    "content_classification_enabled": True,
+                    "content_classification_method": "heuristic",
+                    "tag_translation_llm_enabled": True,
+                    "ai_tagging_auto_localization": False,
+                },
+                "db": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "blombooru",
+                    "user": "postgres",
+                    "password": "",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("CONTENT_CLASSIFICATION_METHOD", raising=False)
+
+    public = gui_validator.apply_profile_env(profile_path)
+
+    manual = public["manual_e2e_components"]
+    assert os.environ["CONTENT_CLASSIFICATION_METHOD"] == "clip"
+    assert manual["content_classification_method"] == "clip"
+    assert manual["content_classification_method_explicit"] is False
+    assert manual["content_classification_method_migrated_from"] == "heuristic"
 
 
 def test_s3a_m2_gui_validator_clears_profile_controlled_llm_env_when_absent(tmp_path: Path, monkeypatch) -> None:

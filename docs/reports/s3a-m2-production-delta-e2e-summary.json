@@ -1620,6 +1620,7 @@
     "cloud_placeholder_hydration_policy": "cloud_aware_non_destructive_read",
     "fix_summary": [
       "production profile now carries manual_e2e_components for classification, AI tagging, and LLM localization",
+      "existing unmarked legacy heuristic manual-E2E profiles are normalized to CONTENT_CLASSIFICATION_METHOD=clip before launcher/env/backend readiness",
       "profile repair copies only redacted/configured LLM provider fields from local .env into the ignored private production profile",
       "launcher child env enables manual E2E components while forcing automatic/scheduled/startup/service/background sync flags off",
       "Web Admin readiness separates manual blockers from background-only warnings",
@@ -1631,7 +1632,10 @@
       "ai_tagging_enabled": true,
       "auto_or_background_sync_enabled": false,
       "content_classification_enabled": true,
-      "content_classification_method": "heuristic",
+      "content_classification_method": "clip",
+      "content_classification_method_explicit": false,
+      "content_classification_method_migrated_from": "heuristic",
+      "runtime_env_content_classification_method": "clip",
       "tag_translation_llm_enabled": true,
       "tag_translation_llm_provider_configured": true
     },
@@ -1650,6 +1654,47 @@
       "fails_if_localization_missing_without_accepted_policy": true,
       "requires_gui_created_run_newer_than_8": true
     }
+  },
+  "production_profile_clip_runtime_blocker_2026_07_01": {
+    "status": "fixed_pending_user_restart_and_retry",
+    "observed_user_blocker": "Manual sync blockers: Manual E2E requires classification-before-AI gating; set CONTENT_CLASSIFICATION_METHOD=clip for production acceptance.",
+    "root_cause": "The real launcher-managed production runtime read an existing private production profile that persisted manual_e2e_components.content_classification_method=heuristic. The previous fix changed new/default profile values to clip but did not migrate existing legacy profiles before Web Admin readiness.",
+    "actual_runtime_source": {
+      "profile_artifact": ".local_manifests/production_launcher/production-profile.json",
+      "profile_committed": false,
+      "violet_skip_dotenv": true,
+      "dot_env_can_not_repair_launcher_child_runtime": true
+    },
+    "fix": {
+      "missing_or_unmarked_legacy_heuristic_normalizes_to_clip": true,
+      "migration_marker": "content_classification_method_migrated_from=heuristic",
+      "explicit_non_clip_operator_update_fails_closed": true,
+      "fail_closed_gate": "manual_e2e_classification_method_clip",
+      "profile_repair_persists_normalized_value": true,
+      "automatic_background_sync_remains_off": true
+    },
+    "readiness_surfaces_aligned": {
+      "profile_status_json": true,
+      "diagnostic_summary_json": true,
+      "launcher_child_env": true,
+      "backend_settings": true,
+      "web_admin_readiness_policy": true,
+      "backend_execute_gate": true
+    },
+    "local_read_only_validation": {
+      "profile_status_method": "clip",
+      "profile_status_runtime_env_method": "clip",
+      "profile_status_migrated_from": "heuristic",
+      "child_settings_method": "clip",
+      "child_settings_env": "production",
+      "child_settings_db": "blombooru",
+      "child_settings_auto_sync_enabled": false,
+      "production_execute_run_by_codex": false,
+      "source_or_db_mutation": false
+    },
+    "operator_repair_command": ".\\venv\\Scripts\\python.exe scripts\\violet_production_control.py profile-repair --json",
+    "operator_restart_required": true,
+    "why_previous_tests_missed_it": "They covered new default/profile update behavior but not an already persisted private production profile with legacy heuristic and no explicit override marker."
   },
   "manual_gui_plan_timeout_2026_06_29": {
     "active_dynamic_sync_run_after_codex_audit": false,

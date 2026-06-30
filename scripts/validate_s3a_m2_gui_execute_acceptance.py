@@ -38,7 +38,9 @@ GUI_REQUEST_SOURCES = {"web_admin_gui"}
 MANUAL_E2E_COMPONENT_DEFAULTS = {
     "ai_tagging_enabled": True,
     "content_classification_enabled": True,
-    "content_classification_method": "heuristic",
+    "content_classification_method": "clip",
+    "content_classification_method_explicit": False,
+    "content_classification_method_migrated_from": "",
     "tag_translation_llm_enabled": True,
     "ai_tagging_auto_localization": False,
 }
@@ -131,6 +133,21 @@ def manual_e2e_components(profile: Mapping[str, Any]) -> dict[str, Any]:
     if raw.get("content_classification_method") is not None:
         method = str(raw.get("content_classification_method") or "").strip().lower()
         components["content_classification_method"] = method or MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
+    if raw.get("content_classification_method_explicit") is not None:
+        components["content_classification_method_explicit"] = bool_from_profile(
+            raw.get("content_classification_method_explicit"),
+            default=False,
+        )
+    if raw.get("content_classification_method_migrated_from") is not None:
+        components["content_classification_method_migrated_from"] = str(
+            raw.get("content_classification_method_migrated_from") or ""
+        )
+    method = str(components.get("content_classification_method") or "").strip().lower()
+    explicit = bool(components.get("content_classification_method_explicit"))
+    if method in {"", "heuristic"} and not explicit:
+        if method == "heuristic":
+            components["content_classification_method_migrated_from"] = "heuristic"
+        components["content_classification_method"] = MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
     return components
 
 
@@ -186,7 +203,9 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
         ),
         "AI_TAGGING_ENABLED": "true" if bool(components.get("ai_tagging_enabled")) else "false",
         "CONTENT_CLASSIFICATION_ENABLED": "true" if bool(components.get("content_classification_enabled")) else "false",
-        "CONTENT_CLASSIFICATION_METHOD": str(components.get("content_classification_method") or "heuristic"),
+        "CONTENT_CLASSIFICATION_METHOD": str(
+            components.get("content_classification_method") or MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
+        ),
         "TAG_TRANSLATION_LLM_ENABLED": "true" if bool(components.get("tag_translation_llm_enabled")) else "false",
         "AI_TAGGING_AUTO_LOCALIZATION": "true" if bool(components.get("ai_tagging_auto_localization")) else "false",
         "DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED": "false",
@@ -228,6 +247,12 @@ def apply_profile_env(profile_path: Path) -> dict[str, Any]:
             "ai_tagging_enabled": bool(components.get("ai_tagging_enabled")),
             "content_classification_enabled": bool(components.get("content_classification_enabled")),
             "content_classification_method": str(components.get("content_classification_method") or ""),
+            "content_classification_method_explicit": bool(
+                components.get("content_classification_method_explicit")
+            ),
+            "content_classification_method_migrated_from": str(
+                components.get("content_classification_method_migrated_from") or ""
+            ),
             "tag_translation_llm_enabled": bool(components.get("tag_translation_llm_enabled")),
             "ai_tagging_auto_localization": bool(components.get("ai_tagging_auto_localization")),
             "auto_or_background_sync_enabled": False,

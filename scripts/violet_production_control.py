@@ -64,6 +64,8 @@ MANUAL_E2E_COMPONENT_DEFAULTS = {
     "ai_tagging_enabled": True,
     "content_classification_enabled": True,
     "content_classification_method": "clip",
+    "content_classification_method_explicit": False,
+    "content_classification_method_migrated_from": "",
     "tag_translation_llm_enabled": True,
     "ai_tagging_auto_localization": False,
 }
@@ -517,6 +519,21 @@ def _coerce_manual_e2e_components(value: Any) -> dict[str, Any]:
         if value.get("content_classification_method") is not None:
             method = str(value.get("content_classification_method") or "").strip().lower()
             components["content_classification_method"] = method or MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
+        if value.get("content_classification_method_explicit") is not None:
+            components["content_classification_method_explicit"] = _auth_policy_bool(
+                value.get("content_classification_method_explicit"),
+                default=False,
+            )
+        if value.get("content_classification_method_migrated_from") is not None:
+            components["content_classification_method_migrated_from"] = str(
+                value.get("content_classification_method_migrated_from") or ""
+            )
+    method = str(components.get("content_classification_method") or "").strip().lower()
+    explicit = bool(components.get("content_classification_method_explicit"))
+    if method in {"", "heuristic"} and not explicit:
+        if method == "heuristic":
+            components["content_classification_method_migrated_from"] = "heuristic"
+        components["content_classification_method"] = MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
     return components
 
 
@@ -1623,6 +1640,13 @@ def _profile_public(config: RuntimeConfig) -> dict[str, Any]:
             "ai_tagging_enabled": bool(manual_components.get("ai_tagging_enabled")),
             "content_classification_enabled": bool(manual_components.get("content_classification_enabled")),
             "content_classification_method": str(manual_components.get("content_classification_method") or ""),
+            "runtime_env_content_classification_method": str(config.env.get("CONTENT_CLASSIFICATION_METHOD") or ""),
+            "content_classification_method_explicit": bool(
+                manual_components.get("content_classification_method_explicit")
+            ),
+            "content_classification_method_migrated_from": str(
+                manual_components.get("content_classification_method_migrated_from") or ""
+            ),
             "tag_translation_llm_enabled": bool(manual_components.get("tag_translation_llm_enabled")),
             "ai_tagging_auto_localization": bool(manual_components.get("ai_tagging_auto_localization")),
             "auto_or_background_sync_enabled": False,
@@ -1704,6 +1728,11 @@ GATE_UI_MAP: dict[str, tuple[str, str, str]] = {
         "Auth policy",
         "Production profile must explicitly preserve the production auth policy.",
     ),
+    "manual_e2e_classification_method_clip": (
+        "Safety Flags",
+        "Manual E2E classification",
+        "Manual E2E execute requires CONTENT_CLASSIFICATION_METHOD=clip. Use profile-repair or update manual_e2e_components.content_classification_method to clip.",
+    ),
     "startup_write_policy_explicit": (
         "Startup Policy",
         "Write policy",
@@ -1771,6 +1800,9 @@ def checklist_from_gates(gates: list[Gate]) -> list[dict[str, Any]]:
 def _profile_gates(config: RuntimeConfig) -> list[Gate]:
     profile = config.profile_data
     automation_enabled = _profile_automation_enabled(profile)
+    manual_components = _coerce_manual_e2e_components(profile.get("manual_e2e_components") if profile else None)
+    manual_execute_enabled = bool(profile.get("manual_sync_execute_enabled", False)) if profile else False
+    manual_classification_method = str(manual_components.get("content_classification_method") or "").strip().lower()
     return [
         Gate("production_profile_exists", config.profile_exists, "Production profile exists."),
         Gate(
@@ -1810,6 +1842,13 @@ def _profile_gates(config: RuntimeConfig) -> list[Gate]:
             "production_auth_policy",
             "require_auth" in profile,
             "Production profile preserves production auth policy.",
+        ),
+        Gate(
+            "manual_e2e_classification_method_clip",
+            (not manual_execute_enabled)
+            or (not bool(manual_components.get("content_classification_enabled")))
+            or manual_classification_method == "clip",
+            "Production manual E2E uses CONTENT_CLASSIFICATION_METHOD=clip.",
         ),
     ]
 
@@ -2001,7 +2040,11 @@ def profile_update(
             minimum=1,
         )
     if "manual_e2e_components" in updates:
-        profile["manual_e2e_components"] = _coerce_manual_e2e_components(updates.get("manual_e2e_components"))
+        manual_updates = updates.get("manual_e2e_components")
+        if isinstance(manual_updates, Mapping) and "content_classification_method" in manual_updates:
+            manual_updates = dict(manual_updates)
+            manual_updates.setdefault("content_classification_method_explicit", True)
+        profile["manual_e2e_components"] = _coerce_manual_e2e_components(manual_updates)
     if "tag_translation_llm" in updates:
         profile["tag_translation_llm"] = _coerce_tag_translation_llm_profile(updates.get("tag_translation_llm"))
     db_updates = updates.get("db")
@@ -2807,6 +2850,7 @@ def open_manual_sync_target(
 def diagnostic_summary(repo_root: Path = ROOT, *, profile_id: str | None = None, profile_path: Path | None = None) -> dict[str, Any]:
     config = resolve_config(repo_root, profile_id=profile_id, profile_path=profile_path)
     current = status(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
+    profile_public = _profile_public(config)
     return {
         "running": bool(current.data.get("running")),
         "managed_by_launcher": bool(current.data.get("managed_by_launcher")),
@@ -2823,6 +2867,8 @@ def diagnostic_summary(repo_root: Path = ROOT, *, profile_id: str | None = None,
         "destructive_e2e_allowed": False,
         "log_tail_in_public_json": False,
         "log_tail_redacted": True,
+        "profile": profile_public,
+        "manual_e2e_components": profile_public.get("manual_e2e_components"),
         "startup_write_policy": startup_write_policy_public(config),
     }
 

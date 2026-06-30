@@ -2225,6 +2225,34 @@ def test_operator_readiness_ready_for_manual_e2e_with_background_sync_off(db, tm
     assert "tag_translation_auto_and_background_disabled" in background_codes
 
 
+def test_operator_readiness_blocks_non_clip_manual_e2e_method(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")
+    monkeypatch.setenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+    blocker_codes = {item["code"] for item in operator["manual_execute_blockers"]}
+
+    assert operator["manual_execute_ready"] is False
+    assert "CONTENT_CLASSIFICATION_METHOD_not_clip" in blocker_codes
+    assert readiness["production_settings"]["content_classification_method"] == "heuristic"
+
+
 def test_admin_api_register_check_pending_and_fail_closed_sync(client, tmp_path, monkeypatch):
     monkeypatch.setenv("DYNAMIC_LIBRARY_SYNC_THRESHOLD", "100")
     source_root = tmp_path / "source"

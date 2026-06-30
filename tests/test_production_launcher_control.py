@@ -590,7 +590,7 @@ def test_profile_update_persists_nested_manual_e2e_and_llm_sections(tmp_path, sa
                 "manual_e2e_components": {
                     "ai_tagging_enabled": "true",
                     "content_classification_enabled": "true",
-                    "content_classification_method": "heuristic",
+                    "content_classification_method": "clip",
                     "tag_translation_llm_enabled": "true",
                     "ai_tagging_auto_localization": "false",
                 },
@@ -622,10 +622,129 @@ def test_profile_update_persists_nested_manual_e2e_and_llm_sections(tmp_path, sa
     assert profile["manual_sync_execute_max_files"] == 1000
     assert profile["manual_sync_max_duration_seconds"] == 7200
     assert profile["manual_e2e_components"]["ai_tagging_auto_localization"] is False
+    assert profile["manual_e2e_components"]["content_classification_method"] == "clip"
+    assert profile["manual_e2e_components"]["content_classification_method_explicit"] is True
     assert profile["tag_translation_llm"]["api_key"] == "profile-key"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "clip"
     assert env_payload["TAG_TRANSLATION_LLM_API_KEY"] == "profile-key"
     assert env_payload["TAG_TRANSLATION_LLM_FALLBACK_API_KEY"] == ""
     assert env_payload["AI_TAGGING_AUTO_LOCALIZATION"] == "false"
+
+
+def test_existing_profile_missing_manual_e2e_method_defaults_to_clip(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    profile, _path, _errors = control.load_production_profile(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+    )
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+    status = control.profile_status(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+    )
+
+    assert status.ok is True
+    assert status.data["profile"]["manual_e2e_components"]["content_classification_method"] == "clip"
+    assert status.data["profile"]["manual_e2e_components"]["runtime_env_content_classification_method"] == "clip"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "clip"
+
+
+def test_existing_legacy_heuristic_manual_e2e_profile_migrates_to_clip(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    profile_path = _write_fake_profile(repo, storage, db_user="violet_prod")
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    payload["manual_sync_enabled"] = True
+    payload["manual_sync_execute_enabled"] = True
+    payload["manual_e2e_components"] = {
+        "ai_tagging_enabled": True,
+        "content_classification_enabled": True,
+        "content_classification_method": "heuristic",
+        "tag_translation_llm_enabled": True,
+        "ai_tagging_auto_localization": False,
+    }
+    profile_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    profile, _path, _errors = control.load_production_profile(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+    )
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+    status = control.profile_status(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+    )
+
+    manual = status.data["profile"]["manual_e2e_components"]
+    assert status.ok is True
+    assert manual["content_classification_method"] == "clip"
+    assert manual["content_classification_method_explicit"] is False
+    assert manual["content_classification_method_migrated_from"] == "heuristic"
+    assert manual["runtime_env_content_classification_method"] == "clip"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "clip"
+
+
+def test_profile_update_explicit_non_clip_manual_e2e_method_fails_closed(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates={
+            "manual_sync_enabled": True,
+            "manual_sync_execute_enabled": True,
+            "manual_e2e_components": {
+                "ai_tagging_enabled": True,
+                "content_classification_enabled": True,
+                "content_classification_method": "heuristic",
+                "tag_translation_llm_enabled": True,
+                "ai_tagging_auto_localization": False,
+            },
+        },
+    )
+    profile, _path, _errors = control.load_production_profile(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+    )
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+
+    manual = result.data["profile"]["manual_e2e_components"]
+    assert result.ok is False
+    assert "manual_e2e_classification_method_clip" in result.errors
+    assert manual["content_classification_method"] == "heuristic"
+    assert manual["content_classification_method_explicit"] is True
+    assert manual["runtime_env_content_classification_method"] == "heuristic"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "heuristic"
+
+
+def test_profile_repair_persists_legacy_heuristic_manual_e2e_as_clip(tmp_path, safe_backends):
+    repo, storage, _env = _write_fake_repo(tmp_path)
+    profile_path = _write_fake_profile(repo, storage, db_user="violet_prod")
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    payload["manual_sync_enabled"] = True
+    payload["manual_sync_execute_enabled"] = True
+    payload["manual_e2e_components"] = {
+        "ai_tagging_enabled": True,
+        "content_classification_enabled": True,
+        "content_classification_method": "heuristic",
+        "tag_translation_llm_enabled": True,
+        "ai_tagging_auto_localization": False,
+    }
+    profile_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = control.profile_repair(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    repaired = json.loads(profile_path.read_text(encoding="utf-8"))
+    env_payload = control._profile_to_env(repaired, repo_root=repo)
+
+    assert result.ok is True
+    assert repaired["manual_e2e_components"]["content_classification_method"] == "clip"
+    assert repaired["manual_e2e_components"]["content_classification_method_migrated_from"] == "heuristic"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "clip"
 
 
 def test_profile_to_env_parses_string_false_without_enabling_manual_or_auto_flags(tmp_path):

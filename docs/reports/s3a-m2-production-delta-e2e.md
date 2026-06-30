@@ -211,10 +211,22 @@
 - Classification gate: fixed; manual E2E production readiness requires `CONTENT_CLASSIFICATION_METHOD=clip`; confirmed non-target media are skipped, classified unknown remains eligible, and classifier-unavailable rows are deferred as classification blockers.
 - Unknown/non-target semantic correction: fixed after review of head `46156d1a9b147574958483176120eab4fa358a45`; `unknown`, `unclassified`, and null content class are no longer collapsed into confirmed `non_anime`. Classification unavailable now blocks/deferred downstream stages with `classification_not_completed`; classified `unknown` stays eligible for AI/localization under the current project-owner ruling.
 - Localization truthfulness: fixed; deferred localization gaps now produce `completed_with_followup_required` instead of a plain completed job, successful translation saves recompute the remaining gap, and cancellation after localization side effects preserves LLM/provider/DB-write counters.
-- Production launcher readiness: fixed; the production manual E2E profile default classification method is `clip` while automatic/background sync flags remain off.
+- Production launcher readiness: fixed; the production manual E2E profile default classification method is `clip`, existing unmarked legacy `heuristic` profile values are normalized to `clip`, explicit non-clip operator overrides fail closed before launch/execute, and automatic/background sync flags remain off.
 - Old-mtime unseen files: fixed; files absent from `DynamicSourceItem` are not skipped solely because preserved mtime is older than watermark minus safety lookback. Known stable old files may still fast-skip by ledger identity.
 - Duplicate/existing visibility: fixed; latest job summary now shows imported, stable skipped/not-applicable, failed, and per-reason breakdown.
 - Governance follow-up: future non-trivial feature work should start plan-only, include mature prior-art/design references for common engineering domains, and use realistic product-path/performance validation. Reports remain supporting evidence, not proof.
+
+### Production Profile CLIP Runtime Blocker
+
+- User-observed blocker: real Web Admin manual acceptance stopped with `Manual E2E requires classification-before-AI gating; set CONTENT_CLASSIFICATION_METHOD=clip for production acceptance.`
+- Root cause: the private existing production profile already persisted `manual_e2e_components.content_classification_method="heuristic"`. The earlier fix changed new/default profile values to `clip`, but did not migrate or fail closed for existing legacy production profiles before the user reached Web Admin.
+- Actual runtime source: the launcher-managed child process uses the private production profile under `.local_manifests/production_launcher/production-profile.json` with `VIOLET_SKIP_DOTENV=1`; therefore `.env` defaults did not repair this runtime.
+- Fix: profile load/coercion now treats missing or unmarked legacy `heuristic` manual-E2E classification method as a legacy default and normalizes it to `clip` with `content_classification_method_migrated_from="heuristic"`.
+- Explicit override behavior: if an operator explicitly updates `manual_e2e_components.content_classification_method` to non-`clip`, `profile-status`, `preflight`, and `start` fail closed with `manual_e2e_classification_method_clip` instead of letting the GUI discover the blocker after `Start manual sync`.
+- Readiness alignment: `profile-status --json`, `diagnostic-summary --json`, launcher child env, Web Admin readiness, and backend execute gate now agree on `CONTENT_CLASSIFICATION_METHOD=clip` for the repaired legacy profile path.
+- Current local read-only proof: `profile-status` reported method `clip`, `runtime_env_content_classification_method=clip`, `migrated_from=heuristic`; a child Python process importing `backend.app.config.settings` under the production profile env also saw `CONTENT_CLASSIFICATION_METHOD=clip`, `VIOLET_ENV=production`, DB `blombooru`, and `DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED=false`.
+- Persisted repair path: `scripts/violet_production_control.py profile-repair --json` rewrites the private profile with the normalized `clip` value. Without running repair, restart from the fixed code still normalizes the legacy value at load time; repair makes the private file explicit for future runs.
+- Production data/source impact: this fix is profile/config-only. It does not mutate source/iCloud files, app-managed media, or production DB content.
 
 ## Pre-User Manual Acceptance Safety Fixes
 
@@ -232,6 +244,7 @@
 - Downstream follow-up rows executable: `True`.
 - Backend fails closed when manual E2E localization requires an unconfigured LLM provider: `True`.
 - GUI validator clears stale profile env when profile values are absent: `True`.
+- Existing production profile CLIP migration: `fixed`; old unmarked `heuristic` manual-E2E profiles normalize to `clip`, while explicit non-clip updates are blocked before launch/execute.
 - Cap-limited batch execute gate: `fixed`; a safe plan containing the first N actionable candidates under cap can execute with `more_batches_remain=True`, while timeout/cancel/walk-error partial scans remain blocked.
 - User manual GUI acceptance package status: `do_not_ask_user_to_retry_until_new_head_reviewed_or_explicitly_accepted_by_project_owner`.
 
