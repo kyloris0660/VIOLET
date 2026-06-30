@@ -47,6 +47,7 @@ from .dynamic_library_sync_service import (
     _relative_identity_and_preflight_reason,
     _utcnow,
     manual_sync_execute_confirmation_phrase,
+    manual_sync_operator_confirmation_statement,
     plan_manual_sync_dry_run,
     serialize_sync_run,
     validate_source_root_path,
@@ -377,6 +378,7 @@ def _public_request_payload(
     effective_max_files: int,
     hydrated_only: bool,
     stable_age_seconds: Optional[float],
+    plan_mode: str,
     expected_plan_hash: str,
     plan_created_at: str,
     production_acceptance_approved: bool,
@@ -396,6 +398,7 @@ def _public_request_payload(
         "execute_max_files_cap": manual_sync_execute_max_files_cap(),
         "hydrated_only": hydrated_only,
         "stable_age_seconds": stable_age_seconds,
+        "plan_mode": str(plan_mode or "incremental"),
         "expected_plan_hash": expected_plan_hash,
         "plan_created_at": plan_created_at,
         "production_acceptance_approved": bool(production_acceptance_approved),
@@ -425,6 +428,7 @@ def _verify_execute_gates(
     plan: Dict[str, Any],
     expected_plan_hash: str,
     confirmation_phrase: str,
+    operator_confirmation_statement: Optional[str] = None,
     plan_created_at: str,
     hydrated_only: bool,
     production_acceptance_approved: bool,
@@ -495,24 +499,27 @@ def _verify_execute_gates(
 
     if settings.IS_PRODUCTION_ENV:
         expected_phrase = manual_sync_execute_confirmation_phrase(plan_hash, production=True)
-        if not production_acceptance_approved or confirmation_phrase != expected_phrase:
+        expected_statement = manual_sync_operator_confirmation_statement(plan, production=True)
+        confirmed = confirmation_phrase == expected_phrase or operator_confirmation_statement == expected_statement
+        if not production_acceptance_approved or not confirmed:
             raise ManualSyncExecuteError(
                 "production_acceptance_approval_required",
-                "Production execute requires the production confirmation phrase after a fresh dry-run plan.",
+                "Production execute requires an explicit operator confirmation after a fresh dry-run plan.",
                 status_code=409,
             )
     else:
         expected_phrase = manual_sync_execute_confirmation_phrase(plan_hash)
+        expected_statement = manual_sync_operator_confirmation_statement(plan)
         if production_acceptance_approved:
             raise ManualSyncExecuteError(
                 "production_acceptance_not_allowed_outside_production",
                 "production_acceptance_approved is only valid in VIOLET_ENV=production.",
                 status_code=400,
             )
-        if confirmation_phrase != expected_phrase:
+        if confirmation_phrase != expected_phrase and operator_confirmation_statement != expected_statement:
             raise ManualSyncExecuteError(
                 "manual_execute_confirmation_required",
-                "Manual sync execute requires the exact confirmation phrase from the dry-run plan.",
+                "Manual sync execute requires explicit operator confirmation from the dry-run plan.",
                 status_code=409,
             )
     _assert_manual_e2e_components_ready_for_production()
@@ -577,6 +584,7 @@ def _plan_for_root(
     hydrated_only: bool,
     stable_age_seconds: Optional[float],
     include_private_details: bool,
+    plan_mode: str = "incremental",
     plan_now: Optional[datetime] = None,
 ) -> tuple[DynamicSourceRoot, Path, Dict[str, Any]]:
     root = db.get(DynamicSourceRoot, root_id)
@@ -596,6 +604,7 @@ def _plan_for_root(
         stable_age_seconds=stable_age_seconds,
         include_private_details=include_private_details,
         now=plan_now,
+        plan_mode=plan_mode,
     )
     return root, source_path, plan
 
@@ -607,8 +616,10 @@ def validate_manual_sync_execute_request(
     max_files: Optional[int],
     hydrated_only: bool,
     stable_age_seconds: Optional[float],
+    plan_mode: str = "incremental",
     expected_plan_hash: str,
     confirmation_phrase: str,
+    operator_confirmation_statement: Optional[str] = None,
     plan_created_at: str,
     production_acceptance_approved: bool = False,
 ) -> Dict[str, Any]:
@@ -621,6 +632,7 @@ def validate_manual_sync_execute_request(
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
         include_private_details=False,
+        plan_mode=plan_mode,
         plan_now=created,
     )
     _verify_execute_gates(
@@ -628,6 +640,7 @@ def validate_manual_sync_execute_request(
         plan=plan,
         expected_plan_hash=expected_plan_hash,
         confirmation_phrase=confirmation_phrase,
+        operator_confirmation_statement=operator_confirmation_statement,
         plan_created_at=plan_created_at,
         hydrated_only=hydrated_only,
         production_acceptance_approved=production_acceptance_approved,
@@ -642,8 +655,10 @@ def create_manual_sync_execute_run(
     max_files: Optional[int],
     hydrated_only: bool,
     stable_age_seconds: Optional[float],
+    plan_mode: str = "incremental",
     expected_plan_hash: str,
     confirmation_phrase: str,
+    operator_confirmation_statement: Optional[str] = None,
     plan_created_at: str,
     production_acceptance_approved: bool = False,
     request_source: str = "api_or_runner",
@@ -677,8 +692,10 @@ def create_manual_sync_execute_run(
         max_files=effective_max_files,
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
+        plan_mode=plan_mode,
         expected_plan_hash=expected_plan_hash,
         confirmation_phrase=confirmation_phrase,
+        operator_confirmation_statement=operator_confirmation_statement,
         plan_created_at=plan_created_at,
         production_acceptance_approved=production_acceptance_approved,
     )
@@ -690,6 +707,7 @@ def create_manual_sync_execute_run(
         hydrated_only=hydrated_only,
         stable_age_seconds=stable_age_seconds,
         include_private_details=True,
+        plan_mode=plan_mode,
         plan_now=created,
     )
     if str((private_plan.get("integrity") or {}).get("plan_hash") or "") != expected_plan_hash:
@@ -725,6 +743,7 @@ def create_manual_sync_execute_run(
                     effective_max_files=effective_max_files,
                     hydrated_only=hydrated_only,
                     stable_age_seconds=stable_age_seconds,
+                    plan_mode=plan_mode,
                     expected_plan_hash=expected_plan_hash,
                     plan_created_at=plan_created_at,
                     production_acceptance_approved=production_acceptance_approved,
@@ -1745,15 +1764,24 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     expected_hash = str(plan_item.get("content_hash") or "")
                     if (
                         item_failure_reason is None
-                        and state in {
-                            "import_planned",
-                            "skipped_existing_media",
-                            "skipped_duplicate",
-                            "downstream_followup_planned",
-                        }
+                        and state in {"skipped_existing_media", "skipped_duplicate"}
                         and not expected_hash
                     ):
                         item_failure_reason = "plan_integrity_missing_content_hash"
+                    planned_size = plan_item.get("file_size")
+                    planned_mtime_ns = plan_item.get("mtime_ns")
+                    if item_failure_reason is None and planned_size is not None:
+                        try:
+                            if int(planned_size) != int(metadata.get("file_size")):
+                                item_failure_reason = "content_changed_after_plan"
+                        except (TypeError, ValueError):
+                            item_failure_reason = "content_changed_after_plan"
+                    if item_failure_reason is None and planned_mtime_ns is not None:
+                        try:
+                            if int(planned_mtime_ns) != int(metadata.get("mtime_ns")):
+                                item_failure_reason = "content_changed_after_plan"
+                        except (TypeError, ValueError):
+                            item_failure_reason = "content_changed_after_plan"
                     should_verify_content = state == "import_planned" or bool(expected_hash)
                     if item_failure_reason is None and should_verify_content:
                         current_hash, hash_reason = _calculate_manual_plan_file_hash(

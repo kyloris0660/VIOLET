@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect as py_inspect
+import os
 import sys
 from pathlib import Path
 
@@ -242,17 +243,23 @@ def test_manual_sync_dry_run_plan_reports_public_safe_item_states(db, tmp_path):
     assert plan["job"]["mode"] == "dry_run"
     assert plan["job"]["production_execution_enabled"] is False
     assert plan["ledger"]["db_write_performed"] is False
-    assert counts["import_planned"] == 1
-    assert counts["skipped_duplicate"] == 1
-    assert counts["skipped_existing_media"] == 1
-    assert counts["skipped_zero_byte"] == 1
+    assert counts["import_planned"] == 5
+    assert counts["skipped_duplicate"] == 0
+    assert counts["skipped_existing_media"] == 0
+    assert counts["skipped_zero_byte"] == 0
     assert counts["skipped_unsupported"] == 1
     assert counts["skipped_placeholder"] == 1
-    assert counts["failed"] == 1
-    assert plan["counts"]["estimated_classification_count"] == 1
-    assert plan["counts"]["estimated_ai_tagging_count"] == 1
-    assert plan["counts"]["estimated_localization_workload"] == 1
+    assert counts["failed"] == 0
+    assert plan["counts"]["estimated_classification_count"] == 5
+    assert plan["counts"]["estimated_ai_tagging_count"] == 5
+    assert plan["counts"]["estimated_localization_workload"] == 5
+    assert plan["limits"]["normal_plan_candidate_discovery_only"] is True
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["image_decode_count"] == 0
+    assert plan["limits"]["hydration_attempt_count"] == 0
     assert all(item["bytes_copied"] == 0 for item in plan["ledger"]["per_file_public_records"])
+    assert all(item["content_hash_computed"] is False for item in plan["ledger"]["per_file_public_records"])
     assert "private_details" not in plan
     assert "a_new.png" not in str(plan)
 
@@ -271,7 +278,8 @@ def test_manual_sync_dry_run_plan_defers_files_that_are_still_changing(db, tmp_p
 
     assert plan["counts"]["state_counts"]["skipped_changing"] == 1
     assert plan["counts"]["estimated_import_count"] == 0
-    assert plan["ledger"]["per_file_public_records"][0]["reason"] == "file_still_changing"
+    assert plan["ledger"]["per_file_public_records"] == []
+    assert plan["counts"]["failure_reasons"]["file_still_changing"] == 1
 
 
 def test_manual_sync_dry_run_plan_allows_cloud_aware_hydration_policy(db, tmp_path, monkeypatch):
@@ -288,10 +296,10 @@ def test_manual_sync_dry_run_plan_allows_cloud_aware_hydration_policy(db, tmp_pa
     )
 
     assert plan["limits"]["hydrated_only"] is False
-    assert plan["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read"
-    assert plan["limits"]["cloud_placeholders_detected_before_hydration"] == 1
+    assert plan["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read_execute_stage"
+    assert plan["limits"]["hydration_attempt_count"] == 0
     assert plan["counts"]["state_counts"]["import_planned"] == 1
-    assert plan["ledger"]["per_file_public_records"][0]["cloud_placeholder_before_hydration"] is True
+    assert plan["ledger"]["per_file_public_records"][0]["cloud_placeholder_before_hydration"] is False
 
 
 def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp_path):
@@ -309,7 +317,11 @@ def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp
     assert payload["public_safe"] is True
     assert payload["ledger"]["db_write_performed"] is False
     assert payload["limits"]["hydrated_only"] is False
-    assert payload["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read"
+    assert payload["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read_execute_stage"
+    assert payload["limits"]["content_read_count"] == 0
+    assert payload["limits"]["hash_required_count"] == 0
+    assert payload["limits"]["image_decode_count"] == 0
+    assert payload["limits"]["hydration_attempt_count"] == 0
     assert payload["counts"]["state_counts"]["import_planned"] == 1
     assert "private_details" not in payload
     assert "new.png" not in str(payload)
@@ -772,7 +784,7 @@ def test_manual_sync_dry_run_plan_route_defaults_to_cloud_aware_hydration(client
 
     assert response.status_code == 200
     assert response.json()["limits"]["hydrated_only"] is False
-    assert response.json()["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read"
+    assert response.json()["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read_execute_stage"
 
 
 @pytest.mark.parametrize("scanner_reason", ["hidden", "too_large"])
@@ -788,6 +800,7 @@ def test_manual_sync_dry_run_preserves_policy_skip_reasons(db, tmp_path, monkeyp
         source_path=source_root,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     item = plan["ledger"]["per_file_public_records"][0]
 
@@ -810,6 +823,7 @@ def test_manual_sync_dry_run_maps_not_a_file_to_path_policy_skip(db, tmp_path, m
         source_path=source_root,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     item = plan["ledger"]["per_file_public_records"][0]
 
@@ -838,6 +852,7 @@ def test_manual_sync_dry_run_hash_timeout_is_item_level_failure(db, tmp_path, mo
         source_path=source_root,
         max_files=10,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     assert plan["counts"]["state_counts"]["failed"] == 1
@@ -867,6 +882,7 @@ def test_manual_sync_dry_run_image_verify_timeout_is_item_level_failure(db, tmp_
         source_path=source_root,
         max_files=10,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     assert plan["counts"]["state_counts"]["failed"] == 1
@@ -877,7 +893,7 @@ def test_manual_sync_dry_run_image_verify_timeout_is_item_level_failure(db, tmp_
 def test_manual_sync_dry_run_does_not_abort_healthy_progress_after_600s(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
-    for index in range(45):
+    for index in range(80):
         _write_png(source_root / f"healthy_{index:03d}.png", (index, 20, 30))
 
     monotonic_value = {"value": 0.0}
@@ -908,7 +924,7 @@ def test_manual_sync_dry_run_does_not_abort_healthy_progress_after_600s(db, tmp_
     assert plan["limits"]["plan_timeout"] is False
     assert plan["limits"]["plan_no_progress_timeout"] is False
     assert plan["counts"]["partial_scan"] is False
-    assert plan["counts"]["state_counts"]["import_planned"] == 45
+    assert plan["counts"]["state_counts"]["import_planned"] == 80
     assert plan["counts"]["failure_reasons"].get("plan_timeout", 0) == 0
     assert plan["counts"]["failure_reasons"].get("plan_no_progress_timeout", 0) == 0
 
@@ -968,13 +984,13 @@ def test_manual_sync_dry_run_public_reasons_do_not_leak_oserror_paths(db, tmp_pa
     public_text = str(plan)
 
     assert plan["counts"]["failure_reasons"]["stat_error"] == 1
-    assert plan["ledger"]["per_file_public_records"][0]["reason"] == "stat_error"
+    assert plan["ledger"]["per_file_public_records"] == []
     assert leaked_path not in public_text
     assert "secret-fragment" not in public_text
     assert "private_filename.png" not in public_text
 
 
-def test_manual_sync_dry_run_existing_media_uses_candidate_hash_lookup(db, tmp_path, monkeypatch):
+def test_manual_sync_normal_plan_does_not_hash_or_lookup_existing_media(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     candidate_path = source_root / "existing.png"
@@ -1016,11 +1032,12 @@ def test_manual_sync_dry_run_existing_media_uses_candidate_hash_lookup(db, tmp_p
         stable_age_seconds=0,
     )
 
-    assert queried_hashes == [{candidate_hash}]
-    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
-    assert plan["counts"]["estimated_import_count"] == 0
-    assert plan["limits"]["skipped_existing_before_cap"] == 1
-    assert plan["ledger"]["per_file_public_records"][0]["media_id"] is not None
+    assert queried_hashes == []
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 0
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["ledger"]["per_file_public_records"][0]["content_hash_computed"] is False
 
 
 def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_cap(db, tmp_path):
@@ -1033,13 +1050,32 @@ def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_ca
     _write_png(existing_b, (30, 40, 50))
     _write_png(fresh_path, (60, 70, 80))
 
+    root = service.register_source_root(db, path=source_root, label="fixture")
     for path in (existing_a, existing_b):
+        media = Media(
+            filename=f"{path.stem}-redacted.png",
+            path=f"media/original/{path.stem}-redacted.png",
+            hash=calculate_file_hash(path),
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
+        stat = path.stat()
         db.add(
-            Media(
-                filename=f"{path.stem}-redacted.png",
-                path=f"media/original/{path.stem}-redacted.png",
-                hash=calculate_file_hash(path),
-                file_type=FileTypeEnum.image,
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=path.name,
+                relative_path_hash=service._hash_text(path.name),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=media.hash,
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
             )
         )
     db.commit()
@@ -1047,18 +1083,19 @@ def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_ca
     plan = service.plan_manual_sync_dry_run(
         db,
         source_path=source_root,
+        source_record_id=root.id,
         max_files=1,
         stable_age_seconds=0,
     )
 
     counts = plan["counts"]
-    assert counts["state_counts"]["skipped_existing_media"] == 2
+    assert counts["state_counts"]["skipped_existing_media"] == 0
     assert counts["state_counts"]["import_planned"] == 1
     assert counts["estimated_import_count"] == 1
     assert counts["partial_scan"] is False
-    assert counts["plan_items"] == 3
+    assert counts["plan_items"] == 1
     assert counts["scanned_files"] == 3
-    assert plan["limits"]["skipped_existing_before_cap"] == 2
+    assert plan["limits"]["fast_skipped_from_ledger"] == 2
     assert (
         plan["limits"]["cap_semantics"]
         == "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media"
@@ -1129,20 +1166,24 @@ def test_manual_sync_dry_run_registered_root_prioritizes_pending_new_before_chan
         db,
         source_path=source_root,
         source_record_id=root.id,
-        max_files=2,
+        max_files=1,
         stable_age_seconds=0,
+        include_private_details=True,
     )
 
     assert plan["counts"]["state_counts"]["import_planned"] == 1
     assert plan["counts"]["state_counts"]["skipped_existing_media"] == 0
-    assert plan["counts"]["partial_scan"] is False
-    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_delta_priority_workset_then_filesystem_walk"
-    assert plan["limits"]["source_delta_workset"]["priority_workset_files"] == 1
-    assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is True
-    assert plan["limits"]["source_delta_workset"]["filesystem_walk_completed"] is True
-    assert plan["limits"]["source_delta_workset"]["filesystem_walk_deferred_after_priority_workset"] is False
-    assert "a_changed_existing.png" not in str(plan)
-    assert "z_pending_new.png" not in str(plan)
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["batch_executable"] is True
+    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_ledger_followup_then_incremental_mtime_filesystem_metadata_walk"
+    assert plan["limits"]["source_delta_workset"]["priority_workset_files"] == 2
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is False
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_completed"] is False
+    assert plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
+    assert plan["private_details"]["items"][0]["relative_path"] == "z_pending_new.png"
+    public_plan = {key: value for key, value in plan.items() if key != "private_details"}
+    assert "a_changed_existing.png" not in str(public_plan)
+    assert "z_pending_new.png" not in str(public_plan)
 
 
 def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root(db, tmp_path):
@@ -1208,6 +1249,82 @@ def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root
     assert "b_fresh.png" not in str(plan)
 
 
+def test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_expensive_reads(
+    db,
+    tmp_path,
+    monkeypatch,
+):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    root = service.register_source_root(db, path=source_root, label="fixture")
+
+    old_count = 1200
+    highest_old_mtime_ns = 0
+    for index in range(old_count):
+        path = source_root / f"old_{index:04d}.png"
+        path.write_bytes(b"stable-old")
+        stat = path.stat()
+        highest_old_mtime_ns = max(highest_old_mtime_ns, stat.st_mtime_ns)
+        media = Media(
+            filename=f"old-{index}.png",
+            path=f"media/original/old-{index}.png",
+            hash=f"old-{index:04d}",
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=path.name,
+                relative_path_hash=service._hash_text(path.name),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=media.hash,
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
+            )
+        )
+    db.commit()
+
+    for index in range(5):
+        path = source_root / f"new_{index:04d}.png"
+        path.write_bytes(b"new")
+        new_mtime_ns = highest_old_mtime_ns + (index + 1) * 1_000_000_000
+        os.utime(path, ns=(new_mtime_ns, new_mtime_ns))
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("normal manual sync plan must not do expensive file reads")
+
+    monkeypatch.setattr(service, "_verify_supported_image_file_with_timeout", forbidden)
+    monkeypatch.setattr(service, "_calculate_manual_plan_file_hash", forbidden)
+    monkeypatch.setattr(service, "_query_existing_media_by_hashes", forbidden)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=10,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 5
+    assert plan["counts"]["plan_items"] == 5
+    assert plan["counts"]["scanned_files"] == old_count + 5
+    assert plan["limits"]["fast_skipped_from_ledger"] == old_count
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["image_decode_count"] == 0
+    assert plan["limits"]["hydration_attempt_count"] == 0
+    assert plan["limits"]["plan_elapsed_seconds"] < 30
+    assert plan["limits"]["root_scan_state"]["current_scan_mode"] == "incremental_watermark_candidate_discovery"
+
+
 def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(db, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -1264,7 +1381,7 @@ def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(
     assert plan["counts"]["state_counts"]["import_planned"] == 1
     assert plan["limits"]["unchanged_known_files"] == 0
     assert plan["counts"]["partial_scan"] is False
-    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_delta_priority_workset_then_filesystem_walk"
+    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_ledger_followup_then_incremental_mtime_filesystem_metadata_walk"
     assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is True
     assert plan["counts"]["estimated_downstream_followup_count"] == 1
     assert plan["counts"]["estimated_ai_tagging_count"] == 2
@@ -1344,10 +1461,8 @@ def test_manual_sync_dry_run_cap_limited_batch_is_executable_and_continuable(db,
     assert second_plan["counts"]["state_counts"]["import_planned"] == 1
     assert second_plan["counts"]["partial_scan"] is False
     assert second_plan["limits"]["fast_skipped_from_ledger"] == cap
-    assert second_plan["limits"]["hash_required_count"] == 1
-    assert second_plan["limits"]["root_scan_state"]["current_scan_mode"] == (
-        "incremental_source_ledger_priority_then_filesystem_metadata_walk"
-    )
+    assert second_plan["limits"]["hash_required_count"] == 0
+    assert second_plan["limits"]["root_scan_state"]["current_scan_mode"] == "incremental_watermark_candidate_discovery"
     assert second_plan["limits"]["source_delta_workset"]["stable_known_entries_do_not_consume_actionable_cap"] is True
 
 

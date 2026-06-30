@@ -455,6 +455,7 @@ class ManualSyncDryRunPlanRequest(BaseModel):
     max_files: Optional[int] = Field(default=None, ge=1, le=100000)
     hydrated_only: bool = False
     stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
+    plan_mode: str = Field(default="incremental", max_length=64)
     plan_request_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
     gui_validation_session_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
     gui_validation_session_token: Optional[str] = Field(default=None, min_length=16, max_length=256)
@@ -466,8 +467,10 @@ class ManualSyncExecuteRequest(BaseModel):
     max_files: Optional[int] = Field(default=None, ge=1, le=100000)
     hydrated_only: bool = False
     stable_age_seconds: Optional[float] = Field(default=None, ge=0, le=3600)
+    plan_mode: str = Field(default="incremental", max_length=64)
     expected_plan_hash: str = Field(..., min_length=12, max_length=128)
-    confirmation_phrase: str = Field(..., min_length=1, max_length=200)
+    confirmation_phrase: str = Field(default="", max_length=200)
+    operator_confirmation_statement: Optional[str] = Field(default=None, max_length=300)
     plan_created_at: str = Field(..., min_length=1, max_length=80)
     production_acceptance_approved: bool = False
     plan_request_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
@@ -694,6 +697,7 @@ def plan_manual_sync(
             include_private_details=False,
             progress_callback=lambda payload: _update_manual_plan_progress(plan_request_id, payload),
             cancel_check=lambda: _manual_plan_cancel_requested(plan_request_id),
+            plan_mode=body.plan_mode,
         )
         _finish_manual_plan_progress(
             plan_request_id=plan_request_id,
@@ -796,8 +800,10 @@ def execute_manual_sync(
             max_files=body.max_files,
             hydrated_only=body.hydrated_only,
             stable_age_seconds=body.stable_age_seconds,
+            plan_mode=body.plan_mode,
             expected_plan_hash=body.expected_plan_hash,
             confirmation_phrase=body.confirmation_phrase,
+            operator_confirmation_statement=body.operator_confirmation_statement,
             plan_created_at=body.plan_created_at,
             production_acceptance_approved=body.production_acceptance_approved,
             request_source=str(gui_provenance.get("request_source") or "api_or_runner"),

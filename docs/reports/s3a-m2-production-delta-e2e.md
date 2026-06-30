@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis commit before this update: `ebed72c3794d088e8813d7b7390412ef825ee72a` (observed zero-import partial GUI-plan head: `f1040fb21a1c04489b3ed31d295321f5eddc44ac`).
+- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis commit before this update: `cccef9ddbd6312ae9ef2909d194fe47e2e9062db` (P0 normal-flow redesign working tree after the failed `gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380` acceptance attempt).
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -156,6 +156,25 @@
 - Downstream follow-up: already-imported media that still need classification, AI tagging, or localization are planned as `downstream_followup_planned` and executed through downstream stages; they are not hidden as `skipped_existing_media`.
 - User-visible proof fields: normal operator plan now shows `Root last checked`, `Scan model`, `Start basis`, `Actionable cap`, `Cap means`, `Workset`, `Priority items`, `Filesystem fallback`, `Filesystem complete`, `Incremental ledger`, `Fast skip identity`, `Actionable (import/follow-up)`, `Unchanged ledger skips`, `Fast-skipped`, `Stat checked`, `Hash checked`, and `More batches`.
 
+### P0 Normal Manual Sync Flow Redesign
+
+- Triggering incident: real Web Admin normal `Start manual sync` plan request `gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380` on head `cccef9ddbd6312ae9ef2909d194fe47e2e9062db` was cancelled by the user after about `3727s`. It had only reached `seen=263`, `batch_candidates=262`, `importable=0`, and was still in `checking_supported`.
+- Root cause: the old normal Plan path was doing import-time validation work. The `checking_supported` stage belonged to the deep planner and could open/read/decode source files or trigger slow iCloud/Windows Cloud Files behavior before any Execute stage began. That made Plan responsible for the wrong job and produced minutes-to-hours user waits.
+- Why previous tests missed it: earlier tests proved public-safe plan shape, cap gates, cancellation, and backend execute semantics, but did not assert operation boundaries such as `content_reads=0`, `hashes=0`, `decodes=0`, `hydrations=0` for the normal Plan, nor did they test the normal UI as one Plan -> Import -> Classification -> AI tagging -> Localization -> Complete pipeline.
+- Adopted mature sync/import pattern: source-ledger + mtime watermark + safety lookback + metadata fast path + bounded actionable batches. This follows the same broad pattern documented by rsync/rclone/Syncthing style sync systems: use metadata fast checks first, then hash/read only when needed for changed/new/ambiguous items or execute-time verification.
+- New normal Plan boundary: candidate discovery only. It may query `DynamicSourceItem`, stat metadata, compare `source_root_id + relative_path_hash + file_size + mtime_ns`, apply a cheap extension filter, and select bounded action candidates. It does **not** compute content hashes, open/decode images, hydrate iCloud placeholders, read full file content, or decide corrupt-image/duplicate-by-content outcomes.
+- New Execute boundary: import-time validation happens during Execute. Execute revalidates source identity with size/mtime before writes, then performs hash/integrity, cloud-placeholder hydration, duplicate/existing detection, unsupported/corrupt item recording, import, classification, AI tagging, localization or stable localization reasons, ledger update, and final summary.
+- Watermark / safety window: the normal Plan derives `source_mtime_watermark_ns` from stable imported/source-ledger rows and uses `DYNAMIC_LIBRARY_MANUAL_SYNC_SAFETY_LOOKBACK_SECONDS` (default `604800`, seven days) to include recent files before the watermark. Files with old unchanged mtimes outside the window are normal-path fast skips; Advanced/Diagnostics full rescan remains the repair path for stale-mtime edge cases.
+- Old stable files: unchanged known rows are fast-skipped from ledger metadata and do not consume the actionable cap. They are visible as diagnostics (`unchanged_known_files`, `fast_skipped_from_ledger`) but are not treated as current work.
+- Unsupported/duplicate/corrupt/cloud-placeholder candidates: normal Plan may cheaply filter unsupported extensions, but actual content validation, duplicate/existing hash checks, corrupt image failures, and cloud-placeholder hydration are Execute responsibilities with item-level stable reasons.
+- UI redesign: the normal operator path is now one staged workflow with a stage strip: `Plan -> Import -> Classification -> AI tagging -> Localization -> Complete`. Deep counters, plan hash, exact audit phrase, raw cap/workset diagnostics, and update-check controls remain in Advanced/Diagnostics.
+- Confirmation UX: the normal flow uses one explicit browser confirmation before writes, with a human-readable operator statement describing import/follow-up counts and the full pipeline. The exact audit phrase remains advanced-only and is not auto-filled. Zero-import plans do not show execute confirmation controls.
+- Performance target: normal no-change/small-delta Plan should be milliseconds-to-seconds scale; under `1000` metadata candidates, over `30s` is a blocker unless an external OS/iCloud stall is proven. Any normal Plan averaging more than `100ms` per metadata candidate is suspicious. Normal Plan counters for content reads, hashes, image decodes, and hydrations should remain `0`.
+- Measured code-level performance proof: `test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_expensive_reads` created `1200` stable ledger rows plus `5` new files and proved the normal Plan selected the `5` new imports while expensive operation counters stayed at `0`. The focused suite passed `142` tests.
+- Full-chain proof in isolated test DB/storage: `test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_summary` exercised normal incremental Plan -> Import -> Classification -> AI tagging -> Localization -> Summary with stubbed local stages, confirmed stage ordering, counts, and no Plan hash/read/decode/hydration work.
+- Real browser proof: Playwright Edge against a controlled `VIOLET_ENV=test`, `blombooru_test`, isolated-storage server on port `8013` validated the Dynamic Library Sync normal operator UI, stage strip, hidden advanced execute controls, localized Advanced/Diagnostics separation, and no replacement of this with production/API runner evidence. Execute was not clicked.
+- Current acceptance status after this redesign: final production GUI Execute acceptance is still not complete. The user should not retry until this PR head is pushed, reports/PR body are refreshed, contracts/redaction pass, and current-head reviewer feedback is requested/checked.
+
 ## Pre-User Manual Acceptance Safety Fixes
 
 - Status: `fixed_pending_codex_re_review_after_ebed72c_followup_commit`.
@@ -180,10 +199,10 @@
 - Ledger consistency: `passed`; represented items: `173` / `173`.
 - DB count delta: media `349`, source items `391`.
 - Public redaction: `True`; findings: `0`.
-- Launcher/Web Admin: `blocked_pending_reviewer_recheck_and_user_manual_gui_execute_after_incremental_scanner_workset_fix`; browser: `msedge`; normal `Start manual sync` dry-run clicked: `True` in the latest controlled test UI validation; execute clicked: `False`.
+- Launcher/Web Admin: `blocked_pending_reviewer_recheck_and_user_manual_gui_execute_after_p0_normal_flow_redesign`; browser: `msedge`; normal operator UI and staged flow validated in controlled test browser; production Execute clicked: `False`.
 - Launcher dry-run request/timeout/server-stop: `True` / `True` / `True`; latest timeout observed: `597s` before Execute.
 - Plan progress endpoints/tests: `added`; cancellation endpoint/tests: `added`; duplicate active plan guard/tests: `added`.
-- Real browser validation for latest UI fix: `passed_real_browser_gui_plan_flow_current_fix_only`; method `Playwright Edge`, URL `http://127.0.0.1:8015/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, Start clicked `True`, plan endpoint status `200`, GUI plan flow bound `True`, Execute clicked `False`.
+- Real browser validation for latest UI fix: `passed_p0_normal_operator_ui_stage_flow`; method `Playwright Edge`, URL `http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, normal staged workflow visible `True`, Advanced/Diagnostics separated `True`, Execute clicked `False`.
 - Launcher fallback reason: `Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.`.
 - Latest job observed by UI/API: run `None`, status `None`, imported `None`.
 
@@ -201,6 +220,7 @@
 - SourceConcept/Entity bridge work was not run.
 - Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.
 - Actual launcher/Web Admin GUI Execute acceptance is still not completed after the later user-path zero-import partial plan (`seen=1000`, `import=0`, `partial_scan=yes`). This patch changes the scanner/workset model so priority ledger rows cannot hide new filesystem files, stable existing/duplicate rows cannot consume actionable cap, and downstream follow-up rows are executable; it still needs Codex re-review and then a real GUI Execute run before merge.
+- Actual launcher/Web Admin GUI Execute acceptance is also not completed after the P0 normal Plan architecture failure (`gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380`, about `3727s`, still `checking_supported`). The normal Plan/Execute boundary and operator UI have now been redesigned and test/browser validated in isolation, but production GUI Execute must not be retried until this head is reviewed and accepted for retry.
 - The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.
 - Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet.
 

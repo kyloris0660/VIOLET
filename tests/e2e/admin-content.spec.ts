@@ -77,4 +77,21 @@ test.describe('Admin Content Tab', () => {
     await expect(page.locator('#dynamic-sync-dry-run-btn')).toBeVisible();
     await expect(page.locator('#dynamic-sync-ai-localization')).toBeVisible();
   });
+
+  test('dynamic library sync normal path shows staged operator workflow', async ({ page }) => {
+    await openContentSection(page, 'dynamic-library-sync-section');
+    await expect(page.locator('#dynamic-sync-start-btn')).toBeVisible();
+    await expect(page.locator('#dynamic-sync-confirm-actions')).toBeHidden();
+    await expect(page.locator('#dynamic-sync-stage-strip')).toBeAttached();
+
+    const progressText = await page.locator('#dynamic-sync-progress').innerText();
+    for (const label of ['Plan', 'Import', 'Classification', 'AI tagging', 'Localization', 'Complete']) {
+      expect(progressText).toContain(label);
+    }
+
+    const advancedText = await page.locator('#dynamic-sync-advanced-controls').innerText();
+    expect(advancedText).toMatch(/Advanced \/ Diagnostics|高级 \/ 诊断控件/);
+    await page.locator('#dynamic-sync-advanced-controls summary').click();
+    await expect(page.locator('#dynamic-sync-confirm-actions')).toContainText('Advanced/diagnostic execute control');
+  });
 });

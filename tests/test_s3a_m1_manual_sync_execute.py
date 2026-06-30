@@ -259,9 +259,18 @@ def test_s3a_m1_plan_integrity_is_public_safe_and_stable(db, tmp_path):
     assert first["integrity"]["plan_hash"] != later["integrity"]["plan_hash"]
     assert first["integrity"]["confirmation_phrase"].startswith(S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX)
     assert first["integrity"]["hash_excludes_paths"] is True
-    assert first["integrity"]["hash_includes_private_content_fingerprint"] is True
+    assert first["integrity"]["hash_includes_private_content_fingerprint"] is False
     assert "private-name.png" not in str(first)
     assert str(source_root) not in str(first)
+    advanced = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=0,
+        now=plan_time,
+        plan_mode="advanced_full_rescan",
+    )
+    assert advanced["integrity"]["hash_includes_private_content_fingerprint"] is True
 
 
 def test_s3a_m1_plan_hash_is_stable_across_directory_walk_order(db, tmp_path, monkeypatch):
@@ -522,6 +531,7 @@ def test_s3a_m1_execute_rejects_second_pending_run(db, tmp_path, monkeypatch):
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     first = create_manual_sync_execute_run(
@@ -530,6 +540,7 @@ def test_s3a_m1_execute_rejects_second_pending_run(db, tmp_path, monkeypatch):
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -542,6 +553,7 @@ def test_s3a_m1_execute_rejects_second_pending_run(db, tmp_path, monkeypatch):
             max_files=5,
             hydrated_only=True,
             stable_age_seconds=0,
+            plan_mode="advanced_full_rescan",
             expected_plan_hash=plan["integrity"]["plan_hash"],
             confirmation_phrase=plan["integrity"]["confirmation_phrase"],
             plan_created_at=plan["job"]["created_at"],
@@ -566,6 +578,7 @@ def test_s3a_m1_execute_records_content_change_as_item_failure(db, tmp_path, mon
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -573,6 +586,7 @@ def test_s3a_m1_execute_records_content_change_as_item_failure(db, tmp_path, mon
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -613,6 +627,7 @@ def test_s3a_m1_execute_rejects_skipped_existing_plan_without_content_hash(db, t
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -620,6 +635,7 @@ def test_s3a_m1_execute_rejects_skipped_existing_plan_without_content_hash(db, t
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -655,6 +671,7 @@ def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path,
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     run = create_manual_sync_execute_run(
@@ -663,6 +680,7 @@ def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path,
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -724,6 +742,7 @@ def test_s3a_m1_import_preledger_exists_before_media_write(db, tmp_path, monkeyp
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -731,6 +750,7 @@ def test_s3a_m1_import_preledger_exists_before_media_write(db, tmp_path, monkeyp
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -772,6 +792,7 @@ def test_s3a_m1_failed_import_keeps_preledger_without_public_path_leak(db, tmp_p
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -779,6 +800,7 @@ def test_s3a_m1_failed_import_keeps_preledger_without_public_path_leak(db, tmp_p
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -814,6 +836,7 @@ def test_s3a_m1_generic_sync_serializers_redact_private_plan_items(db, tmp_path,
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -821,6 +844,7 @@ def test_s3a_m1_generic_sync_serializers_redact_private_plan_items(db, tmp_path,
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -856,6 +880,7 @@ def test_s3a_m1_execute_blocks_background_translation_llm_side_effects(db, tmp_p
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     with pytest.raises(ManualSyncExecuteError) as exc:
@@ -888,6 +913,7 @@ def test_s3a_m1_execute_blocks_auto_translation_llm_side_effects(db, tmp_path, m
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     with pytest.raises(ManualSyncExecuteError) as exc:
@@ -923,6 +949,7 @@ def test_s3a_m1_execute_blocks_live_translation_worker_with_flags_disabled(db, t
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     with pytest.raises(ManualSyncExecuteError) as exc:
@@ -958,6 +985,7 @@ def test_s3a_m1_execute_translation_gate_allows_stopped_worker_and_llm_disabled(
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     run = create_manual_sync_execute_run(
@@ -966,6 +994,7 @@ def test_s3a_m1_execute_translation_gate_allows_stopped_worker_and_llm_disabled(
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -1052,6 +1081,7 @@ def test_s3a_m1_execute_requires_execute_enabled_flag(db, tmp_path, monkeypatch)
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     with pytest.raises(ManualSyncExecuteError) as exc:
@@ -1111,6 +1141,7 @@ def test_s3a_m1_execute_blocks_active_ai_job(db, tmp_path, monkeypatch):
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
 
@@ -1141,6 +1172,7 @@ def test_s3a_m1_execute_blocks_active_classification_job(db, tmp_path, monkeypat
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
 
@@ -1172,6 +1204,7 @@ def test_s3a_m1_execute_blocks_queued_ai_job(db, tmp_path, monkeypatch, status):
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
     db.add(AITagJob(status=status, trigger_source="manual", max_items=1))
@@ -1205,6 +1238,7 @@ def test_s3a_m1_execute_blocks_queued_classification_job(db, tmp_path, monkeypat
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
     db.add(ClassificationJob(status=status, trigger_source="manual", max_items=1))
@@ -1692,6 +1726,7 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -1699,6 +1734,7 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -1718,6 +1754,125 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
     run_item = db.query(DynamicSyncRunItem).one()
     assert run_item.current_metadata_json["ai_tagging"]["status"] == "ai_tagged"
     assert run_item.current_metadata_json["classification"]["content_class"] == "anime"
+
+
+def test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_summary(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setattr(execute_service, "_ensure_clip_model_cache_only", lambda: (True, None))
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    calls: list[tuple[str, int]] = []
+
+    def fake_copy(db_arg, source_file: Path):
+        media = Media(
+            filename=source_file.name,
+            path=f"media/original/{source_file.name}",
+            hash=calculate_file_hash(source_file),
+            file_type=FileTypeEnum.image,
+        )
+        db_arg.add(media)
+        db_arg.flush()
+        calls.append(("import", media.id))
+        return media.id, source_file.stat().st_size
+
+    def fake_classify(db_arg, media_id: int):
+        media = db_arg.get(Media, media_id)
+        media.content_class = ContentClassEnum.anime
+        calls.append(("classification", media_id))
+        return {"media_id": media_id, "content_class": "anime", "method": "clip"}
+
+    def fake_ai(db_arg, media_id: int):
+        tag = Tag(name=f"unit_full_chain_{media_id}", category=TagCategoryEnum.general)
+        db_arg.add(tag)
+        db_arg.flush()
+        db_arg.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media_id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.95,
+                is_locked=False,
+                is_suggestion=False,
+            )
+        )
+        calls.append(("ai_tagging", media_id))
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0, "provenance": {"provider_backend": "unit"}}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        assert cancel_check is not None
+        assert source_item_ids
+        for source_item_id in source_item_ids or []:
+            item = db_arg.get(DynamicSourceItem, int(source_item_id))
+            item.localization_status = "localized"
+        calls.append(("localization", len(media_ids)))
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_copy_and_import_media", fake_copy)
+    monkeypatch.setattr(execute_service, "_classify_imported_media", fake_classify)
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "one.png", (10, 20, 30))
+    _write_png(source_root / "two.png", (30, 40, 50))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+    )
+    assert plan["limits"]["plan_mode"] == "incremental"
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["image_decode_count"] == 0
+    assert plan["counts"]["state_counts"]["import_planned"] == 2
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["outcome_counts"]["imported"] == 2
+    assert execute_summary["outcome_counts"]["classified"] == 2
+    assert execute_summary["outcome_counts"]["ai_tagged"] == 2
+    assert execute_summary["outcome_counts"]["localized"] == 2
+    stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
+    for stage in ("candidate_discovery", "import", "classification", "ai_tagging", "localization", "summary"):
+        assert stage_rows[stage]["status"] == "completed"
+    assert [name for name, _value in calls] == [
+        "import",
+        "import",
+        "classification",
+        "classification",
+        "ai_tagging",
+        "ai_tagging",
+        "localization",
+    ]
+    assert {item.localization_status for item in db.query(DynamicSourceItem).all()} == {"localized"}
 
 
 def test_s3a_m1_manual_execute_ai_proper_nouns_follow_mature_media_tag_policy(db, tmp_path, monkeypatch):
@@ -1756,6 +1911,7 @@ def test_s3a_m1_manual_execute_ai_proper_nouns_follow_mature_media_tag_policy(db
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -1763,6 +1919,7 @@ def test_s3a_m1_manual_execute_ai_proper_nouns_follow_mature_media_tag_policy(db
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -1986,6 +2143,7 @@ def test_manual_sync_localization_save_failure_rolls_back_and_records_failure(db
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -1993,6 +2151,7 @@ def test_manual_sync_localization_save_failure_rolls_back_and_records_failure(db
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -2642,6 +2801,7 @@ def test_s3a_m1_execute_does_not_hash_non_import_skip_items(db, tmp_path, monkey
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     assert plan["counts"]["state_counts"]["skipped_unsupported"] == 1
     run = create_manual_sync_execute_run(
@@ -2650,6 +2810,7 @@ def test_s3a_m1_execute_does_not_hash_non_import_skip_items(db, tmp_path, monkey
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -2696,6 +2857,7 @@ def test_s3a_m1_execute_revalidates_existing_media_skip_hash_before_trusting_pla
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
     run = create_manual_sync_execute_run(
@@ -2704,6 +2866,7 @@ def test_s3a_m1_execute_revalidates_existing_media_skip_hash_before_trusting_pla
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],

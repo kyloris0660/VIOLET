@@ -1515,7 +1515,7 @@
     "gpu_inference_path_reliable_for_manual_sync": true,
     "gui_execute_works_end_to_end": false,
     "public_safe": true,
-    "reason": "Final user-performed launcher/Web Admin GUI Execute acceptance is still pending; pre-acceptance P1/P2 safety fixes are implemented and tested.",
+    "reason": "Final user-performed launcher/Web Admin GUI Execute acceptance is still pending; the P0 normal Plan/Execute boundary and staged operator UI redesign is implemented and validated in test, but current head still needs review before asking the user to retry.",
     "safe_conditions_before_execute": [
       "branch/head/provenance match the PR branch",
       "managed production server is freshly started from the intended profile",
@@ -1532,18 +1532,26 @@
       "Plan does not silently run; if slow, phase/count/event progress continues",
       "No active plan remains before retry after timeout/cancel"
     ],
-    "latest_reason": "Scanner/workset/cap/downstream-follow-up/profile/cancel fixes are implemented and browser-validated in a test UI, but no real launcher/Web Admin GUI Execute run newer than #8 has completed and passed the validator; new head still needs Codex re-review before asking the user to retry.",
+    "latest_reason": "P0 normal Plan architecture failure has been fixed by moving import-time validation out of Plan, adding incremental source-ledger/mtime candidate discovery, and validating the staged UI in a controlled browser. No real production GUI Execute run newer than #8 has completed and passed the validator.",
     "operator_checks_before_retry": [
-      "pull latest PR head after this fix",
+      "wait for this P0 redesign head to be pushed and reviewed",
+      "pull latest PR head after review",
       "stop stale servers with violet_production_control.py stop --json and audit ports",
       "confirm production profile DB/storage and automation flags OFF",
       "confirm normal UI shows canonical /admin?tab=content#dynamic-library-sync-section",
-      "confirm progress appears within seconds and no active plan remains from prior attempt",
+      "confirm Start manual sync shows stage progress within seconds",
       "stop if no-progress watchdog fires, counts look runaway, or Execute safety is unclear"
     ],
     "manual_sync_safety_status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
     "future_manual_sync_safe_for_normal_use": false,
-    "project_can_return_to_pixiv_source_roadmap": false
+    "project_can_return_to_pixiv_source_roadmap": false,
+    "p0_normal_flow_redesign": {
+      "implemented": true,
+      "normal_plan_is_candidate_discovery_only": true,
+      "normal_plan_expensive_operations_expected_zero": true,
+      "execute_handles_import_time_validation": true,
+      "real_production_gui_execute_still_pending": true
+    }
   },
   "mode": "execute",
   "not_completed": [
@@ -1813,7 +1821,8 @@
       "code": "codex_re_review_required_after_ebed72c_cap_gui_provenance_fix",
       "detail": "Exact-head ebed72c review findings were fixed locally and real-browser validated: executable cap-limited batches, LLM readiness preservation, GUI plan-flow binding, current-head validator, downstream source-item scoping, cancellation-before-localization, source-ledger scanner model proof, and selected-root UI summary. The pushed follow-up head must be reviewed before asking the user to run production GUI Execute again.",
       "status": "blocking_user_retry"
-    }
+    },
+    "final production launcher/Web Admin GUI Execute must be retried only after P0 normal-flow redesign head is pushed/reviewed; no GUI-created execute run newer than run #8 has passed validator"
   ],
   "remaining_run": {
     "ai_tagged": 49,
@@ -2220,7 +2229,7 @@
     "planned_319_explanation": "The UI label is now batch candidates. It counts candidate records accumulated for the bounded plan before final importability/dedup/existing checks; it is not the same as final importable count."
   },
   "head_sha_self_reference_note": "A committed report cannot embed its own final Git SHA without changing that SHA. The exact PR head is recorded in the PR body and Codex closeout after push.",
-  "validation_basis_head_sha": "b53249cb88180d8d683b7a77b09635c4668ae296",
+  "validation_basis_head_sha": "cccef9ddbd6312ae9ef2909d194fe47e2e9062db",
   "latest_zero_import_partial_plan_incident": {
     "status": "fixed_pending_reviewer_recheck_and_user_retry",
     "observed_head_sha": "f1040fb21a1c04489b3ed31d295321f5eddc44ac",
@@ -2383,6 +2392,89 @@
       "Actionable import/follow-up split",
       "Unchanged ledger skips"
     ],
+    "public_safe": true
+  },
+  "manual_sync_product_flow_redesign": {
+    "status": "implemented_pending_current_head_review_and_final_production_gui_execute",
+    "triggering_incident": {
+      "head_sha": "cccef9ddbd6312ae9ef2909d194fe47e2e9062db",
+      "plan_request_id": "gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380",
+      "elapsed_seconds_approx": 3727,
+      "seen": 263,
+      "batch_candidates": 262,
+      "importable": 0,
+      "last_stage": "checking_supported",
+      "user_cancelled_before_execute": true
+    },
+    "root_cause": "normal Plan performed import-time deep validation in checking_supported, so the user-facing planning stage could open/read/decode source files or stall on iCloud/Windows Cloud Files before Execute began",
+    "previous_tests_missed_reason": "tests validated plan/report/gates but did not assert normal Plan operation counters or one-action staged UI pipeline behavior",
+    "normal_plan_boundary": {
+      "candidate_discovery_only": true,
+      "uses_source_ledger": true,
+      "uses_mtime_watermark": true,
+      "uses_safety_lookback_seconds": 604800,
+      "uses_metadata_fast_path": true,
+      "content_reads": 0,
+      "hashes": 0,
+      "image_decodes": 0,
+      "hydrations": 0,
+      "deep_supported_image_validation": false
+    },
+    "execute_boundary": {
+      "handles_source_identity_revalidation": true,
+      "handles_hash_integrity": true,
+      "handles_cloud_placeholder_hydration": true,
+      "handles_duplicate_existing_detection": true,
+      "handles_unsupported_corrupt_item_reasons": true,
+      "runs_import_classification_ai_localization_summary": true
+    },
+    "ui_flow": {
+      "one_primary_start_action": true,
+      "stage_strip": [
+        "Plan",
+        "Import",
+        "Classification",
+        "AI tagging",
+        "Localization",
+        "Complete"
+      ],
+      "advanced_diagnostics_separated": true,
+      "exact_audit_phrase_advanced_only": true,
+      "human_readable_confirmation_before_writes": true,
+      "zero_import_plan_shows_execute_confirmation": false
+    },
+    "performance_budget": {
+      "small_delta_plan_target": "milliseconds_to_seconds",
+      "under_1000_metadata_candidates_blocker_seconds": 30,
+      "average_ms_per_metadata_candidate_warn_gt": 100,
+      "normal_plan_expensive_operations_expected": 0
+    },
+    "validation": {
+      "focused_tests": "142 passed in 90.66s latest rerun",
+      "full_chain_test": "test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_summary passed",
+      "large_stable_ledger_test": "test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_expensive_reads passed",
+      "browser_validation": {
+        "status": "passed_p0_normal_operator_ui_stage_flow",
+        "method": "Playwright Edge",
+        "server_env": "test",
+        "db_name": "blombooru_test",
+        "port": 8013,
+        "normal_operator_stage_flow_visible": true,
+        "advanced_diagnostics_separated": true,
+        "production_execute_clicked": false,
+        "server_stopped_after_validation": true,
+        "result": "2 passed in 3.2s"
+      }
+    },
+    "mature_pattern_references": [
+      "metadata_fast_path_before_hash_or_content_read",
+      "mtime_watermark_plus_safety_lookback",
+      "persistent_source_index",
+      "bounded_batches_and_execute_time_revalidation",
+      "advanced_full_rescan_as_repair_mode"
+    ],
+    "production_gui_execute_acceptance_complete": false,
+    "safe_to_ask_user_retry": false,
     "public_safe": true
   }
 }

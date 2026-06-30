@@ -32,6 +32,7 @@ from ..models import (
 )
 from ..services.job_control import build_ai_tagging_execution_profile
 from ..utils.local_library_scanner import (
+    SUPPORTED_EXTENSIONS,
     _calculate_file_hash_with_timeout,
     _is_cloud_only,
     _is_scannable_file,
@@ -77,6 +78,8 @@ S3A_M2_PRODUCTION_EXECUTE_CONFIRMATION_PREFIX = (
 )
 MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS = 600
 MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS = 5 * 60
+MANUAL_SYNC_NORMAL_PLAN_MODE = "incremental"
+MANUAL_SYNC_ADVANCED_FULL_RESCAN_MODE = "advanced_full_rescan"
 
 MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
     {
@@ -617,6 +620,10 @@ def _manual_plan_integrity_payload(
             "stable_age_seconds": float(limits.get("stable_age_seconds") or 0.0),
             "max_duration_seconds": int(limits.get("max_duration_seconds") or 0),
             "file_read_timeout_seconds": int(limits.get("file_read_timeout_seconds") or 0),
+            "plan_mode": str(limits.get("plan_mode") or ""),
+            "safety_lookback_seconds": int(limits.get("safety_lookback_seconds") or 0),
+            "source_mtime_watermark_ns": limits.get("source_mtime_watermark_ns"),
+            "mtime_cutoff_ns": limits.get("mtime_cutoff_ns"),
         },
         "items": integrity_items,
     }
@@ -644,6 +651,668 @@ def manual_sync_execute_confirmation_phrase(plan_hash: str, *, production: bool 
     return f"{prefix} {str(plan_hash)[:12]}"
 
 
+def manual_sync_operator_confirmation_statement(plan: Dict[str, Any], *, production: bool = False) -> str:
+    counts = plan.get("counts") or {}
+    plan_hash = str((plan.get("integrity") or {}).get("plan_hash") or "")
+    import_count = int(counts.get("estimated_import_count") or 0)
+    followup_count = int(counts.get("estimated_downstream_followup_count") or 0)
+    env = "production" if production else "test"
+    return (
+        f"I confirm VIOLET {env} manual sync will process "
+        f"{import_count} imports and {followup_count} follow-up items for plan {plan_hash[:12]}"
+    )
+
+
+def _manual_plan_source_mtime_watermark_ns(known_items: Iterable[DynamicSourceItem]) -> Optional[int]:
+    values: List[int] = []
+    for item in known_items:
+        mtime_ns = getattr(item, "mtime_ns", None)
+        if mtime_ns is None:
+            continue
+        import_status = str(getattr(item, "import_status", "") or "")
+        sync_state = str(getattr(item, "sync_state", "") or "")
+        if import_status == "imported" and sync_state in {
+            "imported",
+            "skipped_existing_media",
+            "skipped_duplicate",
+            "unchanged",
+        }:
+            values.append(int(mtime_ns))
+    return max(values) if values else None
+
+
+def _manual_plan_mtime_cutoff_ns(watermark_ns: Optional[int], lookback_seconds: int) -> Optional[int]:
+    if watermark_ns is None:
+        return None
+    return max(0, int(watermark_ns) - int(max(0, lookback_seconds)) * 1_000_000_000)
+
+
+def _manual_plan_is_extension_candidate(path: Path) -> Optional[str]:
+    suffix = path.suffix.lower()
+    if suffix == ".icloud":
+        return "icloud_placeholder"
+    if suffix not in SUPPORTED_EXTENSIONS:
+        return "unsupported_extension"
+    return None
+
+
+def _plan_manual_sync_incremental_dry_run(
+    db: Session,
+    *,
+    source_path: str | Path,
+    source_record_id: Optional[int],
+    max_files: Optional[int],
+    hydrated_only: bool,
+    stable_age_seconds: Optional[float],
+    include_private_details: bool,
+    ai_profile: Optional[Dict[str, Any]],
+    benchmark: Optional[Dict[str, Any]],
+    now: Optional[datetime],
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]],
+    cancel_check: Optional[Callable[[], bool]],
+) -> Dict[str, Any]:
+    """Build the normal manual-sync plan as cheap candidate discovery only.
+
+    The normal operator flow must not open/decode files, hydrate cloud files, or
+    compute hashes. Execute performs import-time validation and records per-item
+    failures for unsupported/corrupt/duplicate/cloud-placeholder outcomes.
+    """
+
+    resolved = validate_source_root_path(source_path)
+    created_at = now or _utcnow()
+    created_ts = created_at.timestamp()
+    effective_max_files = max(1, int(max_files or settings.DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES))
+    effective_stable_age = (
+        settings.DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS
+        if stable_age_seconds is None
+        else max(0.0, float(stable_age_seconds))
+    )
+    safety_lookback_seconds = int(settings.DYNAMIC_LIBRARY_MANUAL_SYNC_SAFETY_LOOKBACK_SECONDS)
+    profile = ai_profile or build_ai_tagging_execution_profile(settings).to_public_dict()
+    max_duration_seconds = settings.DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS
+
+    state_counts: Counter = Counter()
+    reason_counts: Counter = Counter()
+    unsupported_extension_counts: Counter = Counter()
+    reason_extension_counts: Dict[str, Counter] = {}
+    public_items: List[Dict[str, Any]] = []
+    private_items: List[Dict[str, Any]] = []
+    candidate_records: List[Dict[str, Any]] = []
+    integrity_items: List[Dict[str, Any]] = []
+    walk_errors: List[str] = []
+
+    metadata_entries_seen = 0
+    db_followup_candidates = 0
+    mtime_new_candidates = 0
+    safety_window_candidates = 0
+    stable_old_files_skipped = 0
+    unchanged_ledger_skips = 0
+    stat_required_count = 0
+    hash_required_count = 0
+    content_read_count = 0
+    image_decode_count = 0
+    hydration_attempt_count = 0
+    current_stage = "initializing"
+    last_progress_item_label: Optional[str] = None
+    plan_started_monotonic = time.monotonic()
+    last_progress_monotonic = plan_started_monotonic
+    plan_no_progress_timeout_seconds = MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS
+    partial_scan = False
+    partial_scan_reason: Optional[str] = None
+    plan_cancelled = False
+    plan_no_progress_timeout = False
+    plan_cap_limited = False
+    filesystem_walk_completed = False
+
+    def _record_reason_extension(reason_code: Optional[str], rel_path: str) -> None:
+        if not reason_code:
+            return
+        extension = Path(str(rel_path or "")).suffix.lower() or "<none>"
+        reason_extension_counts.setdefault(reason_code, Counter())[extension] += 1
+        if reason_code == "unsupported_extension":
+            unsupported_extension_counts[extension] += 1
+
+    def _progress(phase: str, **updates: Any) -> None:
+        nonlocal current_stage, last_progress_item_label, last_progress_monotonic
+        current_stage = phase
+        last_progress_monotonic = time.monotonic()
+        if "current_item_label" in updates and updates["current_item_label"]:
+            last_progress_item_label = str(updates["current_item_label"])
+        if progress_callback is None:
+            return
+        counts = {
+            "seen": int(metadata_entries_seen),
+            "metadata_entries_seen": int(metadata_entries_seen),
+            "db_followup_candidates": int(db_followup_candidates),
+            "mtime_new_candidates": int(mtime_new_candidates),
+            "safety_window_candidates": int(safety_window_candidates),
+            "stable_old_files_skipped": int(stable_old_files_skipped),
+            "skipped_historical": int(unchanged_ledger_skips),
+            "skipped_unsupported": int(reason_counts.get("unsupported_extension", 0)),
+            "placeholders_found": int(reason_counts.get("icloud_placeholder", 0)),
+            "hydrated": 0,
+            "importable": int(state_counts.get("import_planned", 0)),
+            "planned": int(len(candidate_records)),
+            "batch_candidates": int(len(candidate_records)),
+            "failed": int(reason_counts.get("stat_error", 0) + reason_counts.get("source_walk_error", 0)),
+            "content_reads": 0,
+            "hashes": 0,
+            "decodes": 0,
+            "hydrations": 0,
+        }
+        payload = {
+            "phase": phase,
+            "status": "running",
+            "current_item_index": int(metadata_entries_seen),
+            "current_item_label": last_progress_item_label,
+            "counts": counts,
+            "elapsed_seconds": round(max(0.0, time.monotonic() - plan_started_monotonic), 3),
+            "last_progress_at": _utcnow().isoformat(),
+        }
+        payload.update(updates)
+        progress_callback(payload)
+
+    def _cancel_requested() -> bool:
+        if cancel_check is None:
+            return False
+        try:
+            return bool(cancel_check())
+        except Exception:
+            return False
+
+    def _no_progress_timed_out() -> bool:
+        return (time.monotonic() - last_progress_monotonic) > plan_no_progress_timeout_seconds
+
+    _progress("loading_source_ledger")
+    known_items_by_rel_hash: Dict[str, DynamicSourceItem] = {}
+    if source_record_id is not None:
+        known_items_by_rel_hash = {
+            item.relative_path_hash: item
+            for item in db.query(DynamicSourceItem)
+            .filter(DynamicSourceItem.source_root_id == int(source_record_id))
+            .all()
+        }
+
+    source_mtime_watermark_ns = _manual_plan_source_mtime_watermark_ns(known_items_by_rel_hash.values())
+    mtime_cutoff_ns = _manual_plan_mtime_cutoff_ns(source_mtime_watermark_ns, safety_lookback_seconds)
+    priority_source_files = (
+        _manual_plan_priority_source_files(resolved, known_items_by_rel_hash)
+        if source_record_id is not None
+        else []
+    )
+    priority_workset_files = len(priority_source_files)
+    priority_workset_processed = 0
+    priority_workset_exhausted = False
+    filesystem_walk_after_priority_workset = False
+    priority_workset_mode = (
+        "source_ledger_followup_then_incremental_mtime_filesystem_metadata_walk"
+        if priority_source_files
+        else "incremental_mtime_filesystem_metadata_walk"
+    )
+    processed_path_identities: set[str] = set()
+
+    def _candidate_files() -> Iterable[tuple[Path, str]]:
+        nonlocal filesystem_walk_after_priority_workset, filesystem_walk_completed
+        for priority_path in priority_source_files:
+            path_identity = _normalized_path_identity(priority_path)
+            processed_path_identities.add(path_identity)
+            yield priority_path, "source_ledger_followup"
+        if priority_source_files:
+            filesystem_walk_after_priority_workset = True
+        _progress("filesystem_metadata_walk")
+        for walked_path in _iter_source_files(resolved, walk_errors=walk_errors):
+            path_identity = _normalized_path_identity(walked_path)
+            if path_identity in processed_path_identities:
+                continue
+            processed_path_identities.add(path_identity)
+            yield walked_path, "mtime_window_metadata"
+        filesystem_walk_completed = True
+
+    for index, (file_path, scan_source) in enumerate(_candidate_files(), start=1):
+        if _cancel_requested():
+            partial_scan = True
+            plan_cancelled = True
+            partial_scan_reason = "cancelled"
+            reason_counts["plan_cancelled"] += 1
+            break
+        if _no_progress_timed_out():
+            partial_scan = True
+            plan_no_progress_timeout = True
+            partial_scan_reason = "no_progress_timeout"
+            reason_counts["plan_no_progress_timeout"] += 1
+            break
+
+        metadata_entries_seen = index
+        if scan_source == "source_ledger_followup":
+            priority_workset_processed += 1
+        safe_label = f"file-{index:05d}"
+        _progress("metadata_candidate_scan", current_item_index=index, current_item_label=safe_label, scan_source=scan_source)
+
+        rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
+        rel_hash_full = _hash_text(rel)
+        rel_hash = rel_hash_full[:16]
+        known_item = known_items_by_rel_hash.get(rel_hash_full)
+        reason = _manual_public_reason_code(preflight_reason)
+        metadata: Dict[str, Any] = {}
+        try:
+            metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
+            stat_required_count += 1
+        except OSError:
+            reason = "stat_error"
+
+        if reason is None and effective_stable_age > 0:
+            mtime = metadata.get("mtime")
+            if mtime is not None and created_ts - float(mtime) < effective_stable_age:
+                reason = "file_still_changing"
+
+        if reason is None:
+            reason = _manual_plan_is_extension_candidate(file_path)
+
+        followup_payload: Dict[str, Any] = {}
+        media_id: Optional[int] = None
+        if known_item is not None and _manual_plan_existing_requires_followup(known_item):
+            followup_payload = _manual_plan_followup_payload(known_item)
+            if known_item.media_id is not None and str(known_item.import_status or "") == "imported":
+                media_id = int(known_item.media_id)
+                reason = "downstream_followup"
+            else:
+                reason = reason
+
+        mtime_ns = metadata.get("mtime_ns")
+        in_mtime_window = bool(mtime_cutoff_ns is None or (mtime_ns is not None and int(mtime_ns) >= int(mtime_cutoff_ns)))
+        if scan_source == "mtime_window_metadata" and not in_mtime_window and not (
+            known_item is not None and _manual_plan_existing_requires_followup(known_item)
+        ):
+            stable_old_files_skipped += 1
+            continue
+
+        if known_item is not None and _manual_plan_can_skip_unchanged_known_item(known_item, metadata):
+            unchanged_ledger_skips += 1
+            continue
+
+        if reason in {"unsupported_extension", "icloud_placeholder", "file_still_changing"} and scan_source == "mtime_window_metadata":
+            state = _manual_state_for_reason(reason)
+            state_counts[state] += 1
+            reason_counts[reason] += 1
+            _record_reason_extension(reason, rel)
+            continue
+        if reason is not None and reason != "downstream_followup":
+            state = _manual_state_for_reason(reason)
+            state_counts[state] += 1
+            reason_counts[reason] += 1
+            _record_reason_extension(reason, rel)
+            continue
+
+        if len(candidate_records) >= effective_max_files:
+            partial_scan = True
+            plan_cap_limited = True
+            partial_scan_reason = "cap_limited_actionable_batch"
+            break
+
+        if reason == "downstream_followup" and media_id:
+            state = "downstream_followup_planned"
+            db_followup_candidates += 1
+        else:
+            state = "import_planned"
+            if source_mtime_watermark_ns is None or (mtime_ns is not None and int(mtime_ns) > int(source_mtime_watermark_ns)):
+                mtime_new_candidates += 1
+            elif in_mtime_window:
+                safety_window_candidates += 1
+        record = {
+            "safe_label": safe_label,
+            "relative_path": rel,
+            "relative_path_hash": rel_hash,
+            "relative_path_hash_full": rel_hash_full,
+            "metadata": metadata,
+            "reason": "downstream_followup" if state == "downstream_followup_planned" else None,
+            "content_hash": None,
+            "media_id": media_id,
+            "cloud_placeholder_before_hydration": False,
+            "followup": followup_payload,
+            "scan_source": scan_source,
+            "state": state,
+        }
+        candidate_records.append(record)
+        _progress("candidate_selected", current_item_index=index, current_item_label=safe_label, scan_source=scan_source)
+
+    if priority_source_files and priority_workset_processed >= priority_workset_files:
+        priority_workset_exhausted = True
+    if not filesystem_walk_completed and not (plan_cancelled or plan_no_progress_timeout):
+        partial_scan = True
+        partial_scan_reason = partial_scan_reason or (
+            "cap_limited_actionable_batch" if plan_cap_limited else "filesystem_metadata_walk_incomplete"
+        )
+
+    _progress(
+        "cancelled"
+        if plan_cancelled
+        else ("no_progress_timeout" if plan_no_progress_timeout else "planning")
+    )
+
+    for record in candidate_records:
+        state = str(record.get("state") or "import_planned")
+        public_reason = _manual_public_reason_code(record.get("reason"))
+        state_counts[state] += 1
+        if public_reason:
+            reason_counts[public_reason] += 1
+            _record_reason_extension(public_reason, str(record["relative_path"] or ""))
+        metadata = record["metadata"]
+        item = {
+            "safe_label": record["safe_label"],
+            "relative_path_hash": record["relative_path_hash"],
+            "initial_state": "candidate",
+            "state": state,
+            "reason": public_reason,
+            "eligible_for_db_import": state == "import_planned",
+            "bytes_copied": 0,
+            "media_id": record.get("media_id"),
+            "file_size": metadata.get("file_size"),
+            "content_hash_computed": False,
+            "cloud_placeholder_before_hydration": False,
+            "scan_source": str(record.get("scan_source") or ""),
+        }
+        if state == "downstream_followup_planned":
+            item["downstream_followup"] = dict(record.get("followup") or {})
+        public_items.append(item)
+        integrity_items.append(
+            {
+                "safe_label": record["safe_label"],
+                "relative_path_hash": record["relative_path_hash_full"],
+                "file_size": metadata.get("file_size"),
+                "mtime_ns": metadata.get("mtime_ns"),
+                "state": state,
+                "reason": public_reason,
+                "content_hash": None,
+                "cloud_placeholder_before_hydration": False,
+                "scan_source": str(record.get("scan_source") or ""),
+                "downstream_followup": dict(record.get("followup") or {}),
+            }
+        )
+        if include_private_details:
+            private_items.append(
+                {
+                    **item,
+                    "relative_path": record["relative_path"],
+                    "content_hash": None,
+                    "mtime_ns": metadata.get("mtime_ns"),
+                    "cloud_placeholder_before_hydration": False,
+                }
+            )
+
+    if walk_errors:
+        partial_scan = True
+        partial_scan_reason = "source_walk_error"
+        reason_counts["source_walk_error"] += len(walk_errors)
+
+    import_count = int(state_counts.get("import_planned", 0))
+    downstream_followup_count = int(state_counts.get("downstream_followup_planned", 0))
+    downstream_stage_count = import_count + downstream_followup_count
+    unsafe_partial_scan = bool(
+        plan_cancelled
+        or plan_no_progress_timeout
+        or walk_errors
+        or (partial_scan and partial_scan_reason not in {None, "cap_limited_actionable_batch"})
+    )
+    cap_limited_batch = bool(partial_scan and partial_scan_reason == "cap_limited_actionable_batch")
+    batch_executable = bool(downstream_stage_count > 0 and not unsafe_partial_scan)
+    more_batches_remain = bool(cap_limited_batch)
+    estimated_runtime_seconds = _estimate_manual_sync_runtime_seconds(
+        import_count=import_count,
+        ai_profile=profile,
+        benchmark=benchmark,
+    )
+    stages = _build_manual_pipeline_stages(
+        state_counts=state_counts,
+        ai_profile=profile,
+        max_duration_seconds=max_duration_seconds,
+        estimated_runtime_seconds=estimated_runtime_seconds,
+    )
+    state_counts_public = _public_counter(state_counts, MANUAL_SYNC_FILE_STATES)
+    reason_counts_public = dict(sorted((key, int(value)) for key, value in reason_counts.items()))
+    source_identity_hash = _public_source_identity(resolved)
+    root_scan_state = _manual_plan_root_scan_state(
+        db,
+        source_record_id=source_record_id,
+        known_items_by_rel_hash=known_items_by_rel_hash,
+    )
+    elapsed_seconds = round(max(0.0, time.monotonic() - plan_started_monotonic), 3)
+    avg_ms_per_candidate = (
+        round((elapsed_seconds * 1000.0) / max(1, metadata_entries_seen), 3)
+        if metadata_entries_seen
+        else 0.0
+    )
+    limits = {
+        "max_files": effective_max_files,
+        "hydrated_only": hydrated_only,
+        "hydration_policy": "cloud_aware_non_destructive_read_execute_stage",
+        "plan_mode": MANUAL_SYNC_NORMAL_PLAN_MODE,
+        "normal_plan_candidate_discovery_only": True,
+        "advanced_full_rescan_available": True,
+        "stable_age_seconds": effective_stable_age,
+        "max_duration_seconds": max_duration_seconds,
+        "file_read_timeout_seconds": None,
+        "scanned_files": metadata_entries_seen,
+        "metadata_entries_seen": metadata_entries_seen,
+        "stat_required_count": stat_required_count,
+        "hash_required_count": hash_required_count,
+        "content_read_count": content_read_count,
+        "image_decode_count": image_decode_count,
+        "hydration_attempt_count": hydration_attempt_count,
+        "expensive_plan_operations": {
+            "content_reads": content_read_count,
+            "hashes": hash_required_count,
+            "decodes": image_decode_count,
+            "hydrations": hydration_attempt_count,
+        },
+        "source_mtime_watermark_ns": source_mtime_watermark_ns,
+        "safety_lookback_seconds": safety_lookback_seconds,
+        "mtime_cutoff_ns": mtime_cutoff_ns,
+        "db_followup_candidates": db_followup_candidates,
+        "mtime_new_candidates": mtime_new_candidates,
+        "safety_window_candidates": safety_window_candidates,
+        "stable_old_files_skipped": stable_old_files_skipped,
+        "unchanged_known_files": unchanged_ledger_skips,
+        "fast_skipped_from_ledger": unchanged_ledger_skips,
+        "skipped_existing_before_cap": 0,
+        "skipped_duplicate_before_cap": 0,
+        "import_candidate_count": import_count,
+        "actionable_candidate_count": downstream_stage_count,
+        "downstream_followup_count": downstream_followup_count,
+        "max_files_scope": "manual_sync_actionable_delta_candidates",
+        "cap_semantics": "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media",
+        "batch_mode": "bounded_actionable_batch",
+        "batch_candidate_cap": effective_max_files,
+        "batch_executable": batch_executable,
+        "cap_limited_batch": cap_limited_batch,
+        "more_batches_remain": more_batches_remain,
+        "unsafe_partial_scan": unsafe_partial_scan,
+        "partial_scan_reason": partial_scan_reason,
+        "plan_elapsed_seconds": elapsed_seconds,
+        "average_ms_per_metadata_candidate": avg_ms_per_candidate,
+        "performance_gate": {
+            "content_reads_during_plan": 0,
+            "hashes_during_plan": 0,
+            "decodes_during_plan": 0,
+            "hydrations_during_plan": 0,
+            "warn_if_average_ms_per_candidate_gt": 100,
+            "blocker_if_under_1000_candidates_gt_seconds": 30,
+        },
+        "continuation": {
+            "more_batches_remain": more_batches_remain,
+            "next_batch_requires_new_plan": True,
+            "next_batch_start_basis": (
+                "same_watermark_with_executed_items_committed_to_source_ledger"
+                if more_batches_remain
+                else "root_exhausted_or_no_continuation_required"
+            ),
+            "current_batch_actionable_count": downstream_stage_count,
+            "cap_limited_after_actionable_count": downstream_stage_count if cap_limited_batch else 0,
+        },
+        "root_scan_state": {
+            **root_scan_state,
+            "current_scan_mode": "incremental_watermark_candidate_discovery",
+            "current_scan_start_basis": (
+                "source_mtime_watermark_minus_safety_lookback"
+                if source_mtime_watermark_ns is not None
+                else "no_watermark_initial_metadata_walk"
+            ),
+            "last_successful_import_source_mtime_ns": source_mtime_watermark_ns,
+            "safety_lookback_seconds": safety_lookback_seconds,
+            "mtime_cutoff_ns": mtime_cutoff_ns,
+            "ledger_evidence_reused": bool(source_record_id is not None),
+            "files_stat_checked": stat_required_count,
+            "files_hash_checked": 0,
+            "new_or_changed_actionable_candidates": downstream_stage_count,
+            "more_batches_remain": more_batches_remain,
+        },
+        "source_delta_workset": {
+            "scan_order": priority_workset_mode,
+            "priority_workset_files": priority_workset_files,
+            "priority_workset_processed": priority_workset_processed,
+            "priority_workset_exhausted": priority_workset_exhausted,
+            "filesystem_walk_after_priority_workset": filesystem_walk_after_priority_workset,
+            "filesystem_walk_completed": filesystem_walk_completed,
+            "starts_from_filesystem_root_when_no_priority_workset": True,
+            "durable_global_filesystem_cursor": False,
+            "incremental_source_ledger_used": bool(source_record_id is not None),
+            "source_index_model": "dynamic_source_item_ledger_plus_mtime_watermark",
+            "fast_skip_identity": ["source_root_id", "relative_path_hash", "file_size", "mtime_ns"],
+            "hash_revalidation_identity": ["execute_time_content_hash"],
+            "stable_known_entries_do_not_consume_actionable_cap": True,
+        },
+        "batch_policy": {
+            "user_starts_one_manual_session": True,
+            "plan_one_bounded_batch_at_a_time": True,
+            "cap_limited_batches_are_executable": True,
+            "execute_revalidates_source_identity": True,
+            "already_imported_batches_are_reused_from_source_ledger": True,
+            "normal_plan_does_not_hash_or_decode": True,
+            "next_batch_requires_new_plan": True,
+        },
+        "resume_policy": {
+            "reuses_committed_dynamic_source_item_states": True,
+            "revalidates_size_mtime_before_execute": True,
+            "hashes_only_during_execute_or_advanced_repair": True,
+            "invalidates_on_source_identity_or_metadata_change": True,
+            "private_uncommitted_plan_items_are_not_trusted_for_execute": True,
+        },
+        "plan_source": "source_delta" if source_record_id is not None else "ad_hoc_source_path",
+        "plan_stale_after_seconds": MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
+        "global_elapsed_timeout_enabled": False,
+        "plan_no_progress_timeout_seconds": plan_no_progress_timeout_seconds,
+        "plan_timeout_seconds": None,
+        "plan_timeout": False,
+        "plan_no_progress_timeout": plan_no_progress_timeout,
+        "plan_cancelled": plan_cancelled,
+        "last_progress_stage": current_stage,
+        "last_progress_item_label": last_progress_item_label,
+    }
+    integrity_payload = _manual_plan_integrity_payload(
+        source_record_id=source_record_id,
+        source_identity_hash=source_identity_hash,
+        limits=limits,
+        integrity_items=integrity_items,
+        created_at=created_at,
+    )
+    plan_hash = _stable_json_hash(integrity_payload)
+    expires_at = created_at + timedelta(seconds=MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS)
+    plan: Dict[str, Any] = {
+        "job": {
+            "job_id": f"s3a-m2-plan-{uuid4()}",
+            "mode": "dry_run",
+            "state": "planned",
+            "trigger_type": "manual_operator",
+            "requested_by": "admin_or_cli",
+            "created_at": created_at.isoformat(),
+            "started_at": None,
+            "ended_at": None,
+            "production_execution_enabled": False,
+            "automatic_sync_enabled": False,
+            "scheduled_sync_enabled": False,
+        },
+        "source": {
+            "source_record_id": source_record_id,
+            "source_identity_hash": source_identity_hash,
+            "path_public": False,
+        },
+        "limits": limits,
+        "counts": {
+            "total_seen": len(public_items),
+            "scanned_files": metadata_entries_seen,
+            "metadata_entries_seen": metadata_entries_seen,
+            "plan_items": len(public_items),
+            "estimated_import_count": import_count,
+            "estimated_downstream_followup_count": downstream_followup_count,
+            "estimated_classification_count": downstream_stage_count,
+            "estimated_ai_tagging_count": downstream_stage_count,
+            "estimated_localization_workload": downstream_stage_count,
+            "state_counts": _public_counter(state_counts, MANUAL_SYNC_FILE_STATES),
+            "failure_reasons": reason_counts_public,
+            "partial_scan": partial_scan,
+            "partial_scan_reason": partial_scan_reason,
+            "unsafe_partial_scan": unsafe_partial_scan,
+            "cap_limited_batch": cap_limited_batch,
+            "batch_executable": batch_executable,
+            "more_batches_remain": more_batches_remain,
+            "unsupported_extension_breakdown": dict(
+                sorted((key, int(value)) for key, value in unsupported_extension_counts.items())
+            ),
+            "failure_reason_extension_breakdown": {
+                reason: dict(sorted((key, int(value)) for key, value in counter.items()))
+                for reason, counter in sorted(reason_extension_counts.items())
+            },
+        },
+        "ledger": {
+            "db_write_performed": False,
+            "source_mutation_performed": False,
+            "app_storage_mutation_performed": False,
+            "persistent_tables_available": [
+                "blombooru_dynamic_source_roots",
+                "blombooru_dynamic_source_items",
+                "blombooru_dynamic_sync_runs",
+                "blombooru_dynamic_sync_run_items",
+            ],
+            "ledger_mode": "ephemeral_public_candidate_plan_current_phase",
+            "per_file_public_records": public_items,
+            "private_details_included": include_private_details,
+        },
+        "pipeline": {
+            "status": "dry_run_planned",
+            "dry_run_only_this_phase": False,
+            "production_execute_enabled": False,
+            "dev_test_execute_supported": True,
+            "production_execute_requires_separate_operator_approval": True,
+            "stages": stages,
+            "estimated_runtime_seconds": estimated_runtime_seconds,
+            "partial_failure_policy": "execute_records_item_validation_failures_after_candidate_discovery",
+        },
+        "ai_execution_profile": profile,
+        "integrity": {
+            "schema": "s3a_m2_incremental_candidate_plan_integrity_v1",
+            "plan_hash": plan_hash,
+            "hash_algorithm": "sha256",
+            "stale_after_seconds": MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
+            "expires_at": expires_at.isoformat(),
+            "hash_excludes_paths": True,
+            "hash_includes_private_content_fingerprint": False,
+            "confirmation_phrase": manual_sync_execute_confirmation_phrase(plan_hash),
+            "production_confirmation_phrase": manual_sync_execute_confirmation_phrase(plan_hash, production=True),
+        },
+        "public_safe": True,
+    }
+    plan["integrity"]["operator_confirmation_statement"] = manual_sync_operator_confirmation_statement(plan)
+    plan["integrity"]["production_operator_confirmation_statement"] = manual_sync_operator_confirmation_statement(
+        plan,
+        production=True,
+    )
+    if include_private_details:
+        plan["private_details"] = {
+            "not_for_public_reports": True,
+            "items": private_items,
+        }
+    return plan
+
+
 def plan_manual_sync_dry_run(
     db: Session,
     *,
@@ -658,8 +1327,27 @@ def plan_manual_sync_dry_run(
     now: Optional[datetime] = None,
     progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
+    plan_mode: str = MANUAL_SYNC_NORMAL_PLAN_MODE,
 ) -> Dict[str, Any]:
     """Build a public-safe manual sync dry-run plan without DB or file writes."""
+    normalized_plan_mode = str(plan_mode or MANUAL_SYNC_NORMAL_PLAN_MODE).strip().lower()
+    if normalized_plan_mode in {"normal", "incremental", MANUAL_SYNC_NORMAL_PLAN_MODE}:
+        return _plan_manual_sync_incremental_dry_run(
+            db,
+            source_path=source_path,
+            source_record_id=source_record_id,
+            max_files=max_files,
+            hydrated_only=hydrated_only,
+            stable_age_seconds=stable_age_seconds,
+            include_private_details=include_private_details,
+            ai_profile=ai_profile,
+            benchmark=benchmark,
+            now=now,
+            progress_callback=progress_callback,
+            cancel_check=cancel_check,
+        )
+    if normalized_plan_mode != MANUAL_SYNC_ADVANCED_FULL_RESCAN_MODE:
+        raise ValueError("manual sync plan_mode must be incremental or advanced_full_rescan")
     resolved = validate_source_root_path(source_path)
     created_at = now or _utcnow()
     created_ts = created_at.timestamp()
@@ -1292,6 +1980,11 @@ def plan_manual_sync_dry_run(
         },
         "public_safe": True,
     }
+    plan["integrity"]["operator_confirmation_statement"] = manual_sync_operator_confirmation_statement(plan)
+    plan["integrity"]["production_operator_confirmation_statement"] = manual_sync_operator_confirmation_statement(
+        plan,
+        production=True,
+    )
     if include_private_details:
         plan["private_details"] = {
             "not_for_public_reports": True,
@@ -1329,7 +2022,7 @@ def _manual_plan_priority_for_known_item(item: DynamicSourceItem) -> Optional[in
     import_status = str(item.import_status or "")
     sync_state = str(item.sync_state or "")
     reason = str(item.deferred_reason or item.failure_reason or "")
-    if import_status == "pending" and item.media_id is None:
+    if import_status == "pending":
         return 10 if sync_state == "new" else 20
     if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
         return 30

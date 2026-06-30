@@ -1891,6 +1891,7 @@ class AdminPanel {
         try {
             const data = await app.apiCall('/api/admin/dynamic-library-sync', { method: 'GET' });
             this._renderDynamicSyncDashboard(data);
+            this._renderManualSyncStageStrip();
         } catch (e) {
             const warning = document.getElementById('dynamic-sync-warning');
             if (warning) {
@@ -1906,7 +1907,27 @@ class AdminPanel {
         return translated && translated !== key ? translated : fallback;
     }
 
-    _manualSyncSetProgress({ visible = true, label = '', detail = '', inFlight = false } = {}) {
+    _renderManualSyncStageStrip(stageStatus = {}) {
+        const strip = document.getElementById('dynamic-sync-stage-strip');
+        if (!strip) return;
+        const stages = [
+            ['plan', 'Plan'],
+            ['import', 'Import'],
+            ['classification', 'Classification'],
+            ['ai_tagging', 'AI tagging'],
+            ['localization', 'Localization'],
+            ['summary', 'Complete'],
+        ];
+        strip.innerHTML = stages.map(([key, label]) => {
+            const status = stageStatus[key] || 'queued';
+            const style = status === 'completed'
+                ? 'border-green-500 text-green-400'
+                : (status === 'running' ? 'border-warning text-warning' : (status === 'failed' ? 'border-red-500 text-red-400' : 'border text-secondary'));
+            return `<div class="p-2 border ${style}"><div class="font-bold">${this.escapeHtml(label)}</div><div class="text-[10px]">${this.escapeHtml(status)}</div></div>`;
+        }).join('');
+    }
+
+    _manualSyncSetProgress({ visible = true, label = '', detail = '', inFlight = false, stageStatus = null } = {}) {
         const progress = document.getElementById('dynamic-sync-progress');
         const labelEl = document.getElementById('dynamic-sync-progress-label');
         const detailEl = document.getElementById('dynamic-sync-progress-detail');
@@ -1914,6 +1935,7 @@ class AdminPanel {
         if (progress) progress.classList.toggle('hidden', !visible);
         if (labelEl && label) labelEl.textContent = label;
         if (detailEl && detail) detailEl.textContent = detail;
+        if (stageStatus) this._renderManualSyncStageStrip(stageStatus);
 
         if (inFlight && !this.dynamicSyncProgressStartedAt) {
             this.dynamicSyncProgressStartedAt = Date.now();
@@ -1967,6 +1989,7 @@ class AdminPanel {
         this._manualSyncSetProgress({
             visible: true,
             inFlight: ['running', 'cancelling'].includes(status),
+            stageStatus: { plan: status === 'completed' ? 'completed' : (status === 'failed' ? 'failed' : 'running') },
         });
         if (labelEl) labelEl.textContent = `Plan ${status}: ${phase}`;
         if (detailEl) {
@@ -1984,13 +2007,12 @@ class AdminPanel {
         }
         if (countsEl) {
             const fields = [
-                ['seen', counts.seen || 0],
-                ['unchanged ledger skips', counts.skipped_historical || 0],
-                ['unsupported', counts.skipped_unsupported || 0],
-                ['placeholders', counts.placeholders_found || 0],
-                ['hydrated', counts.hydrated || 0],
-                ['importable', counts.importable || 0],
-                ['batch candidates', counts.batch_candidates || counts.planned || 0],
+                ['metadata seen', counts.metadata_entries_seen || counts.seen || 0],
+                ['ledger follow-up', counts.db_followup_candidates || 0],
+                ['mtime-new', counts.mtime_new_candidates || 0],
+                ['safety-window', counts.safety_window_candidates || 0],
+                ['selected', counts.batch_candidates || counts.planned || 0],
+                ['plan reads/hash/decode/hydrate', `${counts.content_reads || 0}/${counts.hashes || 0}/${counts.decodes || 0}/${counts.hydrations || 0}`],
                 ['failed', counts.failed || 0],
             ];
             countsEl.innerHTML = fields.map(([key, value]) => (
@@ -2268,6 +2290,7 @@ class AdminPanel {
         const body = {
             root_id: rootSelect && rootSelect.value ? parseInt(rootSelect.value, 10) : null,
             hydrated_only: useAdvancedHydratedOnly ? (hydratedEl ? hydratedEl.checked : true) : false,
+            plan_mode: useAdvancedHydratedOnly ? 'advanced_full_rescan' : 'incremental',
         };
         const maxFiles = maxFilesEl && maxFilesEl.value ? parseInt(maxFilesEl.value, 10) : null;
         if (maxFiles) body.max_files = maxFiles;
@@ -2311,6 +2334,7 @@ class AdminPanel {
         const integrity = plan.integrity || {};
         const limits = plan.limits || {};
         const confirmationPhrase = this._manualSyncExpectedConfirmationPhrase(plan);
+        const operatorStatement = this._manualSyncExpectedOperatorStatement(plan);
         const planSource = (plan.source || {}).plan_source || limits.plan_source || '-';
         const workset = limits.source_delta_workset || {};
         const rootScan = limits.root_scan_state || {};
@@ -2358,8 +2382,12 @@ class AdminPanel {
             <div class="mb-2 ${canExecute ? 'text-green-400' : 'text-warning'}">${this.escapeHtml(planMessage)}</div>
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
             ${requiresConfirmation ? `
-                <div><span class="text-secondary">Operator confirmation required for this write:</span></div>
-                <code id="dynamic-sync-confirmation-phrase" class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
+                <div><span class="text-secondary">Operator confirmation required before writes:</span></div>
+                <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(operatorStatement || '')}</code>
+                <details class="mt-2 text-xs text-secondary">
+                    <summary>Advanced exact audit phrase</summary>
+                    <code id="dynamic-sync-confirmation-phrase" class="block mt-1 break-all select-all font-mono">${this.escapeHtml(confirmationPhrase || '')}</code>
+                </details>
             ` : `<div class="text-secondary">No operator confirmation is needed because Execute is blocked for this plan.</div>`}
         `;
         if (confirmationEl) confirmationEl.value = '';
@@ -2375,6 +2403,14 @@ class AdminPanel {
             return integrity.production_confirmation_phrase;
         }
         return integrity.confirmation_phrase || '';
+    }
+
+    _manualSyncExpectedOperatorStatement(plan) {
+        const integrity = (plan || {}).integrity || {};
+        if (this.dynamicSyncProductionMode && integrity.production_operator_confirmation_statement) {
+            return integrity.production_operator_confirmation_statement;
+        }
+        return integrity.operator_confirmation_statement || '';
     }
 
     _updateManualSyncExecuteButton() {
@@ -2412,10 +2448,35 @@ class AdminPanel {
             app.showNotification('A manual sync job is already active. Watch the latest job status instead of starting another one.', 'warning');
             return;
         }
-        await this.runManualSyncDryRunPlan({ source: 'operator' });
+        await this.runManualSyncDryRunPlan({ source: 'operator', autoExecute: true });
     }
 
-    async runManualSyncDryRunPlan({ source = 'operator' } = {}) {
+    async _confirmAndExecuteManualSyncPlan() {
+        const plan = this.dynamicSyncPlan;
+        if (!plan) return false;
+        const counts = plan.counts || {};
+        const limits = plan.limits || {};
+        const statement = this._manualSyncExpectedOperatorStatement(plan);
+        const importCount = counts.estimated_import_count || 0;
+        const followupCount = counts.estimated_downstream_followup_count || 0;
+        const confirmationText = [
+            'Confirm and start the full manual sync pipeline?',
+            `This batch will process ${importCount} imports and ${followupCount} follow-up items.`,
+            `Batch cap: ${limits.max_files || 'server default'}`,
+            `Plan hash: ${((plan.integrity || {}).plan_hash || '').slice(0, 12)}`,
+            'Stages: import -> classification -> AI tagging -> localization -> report.',
+            'Automatic/scheduled/startup/service sync stays OFF.',
+            statement ? `Operator statement: ${statement}` : '',
+        ].filter(Boolean).join('\n');
+        if (!window.confirm(confirmationText)) {
+            app.showNotification('Manual sync plan was not executed.', 'warning');
+            return false;
+        }
+        await this.executeManualSyncPlan({ operatorConfirmedFullChain: true });
+        return true;
+    }
+
+    async runManualSyncDryRunPlan({ source = 'operator', autoExecute = false } = {}) {
         if (this.dynamicSyncActionInFlight) return;
         const body = this._manualSyncRequestBody({ useAdvancedHydratedOnly: source === 'advanced' });
         if (!body.root_id) {
@@ -2443,6 +2504,7 @@ class AdminPanel {
             inFlight: true,
             label: source === 'advanced' ? 'Running dry-run plan' : 'Planning manual sync',
             detail: `POST /api/admin/dynamic-library-sync/manual-sync/plan request=${planRequestId}`,
+            stageStatus: { plan: 'running' },
         });
         this._renderManualSyncPlanProgress({
             plan_request_id: planRequestId,
@@ -2484,6 +2546,8 @@ class AdminPanel {
             this._renderManualSyncPlan(plan);
             const finalCounts = plan.counts || {};
             const finalStates = finalCounts.state_counts || {};
+            const finalScanned = finalCounts.metadata_entries_seen || finalCounts.scanned_files || finalCounts.total_seen || 0;
+            const finalPlanItems = finalCounts.plan_items || finalCounts.total_seen || 0;
             this._renderManualSyncPlanProgress({
                 plan_request_id: planRequestId,
                 status: 'completed',
@@ -2492,16 +2556,17 @@ class AdminPanel {
                 root_id: body.root_id,
                 max_files: (plan.limits || {}).max_files || body.max_files,
                 hydrated_only: !!((plan.limits || {}).hydrated_only),
-                current_item_index: finalCounts.total_seen || 0,
+                current_item_index: finalScanned,
                 counts: {
-                    seen: finalCounts.total_seen || 0,
+                    seen: finalScanned,
+                    metadata_entries_seen: finalScanned,
                     skipped_historical: (plan.limits || {}).unchanged_known_files || 0,
                     skipped_unsupported: finalStates.skipped_unsupported || 0,
                     placeholders_found: finalStates.skipped_placeholder || 0,
                     hydrated: 0,
                     importable: finalCounts.estimated_import_count || 0,
-                    planned: finalCounts.total_seen || 0,
-                    batch_candidates: finalCounts.total_seen || 0,
+                    planned: finalPlanItems,
+                    batch_candidates: finalPlanItems,
                     failed: finalStates.failed || 0,
                 },
                 events: [{ at: new Date().toISOString(), phase: 'completed', status: 'completed' }],
@@ -2514,10 +2579,18 @@ class AdminPanel {
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: false,
-                label: '计划已生成',
-                detail: `seen=${(plan.counts || {}).total_seen || 0}, import=${(plan.counts || {}).estimated_import_count || 0}`,
+                label: 'Plan completed',
+                detail: `metadata seen=${finalScanned}, plan items=${finalPlanItems}, import=${(plan.counts || {}).estimated_import_count || 0}`,
+                stageStatus: { plan: 'completed' },
             });
-            app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.plan_ready', 'Dry-run plan ready.'), 'success');
+            const actionable = ((plan.counts || {}).estimated_import_count || 0)
+                + ((plan.counts || {}).estimated_downstream_followup_count || 0);
+            const executable = !!((plan.counts || {}).batch_executable || (plan.limits || {}).batch_executable);
+            if (autoExecute && actionable > 0 && executable) {
+                await this._confirmAndExecuteManualSyncPlan();
+            } else {
+                app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.plan_ready', 'Dry-run plan ready.'), 'success');
+            }
         } catch (e) {
             this.dynamicSyncPlan = null;
             this._updateManualSyncExecuteButton();
@@ -2535,8 +2608,9 @@ class AdminPanel {
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: false,
-                label: '计划失败',
+                label: 'Plan failed',
                 detail: message,
+                stageStatus: { plan: 'failed' },
             });
         } finally {
             if (watchdogId) window.clearInterval(watchdogId);
@@ -2546,7 +2620,7 @@ class AdminPanel {
         }
     }
 
-    async executeManualSyncPlan() {
+    async executeManualSyncPlan({ operatorConfirmedFullChain = false } = {}) {
         if (!this.dynamicSyncPlan || this.dynamicSyncActionInFlight || this._manualSyncActiveJobRunning()) return;
         const body = this._manualSyncRequestBody();
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
@@ -2556,16 +2630,18 @@ class AdminPanel {
         body.expected_plan_hash = integrity.plan_hash;
         body.hydrated_only = !!limits.hydrated_only;
         const expected = this._manualSyncExpectedConfirmationPhrase(this.dynamicSyncPlan);
+        const operatorStatement = this._manualSyncExpectedOperatorStatement(this.dynamicSyncPlan);
         const confirmation = confirmationEl ? confirmationEl.value.trim() : '';
-        if (!expected || confirmation !== expected) {
-            app.showNotification('Enter the exact visible confirmation phrase before executing.', 'error');
+        if (!operatorConfirmedFullChain && (!expected || confirmation !== expected)) {
+            app.showNotification('Use Start manual sync for the normal full-chain flow, or enter the exact advanced confirmation phrase.', 'error');
             this._updateManualSyncExecuteButton();
             return;
         }
-        body.confirmation_phrase = confirmation;
+        body.confirmation_phrase = operatorConfirmedFullChain ? '' : confirmation;
+        body.operator_confirmation_statement = operatorConfirmedFullChain ? operatorStatement : null;
         body.plan_created_at = (this.dynamicSyncPlan.job || {}).created_at;
         body.plan_request_id = this.dynamicSyncPlan.plan_request_id;
-        body.production_acceptance_approved = !!this.dynamicSyncProductionMode && confirmation === expected;
+        body.production_acceptance_approved = !!this.dynamicSyncProductionMode && (operatorConfirmedFullChain || confirmation === expected);
         body.gui_validation_session_id = guiProvenance.gui_validation_session_id || this.dynamicSyncGuiSessionId;
         body.gui_validation_session_token = this.dynamicSyncGuiSessionToken;
         body.client_route = guiProvenance.client_route || '/admin?tab=content#dynamic-library-sync-section';
@@ -2577,8 +2653,9 @@ class AdminPanel {
         this._manualSyncSetProgress({
             visible: true,
             inFlight: true,
-            label: '正在启动执行',
+            label: 'Starting full manual sync',
             detail: 'POST /api/admin/dynamic-library-sync/manual-sync/execute',
+            stageStatus: { plan: 'completed', import: 'running' },
         });
         try {
             const job = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/execute', {
@@ -2596,13 +2673,14 @@ class AdminPanel {
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: true,
-                label: `执行中：Job #${job.id}`,
+                label: `Running job #${job.id}`,
                 detail: 'Waiting for import, classification, AI tagging, localization, and report stages.',
+                stageStatus: { plan: 'completed', import: 'running' },
             });
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.execute_started', 'Manual sync execute started.'), 'success');
         } catch (e) {
             const message = `Manual sync execute blocked: ${e.message || e}`;
-            this._manualSyncSetProgress({ visible: true, inFlight: false, label: '执行未启动', detail: message });
+            this._manualSyncSetProgress({ visible: true, inFlight: false, label: 'Execute not started', detail: message, stageStatus: { plan: 'completed', import: 'failed' } });
             app.showNotification(message, 'error');
             this._manualSyncSetControlsBusy(false);
             this._updateManualSyncExecuteButton();
@@ -2645,6 +2723,23 @@ class AdminPanel {
         const execute = job.manual_sync_execute || {};
         const outcomes = execute.outcome_counts || {};
         const active = ['pending', 'running', 'cancelling'].includes(job.status);
+        const currentStage = execute.current_stage || 'import';
+        const stageOrder = ['plan', 'import', 'classification', 'ai_tagging', 'localization', 'summary'];
+        const stageStatus = {};
+        if (job.status === 'completed' || job.status === 'completed_with_failures') {
+            stageOrder.forEach((stage) => { stageStatus[stage] = 'completed'; });
+        } else if (job.status === 'failed' || job.status === 'cancelled') {
+            const failedIndex = Math.max(1, stageOrder.indexOf(currentStage));
+            stageOrder.forEach((stage, index) => {
+                stageStatus[stage] = index < failedIndex ? 'completed' : (index === failedIndex ? 'failed' : 'queued');
+            });
+        } else {
+            const runningIndex = Math.max(1, stageOrder.indexOf(currentStage));
+            stageOrder.forEach((stage, index) => {
+                stageStatus[stage] = index < runningIndex ? 'completed' : (index === runningIndex ? 'running' : 'queued');
+            });
+        }
+        this._renderManualSyncStageStrip(stageStatus);
         statusEl.innerHTML = `
             <div>Latest manual sync job #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | stage=${this.escapeHtml(execute.current_stage || '-')}</div>
             <div>seen=${job.total_seen || 0}, imported=${job.new_items || 0}, failed=${job.failed_items || 0}</div>
@@ -2655,8 +2750,9 @@ class AdminPanel {
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: true,
-                label: `执行中：Job #${job.id}`,
+                label: `Running job #${job.id}`,
                 detail: `stage=${execute.current_stage || '-'}, seen=${job.total_seen || 0}, imported=${job.new_items || 0}`,
+                stageStatus,
             });
         }
         this._updateManualSyncExecuteButton();
@@ -2678,7 +2774,7 @@ class AdminPanel {
                     this._manualSyncSetProgress({
                         visible: true,
                         inFlight: false,
-                        label: `任务结束：${job.status || '-'}`,
+                        label: `Job finished: ${job.status || '-'}`,
                         detail: `Job #${job.id}: seen=${job.total_seen || 0}, imported=${job.new_items || 0}, failed=${job.failed_items || 0}`,
                     });
                     this.loadDynamicSyncDashboard();
@@ -2687,7 +2783,7 @@ class AdminPanel {
                 window.clearInterval(this.dynamicSyncPollTimer);
                 this.dynamicSyncPollTimer = null;
                 this._manualSyncSetControlsBusy(false);
-                this._manualSyncSetProgress({ visible: true, inFlight: false, label: '轮询失败', detail: e.message || String(e) });
+                this._manualSyncSetProgress({ visible: true, inFlight: false, label: 'Polling failed', detail: e.message || String(e) });
                 app.showNotification(`Manual sync polling failed: ${e.message || e}`, 'error');
             }
         }, 1500);

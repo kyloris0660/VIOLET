@@ -662,6 +662,11 @@ class Settings:
         return max(0, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS", "2")))
 
     @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_SAFETY_LOOKBACK_SECONDS(self) -> int:
+        """Recent mtime window included before the root import watermark."""
+        return max(0, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_SAFETY_LOOKBACK_SECONDS", "604800")))
+
+    @property
     def DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS(self) -> int:
         """Recommended execution time cap for a later manual sync acceptance run."""
         return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS", "600")))
