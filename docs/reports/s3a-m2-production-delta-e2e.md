@@ -5,11 +5,102 @@
 - Phase: `S3A-M2` / `Production Delta Manual Sync E2E + GPU Telemetry`.
 - Status: `completed_with_followup_required`.
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
-- Standard pipeline flow: `incomplete`.
+- Standard pipeline flow: `backend_and_isolated_browser_e2e_validated; production_gui_acceptance_pending`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis before this update: `e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11` plus working-tree fixes for the latest Job #15 discovery/cap-ordering blocker.
+- Head SHA: `0e6ba221293644a13a9dde5038b3a61c3bac6e11`.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
+
+## Current Evidence Update
+
+- S3A-M2 remains **not safe to merge** and must not claim `target_met`.
+- Correction: the previous retry-readiness closeout was premature because the required repeated local iCloud-copy incremental E2E had not yet been completed. That validation is now complete and recorded in `docs/reports/s3a-m2-local-copy-incremental-e2e-summary.json`.
+- The repeated local-copy E2E used an isolated source root, isolated test DB, and isolated app storage. It copied `965` locally available JPG/PNG files from the existing iCloud/photo source library without downloading additional cloud images and without mutating the original source/iCloud files.
+- The repeated local-copy E2E passed `10` sequential cycles with pass criteria failures `[]`: baseline import, no-change no-op, small increment, medium increment, old-mtime increment, large stable root + cap-limited increment, duplicate/unsupported/hidden outcome, placeholder/cloud simulation, unknown-vs-non_anime gating, and legacy-backlog-plus-new-files.
+- Plan expensive operations stayed `0/0/0/0` for content reads/hash/decode/hydration across all cycles.
+- A real browser test against the isolated test server validated the normal operator flow: `Start manual sync` -> browser confirmation -> execute request -> stage UI completion, without using the Advanced exact audit phrase.
+- Final production GUI Execute acceptance is still pending. The project owner may retry production GUI acceptance on this head or newer, but this is not a merge recommendation and not a normal-use safety claim.
+
+## Priority Workset Backlog Root Cause
+
+Read-only production audit artifacts:
+
+- Public summary: `docs/reports/s3a-m2-priority-backlog-audit-summary.json`.
+- Private raw artifact root: `.local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/`.
+- Production DB writes: `False`.
+- Source/iCloud mutation: `False`.
+
+For root `2` / `icloud-photos-production`:
+
+- `total_dynamic_source_items=40096`.
+- `total_priority_workset_rows=22902`.
+- `legacy_pending_changed_rows=22698`, all outside the mtime safety window.
+- `rows_with_media_id=35448`.
+- `rows_matching_existing_media=35448`.
+- `rows_matching_existing_media_hash=34723`.
+- `rows_imported_but_still_pending_or_changed=22698`.
+- `rows_with_downstream_followup_needed=0`.
+- `rows_with_retryable_failures=0`.
+- `rows_that_should_be_actionable_now=204`.
+- `rows_that_should_be_stable_noop=34703`.
+- `rows_that_need_repair_or_migration=22698`.
+
+Filesystem/media reconciliation:
+
+- `file_visible_and_media_exists=22698`.
+- `metadata_matches_existing_import=22698`.
+- `stale_update_check_artifact=22698`.
+- `real_new_or_changed_candidate=204`.
+- `file_visible_but_no_media=200`.
+- `file_missing_and_no_media=4`.
+
+Root cause: the 22902-row priority workset is not normal steady-state work. The dominant subset, `22698` rows, is stale historical update-check/source-ledger state in `blombooru_dynamic_source_items`: already-imported media/hash/storage evidence existed, but rows remained `sync_state=changed` and `import_status=pending`. Earlier full import/execute paths did not reconcile these equal-hash imported rows into terminal stable no-op states, and earlier tests did not model a near-full-import production ledger with tens of thousands of stale changed/pending rows.
+
+Tactical mitigation implemented: normal planning excludes legacy pending/changed rows outside the safety window from current priority selection, so they do not consume actionable cap or hide new ledger-missing files.
+
+Structural cleanup is proposed but not executed. Dry-run repair candidate count is `22698`; candidate condition is pending changed rows outside the safety window with media id or existing content-hash evidence and no downstream follow-up. Proposed target is stable `skipped_existing_media` / existing-hash no-op state. Production DB repair requires explicit project-owner approval, backup/export, private repair ledger, rerun of this backlog audit, and contract/redaction validation.
+
+## Repeated Local-Copy Incremental E2E
+
+This is the required repeated incremental validation, not a one-time bulk import proof.
+
+| Cycle | Added | Total files | Selected | Imported | Existing | Unsupported | Placeholder | Non-target | Unknown | Failed | Legacy seen/selected | Plan s | Total s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|
+| baseline import | 500 | 500 | 500 | 494 | 6 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.183 | 415.940 |
+| no-change | 0 | 500 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.207 | 0.207 |
+| small increment | 10 | 510 | 10 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.318 | 9.229 |
+| medium increment | 100 | 610 | 100 | 100 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.207 | 79.266 |
+| old-mtime increment | 100 | 710 | 100 | 100 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.248 | 78.816 |
+| large stable root + cap increment | 120 | 830 | 120 | 120 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.303 | 92.427 |
+| duplicate/unsupported/hidden outcome | 17 | 847 | 13 | 11 | 1 | 3 | 1 | 0 | 0 | 0 | 0/0 | 0.305 | 10.137 |
+| placeholder/cloud simulation | 1 | 848 | 0 | 0 | 0 | 3 | 2 | 0 | 0 | 0 | 0/0 | 0.312 | 0.312 |
+| unknown vs non_anime/classifier unavailable | 5 | 853 | 5 | 5 | 0 | 3 | 2 | 2 | 2 | 1 | 0/0 | 0.299 | 4.992 |
+| legacy backlog + new files | 120 | 973 | 127 | 120 | 6 | 3 | 2 | 0 | 0 | 1 | 494/0 | 0.331 | 103.458 |
+
+Conclusions:
+
+- No-change was a fast, explainable no-op.
+- Repeated increments selected current ledger-missing work instead of stale backlog.
+- Old-mtime copied files were discovered and imported.
+- The simulated legacy backlog cycle saw `494` stale legacy rows and selected `0` of them, while importing the new batch.
+- Outcome breakdown accounted for duplicate/existing, unsupported, placeholder-like, confirmed non-target, unknown, and classification-unavailable cases.
+- `unknown` was not treated as `non_anime`; classifier-unavailable rows were deferred/blocked instead of non-target skipped.
+
+## Isolated Real Browser Normal Flow
+
+- Browser base URL: `http://127.0.0.1:8024`.
+- Web Admin source root: `s3a-m2-local-copy-e2e`.
+- Normal operator card visible: `True`.
+- Advanced exact execute box hidden before the normal flow: `True`.
+- Browser confirmation described the full pipeline in Chinese: import -> classification -> AI tagging -> localization -> report.
+- Execute request observed: `True`.
+- Latest isolated GUI-created job: `#10`, status `completed`, `request_source=web_admin_gui`.
+- GUI plan hash binding: `True`; GUI plan flow verified: `True`.
+- Plan candidate pool: `14` (`5` imports and `9` downstream follow-up items).
+- Legacy backlog skipped in browser test: `494`.
+- Plan expensive operations: `0/0/0/0`.
+
+This proves the normal operator flow in an isolated real browser environment. It does not replace final user-performed production GUI Execute acceptance.
 
 ## Counts
 
@@ -283,12 +374,13 @@
 
 ## Current Merge / Retry Status
 
-- Manual sync safety judgement: `manual_sync_not_safe_blockers_remaining`.
+- Manual sync safety judgement: `manual_sync_not_yet_safe_gui_execute_unvalidated`.
 - Remaining blockers:
   - `confirmed_non_target_ai_localization_contamination_unrepaired`: #7/#8 confirmed `non_anime` `ai_wd` assignments require approved deterministic repair or explicit acceptance as deferred debt. Unknown #7/#8 AI tags are not included in default destructive repair.
-  - `normal_flow_gui_execute_retry_required_after_fix`: job #15 exposed a discovery/cap ordering bug after the normal-flow fixes; that bug is fixed in code and report, but a normal-flow retry on the fixed head is still required.
+  - `real_production_gui_execute_acceptance_pending_after_local_copy_e2e`: isolated repeated incremental E2E and isolated browser normal flow have passed, but production GUI Execute acceptance still needs a user-created run on this head or newer.
   - `gui_validator_after_normal_flow_run_pending`: the GUI acceptance validator must pass on a normal-flow GUI execute run after the fix.
-- The user should not treat S3A-M2 as complete or safe to merge from job #13 or job #15 alone.
+- The user may retry production GUI acceptance on this head or newer, but must not treat S3A-M2 as complete or safe to merge until the production GUI run and validator pass.
+- Priority backlog repair/migration: proposed as a dry-run plan and not executed. It is not required before the next acceptance retry because normal planning now excludes those stale rows from actionable cap and isolated backlog-cycle/browser evidence passed, but it remains recommended follow-up before long-term steady-state cleanup.
 
 ## Safety
 
@@ -306,6 +398,7 @@
 - Actual launcher/Web Admin GUI Execute acceptance is still not completed after the later user-path zero-import partial plan (`seen=1000`, `import=0`, `partial_scan=yes`). This patch changes the scanner/workset model so priority ledger rows cannot hide new filesystem files, stable existing/duplicate rows cannot consume actionable cap, and downstream follow-up rows are executable; it still needs Codex re-review and then a real GUI Execute run before merge.
 - Actual launcher/Web Admin GUI Execute acceptance is also not completed after the P0 normal Plan architecture failure (`gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380`, about `3727s`, still `checking_supported`). The normal Plan/Execute boundary and operator UI have now been redesigned and test/browser validated in isolation, but production GUI Execute must not be retried until this head is reviewed and accepted for retry.
 - Actual launcher/Web Admin GUI Execute acceptance is not completed after the later job `#15` discovery failure on head `e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11`: the planner selected 500 historical/legacy candidates that all resolved to `existing_media_hash`, while 133 ledger-missing supported filesystem files were visible outside the selected priority workset. The planner now excludes legacy pending backlog from normal priority, performs filesystem metadata fallback, prioritizes current ledger-missing candidates, and needs a user retry on the fixed head.
+- Required repeated local-copy incremental E2E is now completed and passed. This evidence allows a production GUI acceptance retry, but it is not a substitute for the final production GUI Execute acceptance.
 - The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.
 - Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet.
 

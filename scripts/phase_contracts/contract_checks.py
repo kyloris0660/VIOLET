@@ -6495,6 +6495,8 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
             "api_vs_gui_divergence": Mapping,
             "branch_profile_provenance": Mapping,
             "scanner_incremental_model": Mapping,
+            "priority_backlog_root_cause": Mapping,
+            "local_copy_repeated_incremental_e2e": Mapping,
             "localization_diagnosis": Mapping,
             "unsupported_inventory": Mapping,
             "manual_sync_safety_judgement": Mapping,
@@ -6666,6 +6668,129 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
                         path="scanner_incremental_model.cap_semantics",
                         expected="actionable candidates; unchanged existing media excluded",
                         actual=cap_semantics,
+                    )
+
+        priority_backlog = _get(summary, "priority_backlog_root_cause", {})
+        if isinstance(priority_backlog, Mapping):
+            required_priority_paths = (
+                "table",
+                "root_public_ref",
+                "total_priority_workset_rows",
+                "legacy_pending_changed_rows",
+                "legacy_pending_changed_outside_safety_window",
+                "rows_matching_existing_media",
+                "rows_imported_but_still_pending_or_changed",
+                "rows_that_should_be_actionable_now",
+                "rows_that_need_repair_or_migration",
+                "root_cause",
+                "repair_migration_plan",
+                "production_db_repair_executed",
+            )
+            for key in required_priority_paths:
+                if key not in priority_backlog:
+                    result.fail(
+                        "s3a_m2_priority_backlog_root_cause_incomplete",
+                        "S3A-M2 must explain the priority workset backlog root cause and repair/migration posture.",
+                        path=f"priority_backlog_root_cause.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+            repair_plan = priority_backlog.get("repair_migration_plan")
+            if isinstance(repair_plan, Mapping):
+                for key in ("candidate_count", "candidate_condition", "requires_owner_approval", "would_modify_db", "validation_after_repair"):
+                    if key not in repair_plan:
+                        result.fail(
+                            "s3a_m2_priority_backlog_repair_plan_incomplete",
+                            "S3A-M2 priority backlog repair must include dry-run conditions, approval requirement, and validation plan.",
+                            path=f"priority_backlog_root_cause.repair_migration_plan.{key}",
+                            expected="present",
+                            actual=None,
+                        )
+
+        local_copy_e2e = _get(summary, "local_copy_repeated_incremental_e2e", {})
+        if isinstance(local_copy_e2e, Mapping):
+            required_local_copy_paths = (
+                "status",
+                "bulk_run_alone_sufficient",
+                "completed",
+                "scenario_count",
+                "pass_criteria_failures",
+                "plan_expensive_ops_zero_all_cycles",
+                "browser_normal_flow_passed",
+                "source_originals_mutated",
+                "production_db_used",
+                "user_retry_recommended",
+            )
+            for key in required_local_copy_paths:
+                if key not in local_copy_e2e:
+                    result.fail(
+                        "s3a_m2_local_copy_incremental_e2e_incomplete",
+                        "S3A-M2 must report the repeated local-copy incremental E2E status before recommending production GUI retry.",
+                        path=f"local_copy_repeated_incremental_e2e.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+            retry_recommended = _as_bool(local_copy_e2e.get("user_retry_recommended", False))
+            if retry_recommended:
+                if not _as_bool(local_copy_e2e.get("completed", False)):
+                    result.fail(
+                        "s3a_m2_retry_recommended_without_local_copy_e2e",
+                        "User production GUI retry must not be recommended before the repeated local-copy incremental E2E completes.",
+                        path="local_copy_repeated_incremental_e2e.completed",
+                        expected=True,
+                        actual=local_copy_e2e.get("completed"),
+                    )
+                failures = local_copy_e2e.get("pass_criteria_failures")
+                if failures:
+                    result.fail(
+                        "s3a_m2_retry_recommended_with_local_copy_failures",
+                        "User production GUI retry must not be recommended while local-copy incremental E2E pass criteria failed.",
+                        path="local_copy_repeated_incremental_e2e.pass_criteria_failures",
+                        expected=[],
+                        actual=failures,
+                    )
+                if _as_int(local_copy_e2e.get("scenario_count", 0)) < 10:
+                    result.fail(
+                        "s3a_m2_retry_recommended_without_required_incremental_cycles",
+                        "User production GUI retry requires the repeated incremental E2E cycle set, not a one-time bulk import.",
+                        path="local_copy_repeated_incremental_e2e.scenario_count",
+                        expected=">=10",
+                        actual=local_copy_e2e.get("scenario_count"),
+                    )
+                if not _as_bool(local_copy_e2e.get("plan_expensive_ops_zero_all_cycles", False)):
+                    result.fail(
+                        "s3a_m2_retry_recommended_with_expensive_plan_ops",
+                        "Normal manual sync Plan must remain metadata-only before recommending production GUI retry.",
+                        path="local_copy_repeated_incremental_e2e.plan_expensive_ops_zero_all_cycles",
+                        expected=True,
+                        actual=local_copy_e2e.get("plan_expensive_ops_zero_all_cycles"),
+                    )
+                if not _as_bool(local_copy_e2e.get("browser_normal_flow_passed", False)):
+                    result.fail(
+                        "s3a_m2_retry_recommended_without_browser_normal_flow",
+                        "User production GUI retry requires real browser evidence for the normal Start manual sync flow.",
+                        path="local_copy_repeated_incremental_e2e.browser_normal_flow_passed",
+                        expected=True,
+                        actual=local_copy_e2e.get("browser_normal_flow_passed"),
+                    )
+                if _as_bool(local_copy_e2e.get("bulk_run_alone_sufficient", True)):
+                    result.fail(
+                        "s3a_m2_retry_recommended_from_bulk_only_evidence",
+                        "A one-time bulk local-copy run is not sufficient evidence for production GUI retry.",
+                        path="local_copy_repeated_incremental_e2e.bulk_run_alone_sufficient",
+                        expected=False,
+                        actual=local_copy_e2e.get("bulk_run_alone_sufficient"),
+                    )
+                if _as_bool(local_copy_e2e.get("source_originals_mutated", False)) or _as_bool(local_copy_e2e.get("production_db_used", False)):
+                    result.fail(
+                        "s3a_m2_local_copy_e2e_safety_violation",
+                        "Local-copy E2E must not mutate original source/iCloud files or use the production DB.",
+                        path="local_copy_repeated_incremental_e2e",
+                        expected="source_originals_mutated=false and production_db_used=false",
+                        actual={
+                            "source_originals_mutated": local_copy_e2e.get("source_originals_mutated"),
+                            "production_db_used": local_copy_e2e.get("production_db_used"),
+                        },
                     )
 
         safety_judgement = _get(summary, "manual_sync_safety_judgement", {})

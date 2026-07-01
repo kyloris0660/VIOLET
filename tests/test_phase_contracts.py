@@ -1761,6 +1761,44 @@ def _s3a_m2_summary(**overrides: object) -> dict:
             ],
             "public_safe": True,
         },
+        "priority_backlog_root_cause": {
+            "table": "blombooru_dynamic_source_items",
+            "root_public_ref": "registered-root-2-public",
+            "total_priority_workset_rows": 22902,
+            "legacy_pending_changed_rows": 22698,
+            "legacy_pending_changed_outside_safety_window": 22698,
+            "rows_matching_existing_media": 35448,
+            "rows_imported_but_still_pending_or_changed": 22698,
+            "rows_that_should_be_actionable_now": 204,
+            "rows_that_need_repair_or_migration": 22698,
+            "root_cause": "historical update-check backlog left imported existing-media rows in changed/pending source-ledger state",
+            "production_db_repair_executed": False,
+            "repair_migration_plan": {
+                "candidate_count": 22698,
+                "candidate_condition": "pending changed rows outside safety window with media_id or existing content hash and no downstream follow-up",
+                "requires_owner_approval": True,
+                "would_modify_db": False,
+                "validation_after_repair": [
+                    "rerun priority backlog audit",
+                    "verify current actionable rows preserved",
+                    "verify public redaction",
+                ],
+            },
+            "public_safe": True,
+        },
+        "local_copy_repeated_incremental_e2e": {
+            "status": "completed",
+            "bulk_run_alone_sufficient": False,
+            "completed": True,
+            "scenario_count": 10,
+            "pass_criteria_failures": [],
+            "plan_expensive_ops_zero_all_cycles": True,
+            "browser_normal_flow_passed": True,
+            "source_originals_mutated": False,
+            "production_db_used": False,
+            "user_retry_recommended": True,
+            "public_safe": True,
+        },
         "standard_pipeline_flow": {
             "version": 1,
             "status": "completed",
@@ -4171,6 +4209,52 @@ def test_s3a_m2_contract_rejects_missing_scanner_incremental_model() -> None:
     result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
 
     assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_priority_backlog_root_cause() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary.pop("priority_backlog_root_cause")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_incomplete_priority_backlog_repair_plan() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["priority_backlog_root_cause"]["repair_migration_plan"].pop("candidate_condition")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_priority_backlog_repair_plan_incomplete" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_local_copy_incremental_e2e() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary.pop("local_copy_repeated_incremental_e2e")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_retry_recommendation_from_bulk_only_evidence() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    local_copy = summary["local_copy_repeated_incremental_e2e"]
+    local_copy["completed"] = False
+    local_copy["bulk_run_alone_sufficient"] = True
+    local_copy["scenario_count"] = 1
+    local_copy["browser_normal_flow_passed"] = False
+    local_copy["pass_criteria_failures"] = ["bulk_only_not_incremental"]
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_retry_recommended_without_local_copy_e2e" in codes
+    assert "s3a_m2_retry_recommended_with_local_copy_failures" in codes
+    assert "s3a_m2_retry_recommended_without_required_incremental_cycles" in codes
+    assert "s3a_m2_retry_recommended_without_browser_normal_flow" in codes
+    assert "s3a_m2_retry_recommended_from_bulk_only_evidence" in codes
 
 
 def test_s3a_m2_contract_rejects_scanner_without_metadata_fast_skip() -> None:

@@ -239,7 +239,7 @@
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
     "head_refresh_note": "Report updated for the Job #15 discovery/cap ordering fix; final PR head must be refreshed after commit/push.",
-    "head_sha": "see_pr_body_after_push_self_referential_commit",
+    "head_sha": "0e6ba221293644a13a9dde5038b3a61c3bac6e11",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": false,
     "old_server_process_from_main_or_old_branch_found": false,
@@ -693,6 +693,10 @@
     "ui_recommendation": "Show historical accumulated deferred/failed separately from current actionable delta blockers, with stable reason and extension aggregates.",
     "ui_should_distinguish_historical_from_current_actionable": true
   },
+  "deferred_followups": [
+    "priority_backlog_db_ledger_repair_migration_requires_owner_approval_before_execution",
+    "eventual automatic/scheduled sync remains out of scope and requires separate design/approval"
+  ],
   "dry_run": {
     "approval_phrase": "I APPROVE S3A-M2 PRODUCTION DELTA E2E 10c4b0999b41",
     "estimated_ai_tagging_count": 49,
@@ -956,12 +960,12 @@
       "why_earlier_evidence_missed": "API/runner paths did not exercise a human-scale GUI plan over the production root long enough to hit the old total elapsed timeout."
     },
     {
-      "event": "job15_zero_import_discovery_failure_after_added_photos",
-      "what_happened": "After the user added 110+ photos, Web Admin job #15 completed with seen=500/imported=0/failed=0; all 500 run items were existing-media skips while read-only source audit found 133 ledger-missing supported files visible under the registered root.",
       "detected_by": "User manual GUI acceptance plus read-only server-log, DynamicSyncRun, DynamicSyncRunItem, DynamicSourceItem, and filesystem-vs-ledger audit.",
-      "why_earlier_evidence_missed": "Previous old-mtime tests proved unknown files could be selected when reached, but did not cover a large historical pending/changed priority workset consuming the entire normal batch before filesystem ledger-missing fallback.",
+      "event": "job15_zero_import_discovery_failure_after_added_photos",
       "production_impact": "Job #15 wrote no imports/classification/AI/localization and did not mutate source/iCloud content, but it created a misleading zero-import completed GUI job with 500 existing-media skip ledger rows.",
-      "repair_or_prevention": "Legacy pending/changed backlog outside the mtime safety window is excluded from normal priority, filesystem metadata fallback reaches ledger-missing files, candidates are sorted before the actionable cap is applied, and regression tests cover known backlog plus old-mtime unseen files."
+      "repair_or_prevention": "Legacy pending/changed backlog outside the mtime safety window is excluded from normal priority, filesystem metadata fallback reaches ledger-missing files, candidates are sorted before the actionable cap is applied, and regression tests cover known backlog plus old-mtime unseen files.",
+      "what_happened": "After the user added 110+ photos, Web Admin job #15 completed with seen=500/imported=0/failed=0; all 500 run items were existing-media skips while read-only source audit found 133 ledger-missing supported files visible under the registered root.",
+      "why_earlier_evidence_missed": "Previous old-mtime tests proved unknown files could be selected when reached, but did not cover a large historical pending/changed priority workset consuming the entire normal batch before filesystem ledger-missing fallback."
     }
   ],
   "final_inventory": {
@@ -997,7 +1001,7 @@
     "imported": 349,
     "localized": 5
   },
-  "generated_at": "2026-06-29T10:28:12.030903+00:00",
+  "generated_at": "2026-07-01T07:28:55Z",
   "governance_followup": {
     "future_feature_work_plan_only_first": true,
     "implementation_after_plan_review": true,
@@ -1048,6 +1052,18 @@
     "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
     "latest_endpoint_clicked": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "latest_exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
+    "latest_job15_discovery_failure": {
+      "fixed_pending_user_retry": true,
+      "observed_failed": 0,
+      "observed_imported": 0,
+      "observed_seen": 500,
+      "plan_request_id": "gui-plan-f5b3646a-e365-4fdc-baec-1b1f59817e8d",
+      "post_fix_estimated_import_count": 341,
+      "post_fix_ledger_missing_supported_files_visible": 133,
+      "root_cause": "legacy_priority_workset_consumed_batch_before_ledger_missing_discovery",
+      "root_id": 2,
+      "run_id": 15
+    },
     "latest_observed_head_sha": "e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11",
     "latest_observed_timeout_seconds": 597,
     "latest_zero_import_fix": "existing/duplicate media no longer consume import-candidate cap; registered roots prioritize actionable source-delta workset before historical existing rows; zero-import blocked plans hide confirmation controls",
@@ -1083,19 +1099,7 @@
     "timeout_behavior_after_fix": "operator sees persistent progress, request id, phase/counts/events, can cancel plan, and duplicate active plans are rejected",
     "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
     "violet_env": "production",
-    "watchdog_timeout_added": true,
-    "latest_job15_discovery_failure": {
-      "run_id": 15,
-      "plan_request_id": "gui-plan-f5b3646a-e365-4fdc-baec-1b1f59817e8d",
-      "root_id": 2,
-      "observed_seen": 500,
-      "observed_imported": 0,
-      "observed_failed": 0,
-      "root_cause": "legacy_priority_workset_consumed_batch_before_ledger_missing_discovery",
-      "post_fix_estimated_import_count": 341,
-      "post_fix_ledger_missing_supported_files_visible": 133,
-      "fixed_pending_user_retry": true
-    }
+    "watchdog_timeout_added": true
   },
   "gui_execute_acceptance": {
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
@@ -1205,7 +1209,7 @@
     "watchdog_timeout_added": true,
     "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
   },
-  "head_sha": "see_pr_body_after_push_self_referential_commit",
+  "head_sha": "0e6ba221293644a13a9dde5038b3a61c3bac6e11",
   "head_sha_pending_final_amend": true,
   "head_sha_self_reference_note": "A committed report cannot embed its own final Git SHA without changing that SHA. The exact PR head is recorded in the PR body and Codex closeout after push.",
   "initial_localization_diagnosis": {
@@ -1356,6 +1360,103 @@
       "import": "completed",
       "localization": "completed",
       "plan": "completed"
+    }
+  },
+  "latest_job15_discovery_failure": {
+    "algorithm_fix": {
+      "actionable_cap_no_longer_consumed_by_legacy_pending_backlog": true,
+      "candidate_pool_sorted_before_actionable_cap": true,
+      "filesystem_metadata_fallback_always_reaches_ledger_missing_files_when_safe": true,
+      "ledger_missing_old_mtime_files_remain_discoverable_as_backfill": true,
+      "legacy_pending_outside_mtime_window_excluded_from_normal_priority": true,
+      "plan_content_reads_hash_decode_hydration": "0/0/0/0"
+    },
+    "first_attempt_assessment": {
+      "db_repair_performed": false,
+      "evidence": "Server log shows the first plan request returned 200 before the browser refresh. No production imports were written by that request in the read-only audit; job #15 later materialized a separate zero-import execute with 500 existing-media skips.",
+      "first_cap500_plan_request_seen": "gui-plan-d1ce0ffa-dc36-43e1-915b-bc4f322bb5b7",
+      "source_or_icloud_mutation_found": false
+    },
+    "observed_gui_run": {
+      "cap": 500,
+      "failed": 0,
+      "imported": 0,
+      "plan_elapsed_seconds_approx": 376,
+      "plan_expensive_operations": {
+        "content_reads": 0,
+        "decodes": 0,
+        "hashes": 0,
+        "hydrations": 0
+      },
+      "run_item_reason_counts": {
+        "existing_media_hash": 500
+      },
+      "run_item_state_counts": {
+        "skipped_existing_media": 500
+      },
+      "seen": 500,
+      "stage_ui_completed": true,
+      "status": "completed"
+    },
+    "observed_head_sha": "e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11",
+    "plan_request_id": "gui-plan-f5b3646a-e365-4fdc-baec-1b1f59817e8d",
+    "post_fix_read_only_plan_recheck": {
+      "candidate_pool_count": 341,
+      "cap": 500,
+      "elapsed_seconds": 21.515,
+      "estimated_import_count": 341,
+      "filesystem_walk_completed": true,
+      "ledger_missing_candidates": 141,
+      "ledger_missing_old_mtime_candidates": 13,
+      "ledger_missing_recent_candidates": 128,
+      "legacy_pending_outside_window_skips": 22698,
+      "metadata_entries_seen": 40217,
+      "mtime_new_candidates": 119,
+      "partial_scan": false,
+      "plan_expensive_operations": {
+        "content_reads": 0,
+        "decodes": 0,
+        "hashes": 0,
+        "hydrations": 0
+      },
+      "priority_workset_processed": 204,
+      "safety_window_candidates": 19
+    },
+    "production_execute_by_codex": false,
+    "read_only_source_audit": {
+      "known_existing_media": 35428,
+      "known_ledger_files": 40071,
+      "known_stable_skips": 17173,
+      "ledger_missing_files": 134,
+      "ledger_missing_old_mtime_files": 13,
+      "ledger_missing_supported_files": 133,
+      "ledger_missing_with_mtime_after_watermark": 120,
+      "metadata_walk_elapsed_seconds": 4.578,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/",
+      "unsupported_total": 4434,
+      "visible_files_total": 40205
+    },
+    "root": {
+      "id": 2,
+      "label": "icloud-photos-production",
+      "public_hash_prefix": "153684ac810c"
+    },
+    "root_cause": "The normal planner prioritized a large historical DynamicSourceItem workset before filesystem ledger-missing discovery. In this production root the workset contained 22902 priority rows, including 22698 old changed/pending rows from historical update-check state, so the cap was consumed by legacy candidates that executed as existing_media_hash before the planner reached newly added files.",
+    "run_id": 15,
+    "source_or_icloud_mutation_by_codex": false,
+    "status": "fixed_pending_user_retry",
+    "user_retry_required": true,
+    "validation": {
+      "json_tool_summary": "passed",
+      "production_execute_by_codex": false,
+      "public_redaction_contract": "passed; findings=0",
+      "py_compile_dynamic_library_sync_service": "passed",
+      "s3a_m2_contract": "passed; target_met_claimed=false",
+      "source_icloud_mutation_by_codex": false,
+      "tests_test_dynamic_library_sync_py": "66 passed in 15.33s",
+      "tests_test_phase_contracts_s3a_m2": "37 passed, 238 deselected in 0.64s",
+      "tests_test_s3a_m1_manual_sync_execute_py": "79 passed in 93.64s",
+      "tests_test_s3a_m2_delta_e2e_py": "26 passed in 7.47s"
     }
   },
   "latest_zero_import_partial_plan_incident": {
@@ -1512,6 +1613,415 @@
     "run_id": 8,
     "run_item_count": 173,
     "status": "passed"
+  },
+  "local_copy_repeated_incremental_e2e": {
+    "browser_evidence": {
+      "advanced_execute_hidden_before_normal_flow": true,
+      "base_url": "http://127.0.0.1:8024",
+      "candidate_pool_count": 14,
+      "execute_request_count": 1,
+      "gui_plan_flow_verified": true,
+      "gui_plan_hash_bound": true,
+      "latest_job_before_start_id": 9,
+      "latest_job_id": 10,
+      "latest_job_status": "completed",
+      "legacy_pending_outside_window_skips": 494,
+      "normal_operator_card_visible": true,
+      "plan_expensive_operations": {
+        "content_reads": 0,
+        "decodes": 0,
+        "hashes": 0,
+        "hydrations": 0
+      },
+      "plan_request_count": 5,
+      "status": "completed"
+    },
+    "browser_normal_flow_passed": true,
+    "bulk_run_alone_sufficient": false,
+    "completed": true,
+    "copied_files": 965,
+    "copy_failures": 0,
+    "pass_criteria_failures": [],
+    "plan_expensive_ops_zero_all_cycles": true,
+    "production_db_used": false,
+    "production_execute_run": false,
+    "public_safe": true,
+    "repeated_incremental_e2e_required": true,
+    "scenario_count": 10,
+    "scenario_metrics": [
+      {
+        "actual_imported_count": 494,
+        "ai_tagging_time_seconds": 0.561,
+        "candidate_pool_count": 500,
+        "classification_time_seconds": 0.55,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 500,
+        "failed_count": 0,
+        "files_added_this_cycle": 500,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 413.992,
+        "known_ledger_files_before": 0,
+        "ledger_missing_files_before": 500,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.148,
+        "metadata_entries_seen": 500,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.183,
+        "scenario": "cycle_0_baseline_import",
+        "selected_count": 500,
+        "skipped_duplicate": 0,
+        "skipped_existing": 6,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 0,
+        "skipped_unsupported": 0,
+        "total_files_in_test_root": 500,
+        "total_time_seconds": 415.94,
+        "unknown_count": 0
+      },
+      {
+        "actual_imported_count": 0,
+        "ai_tagging_time_seconds": 0.0,
+        "candidate_pool_count": 0,
+        "classification_time_seconds": 0.0,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 0,
+        "failed_count": 0,
+        "files_added_this_cycle": 0,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 0.0,
+        "known_ledger_files_before": 500,
+        "ledger_missing_files_before": 0,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.0,
+        "metadata_entries_seen": 500,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.207,
+        "scenario": "cycle_1_no_change_noop",
+        "selected_count": 0,
+        "skipped_duplicate": 0,
+        "skipped_existing": 0,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 0,
+        "skipped_unsupported": 0,
+        "total_files_in_test_root": 500,
+        "total_time_seconds": 0.207,
+        "unknown_count": 0
+      },
+      {
+        "actual_imported_count": 10,
+        "ai_tagging_time_seconds": 0.013,
+        "candidate_pool_count": 10,
+        "classification_time_seconds": 0.009,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 10,
+        "failed_count": 0,
+        "files_added_this_cycle": 10,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 8.341,
+        "known_ledger_files_before": 500,
+        "ledger_missing_files_before": 10,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.006,
+        "metadata_entries_seen": 510,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.318,
+        "scenario": "cycle_2_small_increment_current_mtime",
+        "selected_count": 10,
+        "skipped_duplicate": 0,
+        "skipped_existing": 0,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 0,
+        "skipped_unsupported": 0,
+        "total_files_in_test_root": 510,
+        "total_time_seconds": 9.229,
+        "unknown_count": 0
+      },
+      {
+        "actual_imported_count": 100,
+        "ai_tagging_time_seconds": 0.107,
+        "candidate_pool_count": 100,
+        "classification_time_seconds": 0.089,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 100,
+        "failed_count": 0,
+        "files_added_this_cycle": 100,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 78.215,
+        "known_ledger_files_before": 510,
+        "ledger_missing_files_before": 100,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.02,
+        "metadata_entries_seen": 610,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.207,
+        "scenario": "cycle_3_medium_increment_current_mtime",
+        "selected_count": 100,
+        "skipped_duplicate": 0,
+        "skipped_existing": 0,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 0,
+        "skipped_unsupported": 0,
+        "total_files_in_test_root": 610,
+        "total_time_seconds": 79.266,
+        "unknown_count": 0
+      },
+      {
+        "actual_imported_count": 100,
+        "ai_tagging_time_seconds": 0.121,
+        "candidate_pool_count": 100,
+        "classification_time_seconds": 0.095,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 100,
+        "failed_count": 0,
+        "files_added_this_cycle": 100,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 77.742,
+        "known_ledger_files_before": 610,
+        "ledger_missing_files_before": 100,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.023,
+        "metadata_entries_seen": 710,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.248,
+        "scenario": "cycle_4_old_mtime_increment",
+        "selected_count": 100,
+        "skipped_duplicate": 0,
+        "skipped_existing": 0,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 0,
+        "skipped_unsupported": 0,
+        "total_files_in_test_root": 710,
+        "total_time_seconds": 78.816,
+        "unknown_count": 0
+      },
+      {
+        "actual_imported_count": 120,
+        "ai_tagging_time_seconds": 0.125,
+        "candidate_pool_count": 120,
+        "classification_time_seconds": 0.102,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 120,
+        "failed_count": 0,
+        "files_added_this_cycle": 120,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 91.233,
+        "known_ledger_files_before": 710,
+        "ledger_missing_files_before": 120,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.029,
+        "metadata_entries_seen": 830,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.303,
+        "scenario": "cycle_5_large_stable_root_cap_limited_increment",
+        "selected_count": 120,
+        "skipped_duplicate": 0,
+        "skipped_existing": 0,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 0,
+        "skipped_unsupported": 0,
+        "total_files_in_test_root": 830,
+        "total_time_seconds": 92.427,
+        "unknown_count": 0
+      },
+      {
+        "actual_imported_count": 11,
+        "ai_tagging_time_seconds": 0.01,
+        "candidate_pool_count": 13,
+        "classification_time_seconds": 0.01,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 13,
+        "failed_count": 0,
+        "files_added_this_cycle": 17,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 9.173,
+        "known_ledger_files_before": 830,
+        "ledger_missing_files_before": 17,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.004,
+        "metadata_entries_seen": 847,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.305,
+        "scenario": "cycle_6_duplicate_unsupported_hidden_outcome_breakdown",
+        "selected_count": 13,
+        "skipped_duplicate": 0,
+        "skipped_existing": 1,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 1,
+        "skipped_unsupported": 3,
+        "total_files_in_test_root": 847,
+        "total_time_seconds": 10.137,
+        "unknown_count": 0
+      },
+      {
+        "actual_imported_count": 0,
+        "ai_tagging_time_seconds": 0.0,
+        "candidate_pool_count": 0,
+        "classification_time_seconds": 0.0,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 0,
+        "failed_count": 0,
+        "files_added_this_cycle": 1,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 0.0,
+        "known_ledger_files_before": 843,
+        "ledger_missing_files_before": 5,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.0,
+        "metadata_entries_seen": 848,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.312,
+        "scenario": "cycle_7_placeholder_cloud_state_simulated",
+        "selected_count": 0,
+        "skipped_duplicate": 0,
+        "skipped_existing": 0,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 2,
+        "skipped_unsupported": 3,
+        "total_files_in_test_root": 848,
+        "total_time_seconds": 0.312,
+        "unknown_count": 0
+      },
+      {
+        "actual_imported_count": 5,
+        "ai_tagging_time_seconds": 0.002,
+        "candidate_pool_count": 5,
+        "classification_time_seconds": 0.003,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 5,
+        "failed_count": 1,
+        "files_added_this_cycle": 5,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 3.96,
+        "known_ledger_files_before": 843,
+        "ledger_missing_files_before": 10,
+        "legacy_pending_outside_window_skips": 0,
+        "legacy_pending_rows_seen": 0,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.002,
+        "metadata_entries_seen": 853,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.299,
+        "scenario": "cycle_8_unknown_non_anime_classification_gate",
+        "selected_count": 5,
+        "skipped_duplicate": 0,
+        "skipped_existing": 0,
+        "skipped_non_target": 2,
+        "skipped_placeholder": 2,
+        "skipped_unsupported": 3,
+        "total_files_in_test_root": 853,
+        "total_time_seconds": 4.992,
+        "unknown_count": 2
+      },
+      {
+        "actual_imported_count": 120,
+        "ai_tagging_time_seconds": 0.131,
+        "candidate_pool_count": 127,
+        "classification_time_seconds": 0.097,
+        "continuation_state": "root_exhausted_or_no_continuation_required",
+        "estimated_import_count": 126,
+        "failed_count": 1,
+        "files_added_this_cycle": 120,
+        "filesystem_walk_complete": true,
+        "import_time_seconds": 102.076,
+        "known_ledger_files_before": 848,
+        "ledger_missing_files_before": 125,
+        "legacy_pending_outside_window_skips": 494,
+        "legacy_pending_rows_seen": 494,
+        "legacy_pending_rows_selected": 0,
+        "localization_time_seconds": 0.032,
+        "metadata_entries_seen": 973,
+        "more_batches_remain": false,
+        "plan_decode_count": 0,
+        "plan_hash_count": 0,
+        "plan_hydration_count": 0,
+        "plan_read_count": 0,
+        "plan_time_seconds": 0.331,
+        "scenario": "cycle_9_legacy_backlog_plus_new_files",
+        "selected_count": 127,
+        "skipped_duplicate": 0,
+        "skipped_existing": 6,
+        "skipped_non_target": 0,
+        "skipped_placeholder": 2,
+        "skipped_unsupported": 3,
+        "total_files_in_test_root": 973,
+        "total_time_seconds": 103.458,
+        "unknown_count": 0
+      }
+    ],
+    "source_icloud_download_forced": false,
+    "source_originals_mutated": false,
+    "source_scan_counts": {
+      "local_jpg_png_candidates": 35334,
+      "skipped_cloud_placeholder": 213,
+      "skipped_extension:.gif": 13,
+      "skipped_extension:.heic": 4062,
+      "skipped_extension:.ini": 1,
+      "skipped_extension:.jfif": 150,
+      "skipped_extension:.mov": 192,
+      "skipped_extension:.mp4": 28,
+      "skipped_extension:.pic": 1,
+      "skipped_extension:.webp": 7,
+      "skipped_too_large": 212
+    },
+    "status": "completed",
+    "target_local_count": 1000,
+    "test_db_name": "violet_s3a_m2_copy_e2e_062455_test",
+    "test_root_public_ref": "isolated-local-copy-test-root",
+    "test_storage_public_ref": "isolated-local-copy-test-storage",
+    "user_retry_recommended": true,
+    "user_retry_scope": "production_gui_acceptance_retry_only_not_merge_or_normal_use_claim"
   },
   "localization": {
     "backend_type": "llm_provider",
@@ -1674,47 +2184,6 @@
       "fails_if_localization_missing_without_accepted_policy": true,
       "requires_gui_created_run_newer_than_8": true
     }
-  },
-  "production_profile_clip_runtime_blocker_2026_07_01": {
-    "status": "fixed_pending_user_restart_and_retry",
-    "observed_user_blocker": "Manual sync blockers: Manual E2E requires classification-before-AI gating; set CONTENT_CLASSIFICATION_METHOD=clip for production acceptance.",
-    "root_cause": "The real launcher-managed production runtime read an existing private production profile that persisted manual_e2e_components.content_classification_method=heuristic. The previous fix changed new/default profile values to clip but did not migrate existing legacy profiles before Web Admin readiness.",
-    "actual_runtime_source": {
-      "profile_artifact": ".local_manifests/production_launcher/production-profile.json",
-      "profile_committed": false,
-      "violet_skip_dotenv": true,
-      "dot_env_can_not_repair_launcher_child_runtime": true
-    },
-    "fix": {
-      "missing_or_unmarked_legacy_heuristic_normalizes_to_clip": true,
-      "migration_marker": "content_classification_method_migrated_from=heuristic",
-      "explicit_non_clip_operator_update_fails_closed": true,
-      "fail_closed_gate": "manual_e2e_classification_method_clip",
-      "profile_repair_persists_normalized_value": true,
-      "automatic_background_sync_remains_off": true
-    },
-    "readiness_surfaces_aligned": {
-      "profile_status_json": true,
-      "diagnostic_summary_json": true,
-      "launcher_child_env": true,
-      "backend_settings": true,
-      "web_admin_readiness_policy": true,
-      "backend_execute_gate": true
-    },
-    "local_read_only_validation": {
-      "profile_status_method": "clip",
-      "profile_status_runtime_env_method": "clip",
-      "profile_status_migrated_from": "heuristic",
-      "child_settings_method": "clip",
-      "child_settings_env": "production",
-      "child_settings_db": "blombooru",
-      "child_settings_auto_sync_enabled": false,
-      "production_execute_run_by_codex": false,
-      "source_or_db_mutation": false
-    },
-    "operator_repair_command": ".\\venv\\Scripts\\python.exe scripts\\violet_production_control.py profile-repair --json",
-    "operator_restart_required": true,
-    "why_previous_tests_missed_it": "They covered new default/profile update behavior but not an already persisted private production profile with legacy heuristic and no explicit override marker."
   },
   "manual_gui_plan_timeout_2026_06_29": {
     "active_dynamic_sync_run_after_codex_audit": false,
@@ -1902,8 +2371,8 @@
     "future_manual_sync_safe_for_normal_use": false,
     "gpu_inference_path_reliable_for_manual_sync": true,
     "gui_execute_works_end_to_end": false,
-    "latest_reason": "Job #15 exposed a discovery/cap ordering bug: 500 legacy priority candidates executed as existing_media_hash while 133 ledger-missing supported files were visible outside the selected batch. The planner is fixed and read-only production recheck now selects 341 metadata-only candidates, but normal GUI acceptance and confirmed non-target repair are still pending.",
-    "manual_sync_safety_status": "manual_sync_not_safe_blockers_remaining",
+    "latest_reason": "isolated repeated incremental E2E and browser normal-flow validation passed, but real production GUI Execute acceptance/validator is still pending; historical confirmed non-target AI contamination still needs owner repair/acceptance decision",
+    "manual_sync_safety_status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
     "operator_checks_before_retry": [
       "wait for this follow-up head to be pushed and reviewed",
       "approve or complete the deterministic confirmed non-target AI/localization DB repair for #7/#8 before merge",
@@ -1936,13 +2405,18 @@
       "post-GUI validation script confirms a completed run newer than #8"
     ],
     "standardized_pipeline_reusable_for_future_automatic_design": true,
-    "status": "manual_sync_not_safe_blockers_remaining"
+    "status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
+    "user_can_retry_acceptance_now": true,
+    "user_retry_conditions": [
+      "pull/restart on this head or newer",
+      "run only the normal Web Admin manual sync flow",
+      "stop if counts are unexpected or GUI validator fails"
+    ]
   },
   "mode": "execute",
   "non_target_ai_localization_audit": {
     "ai_wd_assignment_count": 20675,
     "audit": "manual_sync_non_target_ai_localization_v1",
-    "db_writes_performed": false,
     "confirmed_non_target_ai_wd_assignment_count": 429,
     "confirmed_non_target_content_classes": [
       "non_anime"
@@ -1950,6 +2424,7 @@
     "confirmed_non_target_distinct_ai_wd_tags": 238,
     "confirmed_non_target_distinct_ai_wd_tags_with_zh_cn_translation": 237,
     "confirmed_non_target_media_with_ai_count": 12,
+    "db_writes_performed": false,
     "diagnosis": "Historical runs #7/#8 contain confirmed non_anime media that received ai_wd tags and localization. Unknown is not non-target; unknown/uncertain media are reported separately and are not default destructive repair candidates. Job #13 imported only anime-classified media.",
     "future_pipeline_fix": "manual_sync_execute now runs classification before AI tagging; confirmed non_anime skips AI/localization, classified unknown remains downstream-eligible, and classifier-unavailable/unclassified rows become classification blockers instead of non-target skips.",
     "job_13_non_target_media_with_ai_count": 0,
@@ -2012,8 +2487,8 @@
       }
     },
     "unknown_or_uncertain_ai_wd_assignment_count": 1216,
-    "unknown_or_uncertain_media_with_ai_count": 23,
-    "unknown_or_uncertain_default_action": "do_not_remove_ai_tags_by_default"
+    "unknown_or_uncertain_default_action": "do_not_remove_ai_tags_by_default",
+    "unknown_or_uncertain_media_with_ai_count": 23
   },
   "not_completed": [
     "Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.",
@@ -2151,6 +2626,163 @@
     "validator_requires_gui_run_newer_than_run_8": true,
     "validator_requires_signed_gui_session": true
   },
+  "previous_closeout_correction": {
+    "insufficient_evidence_before": [
+      "unit tests",
+      "mock planner tests",
+      "read-only production plan recheck",
+      "one-time bulk local-copy import evidence"
+    ],
+    "prevention_added": [
+      "phase contract requires local_copy_repeated_incremental_e2e and priority_backlog_root_cause sections",
+      "report records scenario_count/pass_criteria_failures before user retry recommendation",
+      "real browser normal-flow evidence is linked to the local-copy E2E section"
+    ],
+    "public_safe": true,
+    "status": "corrected",
+    "what_was_wrong": "The previous closeout treated unit/mock/read-only planner evidence and a bulk local-copy run as enough to recommend user retry before the required repeated incremental local-copy E2E was complete.",
+    "why_requirement_was_missed": "The validation checklist did not bind the explicit multi-cycle E2E requirement to a contract/report gate; readiness language was written before the required artifact existed."
+  },
+  "priority_backlog_root_cause": {
+    "age_distribution": {
+      "first_seen_at": {
+        "1-6d": 471,
+        "7-29d": 39625
+      },
+      "last_seen_at": {
+        "1-6d": 39287,
+        "7-29d": 9,
+        "<1d": 800
+      },
+      "updated_at": {
+        "1-6d": 39296,
+        "<1d": 800
+      }
+    },
+    "ai_tagging_status_counts": {
+      "ai_tagged": 403,
+      "deferred": 5393,
+      "tagged": 7570,
+      "tagged_reused": 4032,
+      "waiting_import": 22698
+    },
+    "audited_root_in_scope": true,
+    "classification_status_counts": {
+      "classified": 7936,
+      "classified_reused": 4069,
+      "deferred": 5393,
+      "waiting_import": 22698
+    },
+    "dominant_category": "stale_update_check_artifact_already_represented_by_media",
+    "health_gate_added": "phase contract now requires this root-cause section and repair posture; planner tests cover legacy backlog plus new ledger-missing files",
+    "import_status_counts": {
+      "deferred": 5393,
+      "imported": 12005,
+      "pending": 22698
+    },
+    "legacy_pending_changed_inside_safety_window": 0,
+    "legacy_pending_changed_outside_safety_window": 22698,
+    "legacy_pending_changed_rows": 22698,
+    "localization_status_counts": {
+      "deferred": 5393,
+      "localized": 12005,
+      "waiting_ai_tags": 22698
+    },
+    "priority_workset_rows_current_normal": 204,
+    "private_artifacts": {
+      "private_repair_candidate_ledger": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/priority-backlog-repair-candidates-root2-20260701T071732Z.jsonl",
+      "raw_private_root": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/"
+    },
+    "production_db_repair_executed": false,
+    "public_safe": true,
+    "reason_cross_tabulation_top": {
+      "cloud_placeholder|deferred|deferred": 203,
+      "cloud_placeholder|missing|deferred": 1,
+      "existing_media_hash|skipped_existing_media|deferred": 735,
+      "hidden|deferred|deferred": 1,
+      "none|changed|pending": 22698,
+      "none|imported|imported": 65,
+      "none|unchanged|imported": 11940,
+      "source_missing|missing|deferred": 20,
+      "unsupported_extension|deferred|deferred": 4432,
+      "unsupported_extension|missing|deferred": 1
+    },
+    "reconciliation_against_filesystem_and_media": {
+      "file_missing_and_no_media": 4,
+      "file_visible_and_media_exists": 22698,
+      "file_visible_but_no_media": 200,
+      "metadata_matches_existing_import": 22698,
+      "real_new_or_changed_candidate": 204,
+      "stale_update_check_artifact": 22698
+    },
+    "related_tables": [
+      "blombooru_media",
+      "blombooru_dynamic_sync_run_items",
+      "app-managed storage presence check"
+    ],
+    "repair_migration_plan": {
+      "candidate_condition": "pending new/changed rows outside safety window with media_id or existing content hash, no downstream follow-up needed",
+      "candidate_count": 22698,
+      "private_repair_candidate_ledger": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/priority-backlog-repair-candidates-root2-20260701T071732Z.jsonl",
+      "proposed_target": {
+        "ai_tagging_status": "ai_tagged_if_media_present_else_waiting_import",
+        "classification_status": "classified_if_media_present_else_waiting_import",
+        "deferred_reason": "existing_media_hash",
+        "import_status": "skipped",
+        "localization_status": "localized_or_not_applicable_if_media_present_else_waiting_ai_tags",
+        "sync_state": "skipped_existing_media"
+      },
+      "requires_owner_approval": true,
+      "rollback_strategy": "take/export production DB backup plus retain private candidate ledger before any update; restore from backup or revert candidates by private ledger if validation fails",
+      "validation_after_repair": [
+        "rerun priority backlog audit and expect rows_that_need_repair_or_migration to drop for repaired candidates",
+        "rerun normal plan read-only and verify current actionable candidates preserved",
+        "verify downstream follow-up and retryable failures are preserved",
+        "rerun S3A-M2 contract and public redaction contract"
+      ],
+      "why_real_work_not_lost": "conditions require existing media/hash evidence and no downstream follow-up; retryable failures/current cloud placeholders/current actionable rows are excluded from the repair candidate set",
+      "would_modify_db": false
+    },
+    "root_cause": "historical update-check/source-ledger state left already-imported existing-media rows in sync_state=changed/import_status=pending; earlier full import/execute did not reconcile equal-hash imported rows into terminal stable no-op states.",
+    "root_public_ref": "registered-root-2-public",
+    "rows_imported_but_still_pending_or_changed": 22698,
+    "rows_matching_existing_media": 35448,
+    "rows_matching_existing_media_hash": 34723,
+    "rows_that_need_repair_or_migration": 22698,
+    "rows_that_should_be_actionable_now": 204,
+    "rows_that_should_be_stable_noop": 34703,
+    "rows_with_app_storage_media_present": 35448,
+    "rows_with_downstream_followup_needed": 0,
+    "rows_with_media_id": 35448,
+    "rows_with_retryable_failures": 0,
+    "rows_without_media_id": 4648,
+    "status": "audited_read_only_root_cause_identified",
+    "status_cross_tabulation_top": {
+      "changed|pending|waiting_import|waiting_import|waiting_ai_tags": 22698,
+      "deferred|deferred|deferred|deferred|deferred": 4636,
+      "imported|imported|classified|ai_tagged|localized": 65,
+      "missing|deferred|deferred|deferred|deferred": 22,
+      "skipped_existing_media|deferred|deferred|deferred|deferred": 735,
+      "unchanged|imported|classified_reused|tagged_reused|localized": 4032,
+      "unchanged|imported|classified_reused|tagged|localized": 37,
+      "unchanged|imported|classified|ai_tagged|localized": 338,
+      "unchanged|imported|classified|tagged|localized": 7533
+    },
+    "structural_cleanup_status": "dry_run_proposed_not_executed_requires_project_owner_approval",
+    "sync_state_counts": {
+      "changed": 22698,
+      "deferred": 4636,
+      "imported": 65,
+      "missing": 22,
+      "skipped_existing_media": 735,
+      "unchanged": 11940
+    },
+    "table": "blombooru_dynamic_source_items",
+    "tactical_planner_mitigation": "normal planner excludes legacy pending/changed rows outside the mtime safety window from current priority selection and does not let them consume actionable cap; current ledger-missing files are discovered by metadata fallback.",
+    "total_dynamic_source_items": 40096,
+    "total_priority_workset_rows": 22902,
+    "why_tests_missed_it": "previous tests covered candidate ordering and small synthetic rows, but not a production-scale near-full-import steady state with tens of thousands of stale changed/pending ledger rows."
+  },
   "private_artifacts": {
     "private_artifacts_committed": false,
     "root": ".local_manifests/s3a_m2_delta_e2e",
@@ -2161,6 +2793,47 @@
     "approval_phrase_type": "s3a_m2_plan_hash_bound",
     "exact_statement": "production acceptance performed",
     "performed": true
+  },
+  "production_profile_clip_runtime_blocker_2026_07_01": {
+    "actual_runtime_source": {
+      "dot_env_can_not_repair_launcher_child_runtime": true,
+      "profile_artifact": ".local_manifests/production_launcher/production-profile.json",
+      "profile_committed": false,
+      "violet_skip_dotenv": true
+    },
+    "fix": {
+      "automatic_background_sync_remains_off": true,
+      "explicit_non_clip_operator_update_fails_closed": true,
+      "fail_closed_gate": "manual_e2e_classification_method_clip",
+      "migration_marker": "content_classification_method_migrated_from=heuristic",
+      "missing_or_unmarked_legacy_heuristic_normalizes_to_clip": true,
+      "profile_repair_persists_normalized_value": true
+    },
+    "local_read_only_validation": {
+      "child_settings_auto_sync_enabled": false,
+      "child_settings_db": "blombooru",
+      "child_settings_env": "production",
+      "child_settings_method": "clip",
+      "production_execute_run_by_codex": false,
+      "profile_status_method": "clip",
+      "profile_status_migrated_from": "heuristic",
+      "profile_status_runtime_env_method": "clip",
+      "source_or_db_mutation": false
+    },
+    "observed_user_blocker": "Manual sync blockers: Manual E2E requires classification-before-AI gating; set CONTENT_CLASSIFICATION_METHOD=clip for production acceptance.",
+    "operator_repair_command": ".\\venv\\Scripts\\python.exe scripts\\violet_production_control.py profile-repair --json",
+    "operator_restart_required": true,
+    "readiness_surfaces_aligned": {
+      "backend_execute_gate": true,
+      "backend_settings": true,
+      "diagnostic_summary_json": true,
+      "launcher_child_env": true,
+      "profile_status_json": true,
+      "web_admin_readiness_policy": true
+    },
+    "root_cause": "The real launcher-managed production runtime read an existing private production profile that persisted manual_e2e_components.content_classification_method=heuristic. The previous fix changed new/default profile values to clip but did not migrate existing legacy profiles before Web Admin readiness.",
+    "status": "fixed_pending_user_restart_and_retry",
+    "why_previous_tests_missed_it": "They covered new default/profile update behavior but not an already persisted private production profile with legacy heuristic and no explicit override marker."
   },
   "public_redaction": {
     "checked_payloads": [
@@ -2271,21 +2944,9 @@
     ]
   },
   "remaining_blockers": [
-    {
-      "code": "confirmed_non_target_ai_localization_contamination_unrepaired",
-      "detail": "Read-only audit found 12 confirmed non_anime S3A-M2 media from runs #7/#8 with 429 ai_wd assignments; repair requires explicit project-owner approval and private backup/ledger. The 23 unknown media with 1216 ai_wd assignments are not non-target and are excluded from default destructive repair.",
-      "status": "blocking_merge"
-    },
-    {
-      "code": "normal_flow_gui_execute_retry_required_after_fix",
-      "detail": "Job #15 proved the normal GUI path can still select the wrong workset: it executed 500 legacy existing-media candidates while newly visible ledger-missing files were outside the selected batch. The discovery algorithm is fixed in this head; a new normal-flow user GUI execute retry is required after pulling/restarting.",
-      "status": "blocking_final_gui_acceptance"
-    },
-    {
-      "code": "gui_validator_after_normal_flow_run_pending",
-      "detail": "A normal-flow GUI execute run on the fixed head must pass validate_s3a_m2_gui_execute_acceptance.py before S3A-M2 can be complete.",
-      "status": "blocking_merge"
-    }
+    "real_production_gui_execute_acceptance_pending_after_local_copy_e2e",
+    "gui_acceptance_validator_pending_for_user_created_production_run",
+    "historical_confirmed_non_target_ai_wd_assignments_need_owner_repair_or_explicit_deferral_acceptance"
   ],
   "remaining_run": {
     "ai_tagged": 49,
@@ -2618,6 +3279,12 @@
     "risk_to_future_manual_sync": "They can keep historical deferred/failed counters high unless the UI separates unsupported historical inventory from current actionable delta."
   },
   "validation": {
+    "browser_normal_flow_local_copy": {
+      "latest_job_id": 10,
+      "latest_job_status": "completed",
+      "private_artifact": ".local_manifests/s3a_m2_delta_e2e/local_copy_incremental_e2e/20260701T062450Z/browser_flow/browser-flow-evidence.json",
+      "status": "passed"
+    },
     "incremental_scanner_workset_fix_tests": {
       "commands": [
         "python -m py_compile backend/app/services/dynamic_library_sync_service.py backend/app/services/manual_sync_execute_service.py scripts/violet_production_control.py scripts/validate_s3a_m2_gui_execute_acceptance.py -> passed",
@@ -2637,6 +3304,14 @@
     "launcher_plan_progress_fix_added": true,
     "launcher_plan_timeout_seconds_observed": 597,
     "launcher_web_admin": "blocked_pending_reviewer_recheck_and_user_manual_gui_execute_after_incremental_scanner_workset_fix",
+    "local_copy_repeated_incremental_e2e": {
+      "pass_criteria_failures": [],
+      "plan_expensive_ops_zero_all_cycles": true,
+      "private_artifact": ".local_manifests\\s3a_m2_delta_e2e\\local_copy_incremental_e2e\\20260701T062450Z\\local-copy-incremental-e2e-private.json",
+      "scenario_count": 10,
+      "status": "passed",
+      "summary_path": "docs/reports/s3a-m2-local-copy-incremental-e2e-summary.json"
+    },
     "pre_user_acceptance_focused_tests": {
       "command_summary": "pytest tests/test_admin_dynamic_sync_ui.py tests/test_dynamic_library_sync.py plus S3A-M2/phase/manual-execute focused tests",
       "result": "64 passed + 296 passed",
@@ -2646,6 +3321,12 @@
       "command_summary": "python -m py_compile changed backend/services/routes and S3A-M2 scripts",
       "result": "passed",
       "status": "passed"
+    },
+    "priority_backlog_audit": {
+      "production_db_mutated": false,
+      "rows_that_need_repair_or_migration": 22698,
+      "status": "completed_read_only",
+      "summary_path": "docs/reports/s3a-m2-priority-backlog-audit-summary.json"
     },
     "progress_timeout_policy_tests": {
       "commands": [
@@ -2712,103 +3393,6 @@
     }
   },
   "validation_basis_head_sha": "e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11",
-  "latest_job15_discovery_failure": {
-    "status": "fixed_pending_user_retry",
-    "observed_head_sha": "e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11",
-    "run_id": 15,
-    "plan_request_id": "gui-plan-f5b3646a-e365-4fdc-baec-1b1f59817e8d",
-    "root": {
-      "id": 2,
-      "label": "icloud-photos-production",
-      "public_hash_prefix": "153684ac810c"
-    },
-    "observed_gui_run": {
-      "cap": 500,
-      "seen": 500,
-      "imported": 0,
-      "failed": 0,
-      "status": "completed",
-      "stage_ui_completed": true,
-      "plan_elapsed_seconds_approx": 376,
-      "run_item_state_counts": {
-        "skipped_existing_media": 500
-      },
-      "run_item_reason_counts": {
-        "existing_media_hash": 500
-      },
-      "plan_expensive_operations": {
-        "content_reads": 0,
-        "hashes": 0,
-        "decodes": 0,
-        "hydrations": 0
-      }
-    },
-    "read_only_source_audit": {
-      "visible_files_total": 40205,
-      "known_ledger_files": 40071,
-      "ledger_missing_files": 134,
-      "ledger_missing_supported_files": 133,
-      "ledger_missing_with_mtime_after_watermark": 120,
-      "ledger_missing_old_mtime_files": 13,
-      "known_stable_skips": 17173,
-      "known_existing_media": 35428,
-      "unsupported_total": 4434,
-      "metadata_walk_elapsed_seconds": 4.578,
-      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/"
-    },
-    "root_cause": "The normal planner prioritized a large historical DynamicSourceItem workset before filesystem ledger-missing discovery. In this production root the workset contained 22902 priority rows, including 22698 old changed/pending rows from historical update-check state, so the cap was consumed by legacy candidates that executed as existing_media_hash before the planner reached newly added files.",
-    "first_attempt_assessment": {
-      "first_cap500_plan_request_seen": "gui-plan-d1ce0ffa-dc36-43e1-915b-bc4f322bb5b7",
-      "evidence": "Server log shows the first plan request returned 200 before the browser refresh. No production imports were written by that request in the read-only audit; job #15 later materialized a separate zero-import execute with 500 existing-media skips.",
-      "source_or_icloud_mutation_found": false,
-      "db_repair_performed": false
-    },
-    "algorithm_fix": {
-      "legacy_pending_outside_mtime_window_excluded_from_normal_priority": true,
-      "filesystem_metadata_fallback_always_reaches_ledger_missing_files_when_safe": true,
-      "candidate_pool_sorted_before_actionable_cap": true,
-      "actionable_cap_no_longer_consumed_by_legacy_pending_backlog": true,
-      "ledger_missing_old_mtime_files_remain_discoverable_as_backfill": true,
-      "plan_content_reads_hash_decode_hydration": "0/0/0/0"
-    },
-    "post_fix_read_only_plan_recheck": {
-      "cap": 500,
-      "metadata_entries_seen": 40217,
-      "candidate_pool_count": 341,
-      "estimated_import_count": 341,
-      "partial_scan": false,
-      "mtime_new_candidates": 119,
-      "safety_window_candidates": 19,
-      "ledger_missing_candidates": 141,
-      "ledger_missing_recent_candidates": 128,
-      "ledger_missing_old_mtime_candidates": 13,
-      "legacy_pending_outside_window_skips": 22698,
-      "priority_workset_processed": 204,
-      "filesystem_walk_completed": true,
-      "elapsed_seconds": 21.515,
-      "plan_expensive_operations": {
-        "content_reads": 0,
-        "hashes": 0,
-        "decodes": 0,
-        "hydrations": 0
-      }
-    },
-    "production_execute_by_codex": false,
-    "source_or_icloud_mutation_by_codex": false,
-    "user_retry_required": true,
-    "validation": {
-      "py_compile_dynamic_library_sync_service": "passed",
-      "json_tool_summary": "passed",
-      "tests_test_dynamic_library_sync_py": "66 passed in 15.33s",
-      "tests_test_s3a_m1_manual_sync_execute_py": "79 passed in 93.64s",
-      "tests_test_s3a_m2_delta_e2e_py": "26 passed in 7.47s",
-      "tests_test_phase_contracts_s3a_m2": "37 passed, 238 deselected in 0.64s",
-      "s3a_m2_contract": "passed; target_met_claimed=false",
-      "public_redaction_contract": "passed; findings=0",
-      "production_execute_by_codex": false,
-      "source_icloud_mutation_by_codex": false
-    }
-  },
   "validation_commands_latest": {
     "job15_discovery_fix": [
       "python -m py_compile backend/app/services/dynamic_library_sync_service.py -> passed",
