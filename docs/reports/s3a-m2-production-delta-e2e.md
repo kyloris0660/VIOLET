@@ -9,7 +9,7 @@
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
 - Head SHA at run #16 incident diagnosis base: `33441ae22bc44f1f74d9d3b7abbcee4308e00435`.
 - API/runner production executes #7/#8 performed: `True`.
-- User production GUI Execute acceptance performed: `attempted_but_failed_run_16`; acceptance pass: `False`.
+- User production GUI Execute acceptance performed: `attempted_but_failed_run_16_and_run_17`; acceptance pass: `False`.
 - Authorized production source-ledger repair performed: `True` (`22698` stale priority rows terminalized).
 - Source root public identity: `153684ac810c2191`.
 
@@ -17,14 +17,16 @@
 
 - S3A-M2 remains **not safe to merge** and must not claim `target_met`.
 - Correction retained: the earlier retry-readiness closeout was premature because the repeated local iCloud-copy incremental E2E had not been completed at that time. That validation has now been completed and is recorded in `docs/reports/s3a-m2-local-copy-incremental-e2e-summary.json`.
-- The repeated local-copy E2E used an isolated source root, isolated test DB, and isolated app storage. It copied `900` locally available JPG/PNG files from the existing iCloud/photo source library without downloading additional cloud images and without mutating the original source/iCloud files.
-- The repeated local-copy E2E passed `10` sequential cycles with pass criteria failures `[]`: baseline import, no-change no-op, small increment, medium increment, old-mtime increment, large stable root + cap-limited increment, duplicate/unsupported/hidden outcome, placeholder/cloud simulation, unknown-vs-non_anime gating, and legacy-backlog-plus-new-files.
+- The repeated local-copy E2E used an isolated source root, isolated test DB, and isolated app storage. It copied `850` locally available JPG/PNG files from the existing iCloud/photo source library without downloading additional cloud images and without mutating the original source/iCloud files.
+- The repeated local-copy E2E passed `11` sequential cycles with pass criteria failures `[]`: baseline import, no-change no-op, small increment, medium increment, old-mtime increment, large stable root + cap-limited increment, duplicate/unsupported/hidden outcome, placeholder/cloud simulation, unknown-vs-non_anime gating, legacy-backlog-plus-new-files, and the new partial-import downstream recovery scenario reproducing the run #16/#17 failure shape.
 - Plan expensive operations stayed `0/0/0/0` for content reads/hash/decode/hydration across all cycles.
 - A real browser test against the isolated test server validated the normal operator flow: `Start manual sync` -> browser confirmation -> execute request -> stage UI completion, without using the Advanced exact audit phrase.
 - The stale production priority backlog is no longer merely documented or sorted around. The bounded authorized production ledger repair executed and after-audit shows `legacy_pending_changed_rows=0` and `rows_that_need_repair_or_migration=0` for the audited stale condition.
-- Final production GUI Execute acceptance is still pending. The project owner may retry production GUI acceptance on this head or newer, but this is not a merge recommendation and not a normal-use safety claim.
+- Architecture consolidation audit added: `docs/reports/s3a-m2-manual-sync-architecture-audit.md`. It inventories the full current manual-sync mechanism graph, defines canonical Plan/Execute ordering, records the conflict matrix, and documents which mechanisms were kept, refactored, merged, isolated, or deferred.
+- Final production GUI Execute acceptance is still pending. The project owner may retry production GUI acceptance only after pulling the fixed head, running the new preflight script, and confirming the page shows the downstream follow-up batch; this is not a merge recommendation and not a normal-use safety claim.
 - New production GUI evidence after the previous report: the user performed real Web Admin GUI Execute run `#16` on head `33441ae22bc44f1f74d9d3b7abbcee4308e00435`. The run imported media but failed before downstream stages, so it is not an acceptance pass.
 - Bounded run #16 fix: retryable source read/hydration failures may stop further import attempts in the current run, but they no longer prevent classification / AI tagging / localization from running for media already imported in that run. Runs with downstream-complete imported media plus retryable source failures now end as `completed_with_failures` rather than plain `failed`.
+- New production GUI evidence after that fix: the user performed real Web Admin GUI Execute run `#17`. It reached `completed_with_failures` and ran all visible stages, but it still did not complete run #16's `155` already-imported downstream-incomplete media. This is a current-scope acceptance blocker and is diagnosed below.
 
 ## Production GUI Execute Run #16 Incident
 
@@ -87,6 +89,115 @@ Policy judgment:
 - Correct status for that shape is `completed_with_failures` / `completed_with_followup_required` according to existing project conventions.
 - Production GUI acceptance is still not complete until the user retries on the fixed head and `scripts/validate_s3a_m2_gui_execute_acceptance.py` passes.
 
+## Production GUI Execute Run #17 Follow-Up Recovery Incident
+
+Evidence source:
+
+- User-performed real production Web Admin GUI Execute run `#17`.
+- Read-only diagnosis artifacts:
+  - `.local_manifests/s3a_m2_delta_e2e/run16_run17_followup_incident/run16-run17-followup-diagnosis-public-20260701T173218Z.json`.
+  - `.local_manifests/s3a_m2_delta_e2e/run16_run17_followup_incident/run16-followup-readonly-proof-public-20260701T173923Z.json`.
+- CodeX did not run production Execute/import/classification/AI/localization during this follow-up.
+
+Run #17 summary:
+
+- Run type / mode: `manual_sync_execute` / `production_acceptance`.
+- Status: `completed_with_failures`.
+- Seen / plan items: `348`.
+- Imported: `3`.
+- Failed source reads: `11` (`read_error=2`, `read_timeout=9`).
+- Deferred unprocessed: `334`.
+- Downstream stages for the three newly imported media completed: `classified=3`, `ai_tagged=3`, `localized=3`.
+- Execute summary recorded `downstream_continued_after_import_stop=True` and `retryable_source_failure_count=11`.
+
+What run #17 proved:
+
+- The #16 import failure-budget fix worked for media imported in the same run: run #17's three newly imported media completed downstream despite retryable source-read failures.
+- It did **not** recover the already-imported downstream-incomplete media from run #16. Run #17 wrote the run #16 source items as `deferred_unprocessed` again.
+
+Read-only DB diagnosis for the run #16 leftovers after run #17:
+
+- Run #16 imported media/source items inspected: `155`.
+- Media rows present: `155/155`.
+- App-managed storage files present: `155/155`.
+- Current `DynamicSourceItem` state: `sync_state=deferred_unprocessed=155`, `import_status=imported=155`.
+- Current downstream state: `classification_status=deferred=155`, `ai_tagging_status=deferred=155`, `localization_status=deferred=155`.
+- Current deferred reason: `not_processed_budget_stop=155`.
+- `media_id` and `content_hash` are present for all `155` rows.
+- Current planner helper evaluation before the fix already said `requires_followup=True` and priority `10` for `155/155`, but run #17's persisted private plan ordered the `193` import candidates before the `155` downstream follow-up candidates. The failure budget tripped during import before the follow-up items were reached, and `_materialize_deferred_unprocessed_items()` marked the remaining follow-up items as `deferred_unprocessed`.
+
+Root cause:
+
+- The bug was not that the run #16 rows were unrecoverable.
+- The bug was the combination of two gaps:
+  1. downstream follow-up discovery was still tied to the source-ledger/file workset rather than being an explicit app-media-backed normal-plan pass; and
+  2. execute trusted persisted private plan ordering, so import failures could stop the run before already-imported downstream follow-up items were processed.
+
+Fix made for this incident:
+
+- Normal manual-sync planning now has an explicit app-media-backed downstream follow-up pass. It selects `DynamicSourceItem` rows for the selected root where `media_id` exists, the item is an imported/media-backed representation, app-managed media evidence exists, and classification/AI/localization is incomplete.
+- These records become `downstream_followup_planned`, count under `estimated_downstream_followup_count` / `db_followup_candidates`, preserve `source_item_id`, `media_id`, `content_hash`, and `relative_path_hash`, and do not require source file read/hash/decode/hydration.
+- Follow-up priority now puts `imported` / `not_processed_budget_stop` recovery rows ahead of older `existing_media_hash` media-backed follow-up rows. This prevents cap-limited batches from spending the first batch on older existing-media follow-up before recovering run #16 leftovers.
+- Execute now stably reorders private plan items by group before processing: `downstream_followup_planned` first, then `import_planned`, then other states. It preserves original order within each group. This protects production even if an older or stale persisted private plan had import items before follow-up items.
+- Retryable source failures now write lightweight durable retry metadata under `DynamicSourceItem.metadata_json.manual_sync_retry` with `attempt_count`, `last_retry_at`, `last_failure_reason`, `retryable`, and `long_term_state` (`needs_diagnosis` after five attempts). No schema migration was added in this PR.
+
+Read-only production proof after the fix:
+
+- Source root: `2`.
+- App-media-backed follow-up rows discoverable by current code: `880`.
+- Run #16 source items discoverable as follow-up: `155/155`.
+- With cap `500`, run #16 source items selected in the next batch: `155/155`.
+- Priority distribution: `0=155` (`not_processed_budget_stop` / imported recovery), `5=725` (`existing_media_hash` media-backed follow-up).
+- App-managed storage present for follow-up rows: `880/880`.
+- Plan expensive operations for this proof: `content_reads=0`, `hashes=0`, `decodes=0`, `hydrations=0`.
+- Source/iCloud mutation: `False`; production Execute run by CodeX: `False`.
+
+Why previous tests missed this:
+
+- Earlier repeated local-copy incremental E2E covered no-change, new files, old-mtime files, cap-limited batches, duplicates, unsupported files, placeholders, and unknown-vs-non_anime gating, but it did not reproduce the production shape of imported media being left downstream-incomplete after an import failure-budget stop and then requiring recovery in a second normal run.
+- Existing execute tests covered downstream follow-up execution, including missing source files, but not the combination of a misordered persisted private plan plus retryable import failure budget before follow-up items.
+- Existing planner tests covered source-file-present downstream follow-up and a missing-source execute path, but not an app-media-backed planner pass independent of the filesystem/source walk.
+- The test environment therefore proved the backend pieces in isolation but did not assert next-run recovery of partially processed imported media using production-like `deferred_unprocessed/not_processed_budget_stop` `DynamicSourceItem` states.
+
+## Manual GUI Acceptance One-Click Preparation
+
+New operator scripts:
+
+- PowerShell: `scripts/prepare_s3a_m2_manual_gui_acceptance.ps1`.
+- Double-click wrapper: `scripts/prepare_s3a_m2_manual_gui_acceptance.cmd`.
+
+How to run:
+
+```powershell
+.\scripts\prepare_s3a_m2_manual_gui_acceptance.ps1 -ExpectedHead <expected-head-sha>
+```
+
+or double-click / run:
+
+```cmd
+scripts\prepare_s3a_m2_manual_gui_acceptance.cmd -ExpectedHead <expected-head-sha>
+```
+
+What the script does:
+
+- Verifies it is running inside the V.I.O.L.E.T. repo.
+- Fetches origin, verifies/checks out `codex/s3a-m2-production-delta-e2e-gpu-telemetry`, optionally verifies the expected head, and fails closed on tracked dirty runtime changes unless explicitly overridden.
+- Stops only the managed production server via `scripts/violet_production_control.py stop --json`, then runs `scripts/audit_active_violet_servers.py --ports 8000,8012-8024 --include-process-tree --json` and fails closed on ambiguous listeners.
+- Validates repo venv identity with `scripts/check_python_env.py`.
+- Validates the production profile points at `blombooru`, has manual sync/execute enabled, keeps automation flags OFF, and has manual E2E classification/AI/LLM readiness enabled.
+- Read-only verifies source root `2` is active `icloud-photos-production`.
+- Starts the launcher-managed production server, verifies `diagnostic-summary`, and opens `http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section`.
+- Writes a private local preflight artifact under `.local_manifests/s3a_m2_delta_e2e/manual_acceptance_preflight/`.
+- Prints the post-run GUI validator and phase contract commands.
+
+What the script refuses to do:
+
+- It does not click `Start manual sync`.
+- It does not click or call Execute.
+- It does not call `/api/admin/dynamic-library-sync/manual-sync/execute`.
+- It does not import, classify, AI-tag, localize, repair the DB, mutate source/iCloud files, or enable automatic/scheduled/startup/system-service sync.
+- If it starts the server and then detects a failed preflight, it attempts to stop that managed server and prints `NOT SAFE TO RUN MANUAL ACCEPTANCE`.
+
 ## Priority Workset Backlog Root Cause And Repair
 
 Audit and repair artifacts:
@@ -132,25 +243,27 @@ Conclusion: this was both stale historical ledger state and a missing terminaliz
 
 This is the required repeated incremental validation, not a one-time bulk import proof.
 
-| Cycle | Added | Total files | Selected | Imported | Existing | Unsupported | Placeholder | Non-target | Unknown | Failed | Legacy seen/selected | Plan s | Total s |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| baseline import | 500 | 500 | 500 | 494 | 6 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.291 | 419.228 |
-| no-change | 0 | 500 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.190 | 0.190 |
-| small increment | 10 | 510 | 10 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.212 | 8.695 |
-| medium increment | 80 | 590 | 80 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.250 | 62.868 |
-| old-mtime increment | 80 | 670 | 80 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.256 | 64.203 |
-| large stable + cap | 120 | 790 | 120 | 120 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.341 | 96.023 |
-| duplicate/unsupported/hidden | 12 | 802 | 8 | 6 | 1 | 3 | 1 | 0 | 0 | 0 | 0/0 | 0.291 | 6.257 |
-| placeholder simulation | 1 | 803 | 0 | 0 | 0 | 3 | 2 | 0 | 0 | 0 | 0/0 | 0.341 | 0.341 |
-| unknown/non_anime gate | 5 | 808 | 5 | 5 | 0 | 3 | 2 | 2 | 2 | 1 | 0/0 | 0.288 | 4.928 |
-| legacy backlog + new files | 100 | 908 | 101 | 100 | 0 | 3 | 2 | 0 | 0 | 1 | 494/0 | 0.419 | 80.884 |
+| Cycle | Added | Total files | Selected | Imported | Follow-up | Existing | Unsupported | Placeholder | Non-target | Unknown | Failed | Legacy seen/selected | Plan s | Total s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| baseline import | 450 | 450 | 450 | 444 | 0 | 6 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.257 | 370.942 |
+| no-change | 0 | 450 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.207 | 0.207 |
+| small increment | 10 | 460 | 10 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.184 | 8.767 |
+| medium increment | 80 | 540 | 80 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.220 | 63.009 |
+| old-mtime increment | 80 | 620 | 80 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.265 | 62.429 |
+| large stable + cap | 120 | 740 | 120 | 120 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.292 | 95.044 |
+| duplicate/unsupported/hidden | 12 | 752 | 8 | 6 | 0 | 1 | 3 | 1 | 0 | 0 | 0 | 0/0 | 0.299 | 6.514 |
+| placeholder simulation | 1 | 753 | 0 | 0 | 0 | 0 | 3 | 2 | 0 | 0 | 0 | 0/0 | 0.283 | 0.283 |
+| unknown/non_anime gate | 5 | 758 | 5 | 5 | 0 | 0 | 3 | 2 | 2 | 2 | 1 | 0/0 | 0.394 | 4.702 |
+| legacy backlog + new files | 100 | 858 | 101 | 100 | 1 | 0 | 3 | 2 | 0 | 0 | 1 | 300/0 | 0.315 | 78.420 |
+| partial-import downstream recovery | 0 | 858 | 4 | 0 | 4 | 0 | 3 | 2 | 0 | 0 | 1 | 300/0 | 0.411 | 1.857 |
 
 Conclusions:
 
 - No-change was a fast, explainable no-op.
 - Repeated increments selected current ledger-missing work instead of stale backlog.
 - Old-mtime copied files were discovered and imported.
-- The simulated legacy backlog cycle saw `494` stale legacy rows and selected `0` of them, while importing the new batch and including only one legitimate downstream follow-up.
+- The simulated legacy backlog cycle saw `300` stale legacy rows and selected `0` of them, while importing the new batch and including only one legitimate downstream follow-up.
+- The new partial-import downstream recovery cycle seeded `3` already-imported downstream-incomplete media, removed their copied source files, left app-managed media present, and proved the next normal plan selected `4` downstream follow-up items (`3` seeded recovery items plus one existing follow-up), completed all `3` seeded follow-up items, created `0` duplicate Media rows, and kept one retryable source failure visible.
 - Outcome breakdown accounted for duplicate/existing, unsupported, placeholder-like, confirmed non-target, unknown, and classification-unavailable cases.
 - `unknown` was not treated as `non_anime`; classifier-unavailable rows were deferred/blocked instead of non-target skipped.
 
@@ -162,13 +275,15 @@ Conclusions:
 - Advanced exact execute box hidden before the normal flow: `True`.
 - Browser confirmation shown: `True`.
 - Execute request observed: `True`.
-- Latest isolated GUI-created job: `#9`, status `completed`, `request_source=web_admin_gui`.
+- Latest isolated GUI-created job: `#10`, status `completed`, `request_source=web_admin_gui`.
 - GUI plan hash binding: `True`; GUI plan flow verified: `True`.
-- Runtime head recorded in the GUI-created test run: `85e9993f8772151e4e9d42ad0a1825e99a59c74e`.
-- Plan candidate pool: `4` (`3` imports and `1` downstream follow-up items).
-- Legacy backlog skipped in browser test: `494`; legacy backlog selected/candidates: `0`.
-- Plan elapsed: `0.735` seconds; metadata entries seen: `911`.
+- Runtime head recorded in the GUI-created test run: `5a177c857020aa30b8c42554b7d8e8d3bee5bdbe`.
+- Plan candidate pool: `1` (`0` imports and `1` downstream follow-up item).
+- Legacy backlog skipped in browser test: `300`; legacy backlog selected/candidates: `0`.
+- Plan elapsed: `0.297` seconds; metadata entries seen: `859`.
 - Plan expensive operations: `{'content_reads': 0, 'hashes': 0, 'decodes': 0, 'hydrations': 0}`.
+- Private evidence artifact: `.local_manifests/s3a_m2_delta_e2e/local_copy_incremental_e2e/browser_flow_current_llm_ready/browser-flow-evidence.json`.
+- Note: this was an isolated `VIOLET_ENV=test` full-chain browser validation; it enabled test LLM localization readiness and performed test-environment localization provider calls. It did not run production Execute and did not mutate production DB or source/iCloud files.
 
 This proves the normal operator flow in an isolated real browser environment. It does not replace final user-performed production GUI Execute acceptance.
 
@@ -409,7 +524,7 @@ This proves the normal operator flow in an isolated real browser environment. It
 ## Pre-User Manual Acceptance Safety Fixes
 
 - Status: `fixed_pending_codex_re_review_after_push`.
-- Current head covered locally: `85e9993f8772151e4e9d42ad0a1825e99a59c74e`.
+- Current runtime-code validation basis: `5a177c857020aa30b8c42554b7d8e8d3bee5bdbe` plus the current working-tree changes in this continuation. The final pushed commit SHA is recorded in the PR body and CodeX closeout because a committed report cannot embed its own final SHA without changing that SHA.
 - Current reviewer status at start of continuation: Codex reviewed exact head `85e9993f8772151e4e9d42ad0a1825e99a59c74e` and returned comments; this continuation addressed the current owner/reviewer items that affect production Execute safety and acceptance proof.
 - S3A-M2 runner execute payload bug: fixed by passing normalized `plan_mode`/`plan_source` into `_public_request_payload(...)`; regression coverage is in `tests/test_s3a_m2_delta_e2e.py`.
 - AI identity/media-tag policy: explicit mature media-tag semantics are retained. High-confidence WD `general/meta/rating/character/copyright/artist` media tags may be normal `media_tags`; low-confidence/edge predictions remain suggestions. AI-only tags still must not create SourceConcept truth, Entity truth, or confirmed entity assignments.
@@ -435,7 +550,7 @@ This proves the normal operator flow in an isolated real browser environment. It
 - `git diff --cached --check`: passed.
 - Run #16 focused coverage added: retryable import failure-budget stop continues downstream for already imported media; GUI validator accepts `completed_with_failures` only when imported downstream stages and tag/Entity/SourceConcept semantics pass.
 - Authorized priority backlog repair: pre-audit candidate `22698`; DB backup created; row-level snapshot created; repair executed; after-audit candidate `0`, `legacy_pending_changed_rows=0`, `rows_that_need_repair_or_migration=0`.
-- Repeated local-copy incremental E2E: passed; `900` copied local JPG/PNG files; isolated test DB/storage/source root; no production DB or source/iCloud mutation; plan expensive ops `0/0/0/0` across cycles.
+- Repeated local-copy incremental E2E: passed; `850` copied local JPG/PNG files; `11` sequential cycles; isolated test DB/storage/source root; no production DB or source/iCloud mutation; plan expensive ops `0/0/0/0` across cycles; partial-import downstream recovery cycle passed with `3/3` seeded follow-up items completed and `0` duplicate Media rows.
 - Real browser normal-flow validation: passed against isolated test server on port `8024`; normal Start manual sync clicked; browser confirmation accepted; `/manual-sync/execute` observed; isolated GUI-created test job completed; Advanced exact phrase was not used.
 - Production GUI Execute validation: not performed by CodeX in this continuation. The user-performed production GUI Execute run `#16` failed on the previous head before this bounded fix; a new user retry and validator pass are still required.
 

@@ -2608,6 +2608,135 @@ def test_manual_sync_execute_allows_downstream_followup_when_source_file_missing
     assert result["failed_items"] == 0
 
 
+def test_manual_sync_execute_prioritizes_followup_before_import_failure_budget(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES", 20)
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS", 1)
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE", 0.20)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    import_path = source_root / "00-timeout.png"
+    followup_path = source_root / "01-followup.png"
+    _write_png(import_path, (1, 2, 3))
+    _write_png(followup_path, (4, 5, 6))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="01-followup.png",
+        path="media/original/01-followup.png",
+        hash=calculate_file_hash(followup_path),
+        file_type=FileTypeEnum.image,
+        content_class="anime",
+    )
+    db.add(media)
+    db.flush()
+    followup_stat = followup_path.stat()
+    followup_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=followup_path.name,
+        relative_path_hash=planner._hash_text(followup_path.name),
+        file_size=followup_stat.st_size,
+        mtime_ns=followup_stat.st_mtime_ns,
+        content_hash=media.hash,
+        source_status="available",
+        sync_state="deferred_unprocessed",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="pending",
+        localization_status="waiting_ai_tags",
+        deferred_reason="not_processed_budget_stop",
+        media_id=media.id,
+    )
+    db.add(followup_item)
+    db.commit()
+    followup_path.unlink()
+
+    def fake_execute_hash(path: Path, _timeout_sec: int):
+        if Path(path).name == "00-timeout.png":
+            return None, "read_timeout"
+        return calculate_file_hash(path), None
+
+    ai_tagged: list[int] = []
+    localized: list[int] = []
+
+    def fake_ai_tagging(_db_arg, media_id):
+        ai_tagged.append(media_id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        assert source_item_ids == [followup_item.id]
+        item = db_arg.get(DynamicSourceItem, followup_item.id)
+        item.localization_status = "localized"
+        localized.extend(media_ids)
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", fake_execute_hash)
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    summary = dict(run.summary_json or {})
+    execute_payload = dict(summary["manual_sync_execute"])
+    private_items = list(execute_payload["private_plan_items"])
+    execute_payload["private_plan_items"] = sorted(
+        private_items,
+        key=lambda item: 0 if item.get("state") == "import_planned" else 1,
+    )
+    summary["manual_sync_execute"] = execute_payload
+    run.summary_json = summary
+    db.commit()
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed_with_failures"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["outcome_counts"]["downstream_followup_planned"] == 1
+    assert execute_summary["outcome_counts"]["read_timeout"] == 1
+    assert execute_summary["unprocessed_import_planned_count"] == 0
+    assert ai_tagged == [media.id]
+    assert localized == [media.id]
+    db.refresh(followup_item)
+    assert followup_item.import_status == "imported"
+    assert followup_item.ai_tagging_status == "ai_tagged"
+    assert followup_item.localization_status == "localized"
+    run_items = {
+        item.source_item_id: item
+        for item in db.query(DynamicSyncRunItem).filter(DynamicSyncRunItem.sync_run_id == run.id).all()
+    }
+    assert run_items[followup_item.id].item_state == "downstream_followup_planned"
+    assert run_items[followup_item.id].action == "downstream_followup"
+
+
 def test_manual_sync_execute_scopes_downstream_followup_to_planned_source_item(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     _patch_test_storage(monkeypatch, tmp_path)
@@ -3233,6 +3362,11 @@ def test_s3a_m1_retryable_import_budget_stop_continues_downstream_for_imported_m
     assert source_items["01-ok.png"].localization_status == "localized"
     assert source_items["02-timeout.png"].failure_reason == "read_timeout"
     assert source_items["02-timeout.png"].import_status == "failed"
+    retry_metadata = (source_items["02-timeout.png"].metadata_json or {}).get("manual_sync_retry") or {}
+    assert retry_metadata["attempt_count"] == 1
+    assert retry_metadata["last_failure_reason"] == "read_timeout"
+    assert retry_metadata["retryable"] is True
+    assert retry_metadata["long_term_state"] == "retryable"
     assert source_items["03-deferred.png"].deferred_reason == "not_processed_budget_stop"
     assert source_items["03-deferred.png"].import_status == "deferred"
 

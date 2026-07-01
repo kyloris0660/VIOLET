@@ -135,7 +135,7 @@ def create_test_database(db_name: str) -> None:
     forbidden = {"blombooru", "production", "main", "postgres"}
     if db_name.lower() in forbidden or "test" not in db_name.lower():
         raise RuntimeError(f"unsafe_test_database_name:{db_name}")
-    params = pg_params_from_env(os.environ)
+    params = pg_params_from_env({**load_production_profile_env(), **os.environ})
     conn = psycopg2.connect(**params, dbname="postgres")
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
     try:
@@ -148,6 +148,11 @@ def create_test_database(db_name: str) -> None:
 
 
 def configure_test_env(db_name: str, storage_root: Path, *, fast_providers: bool) -> None:
+    db_env = {**load_production_profile_env(), **os.environ}
+    db_host = db_env.get("POSTGRES_HOST") or "localhost"
+    db_port = str(db_env.get("POSTGRES_PORT") or "5432")
+    db_user = db_env.get("POSTGRES_USER") or "postgres"
+    db_password = db_env.get("POSTGRES_PASSWORD") or ""
     data_dir = storage_root / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     settings_path = data_dir / "settings.json"
@@ -158,11 +163,11 @@ def configure_test_env(db_name: str, storage_root: Path, *, fast_providers: bool
                 "first_run": False,
                 "app_name": "V.I.O.L.E.T.",
                 "database": {
-                    "host": os.environ.get("POSTGRES_HOST", "localhost"),
-                    "port": int(os.environ.get("POSTGRES_PORT", "5432")),
+                    "host": db_host,
+                    "port": int(db_port),
                     "name": db_name,
-                    "user": os.environ.get("POSTGRES_USER", "postgres"),
-                    "password": os.environ.get("POSTGRES_PASSWORD", ""),
+                    "user": db_user,
+                    "password": db_password,
                 },
                 "secret_key": hashlib.sha256(f"s3a-m2-local-copy-e2e:{db_name}".encode("utf-8")).hexdigest(),
             },
@@ -171,6 +176,10 @@ def configure_test_env(db_name: str, storage_root: Path, *, fast_providers: bool
         {
             "VIOLET_ENV": "test",
             "VIOLET_SKIP_DOTENV": "1",
+            "POSTGRES_HOST": db_host,
+            "POSTGRES_PORT": db_port,
+            "POSTGRES_USER": db_user,
+            "POSTGRES_PASSWORD": db_password,
             "POSTGRES_DB": db_name,
             "TEST_DATABASE_URL": "",
             "VIOLET_STORAGE_ROOT": str(storage_root),
@@ -700,6 +709,118 @@ def mark_legacy_backlog_rows(db: Any, *, root_id: int, limit: int) -> int:
     return len(rows)
 
 
+def seed_partial_import_downstream_recovery_case(
+    db: Any,
+    *,
+    root: Any,
+    source_root: Path,
+    storage_root: Path,
+    candidates: Sequence[SourceCandidate],
+) -> dict[str, Any]:
+    from app.enums import FileTypeEnum
+    from app.models import DynamicSourceItem, Media
+    from app.services import dynamic_library_sync_service as planner
+    from app.utils.media_processor import calculate_file_hash
+
+    case_dir = source_root / "cycle11_partial_import_recovery"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    app_original_dir = storage_root / "media" / "original"
+    app_original_dir.mkdir(parents=True, exist_ok=True)
+    seeded = 0
+    removed_source_files = 0
+    seeded_source_item_ids: list[int] = []
+    seeded_media_ids: list[int] = []
+    before_media_count = db.query(Media).count()
+    for idx, candidate in enumerate(candidates[:3], start=1):
+        ext = candidate.path.suffix.lower()
+        source_copy = case_dir / f"followup_seed_{idx:04d}{ext}"
+        row = copy_candidate(candidate, source_copy, preserve_mtime=True, old_mtime=True)
+        if not row.get("copied"):
+            continue
+        content_hash = calculate_file_hash(source_copy)
+        app_filename = f"partial_recovery_{idx:04d}{ext}"
+        app_path = app_original_dir / app_filename
+        shutil.copy2(source_copy, app_path)
+        stat = source_copy.stat()
+        media = Media(
+            filename=app_filename,
+            path=str(Path("media") / "original" / app_filename),
+            hash=content_hash,
+            file_type=FileTypeEnum.image,
+            file_size=stat.st_size,
+        )
+        db.add(media)
+        db.flush()
+        rel = str(source_copy.relative_to(source_root)).replace("\\", "/")
+        source_item = DynamicSourceItem(
+            source_root_id=int(root.id),
+            relative_path=rel,
+            relative_path_hash=planner._hash_text(rel),
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            content_hash=content_hash,
+            media_id=int(media.id),
+            source_status="available",
+            sync_state="deferred_unprocessed",
+            import_status="imported",
+            classification_status="deferred",
+            ai_tagging_status="deferred",
+            localization_status="deferred",
+            failure_reason=None,
+            deferred_reason="not_processed_budget_stop",
+        )
+        db.add(source_item)
+        db.flush()
+        seeded_source_item_ids.append(int(source_item.id))
+        seeded_media_ids.append(int(media.id))
+        source_copy.unlink(missing_ok=True)
+        removed_source_files += 1
+        seeded += 1
+
+    retry_source = case_dir / "retryable_read_timeout.jpg"
+    retry_source.write_bytes(b"simulated unreadable source")
+    retry_stat = retry_source.stat()
+    rel = str(retry_source.relative_to(source_root)).replace("\\", "/")
+    db.add(
+        DynamicSourceItem(
+            source_root_id=int(root.id),
+            relative_path=rel,
+            relative_path_hash=planner._hash_text(rel),
+            file_size=retry_stat.st_size,
+            mtime_ns=retry_stat.st_mtime_ns,
+            content_hash=None,
+            media_id=None,
+            source_status="failed",
+            sync_state="failed",
+            import_status="failed",
+            classification_status="deferred",
+            ai_tagging_status="deferred",
+            localization_status="blocked_import_failed",
+            failure_reason="read_timeout",
+            deferred_reason=None,
+            metadata_json={
+                "manual_sync_retry": {
+                    "attempt_count": 1,
+                    "last_failure_reason": "read_timeout",
+                    "retryable": True,
+                    "long_term_state": "retryable",
+                }
+            },
+        )
+    )
+    retry_source.unlink(missing_ok=True)
+    db.commit()
+    return {
+        "seeded_followup_items": seeded,
+        "seeded_source_item_ids": seeded_source_item_ids,
+        "seeded_media_ids": seeded_media_ids,
+        "removed_source_files": removed_source_files,
+        "retryable_failure_rows_seeded": 1,
+        "media_count_before": before_media_count,
+        "media_count_after_seed": db.query(Media).count(),
+    }
+
+
 def scenario_metrics(result: Mapping[str, Any], provider_timings: Mapping[str, Any] | None = None) -> dict[str, Any]:
     limits = result.get("plan_limits") or {}
     counts = result.get("plan_counts") or {}
@@ -707,6 +828,8 @@ def scenario_metrics(result: Mapping[str, Any], provider_timings: Mapping[str, A
     reasons = counts.get("failure_reasons") or {}
     run_summary = result.get("run_summary") or {}
     pre_inventory = result.get("pre_inventory") or {}
+    source_delta = limits.get("source_delta_workset") or {}
+    recovery_post = result.get("partial_recovery_post") or {}
     timers = (provider_timings or {}).get("timers_us") if provider_timings else None
     classification_time = round(float(timers.get("classification_us", 0)) / 1_000_000, 3) if timers else 0.0
     ai_time = round(float(timers.get("ai_tagging_us", 0)) / 1_000_000, 3) if timers else 0.0
@@ -744,8 +867,17 @@ def scenario_metrics(result: Mapping[str, Any], provider_timings: Mapping[str, A
         "selected_count": selected_count,
         "estimated_import_count": counts.get("estimated_import_count", 0),
         "estimated_downstream_followup_count": counts.get("estimated_downstream_followup_count", 0),
+        "app_media_followup_candidates": source_delta.get("app_media_followup_candidates", 0),
+        "app_media_followup_filesystem_duplicate_skips": source_delta.get(
+            "app_media_followup_filesystem_duplicate_skips", 0
+        ),
         "actual_imported_count": imported_count,
         "imported_count": imported_count,
+        "seeded_followup_items": (result.get("partial_recovery_seed") or {}).get("seeded_followup_items", 0),
+        "media_count_after": recovery_post.get("media_count_after_execute", 0),
+        "downstream_followup_completed_count": recovery_post.get("completed_followup_items", 0),
+        "downstream_followup_duplicate_media_created": recovery_post.get("duplicate_media_created", 0),
+        "retryable_failure_rows_visible_after": recovery_post.get("retryable_failure_rows_visible", 0),
         "skipped_existing": state_counts.get("skipped_existing_media", 0) or (run_summary.get("run_item_states") or {}).get("skipped_existing_media", 0),
         "skipped_duplicate": state_counts.get("skipped_duplicate", 0) or (run_summary.get("run_item_states") or {}).get("skipped_duplicate", 0),
         "skipped_unsupported": state_counts.get("skipped_unsupported", 0),
@@ -852,6 +984,29 @@ def evaluate_pass_criteria(metrics: Sequence[Mapping[str, Any]], results: Sequen
     elif refresh_rows[0].get("status") not in {"passed"}:
         failures.append("cycle_10_refresh_retry_no_stale_zero_plan_api_probe:stale_or_mismatched_plan_state")
 
+    recovery = by_name.get("cycle_11_partial_import_downstream_recovery")
+    if not recovery:
+        failures.append("cycle_11_partial_import_downstream_recovery:missing")
+    else:
+        seeded = int(recovery.get("seeded_followup_items") or 0)
+        app_followups = int(recovery.get("app_media_followup_candidates") or 0)
+        selected_followups = int(recovery.get("estimated_downstream_followup_count") or 0)
+        completed = int(recovery.get("downstream_followup_completed_count") or 0)
+        duplicate_media = int(recovery.get("downstream_followup_duplicate_media_created") or 0)
+        retry_visible = int(recovery.get("retryable_failure_rows_visible_after") or 0)
+        if seeded <= 0:
+            failures.append("cycle_11_partial_import_downstream_recovery:no_seeded_imported_incomplete_media")
+        if app_followups < seeded:
+            failures.append("cycle_11_partial_import_downstream_recovery:app_media_followup_not_discovered")
+        if selected_followups < seeded:
+            failures.append("cycle_11_partial_import_downstream_recovery:followup_not_selected")
+        if completed < seeded:
+            failures.append("cycle_11_partial_import_downstream_recovery:followup_not_completed")
+        if duplicate_media:
+            failures.append("cycle_11_partial_import_downstream_recovery:duplicate_media_created")
+        if retry_visible <= 0:
+            failures.append("cycle_11_partial_import_downstream_recovery:retryable_failure_not_visible_after_recovery")
+
     return failures
 
 
@@ -874,7 +1029,7 @@ def run_e2e(args: argparse.Namespace) -> dict[str, Any]:
     configure_test_env(db_name, storage_root, fast_providers=bool(args.fast_test_providers))
     SessionLocal = initialize_app_db()
 
-    from app.models import DynamicSourceItem
+    from app.models import DynamicSourceItem, Media
     from app.services import dynamic_library_sync_service as planner
     from app.services import manual_sync_execute_service as execute_service
 
@@ -1160,6 +1315,79 @@ def run_e2e(args: argparse.Namespace) -> dict[str, Any]:
                 "note": "API-level refresh/retry probe only; real browser validation is required separately.",
             }
         )
+
+        recovery_seed_candidates = deck.take(min(3, deck.remaining))
+        recovery_seed = seed_partial_import_downstream_recovery_case(
+            db,
+            root=root,
+            source_root=source_root,
+            storage_root=storage_root,
+            candidates=recovery_seed_candidates,
+        )
+        result = plan_and_execute(
+            db,
+            root=root,
+            source_root=source_root,
+            cap=100,
+            hydrated_only=False,
+            stable_age_seconds=0,
+            scenario="cycle_11_partial_import_downstream_recovery",
+            files_added_this_cycle=0,
+        )
+        seeded_source_item_ids = [int(value) for value in recovery_seed.get("seeded_source_item_ids") or []]
+        seeded_items = (
+            db.query(DynamicSourceItem)
+            .filter(DynamicSourceItem.id.in_(seeded_source_item_ids))
+            .order_by(DynamicSourceItem.id.asc())
+            .all()
+            if seeded_source_item_ids
+            else []
+        )
+        classification_complete = {"classified", "classified_reused"}
+        ai_complete = {
+            "ai_tagged",
+            "tagged",
+            "tagged_reused",
+            "ai_tagging_skipped_non_target",
+            "skipped_non_target",
+        }
+        localization_complete = {
+            "localized",
+            "completed",
+            "skipped_no_localizable_tags",
+            "skipped_no_new_tags",
+            "skipped_static_coverage",
+            "localization_not_applicable_non_target",
+        }
+        completed_followup_items = sum(
+            1
+            for item in seeded_items
+            if str(item.classification_status or "") in classification_complete
+            and str(item.ai_tagging_status or "") in ai_complete
+            and str(item.localization_status or "") in localization_complete
+        )
+        retryable_visible = (
+            db.query(DynamicSourceItem)
+            .filter(DynamicSourceItem.source_root_id == int(root.id))
+            .filter(DynamicSourceItem.failure_reason.in_(["read_error", "read_timeout", "source_missing", "permission_denied"]))
+            .count()
+        )
+        result["partial_recovery_seed"] = recovery_seed
+        result["partial_recovery_post"] = {
+            "seeded_source_item_count": len(seeded_source_item_ids),
+            "classification_status": dict(sorted(Counter(str(item.classification_status or "") for item in seeded_items).items())),
+            "ai_tagging_status": dict(sorted(Counter(str(item.ai_tagging_status or "") for item in seeded_items).items())),
+            "localization_status": dict(sorted(Counter(str(item.localization_status or "") for item in seeded_items).items())),
+            "completed_followup_items": completed_followup_items,
+            "media_count_after_execute": db.query(Media).count(),
+            "duplicate_media_created": max(
+                0,
+                int(db.query(Media).count()) - int(recovery_seed.get("media_count_after_seed") or 0),
+            ),
+            "retryable_failure_rows_visible": int(retryable_visible),
+        }
+        results.append(result)
+        metrics.append(scenario_metrics(result, provider_delta()))
 
         final_counts = {
             "dynamic_source_items": db.query(DynamicSourceItem).filter(DynamicSourceItem.source_root_id == int(root.id)).count(),

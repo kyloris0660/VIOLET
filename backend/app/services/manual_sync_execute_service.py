@@ -428,6 +428,47 @@ def _retryable_source_failure_count(counts: Counter[str]) -> int:
     return sum(int(counts.get(reason, 0) or 0) for reason in RETRYABLE_SOURCE_FAILURE_REASONS)
 
 
+def _manual_sync_plan_item_execute_priority(plan_item: Dict[str, Any]) -> int:
+    state = str(plan_item.get("state") or "")
+    if state == "downstream_followup_planned":
+        return 0
+    if state == "import_planned":
+        return 10
+    return 20
+
+
+def _order_manual_sync_execute_plan_items(plan_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        item
+        for _index, item in sorted(
+            enumerate(plan_items),
+            key=lambda row: (_manual_sync_plan_item_execute_priority(row[1]), row[0]),
+        )
+    ]
+
+
+def _record_retryable_source_failure_attempt(item: DynamicSourceItem, reason: str) -> None:
+    if reason not in RETRYABLE_SOURCE_FAILURE_REASONS:
+        return
+    metadata = dict(item.metadata_json or {})
+    retry = dict(metadata.get("manual_sync_retry") or {})
+    try:
+        attempts = int(retry.get("attempt_count") or 0)
+    except (TypeError, ValueError):
+        attempts = 0
+    retry.update(
+        {
+            "attempt_count": attempts + 1,
+            "last_retry_at": _utcnow().isoformat(),
+            "last_failure_reason": reason,
+            "retryable": True,
+            "long_term_state": "needs_diagnosis" if attempts + 1 >= 5 else "retryable",
+        }
+    )
+    metadata["manual_sync_retry"] = retry
+    item.metadata_json = metadata
+
+
 def _import_budget_stop_allows_downstream(
     *,
     stop_reason: Optional[str],
@@ -1152,6 +1193,8 @@ def _mark_item_skipped(
     item.localization_status = "deferred"
     item.failure_reason = reason if state == "failed" else None
     item.deferred_reason = reason if state != "failed" else None
+    if reason:
+        _record_retryable_source_failure_attempt(item, reason)
     _record_run_item(
         db,
         run=run,
@@ -1181,6 +1224,7 @@ def _mark_item_failed(
     item.localization_status = "blocked_import_failed"
     item.failure_reason = reason
     item.deferred_reason = None
+    _record_retryable_source_failure_attempt(item, reason)
     _record_run_item(
         db,
         run=run,
@@ -1774,7 +1818,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             hydrated_only=bool(request.get("hydrated_only", True)),
             production_acceptance_approved=bool(request.get("production_acceptance_approved")),
         )
-        private_items = list(execute_payload.get("private_plan_items") or [])
+        private_items = _order_manual_sync_execute_plan_items(list(execute_payload.get("private_plan_items") or []))
         if not private_items and int((persisted_plan.get("counts") or {}).get("total_seen") or 0) > 0:
             raise ManualSyncExecuteError(
                 "private_plan_snapshot_missing",

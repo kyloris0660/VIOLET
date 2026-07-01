@@ -1302,7 +1302,7 @@ def test_manual_sync_dry_run_prioritizes_current_ledger_missing_over_legacy_pend
     assert all(str(item["relative_path"]).startswith("z_new_icloud_") for item in private_items[:110])
 
 
-def test_manual_sync_dry_run_treats_existing_hash_pending_rows_as_stable_noop(db, tmp_path):
+def test_manual_sync_dry_run_treats_existing_hash_downstream_complete_rows_as_stable_noop(db, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     path = source_root / "existing_hash_backlog.png"
@@ -1329,9 +1329,9 @@ def test_manual_sync_dry_run_treats_existing_hash_pending_rows_as_stable_noop(db
             source_status="available",
             sync_state="changed",
             import_status="pending",
-            classification_status="waiting_import",
-            ai_tagging_status="waiting_import",
-            localization_status="waiting_ai_tags",
+                classification_status="classified_reused",
+                ai_tagging_status="tagged_reused",
+                localization_status="localized",
             deferred_reason="existing_media_hash",
             media_id=media.id,
         )
@@ -1884,6 +1884,79 @@ def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(
     assert plan["counts"]["estimated_ai_tagging_count"] == 2
     public_plan = {key: value for key, value in plan.items() if key != "private_details"}
     assert "a_followup.png" not in str(public_plan)
+
+
+def test_manual_sync_dry_run_recovers_imported_downstream_incomplete_without_source_file(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / "run16-leftover.png"
+    _write_png(source_file, (20, 30, 40))
+    source_stat = source_file.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="run16-leftover.png",
+        path="media/original/run16-leftover.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=service._hash_text(source_file.name),
+            file_size=source_stat.st_size,
+            mtime_ns=source_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="deferred_unprocessed",
+            import_status="imported",
+            classification_status="pending",
+            ai_tagging_status="pending",
+            localization_status="waiting_ai_tags",
+            deferred_reason="not_processed_budget_stop",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+    source_file.unlink()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["counts"]["estimated_downstream_followup_count"] == 1
+    assert plan["limits"]["db_followup_candidates"] == 1
+    assert plan["limits"]["app_media_followup_candidates"] == 1
+    assert plan["limits"]["expensive_plan_operations"] == {
+        "content_reads": 0,
+        "hashes": 0,
+        "decodes": 0,
+        "hydrations": 0,
+    }
+    followup_item = next(
+        item for item in plan["private_details"]["items"] if item["state"] == "downstream_followup_planned"
+    )
+    assert followup_item["media_id"] == media.id
+    assert followup_item["content_hash"] == media.hash
+    assert followup_item["downstream_followup"]["source_item_id"] is not None
+    assert followup_item["scan_source"] == "app_media_followup"
 
 
 def test_manual_sync_dry_run_cap_limited_batch_is_executable_and_continuable(db, tmp_path, monkeypatch):

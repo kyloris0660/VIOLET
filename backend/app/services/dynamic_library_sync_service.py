@@ -80,6 +80,39 @@ MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS = 600
 MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS = 5 * 60
 MANUAL_SYNC_NORMAL_PLAN_MODE = "incremental"
 MANUAL_SYNC_ADVANCED_FULL_RESCAN_MODE = "advanced_full_rescan"
+MANUAL_SYNC_RETRYABLE_SOURCE_FAILURE_REASONS = {
+    "cloud_hydration_failed",
+    "cloud_network_unavailable",
+    "icloud_placeholder",
+    "permission_denied",
+    "read_error",
+    "read_timeout",
+    "source_missing",
+}
+MANUAL_SYNC_STABLE_NON_ACTIONABLE_REASONS = {
+    "unsupported_extension",
+    "hidden",
+    "zero_byte",
+    "zero_byte_file",
+    "existing_media_hash",
+    "duplicate_hash",
+}
+MANUAL_SYNC_CLASSIFICATION_COMPLETE_STATUSES = {"classified", "classified_reused"}
+MANUAL_SYNC_AI_TAGGING_COMPLETE_STATUSES = {
+    "ai_tagged",
+    "tagged",
+    "tagged_reused",
+    "ai_tagging_skipped_non_target",
+    "skipped_non_target",
+}
+MANUAL_SYNC_LOCALIZATION_COMPLETE_STATUSES = {
+    "localized",
+    "completed",
+    "skipped_no_localizable_tags",
+    "skipped_no_new_tags",
+    "skipped_static_coverage",
+    "localization_not_applicable_non_target",
+}
 
 MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
     {
@@ -757,6 +790,8 @@ def _plan_manual_sync_incremental_dry_run(
     legacy_pending_outside_window_candidates = 0
     stable_old_files_skipped = 0
     unchanged_ledger_skips = 0
+    app_media_followup_candidates_total = 0
+    app_media_followup_filesystem_duplicate_skips = 0
     stat_required_count = 0
     hash_required_count = 0
     content_read_count = 0
@@ -794,6 +829,7 @@ def _plan_manual_sync_incremental_dry_run(
             "seen": int(metadata_entries_seen),
             "metadata_entries_seen": int(metadata_entries_seen),
             "db_followup_candidates": int(db_followup_candidates),
+            "app_media_followup_candidates": int(app_media_followup_candidates_total),
             "mtime_new_candidates": int(mtime_new_candidates),
             "safety_window_candidates": int(safety_window_candidates),
             "ledger_missing_candidates": int(ledger_missing_candidates),
@@ -850,6 +886,46 @@ def _plan_manual_sync_incremental_dry_run(
 
     source_mtime_watermark_ns = _manual_plan_source_mtime_watermark_ns(known_items_by_rel_hash.values())
     mtime_cutoff_ns = _manual_plan_mtime_cutoff_ns(source_mtime_watermark_ns, safety_lookback_seconds)
+    app_media_followup_items = _manual_plan_app_media_followup_source_items(
+        db,
+        source_record_id=source_record_id,
+    )
+    app_media_followup_source_item_ids = {
+        int(item.id) for item in app_media_followup_items if item.id is not None
+    }
+    app_media_followup_candidates_total = len(app_media_followup_items)
+    db_followup_candidates = app_media_followup_candidates_total
+    for followup_index, known_item in enumerate(app_media_followup_items, start=1):
+        rel = str(known_item.relative_path or "")
+        rel_hash_full = str(known_item.relative_path_hash or _hash_text(rel))
+        metadata = {
+            "file_size": known_item.file_size,
+            "mtime": known_item.mtime,
+            "mtime_ns": known_item.mtime_ns,
+            "suffix": Path(rel).suffix.lower(),
+            "app_media_backed_followup": True,
+            "source_file_required": False,
+        }
+        candidate_pool.append(
+            {
+                "safe_label": f"followup-{followup_index:05d}",
+                "relative_path": rel,
+                "relative_path_hash": rel_hash_full[:16],
+                "relative_path_hash_full": rel_hash_full,
+                "metadata": metadata,
+                "reason": "downstream_followup",
+                "content_hash": str(known_item.content_hash or "") or None,
+                "media_id": int(known_item.media_id) if known_item.media_id is not None else None,
+                "cloud_placeholder_before_hydration": False,
+                "followup": _manual_plan_followup_payload(known_item),
+                "scan_source": "app_media_followup",
+                "state": "downstream_followup_planned",
+                "candidate_priority": _manual_plan_media_followup_candidate_priority(known_item),
+                "candidate_mtime_ns": known_item.mtime_ns,
+                "known_source_item": True,
+                "source_item_id": int(known_item.id) if known_item.id is not None else None,
+            }
+        )
     priority_source_files = (
         _manual_plan_priority_source_files(
             resolved,
@@ -911,6 +987,9 @@ def _plan_manual_sync_incremental_dry_run(
         rel_hash_full = _hash_text(rel)
         rel_hash = rel_hash_full[:16]
         known_item = known_items_by_rel_hash.get(rel_hash_full)
+        if known_item is not None and int(known_item.id or 0) in app_media_followup_source_item_ids:
+            app_media_followup_filesystem_duplicate_skips += 1
+            continue
         reason = _manual_public_reason_code(preflight_reason)
         metadata: Dict[str, Any] = {}
         try:
@@ -1206,6 +1285,8 @@ def _plan_manual_sync_incremental_dry_run(
         "safety_lookback_seconds": safety_lookback_seconds,
         "mtime_cutoff_ns": mtime_cutoff_ns,
         "db_followup_candidates": db_followup_candidates,
+        "app_media_followup_candidates": app_media_followup_candidates_total,
+        "app_media_followup_filesystem_duplicate_skips": app_media_followup_filesystem_duplicate_skips,
         "mtime_new_candidates": mtime_new_candidates,
         "safety_window_candidates": safety_window_candidates,
         "ledger_missing_candidates": ledger_missing_candidates,
@@ -1272,6 +1353,7 @@ def _plan_manual_sync_incremental_dry_run(
             "safety_lookback_seconds": safety_lookback_seconds,
             "mtime_cutoff_ns": mtime_cutoff_ns,
             "ledger_evidence_reused": bool(source_record_id is not None),
+            "app_media_followup_candidates": app_media_followup_candidates_total,
             "ledger_missing_candidates": ledger_missing_candidates,
             "ledger_missing_recent_candidates": ledger_missing_recent_candidates,
             "ledger_missing_old_mtime_candidates": ledger_missing_old_mtime_candidates,
@@ -1289,6 +1371,8 @@ def _plan_manual_sync_incremental_dry_run(
             "priority_workset_exhausted": priority_workset_exhausted,
             "filesystem_walk_after_priority_workset": filesystem_walk_after_priority_workset,
             "filesystem_walk_completed": filesystem_walk_completed,
+            "app_media_followup_candidates": app_media_followup_candidates_total,
+            "app_media_followup_filesystem_duplicate_skips": app_media_followup_filesystem_duplicate_skips,
             "starts_from_filesystem_root_when_no_priority_workset": True,
             "priority_excludes_legacy_pending_outside_window": False,
             "legacy_pending_outside_window_skips": legacy_pending_outside_window_skips,
@@ -2157,25 +2241,15 @@ def _manual_plan_priority_for_known_item(
     import_status = str(item.import_status or "")
     sync_state = str(item.sync_state or "")
     reason = str(item.deferred_reason or item.failure_reason or "")
-    stable_non_actionable = {
-        "unsupported_extension",
-        "hidden",
-        "zero_byte",
-        "zero_byte_file",
-        "source_missing",
-        "permission_denied",
-        "existing_media_hash",
-        "duplicate_hash",
-    }
-    if reason in stable_non_actionable:
+    if _manual_plan_media_backed_requires_followup(item):
+        return _manual_plan_media_followup_candidate_priority(item)
+    if reason in MANUAL_SYNC_STABLE_NON_ACTIONABLE_REASONS:
         return None
     if _manual_plan_media_backed_pending_noop(item):
         return None
-    if import_status == "imported" and item.media_id is not None and _manual_plan_existing_requires_followup(item):
-        return 10
     if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
         return 20
-    if import_status in {"failed", "deferred"} and reason in {"read_error", "read_timeout", "cloud_hydration_failed"}:
+    if import_status in {"failed", "deferred"} and reason in MANUAL_SYNC_RETRYABLE_SOURCE_FAILURE_REASONS:
         return 30
     if import_status == "pending":
         item_mtime_ns = getattr(item, "mtime_ns", None)
@@ -2208,6 +2282,60 @@ def _manual_plan_priority_source_files(
             continue
         prioritized.append((priority, str(item.relative_path_hash or ""), file_path))
     return [path for _priority, _rel_hash, path in sorted(prioritized, key=lambda row: (row[0], row[1]))]
+
+
+def _manual_plan_media_backed_requires_followup(item: Optional[DynamicSourceItem]) -> bool:
+    if item is None or item.media_id is None:
+        return False
+    import_status = str(item.import_status or "")
+    sync_state = str(item.sync_state or "")
+    reason = str(item.deferred_reason or item.failure_reason or "")
+    media_backed = (
+        import_status == "imported"
+        or sync_state in {"imported", "downstream_followup_planned"}
+        or reason in {"existing_media_hash", "duplicate_hash", "downstream_followup", "not_processed_budget_stop"}
+    )
+    if not media_backed:
+        return False
+    classification_done = str(item.classification_status or "") in MANUAL_SYNC_CLASSIFICATION_COMPLETE_STATUSES
+    ai_done = str(item.ai_tagging_status or "") in MANUAL_SYNC_AI_TAGGING_COMPLETE_STATUSES
+    localization_done = str(item.localization_status or "") in MANUAL_SYNC_LOCALIZATION_COMPLETE_STATUSES
+    return not (classification_done and ai_done and localization_done)
+
+
+def _manual_plan_media_followup_candidate_priority(item: DynamicSourceItem) -> int:
+    import_status = str(item.import_status or "")
+    reason = str(item.deferred_reason or item.failure_reason or "")
+    sync_state = str(item.sync_state or "")
+    if import_status == "imported" or reason == "not_processed_budget_stop" or sync_state == "deferred_unprocessed":
+        return 0
+    if reason in {"existing_media_hash", "duplicate_hash"}:
+        return 5
+    return 10
+
+
+def _manual_plan_app_media_followup_source_items(
+    db: Session,
+    *,
+    source_record_id: Optional[int],
+) -> List[DynamicSourceItem]:
+    if source_record_id is None:
+        return []
+    rows = (
+        db.query(DynamicSourceItem)
+        .filter(DynamicSourceItem.source_root_id == int(source_record_id))
+        .filter(DynamicSourceItem.media_id.isnot(None))
+        .order_by(DynamicSourceItem.id.asc())
+        .all()
+    )
+    followups = [item for item in rows if _manual_plan_media_backed_requires_followup(item)]
+    return sorted(
+        followups,
+        key=lambda item: (
+            _manual_plan_media_followup_candidate_priority(item),
+            int(getattr(item, "id", 0) or 0),
+        ),
+    )
 
 
 def _metadata_for_path(path: Path, *, follow_symlinks: bool = True) -> Dict[str, Any]:
@@ -2248,21 +2376,10 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         return False
     import_status = str(item.import_status or "")
     sync_state = str(item.sync_state or "")
-    classification_status = str(item.classification_status or "")
-    ai_tagging_status = str(item.ai_tagging_status or "")
-    localization_status = str(item.localization_status or "")
     reason = str(item.deferred_reason or item.failure_reason or "")
-    stable_non_actionable = {
-        "unsupported_extension",
-        "hidden",
-        "zero_byte",
-        "zero_byte_file",
-        "source_missing",
-        "permission_denied",
-        "existing_media_hash",
-        "duplicate_hash",
-    }
-    if reason in stable_non_actionable:
+    if _manual_plan_media_backed_requires_followup(item):
+        return True
+    if reason in MANUAL_SYNC_STABLE_NON_ACTIONABLE_REASONS:
         return False
     if _manual_plan_media_backed_pending_noop(item):
         return False
@@ -2272,25 +2389,6 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         return True
     if import_status == "imported" and item.media_id is None:
         return True
-    if import_status == "imported" and item.media_id is not None:
-        classification_done = classification_status in {"classified", "classified_reused"}
-        ai_done = ai_tagging_status in {
-            "ai_tagged",
-            "tagged",
-            "tagged_reused",
-            "ai_tagging_skipped_non_target",
-            "skipped_non_target",
-        }
-        localization_done = localization_status in {
-            "localized",
-            "completed",
-            "skipped_no_localizable_tags",
-            "skipped_no_new_tags",
-            "skipped_static_coverage",
-            "localization_not_applicable_non_target",
-        }
-        if not (classification_done and ai_done and localization_done):
-            return True
     return import_status in {"deferred", "failed"} or sync_state in {"failed", "deferred"}
 
 
