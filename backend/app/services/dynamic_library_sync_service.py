@@ -741,6 +741,7 @@ def _plan_manual_sync_incremental_dry_run(
     reason_extension_counts: Dict[str, Counter] = {}
     public_items: List[Dict[str, Any]] = []
     private_items: List[Dict[str, Any]] = []
+    candidate_pool: List[Dict[str, Any]] = []
     candidate_records: List[Dict[str, Any]] = []
     integrity_items: List[Dict[str, Any]] = []
     walk_errors: List[str] = []
@@ -749,6 +750,10 @@ def _plan_manual_sync_incremental_dry_run(
     db_followup_candidates = 0
     mtime_new_candidates = 0
     safety_window_candidates = 0
+    ledger_missing_candidates = 0
+    ledger_missing_recent_candidates = 0
+    ledger_missing_old_mtime_candidates = 0
+    legacy_pending_outside_window_skips = 0
     stable_old_files_skipped = 0
     unchanged_ledger_skips = 0
     stat_required_count = 0
@@ -790,14 +795,18 @@ def _plan_manual_sync_incremental_dry_run(
             "db_followup_candidates": int(db_followup_candidates),
             "mtime_new_candidates": int(mtime_new_candidates),
             "safety_window_candidates": int(safety_window_candidates),
+            "ledger_missing_candidates": int(ledger_missing_candidates),
+            "ledger_missing_recent_candidates": int(ledger_missing_recent_candidates),
+            "ledger_missing_old_mtime_candidates": int(ledger_missing_old_mtime_candidates),
+            "legacy_pending_outside_window_skips": int(legacy_pending_outside_window_skips),
             "stable_old_files_skipped": int(stable_old_files_skipped),
             "skipped_historical": int(unchanged_ledger_skips),
             "skipped_unsupported": int(reason_counts.get("unsupported_extension", 0)),
             "placeholders_found": int(reason_counts.get("icloud_placeholder", 0)),
             "hydrated": 0,
             "importable": int(state_counts.get("import_planned", 0)),
-            "planned": int(len(candidate_records)),
-            "batch_candidates": int(len(candidate_records)),
+            "planned": int(len(candidate_records) or len(candidate_pool)),
+            "batch_candidates": int(len(candidate_records) or len(candidate_pool)),
             "failed": int(reason_counts.get("stat_error", 0) + reason_counts.get("source_walk_error", 0)),
             "content_reads": 0,
             "hashes": 0,
@@ -840,7 +849,11 @@ def _plan_manual_sync_incremental_dry_run(
     source_mtime_watermark_ns = _manual_plan_source_mtime_watermark_ns(known_items_by_rel_hash.values())
     mtime_cutoff_ns = _manual_plan_mtime_cutoff_ns(source_mtime_watermark_ns, safety_lookback_seconds)
     priority_source_files = (
-        _manual_plan_priority_source_files(resolved, known_items_by_rel_hash)
+        _manual_plan_priority_source_files(
+            resolved,
+            known_items_by_rel_hash,
+            mtime_cutoff_ns=mtime_cutoff_ns,
+        )
         if source_record_id is not None
         else []
     )
@@ -924,6 +937,15 @@ def _plan_manual_sync_incremental_dry_run(
 
         mtime_ns = metadata.get("mtime_ns")
         in_mtime_window = bool(mtime_cutoff_ns is None or (mtime_ns is not None and int(mtime_ns) >= int(mtime_cutoff_ns)))
+        known_import_status = str(getattr(known_item, "import_status", "") or "") if known_item is not None else ""
+        if (
+            scan_source == "mtime_window_metadata"
+            and known_item is not None
+            and known_import_status == "pending"
+            and not in_mtime_window
+        ):
+            legacy_pending_outside_window_skips += 1
+            continue
         if (
             scan_source == "mtime_window_metadata"
             and known_item is not None
@@ -951,21 +973,32 @@ def _plan_manual_sync_incremental_dry_run(
             _record_reason_extension(reason, rel)
             continue
 
-        if len(candidate_records) >= effective_max_files:
-            partial_scan = True
-            plan_cap_limited = True
-            partial_scan_reason = "cap_limited_actionable_batch"
-            break
-
         if reason == "downstream_followup" and media_id:
             state = "downstream_followup_planned"
-            db_followup_candidates += 1
+            candidate_priority = 0
         else:
             state = "import_planned"
-            if source_mtime_watermark_ns is None or (mtime_ns is not None and int(mtime_ns) > int(source_mtime_watermark_ns)):
-                mtime_new_candidates += 1
+            if known_item is None:
+                ledger_missing_candidates += 1
+                if source_mtime_watermark_ns is None or (
+                    mtime_ns is not None and int(mtime_ns) > int(source_mtime_watermark_ns)
+                ):
+                    ledger_missing_recent_candidates += 1
+                    candidate_priority = 10
+                elif in_mtime_window:
+                    ledger_missing_recent_candidates += 1
+                    candidate_priority = 20
+                else:
+                    ledger_missing_old_mtime_candidates += 1
+                    candidate_priority = 80
+            elif source_mtime_watermark_ns is None or (
+                mtime_ns is not None and int(mtime_ns) > int(source_mtime_watermark_ns)
+            ):
+                candidate_priority = 30
             elif in_mtime_window:
-                safety_window_candidates += 1
+                candidate_priority = 40
+            else:
+                candidate_priority = 90
         record = {
             "safe_label": safe_label,
             "relative_path": rel,
@@ -979,9 +1012,12 @@ def _plan_manual_sync_incremental_dry_run(
             "followup": followup_payload,
             "scan_source": scan_source,
             "state": state,
+            "candidate_priority": candidate_priority,
+            "candidate_mtime_ns": mtime_ns,
+            "known_source_item": known_item is not None,
         }
-        candidate_records.append(record)
-        _progress("candidate_selected", current_item_index=index, current_item_label=safe_label, scan_source=scan_source)
+        candidate_pool.append(record)
+        _progress("candidate_discovered", current_item_index=index, current_item_label=safe_label, scan_source=scan_source)
 
     if priority_source_files and priority_workset_processed >= priority_workset_files:
         priority_workset_exhausted = True
@@ -990,6 +1026,38 @@ def _plan_manual_sync_incremental_dry_run(
         partial_scan_reason = partial_scan_reason or (
             "cap_limited_actionable_batch" if plan_cap_limited else "filesystem_metadata_walk_incomplete"
         )
+
+    if not (plan_cancelled or plan_no_progress_timeout or walk_errors):
+        candidate_pool.sort(
+            key=lambda record: (
+                int(record.get("candidate_priority") or 100),
+                -int(record.get("candidate_mtime_ns") or 0),
+                str(record.get("relative_path_hash_full") or ""),
+            )
+        )
+        candidate_records = candidate_pool[:effective_max_files]
+        if len(candidate_pool) > len(candidate_records):
+            partial_scan = True
+            plan_cap_limited = True
+            partial_scan_reason = "cap_limited_actionable_batch"
+
+    db_followup_candidates = sum(
+        1 for record in candidate_records if str(record.get("state") or "") == "downstream_followup_planned"
+    )
+    mtime_new_candidates = 0
+    safety_window_candidates = 0
+    for record in candidate_records:
+        if str(record.get("state") or "") != "import_planned":
+            continue
+        record_mtime_ns = record.get("candidate_mtime_ns")
+        if source_mtime_watermark_ns is None or (
+            record_mtime_ns is not None and int(record_mtime_ns) > int(source_mtime_watermark_ns)
+        ):
+            mtime_new_candidates += 1
+        elif mtime_cutoff_ns is None or (
+            record_mtime_ns is not None and int(record_mtime_ns) >= int(mtime_cutoff_ns)
+        ):
+            safety_window_candidates += 1
 
     _progress(
         "cancelled"
@@ -1119,6 +1187,19 @@ def _plan_manual_sync_incremental_dry_run(
         "db_followup_candidates": db_followup_candidates,
         "mtime_new_candidates": mtime_new_candidates,
         "safety_window_candidates": safety_window_candidates,
+        "ledger_missing_candidates": ledger_missing_candidates,
+        "ledger_missing_recent_candidates": ledger_missing_recent_candidates,
+        "ledger_missing_old_mtime_candidates": ledger_missing_old_mtime_candidates,
+        "legacy_pending_outside_window_skips": legacy_pending_outside_window_skips,
+        "candidate_pool_count": len(candidate_pool),
+        "candidate_selection_order": [
+            "downstream_followup",
+            "ledger_missing_mtime_new",
+            "ledger_missing_safety_window",
+            "known_pending_or_changed_mtime_window",
+            "ledger_missing_old_mtime_backfill",
+            "legacy_known_pending_backlog_deferred_to_advanced_or_future_current_window",
+        ],
         "stable_old_files_skipped": stable_old_files_skipped,
         "unchanged_known_files": unchanged_ledger_skips,
         "fast_skipped_from_ledger": unchanged_ledger_skips,
@@ -1169,6 +1250,10 @@ def _plan_manual_sync_incremental_dry_run(
             "safety_lookback_seconds": safety_lookback_seconds,
             "mtime_cutoff_ns": mtime_cutoff_ns,
             "ledger_evidence_reused": bool(source_record_id is not None),
+            "ledger_missing_candidates": ledger_missing_candidates,
+            "ledger_missing_recent_candidates": ledger_missing_recent_candidates,
+            "ledger_missing_old_mtime_candidates": ledger_missing_old_mtime_candidates,
+            "legacy_pending_outside_window_skips": legacy_pending_outside_window_skips,
             "files_stat_checked": stat_required_count,
             "files_hash_checked": 0,
             "new_or_changed_actionable_candidates": downstream_stage_count,
@@ -1182,6 +1267,16 @@ def _plan_manual_sync_incremental_dry_run(
             "filesystem_walk_after_priority_workset": filesystem_walk_after_priority_workset,
             "filesystem_walk_completed": filesystem_walk_completed,
             "starts_from_filesystem_root_when_no_priority_workset": True,
+            "priority_excludes_legacy_pending_outside_window": True,
+            "legacy_pending_outside_window_skips": legacy_pending_outside_window_skips,
+            "candidate_pool_count": len(candidate_pool),
+            "candidate_selection_order": [
+                "downstream_followup",
+                "ledger_missing_mtime_new",
+                "ledger_missing_safety_window",
+                "known_pending_or_changed_mtime_window",
+                "ledger_missing_old_mtime_backfill",
+            ],
             "durable_global_filesystem_cursor": False,
             "incremental_source_ledger_used": bool(source_record_id is not None),
             "source_index_model": "dynamic_source_item_ledger_plus_mtime_watermark",
@@ -2028,28 +2123,44 @@ def _source_item_file_path(root_path: Path, item: DynamicSourceItem) -> Optional
         return None
 
 
-def _manual_plan_priority_for_known_item(item: DynamicSourceItem) -> Optional[int]:
+def _manual_plan_priority_for_known_item(
+    item: DynamicSourceItem,
+    *,
+    mtime_cutoff_ns: Optional[int] = None,
+) -> Optional[int]:
     import_status = str(item.import_status or "")
     sync_state = str(item.sync_state or "")
     reason = str(item.deferred_reason or item.failure_reason or "")
-    if import_status == "pending":
-        return 10 if sync_state == "new" else 20
-    if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
-        return 30
-    if import_status in {"failed", "deferred"} and reason in {"read_error", "read_timeout", "cloud_hydration_failed"}:
-        return 40
     if import_status == "imported" and item.media_id is not None and _manual_plan_existing_requires_followup(item):
-        return 50
+        return 10
+    if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
+        return 20
+    if import_status in {"failed", "deferred"} and reason in {"read_error", "read_timeout", "cloud_hydration_failed"}:
+        return 30
+    if import_status == "pending":
+        item_mtime_ns = getattr(item, "mtime_ns", None)
+        in_mtime_window = bool(
+            mtime_cutoff_ns is None
+            or (item_mtime_ns is not None and int(item_mtime_ns) >= int(mtime_cutoff_ns))
+        )
+        if in_mtime_window:
+            return 40 if sync_state == "new" else 50
+        return None
     return None
 
 
 def _manual_plan_priority_source_files(
     root_path: Path,
     known_items_by_rel_hash: Dict[str, DynamicSourceItem],
+    *,
+    mtime_cutoff_ns: Optional[int] = None,
 ) -> List[Path]:
     prioritized: List[tuple[int, str, Path]] = []
     for item in known_items_by_rel_hash.values():
-        priority = _manual_plan_priority_for_known_item(item)
+        priority = _manual_plan_priority_for_known_item(
+            item,
+            mtime_cutoff_ns=mtime_cutoff_ns,
+        )
         if priority is None:
             continue
         file_path = _source_item_file_path(root_path, item)

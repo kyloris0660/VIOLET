@@ -1177,13 +1177,170 @@ def test_manual_sync_dry_run_registered_root_prioritizes_pending_new_before_chan
     assert plan["counts"]["batch_executable"] is True
     assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_ledger_followup_then_incremental_mtime_filesystem_metadata_walk"
     assert plan["limits"]["source_delta_workset"]["priority_workset_files"] == 2
-    assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is False
-    assert plan["limits"]["source_delta_workset"]["filesystem_walk_completed"] is False
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is True
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_completed"] is True
     assert plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
     assert plan["private_details"]["items"][0]["relative_path"] == "z_pending_new.png"
     public_plan = {key: value for key, value in plan.items() if key != "private_details"}
     assert "a_changed_existing.png" not in str(public_plan)
     assert "z_pending_new.png" not in str(public_plan)
+
+
+def test_manual_sync_dry_run_prioritizes_current_ledger_missing_over_legacy_pending_backlog(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    old_ns = 1_800_000_000_000_000_000
+    watermark_ns = old_ns + 30 * 24 * 60 * 60 * 1_000_000_000
+    recent_ns = watermark_ns + 60 * 1_000_000_000
+
+    watermark_path = source_root / "000_watermark.png"
+    _write_png(watermark_path, (1, 2, 3))
+    os.utime(watermark_path, ns=(watermark_ns, watermark_ns))
+    watermark_stat = watermark_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="watermark.png",
+        path="media/original/watermark.png",
+        hash=calculate_file_hash(watermark_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=watermark_path.name,
+            relative_path_hash=service._hash_text(watermark_path.name),
+            file_size=watermark_stat.st_size,
+            mtime_ns=watermark_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            media_id=media.id,
+        )
+    )
+
+    for index in range(600):
+        path = source_root / f"legacy_pending_{index:04d}.png"
+        _write_png(path, (index % 255, 10, 20))
+        os.utime(path, ns=(old_ns, old_ns))
+        stat = path.stat()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=path.name,
+                relative_path_hash=service._hash_text(path.name),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                source_status="available",
+                sync_state="changed",
+                import_status="pending",
+                classification_status="waiting_import",
+                ai_tagging_status="waiting_import",
+                localization_status="waiting_ai_tags",
+            )
+        )
+
+    for index in range(110):
+        path = source_root / f"z_new_icloud_{index:04d}.jpg"
+        path.write_bytes(b"metadata-only-plan-does-not-decode")
+        os.utime(path, ns=(recent_ns + index, recent_ns + index))
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=500,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 110
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["limits"]["mtime_new_candidates"] == 110
+    assert plan["limits"]["ledger_missing_candidates"] == 110
+    assert plan["limits"]["legacy_pending_outside_window_skips"] == 600
+    assert plan["limits"]["candidate_pool_count"] == 110
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["image_decode_count"] == 0
+    assert plan["limits"]["hydration_attempt_count"] == 0
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_completed"] is True
+    private_text = str(plan["private_details"]["items"])
+    assert "z_new_icloud_" in private_text
+    assert "legacy_pending_" not in private_text
+
+
+def test_manual_sync_dry_run_still_discovers_ledger_missing_old_mtime_backfill_after_many_known_files(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    old_ns = 1_800_000_000_000_000_000
+    watermark_ns = old_ns + 30 * 24 * 60 * 60 * 1_000_000_000
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    for index in range(600):
+        path = source_root / f"known_{index:04d}.png"
+        _write_png(path, (index % 255, 20, 30))
+        os.utime(path, ns=(watermark_ns, watermark_ns))
+        stat = path.stat()
+        media = Media(
+            filename=f"known-{index}.png",
+            path=f"media/original/known-{index}.png",
+            hash=f"known-hash-{index}",
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=path.name,
+                relative_path_hash=service._hash_text(path.name),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=media.hash,
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
+            )
+        )
+
+    older_ns = old_ns - 15 * 24 * 60 * 60 * 1_000_000_000
+    for index in range(100):
+        path = source_root / f"z_preserved_capture_{index:04d}.jpg"
+        path.write_bytes(b"metadata-only-plan-does-not-decode")
+        os.utime(path, ns=(older_ns + index, older_ns + index))
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=50,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 50
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
+    assert plan["limits"]["ledger_missing_candidates"] == 100
+    assert plan["limits"]["ledger_missing_old_mtime_candidates"] == 100
+    assert plan["limits"]["fast_skipped_from_ledger"] == 600
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["content_read_count"] == 0
+    assert "z_preserved_capture_" in str(plan["private_details"]["items"])
+    assert "known_" not in str(plan["private_details"]["items"])
 
 
 def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root(db, tmp_path):

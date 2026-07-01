@@ -238,7 +238,7 @@
     "current_pr_head_before_this_fix": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
-    "head_refresh_note": "report refreshed after user real Web Admin smoke test on head 69fab773 and follow-up fixes in working tree",
+    "head_refresh_note": "Report updated for the Job #15 discovery/cap ordering fix; final PR head must be refreshed after commit/push.",
     "head_sha": "see_pr_body_after_push_self_referential_commit",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": false,
@@ -249,7 +249,7 @@
     "python_executable_name": "python.exe",
     "stale_process_cleanup_status": "managed_validation_processes_cleaned; unrelated port owners left untouched",
     "storage_root_marker": "b369834e62908e17",
-    "validation_basis_head_sha": "69fab773d52ddf67b736d06485c485ea626be2c7",
+    "validation_basis_head_sha": "e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11",
     "violet_env": "production"
   },
   "browser_validation_current_head": {
@@ -954,6 +954,14 @@
       "repair_or_prevention": "Removed hard global timeout, added no-progress watchdog, terminal cancel state, lock release, batch/resume policy reporting, threshold UI cleanup, and hashchange section activation. Prevention: focused tests plus real-browser UI validation of progress/busy/canonical URL; final production GUI Execute acceptance still required",
       "what_happened": "User clicked normal Start manual sync on head 32cb036; progress reached hashing with seen=724 and batch_candidates=319, then the old ~600s global timeout cancelled before Execute.",
       "why_earlier_evidence_missed": "API/runner paths did not exercise a human-scale GUI plan over the production root long enough to hit the old total elapsed timeout."
+    },
+    {
+      "event": "job15_zero_import_discovery_failure_after_added_photos",
+      "what_happened": "After the user added 110+ photos, Web Admin job #15 completed with seen=500/imported=0/failed=0; all 500 run items were existing-media skips while read-only source audit found 133 ledger-missing supported files visible under the registered root.",
+      "detected_by": "User manual GUI acceptance plus read-only server-log, DynamicSyncRun, DynamicSyncRunItem, DynamicSourceItem, and filesystem-vs-ledger audit.",
+      "why_earlier_evidence_missed": "Previous old-mtime tests proved unknown files could be selected when reached, but did not cover a large historical pending/changed priority workset consuming the entire normal batch before filesystem ledger-missing fallback.",
+      "production_impact": "Job #15 wrote no imports/classification/AI/localization and did not mutate source/iCloud content, but it created a misleading zero-import completed GUI job with 500 existing-media skip ledger rows.",
+      "repair_or_prevention": "Legacy pending/changed backlog outside the mtime safety window is excluded from normal priority, filesystem metadata fallback reaches ledger-missing files, candidates are sorted before the actionable cap is applied, and regression tests cover known backlog plus old-mtime unseen files."
     }
   ],
   "final_inventory": {
@@ -1040,7 +1048,7 @@
     "head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b",
     "latest_endpoint_clicked": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "latest_exact_last_stage_before_fix": "unknown_not_recorded_by_pre_fix_backend",
-    "latest_observed_head_sha": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
+    "latest_observed_head_sha": "e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11",
     "latest_observed_timeout_seconds": 597,
     "latest_zero_import_fix": "existing/duplicate media no longer consume import-candidate cap; registered roots prioritize actionable source-delta workset before historical existing rows; zero-import blocked plans hide confirmation controls",
     "latest_zero_import_plan_counts": {
@@ -1075,7 +1083,19 @@
     "timeout_behavior_after_fix": "operator sees persistent progress, request id, phase/counts/events, can cancel plan, and duplicate active plans are rejected",
     "update_check_endpoint": "/api/admin/dynamic-library-sync/check",
     "violet_env": "production",
-    "watchdog_timeout_added": true
+    "watchdog_timeout_added": true,
+    "latest_job15_discovery_failure": {
+      "run_id": 15,
+      "plan_request_id": "gui-plan-f5b3646a-e365-4fdc-baec-1b1f59817e8d",
+      "root_id": 2,
+      "observed_seen": 500,
+      "observed_imported": 0,
+      "observed_failed": 0,
+      "root_cause": "legacy_priority_workset_consumed_batch_before_ledger_missing_discovery",
+      "post_fix_estimated_import_count": 341,
+      "post_fix_ledger_missing_supported_files_visible": 133,
+      "fixed_pending_user_retry": true
+    }
   },
   "gui_execute_acceptance": {
     "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
@@ -1882,7 +1902,7 @@
     "future_manual_sync_safe_for_normal_use": false,
     "gpu_inference_path_reliable_for_manual_sync": true,
     "gui_execute_works_end_to_end": false,
-    "latest_reason": "Job #13 proves the staged UI and full pipeline can complete with plan expensive operations 0/0/0/0, but it is partial acceptance only because the user had to use Advanced exact-phrase execute and existing confirmed non-target AI/localization contamination remains unrepaired.",
+    "latest_reason": "Job #15 exposed a discovery/cap ordering bug: 500 legacy priority candidates executed as existing_media_hash while 133 ledger-missing supported files were visible outside the selected batch. The planner is fixed and read-only production recheck now selects 341 metadata-only candidates, but normal GUI acceptance and confirmed non-target repair are still pending.",
     "manual_sync_safety_status": "manual_sync_not_safe_blockers_remaining",
     "operator_checks_before_retry": [
       "wait for this follow-up head to be pushed and reviewed",
@@ -1905,7 +1925,7 @@
     },
     "project_can_return_to_pixiv_source_roadmap": false,
     "public_safe": true,
-    "reason": "A real Web Admin smoke test completed a batch through the full stages, but the normal confirmation flow was not wired to execute before this fix and historical #7/#8 confirmed non-target media have AI/localization DB contamination that requires approved repair before merge.",
+    "reason": "S3A-M2 remains not safe to merge until a user-performed normal-flow GUI execute passes on the fixed head and the confirmed non-target AI/localization contamination repair is approved/executed or otherwise resolved.",
     "safe_conditions_before_execute": [
       "branch/head/provenance match the PR branch",
       "managed production server is freshly started from the intended profile",
@@ -2258,7 +2278,7 @@
     },
     {
       "code": "normal_flow_gui_execute_retry_required_after_fix",
-      "detail": "Job #13 completed only after Advanced exact-phrase execute; normal confirmation flow is fixed in code and browser-tested, but production user retry is still required.",
+      "detail": "Job #15 proved the normal GUI path can still select the wrong workset: it executed 500 legacy existing-media candidates while newly visible ledger-missing files were outside the selected batch. The discovery algorithm is fixed in this head; a new normal-flow user GUI execute retry is required after pulling/restarting.",
       "status": "blocking_final_gui_acceptance"
     },
     {
@@ -2691,5 +2711,114 @@
       "test_storage": "local_test_storage"
     }
   },
-  "validation_basis_head_sha": "cccef9ddbd6312ae9ef2909d194fe47e2e9062db"
+  "validation_basis_head_sha": "e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11",
+  "latest_job15_discovery_failure": {
+    "status": "fixed_pending_user_retry",
+    "observed_head_sha": "e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11",
+    "run_id": 15,
+    "plan_request_id": "gui-plan-f5b3646a-e365-4fdc-baec-1b1f59817e8d",
+    "root": {
+      "id": 2,
+      "label": "icloud-photos-production",
+      "public_hash_prefix": "153684ac810c"
+    },
+    "observed_gui_run": {
+      "cap": 500,
+      "seen": 500,
+      "imported": 0,
+      "failed": 0,
+      "status": "completed",
+      "stage_ui_completed": true,
+      "plan_elapsed_seconds_approx": 376,
+      "run_item_state_counts": {
+        "skipped_existing_media": 500
+      },
+      "run_item_reason_counts": {
+        "existing_media_hash": 500
+      },
+      "plan_expensive_operations": {
+        "content_reads": 0,
+        "hashes": 0,
+        "decodes": 0,
+        "hydrations": 0
+      }
+    },
+    "read_only_source_audit": {
+      "visible_files_total": 40205,
+      "known_ledger_files": 40071,
+      "ledger_missing_files": 134,
+      "ledger_missing_supported_files": 133,
+      "ledger_missing_with_mtime_after_watermark": 120,
+      "ledger_missing_old_mtime_files": 13,
+      "known_stable_skips": 17173,
+      "known_existing_media": 35428,
+      "unsupported_total": 4434,
+      "metadata_walk_elapsed_seconds": 4.578,
+      "private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/"
+    },
+    "root_cause": "The normal planner prioritized a large historical DynamicSourceItem workset before filesystem ledger-missing discovery. In this production root the workset contained 22902 priority rows, including 22698 old changed/pending rows from historical update-check state, so the cap was consumed by legacy candidates that executed as existing_media_hash before the planner reached newly added files.",
+    "first_attempt_assessment": {
+      "first_cap500_plan_request_seen": "gui-plan-d1ce0ffa-dc36-43e1-915b-bc4f322bb5b7",
+      "evidence": "Server log shows the first plan request returned 200 before the browser refresh. No production imports were written by that request in the read-only audit; job #15 later materialized a separate zero-import execute with 500 existing-media skips.",
+      "source_or_icloud_mutation_found": false,
+      "db_repair_performed": false
+    },
+    "algorithm_fix": {
+      "legacy_pending_outside_mtime_window_excluded_from_normal_priority": true,
+      "filesystem_metadata_fallback_always_reaches_ledger_missing_files_when_safe": true,
+      "candidate_pool_sorted_before_actionable_cap": true,
+      "actionable_cap_no_longer_consumed_by_legacy_pending_backlog": true,
+      "ledger_missing_old_mtime_files_remain_discoverable_as_backfill": true,
+      "plan_content_reads_hash_decode_hydration": "0/0/0/0"
+    },
+    "post_fix_read_only_plan_recheck": {
+      "cap": 500,
+      "metadata_entries_seen": 40217,
+      "candidate_pool_count": 341,
+      "estimated_import_count": 341,
+      "partial_scan": false,
+      "mtime_new_candidates": 119,
+      "safety_window_candidates": 19,
+      "ledger_missing_candidates": 141,
+      "ledger_missing_recent_candidates": 128,
+      "ledger_missing_old_mtime_candidates": 13,
+      "legacy_pending_outside_window_skips": 22698,
+      "priority_workset_processed": 204,
+      "filesystem_walk_completed": true,
+      "elapsed_seconds": 21.515,
+      "plan_expensive_operations": {
+        "content_reads": 0,
+        "hashes": 0,
+        "decodes": 0,
+        "hydrations": 0
+      }
+    },
+    "production_execute_by_codex": false,
+    "source_or_icloud_mutation_by_codex": false,
+    "user_retry_required": true,
+    "validation": {
+      "py_compile_dynamic_library_sync_service": "passed",
+      "json_tool_summary": "passed",
+      "tests_test_dynamic_library_sync_py": "66 passed in 15.33s",
+      "tests_test_s3a_m1_manual_sync_execute_py": "79 passed in 93.64s",
+      "tests_test_s3a_m2_delta_e2e_py": "26 passed in 7.47s",
+      "tests_test_phase_contracts_s3a_m2": "37 passed, 238 deselected in 0.64s",
+      "s3a_m2_contract": "passed; target_met_claimed=false",
+      "public_redaction_contract": "passed; findings=0",
+      "production_execute_by_codex": false,
+      "source_icloud_mutation_by_codex": false
+    }
+  },
+  "validation_commands_latest": {
+    "job15_discovery_fix": [
+      "python -m py_compile backend/app/services/dynamic_library_sync_service.py -> passed",
+      "python -m json.tool docs/reports/s3a-m2-production-delta-e2e-summary.json -> passed",
+      "python -m pytest tests/test_dynamic_library_sync.py -q -> 66 passed in 15.33s",
+      "python -m pytest tests/test_s3a_m1_manual_sync_execute.py -q -> 79 passed in 93.64s",
+      "python -m pytest tests/test_s3a_m2_delta_e2e.py -q -> 26 passed in 7.47s",
+      "python -m pytest tests/test_phase_contracts.py -k s3a_m2 -q -> 37 passed, 238 deselected in 0.64s",
+      "python scripts/check_phase_contract.py --contract s3a_m2_production_delta_e2e_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed; target_met_claimed=false",
+      "python scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed; findings=0"
+    ]
+  }
 }

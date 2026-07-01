@@ -7,7 +7,7 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `incomplete`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis before this update: `69fab773d52ddf67b736d06485c485ea626be2c7` plus working-tree fixes for the latest GUI smoke-test blockers.
+- Head SHA: exact final PR head is recorded in the PR body and Codex closeout after push; validation basis before this update: `e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11` plus working-tree fixes for the latest Job #15 discovery/cap-ordering blocker.
 - Production acceptance performed: `True`.
 - Source root: `153684ac810c2191`.
 
@@ -213,6 +213,7 @@
 - Localization truthfulness: fixed; deferred localization gaps now produce `completed_with_followup_required` instead of a plain completed job, successful translation saves recompute the remaining gap, and cancellation after localization side effects preserves LLM/provider/DB-write counters.
 - Production launcher readiness: fixed; the production manual E2E profile default classification method is `clip`, existing unmarked legacy `heuristic` profile values are normalized to `clip`, explicit non-clip operator overrides fail closed before launch/execute, and automatic/background sync flags remain off.
 - Old-mtime unseen files: fixed; files absent from `DynamicSourceItem` are not skipped solely because preserved mtime is older than watermark minus safety lookback. Known stable old files may still fast-skip by ledger identity.
+- Job #15 discovery/cap ordering failure: fixed; historical `pending/changed` source-ledger backlog outside the mtime safety window no longer sits ahead of filesystem ledger-missing discovery or consumes the normal actionable cap. The planner now collects metadata-only candidates, prioritizes current ledger-missing files, and keeps old-mtime ledger-missing backfill as a lower-priority candidate class.
 - Duplicate/existing visibility: fixed; latest job summary now shows imported, stable skipped/not-applicable, failed, and per-reason breakdown.
 - Governance follow-up: future non-trivial feature work should start plan-only, include mature prior-art/design references for common engineering domains, and use realistic product-path/performance validation. Reports remain supporting evidence, not proof.
 
@@ -227,6 +228,22 @@
 - Current local read-only proof: `profile-status` reported method `clip`, `runtime_env_content_classification_method=clip`, `migrated_from=heuristic`; a child Python process importing `backend.app.config.settings` under the production profile env also saw `CONTENT_CLASSIFICATION_METHOD=clip`, `VIOLET_ENV=production`, DB `blombooru`, and `DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED=false`.
 - Persisted repair path: `scripts/violet_production_control.py profile-repair --json` rewrites the private profile with the normalized `clip` value. Without running repair, restart from the fixed code still normalizes the legacy value at load time; repair makes the private file explicit for future runs.
 - Production data/source impact: this fix is profile/config-only. It does not mutate source/iCloud files, app-managed media, or production DB content.
+
+### Job #15 Manual Sync Discovery Failure
+
+- User-observed blocker: after a no-change cap `200` smoke run, the project owner added `110+` new iCloud/source-root photos, then started normal Web Admin manual sync with cap `500`. The GUI-created run `#15` completed with `seen=500`, `imported=0`, `failed=0`, and all stages visually completed.
+- Request / route evidence: request id `gui-plan-f5b3646a-e365-4fdc-baec-1b1f59817e8d`, endpoint `/api/admin/dynamic-library-sync/manual-sync/plan`, root `icloud-photos-production`, root id `2`, cap `500`, hydration `cloud-aware`.
+- Preserved read-only artifacts: `.local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/job15-source-ledger-audit-public-safe-20260701T131014.json` and `.local_manifests/s3a_m2_delta_e2e/gui_acceptance_debug/job15-post-fix-plan-recheck-public-safe-20260701T132045.json` public-safe summaries; raw/private item evidence remains under the same ignored local artifact tree.
+- Source visibility finding: the source root was visible to the process. A metadata-only audit saw `40205` visible files, `40071` ledger-known files, `134` ledger-missing files, and `133` ledger-missing supported files. Of those supported missing files, `120` were within/after the watermark safety window and `13` preserved old mtime below the cutoff.
+- Job `#15` DB finding: the completed execute run did not import because its private plan contained `500` `import_planned` items that all became stable `skipped_existing_media` with reason `existing_media_hash` during execute-time hash/import validation. It did not prove there was no new delta.
+- First/no-op attempt finding: the preserved log shows multiple GUI plan requests before #15, including `gui-plan-d1ce0ffa-dc36-43e1-915b-bc4f322bb5b7`, and #15 later created a verified GUI execute run. The key durable DB side effect from these attempts was materializing additional `skipped_existing_media` source-ledger rows; no source/iCloud mutation or DB import was performed by CodeX during diagnosis.
+- Root cause: the normal incremental planner put a very large historical `DynamicSourceItem` priority workset ahead of filesystem ledger-missing discovery. In production this priority workset had `22902` rows, including `22698` old `sync_state=changed` / `import_status=pending` rows from historical update-check state. The cap was therefore consumed by historical/legacy candidates before the planner reached the newly added ledger-missing files.
+- Why the previous old-mtime fix was incomplete: it proved a single ledger-missing old-mtime file could be selected when reached, but it did not prove the planner would reach ledger-missing files when a historical priority workset existed first.
+- Algorithm fix: normal priority workset now excludes legacy `pending/changed` rows outside the mtime safety window, while preserving real downstream follow-up, cloud-placeholder, and retryable read/cloud failures. The normal planner then performs metadata-only filesystem fallback, collects candidates, sorts them by currentness (`downstream_followup`, ledger-missing mtime-new, ledger-missing safety-window, known pending/window, ledger-missing old-mtime backfill), and only then applies the actionable cap.
+- Cap semantics after this fix: stable known rows and historical legacy pending backlog do not consume the import/actionable cap. Unknown ledger-missing supported files are not skipped solely because their mtime is old; old-mtime ledger-missing files become lower-priority backfill candidates after current/recent candidates.
+- Post-fix read-only production recheck: same root and cap `500` produced a metadata-only plan in `21.515s`: `metadata_entries_seen=40217`, `candidate_pool_count=341`, `estimated_import_count=341`, `partial_scan=false`, `mtime_new_candidates=119`, `safety_window_candidates=19`, `ledger_missing_candidates=141`, `ledger_missing_recent_candidates=128`, `ledger_missing_old_mtime_candidates=13`, `legacy_pending_outside_window_skips=22698`, and plan reads/hash/decode/hydrate `0/0/0/0`.
+- Interpretation: the newly added files were visible; the miss was caused by priority-workset/cap ordering, not by wrong root, unsupported extensions, iCloud invisibility, or a source mutation requirement.
+- Safety impact: no production execute/import/classification/AI/localization was run by CodeX for this fix; no source/iCloud files were mutated. The user should restart/pull the fixed head before retry so the live 8012 server uses this planner.
 
 ## Pre-User Manual Acceptance Safety Fixes
 
@@ -260,15 +277,18 @@
 - Real browser validation for latest normal-confirmation fix: `passed`; method `Playwright Edge`, URL `http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, normal Start manual sync clicked, browser confirmation accepted, `/manual-sync/execute` observed, Advanced exact phrase not used.
 - Launcher fallback reason: `Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.`.
 - Latest job observed by real user smoke test: run `13`, status `completed`, imported `65`; full normal-flow GUI acceptance remains `False` because Advanced execute was still required before the fix.
+- Latest user-path discovery failure: run `15`, status `completed`, imported `0`; read-only audit found `133` ledger-missing supported files visible under the registered root, so this was a planner selection/cap-ordering bug rather than proof of no new work.
+- Post-fix read-only production plan recheck: cap `500`, `estimated_import_count=341`, `ledger_missing_candidates=141`, `legacy_pending_outside_window_skips=22698`, `partial_scan=false`, and plan reads/hash/decode/hydrate `0/0/0/0`.
+- Latest focused validation after Job #15 fix: `tests/test_dynamic_library_sync.py` `66 passed`; `tests/test_s3a_m1_manual_sync_execute.py` `79 passed`; `tests/test_s3a_m2_delta_e2e.py` `26 passed`; `tests/test_phase_contracts.py -k s3a_m2` `37 passed`; `s3a_m2_production_delta_e2e_contract_v1` `passed` with `target_met_claimed=false`; `public_redaction_contract_v1` `passed`.
 
 ## Current Merge / Retry Status
 
 - Manual sync safety judgement: `manual_sync_not_safe_blockers_remaining`.
 - Remaining blockers:
   - `confirmed_non_target_ai_localization_contamination_unrepaired`: #7/#8 confirmed `non_anime` `ai_wd` assignments require approved deterministic repair or explicit acceptance as deferred debt. Unknown #7/#8 AI tags are not included in default destructive repair.
-  - `normal_flow_gui_execute_retry_required_after_fix`: job #13 completed via Advanced execute; a normal-flow retry on the fixed head is still required.
+  - `normal_flow_gui_execute_retry_required_after_fix`: job #15 exposed a discovery/cap ordering bug after the normal-flow fixes; that bug is fixed in code and report, but a normal-flow retry on the fixed head is still required.
   - `gui_validator_after_normal_flow_run_pending`: the GUI acceptance validator must pass on a normal-flow GUI execute run after the fix.
-- The user should not treat S3A-M2 as complete or safe to merge from job #13 alone.
+- The user should not treat S3A-M2 as complete or safe to merge from job #13 or job #15 alone.
 
 ## Safety
 
@@ -285,6 +305,7 @@
 - Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.
 - Actual launcher/Web Admin GUI Execute acceptance is still not completed after the later user-path zero-import partial plan (`seen=1000`, `import=0`, `partial_scan=yes`). This patch changes the scanner/workset model so priority ledger rows cannot hide new filesystem files, stable existing/duplicate rows cannot consume actionable cap, and downstream follow-up rows are executable; it still needs Codex re-review and then a real GUI Execute run before merge.
 - Actual launcher/Web Admin GUI Execute acceptance is also not completed after the P0 normal Plan architecture failure (`gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380`, about `3727s`, still `checking_supported`). The normal Plan/Execute boundary and operator UI have now been redesigned and test/browser validated in isolation, but production GUI Execute must not be retried until this head is reviewed and accepted for retry.
+- Actual launcher/Web Admin GUI Execute acceptance is not completed after the later job `#15` discovery failure on head `e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11`: the planner selected 500 historical/legacy candidates that all resolved to `existing_media_hash`, while 133 ledger-missing supported filesystem files were visible outside the selected priority workset. The planner now excludes legacy pending backlog from normal priority, performs filesystem metadata fallback, prioritizes current ledger-missing candidates, and needs a user retry on the fixed head.
 - The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.
 - Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet.
 
