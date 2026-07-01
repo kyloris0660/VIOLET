@@ -708,6 +708,11 @@ def test_s3a_m2_gui_validator_fails_if_gui_run_imports_without_ai_tagging(tmp_pa
             "git_value",
             lambda *args: "test-head" if args == ("rev-parse", "HEAD") else "test-branch",
         )
+        monkeypatch.setattr(
+            s3a_m2_runner,
+            "scan_public_output",
+            lambda *_args, **_kwargs: {"passed": True, "finding_count": 0, "findings": []},
+        )
         args = SimpleNamespace(
             profile_json=profile_path,
             min_run_id=8,
@@ -721,6 +726,192 @@ def test_s3a_m2_gui_validator_fails_if_gui_run_imports_without_ai_tagging(tmp_pa
 
         assert public["validated"] is False
         assert "ai_tagging_incomplete_for_imported_items" in public["blockers"]
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_s3a_m2_gui_validator_accepts_completed_with_retryable_source_failures(
+    tmp_path: Path, monkeypatch
+) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    profile_path = tmp_path / "production-profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "profile_id": "production-default",
+                "repo_root": str(tmp_path),
+                "python": sys.executable,
+                "app_port": 8012,
+                "storage_root": str(tmp_path / "storage"),
+                "require_auth": True,
+                "manual_sync_enabled": True,
+                "manual_sync_execute_enabled": True,
+                "manual_sync_execute_max_files": 1000,
+                "db": {"host": "localhost", "port": 5432, "name": "blombooru", "user": "postgres", "password": ""},
+                "tag_translation_llm": {
+                    "api_key": "test-key",
+                    "model": "test-model",
+                    "base_url": "http://127.0.0.1:1/v1",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        root = DynamicSourceRoot(
+            label="gui",
+            root_path=str(tmp_path / "source"),
+            root_path_hash="guiroot",
+            is_active=True,
+        )
+        media = Media(
+            filename="gui-import.png",
+            path="media/original/gui-import.png",
+            hash="gui-import-hash",
+            file_type=FileTypeEnum.image,
+            content_class="anime",
+        )
+        tag = Tag(name="blue_hair", category=TagCategoryEnum.general, post_count=1)
+        run = DynamicSyncRun(
+            id=9,
+            run_type="manual_sync_execute",
+            mode="production_acceptance",
+            status="completed_with_failures",
+            dry_run=False,
+            total_seen=2,
+            new_items=2,
+            failed_items=1,
+            summary_json={
+                "manual_sync_execute": {
+                    "request": {
+                        "request_source": "web_admin_gui",
+                        "gui_validation_session_id": "gui-test-session",
+                        "gui_validation_session_signature_valid": True,
+                        "gui_plan_hash_bound": True,
+                        "gui_plan_flow_verified": True,
+                        "gui_plan_request_id": "gui-plan-test",
+                        "runtime_git_head": "test-head",
+                        "runtime_git_branch": "test-branch",
+                        "client_route": "/admin?tab=content#dynamic-library-sync-section",
+                    },
+                    "outcome_counts": {"imported": 1, "read_timeout": 1, "failed": 1},
+                    "retryable_source_failure_count": 1,
+                    "import_stopped_by": "stopped_by_failure_budget",
+                    "unprocessed_import_planned_count": 0,
+                    "localization": {
+                        "status": "completed",
+                        "failed": 0,
+                        "tags_requiring_localization_after_runner": 0,
+                        "blocked_reason": None,
+                    },
+                }
+            },
+        )
+        db.add_all([root, media, tag, run])
+        db.flush()
+        db.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media.id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.99,
+                is_suggestion=False,
+                is_locked=False,
+            )
+        )
+        imported_item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="gui-import.png",
+            relative_path_hash="gui-import-relhash",
+            media_id=media.id,
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            last_sync_run_id=run.id,
+        )
+        failed_item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="gui-timeout.png",
+            relative_path_hash="gui-timeout-relhash",
+            sync_state="failed",
+            source_status="failed",
+            import_status="failed",
+            failure_reason="read_timeout",
+            classification_status="not_applicable",
+            ai_tagging_status="not_applicable",
+            localization_status="not_applicable",
+            last_sync_run_id=run.id,
+        )
+        db.add_all([imported_item, failed_item])
+        db.flush()
+        db.add_all(
+            [
+                DynamicSyncRunItem(
+                    sync_run_id=run.id,
+                    source_item_id=imported_item.id,
+                    item_state="imported",
+                    action="import",
+                    eligible_for_db_import=True,
+                    media_id=media.id,
+                ),
+                DynamicSyncRunItem(
+                    sync_run_id=run.id,
+                    source_item_id=failed_item.id,
+                    item_state="failed",
+                    action="import",
+                    reason="read_timeout",
+                    eligible_for_db_import=False,
+                ),
+            ]
+        )
+        db.commit()
+        monkeypatch.setattr(gui_validator, "open_db_session", lambda: Session())
+        monkeypatch.setattr(
+            gui_validator,
+            "git_value",
+            lambda *args: "test-head" if args == ("rev-parse", "HEAD") else "test-branch",
+        )
+        monkeypatch.setattr(
+            s3a_m2_runner,
+            "scan_public_output",
+            lambda *_args, **_kwargs: {"passed": True, "finding_count": 0, "findings": []},
+        )
+        args = SimpleNamespace(
+            profile_json=profile_path,
+            min_run_id=8,
+            run_id=None,
+            gui_validation_session_id=None,
+            allow_zero_import=False,
+            allow_older_head=False,
+        )
+
+        public, _private = gui_validator.build_validation(args)
+
+        assert public["blockers"] == []
+        assert public["validated"] is True
+        assert public["status"] == "passed_gui_execute_completed"
+        assert public["run_status"] == "completed_with_failures"
+        assert public["retryable_source_failure_count"] == 1
+        assert public["import_stopped_by"] == "stopped_by_failure_budget"
+        assert "gui_run_not_completed" not in public["blockers"]
     finally:
         db.close()
         Base.metadata.drop_all(engine)

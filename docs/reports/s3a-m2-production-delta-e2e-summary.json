@@ -240,8 +240,8 @@
     "current_pr_head_before_this_fix": "19d686a49148d90d66a4ff5e44e9272db748ec6e",
     "db_name": "blombooru",
     "future_manual_validation_guard": "Run branch/head/status commands, audit ports/processes, start launcher from this branch, and use canonical /admin?tab=content#dynamic-library-sync-section before dry-run.",
-    "head_refresh_note": "Report refreshed after authorized priority backlog repair, local-copy incremental E2E rerun, and isolated browser normal-flow validation.",
-    "head_sha": "85e9993f8772151e4e9d42ad0a1825e99a59c74e",
+    "head_refresh_note": "Report refreshed after run #16 incident diagnosis and bounded retryable-source-failure downstream-continuation fix.",
+    "head_sha": "33441ae22bc44f1f74d9d3b7abbcee4308e00435",
     "managed_validation_server_stopped_after_abort": true,
     "matches_reported_pr_head_at_start_of_debug": false,
     "old_server_process_from_main_or_old_branch_found": false,
@@ -251,7 +251,7 @@
     "python_executable_name": "python.exe",
     "stale_process_cleanup_status": "managed_validation_processes_cleaned; unrelated port owners left untouched",
     "storage_root_marker": "b369834e62908e17",
-    "validation_basis_head_sha": "85e9993f8772151e4e9d42ad0a1825e99a59c74e",
+    "validation_basis_head_sha": "33441ae22bc44f1f74d9d3b7abbcee4308e00435",
     "violet_env": "production"
   },
   "browser_validation_current_head": {
@@ -1080,43 +1080,19 @@
     "watchdog_timeout_added": true
   },
   "gui_execute_acceptance": {
-    "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
-    "gui_provenance": {
-      "gui_validation_session_id_expected": false,
-      "request_sources_accepted": [
-        "web_admin_gui"
-      ],
-      "required": true
-    },
-    "head_sha": "69fab773d52ddf67b736d06485c485ea626be2c7",
-    "latest_gui_smoke_full_acceptance": false,
-    "latest_gui_smoke_run_completed": true,
-    "latest_gui_smoke_run_id": 13,
-    "min_run_id": 8,
-    "normal_confirmation_flow_fixed_after_smoke": true,
     "phase": "S3A-M2",
-    "profile": {
-      "app_port": "8012",
-      "automation_flags": {
-        "ai_auto_tag_after_import": false,
-        "content_classification_auto_after_import": false,
-        "dynamic_library_auto_sync": false,
-        "tag_translation_auto": false,
-        "tag_translation_background": false
-      },
-      "db_name": "blombooru",
-      "loaded": true,
-      "manual_sync_enabled": true,
-      "manual_sync_execute_enabled": true,
-      "manual_sync_execute_max_files": 1000,
-      "path_redacted": true,
-      "profile_id": "production-default",
-      "storage_root_public_marker": "b369834e62908e17",
-      "violet_env": "production"
-    },
-    "public_safe": true,
-    "status": "partial_smoke_completed_normal_flow_fix_pending_retry",
-    "validated": false
+    "status": "failed_run16_bounded_fix_pending_user_retry",
+    "validated": false,
+    "latest_production_gui_execute_run_id": 16,
+    "latest_production_gui_execute_status": "failed",
+    "latest_production_gui_execute_stop_reason": "stopped_by_failure_budget",
+    "latest_production_gui_execute_head_sha": "33441ae22bc44f1f74d9d3b7abbcee4308e00435",
+    "request_source": "web_admin_gui",
+    "gui_provenance_valid": true,
+    "user_execute_clicked": true,
+    "codex_execute_clicked": false,
+    "post_fix_validator_required": true,
+    "public_safe": true
   },
   "gui_hang_root_cause": {
     "active_request_after_timeout_audit": false,
@@ -1187,7 +1163,7 @@
     "watchdog_timeout_added": true,
     "why_port_8012": "The default production port 8000 was occupied by an unrelated local network/proxy process, so launcher validation used 8012."
   },
-  "head_sha": "85e9993f8772151e4e9d42ad0a1825e99a59c74e",
+  "head_sha": "33441ae22bc44f1f74d9d3b7abbcee4308e00435",
   "head_sha_pending_final_amend": true,
   "head_sha_self_reference_note": "A committed report cannot embed its own final Git SHA without changing that SHA. This report records the validation basis head; the PR body and Codex closeout record the pushed head after commit.",
   "initial_localization_diagnosis": {
@@ -2425,7 +2401,7 @@
     "future_manual_sync_safe_for_normal_use": false,
     "gpu_inference_path_reliable_for_manual_sync": true,
     "gui_execute_works_end_to_end": false,
-    "latest_reason": "Current-head fixes, authorized stale priority-backlog repair, repeated local-copy incremental E2E, and isolated real-browser normal-flow execute have passed. The system is ready for the project owner to perform the final production GUI Execute acceptance, but it is not safe for normal use or merge until that production GUI run and validator pass.",
+    "latest_reason": "Production GUI Execute run #16 was a real user-path attempt but failed after the import failure budget tripped. The bounded fix changes manual sync so retryable source read/hydration failures do not strand already imported media before classification/AI/localization. User retry remains required after this fix is pushed and validated.",
     "manual_sync_safety_status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
     "operator_checks_before_retry": [
       "wait for this follow-up head to be pushed and reviewed",
@@ -2988,7 +2964,8 @@
     ]
   },
   "remaining_blockers": [
-    "real_production_gui_execute_acceptance_pending_user_created_run_and_validator_pass",
+    "real_production_gui_execute_acceptance_retry_required_after_run16_failure",
+    "post_fix_gui_acceptance_validator_pass_required",
     "historical_confirmed_non_target_ai_wd_assignments_need_owner_repair_or_explicit_deferral_acceptance_before_merge",
     "latest_head_codex_re_review_pending_after_this_local_commit_push"
   ],
@@ -3459,7 +3436,7 @@
     },
     "current_continuation_status": "passed_focused_tests_contracts_and_redaction_probe"
   },
-  "validation_basis_head_sha": "85e9993f8772151e4e9d42ad0a1825e99a59c74e",
+  "validation_basis_head_sha": "33441ae22bc44f1f74d9d3b7abbcee4308e00435",
   "validation_commands_latest": {
     "job15_discovery_fix": [
       "python -m py_compile backend/app/services/dynamic_library_sync_service.py -> passed",
@@ -3470,6 +3447,18 @@
       "python -m pytest tests/test_phase_contracts.py -k s3a_m2 -q -> 37 passed, 238 deselected in 0.64s",
       "python scripts/check_phase_contract.py --contract s3a_m2_production_delta_e2e_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed; target_met_claimed=false",
       "python scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed; findings=0"
+    ],
+    "run16_incident_fix": [
+      "python -m py_compile backend/app/services/manual_sync_execute_service.py scripts/validate_s3a_m2_gui_execute_acceptance.py tests/test_s3a_m1_manual_sync_execute.py tests/test_s3a_m2_delta_e2e.py -> passed",
+      "python -m pytest tests/test_dynamic_library_sync.py -q -> 71 passed in 16.35s",
+      "python -m pytest tests/test_s3a_m1_manual_sync_execute.py -q -> 81 passed in 97.79s",
+      "python -m pytest tests/test_s3a_m2_delta_e2e.py -q -> 29 passed in 7.75s",
+      "python -m pytest tests/test_phase_contracts.py -k \"s3a_m2 or public_redaction\" -q -> 59 passed, 220 deselected in 0.90s",
+      "python scripts/check_phase_contract.py --contract s3a_m2_production_delta_e2e_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed; target_met_claimed=false",
+      "python scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain -> passed; findings=0",
+      "python -m json.tool docs/reports/s3a-m2-production-delta-e2e-summary.json -> passed",
+      "git diff --check -> passed; CRLF normalization warnings only",
+      "git diff --cached --check -> passed"
     ]
   },
   "report_refreshed_at": "2026-07-01T13:03:06Z",
@@ -3584,5 +3573,89 @@
     "uncertain_rows_skipped": {},
     "public_summary_path": "docs/reports/s3a-m2-priority-backlog-repair-summary.json",
     "audited_registered_root": "[redacted-production-root-id]"
+  },
+  "run16_incident": {
+    "schema": "s3a_m2_run16_incident_summary_v1",
+    "evidence_artifact_public": ".local_manifests/s3a_m2_delta_e2e/run16_incident/run16-followup-source-public-corrected-20260701T160040Z.json",
+    "production_execute_by_codex": false,
+    "run_id": 16,
+    "run_type": "manual_sync_execute",
+    "mode": "production_acceptance",
+    "request_source": "web_admin_gui",
+    "runtime_git_head": "33441ae22bc44f1f74d9d3b7abbcee4308e00435",
+    "root": {
+      "id": 2,
+      "label": "icloud-photos-production",
+      "root_path_hash_prefix": "153684ac810c"
+    },
+    "status_before_fix": "failed",
+    "stop_reason": "stopped_by_failure_budget",
+    "candidate_count": 351,
+    "total_seen": 351,
+    "imported": 155,
+    "skipped_existing_or_duplicate": 6,
+    "failed": 9,
+    "deferred_unprocessed": 181,
+    "failed_reason_counts": {
+      "read_error": 5,
+      "read_timeout": 4
+    },
+    "retryable_source_failure_count": 9,
+    "failure_budget": {
+      "failure_rate_min_items": 20,
+      "max_consecutive_failures": 10,
+      "max_duration_seconds": 7200,
+      "max_failure_rate": 0.05,
+      "max_files": 1000,
+      "max_item_failures": 20,
+      "stop_reasons": [
+        "stopped_by_failure_budget",
+        "stopped_by_duration_budget"
+      ]
+    },
+    "imported_downstream_status_before_fix": {
+      "ai_tagging_status": {
+        "pending": 155
+      },
+      "app_storage_missing_or_unresolved": 0,
+      "app_storage_present": 155,
+      "classification_status": {
+        "pending": 155
+      },
+      "followup_candidate_count": 155,
+      "followup_reason_counts": {
+        "ai_tagging_required": 155,
+        "classification_required": 155,
+        "localization_required": 155
+      },
+      "localization_status": {
+        "waiting_ai_tags": 155
+      }
+    },
+    "active_runs_after_run16": [],
+    "deferred_unprocessed_meaning": "not_processed_budget_stop continuation items after import failure budget stopped further source imports",
+    "root_cause": "import failure budget stopped the run and downstream stages did not run for already imported media",
+    "policy_fix": "retryable source read/hydration failures may stop additional imports but downstream continues for imported media; terminal status becomes completed_with_failures when downstream completes and retryable source failures remain",
+    "next_normal_plan_followup_expected": {
+      "followup_candidate_count": 155,
+      "followup_reason_counts": {
+        "ai_tagging_required": 155,
+        "classification_required": 155,
+        "localization_required": 155
+      },
+      "requires_original_source_file": false,
+      "uses_app_managed_media": true
+    },
+    "validator_semantics_after_fix": {
+      "acceptable_terminal_statuses": [
+        "completed",
+        "completed_with_failures",
+        "completed_with_followup_required"
+      ],
+      "must_fail_if_imported_downstream_incomplete": true,
+      "must_check_gui_provenance": true,
+      "must_check_ai_entity_sourceconcept_truth": true
+    },
+    "public_safe": true
   }
 }

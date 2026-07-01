@@ -7,9 +7,9 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `backend_and_isolated_browser_e2e_validated; production_gui_acceptance_pending`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `85e9993f8772151e4e9d42ad0a1825e99a59c74e`.
+- Head SHA at run #16 incident diagnosis base: `33441ae22bc44f1f74d9d3b7abbcee4308e00435`.
 - API/runner production executes #7/#8 performed: `True`.
-- User production GUI Execute acceptance performed: `False`.
+- User production GUI Execute acceptance performed: `attempted_but_failed_run_16`; acceptance pass: `False`.
 - Authorized production source-ledger repair performed: `True` (`22698` stale priority rows terminalized).
 - Source root public identity: `153684ac810c2191`.
 
@@ -23,6 +23,69 @@
 - A real browser test against the isolated test server validated the normal operator flow: `Start manual sync` -> browser confirmation -> execute request -> stage UI completion, without using the Advanced exact audit phrase.
 - The stale production priority backlog is no longer merely documented or sorted around. The bounded authorized production ledger repair executed and after-audit shows `legacy_pending_changed_rows=0` and `rows_that_need_repair_or_migration=0` for the audited stale condition.
 - Final production GUI Execute acceptance is still pending. The project owner may retry production GUI acceptance on this head or newer, but this is not a merge recommendation and not a normal-use safety claim.
+- New production GUI evidence after the previous report: the user performed real Web Admin GUI Execute run `#16` on head `33441ae22bc44f1f74d9d3b7abbcee4308e00435`. The run imported media but failed before downstream stages, so it is not an acceptance pass.
+- Bounded run #16 fix: retryable source read/hydration failures may stop further import attempts in the current run, but they no longer prevent classification / AI tagging / localization from running for media already imported in that run. Runs with downstream-complete imported media plus retryable source failures now end as `completed_with_failures` rather than plain `failed`.
+
+## Production GUI Execute Run #16 Incident
+
+Evidence source:
+
+- User-performed real production Web Admin GUI Execute run `#16`.
+- Private/public-safe diagnosis artifacts under `.local_manifests/s3a_m2_delta_e2e/run16_incident/`.
+- No production Execute, import, classification, AI tagging, or localization was run by CodeX during this incident follow-up.
+
+Run #16 summary:
+
+- Run type / mode: `manual_sync_execute` / `production_acceptance`.
+- Request source: `web_admin_gui`.
+- Source root: `2` / `icloud-photos-production` (`153684ac810c` public hash prefix).
+- Runtime head recorded by the GUI request: `33441ae22bc44f1f74d9d3b7abbcee4308e00435`.
+- Status before this fix: `failed`; stop reason: `stopped_by_failure_budget`; current stage: `summary`.
+- Plan candidates / run items: `351`.
+- Imported: `155`; skipped existing/duplicate: `6`; failed source reads: `9`; deferred unprocessed: `181`.
+- Failure reasons: `read_error=5`, `read_timeout=4`.
+- Failure-budget interpretation: the run had `155` imported + `6` stable skipped + `9` failed by the time the import budget tripped. The `9/170 = 5.29%` item failure rate exceeded the configured `5%` threshold, so further import attempts stopped.
+
+Imported-media downstream status before this fix:
+
+- Imported media rows present: `155/155`.
+- App-managed storage files present: `155/155`.
+- `classification_status`: `pending=155`.
+- `ai_tagging_status`: `pending=155`.
+- `localization_status`: `waiting_ai_tags=155`.
+- `ai_wd` assignments: `0`.
+- `Media.content_class`: `NULL=155`.
+- Entity/SourceConcept truth pollution from run #16: `0`.
+
+Diagnosis:
+
+- Run #16 did not fail only because nine source files could not be read.
+- The import-stage failure budget stopped the run and downstream stages were skipped for already imported media.
+- This violated the S3A-M2 manual-sync invariant: any media already imported into DB/app storage must either finish downstream processing or remain in an explicit, visible downstream follow-up/deferred state.
+- The read failures are item-level retryable source/iCloud/hydration-style failures. They may stop additional imports in the same batch when the failure budget trips, but they must not strand successfully imported media in `pending` / `waiting_ai_tags`.
+
+Fix made in this continuation:
+
+- Added explicit retryable source failure classification for `read_error`, `read_timeout`, `source_missing`, `permission_denied`, `cloud_hydration_failed`, `cloud_network_unavailable`, and `icloud_placeholder`.
+- If import stops with `stopped_by_failure_budget` and all failures are retryable source failures, execute now clears the terminal stop for downstream processing and continues classification / AI tagging / localization for imported media.
+- Budget accounting is reset for downstream stages after an allowed import-budget stop, so the prior source-read failures do not immediately re-trip the budget before classification/AI/localization can run.
+- The final run status becomes `completed_with_failures` when imported media downstream completes but retryable source failures or unprocessed continuation items remain.
+- The execute summary now records `import_stopped_by`, `downstream_continued_after_import_stop`, and `retryable_source_failure_count`.
+- GUI acceptance validation now accepts `completed_with_failures` / `completed_with_followup_required` as terminal run statuses only if imported-media classification, AI tagging, localization, ledger, tag assignment semantics, redaction, GUI provenance, and Entity/SourceConcept truth checks also pass.
+
+Run #16 aftermath / recovery:
+
+- The existing run #16 imported items remain downstream-incomplete in production until the next operator run processes them.
+- Read-only follow-up evidence shows `155` imported downstream-incomplete source items with app storage present and follow-up reasons `classification_required=155`, `ai_tagging_required=155`, `localization_required=155`.
+- Current planner semantics mark imported rows with incomplete classification/AI/localization as `downstream_followup_planned`; they can be processed from app-managed media and do not require the original source file.
+- The next normal manual sync should include those `155` items as downstream follow-up, not as new imports, while retryable source-read failures remain visible for retry.
+
+Policy judgment:
+
+- Read-error/read-timeout on unimported source items should not make the whole GUI run plain `completed`, because real retryable source failures remain.
+- It also should not make the whole run plain `failed` if imported media complete downstream and the only remaining failures are retryable source-read/hydration items.
+- Correct status for that shape is `completed_with_failures` / `completed_with_followup_required` according to existing project conventions.
+- Production GUI acceptance is still not complete until the user retries on the fixed head and `scripts/validate_s3a_m2_gui_execute_acceptance.py` passes.
 
 ## Priority Workset Backlog Root Cause And Repair
 
@@ -360,28 +423,31 @@ This proves the normal operator flow in an isolated real browser environment. It
 
 ## Validation
 
-- `py_compile`: passed for `scripts/repair_s3a_m2_priority_backlog.py`, `scripts/run_s3a_m2_delta_e2e_with_telemetry.py`, `backend/app/services/dynamic_library_sync_service.py`, `backend/app/services/manual_sync_execute_service.py`, and `backend/app/routes/admin/dynamic_library_sync.py`.
-- `pytest tests/test_dynamic_library_sync.py -q`: `70 passed in 14.35s`.
-- `pytest tests/test_s3a_m1_manual_sync_execute.py -q`: `80 passed in 90.28s`.
-- `pytest tests/test_s3a_m2_delta_e2e.py -q`: `28 passed in 7.01s`.
-- `pytest tests/test_phase_contracts.py -k "s3a_m2 or public_redaction" -q`: `59 passed, 220 deselected in 0.81s`.
+- `py_compile`: passed for `backend/app/services/manual_sync_execute_service.py`, `scripts/validate_s3a_m2_gui_execute_acceptance.py`, `tests/test_s3a_m1_manual_sync_execute.py`, and `tests/test_s3a_m2_delta_e2e.py`.
+- `pytest tests/test_dynamic_library_sync.py -q`: `71 passed in 16.35s`.
+- `pytest tests/test_s3a_m1_manual_sync_execute.py -q`: `81 passed in 97.79s`.
+- `pytest tests/test_s3a_m2_delta_e2e.py -q`: `29 passed in 7.75s`.
+- `pytest tests/test_phase_contracts.py -k "s3a_m2 or public_redaction" -q`: `59 passed, 220 deselected in 0.90s`.
 - `scripts/check_phase_contract.py --contract s3a_m2_production_delta_e2e_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain`: passed; `target_met_claimed=false`.
 - `scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain`: passed; findings `0`.
-- `json.tool` for touched summary JSON files: passed.
+- `json.tool` for `docs/reports/s3a-m2-production-delta-e2e-summary.json`: passed.
+- `git diff --check`: passed; only Windows CRLF normalization warnings were printed.
+- `git diff --cached --check`: passed.
+- Run #16 focused coverage added: retryable import failure-budget stop continues downstream for already imported media; GUI validator accepts `completed_with_failures` only when imported downstream stages and tag/Entity/SourceConcept semantics pass.
 - Authorized priority backlog repair: pre-audit candidate `22698`; DB backup created; row-level snapshot created; repair executed; after-audit candidate `0`, `legacy_pending_changed_rows=0`, `rows_that_need_repair_or_migration=0`.
 - Repeated local-copy incremental E2E: passed; `900` copied local JPG/PNG files; isolated test DB/storage/source root; no production DB or source/iCloud mutation; plan expensive ops `0/0/0/0` across cycles.
 - Real browser normal-flow validation: passed against isolated test server on port `8024`; normal Start manual sync clicked; browser confirmation accepted; `/manual-sync/execute` observed; isolated GUI-created test job completed; Advanced exact phrase was not used.
-- Production GUI Execute validation: not performed by CodeX and not yet completed by the user on this repaired head.
+- Production GUI Execute validation: not performed by CodeX in this continuation. The user-performed production GUI Execute run `#16` failed on the previous head before this bounded fix; a new user retry and validator pass are still required.
 
 ## Current Merge / Retry Status
 
 - Manual sync safety judgement: `manual_sync_not_yet_safe_gui_execute_unvalidated`.
 - Remaining blockers:
-  - `real_production_gui_execute_acceptance_pending_user_created_run_and_validator_pass`: final production GUI Execute must be performed by the user, then `scripts/validate_s3a_m2_gui_execute_acceptance.py` must pass.
+  - `real_production_gui_execute_acceptance_retry_required_after_run16_failure`: final production GUI Execute must be retried by the user on the fixed head, then `scripts/validate_s3a_m2_gui_execute_acceptance.py` must pass.
   - `historical_confirmed_non_target_ai_wd_assignments_need_owner_repair_or_explicit_deferral_acceptance_before_merge`: #7/#8 confirmed `non_anime` AI WD assignment cleanup is still pending; `unknown` is not part of default destructive repair.
   - `latest_head_codex_re_review_pending_after_this_local_commit_push`: after this commit is pushed, reviewer should re-check the new exact head.
-- The user may proceed to final production GUI acceptance after pulling this head or newer and restarting the production launcher/server. This is a **retry permission**, not a merge-ready or normal-use-safe claim.
-- PR #126 is not merge-ready until the production GUI run and validator pass, and until the historical confirmed non-target repair is either executed or explicitly accepted as deferred debt.
+- After this bounded fix passes validation and is pushed, the user may retry production GUI acceptance after pulling the fixed head and restarting the production launcher/server. This is a **retry permission**, not a merge-ready or normal-use-safe claim.
+- PR #126 is not merge-ready until a post-fix production GUI run completes with acceptable terminal status and the GUI validator passes, and until the historical confirmed non-target repair is either executed or explicitly accepted as deferred debt.
 
 ## Safety
 

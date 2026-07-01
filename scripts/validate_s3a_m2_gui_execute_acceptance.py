@@ -576,7 +576,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             blockers.append("gui_run_provenance_missing_or_not_web_admin")
         if not getattr(args, "allow_older_head", False) and not run_head_matches_current:
             blockers.append("gui_run_head_does_not_match_current_head")
-        if str(run.status) != "completed":
+        acceptable_terminal_statuses = {"completed", "completed_with_failures", "completed_with_followup_required"}
+        if str(run.status) not in acceptable_terminal_statuses:
             blockers.append("gui_run_not_completed")
         if not ledger_ok:
             blockers.append("ledger_row_count_mismatch")
@@ -617,11 +618,15 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             },
             "min_run_id": int(args.min_run_id),
             "run_status": str(run.status),
+            "acceptable_terminal_statuses": sorted(acceptable_terminal_statuses),
             "run_type": str(run.run_type),
             "run_mode": str(run.mode),
             "dry_run": bool(run.dry_run),
             "total_seen": expected_total_seen,
             "imported": imported,
+            "retryable_source_failure_count": int(execute_payload.get("retryable_source_failure_count") or 0),
+            "import_stopped_by": execute_payload.get("import_stopped_by"),
+            "unprocessed_import_planned_count": int(execute_payload.get("unprocessed_import_planned_count") or 0),
             "classified": classified,
             "ai_tagged": ai_tagged,
             "localized_source_items": localized,

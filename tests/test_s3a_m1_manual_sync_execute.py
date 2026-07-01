@@ -1,3 +1,4 @@
+import os
 import sys
 import asyncio
 import json
@@ -595,9 +596,9 @@ def test_s3a_m1_execute_records_content_change_as_item_failure(db, tmp_path, mon
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_failures"
     assert result["manual_sync_execute"]["outcome_counts"]["content_changed_after_plan"] == 1
-    assert db.get(DynamicSyncRun, run.id).status == "completed"
+    assert db.get(DynamicSyncRun, run.id).status == "completed_with_failures"
     assert db.query(Media).count() == 0
     source_item = db.query(DynamicSourceItem).one()
     assert source_item.failure_reason == "content_changed_after_plan"
@@ -647,7 +648,7 @@ def test_s3a_m1_execute_rejects_skipped_existing_plan_without_content_hash(db, t
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_failures"
     assert result["manual_sync_execute"]["outcome_counts"]["plan_integrity_missing_content_hash"] == 1
     source_item = db.query(DynamicSourceItem).one()
     assert source_item.failure_reason == "plan_integrity_missing_content_hash"
@@ -810,7 +811,7 @@ def test_s3a_m1_failed_import_keeps_preledger_without_public_path_leak(db, tmp_p
     result = execute_manual_sync_run(db, run_id=run.id)
     public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_failures"
     assert observed["preledger_rows"] == [("import_in_progress", "import", None)]
     assert db.query(Media).count() == 0
     run_item = db.query(DynamicSyncRunItem).one()
@@ -3067,7 +3068,7 @@ def test_s3a_m1_execute_records_missing_file_and_continues(db, tmp_path, monkeyp
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_failures"
     assert result["manual_sync_execute"]["outcome_counts"]["source_missing"] == 1
     assert db.query(Media).count() == 1
     assert db.query(DynamicSyncRunItem).count() == 2
@@ -3121,6 +3122,119 @@ def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
     public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
     assert "missing-2.png" not in str(public_status)
     assert "content_hash" not in str(deferred[0].current_metadata_json)
+
+
+def test_s3a_m1_retryable_import_budget_stop_continues_downstream_for_imported_media(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES", 20)
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS", 1)
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE", 0.20)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "00-ok.png", (1, 2, 3))
+    _write_png(source_root / "01-ok.png", (4, 5, 6))
+    _write_png(source_root / "02-timeout.png", (7, 8, 9))
+    _write_png(source_root / "03-deferred.png", (10, 11, 12))
+    base_mtime_ns = 1_700_000_000_000_000_000
+    for index, name in enumerate(("00-ok.png", "01-ok.png", "02-timeout.png", "03-deferred.png")):
+        ordered_mtime_ns = base_mtime_ns + (10 - index) * 1_000_000
+        os.utime(source_root / name, ns=(ordered_mtime_ns, ordered_mtime_ns))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+
+    def fake_execute_hash(path: Path, _timeout_sec: int):
+        if Path(path).name == "02-timeout.png":
+            return None, "read_timeout"
+        return calculate_file_hash(path), None
+
+    classified: list[int] = []
+    ai_tagged: list[int] = []
+    localized: list[int] = []
+
+    def fake_classification(db_arg, media_id):
+        media = db_arg.get(Media, media_id)
+        media.content_class = "anime"
+        classified.append(media_id)
+        return {"media_id": media_id, "content_class": "anime", "method": "clip"}
+
+    def fake_ai_tagging(_db_arg, media_id):
+        ai_tagged.append(media_id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        assert cancel_check is not None
+        for source_item_id in source_item_ids or []:
+            item = db_arg.get(DynamicSourceItem, int(source_item_id))
+            item.localization_status = "localized"
+            localized.append(int(item.media_id))
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", fake_execute_hash)
+    monkeypatch.setattr(execute_service, "_classify_imported_media", fake_classification)
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed_with_failures"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["import_stopped_by"] == "stopped_by_failure_budget"
+    assert execute_summary["downstream_continued_after_import_stop"] is True
+    assert execute_summary["retryable_source_failure_count"] == 1
+    assert execute_summary["stopped_by"] is None
+    assert execute_summary["outcome_counts"]["imported"] == 2
+    assert execute_summary["outcome_counts"]["read_timeout"] == 1
+    assert execute_summary["unprocessed_import_planned_count"] == 1
+    assert result["failed_items"] == 1
+    assert len(classified) == 2
+    assert ai_tagged == classified
+    assert sorted(localized) == sorted(classified)
+    stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
+    assert stage_rows["import"]["status"] == "stopped_by_failure_budget"
+    assert stage_rows["classification"]["status"] == "completed"
+    assert stage_rows["ai_tagging"]["status"] == "completed"
+    assert stage_rows["localization"]["status"] == "completed"
+
+    source_items = {item.relative_path: item for item in db.query(DynamicSourceItem).all()}
+    assert source_items["00-ok.png"].classification_status == "classified"
+    assert source_items["00-ok.png"].ai_tagging_status == "ai_tagged"
+    assert source_items["00-ok.png"].localization_status == "localized"
+    assert source_items["01-ok.png"].classification_status == "classified"
+    assert source_items["01-ok.png"].ai_tagging_status == "ai_tagged"
+    assert source_items["01-ok.png"].localization_status == "localized"
+    assert source_items["02-timeout.png"].failure_reason == "read_timeout"
+    assert source_items["02-timeout.png"].import_status == "failed"
+    assert source_items["03-deferred.png"].deferred_reason == "not_processed_budget_stop"
+    assert source_items["03-deferred.png"].import_status == "deferred"
 
 
 def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):
@@ -3255,7 +3369,7 @@ def test_s3a_m1_execute_revalidates_existing_media_skip_hash_before_trusting_pla
     _write_png(planned_existing, (90, 80, 70))
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_failures"
     assert result["failed_items"] == 1
     assert result["manual_sync_execute"]["outcome_counts"]["failed"] == 1
     run_item = db.query(DynamicSyncRunItem).one()

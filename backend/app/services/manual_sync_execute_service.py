@@ -80,6 +80,15 @@ PROPER_NOUN_TAG_CATEGORIES = {"character", "copyright", "artist"}
 CONFIRMED_NON_TARGET_CONTENT_CLASSES = {"non_anime"}
 UNKNOWN_OR_UNCERTAIN_CONTENT_CLASSES = {"", "none", "null", "unknown", "unclassified", "uncertain"}
 CLASSIFICATION_DONE_STATUSES = {"classified", "classified_reused"}
+RETRYABLE_SOURCE_FAILURE_REASONS = {
+    "cloud_hydration_failed",
+    "cloud_network_unavailable",
+    "icloud_placeholder",
+    "permission_denied",
+    "read_error",
+    "read_timeout",
+    "source_missing",
+}
 
 
 def _manual_sync_target_content_classes() -> set[str]:
@@ -413,6 +422,27 @@ def _budget_stop_reason(
     ):
         return "stopped_by_failure_budget"
     return None
+
+
+def _retryable_source_failure_count(counts: Counter[str]) -> int:
+    return sum(int(counts.get(reason, 0) or 0) for reason in RETRYABLE_SOURCE_FAILURE_REASONS)
+
+
+def _import_budget_stop_allows_downstream(
+    *,
+    stop_reason: Optional[str],
+    counts: Counter[str],
+    downstream_targets: List[Dict[str, int]],
+    run_status: Optional[str],
+) -> bool:
+    if stop_reason != "stopped_by_failure_budget":
+        return False
+    if run_status == "cancelled" or not downstream_targets:
+        return False
+    failed = int(counts.get("failed", 0) or 0)
+    if failed <= 0:
+        return False
+    return failed == _retryable_source_failure_count(counts)
 
 
 def manual_sync_execute_max_files_cap() -> int:
@@ -2188,12 +2218,31 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
 
         classification_method = str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower()
         classification_order = "classification_before_ai_tagging"
+        import_stop_reason = stop_reason
+        downstream_continued_after_import_stop = _import_budget_stop_allows_downstream(
+            stop_reason=import_stop_reason,
+            counts=counts,
+            downstream_targets=downstream_targets,
+            run_status=run.status,
+        )
+        downstream_budget_processed_baseline = 0
+        downstream_budget_failed_baseline = 0
+        if downstream_continued_after_import_stop:
+            downstream_budget_processed_baseline = processed_items
+            downstream_budget_failed_baseline = item_failure_count
+            consecutive_failures = 0
+            stop_reason = None
 
         def _check_stop_budget() -> Optional[str]:
+            budget_processed_items = processed_items
+            budget_failed_items = item_failure_count
+            if downstream_continued_after_import_stop:
+                budget_processed_items = max(0, processed_items - downstream_budget_processed_baseline)
+                budget_failed_items = max(0, item_failure_count - downstream_budget_failed_baseline)
             return _budget_stop_reason(
                 started_at=run.started_at or _utcnow(),
-                processed_items=processed_items,
-                failed_items=item_failure_count,
+                processed_items=budget_processed_items,
+                failed_items=budget_failed_items,
                 consecutive_failures=consecutive_failures,
             )
 
@@ -2658,6 +2707,16 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             summary_status = "completed_with_localization_failures"
         elif not stop_reason and run.status not in {"cancelled", "failed"} and localization_incomplete:
             summary_status = "completed_with_followup_required"
+        elif (
+            not stop_reason
+            and run.status not in {"cancelled", "failed"}
+            and (
+                int(counts["failed"])
+                or int(unprocessed_import_planned_count)
+                or bool(import_stop_reason)
+            )
+        ):
+            summary_status = "completed_with_failures"
         run.summary_json = _set_stage(run.summary_json or {}, "summary", status=summary_status, processed=1, failed=0)
         _update_execute_summary(
             run,
@@ -2672,6 +2731,9 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             ai_provider_provenance=ai_provenance,
             stopped_by=stop_reason,
             stop_reason=stop_reason,
+            import_stopped_by=import_stop_reason,
+            downstream_continued_after_import_stop=downstream_continued_after_import_stop,
+            retryable_source_failure_count=_retryable_source_failure_count(counts),
             unprocessed_count=unprocessed_count,
             unprocessed_import_planned_count=unprocessed_import_planned_count,
             budgets=_budget_policy_payload(),
@@ -2690,8 +2752,11 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 run.status = "completed_with_failures"
             elif localization_incomplete:
                 run.status = "completed_with_followup_required"
+            elif int(counts["failed"]) or int(unprocessed_import_planned_count) or bool(import_stop_reason):
+                run.status = "completed_with_failures"
             else:
                 run.status = "completed"
+            run.error_message = None
         run.finished_at = _utcnow()
         root.last_checked_at = run.finished_at
         db.commit()
