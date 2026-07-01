@@ -231,6 +231,13 @@ def _assert_manual_e2e_components_ready_for_production() -> None:
             "Production manual E2E execute requires classification-before-AI gating; use CONTENT_CLASSIFICATION_METHOD=clip.",
             status_code=409,
         )
+    clip_ready, clip_reason = _ensure_clip_model_cache_only()
+    if not clip_ready:
+        raise ManualSyncExecuteError(
+            str(clip_reason or "classification_model_uncached"),
+            "Production manual E2E execute requires the CLIP classifier to be available from local cache before import writes begin.",
+            status_code=409,
+        )
     if not settings.AI_TAGGING_ENABLED:
         raise ManualSyncExecuteError(
             "manual_sync_ai_tagging_disabled",
@@ -889,6 +896,14 @@ def _update_execute_summary(run: DynamicSyncRun, **updates: Any) -> None:
     payload = dict(run.summary_json or {})
     execute = dict(payload.get("manual_sync_execute") or {})
     execute.update(updates)
+    safety = dict(execute.get("safety") or {})
+    if "llm_calls_performed" in updates:
+        safety["llm_calls_enabled"] = bool(updates.get("llm_calls_performed"))
+        safety["translation_llm_side_effects_blocked"] = not bool(updates.get("llm_calls_performed"))
+    if "external_provider_calls_performed" in updates:
+        safety["external_provider_calls_performed"] = bool(updates.get("external_provider_calls_performed"))
+    if safety:
+        execute["safety"] = safety
     payload["manual_sync_execute"] = execute
     run.summary_json = payload
 
@@ -1013,7 +1028,8 @@ def _get_or_create_source_item(
     item.file_size = metadata.get("file_size")
     item.mtime = metadata.get("mtime")
     item.mtime_ns = metadata.get("mtime_ns")
-    item.content_hash = content_hash
+    if content_hash:
+        item.content_hash = content_hash
     item.source_status = "available"
     item.last_checked_at = now
     item.last_seen_at = now
@@ -1369,6 +1385,8 @@ def _ai_tag_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
         db,
         media_id,
         dry_run=False,
+        # Mature media-tag semantics: high-confidence WD tags may become normal
+        # media tags, but AI-only tags must not create Entity/SourceConcept truth.
         force_suggestions=False,
         local_files_only=True,
         schedule_localization=False,

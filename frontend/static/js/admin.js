@@ -2756,7 +2756,7 @@ class AdminPanel {
             .join('，') || '-';
         const stageOrder = ['plan', 'import', 'classification', 'ai_tagging', 'localization', 'summary'];
         const stageStatus = {};
-        if (job.status === 'completed' || job.status === 'completed_with_failures') {
+        if (job.status === 'completed' || job.status === 'completed_with_failures' || job.status === 'completed_with_followup_required') {
             stageOrder.forEach((stage) => { stageStatus[stage] = 'completed'; });
         } else if (job.status === 'failed' || job.status === 'cancelled') {
             const failedIndex = Math.max(1, stageOrder.indexOf(currentStage));

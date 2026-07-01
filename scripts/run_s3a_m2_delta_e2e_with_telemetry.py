@@ -1346,6 +1346,9 @@ def _create_s3a_m2_execute_run_from_plan(
     )
     private_plan = dict(plan)
     plan_source = str(((plan.get("source") or {}).get("plan_source") or args.plan_source)).replace("-", "_")
+    plan_mode = str(
+        ((plan.get("limits") or {}).get("plan_mode") or (plan.get("request") or {}).get("plan_mode") or plan_source)
+    ).replace("-", "_")
     if str((private_plan.get("integrity") or {}).get("plan_hash") or "") != expected_hash:
         raise ManualSyncExecuteError(
             "stale_or_mismatched_plan_hash",
@@ -1391,6 +1394,7 @@ def _create_s3a_m2_execute_run_from_plan(
                         expected_plan_hash=expected_hash,
                         plan_created_at=str(args.plan_created_at),
                         production_acceptance_approved=bool(settings.IS_PRODUCTION_ENV),
+                        plan_mode=plan_mode,
                     ),
                     "phase": PHASE,
                     "plan_source": plan_source,

@@ -7,82 +7,87 @@
 - Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
 - Standard pipeline flow: `backend_and_isolated_browser_e2e_validated; production_gui_acceptance_pending`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
-- Head SHA: `0e6ba221293644a13a9dde5038b3a61c3bac6e11`.
-- Production acceptance performed: `True`.
-- Source root: `153684ac810c2191`.
+- Head SHA: `85e9993f8772151e4e9d42ad0a1825e99a59c74e`.
+- API/runner production executes #7/#8 performed: `True`.
+- User production GUI Execute acceptance performed: `False`.
+- Authorized production source-ledger repair performed: `True` (`22698` stale priority rows terminalized).
+- Source root public identity: `153684ac810c2191`.
 
 ## Current Evidence Update
 
 - S3A-M2 remains **not safe to merge** and must not claim `target_met`.
-- Correction: the previous retry-readiness closeout was premature because the required repeated local iCloud-copy incremental E2E had not yet been completed. That validation is now complete and recorded in `docs/reports/s3a-m2-local-copy-incremental-e2e-summary.json`.
-- The repeated local-copy E2E used an isolated source root, isolated test DB, and isolated app storage. It copied `965` locally available JPG/PNG files from the existing iCloud/photo source library without downloading additional cloud images and without mutating the original source/iCloud files.
+- Correction retained: the earlier retry-readiness closeout was premature because the repeated local iCloud-copy incremental E2E had not been completed at that time. That validation has now been completed and is recorded in `docs/reports/s3a-m2-local-copy-incremental-e2e-summary.json`.
+- The repeated local-copy E2E used an isolated source root, isolated test DB, and isolated app storage. It copied `900` locally available JPG/PNG files from the existing iCloud/photo source library without downloading additional cloud images and without mutating the original source/iCloud files.
 - The repeated local-copy E2E passed `10` sequential cycles with pass criteria failures `[]`: baseline import, no-change no-op, small increment, medium increment, old-mtime increment, large stable root + cap-limited increment, duplicate/unsupported/hidden outcome, placeholder/cloud simulation, unknown-vs-non_anime gating, and legacy-backlog-plus-new-files.
 - Plan expensive operations stayed `0/0/0/0` for content reads/hash/decode/hydration across all cycles.
 - A real browser test against the isolated test server validated the normal operator flow: `Start manual sync` -> browser confirmation -> execute request -> stage UI completion, without using the Advanced exact audit phrase.
+- The stale production priority backlog is no longer merely documented or sorted around. The bounded authorized production ledger repair executed and after-audit shows `legacy_pending_changed_rows=0` and `rows_that_need_repair_or_migration=0` for the audited stale condition.
 - Final production GUI Execute acceptance is still pending. The project owner may retry production GUI acceptance on this head or newer, but this is not a merge recommendation and not a normal-use safety claim.
 
-## Priority Workset Backlog Root Cause
+## Priority Workset Backlog Root Cause And Repair
 
-Read-only production audit artifacts:
+Audit and repair artifacts:
 
-- Public summary: `docs/reports/s3a-m2-priority-backlog-audit-summary.json`.
-- Private raw artifact root: `.local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/`.
-- Production DB writes: `False`.
-- Source/iCloud mutation: `False`.
+- Public audit summary: `docs/reports/s3a-m2-priority-backlog-audit-summary.json`.
+- Public repair summary: `docs/reports/s3a-m2-priority-backlog-repair-summary.json`.
+- Private row-level rollback snapshot: `.local_manifests/s3a_m2_delta_e2e/priority_backlog_repair/priority-backlog-pre-repair-root2-20260701T104528Z.jsonl`.
+- Private DB backup before repair: `.local_manifests/s3a_m2_delta_e2e/priority_backlog_repair/priority-backlog-pre-repair-db-backup-20260701T104459Z.dump`.
+- Source/iCloud mutation: `False`; media import/classification/AI/localization/provider calls during repair: `False`.
 
-For root `2` / `icloud-photos-production`:
+Before repair for root `2` / `icloud-photos-production`:
 
-- `total_dynamic_source_items=40096`.
 - `total_priority_workset_rows=22902`.
 - `legacy_pending_changed_rows=22698`, all outside the mtime safety window.
-- `rows_with_media_id=35448`.
-- `rows_matching_existing_media=35448`.
-- `rows_matching_existing_media_hash=34723`.
-- `rows_imported_but_still_pending_or_changed=22698`.
+- Dominant category: `stale_update_check_artifact_already_represented_by_existing_media_hash_storage_evidence`.
+- The stale subset was file-visible, already represented by existing media/hash/storage evidence, had no retryable failure, and had no downstream follow-up requirement.
+
+After repair:
+
+- `total_priority_workset_rows=204`.
+- `legacy_pending_changed_rows=0`.
+- `legacy_pending_changed_outside_safety_window=0`.
+- `rows_that_need_repair_or_migration=0`.
+- `rows_that_should_be_actionable_now=204`.
 - `rows_with_downstream_followup_needed=0`.
 - `rows_with_retryable_failures=0`.
-- `rows_that_should_be_actionable_now=204`.
-- `rows_that_should_be_stable_noop=34703`.
-- `rows_that_need_repair_or_migration=22698`.
 
-Filesystem/media reconciliation:
+Repair execution:
 
-- `file_visible_and_media_exists=22698`.
-- `metadata_matches_existing_import=22698`.
-- `stale_update_check_artifact=22698`.
-- `real_new_or_changed_candidate=204`.
-- `file_visible_but_no_media=200`.
-- `file_missing_and_no_media=4`.
+- Candidate count: `22698`.
+- Rows repaired: `22698`.
+- After candidate count: `0`.
+- Target state: `sync_state=skipped_existing_media`, `import_status=skipped`, `deferred_reason=existing_media_hash`, `classification_status=classified_reused`, `ai_tagging_status=tagged_reused`, `localization_status=localized`.
+- Uncertain rows skipped: `{}`.
 
-Root cause: the 22902-row priority workset is not normal steady-state work. The dominant subset, `22698` rows, is stale historical update-check/source-ledger state in `blombooru_dynamic_source_items`: already-imported media/hash/storage evidence existed, but rows remained `sync_state=changed` and `import_status=pending`. Earlier full import/execute paths did not reconcile these equal-hash imported rows into terminal stable no-op states, and earlier tests did not model a near-full-import production ledger with tens of thousands of stale changed/pending rows.
+Root cause: 22698 legacy pending/changed DynamicSourceItem rows were stale update-check/source-ledger artifacts from earlier broad update-check/import paths. They were visible files already represented by existing media/hash/storage evidence, had no retryable failure and no downstream follow-up, but were left in pending/changed states and therefore polluted the priority workset.
 
-Tactical mitigation implemented: normal planning excludes legacy pending/changed rows outside the safety window from current priority selection, so they do not consume actionable cap or hide new ledger-missing files.
+Why the previous full import did not clear it: Earlier execute/import paths reused or matched existing media without terminalizing these legacy source-ledger rows into stable no-op states; tests covered sorting/cap behavior before they covered production-shaped stale ledger cleanup.
 
-Structural cleanup is proposed but not executed. Dry-run repair candidate count is `22698`; candidate condition is pending changed rows outside the safety window with media id or existing content-hash evidence and no downstream follow-up. Proposed target is stable `skipped_existing_media` / existing-hash no-op state. Production DB repair requires explicit project-owner approval, backup/export, private repair ledger, rerun of this backlog audit, and contract/redaction validation.
+Conclusion: this was both stale historical ledger state and a missing terminalization path. The tactical planner mitigation still matters, but the structural production data issue has now been repaired for the audited stale condition. Remaining `204` priority rows are current actionable/file-visible rows from the after-audit, not the `22698` legacy stale backlog.
 
 ## Repeated Local-Copy Incremental E2E
 
 This is the required repeated incremental validation, not a one-time bulk import proof.
 
 | Cycle | Added | Total files | Selected | Imported | Existing | Unsupported | Placeholder | Non-target | Unknown | Failed | Legacy seen/selected | Plan s | Total s |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|
-| baseline import | 500 | 500 | 500 | 494 | 6 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.183 | 415.940 |
-| no-change | 0 | 500 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.207 | 0.207 |
-| small increment | 10 | 510 | 10 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.318 | 9.229 |
-| medium increment | 100 | 610 | 100 | 100 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.207 | 79.266 |
-| old-mtime increment | 100 | 710 | 100 | 100 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.248 | 78.816 |
-| large stable root + cap increment | 120 | 830 | 120 | 120 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.303 | 92.427 |
-| duplicate/unsupported/hidden outcome | 17 | 847 | 13 | 11 | 1 | 3 | 1 | 0 | 0 | 0 | 0/0 | 0.305 | 10.137 |
-| placeholder/cloud simulation | 1 | 848 | 0 | 0 | 0 | 3 | 2 | 0 | 0 | 0 | 0/0 | 0.312 | 0.312 |
-| unknown vs non_anime/classifier unavailable | 5 | 853 | 5 | 5 | 0 | 3 | 2 | 2 | 2 | 1 | 0/0 | 0.299 | 4.992 |
-| legacy backlog + new files | 120 | 973 | 127 | 120 | 6 | 3 | 2 | 0 | 0 | 1 | 494/0 | 0.331 | 103.458 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| baseline import | 500 | 500 | 500 | 494 | 6 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.291 | 419.228 |
+| no-change | 0 | 500 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.190 | 0.190 |
+| small increment | 10 | 510 | 10 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.212 | 8.695 |
+| medium increment | 80 | 590 | 80 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.250 | 62.868 |
+| old-mtime increment | 80 | 670 | 80 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.256 | 64.203 |
+| large stable + cap | 120 | 790 | 120 | 120 | 0 | 0 | 0 | 0 | 0 | 0 | 0/0 | 0.341 | 96.023 |
+| duplicate/unsupported/hidden | 12 | 802 | 8 | 6 | 1 | 3 | 1 | 0 | 0 | 0 | 0/0 | 0.291 | 6.257 |
+| placeholder simulation | 1 | 803 | 0 | 0 | 0 | 3 | 2 | 0 | 0 | 0 | 0/0 | 0.341 | 0.341 |
+| unknown/non_anime gate | 5 | 808 | 5 | 5 | 0 | 3 | 2 | 2 | 2 | 1 | 0/0 | 0.288 | 4.928 |
+| legacy backlog + new files | 100 | 908 | 101 | 100 | 0 | 3 | 2 | 0 | 0 | 1 | 494/0 | 0.419 | 80.884 |
 
 Conclusions:
 
 - No-change was a fast, explainable no-op.
 - Repeated increments selected current ledger-missing work instead of stale backlog.
 - Old-mtime copied files were discovered and imported.
-- The simulated legacy backlog cycle saw `494` stale legacy rows and selected `0` of them, while importing the new batch.
+- The simulated legacy backlog cycle saw `494` stale legacy rows and selected `0` of them, while importing the new batch and including only one legitimate downstream follow-up.
 - Outcome breakdown accounted for duplicate/existing, unsupported, placeholder-like, confirmed non-target, unknown, and classification-unavailable cases.
 - `unknown` was not treated as `non_anime`; classifier-unavailable rows were deferred/blocked instead of non-target skipped.
 
@@ -92,13 +97,15 @@ Conclusions:
 - Web Admin source root: `s3a-m2-local-copy-e2e`.
 - Normal operator card visible: `True`.
 - Advanced exact execute box hidden before the normal flow: `True`.
-- Browser confirmation described the full pipeline in Chinese: import -> classification -> AI tagging -> localization -> report.
+- Browser confirmation shown: `True`.
 - Execute request observed: `True`.
-- Latest isolated GUI-created job: `#10`, status `completed`, `request_source=web_admin_gui`.
+- Latest isolated GUI-created job: `#9`, status `completed`, `request_source=web_admin_gui`.
 - GUI plan hash binding: `True`; GUI plan flow verified: `True`.
-- Plan candidate pool: `14` (`5` imports and `9` downstream follow-up items).
-- Legacy backlog skipped in browser test: `494`.
-- Plan expensive operations: `0/0/0/0`.
+- Runtime head recorded in the GUI-created test run: `85e9993f8772151e4e9d42ad0a1825e99a59c74e`.
+- Plan candidate pool: `4` (`3` imports and `1` downstream follow-up items).
+- Legacy backlog skipped in browser test: `494`; legacy backlog selected/candidates: `0`.
+- Plan elapsed: `0.735` seconds; metadata entries seen: `911`.
+- Plan expensive operations: `{'content_reads': 0, 'hashes': 0, 'decodes': 0, 'hydrations': 0}`.
 
 This proves the normal operator flow in an isolated real browser environment. It does not replace final user-performed production GUI Execute acceptance.
 
@@ -338,68 +345,64 @@ This proves the normal operator flow in an isolated real browser environment. It
 
 ## Pre-User Manual Acceptance Safety Fixes
 
-- Status: `fixed_pending_codex_re_review_after_ebed72c_followup_commit`.
-- Reviewer scope: current-scope P1/P2 on reviewed head `ebed72c3794d088e8813d7b7390412ef825ee72a`, including executable cap-limited batches, manual E2E LLM readiness preservation, GUI plan-flow provenance binding, current-head GUI validator proof, downstream source-item scoping, cancellation before localization finalizer, and the source-ledger incremental scanner model.
-- Operator-entered production confirmation required: `True`.
-- Signed GUI provenance required: `True`; ordinary API can satisfy GUI acceptance: `False`; GUI Execute acceptance now also requires the same GUI session to submit the bound `plan_request_id` and plan hash, and the validator rejects old-head GUI runs unless explicitly run in diagnostic mode.
-- Validator scope: `validated_gui_run_source_root_only`; skipped placeholders included: `True`.
-- Localization failure reporting: `manual_sync_execute.localization_failed_items plus localization summary failed/gap fields`.
-- Cancellation before localization guard: `True`; LLM calls prevented: `True`; localization DB writes prevented: `True`.
-- Historical read errors retryable in current delta planning: `True`.
-- Manual E2E readiness/backend gates aligned: `True`.
-- Priority workset falls through to filesystem walk: `True`.
-- Existing/duplicate stable rows consume actionable cap: `False`.
-- Downstream follow-up rows executable: `True`.
-- Backend fails closed when manual E2E localization requires an unconfigured LLM provider: `True`.
-- GUI validator clears stale profile env when profile values are absent: `True`.
-- Existing production profile CLIP migration: `fixed`; old unmarked `heuristic` manual-E2E profiles normalize to `clip`, while explicit non-clip updates are blocked before launch/execute.
-- Cap-limited batch execute gate: `fixed`; a safe plan containing the first N actionable candidates under cap can execute with `more_batches_remain=True`, while timeout/cancel/walk-error partial scans remain blocked.
-- User manual GUI acceptance package status: `do_not_ask_user_to_retry_until_new_head_reviewed_or_explicitly_accepted_by_project_owner`.
+- Status: `fixed_pending_codex_re_review_after_push`.
+- Current head covered locally: `85e9993f8772151e4e9d42ad0a1825e99a59c74e`.
+- Current reviewer status at start of continuation: Codex reviewed exact head `85e9993f8772151e4e9d42ad0a1825e99a59c74e` and returned comments; this continuation addressed the current owner/reviewer items that affect production Execute safety and acceptance proof.
+- S3A-M2 runner execute payload bug: fixed by passing normalized `plan_mode`/`plan_source` into `_public_request_payload(...)`; regression coverage is in `tests/test_s3a_m2_delta_e2e.py`.
+- AI identity/media-tag policy: explicit mature media-tag semantics are retained. High-confidence WD `general/meta/rating/character/copyright/artist` media tags may be normal `media_tags`; low-confidence/edge predictions remain suggestions. AI-only tags still must not create SourceConcept truth, Entity truth, or confirmed entity assignments.
+- Stale priority backlog: repaired in production for the audited `22698` stale rows. This was not a source/iCloud or media import operation.
+- Old pending ledger-row starvation: fixed. Real old pending rows no longer disappear solely due to mtime, while media-backed stale pending rows are terminalized or fast-skipped as stable no-op.
+- Downstream follow-up content hash preservation: fixed. Known `content_hash` evidence is preserved and execute no longer overwrites existing source-ledger fingerprints with null.
+- Cap semantics: actionable import/downstream-follow-up cap; stable existing/duplicate/unchanged rows do not consume the user-visible batch cap.
+- GUI provenance: normal browser flow binds GUI session, `plan_request_id`, plan hash, and runtime head in the run summary. The final validator still requires a user-created production GUI run newer than #8.
+- Confirmation UX: normal Start manual sync uses one human-readable browser confirmation before the full chain; Advanced exact phrase remains advanced-only and was not used in the isolated browser normal-flow test.
+- Historical confirmed non-target AI contamination: not repaired in this continuation. The code path is fixed for future runs, but the historical #7/#8 confirmed `non_anime` AI WD assignment cleanup remains pending owner repair/deferral decision before merge.
 
 ## Validation
 
-- Ledger consistency: `passed`; represented items: `173` / `173`.
-- DB count delta: media `349`, source items `391`.
-- Public redaction: `True`; findings: `0`.
-- Launcher/Web Admin: `blocked_pending_reviewer_recheck_and_user_manual_gui_execute_after_p0_normal_flow_redesign`; browser: `msedge`; normal operator UI and staged flow validated in controlled test browser; production Execute clicked: `False`.
-- Launcher dry-run request/timeout/server-stop: `True` / `True` / `True`; latest timeout observed: `597s` before Execute.
-- Plan progress endpoints/tests: `added`; cancellation endpoint/tests: `added`; duplicate active plan guard/tests: `added`.
-- Real browser validation for latest UI fix: `passed_p0_normal_operator_ui_stage_flow`; method `Playwright Edge`, URL `http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, normal staged workflow visible `True`, Advanced/Diagnostics separated `True`, Execute clicked `False`.
-- Real browser validation for latest normal-confirmation fix: `passed`; method `Playwright Edge`, URL `http://127.0.0.1:8013/admin?tab=content#dynamic-library-sync-section`, environment `test`, DB `blombooru_test`, normal Start manual sync clicked, browser confirmation accepted, `/manual-sync/execute` observed, Advanced exact phrase not used.
-- Launcher fallback reason: `Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.`.
-- Latest job observed by real user smoke test: run `13`, status `completed`, imported `65`; full normal-flow GUI acceptance remains `False` because Advanced execute was still required before the fix.
-- Latest user-path discovery failure: run `15`, status `completed`, imported `0`; read-only audit found `133` ledger-missing supported files visible under the registered root, so this was a planner selection/cap-ordering bug rather than proof of no new work.
-- Post-fix read-only production plan recheck: cap `500`, `estimated_import_count=341`, `ledger_missing_candidates=141`, `legacy_pending_outside_window_skips=22698`, `partial_scan=false`, and plan reads/hash/decode/hydrate `0/0/0/0`.
-- Latest focused validation after Job #15 fix: `tests/test_dynamic_library_sync.py` `66 passed`; `tests/test_s3a_m1_manual_sync_execute.py` `79 passed`; `tests/test_s3a_m2_delta_e2e.py` `26 passed`; `tests/test_phase_contracts.py -k s3a_m2` `37 passed`; `s3a_m2_production_delta_e2e_contract_v1` `passed` with `target_met_claimed=false`; `public_redaction_contract_v1` `passed`.
+- `py_compile`: passed for `scripts/repair_s3a_m2_priority_backlog.py`, `scripts/run_s3a_m2_delta_e2e_with_telemetry.py`, `backend/app/services/dynamic_library_sync_service.py`, `backend/app/services/manual_sync_execute_service.py`, and `backend/app/routes/admin/dynamic_library_sync.py`.
+- `pytest tests/test_dynamic_library_sync.py -q`: `70 passed in 14.35s`.
+- `pytest tests/test_s3a_m1_manual_sync_execute.py -q`: `80 passed in 90.28s`.
+- `pytest tests/test_s3a_m2_delta_e2e.py -q`: `28 passed in 7.01s`.
+- `pytest tests/test_phase_contracts.py -k "s3a_m2 or public_redaction" -q`: `59 passed, 220 deselected in 0.81s`.
+- `scripts/check_phase_contract.py --contract s3a_m2_production_delta_e2e_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain`: passed; `target_met_claimed=false`.
+- `scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain`: passed; findings `0`.
+- `json.tool` for touched summary JSON files: passed.
+- Authorized priority backlog repair: pre-audit candidate `22698`; DB backup created; row-level snapshot created; repair executed; after-audit candidate `0`, `legacy_pending_changed_rows=0`, `rows_that_need_repair_or_migration=0`.
+- Repeated local-copy incremental E2E: passed; `900` copied local JPG/PNG files; isolated test DB/storage/source root; no production DB or source/iCloud mutation; plan expensive ops `0/0/0/0` across cycles.
+- Real browser normal-flow validation: passed against isolated test server on port `8024`; normal Start manual sync clicked; browser confirmation accepted; `/manual-sync/execute` observed; isolated GUI-created test job completed; Advanced exact phrase was not used.
+- Production GUI Execute validation: not performed by CodeX and not yet completed by the user on this repaired head.
 
 ## Current Merge / Retry Status
 
 - Manual sync safety judgement: `manual_sync_not_yet_safe_gui_execute_unvalidated`.
 - Remaining blockers:
-  - `confirmed_non_target_ai_localization_contamination_unrepaired`: #7/#8 confirmed `non_anime` `ai_wd` assignments require approved deterministic repair or explicit acceptance as deferred debt. Unknown #7/#8 AI tags are not included in default destructive repair.
-  - `real_production_gui_execute_acceptance_pending_after_local_copy_e2e`: isolated repeated incremental E2E and isolated browser normal flow have passed, but production GUI Execute acceptance still needs a user-created run on this head or newer.
-  - `gui_validator_after_normal_flow_run_pending`: the GUI acceptance validator must pass on a normal-flow GUI execute run after the fix.
-- The user may retry production GUI acceptance on this head or newer, but must not treat S3A-M2 as complete or safe to merge until the production GUI run and validator pass.
-- Priority backlog repair/migration: proposed as a dry-run plan and not executed. It is not required before the next acceptance retry because normal planning now excludes those stale rows from actionable cap and isolated backlog-cycle/browser evidence passed, but it remains recommended follow-up before long-term steady-state cleanup.
+  - `real_production_gui_execute_acceptance_pending_user_created_run_and_validator_pass`: final production GUI Execute must be performed by the user, then `scripts/validate_s3a_m2_gui_execute_acceptance.py` must pass.
+  - `historical_confirmed_non_target_ai_wd_assignments_need_owner_repair_or_explicit_deferral_acceptance_before_merge`: #7/#8 confirmed `non_anime` AI WD assignment cleanup is still pending; `unknown` is not part of default destructive repair.
+  - `latest_head_codex_re_review_pending_after_this_local_commit_push`: after this commit is pushed, reviewer should re-check the new exact head.
+- The user may proceed to final production GUI acceptance after pulling this head or newer and restarting the production launcher/server. This is a **retry permission**, not a merge-ready or normal-use-safe claim.
+- PR #126 is not merge-ready until the production GUI run and validator pass, and until the historical confirmed non-target repair is either executed or explicitly accepted as deferred debt.
 
 ## Safety
 
 - Source/iCloud mutation attempted: `False`.
 - Automatic/scheduled/startup/system-service sync enabled: `False` / `False` / `False` / `False`.
-- Provider/source expansion run: `False`.
+- Provider/Pixiv/gallery-dl/SauceNAO/Google/source expansion run: `False`.
+- SourceConcept/Entity bridge work: `False`.
+- Production DB mutation in this continuation: `True`, limited to authorized `DynamicSourceItem` source-ledger terminalization for `22698` audited stale priority backlog rows.
+- Production media import/classification/AI/localization in this continuation: `False` / `False` / `False` / `False`.
+- Cleanup/delete/reset/drop/truncate: `False`.
 - Private paths or hashes in public report: `False`.
+- Private artifacts committed: `False`.
 
 ## Not Completed
 
 - Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.
 - Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.
 - SourceConcept/Entity bridge work was not run.
-- Actual launcher/Web Admin GUI Execute acceptance is not completed after the one-hour GUI dry-run hang and the later AI-tagging-disabled readiness blocker; that blocker is now fixed, but a new GUI-created run newer than run #8 must still be validated before merge.
-- Actual launcher/Web Admin GUI Execute acceptance is still not completed after the later user-path zero-import partial plan (`seen=1000`, `import=0`, `partial_scan=yes`). This patch changes the scanner/workset model so priority ledger rows cannot hide new filesystem files, stable existing/duplicate rows cannot consume actionable cap, and downstream follow-up rows are executable; it still needs Codex re-review and then a real GUI Execute run before merge.
-- Actual launcher/Web Admin GUI Execute acceptance is also not completed after the P0 normal Plan architecture failure (`gui-plan-dfd8cb35-53df-42f5-a37e-26b2bdb25380`, about `3727s`, still `checking_supported`). The normal Plan/Execute boundary and operator UI have now been redesigned and test/browser validated in isolation, but production GUI Execute must not be retried until this head is reviewed and accepted for retry.
-- Actual launcher/Web Admin GUI Execute acceptance is not completed after the later job `#15` discovery failure on head `e7bda5bbb10e17d882af9ad84d5b4a3d2a877f11`: the planner selected 500 historical/legacy candidates that all resolved to `existing_media_hash`, while 133 ledger-missing supported filesystem files were visible outside the selected priority workset. The planner now excludes legacy pending backlog from normal priority, performs filesystem metadata fallback, prioritizes current ledger-missing candidates, and needs a user retry on the fixed head.
-- Required repeated local-copy incremental E2E is now completed and passed. This evidence allows a production GUI acceptance retry, but it is not a substitute for the final production GUI Execute acceptance.
-- The historical deferred/failed inventory still contains unsupported/out-of-scope and stale rows; it is documented separately from current actionable GUI delta work and should be improved in UI wording after GUI Execute acceptance.
-- Final user-performed launcher/Web Admin GUI Execute acceptance run newer than run #8 has not completed yet.
+- Final user-performed launcher/Web Admin production GUI Execute acceptance run newer than run #8 has not completed yet.
+- GUI acceptance validator has not passed for a production GUI-created run on this repaired head.
+- Historical confirmed `non_anime` AI WD assignment repair remains pending owner repair/deferral decision.
+- The historical deferred/failed inventory still contains unsupported/out-of-scope rows; after the authorized repair it is no longer dominated by the `22698` stale pending/changed priority backlog.
 
 No source paths, filenames, content hashes, API keys, prompts, source URLs, or original image bytes are included in this public report.

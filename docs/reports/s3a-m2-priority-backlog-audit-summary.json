@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-07-01T07:17:32Z",
-  "git_head": "0e6ba221293644a13a9dde5038b3a61c3bac6e11",
+  "generated_at": "2026-07-01T10:57:21Z",
+  "git_head": "85e9993f8772151e4e9d42ad0a1825e99a59c74e",
   "mode": "production_read_only",
   "production_db_mutated": false,
   "public_safe": true,
@@ -12,39 +12,36 @@
         "7-29d": 39625
       },
       "age_distribution_last_seen_at": {
-        "1-6d": 39287,
+        "1-6d": 39387,
         "7-29d": 9,
-        "<1d": 800
+        "<1d": 700
       },
       "age_distribution_updated_at": {
-        "1-6d": 39296,
-        "<1d": 800
+        "1-6d": 16698,
+        "<1d": 23398
       },
       "ai_tagging_status_counts": {
         "ai_tagged": 403,
         "deferred": 5393,
         "tagged": 7570,
-        "tagged_reused": 4032,
-        "waiting_import": 22698
+        "tagged_reused": 26730
       },
       "classification_status_counts": {
         "classified": 7936,
-        "classified_reused": 4069,
-        "deferred": 5393,
-        "waiting_import": 22698
+        "classified_reused": 26767,
+        "deferred": 5393
       },
       "import_status_counts": {
         "deferred": 5393,
         "imported": 12005,
-        "pending": 22698
+        "skipped": 22698
       },
       "legacy_pending_changed_inside_safety_window": 0,
-      "legacy_pending_changed_outside_safety_window": 22698,
-      "legacy_pending_changed_rows": 22698,
+      "legacy_pending_changed_outside_safety_window": 0,
+      "legacy_pending_changed_rows": 0,
       "localization_status_counts": {
         "deferred": 5393,
-        "localized": 12005,
-        "waiting_ai_tags": 22698
+        "localized": 34703
       },
       "mtime_cutoff_ns": 1782049612502310700,
       "mtime_ns_distribution": {
@@ -59,14 +56,14 @@
         "outside_safety_window": 39785
       },
       "priority_workset_rows_current_normal": 204,
-      "priority_workset_rows_legacy_pre_fix": 22902,
-      "private_repair_candidate_ledger": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/priority-backlog-repair-candidates-root2-20260701T071732Z.jsonl",
+      "priority_workset_rows_legacy_pre_fix": 204,
+      "private_repair_candidate_ledger": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/priority-backlog-repair-candidates-root2-20260701T105721Z.jsonl",
       "reason_cross_tabulation_top": {
         "cloud_placeholder|deferred|deferred": 203,
         "cloud_placeholder|missing|deferred": 1,
         "existing_media_hash|skipped_existing_media|deferred": 735,
+        "existing_media_hash|skipped_existing_media|skipped": 22698,
         "hidden|deferred|deferred": 1,
-        "none|changed|pending": 22698,
         "none|imported|imported": 65,
         "none|unchanged|imported": 11940,
         "source_missing|missing|deferred": 20,
@@ -75,15 +72,12 @@
       },
       "reconciliation_against_filesystem_and_media": {
         "file_missing_and_no_media": 4,
-        "file_visible_and_media_exists": 22698,
         "file_visible_but_no_media": 200,
-        "metadata_matches_existing_import": 22698,
-        "real_new_or_changed_candidate": 204,
-        "stale_update_check_artifact": 22698
+        "real_new_or_changed_candidate": 204
       },
       "repair_dry_run": {
         "candidate_condition": "pending new/changed rows outside safety window with media_id or existing content hash, no downstream follow-up needed",
-        "candidate_count": 22698,
+        "candidate_count": 0,
         "proposed_target": {
           "ai_tagging_status": "ai_tagged_if_media_present_else_waiting_import",
           "classification_status": "classified_if_media_present_else_waiting_import",
@@ -104,12 +98,12 @@
       },
       "rows_content_hash_null": 5373,
       "rows_duplicate_or_existing_by_media_id_or_hash": 35448,
-      "rows_imported_but_still_pending_or_changed": 22698,
+      "rows_imported_but_still_pending_or_changed": 0,
       "rows_inside_safety_window": 311,
       "rows_matching_existing_media": 35448,
       "rows_matching_existing_media_hash": 34723,
       "rows_outside_safety_window": 39785,
-      "rows_that_need_repair_or_migration": 22698,
+      "rows_that_need_repair_or_migration": 0,
       "rows_that_should_be_actionable_now": 204,
       "rows_that_should_be_stable_noop": 34703,
       "rows_with_app_storage_media_present": 35448,
@@ -118,36 +112,35 @@
       "rows_with_import_status_deferred": 5393,
       "rows_with_import_status_failed": 0,
       "rows_with_import_status_imported": 12005,
-      "rows_with_import_status_pending": 22698,
+      "rows_with_import_status_pending": 0,
       "rows_with_media_id": 35448,
       "rows_with_retryable_failures": 0,
-      "rows_with_sync_state_changed": 22698,
+      "rows_with_sync_state_changed": 0,
       "rows_with_sync_state_imported": 65,
       "rows_with_sync_state_pending": 0,
-      "rows_with_terminal_stable_skip_reasons": 5189,
+      "rows_with_terminal_stable_skip_reasons": 27887,
       "rows_without_media_id": 4648,
       "source_mtime_watermark_ns": 1782654412502310700,
       "status_cross_tabulation_top": {
-        "changed|pending|waiting_import|waiting_import|waiting_ai_tags": 22698,
         "deferred|deferred|deferred|deferred|deferred": 4636,
         "imported|imported|classified|ai_tagged|localized": 65,
         "missing|deferred|deferred|deferred|deferred": 22,
         "skipped_existing_media|deferred|deferred|deferred|deferred": 735,
+        "skipped_existing_media|skipped|classified_reused|tagged_reused|localized": 22698,
         "unchanged|imported|classified_reused|tagged_reused|localized": 4032,
         "unchanged|imported|classified_reused|tagged|localized": 37,
         "unchanged|imported|classified|ai_tagged|localized": 338,
         "unchanged|imported|classified|tagged|localized": 7533
       },
       "sync_state_counts": {
-        "changed": 22698,
         "deferred": 4636,
         "imported": 65,
         "missing": 22,
-        "skipped_existing_media": 735,
+        "skipped_existing_media": 23433,
         "unchanged": 11940
       },
       "total_dynamic_source_items": 40096,
-      "total_priority_workset_rows": 22902
+      "total_priority_workset_rows": 204
     }
   ],
   "roots_audited": [
@@ -163,11 +156,11 @@
   "source_root_breakdown": {
     "2": {
       "label": "icloud-photos-production",
-      "rows_that_need_repair_or_migration": 22698,
+      "rows_that_need_repair_or_migration": 0,
       "rows_that_should_be_actionable_now": 204,
       "rows_that_should_be_stable_noop": 34703,
       "total_dynamic_source_items": 40096,
-      "total_priority_workset_rows": 22902
+      "total_priority_workset_rows": 204
     }
   }
 }

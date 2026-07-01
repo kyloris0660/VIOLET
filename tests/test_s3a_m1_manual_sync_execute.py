@@ -1471,6 +1471,7 @@ def test_s3a_m1_execute_skips_uncached_clip_without_download(db, tmp_path, monke
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        include_private_details=True,
     )
     run = create_manual_sync_execute_run(
         db,
@@ -2184,6 +2185,7 @@ def test_s3a_m2_manual_execute_ai_policy_confirms_mature_categories_and_suggests
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        include_private_details=True,
     )
     run = create_manual_sync_execute_run(
         db,
@@ -2397,10 +2399,15 @@ def test_manual_sync_execute_processes_imported_downstream_followup(db, tmp_path
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        include_private_details=True,
     )
     assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
     assert plan["counts"]["estimated_import_count"] == 0
     assert plan["counts"]["estimated_ai_tagging_count"] == 1
+    followup_item = next(
+        item for item in plan["private_details"]["items"] if item["state"] == "downstream_followup_planned"
+    )
+    assert followup_item["content_hash"] == media.hash
 
     run = create_manual_sync_execute_run(
         db,
@@ -2429,6 +2436,7 @@ def test_manual_sync_execute_processes_imported_downstream_followup(db, tmp_path
     assert run_item.media_id == media.id
     source_item = db.query(DynamicSourceItem).one()
     assert source_item.import_status == "imported"
+    assert source_item.content_hash == media.hash
     assert source_item.ai_tagging_status == "ai_tagged"
     assert source_item.localization_status == "localized"
 
@@ -2749,6 +2757,45 @@ def test_manual_sync_execute_production_gate_rejects_unconfigured_localization_p
         )
 
     assert exc.value.code == "manual_sync_localization_llm_provider_unconfigured"
+
+
+def test_manual_sync_execute_production_gate_rejects_uncached_clip_before_import(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setattr(execute_service, "_ensure_clip_model_cache_only", lambda: (False, "classification_model_uncached"))
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+            production_acceptance_approved=True,
+        )
+
+    assert exc.value.code == "classification_model_uncached"
+    assert db.query(DynamicSyncRun).count() == 0
+    assert db.query(Media).count() == 0
 
 
 def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_path, monkeypatch):

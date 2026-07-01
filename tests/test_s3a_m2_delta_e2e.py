@@ -24,6 +24,7 @@ from app.enums import FileTypeEnum, TagCategoryEnum
 from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, blombooru_media_tags
 import scripts.run_s3a_m2_delta_e2e_with_telemetry as s3a_m2_runner
 import scripts.audit_manual_sync_non_target_ai_localization as non_target_audit
+import scripts.repair_s3a_m2_priority_backlog as priority_backlog_repair
 from scripts.run_s3a_m2_delta_e2e_with_telemetry import (
     _placeholder_rows_from_plan,
     build_standard_pipeline_flow,
@@ -105,6 +106,177 @@ def test_s3a_m2_runner_preserves_manual_llm_readiness_during_execute(monkeypatch
     assert os.environ["TAG_TRANSLATION_LLM_ENABLED"] == "true"
     assert os.environ["TAG_TRANSLATION_AUTO_ENABLED"] == "true"
     assert os.environ["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "true"
+
+
+def test_s3a_m2_runner_execute_run_payload_includes_plan_mode(monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        root = DynamicSourceRoot(label="fixture", root_path="/safe/source", root_path_hash="root-hash", is_active=True)
+        db.add(root)
+        db.commit()
+
+        from app.services import manual_sync_execute_service as execute_service
+
+        monkeypatch.setenv("VIOLET_ENV", "test")
+        monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: False)
+        monkeypatch.setattr(execute_service, "_recover_stale_manual_sync_execute_runs", lambda _db: [])
+        monkeypatch.setattr(execute_service, "_find_active_manual_sync_execute_run", lambda _db: None)
+        monkeypatch.setattr(execute_service, "manual_sync_execute_effective_max_files", lambda value: int(value))
+        monkeypatch.setattr(execute_service, "_verify_execute_gates", lambda **_kwargs: None)
+        monkeypatch.setattr(execute_service, "_budget_policy_payload", lambda: {"max_files": 5})
+        monkeypatch.setattr(execute_service, "_localization_policy_payload", lambda _items: {"status": "not_started"})
+
+        captured: dict[str, str] = {}
+
+        def fake_public_request_payload(*, plan_mode: str, **kwargs):
+            captured["plan_mode"] = plan_mode
+            return {"plan_mode": plan_mode, **kwargs}
+
+        monkeypatch.setattr(execute_service, "_public_request_payload", fake_public_request_payload)
+
+        args = SimpleNamespace(
+            root_id=root.id,
+            delta_cap=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            plan_created_at="2026-07-01T00:00:00+00:00",
+            plan_source="source-delta",
+        )
+        plan = {
+            "source": {"plan_source": "source_delta"},
+            "limits": {"plan_mode": "incremental"},
+            "counts": {"total_seen": 0, "estimated_import_count": 0},
+            "integrity": {
+                "plan_hash": "abc123",
+                "confirmation_phrase": "ok",
+                "production_confirmation_phrase": "ok",
+            },
+            "private_details": {"items": []},
+        }
+
+        run = s3a_m2_runner._create_s3a_m2_execute_run_from_plan(
+            db,
+            args=args,
+            plan=plan,
+            expected_hash="abc123",
+        )
+
+        assert captured["plan_mode"] == "incremental"
+        assert run.summary_json["manual_sync_execute"]["request"]["plan_mode"] == "incremental"
+        assert run.summary_json["manual_sync_execute"]["request"]["plan_source"] == "source_delta"
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_s3a_m2_priority_backlog_repair_terminalizes_stale_existing_rows(tmp_path: Path, monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        from app.config import settings
+
+        storage = tmp_path / "storage"
+        original = storage / "media" / "original"
+        original.mkdir(parents=True)
+        monkeypatch.setattr(settings, "STORAGE_ROOT", storage)
+
+        source_root = tmp_path / "source"
+        source_root.mkdir()
+        stale_file = source_root / "stale.png"
+        stale_file.write_bytes(b"stale-local-file")
+        old_ns = 1_800_000_000_000_000_000
+        new_ns = old_ns + 30 * 24 * 60 * 60 * 1_000_000_000
+        os.utime(stale_file, ns=(old_ns, old_ns))
+        (original / "existing.png").write_bytes(b"managed-media")
+
+        root = DynamicSourceRoot(label="icloud-photos-production", root_path=str(source_root), root_path_hash="root-hash", is_active=True)
+        db.add(root)
+        db.flush()
+        media = Media(filename="existing.png", path="media/original/existing.png", hash="hash-stale", file_type=FileTypeEnum.image)
+        db.add(media)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path="watermark.png",
+                relative_path_hash="watermark-hash",
+                file_size=1,
+                mtime_ns=new_ns,
+                content_hash="hash-watermark",
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
+            )
+        )
+        stale = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="stale.png",
+            relative_path_hash="stale-hash",
+            file_size=stale_file.stat().st_size,
+            mtime_ns=stale_file.stat().st_mtime_ns,
+            content_hash="hash-stale",
+            source_status="available",
+            sync_state="changed",
+            import_status="pending",
+            classification_status="waiting_import",
+            ai_tagging_status="waiting_import",
+            localization_status="waiting_ai_tags",
+            media_id=media.id,
+        )
+        db.add(stale)
+        db.commit()
+
+        before = priority_backlog_repair.select_repair_candidates(db, root_id=root.id, output_dir=tmp_path)
+        assert before["candidate_count"] == 1
+
+        repaired = priority_backlog_repair.execute_repair(db, candidate_ids=list(before["candidate_ids"]))
+        after = priority_backlog_repair.select_repair_candidates(db, root_id=root.id, output_dir=tmp_path)
+
+        assert repaired == 1
+        assert after["candidate_count"] == 0
+        db.refresh(stale)
+        assert stale.sync_state == "skipped_existing_media"
+        assert stale.import_status == "skipped"
+        assert stale.deferred_reason == "existing_media_hash"
+        assert stale.classification_status == "classified_reused"
+        assert stale.ai_tagging_status == "tagged_reused"
+        assert stale.localization_status == "localized"
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
 
 
 def test_s3a_m2_gui_validator_requires_web_admin_provenance() -> None:

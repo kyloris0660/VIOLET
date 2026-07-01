@@ -678,13 +678,17 @@ def plan_manual_sync(
                 "Web Admin GUI plan requires a valid signed GUI validation session. Refresh the page and retry.",
                 status_code=409,
             )
+        fields_set = body.model_fields_set if hasattr(body, "model_fields_set") else getattr(body, "__fields_set__", set())
+        hydrated_only = bool(body.hydrated_only)
+        if str(body.plan_mode or "").strip().lower() == "advanced_full_rescan" and "hydrated_only" not in fields_set:
+            hydrated_only = True
         _seed_manual_plan_progress(
             plan_request_id=plan_request_id,
             plan_key=plan_key,
             root_id=source_record_id,
             source_path=source_path,
             max_files=manual_sync_execute_effective_max_files(body.max_files),
-            hydrated_only=body.hydrated_only,
+            hydrated_only=hydrated_only,
             request_source=str(gui_provenance.get("request_source") or "api_or_runner"),
         )
         plan = plan_manual_sync_dry_run(
@@ -692,7 +696,7 @@ def plan_manual_sync(
             source_path=source_path or "",
             source_record_id=source_record_id,
             max_files=manual_sync_execute_effective_max_files(body.max_files),
-            hydrated_only=body.hydrated_only,
+            hydrated_only=hydrated_only,
             stable_age_seconds=body.stable_age_seconds,
             include_private_details=False,
             progress_callback=lambda payload: _update_manual_plan_progress(plan_request_id, payload),

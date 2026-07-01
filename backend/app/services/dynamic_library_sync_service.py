@@ -754,6 +754,7 @@ def _plan_manual_sync_incremental_dry_run(
     ledger_missing_recent_candidates = 0
     ledger_missing_old_mtime_candidates = 0
     legacy_pending_outside_window_skips = 0
+    legacy_pending_outside_window_candidates = 0
     stable_old_files_skipped = 0
     unchanged_ledger_skips = 0
     stat_required_count = 0
@@ -799,6 +800,7 @@ def _plan_manual_sync_incremental_dry_run(
             "ledger_missing_recent_candidates": int(ledger_missing_recent_candidates),
             "ledger_missing_old_mtime_candidates": int(ledger_missing_old_mtime_candidates),
             "legacy_pending_outside_window_skips": int(legacy_pending_outside_window_skips),
+            "legacy_pending_outside_window_candidates": int(legacy_pending_outside_window_candidates),
             "stable_old_files_skipped": int(stable_old_files_skipped),
             "skipped_historical": int(unchanged_ledger_skips),
             "skipped_unsupported": int(reason_counts.get("unsupported_extension", 0)),
@@ -927,6 +929,7 @@ def _plan_manual_sync_incremental_dry_run(
 
         followup_payload: Dict[str, Any] = {}
         media_id: Optional[int] = None
+        known_content_hash = str(getattr(known_item, "content_hash", "") or "") or None
         if known_item is not None and _manual_plan_existing_requires_followup(known_item):
             followup_payload = _manual_plan_followup_payload(known_item)
             if known_item.media_id is not None and str(known_item.import_status or "") == "imported":
@@ -938,13 +941,31 @@ def _plan_manual_sync_incremental_dry_run(
         mtime_ns = metadata.get("mtime_ns")
         in_mtime_window = bool(mtime_cutoff_ns is None or (mtime_ns is not None and int(mtime_ns) >= int(mtime_cutoff_ns)))
         known_import_status = str(getattr(known_item, "import_status", "") or "") if known_item is not None else ""
+        media_backed_pending_noop = _manual_plan_media_backed_pending_noop(known_item)
+        if (
+            scan_source == "source_ledger_followup"
+            and known_item is not None
+            and known_import_status == "pending"
+            and not in_mtime_window
+        ):
+            if media_backed_pending_noop:
+                legacy_pending_outside_window_skips += 1
+                unchanged_ledger_skips += 1
+                continue
+            legacy_pending_outside_window_candidates += 1
         if (
             scan_source == "mtime_window_metadata"
             and known_item is not None
             and known_import_status == "pending"
             and not in_mtime_window
         ):
-            legacy_pending_outside_window_skips += 1
+            if media_backed_pending_noop:
+                legacy_pending_outside_window_skips += 1
+                stable_old_files_skipped += 1
+                continue
+            legacy_pending_outside_window_candidates += 1
+        if media_backed_pending_noop:
+            unchanged_ledger_skips += 1
             continue
         if (
             scan_source == "mtime_window_metadata"
@@ -1006,7 +1027,7 @@ def _plan_manual_sync_incremental_dry_run(
             "relative_path_hash_full": rel_hash_full,
             "metadata": metadata,
             "reason": "downstream_followup" if state == "downstream_followup_planned" else None,
-            "content_hash": None,
+            "content_hash": known_content_hash if state == "downstream_followup_planned" else None,
             "media_id": media_id,
             "cloud_placeholder_before_hydration": False,
             "followup": followup_payload,
@@ -1098,7 +1119,7 @@ def _plan_manual_sync_incremental_dry_run(
                 "mtime_ns": metadata.get("mtime_ns"),
                 "state": state,
                 "reason": public_reason,
-                "content_hash": None,
+                "content_hash": record.get("content_hash") if state == "downstream_followup_planned" else None,
                 "cloud_placeholder_before_hydration": False,
                 "scan_source": str(record.get("scan_source") or ""),
                 "downstream_followup": dict(record.get("followup") or {}),
@@ -1109,7 +1130,7 @@ def _plan_manual_sync_incremental_dry_run(
                 {
                     **item,
                     "relative_path": record["relative_path"],
-                    "content_hash": None,
+                    "content_hash": record.get("content_hash") if state == "downstream_followup_planned" else None,
                     "mtime_ns": metadata.get("mtime_ns"),
                     "cloud_placeholder_before_hydration": False,
                     "downstream_followup": dict(record.get("followup") or {}),
@@ -1191,6 +1212,7 @@ def _plan_manual_sync_incremental_dry_run(
         "ledger_missing_recent_candidates": ledger_missing_recent_candidates,
         "ledger_missing_old_mtime_candidates": ledger_missing_old_mtime_candidates,
         "legacy_pending_outside_window_skips": legacy_pending_outside_window_skips,
+        "legacy_pending_outside_window_candidates": legacy_pending_outside_window_candidates,
         "candidate_pool_count": len(candidate_pool),
         "candidate_selection_order": [
             "downstream_followup",
@@ -1198,7 +1220,7 @@ def _plan_manual_sync_incremental_dry_run(
             "ledger_missing_safety_window",
             "known_pending_or_changed_mtime_window",
             "ledger_missing_old_mtime_backfill",
-            "legacy_known_pending_backlog_deferred_to_advanced_or_future_current_window",
+            "legacy_known_pending_old_mtime_low_priority_backfill",
         ],
         "stable_old_files_skipped": stable_old_files_skipped,
         "unchanged_known_files": unchanged_ledger_skips,
@@ -1254,6 +1276,7 @@ def _plan_manual_sync_incremental_dry_run(
             "ledger_missing_recent_candidates": ledger_missing_recent_candidates,
             "ledger_missing_old_mtime_candidates": ledger_missing_old_mtime_candidates,
             "legacy_pending_outside_window_skips": legacy_pending_outside_window_skips,
+            "legacy_pending_outside_window_candidates": legacy_pending_outside_window_candidates,
             "files_stat_checked": stat_required_count,
             "files_hash_checked": 0,
             "new_or_changed_actionable_candidates": downstream_stage_count,
@@ -1267,8 +1290,9 @@ def _plan_manual_sync_incremental_dry_run(
             "filesystem_walk_after_priority_workset": filesystem_walk_after_priority_workset,
             "filesystem_walk_completed": filesystem_walk_completed,
             "starts_from_filesystem_root_when_no_priority_workset": True,
-            "priority_excludes_legacy_pending_outside_window": True,
+            "priority_excludes_legacy_pending_outside_window": False,
             "legacy_pending_outside_window_skips": legacy_pending_outside_window_skips,
+            "legacy_pending_outside_window_candidates": legacy_pending_outside_window_candidates,
             "candidate_pool_count": len(candidate_pool),
             "candidate_selection_order": [
                 "downstream_followup",
@@ -1276,6 +1300,7 @@ def _plan_manual_sync_incremental_dry_run(
                 "ledger_missing_safety_window",
                 "known_pending_or_changed_mtime_window",
                 "ledger_missing_old_mtime_backfill",
+                "legacy_known_pending_old_mtime_low_priority_backfill",
             ],
             "durable_global_filesystem_cursor": False,
             "incremental_source_ledger_used": bool(source_record_id is not None),
@@ -1898,6 +1923,7 @@ def plan_manual_sync_dry_run(
         "max_files": effective_max_files,
         "hydrated_only": hydrated_only,
         "hydration_policy": "local_readable_only" if hydrated_only else "cloud_aware_non_destructive_read",
+        "plan_mode": MANUAL_SYNC_ADVANCED_FULL_RESCAN_MODE,
         "cloud_placeholders_detected_before_hydration": int(
             sum(1 for record in candidate_records if record.get("cloud_placeholder_before_hydration"))
         ),
@@ -2131,6 +2157,20 @@ def _manual_plan_priority_for_known_item(
     import_status = str(item.import_status or "")
     sync_state = str(item.sync_state or "")
     reason = str(item.deferred_reason or item.failure_reason or "")
+    stable_non_actionable = {
+        "unsupported_extension",
+        "hidden",
+        "zero_byte",
+        "zero_byte_file",
+        "source_missing",
+        "permission_denied",
+        "existing_media_hash",
+        "duplicate_hash",
+    }
+    if reason in stable_non_actionable:
+        return None
+    if _manual_plan_media_backed_pending_noop(item):
+        return None
     if import_status == "imported" and item.media_id is not None and _manual_plan_existing_requires_followup(item):
         return 10
     if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
@@ -2145,7 +2185,7 @@ def _manual_plan_priority_for_known_item(
         )
         if in_mtime_window:
             return 40 if sync_state == "new" else 50
-        return None
+        return 95
     return None
 
 
@@ -2212,6 +2252,20 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
     ai_tagging_status = str(item.ai_tagging_status or "")
     localization_status = str(item.localization_status or "")
     reason = str(item.deferred_reason or item.failure_reason or "")
+    stable_non_actionable = {
+        "unsupported_extension",
+        "hidden",
+        "zero_byte",
+        "zero_byte_file",
+        "source_missing",
+        "permission_denied",
+        "existing_media_hash",
+        "duplicate_hash",
+    }
+    if reason in stable_non_actionable:
+        return False
+    if _manual_plan_media_backed_pending_noop(item):
+        return False
     if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
         return True
     if import_status == "pending":
@@ -2237,19 +2291,28 @@ def _manual_plan_existing_requires_followup(item: Optional[DynamicSourceItem]) -
         }
         if not (classification_done and ai_done and localization_done):
             return True
-    stable_non_actionable = {
-        "unsupported_extension",
-        "hidden",
-        "zero_byte",
-        "zero_byte_file",
-        "source_missing",
-        "permission_denied",
-        "existing_media_hash",
-        "duplicate_hash",
-    }
-    if reason in stable_non_actionable:
-        return False
     return import_status in {"deferred", "failed"} or sync_state in {"failed", "deferred"}
+
+
+def _manual_plan_media_backed_pending_noop(item: Optional[DynamicSourceItem]) -> bool:
+    if item is None or item.media_id is None:
+        return False
+    import_status = str(item.import_status or "")
+    sync_state = str(item.sync_state or "")
+    if import_status != "pending" or sync_state not in {"new", "changed", "pending"}:
+        return False
+    if not str(item.content_hash or ""):
+        return False
+    if str(item.failure_reason or item.deferred_reason or ""):
+        return False
+    classification_status = str(item.classification_status or "")
+    ai_tagging_status = str(item.ai_tagging_status or "")
+    localization_status = str(item.localization_status or "")
+    return (
+        classification_status in {"", "waiting_import"}
+        and ai_tagging_status in {"", "waiting_import"}
+        and localization_status in {"", "waiting_import", "waiting_ai_tags"}
+    )
 
 
 def _manual_plan_followup_payload(item: DynamicSourceItem) -> Dict[str, Any]:
@@ -2842,10 +2905,32 @@ def get_ai_localization_readiness(db: Session) -> Dict[str, Any]:
     }
 
 
+def _manual_e2e_clip_cache_readiness() -> Dict[str, Any]:
+    if str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower() != "clip":
+        return {"ready": False, "reason": "CONTENT_CLASSIFICATION_METHOD_not_clip"}
+    try:
+        from huggingface_hub import try_to_load_from_cache
+
+        from .clip_classifier import CLIP_REPO_ID, CLIP_REVISION, CLIP_VISION_FILE, EMBEDDINGS_FILE
+    except Exception as exc:
+        return {"ready": False, "reason": f"clip_import_error:{exc.__class__.__name__}"}
+    if not EMBEDDINGS_FILE.exists():
+        return {"ready": False, "reason": "classification_model_uncached"}
+    cached_model = try_to_load_from_cache(
+        repo_id=CLIP_REPO_ID,
+        filename=CLIP_VISION_FILE,
+        revision=CLIP_REVISION,
+    )
+    if not cached_model or not Path(str(cached_model)).exists():
+        return {"ready": False, "reason": "classification_model_uncached"}
+    return {"ready": True, "reason": None}
+
+
 def get_production_readiness(db: Session) -> Dict[str, Any]:
     roots = list_source_roots(db)
     pending = get_pending_summary(db)
     ai_localization = get_ai_localization_readiness(db)
+    clip_cache = _manual_e2e_clip_cache_readiness()
     blockers: List[str] = []
     warnings: List[str] = []
     manual_execute_blockers: List[Dict[str, str]] = []
@@ -2921,6 +3006,15 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
                 "scope": "manual_execute",
             }
         )
+    elif settings.IS_PRODUCTION_ENV and not bool(clip_cache.get("ready")):
+        blockers.append(str(clip_cache.get("reason") or "classification_model_uncached"))
+        manual_execute_blockers.append(
+            {
+                "code": str(clip_cache.get("reason") or "classification_model_uncached"),
+                "label": "Manual E2E requires the CLIP classifier to be available from local cache before production import writes begin.",
+                "scope": "manual_execute",
+            }
+        )
     if not (settings.TAG_TRANSLATION_AUTO_ENABLED or settings.TAG_TRANSLATION_BG_ENABLED):
         background_warnings.append(
             {
@@ -2955,6 +3049,8 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
             "manual_sync_execute_enabled": settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED,
             "classification_enabled": settings.CONTENT_CLASSIFICATION_ENABLED,
             "content_classification_method": settings.CONTENT_CLASSIFICATION_METHOD,
+            "content_classification_clip_cache_ready": bool(clip_cache.get("ready")),
+            "content_classification_clip_cache_reason": clip_cache.get("reason"),
             "ai_tagging_enabled": settings.AI_TAGGING_ENABLED,
             "tag_translation_llm_enabled": settings.TAG_TRANSLATION_LLM_ENABLED,
             "tag_translation_llm_provider_configured": bool(
@@ -2981,6 +3077,7 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
                 and settings.AI_TAGGING_ENABLED
                 and settings.CONTENT_CLASSIFICATION_ENABLED
                 and str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower() == "clip"
+                and (not settings.IS_PRODUCTION_ENV or bool(clip_cache.get("ready")))
                 and settings.TAG_TRANSLATION_LLM_ENABLED
                 and (
                     ai_localization["tag_localization"]["llm_provider_configured"]
