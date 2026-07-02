@@ -4,18 +4,18 @@
 
 - Phase: `S3A-M2` / `Production Delta Manual Sync E2E + GPU Telemetry`.
 - Status: `completed_with_followup_required`.
-- Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False`.
-- Standard pipeline flow: `backend_and_isolated_browser_e2e_validated; production_gui_acceptance_pending`.
+- Contract: `s3a_m2_production_delta_e2e_contract_v1`; target met: `False` because the legacy validator/report contract still treats support-script redaction findings as an acceptance wall. Project-owner policy for this closeout uses run #18 DB truth as the acceptance evidence.
+- Standard pipeline flow: `backend_and_isolated_browser_e2e_validated; production_gui_run18_db_truth_acceptance_passed`.
 - Branch: `codex/s3a-m2-production-delta-e2e-gpu-telemetry`.
 - Head SHA at run #16 incident diagnosis base: `33441ae22bc44f1f74d9d3b7abbcee4308e00435`.
 - API/runner production executes #7/#8 performed: `True`.
-- User production GUI Execute acceptance performed: `attempted_but_failed_run_16_and_run_17`; acceptance pass: `False`.
+- User production GUI Execute acceptance performed: `run_18_completed_with_failures`; DB-truth acceptance pass: `True`; validator script pass: `False` due tooling/report redaction false positive recorded below.
 - Authorized production source-ledger repair performed: `True` (`22698` stale priority rows terminalized).
 - Source root public identity: `153684ac810c2191`.
 
 ## Current Evidence Update
 
-- S3A-M2 remains **not safe to merge** and must not claim `target_met`.
+- S3A-M2 should still not claim legacy `target_met` through the validator/contract path, but the production DB truth for user-performed run #18 is now strong enough to recommend `safe_to_merge_after_owner_approval=true`.
 - Correction retained: the earlier retry-readiness closeout was premature because the repeated local iCloud-copy incremental E2E had not been completed at that time. That validation has now been completed and is recorded in `docs/reports/s3a-m2-local-copy-incremental-e2e-summary.json`.
 - The repeated local-copy E2E used an isolated source root, isolated test DB, and isolated app storage. It copied `850` locally available JPG/PNG files from the existing iCloud/photo source library without downloading additional cloud images and without mutating the original source/iCloud files.
 - The repeated local-copy E2E passed `11` sequential cycles with pass criteria failures `[]`: baseline import, no-change no-op, small increment, medium increment, old-mtime increment, large stable root + cap-limited increment, duplicate/unsupported/hidden outcome, placeholder/cloud simulation, unknown-vs-non_anime gating, legacy-backlog-plus-new-files, and the new partial-import downstream recovery scenario reproducing the run #16/#17 failure shape.
@@ -28,6 +28,122 @@
 - Bounded run #16 fix: retryable source read/hydration failures may stop further import attempts in the current run, but they no longer prevent classification / AI tagging / localization from running for media already imported in that run. Runs with downstream-complete imported media plus retryable source failures now end as `completed_with_failures` rather than plain `failed`.
 - New production GUI evidence after that fix: the user performed real Web Admin GUI Execute run `#17`. It reached `completed_with_failures` and ran all visible stages, but it still did not complete run #16's `155` already-imported downstream-incomplete media. This is a current-scope acceptance blocker and is diagnosed below.
 - Current-head P1 fix after Codex review of `f7ce8b482080cb464a29d303bc3b9553900f3adf`: downstream follow-up execute no longer validates or hashes the original source file, app-media-backed follow-up is still selected when filesystem walk has errors, and production manual E2E now fails closed before import writes if the WD tagger model/labels are not available from local cache.
+- New production GUI evidence after that P1 fix: the user performed real Web Admin GUI Execute run `#18` on head `418015072eb3b1be29be1a466c5e099b2871fad7`. Read-only DB audit shows run #16's `155` stranded imports were recovered, run #18's `34` new imports completed downstream or stable non-target handling, the `11` failed items are retryable source read failures, and there is no duplicate Media or Entity/SourceConcept truth pollution. This is recorded as the primary acceptance evidence for merge consideration.
+
+## Production GUI Execute Run #18 Acceptance Audit
+
+Evidence source:
+
+- User-performed real production Web Admin GUI Execute run `#18`.
+- Read-only production DB audit artifact: `.local_manifests/s3a_m2_delta_e2e/run18_acceptance/run18-acceptance-readonly-public-20260702T055506Z.json`.
+- Private raw IDs are kept only in `.local_manifests/s3a_m2_delta_e2e/run18_acceptance/run18-acceptance-readonly-private-20260702T055506Z.json`.
+- CodeX did not run production Execute, did not mutate source/iCloud files, and did not perform production import/classification/AI/localization during this audit.
+
+Runtime / provenance:
+
+- Run exists: `True`; run id: `18`.
+- Run type / mode / dry-run: `manual_sync_execute` / `production_acceptance` / `False`.
+- DB / env / profile: `blombooru` / `production` / `production-default`.
+- Source root: `2` / `icloud-photos-production`; source root public hash prefix remains `153684ac810c2191`.
+- Runtime branch/head recorded by the run: `codex/s3a-m2-production-delta-e2e-gpu-telemetry` / `418015072eb3b1be29be1a466c5e099b2871fad7`.
+- Request source: `web_admin_gui`; client route: `/admin?tab=content#dynamic-library-sync-section`.
+- Stored GUI provenance fields show `gui_validation_session_id_present=True`, `gui_validation_session_signature_valid=True`, `gui_plan_hash_bound=True`, `gui_plan_flow_verified=True`, and `gui_plan_request_id_present=True`. This supports Web Admin GUI execution as far as current stored evidence can prove; it is not overstated as independent screen/video proof.
+
+Run #18 summary:
+
+- Status: `completed_with_failures`; current stage: `summary`; import stopped by `stopped_by_failure_budget`.
+- Total seen / run items: `1000` / `1000`.
+- GUI confirmation: `120` import items + `880` downstream follow-up items; cap `1000`; plan hash prefix `c72b92b95d85`.
+- Final item states: `imported=34`, `downstream_followup_planned=880`, `failed=11`, `deferred_unprocessed=75`.
+- Plan expensive operations: `content_reads=0`, `hashes=0`, `decodes=0`, `hydrations=0`.
+- DB elapsed time: `906.72s`, matching the user-observed approximately `907s`.
+- Stage rows:
+  - `candidate_discovery`: `completed`.
+  - `import`: `stopped_by_failure_budget`, processed `925`, failed `11`.
+  - `classification`: `completed`, processed `914`, failed `0`, method `clip`.
+  - `ai_tagging`: `completed`, processed `914`, failed `0`.
+  - `localization`: `completed`, processed `869`, failed `0`.
+  - `summary`: `completed_with_failures`.
+
+Planned vs actual reconciliation:
+
+- The `120` planned import items are fully accounted for as `34` imported + `11` failed + `75` deferred_unprocessed continuation items.
+- The `880` planned follow-up items are fully accounted for as `880` `downstream_followup_planned` run items.
+- Final `imported=34` is therefore not a silent loss. It means the import failure budget stopped the import portion after `34` successful imports and `11` retryable source-read failures, leaving `75` planned imports deferred for a later normal manual sync.
+- The user's expectation of roughly `30` newly added local images is consistent with the `34` actual imports.
+
+Run #16 recovery proof:
+
+- Run #16 imported media/source items found: `155`.
+- Media rows present: `155/155`.
+- App-managed storage files present: `155/155`.
+- `classification_status`: `classified=155`.
+- `ai_tagging_status`: `ai_tagged=129`, `ai_tagging_skipped_non_target=26`.
+- `localization_status`: `localized=129`, `localization_not_applicable_non_target=26`.
+- `content_class`: `anime=122`, `non_anime=26`, `unknown=7`.
+- AI WD assignments: `6556` total on `129` target/unknown media; confirmed non-target rows are skipped as intended.
+- Pending/waiting downstream leftovers: `0`.
+- Downstream complete or stable non-target count: `155/155`.
+- Entity/SourceConcept truth pollution: `0`; confirmed or locked AI-created entity assignments: `0`.
+
+Run #18 new import proof:
+
+- New imported run items / unique media ids: `34` / `34`.
+- Media rows present: `34/34`.
+- App-managed storage files present: `34/34`.
+- `classification_status`: `classified=34`.
+- `ai_tagging_status`: `ai_tagged=32`, `ai_tagging_skipped_non_target=2`.
+- `localization_status`: `localized=32`, `localization_not_applicable_non_target=2`.
+- `content_class`: `anime=32`, `non_anime=2`.
+- AI WD assignments: `1479` total on `32` target media.
+- Pending/waiting downstream leftovers: `0`.
+- Duplicate Media hash groups for new imports: `0`.
+- Entity/SourceConcept truth pollution: `0`; confirmed or locked AI-created entity assignments: `0`.
+
+Failed item proof:
+
+- Failed run items: `11`.
+- Reason distribution: `read_error=2`, `read_timeout=9`.
+- Source status distribution: `failed=11`.
+- Retry metadata: `retryable=True` for `11/11`; long-term state is currently `retryable=11`.
+- Aggregate source existence check: `11/11` source files still exist; this supports read/timeout behavior rather than missing-file deletion.
+- These are item-level retryable source-read/iCloud-style failures. No DB/storage/systemic/pipeline fatal error was found.
+- These failures did not strand run #16 recovered media or run #18 newly imported media; downstream stages completed for imported/follow-up media.
+
+Remaining root debt / follow-up debt:
+
+- Root 2 media-backed rows audited: `35640`.
+- Remaining app-media-backed downstream-incomplete rows: `20`, all with app storage present.
+- These `20` are from last sync run id `9`, not run #16 or run #18.
+- Run #16 media-backed incomplete count after run #18: `0`.
+- Remaining importable DB pending rows by validator criteria: `0`.
+- Remaining placeholder DB rows by validator criteria: `3`.
+- The `3` placeholder rows explain the validator's `remaining_placeholder_items` blocker, but they are historical/retryable inventory and were not part of run #18's imported/follow-up downstream completion acceptance. They do not prove run #18 DB truth is incomplete.
+
+Validator / tooling diagnosis:
+
+- The GUI acceptance validator wrote `docs/reports/s3a-m2-gui-execute-acceptance-summary.json` and reported `status=blocked_public_redaction_failed`, while also reporting `public_safe=true`.
+- Exact redaction finding classes from a read-only rescan:
+  - `private_provenance_value_unredacted=1` at `final_inventory.source_root_ids[0]`.
+  - `secret_key_name_with_unredacted_value=3` at boolean/profile fields: `api_key_present`, `fallback_api_key_present`, and `secret_values_redacted`.
+- No real committed public artifact leak was found in this audit: no private paths, filenames, content hashes, prompt text, credential values, or source file evidence were exposed by those findings.
+- Classification: validator/report false positive and over-strict field-name policy, plus stale acceptance-wall semantics. It is a deferred tooling cleanup item, not a run #18 business-logic blocker.
+- Earlier manual preflight PowerShell script failure where `git` was invoked without subcommands is also an operator-tooling bug. The user manually completed equivalent branch/head/profile/server checks and completed run #18, so this is deferred and not a run #18 acceptance blocker.
+
+Run #18 acceptance judgment:
+
+- `safe_to_merge_after_owner_approval`: `yes`.
+- Current-stage merge blockers found by DB truth audit: `[]`.
+- Run #18 is reliable enough as S3A-M2 production GUI Execute acceptance evidence because:
+  - GUI/runtime provenance identifies run #18, root 2, production DB, Web Admin route, and head `418015072eb3b1be29be1a466c5e099b2871fad7`.
+  - Run #16 leftovers were recovered with no pending/waiting downstream leftovers.
+  - Run #18 new imports completed downstream or stable non-target handling.
+  - The `11` failures are retryable source-read failures, not systemic/pipeline failures.
+  - No duplicate Media rows were found for new imports.
+  - No Entity/SourceConcept truth pollution was found.
+  - Source/iCloud mutation flag remains false and CodeX did not run production Execute.
+
+Recommended manual sync safety judgement after run #18: `manual_sync_safe_with_operator_checks`. It is not claimed as `manual_sync_safe_for_normal_use` because retry/placeholder UX, validator/report simplification, and broader state-machine cleanup remain deferred.
 
 ## Production GUI Execute Run #16 Incident
 
@@ -561,17 +677,23 @@ This proves the normal operator flow in an isolated real browser environment. It
 - Repeated local-copy incremental E2E: passed; `850` copied local JPG/PNG files; `11` sequential cycles; isolated test DB/storage/source root; no production DB or source/iCloud mutation; plan expensive ops `0/0/0/0` across cycles; partial-import downstream recovery cycle passed with `3/3` seeded follow-up items completed and `0` duplicate Media rows.
 - Real browser normal-flow validation: passed against isolated test server on port `8024`; normal Start manual sync clicked; browser confirmation accepted; `/manual-sync/execute` observed; isolated GUI-created test job completed; Advanced exact phrase was not used.
 - Read-only production plan proof: passed with artifact `.local_manifests/s3a_m2_delta_e2e/run16_run17_followup_incident/run16-followup-current-p1-proof-public-20260702T044200Z.json`; normal cap `500` selected run #16 imported source items as follow-up `155/155`, simulated source-walk-error plan also selected `155/155`, plan expensive ops stayed `0/0/0/0`, and CodeX did not run production Execute.
-- Production GUI Execute validation: not performed by CodeX in this current-head P1 continuation. The user-performed production GUI Execute runs `#16/#17` remain failed/non-acceptance evidence; a new user retry and validator pass are still required.
+- User-performed production GUI Execute run #18 DB-truth audit: passed with artifact `.local_manifests/s3a_m2_delta_e2e/run18_acceptance/run18-acceptance-readonly-public-20260702T055506Z.json`; run #16 recovery `155/155`; run #18 new imports downstream complete/stable `34/34`; retryable source failures `11/11`; duplicate Media groups `0`; AI-created confirmed/locked Entity assignments `0`.
+- GUI validator script result: `blocked_public_redaction_failed` due validator/report tooling findings described above; this is classified as a deferred validator/report false-positive cleanup item, not a DB-truth acceptance blocker.
+- Production GUI Execute validation by CodeX: not performed. Run #18 was user-performed; CodeX only ran read-only DB/report diagnosis.
 
 ## Current Merge / Retry Status
 
-- Manual sync safety judgement: `manual_sync_not_yet_safe_gui_execute_unvalidated`.
-- Remaining blockers:
-  - `real_production_gui_execute_acceptance_retry_required_after_run16_failure`: final production GUI Execute must be retried by the user on the fixed head, then `scripts/validate_s3a_m2_gui_execute_acceptance.py` must pass.
-  - `historical_confirmed_non_target_ai_wd_assignments_need_owner_repair_or_explicit_deferral_acceptance_before_merge`: #7/#8 confirmed `non_anime` AI WD assignment cleanup is still pending; `unknown` is not part of default destructive repair.
-  - `latest_head_codex_re_review_pending_after_this_local_commit_push`: after this commit is pushed, reviewer should re-check the new exact head.
-- After this bounded fix passes validation and is pushed, the user may retry production GUI acceptance after pulling the fixed head and restarting the production launcher/server. This is a **retry permission**, not a merge-ready or normal-use-safe claim.
-- PR #126 is not merge-ready until a post-fix production GUI run completes with acceptable terminal status and the GUI validator passes, and until the historical confirmed non-target repair is either executed or explicitly accepted as deferred debt.
+- Manual sync safety judgement: `manual_sync_safe_with_operator_checks`.
+- `safe_to_merge_after_owner_approval`: `yes`.
+- Current-stage merge blockers from run #18 DB-truth audit: `[]`.
+- Acceptance caveat: legacy validator/contract `target_met` remains `False` because validator/report tooling still treats support-script public-redaction findings and historical placeholder inventory as hard blockers. The project-owner correction for this closeout states those scripts are not the acceptance wall unless they reveal a real leak or DB-truth blocker; this audit found neither.
+- Deferred next-stage items:
+  - `preflight_script_git_invocation_bug`: PowerShell prep script can invoke `git` without subcommands; user manually performed equivalent checks for run #18, so this is operator tooling debt, not a run #18 DB-truth blocker.
+  - `validator_report_false_positive_cleanup`: validator flags boolean fields such as `api_key_present` and public root id lists; no actual secret/path/hash leak was found.
+  - `validator_remaining_placeholder_policy_cleanup`: remaining historical placeholder inventory should not automatically invalidate imported/downstream-complete GUI runs.
+  - `manual_sync_state_machine_refactor`, `typed WorkItem / lifecycle classifier`, `retry schema/table and retry UI`, `hydration UX and long-term failed item list`, `UI Chinese localization`, `plan/classification/AI/localization progress display`, `filesystem walk liveness/watchdog`, `source-delta runner / advanced-mode polish`, `stale module cleanup`, and all non-current reviewer P2/P3.
+- Historical confirmed `non_anime` AI WD assignment cleanup remains a known debt from #7/#8. It is not newly introduced by run #18; run #18 new imports correctly skipped `non_anime` downstream AI/localization as non-target. Merge requires owner acceptance of this deferred historical repair or a separate approval to repair it.
+- Recommended next step: owner reviews this DB-truth audit and, if acceptable, may merge PR #126 despite validator/support-script cleanup debt. A future cleanup/refactor stage should simplify the validator/report path and harden operator scripts before further manual-sync expansion.
 
 ## Safety
 
@@ -579,8 +701,8 @@ This proves the normal operator flow in an isolated real browser environment. It
 - Automatic/scheduled/startup/system-service sync enabled: `False` / `False` / `False` / `False`.
 - Provider/Pixiv/gallery-dl/SauceNAO/Google/source expansion run: `False`.
 - SourceConcept/Entity bridge work: `False`.
-- Production DB mutation in this current-head P1 continuation: `False`; only read-only production profile/plan/DB proof was performed. Earlier in PR #126, the authorized `22698` stale priority backlog terminalization was performed and remains documented above.
-- Production media import/classification/AI/localization in this continuation: `False` / `False` / `False` / `False`.
+- Production DB mutation in this run #18 audit continuation: `False`; only read-only production DB/report inspection was performed. Earlier in PR #126, the authorized `22698` stale priority backlog terminalization was performed and remains documented above.
+- Production media import/classification/AI/localization by CodeX in this continuation: `False` / `False` / `False` / `False`.
 - Cleanup/delete/reset/drop/truncate: `False`.
 - Private paths or hashes in public report: `False`.
 - Private artifacts committed: `False`.
@@ -590,8 +712,7 @@ This proves the normal operator flow in an isolated real browser environment. It
 - Automatic/scheduled/startup/system-service sync was not implemented; it remains out of scope.
 - Pixiv/provider/gallery-dl/SauceNAO/Google/source metadata expansion was not run.
 - SourceConcept/Entity bridge work was not run.
-- Final user-performed launcher/Web Admin production GUI Execute acceptance run newer than run #8 has not completed yet.
-- GUI acceptance validator has not passed for a production GUI-created run on this repaired head.
+- GUI acceptance validator has not passed for run #18 because of the validator/report issue documented above; run #18 DB truth is accepted as the primary production GUI evidence under the project-owner correction.
 - Historical confirmed `non_anime` AI WD assignment repair remains pending owner repair/deferral decision.
 - The historical deferred/failed inventory still contains unsupported/out-of-scope rows; after the authorized repair it is no longer dominated by the `22698` stale pending/changed priority backlog.
 

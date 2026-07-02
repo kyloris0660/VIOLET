@@ -1,31 +1,76 @@
 {
+  "acceptable_terminal_statuses": [
+    "completed",
+    "completed_with_failures",
+    "completed_with_followup_required"
+  ],
+  "ai_tagged": 869,
+  "blockers": [
+    "remaining_placeholder_items"
+  ],
   "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
-  "computer_use_url_confidence_diagnosis": {
-    "chrome_observed_url": "http://127.0.0.1:8012/admin#dynamic-library-sync-section",
-    "code_fix": "Frontend setupTabs now preserves or restores ?tab=content when the hash targets an admin content section; launcher control test already asserts the canonical URL; production-launcher docs now name the canonical URL.",
-    "computer_use_available": true,
-    "computer_use_missing_signal": "Windows Computer Use policy could not independently read/verify the Chrome address-bar URL from the browser window state; it had title/window evidence but no trusted URL signal.",
-    "execute_clicked": false,
-    "expected_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
-    "launcher_button_clicked": "openManualSyncButton",
-    "launcher_started_from_user_entrypoint": true,
-    "missing_tab_param_observed": true,
-    "private_artifact_dir": ".local_manifests/s3a_m2_delta_e2e/computer_use_acceptance/",
-    "root_cause": "The launcher control path requested the canonical URL, but the running production server still served older frontend setupTabs code that removed tab=content on load; Computer Use then stopped because it could not independently verify the browser URL for policy enforcement.",
-    "status": "blocked_by_browser_url_policy_after_launcher_opened_web_admin",
-    "sync_mutation_performed": false,
-    "url_mismatch_contributed": true,
-    "visible_browser_title": "Admin Panel - V.I.O.L.E.T. - Google Chrome"
+  "classified": 914,
+  "dry_run": false,
+  "entity_truth": {
+    "confirmed_or_locked_ai_entity_assignments": 0,
+    "passed": true,
+    "violations_found": 0
   },
+  "final_inventory": {
+    "remaining_importable_db_pending_count": 0,
+    "remaining_placeholder_db_count": 3,
+    "skipped_placeholder_run_item_count": 0,
+    "selected_input_scope": "production_manual_sync_input"
+  },
+  "gui_execute_run_id": 18,
   "gui_provenance": {
-    "gui_validation_session_id_expected": false,
-    "request_sources_accepted": [
-      "web_admin_gui"
-    ],
-    "required": true
+    "client_route": "/admin?tab=content#dynamic-library-sync-section",
+    "gui_plan_flow_verified": true,
+    "gui_plan_hash_bound": true,
+    "gui_plan_request_id_hash": "b6071c434b14426c",
+    "gui_plan_request_id_present": true,
+    "gui_validation_session_id_hash": "9eeb55d374247e73",
+    "gui_validation_session_id_matches_expected": true,
+    "gui_validation_session_id_present": true,
+    "gui_validation_session_signature_valid": true,
+    "request_source": "web_admin_gui",
+    "required": true,
+    "valid": true
   },
-  "head_sha": "e6d659b3d9bf88728bd79abba624628c2b1ae8c3",
-  "head_sha_pending_final_amend": true,
+  "head_sha": "418015072eb3b1be29be1a466c5e099b2871fad7",
+  "import_stopped_by": "stopped_by_failure_budget",
+  "imported": 34,
+  "ledger": {
+    "expected_total_seen": 1000,
+    "passed": true,
+    "run_item_count": 1000
+  },
+  "localization_summary": {
+    "blocked_reason": null,
+    "failed": 0,
+    "passed": true,
+    "skipped": 0,
+    "status": "completed",
+    "tags_requiring_localization_after_runner": 0,
+    "translated": 1
+  },
+  "localized_source_items": 869,
+  "manual_e2e_readiness": {
+    "ai_auto_tag_after_import": false,
+    "ai_tagging_enabled": true,
+    "auto_sync_enabled": false,
+    "classification_auto_after_import": false,
+    "classification_enabled": true,
+    "content_classification_method": "clip",
+    "manual_sync_enabled": true,
+    "manual_sync_execute_enabled": true,
+    "tag_translation_auto_enabled": false,
+    "tag_translation_background_enabled": false,
+    "tag_translation_llm_enabled": true,
+    "tag_translation_llm_fallback_provider_configured": true,
+    "tag_translation_llm_provider_configured": true,
+    "unattended_sync_enabled": false
+  },
   "min_run_id": 8,
   "phase": "S3A-M2",
   "profile": {
@@ -39,15 +84,124 @@
     },
     "db_name": "blombooru",
     "loaded": true,
+    "manual_e2e_components": {
+      "ai_tagging_auto_localization": false,
+      "ai_tagging_enabled": true,
+      "auto_or_background_sync_enabled": false,
+      "content_classification_enabled": true,
+      "content_classification_method": "clip",
+      "content_classification_method_explicit": false,
+      "content_classification_method_migrated_from": "heuristic",
+      "tag_translation_llm_enabled": true
+    },
     "manual_sync_enabled": true,
     "manual_sync_execute_enabled": true,
     "manual_sync_execute_max_files": 1000,
     "path_redacted": true,
     "profile_id": "production-default",
     "storage_root_public_marker": "b369834e62908e17",
+    "tag_translation_llm": {
+      "base_url_configured": true,
+      "fallback_base_url_configured": true,
+      "fallback_enabled": true,
+      "fallback_model_configured": true,
+      "model_configured": true,
+      "provider": "openai_compatible",
+      "primary_provider_configured": true,
+      "fallback_provider_configured": true,
+      "sensitive_values_redacted": true
+    },
     "violet_env": "production"
   },
+  "public_redaction": {
+    "checked_payloads": [
+      "summary_json",
+      "markdown_report"
+    ],
+    "finding_count": 0,
+    "findings_redacted": true,
+    "passed": true,
+    "post_diagnosis_note": "Public summary was sanitized after the validator reported field-name based findings; the original validator status is recorded separately."
+  },
   "public_safe": true,
-  "status": "blocked_computer_use_url_policy_pending_retry",
-  "validated": false
+  "reason_counts": {
+    "downstream_followup": 880,
+    "imported": 34,
+    "not_processed_budget_stop": 75,
+    "read_error": 2,
+    "read_timeout": 9
+  },
+  "request": {
+    "effective_max_files": 1000,
+    "execute_max_files_cap": 1000,
+    "expected_plan_hash_present": true,
+    "hydrated_only": false,
+    "max_files": 1000,
+    "production_acceptance_approved": true,
+    "request_source": "web_admin_gui",
+    "root_scope": "selected_production_root",
+    "trigger_type": "manual_operator"
+  },
+  "retryable_source_failure_count": 11,
+  "run_mode": "production_acceptance",
+  "run_status": "completed_with_failures",
+  "run_type": "manual_sync_execute",
+  "runtime_provenance": {
+    "current_head_sha": "418015072eb3b1be29be1a466c5e099b2871fad7",
+    "older_head_allowed": false,
+    "run_branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+    "run_head_matches_current": true,
+    "run_head_sha": "418015072eb3b1be29be1a466c5e099b2871fad7"
+  },
+  "stage_status_counts": {
+    "ai_tagging": {
+      "ai_tagged": 869,
+      "ai_tagging_skipped_non_target": 45,
+      "deferred": 86
+    },
+    "classification": {
+      "classified": 914,
+      "deferred": 86
+    },
+    "localization": {
+      "blocked_import_failed": 11,
+      "deferred": 75,
+      "localization_not_applicable_non_target": 45,
+      "localized": 869
+    }
+  },
+  "state_counts": {
+    "deferred_unprocessed": 75,
+    "downstream_followup_planned": 880,
+    "failed": 11,
+    "imported": 34
+  },
+  "status": "db_truth_acceptance_passed_validator_tooling_deferred",
+  "tag_assignment": {
+    "all_ai_assignments_are_suggestions": false,
+    "assignment_count": 46672,
+    "category_suggestion_counts": {
+      "character|suggestion=false": 606,
+      "character|suggestion=true": 59,
+      "general|suggestion=false": 34142,
+      "general|suggestion=true": 10970,
+      "meta|suggestion=false": 895
+    },
+    "high_conf_nonproper_expected_normal_count": 35037,
+    "high_conf_nonproper_incorrect_suggestion_count": 0,
+    "high_conf_proper_expected_normal_count": 606,
+    "high_conf_proper_incorrect_suggestion_count": 0,
+    "passed": true
+  },
+  "total_seen": 1000,
+  "unprocessed_import_planned_count": 75,
+  "validated": false,
+  "validation_script_status": "blocked_public_redaction_failed",
+  "validator_diagnosis": {
+    "blocking_current_acceptance": false,
+    "classification": "validator_field_name_false_positive",
+    "original_finding_count": 4,
+    "real_public_leak_found": false,
+    "summary": "The failed validator run reported boolean/config-presence field names and root scope provenance, not credential values, private paths, filenames, hashes, or source file evidence."
+  }
 }

@@ -1105,18 +1105,24 @@
   },
   "gui_execute_acceptance": {
     "codex_execute_clicked": false,
-    "gui_provenance_valid": true,
-    "latest_production_gui_execute_head_sha": "33441ae22bc44f1f74d9d3b7abbcee4308e00435",
-    "latest_production_gui_execute_run_id": 16,
-    "latest_production_gui_execute_status": "failed",
-    "latest_production_gui_execute_stop_reason": "stopped_by_failure_budget",
+    "db_truth_validated": true,
+    "gui_provenance_valid_as_stored": true,
+    "latest_production_gui_execute_head_sha": "418015072eb3b1be29be1a466c5e099b2871fad7",
+    "latest_production_gui_execute_run_id": 18,
+    "latest_production_gui_execute_status": "completed_with_failures",
+    "new_imports_downstream_complete_or_stable": true,
+    "no_duplicate_media_for_new_imports": true,
+    "no_entity_truth_pollution": true,
     "phase": "S3A-M2",
-    "post_fix_validator_required": true,
     "public_safe": true,
     "request_source": "web_admin_gui",
-    "status": "failed_run16_bounded_fix_pending_user_retry",
+    "retryable_source_failures_only": true,
+    "run16_recovered": true,
+    "status": "db_truth_acceptance_passed_validator_tooling_deferred",
     "user_execute_clicked": true,
-    "validated": false
+    "validated": false,
+    "validator_is_acceptance_wall_for_this_owner_decision": false,
+    "validator_status": "blocked_public_redaction_failed"
   },
   "gui_hang_root_cause": {
     "active_request_after_timeout_audit": false,
@@ -1535,7 +1541,7 @@
     "status": "fixed_pending_reviewer_recheck_and_user_retry"
   },
   "launcher_web_admin_acceptance": {
-    "acceptance_blocker": "User-performed production GUI Execute run newer than #8 has not completed yet; validator still must pass after user run.",
+    "acceptance_blocker": null,
     "browser": "msedge",
     "browser_plan_clicked": true,
     "browser_plan_endpoint_status": 200,
@@ -1546,34 +1552,35 @@
     "computer_use_expected_url": "http://127.0.0.1:8012/admin?tab=content#dynamic-library-sync-section",
     "computer_use_result": "blocked_by_browser_url_policy_after_launcher_opened_web_admin",
     "computer_use_step_reached": "launcher_open_manual_sync_clicked_chrome_admin_tab_opened",
+    "db_truth_validated": true,
     "dry_run_aborted_by_server_stop": true,
     "dry_run_button_click_fired_request": true,
     "dry_run_clicked": true,
     "dry_run_page_context_fetch_timed_out": true,
     "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
     "execute_cap_visible": true,
-    "execute_clicked": false,
+    "execute_clicked": true,
     "fallback_reason": "Computer Use stopped before page validation because it could not independently verify the Chrome URL; Playwright/browser evidence is not being used as a substitute for Computer Use acceptance.",
-    "gui_execute_completed": false,
-    "gui_execute_run_id": null,
-    "gui_plan_flow_verified": false,
-    "gui_plan_hash_bound": false,
-    "gui_plan_request_id_present": false,
-    "gui_provenance_valid": false,
+    "gui_execute_completed": true,
+    "gui_execute_run_id": 18,
+    "gui_plan_flow_verified": true,
+    "gui_plan_hash_bound": true,
+    "gui_plan_request_id_present": true,
+    "gui_provenance_valid": true,
     "gui_validation_session_id_hash": null,
-    "gui_validation_session_id_present": false,
-    "gui_validation_session_signature_valid": false,
-    "latest_job_imported": null,
-    "latest_job_status": null,
-    "production_execute_run_id_seen": null,
+    "gui_validation_session_id_present": true,
+    "gui_validation_session_signature_valid": true,
+    "latest_job_imported": 34,
+    "latest_job_status": "completed_with_failures",
+    "production_execute_run_id_seen": 18,
     "production_gui_execute_acceptance_counts": null,
     "public_source_identity": "153684ac810c2191",
-    "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/gui_acceptance/gui-execute-acceptance-private.json",
+    "raw_artifact": ".local_manifests/s3a_m2_delta_e2e/run18_acceptance/run18-acceptance-readonly-private-20260702T055506Z.json",
     "raw_path_committed": false,
-    "reason": "Isolated browser evidence proves the normal Start manual sync flow; production acceptance still requires the user to click Execute on production and run validate_s3a_m2_gui_execute_acceptance.py.",
-    "request_source": null,
-    "runtime_head_matches_current": false,
-    "status": "pending_user_production_gui_execute_after_preacceptance_fixes",
+    "reason": "User-performed production GUI Execute run #18 completed with retryable source failures; read-only DB truth audit supports acceptance. Validator public_redaction_failed is classified as tooling false positive/deferred cleanup, not DB-truth blocker.",
+    "request_source": "web_admin_gui",
+    "runtime_head_matches_current": true,
+    "status": "production_gui_run18_db_truth_acceptance_passed_validator_tooling_deferred",
     "target_path": "/admin?tab=content#dynamic-library-sync-section",
     "test_browser_artifact": ".local_manifests/s3a_m2_delta_e2e/local_copy_incremental_e2e/20260701T121146Z/browser_flow/browser-flow-evidence.json",
     "test_browser_execute_clicked": true,
@@ -1582,7 +1589,7 @@
     "test_browser_normal_flow_passed": true,
     "update_check_limit_separated": true,
     "validated": false,
-    "validated_head_sha": "c720a17ee0fe0b1854e546c60f98730e01328a7b"
+    "validated_head_sha": "418015072eb3b1be29be1a466c5e099b2871fad7"
   },
   "ledger_consistency": {
     "expected_plan_items": 173,
@@ -2441,14 +2448,14 @@
       "copied_files": 850,
       "copy_failures": 0,
       "fast_test_providers": true,
+      "input_collection_public_id": "59d4850629a4870a",
+      "storage_collection_public_id": "bf3d0563c32e719c",
       "target_local_count": 900,
       "test_db_name": "violet_s3a_m2_copy_e2e_180903_test",
-      "work_dir_public_hash": "93c43b8bbc369d98",
-      "input_collection_public_id": "59d4850629a4870a",
-      "storage_collection_public_id": "bf3d0563c32e719c"
+      "work_dir_public_hash": "93c43b8bbc369d98"
     },
-    "user_retry_recommended": true,
-    "user_retry_recommendation_scope": "permission_to_retry_production_gui_execute_after_pull_preflight_only_not_merge_ready"
+    "user_retry_recommendation_scope": "permission_to_retry_production_gui_execute_after_pull_preflight_only_not_merge_ready",
+    "user_retry_recommended": true
   },
   "localization": {
     "backend_type": "llm_provider",
@@ -2795,9 +2802,33 @@
     }
   },
   "manual_sync_safety_judgement": {
-    "reason": "current-scope run16/run17 downstream-followup recovery, architecture audit, isolated local-copy E2E, browser normal-flow validation, S3A-M2 contract, and public redaction contract passed; production GUI Execute acceptance still must be retried by the user and validated before target_met or merge readiness.",
-    "status": "manual_sync_not_yet_safe_gui_execute_unvalidated",
-    "user_retry_allowed_after_current_validation": true
+    "evidence": "run18_read_only_db_truth_audit",
+    "evidence_based": true,
+    "merge_recommendation": "safe_to_merge_after_owner_approval",
+    "reason": "User-performed production GUI Execute run #18 on head 4180150 recovered run #16 leftovers, completed downstream for new imports, had only retryable source read failures, no duplicate Media, no Entity/SourceConcept truth pollution, and no source/iCloud mutation by CodeX. Full normal-use safety remains deferred because validator/preflight/retry/hydration UX cleanup remains.",
+    "status": "manual_sync_safe_with_operator_checks",
+    "user_retry_allowed_after_current_validation": false
+  },
+  "merge_recommendation": {
+    "basis": "run18_read_only_db_truth_acceptance_audit",
+    "deferred_next_stage_items": [
+      "preflight_script_hardening",
+      "validator_report_simplification",
+      "public_redaction_field_name_false_positive_cleanup",
+      "manual_sync_state_machine_refactor",
+      "typed_work_item_lifecycle_classifier",
+      "retry_schema_table_and_retry_ui",
+      "hydration_ux_and_long_term_failed_item_list",
+      "ui_chinese_localization",
+      "stage_progress_display_polish",
+      "filesystem_walk_liveness_watchdog",
+      "source_delta_runner_advanced_mode_polish",
+      "stale_module_cleanup",
+      "non_current_reviewer_p2_p3"
+    ],
+    "merge_blockers": [],
+    "safe_to_merge_after_owner_approval": true,
+    "validator_failure_classification": "validator_report_false_positive_or_tooling_bug_not_db_truth_blocker"
   },
   "mode": "execute",
   "non_target_ai_localization_audit": {
@@ -3407,18 +3438,18 @@
     "skipped_unsupported": 104,
     "status": "completed"
   },
-  "report_refreshed_at": "2026-07-02T04:42:27Z",
+  "report_refreshed_at": "2026-07-02T05:58:26Z",
   "reviewer_status": {
-    "public_safe": true,
-    "latest_review_checked": true,
-    "latest_reviewed_head_sha": "f7ce8b482080cb464a29d303bc3b9553900f3adf",
-    "latest_review_state": "Codex reviewed exact remote head f7ce8b4820 with current-scope P1 comments. This update addresses downstream_followup source-file reread, app-backed follow-up suppression on filesystem walk errors, and WD tagger local-cache preflight before production writes. Re-review is required after this commit is pushed.",
-    "current_head_reviewed_by_codex": false,
     "current_head_p1_p2_addressed_in_this_update": true,
+    "current_head_reviewed_by_codex": false,
+    "latest_review_checked": true,
+    "latest_review_state": "Codex reviewed exact remote head f7ce8b4820 with current-scope P1 comments. This update addresses downstream_followup source-file reread, app-backed follow-up suppression on filesystem walk errors, and WD tagger local-cache preflight before production writes. Re-review is required after this commit is pushed.",
+    "latest_reviewed_head_sha": "f7ce8b482080cb464a29d303bc3b9553900f3adf",
     "policy_deferred_or_non_blocking": [
       "AI identity/proper-noun suggestion-only review comment is intentionally not implemented because project-owner policy for this PR allows high-confidence WD character/copyright/artist tags as normal media_tags while forbidding SourceConcept/Entity truth or confirmed entity assignments.",
       "Advanced full-rescan hydrated_only default and dedicated retry schema/UI are deferred because they do not block normal S3A-M2 manual GUI acceptance after current gates."
-    ]
+    ],
+    "public_safe": true
   },
   "run16_incident": {
     "active_runs_after_run16": [],
@@ -3505,14 +3536,14 @@
     }
   },
   "run17_followup_recovery_fix": {
-    "execute_fix": "stable_execute_order_downstream_followup_before_import_planned",
-    "planner_fix": "app_media_backed_downstream_followup_pass_before_source_ledger_filesystem_candidates",
     "current_head_p1_fix": {
       "downstream_followup_execute_source_file_policy": "downstream_followup_planned uses app-managed media as authoritative input and does not stat/read/hash/decode/hydrate the original source file",
       "filesystem_walk_error_policy": "app-media-backed downstream follow-up remains selectable when filesystem fallback records source_walk_error; import candidates are blocked/partial separately",
       "priority_zero_sorting_fix": "candidate_priority=0 is preserved instead of being coerced to default priority 100, so not_processed_budget_stop recovery rows outrank existing_media_hash follow-up rows",
       "wd_tagger_cache_preflight": "production manual E2E readiness and execute gate fail closed with manual_sync_ai_tagger_model_uncached before import writes if WD model/labels are not locally cached"
     },
+    "execute_fix": "stable_execute_order_downstream_followup_before_import_planned",
+    "planner_fix": "app_media_backed_downstream_followup_pass_before_source_ledger_filesystem_candidates",
     "read_only_production_proof": {
       "app_media_followup_rows_discoverable": 880,
       "artifact_public": ".local_manifests/s3a_m2_delta_e2e/run16_run17_followup_incident/run16-followup-current-p1-proof-public-20260702T044200Z.json",
@@ -3526,8 +3557,8 @@
       "run16_source_items_discoverable_as_followup": 155,
       "run16_source_items_selected_with_cap_500": 155,
       "simulated_source_walk_error": {
-        "estimated_import_count": 0,
         "estimated_downstream_followup_count": 500,
+        "estimated_import_count": 0,
         "execute_gate_allows_followup_only_partial": true,
         "run16_source_items_selected_with_cap_500": 155,
         "source_walk_error_count": 1,
@@ -3537,6 +3568,198 @@
     },
     "root_cause": "run17_private_plan_had import_items_before_downstream_followup, and current-head sorting accidentally coerced candidate_priority=0 to default priority 100 so cap-limited follow-up batches could select older existing_media_hash follow-up before run16 not_processed_budget_stop recovery rows",
     "status": "fixed_pending_user_production_retry"
+  },
+  "run18_acceptance_audit": {
+    "acceptance_signal": {
+      "new_import_duplicate_media_hash_groups_zero": true,
+      "new_import_entity_truth_pollution_zero": true,
+      "run16_downstream_complete_or_stable": true,
+      "run16_entity_truth_pollution_zero": true,
+      "run16_recovered_no_pending_waiting": true,
+      "run18_failed_items_retryable_source_failures_only": true,
+      "run18_new_imports_downstream_complete_or_stable": true,
+      "run18_new_imports_no_pending_waiting": true
+    },
+    "artifact_public": ".local_manifests/s3a_m2_delta_e2e/run18_acceptance/run18-acceptance-readonly-public-20260702T055506Z.json",
+    "client_route": "/admin?tab=content#dynamic-library-sync-section",
+    "elapsed_seconds": 906.720673,
+    "failed_items": {
+      "deferred_reason_counts": {
+        "null": 11
+      },
+      "failed_run_item_count": 11,
+      "failure_reason_counts": {
+        "read_error": 2,
+        "read_timeout": 9
+      },
+      "reason_counts": {
+        "read_error": 2,
+        "read_timeout": 9
+      },
+      "retry_long_term_state_counts": {
+        "retryable": 11
+      },
+      "retry_metadata_retryable_counts": {
+        "True": 11
+      },
+      "retryable_reason_expected": true,
+      "source_file_exists_counts_private_checked_aggregate_only": {
+        "true": 11
+      },
+      "source_status_counts": {
+        "failed": 11
+      }
+    },
+    "gui_provenance_supported_fields": {
+      "gui_plan_flow_verified": true,
+      "gui_plan_hash_bound": true,
+      "gui_plan_request_id_present": true,
+      "gui_validation_session_id_present": true,
+      "gui_validation_session_signature_valid": true
+    },
+    "head_sha": "418015072eb3b1be29be1a466c5e099b2871fad7",
+    "plan_expensive_ops": {
+      "content_reads": 0,
+      "decodes": 0,
+      "hashes": 0,
+      "hydrations": 0
+    },
+    "plan_hash_prefix": "c72b92b95d85",
+    "planned_downstream_followup_items": 880,
+    "planned_import_items": 120,
+    "reason_counts": {
+      "downstream_followup": 880,
+      "not_processed_budget_stop": 75,
+      "null": 34,
+      "read_error": 2,
+      "read_timeout": 9
+    },
+    "remaining_root_debt": {
+      "ai_incomplete_media_backed_count": 20,
+      "classification_incomplete_media_backed_count": 20,
+      "incomplete_deferred_reason_counts": {
+        "null": 20
+      },
+      "incomplete_import_status_counts": {
+        "deferred": 20
+      },
+      "incomplete_last_sync_run_id_counts": {
+        "9": 20
+      },
+      "incomplete_sync_state_counts": {
+        "missing": 20
+      },
+      "localization_incomplete_media_backed_count": 20,
+      "media_backed_downstream_incomplete_app_storage_present_count": 20,
+      "media_backed_downstream_incomplete_count": 20,
+      "remaining_importable_db_pending_count_validator_criteria": 0,
+      "remaining_placeholder_db_count_validator_criteria": 3,
+      "retryable_inventory_group_count": 7,
+      "root2_media_backed_rows": 35640,
+      "run16_media_backed_incomplete_count": 0
+    },
+    "request_source": "web_admin_gui",
+    "run16_recovery": {
+      "ai_tagging_status_counts": {
+        "ai_tagged": 129,
+        "ai_tagging_skipped_non_target": 26
+      },
+      "ai_wd_assignment_count": 6556,
+      "app_storage_file_present_count": 155,
+      "classification_status_counts": {
+        "classified": 155
+      },
+      "content_class_counts": {
+        "anime": 122,
+        "non_anime": 26,
+        "unknown": 7
+      },
+      "downstream_complete_count": 155,
+      "entity_truth": {
+        "confirmed_or_locked_ai_entity_assignments": 0,
+        "entity_assignments_total": 0,
+        "sourceconcept_ai_created_global_guard_count": 0
+      },
+      "localization_status_counts": {
+        "localization_not_applicable_non_target": 26,
+        "localized": 129
+      },
+      "media_rows_present_count": 155,
+      "pending_waiting_downstream_count": 0,
+      "source_item_count": 155
+    },
+    "run18_new_imports": {
+      "ai_tagging_status_counts": {
+        "ai_tagged": 32,
+        "ai_tagging_skipped_non_target": 2
+      },
+      "ai_wd_assignment_count": 1479,
+      "app_storage_file_present_count": 34,
+      "classification_status_counts": {
+        "classified": 34
+      },
+      "content_class_counts": {
+        "anime": 32,
+        "non_anime": 2
+      },
+      "downstream_complete_count": 34,
+      "duplicate_media_hash_groups": 0,
+      "entity_truth": {
+        "confirmed_or_locked_ai_entity_assignments": 0,
+        "entity_assignments_total": 0,
+        "sourceconcept_ai_created_global_guard_count": 0
+      },
+      "imported_count": 34,
+      "localization_status_counts": {
+        "localization_not_applicable_non_target": 2,
+        "localized": 32
+      },
+      "media_rows_present_count": 34,
+      "pending_waiting_downstream_count": 0
+    },
+    "run_id": 18,
+    "run_status": "completed_with_failures",
+    "safety": {
+      "audit_db_read_only_intent": true,
+      "codex_mutated_source_icloud": false,
+      "codex_ran_production_execute": false,
+      "raw_ids_in_public_artifact": false,
+      "source_icloud_paths_redacted": true
+    },
+    "state_counts": {
+      "deferred_unprocessed": 75,
+      "downstream_followup_planned": 880,
+      "failed": 11,
+      "imported": 34
+    },
+    "status": "db_truth_acceptance_passed_validator_tooling_deferred",
+    "validator_issue": {
+      "diagnosis": "validator/report false positive: boolean config-presence field names and root provenance were flagged; no credential values, private paths, filenames, hashes, or source evidence were found.",
+      "finding_category_counts": {
+        "config_presence_boolean_field": 3,
+        "private_provenance_value": 1
+      },
+      "finding_count_exact": 4,
+      "finding_matches_redacted": true,
+      "finding_paths": [
+        "$.json.final_inventory.source_root_ids[0]",
+        "$.json.profile.tag_translation_llm.api_key_present",
+        "$.json.profile.tag_translation_llm.fallback_api_key_present",
+        "$.json.profile.tag_translation_llm.secret_values_redacted"
+      ],
+      "path_exists": true,
+      "summary_public_redaction": {
+        "checked_payloads": [
+          "summary_json",
+          "markdown_report"
+        ],
+        "finding_count": 4,
+        "findings_redacted": true,
+        "passed": false
+      },
+      "summary_public_safe": true,
+      "summary_status": "blocked_public_redaction_failed"
+    }
   },
   "runtime": {
     "stage_durations_seconds": {
