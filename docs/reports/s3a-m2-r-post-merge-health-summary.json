@@ -1,0 +1,1088 @@
+{
+  "answers": {
+    "q1_880_downstream_followup": {
+      "answer": "No. The 880 run #18 follow-up rows were actionable at run start as app-media-backed downstream work, but after run #18 they are terminal/stable: 880/880 are downstream complete and 0 of those rows remain current follow-up. A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling.",
+      "can_accumulate_forever": true,
+      "can_consume_future_cap": false,
+      "evidence": {
+        "next_plan_estimated_downstream_followup_count": 0,
+        "root_app_media_downstream_incomplete_current_planner_followup_total": 0,
+        "root_app_media_downstream_incomplete_total": 20,
+        "run18_downstream_followup_complete": 880,
+        "run18_downstream_followup_rows": 880
+      },
+      "expected_to_reappear_next_plan": false,
+      "passed_through_without_work": false,
+      "recommended_disposition": "Mark through canonical lifecycle as STABLE_NOOP/HISTORICAL_DIAGNOSTIC unless downstream status regresses.",
+      "redundant_duplicate_noop_after_run": true,
+      "were_all_880_actionable": false
+    },
+    "q2_120_planned_imports": {
+      "can_failure_budget_repeat": true,
+      "completed_with_failures_definition": "Current status means import stage stopped with item-level failures, but processed imports/downstream DB truth may still be complete. For run #18 it should display as completed_with_retryable_failures, not vague failure.",
+      "deferred_unprocessed": 75,
+      "deferred_visible_next_plan": {
+        "first_selected_position": 167,
+        "last_selected_position": 241,
+        "missing_from_next_plan": 0,
+        "note": "Position uses public relative_path_hash prefixes; detailed paths remain private.",
+        "ordered_after_followup": true,
+        "run18_deferred_import_count": 75,
+        "selected_in_next_plan": 75
+      },
+      "failed": 11,
+      "failure_budget_stop": "stopped_by_failure_budget",
+      "imported": 34,
+      "operator_meaning": "partial_success",
+      "planned_imports": 120,
+      "requires_retry_list": true
+    },
+    "q3_remaining_debts": {
+      "all_deferred_not_processed_budget_stop_total": 179,
+      "app_media_incomplete_current_planner_followup_rows": 0,
+      "historical_backlog_can_consume_cap": 0,
+      "imported_but_downstream_incomplete_root2": 0,
+      "invisible_app_media_incomplete": 0,
+      "older_app_media_backed_downstream_incomplete_rows": 20,
+      "placeholders": 4,
+      "retryable_source_failures_including_source_missing": 31,
+      "retryable_source_read_failures": 11,
+      "run18_deferred_import_candidates": 75,
+      "source_missing_media_backed_downstream_incomplete_rows": 20
+    },
+    "q4_next_normal_manual_sync_health": {
+      "app_media_backed_incomplete_current_planner_followup": 0,
+      "app_media_backed_incomplete_invisible": 0,
+      "continuation_count": 179,
+      "estimated_downstream_followup_count": 0,
+      "estimated_import_count": 347,
+      "healthy": true,
+      "hidden_by_mtime_or_safety_window": false,
+      "hidden_by_stable_noop": false,
+      "placeholder_count": 4,
+      "plan_expensive_ops": {
+        "execute_import_classification_ai_localization": "0/0/0/0 because this was dry-run planning only",
+        "hash_required_count": 0,
+        "stat_required_count": 40260
+      },
+      "retryable_source_failure_count_including_source_missing": 31,
+      "retryable_source_read_failure_count": 11
+    },
+    "q5_state_machine_complexity": {
+      "needs_canonical_lifecycle_classifier": true,
+      "primary_conflicts": [
+        "downstream_followup_planned is both historical run item state and a stable post-run source item state",
+        "completed_with_failures mixes acceptable retryable item failures with operator-visible failure wording",
+        "deferred_unprocessed/not_processed_budget_stop represents continuation, not terminal failure",
+        "validator/report status can contradict DB-truth acceptance due field-name redaction false positives"
+      ],
+      "status": "too_many_overlapping_state_fields"
+    }
+  },
+  "artifact_lifecycle": {
+    "private_evidence": "one-off local artifact / ignored output",
+    "public_report": "public report / handoff",
+    "script": "phase-scoped operational runner"
+  },
+  "base_merge_commit": "ff5972b0685def18bd658746e2ba1e3043c28d02",
+  "base_merge_commit_is_head": true,
+  "branch": "codex/s3a-m2-r-manual-sync-stabilization",
+  "generated_at": "2026-07-02T09:51:12Z",
+  "head_sha": "ff5972b0685def18bd658746e2ba1e3043c28d02",
+  "mode": "production_read_only",
+  "next_normal_plan": {
+    "counts": {
+      "batch_executable": true,
+      "estimated_downstream_followup_count": 0,
+      "estimated_import_count": 347,
+      "failure_reasons": {
+        "stat_error": 24,
+        "unsupported_extension": 1
+      },
+      "more_batches_remain": false,
+      "partial_scan": false,
+      "partial_scan_reason": null,
+      "plan_items": 347,
+      "scanned_files": 40284,
+      "state_counts": {
+        "ai_tagged_in_test": 0,
+        "candidate": 0,
+        "classified_in_test": 0,
+        "downstream_followup_planned": 0,
+        "failed": 24,
+        "import_planned": 347,
+        "imported_in_test": 0,
+        "localization_scheduled_in_test": 0,
+        "skipped_changing": 0,
+        "skipped_duplicate": 0,
+        "skipped_existing_media": 0,
+        "skipped_path_policy_error": 0,
+        "skipped_placeholder": 0,
+        "skipped_unsupported": 1,
+        "skipped_zero_byte": 0
+      },
+      "total_seen": 347,
+      "unsafe_partial_scan": false
+    },
+    "current_plan_boundary_note": "Current dry-run planner is read-only but still stats source entries. In this run hash_required_count was 0.",
+    "limits": {
+      "actionable_candidate_count": 347,
+      "batch_executable": true,
+      "cap_limited_batch": false,
+      "current_scan_mode": "incremental_watermark_candidate_discovery",
+      "current_scan_start_basis": "source_mtime_watermark_minus_safety_lookback",
+      "downstream_followup_count": 0,
+      "fast_skipped_from_ledger": 182,
+      "hash_required_count": 0,
+      "import_candidate_count": 347,
+      "more_batches_remain": false,
+      "partial_scan_reason": null,
+      "stat_required_count": 40260,
+      "unsafe_partial_scan": false
+    },
+    "run18_deferred_import_visibility": {
+      "first_selected_position": 167,
+      "last_selected_position": 241,
+      "missing_from_next_plan": 0,
+      "note": "Position uses public relative_path_hash prefixes; detailed paths remain private.",
+      "ordered_after_followup": true,
+      "run18_deferred_import_count": 75,
+      "selected_in_next_plan": 75
+    },
+    "skipped": false,
+    "source_delta_workset": {
+      "candidate_pool_count": 347,
+      "candidate_selection_order": [
+        "downstream_followup",
+        "ledger_missing_mtime_new",
+        "ledger_missing_safety_window",
+        "known_pending_or_changed_mtime_window",
+        "ledger_missing_old_mtime_backfill",
+        "legacy_known_pending_old_mtime_low_priority_backfill"
+      ],
+      "filesystem_walk_completed": true,
+      "priority_workset_exhausted": true,
+      "priority_workset_files": 35,
+      "priority_workset_processed": 35,
+      "scan_order": "source_ledger_followup_then_incremental_mtime_filesystem_metadata_walk",
+      "stable_known_entries_do_not_consume_actionable_cap": true
+    }
+  },
+  "path_liveness": [
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py",
+        "tests/test_s3a_m1_manual_sync_execute.py"
+      ],
+      "id": "A",
+      "missing_tests_or_gaps": [],
+      "path": "New import succeeds fully",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": true,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": true,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "B",
+      "missing_tests_or_gaps": [
+        "Add lifecycle table case for classification_failed_after_import."
+      ],
+      "path": "New import succeeds but classification fails",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": true,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": true,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "C",
+      "missing_tests_or_gaps": [
+        "Add explicit retry/debt visibility assertion."
+      ],
+      "path": "New import succeeds but AI tagging fails",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": true,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": true,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "D",
+      "missing_tests_or_gaps": [
+        "Assert operator status completed_with_followup_required."
+      ],
+      "path": "New import succeeds but localization fails/deferred",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": true,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "E",
+      "missing_tests_or_gaps": [
+        "Attempt-count/debt report tests are missing."
+      ],
+      "path": "Source read_error/read_timeout before import",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": true,
+      "can_report_failed_while_operator_outcome_acceptable": true,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "F",
+      "missing_tests_or_gaps": [
+        "Failure-budget liveness should be table-driven."
+      ],
+      "path": "Source read_error/read_timeout after some imports",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "G",
+      "missing_tests_or_gaps": [],
+      "path": "Downstream follow-up succeeds",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "H",
+      "missing_tests_or_gaps": [],
+      "path": "Downstream follow-up source file missing",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": true,
+      "can_block_unrelated_work": true,
+      "can_consume_cap_forever": true,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": true,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": false,
+      "covered_by_tests": [],
+      "id": "I",
+      "missing_tests_or_gaps": [
+        "Needs BROKEN_STATE classifier and validator coverage."
+      ],
+      "path": "Downstream follow-up app storage missing",
+      "preserves_source_media_identity": false
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "J",
+      "missing_tests_or_gaps": [],
+      "path": "Existing-media duplicate with downstream terminal",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": true,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "K",
+      "missing_tests_or_gaps": [
+        "Move to canonical APP_MEDIA_FOLLOWUP tests."
+      ],
+      "path": "Existing-media duplicate with downstream incomplete",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": true,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "L",
+      "missing_tests_or_gaps": [
+        "Needs clearer operator debt UI."
+      ],
+      "path": "Placeholder/cloud hydration failure",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": true,
+      "can_report_failed_while_operator_outcome_acceptable": true,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "M",
+      "missing_tests_or_gaps": [
+        "Rename/clarify completed_with_failures semantics."
+      ],
+      "path": "Failure budget stop",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "N",
+      "missing_tests_or_gaps": [
+        "Assert continuation ordering after run-like state."
+      ],
+      "path": "Cap-limited continuation",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_dynamic_library_sync.py"
+      ],
+      "id": "O",
+      "missing_tests_or_gaps": [
+        "Execute cancel debt visibility needs coverage."
+      ],
+      "path": "User cancellation",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "P",
+      "missing_tests_or_gaps": [],
+      "path": "Filesystem walk error",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": true,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_phase_contracts.py"
+      ],
+      "id": "Q",
+      "missing_tests_or_gaps": [
+        "Separate DB-truth acceptance from report-tool status."
+      ],
+      "path": "Validator/report update failure",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": true,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_phase_contracts.py"
+      ],
+      "id": "R",
+      "missing_tests_or_gaps": [
+        "Field-name false positive regression needed."
+      ],
+      "path": "Public redaction false positive",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_dynamic_library_sync.py"
+      ],
+      "id": "S",
+      "missing_tests_or_gaps": [
+        "Root-scoped validator assertions needed."
+      ],
+      "path": "Multiple roots / unrelated root pending work",
+      "preserves_source_media_identity": true
+    },
+    {
+      "can_become_invisible": false,
+      "can_block_unrelated_work": false,
+      "can_consume_cap_forever": false,
+      "can_mutate_source_icloud": false,
+      "can_report_completed_while_db_truth_incomplete": false,
+      "can_report_failed_while_operator_outcome_acceptable": false,
+      "can_terminate": true,
+      "covered_by_tests": [
+        "tests/test_s3a_m2_delta_e2e.py"
+      ],
+      "id": "T",
+      "missing_tests_or_gaps": [
+        "Canonical lifecycle should prevent future drift."
+      ],
+      "path": "Stale legacy backlog",
+      "preserves_source_media_identity": true
+    }
+  ],
+  "phase": "S3A-M2-R",
+  "production_db_mutated": false,
+  "production_execute_run": false,
+  "public_safe": true,
+  "raw_private_artifact_root": ".local_manifests/s3a_m2_r/post_merge_health/",
+  "root": {
+    "id": 2,
+    "is_active": true,
+    "label": "icloud-photos-production",
+    "source_identity_hash_prefix": "153684ac810c",
+    "source_type": "local_path"
+  },
+  "root_inventory": {
+    "ai_tagging_status_counts": {
+      "ai_tagged": 1275,
+      "ai_tagging_skipped_non_target": 45,
+      "deferred": 4664,
+      "tagged": 7570,
+      "tagged_reused": 26730
+    },
+    "app_storage_presence": {
+      "missing_or_no_media": 4644,
+      "present": 35640
+    },
+    "classification_status_counts": {
+      "classified": 8853,
+      "classified_reused": 26767,
+      "deferred": 4664
+    },
+    "content_class_counts": {
+      "anime": 35298,
+      "no_media": 4644,
+      "non_anime": 216,
+      "unknown": 126
+    },
+    "current_priority_counts": {
+      "current_priority": 35,
+      "not_current_priority": 40249
+    },
+    "debts": {
+      "app_media_downstream_incomplete_total": 20,
+      "app_media_incomplete_current_planner_followup_total": 0,
+      "app_media_incomplete_current_priority_total": 20,
+      "app_media_incomplete_invisible_total": 0,
+      "deferred_not_processed_budget_stop_total": 179,
+      "historical_backlog_can_consume_cap": 0,
+      "imported_but_downstream_incomplete_total": 0,
+      "placeholder_total": 4,
+      "retryable_source_failure_total": 31,
+      "retryable_source_read_failure_total": 11,
+      "source_missing_media_backed_incomplete_total": 20
+    },
+    "import_status_counts": {
+      "deferred": 4653,
+      "failed": 11,
+      "imported": 12922,
+      "skipped": 22698
+    },
+    "invisible_work_counts": {},
+    "lifecycle_counts": {
+      "APP_MEDIA_FOLLOWUP": 20,
+      "CONTINUATION": 179,
+      "PLACEHOLDER_DEFERRED": 4,
+      "RETRYABLE_SOURCE_FAILURE": 11,
+      "STABLE_NOOP": 40070
+    },
+    "localization_status_counts": {
+      "blocked_import_failed": 11,
+      "deferred": 4653,
+      "localization_not_applicable_non_target": 45,
+      "localized": 35575
+    },
+    "mtime_cutoff_ns": 1782360359000000000,
+    "reason_counts_top": {
+      "cloud_placeholder": 4,
+      "existing_media_hash": 22714,
+      "hidden": 1,
+      "non_target_content_class": 45,
+      "none": 12877,
+      "not_processed_budget_stop": 179,
+      "read_error": 2,
+      "read_timeout": 9,
+      "source_missing": 20,
+      "unsupported_extension": 4433
+    },
+    "source_mtime_watermark_ns": 1782965159000000000,
+    "source_status_counts": {
+      "available": 35815,
+      "deferred": 4436,
+      "failed": 11,
+      "missing": 22
+    },
+    "sync_state_counts": {
+      "deferred": 4436,
+      "deferred_unprocessed": 179,
+      "downstream_followup_planned": 880,
+      "failed": 11,
+      "imported": 102,
+      "missing": 22,
+      "skipped_existing_media": 22714,
+      "unchanged": 11940
+    },
+    "total_dynamic_source_items": 40284
+  },
+  "run18": {
+    "ai_tagging_status_counts": {
+      "ai_tagged": 869,
+      "ai_tagging_skipped_non_target": 45,
+      "deferred": 86
+    },
+    "app_storage_presence": {
+      "missing_or_no_media": 86,
+      "present": 914
+    },
+    "classification_status_counts": {
+      "classified": 914,
+      "deferred": 86
+    },
+    "content_class_counts": {
+      "anime": 841,
+      "no_media": 86,
+      "non_anime": 45,
+      "unknown": 28
+    },
+    "created_at": "2026-07-02T05:21:04Z",
+    "dry_run": false,
+    "finished_at": "2026-07-02T05:37:08Z",
+    "import_status_counts": {
+      "deferred": 75,
+      "failed": 11,
+      "imported": 914
+    },
+    "input_scope": {
+      "all_items_on_selected_scope": true,
+      "other_scope_item_count": 0,
+      "selected_scope_item_count": 1000
+    },
+    "last_sync_run_id_counts": {
+      "18": 1000
+    },
+    "lifecycle_counts": {
+      "CONTINUATION": 75,
+      "RETRYABLE_SOURCE_FAILURE": 11,
+      "STABLE_NOOP": 914
+    },
+    "localization_status_counts": {
+      "blocked_import_failed": 11,
+      "deferred": 75,
+      "localization_not_applicable_non_target": 45,
+      "localized": 869
+    },
+    "media_id_presence": {
+      "missing": 86,
+      "present": 914
+    },
+    "mode": "production_acceptance",
+    "operator_status_interpretation": {
+      "acceptance_note": "Acceptable for PR #126 DB-truth acceptance, but not a clean fully completed run.",
+      "current_status": "completed_with_failures",
+      "is_failure": false,
+      "is_partial_success": true,
+      "is_success": false,
+      "recommended_operator_status": "completed_with_retryable_failures"
+    },
+    "processed_in_run": {
+      "actually_processed_or_attempted": 925,
+      "not_processed_continuation": 75
+    },
+    "reason_counts": {
+      "downstream_followup": 880,
+      "imported": 32,
+      "non_target_content_class": 2,
+      "not_processed_budget_stop": 75,
+      "read_error": 2,
+      "read_timeout": 9
+    },
+    "reconciliation": {
+      "deferred_unprocessed": 75,
+      "downstream_followup_actionable_after_run": 0,
+      "downstream_followup_complete": 880,
+      "downstream_followup_rows": 880,
+      "failed": 11,
+      "import_stopped_by": "stopped_by_failure_budget",
+      "imported": 34,
+      "planned_imports": 120,
+      "request_effective_max_files": 1000,
+      "request_source": "web_admin_gui",
+      "retryable_source_failures": 11,
+      "root_scope": null,
+      "unprocessed_import_planned_count": 75
+    },
+    "remaining_incomplete": {
+      "terminal_or_no_media": 1000
+    },
+    "run_id": 18,
+    "run_type": "manual_sync_execute",
+    "source_state_counts": {
+      "deferred_unprocessed": 75,
+      "downstream_followup_planned": 880,
+      "failed": 11,
+      "imported": 34
+    },
+    "state_counts": {
+      "deferred_unprocessed": 75,
+      "downstream_followup_planned": 880,
+      "failed": 11,
+      "imported": 34
+    },
+    "status": "completed_with_failures",
+    "total_seen": 1000
+  },
+  "scope_decision": {
+    "proposed_split": [
+      "PR-R0: health audit + lifecycle/WorkItem design + runbook seed",
+      "PR-R1: lifecycle classifier/WorkItem refactor + tests",
+      "PR-R2: UI/progress/report/preflight cleanup + browser validation"
+    ],
+    "reason": "R2-R4 implementation spans planner/execute/validator/UI/docs and should be split to avoid a giant unreviewable PR.",
+    "stop_after_r0_r1": true
+  },
+  "source_icloud_mutated": false,
+  "state_machine_inventory": {
+    "field_value_counts": {
+      "DynamicSourceItem.ai_tagging_status": {
+        "ai_tagged": 1275,
+        "ai_tagging_skipped_non_target": 45,
+        "deferred": 4664,
+        "tagged": 7570,
+        "tagged_reused": 26730
+      },
+      "DynamicSourceItem.classification_status": {
+        "classified": 8853,
+        "classified_reused": 26767,
+        "deferred": 4664
+      },
+      "DynamicSourceItem.deferred_reason": {
+        "cloud_placeholder": 4,
+        "existing_media_hash": 22714,
+        "hidden": 1,
+        "non_target_content_class": 45,
+        "not_processed_budget_stop": 179,
+        "null": 12908,
+        "unsupported_extension": 4433
+      },
+      "DynamicSourceItem.failure_reason": {
+        "null": 40251,
+        "read_error": 2,
+        "read_timeout": 9,
+        "source_missing": 22
+      },
+      "DynamicSourceItem.import_status": {
+        "deferred": 4653,
+        "failed": 11,
+        "imported": 12922,
+        "skipped": 22698
+      },
+      "DynamicSourceItem.localization_status": {
+        "blocked_import_failed": 11,
+        "deferred": 4653,
+        "localization_not_applicable_non_target": 45,
+        "localized": 35575
+      },
+      "DynamicSourceItem.source_status": {
+        "available": 35815,
+        "deferred": 4436,
+        "failed": 11,
+        "missing": 22
+      },
+      "DynamicSourceItem.sync_state": {
+        "deferred": 4436,
+        "deferred_unprocessed": 179,
+        "downstream_followup_planned": 880,
+        "failed": 11,
+        "imported": 102,
+        "missing": 22,
+        "skipped_existing_media": 22714,
+        "unchanged": 11940
+      },
+      "DynamicSyncRun.status": {
+        "completed": 15,
+        "completed_with_failures": 2,
+        "failed": 1
+      },
+      "DynamicSyncRunItem.action": {
+        "defer": 590,
+        "downstream_followup": 880,
+        "import": 637,
+        "record_only": 279436,
+        "skip": 1018
+      },
+      "DynamicSyncRunItem.item_state": {
+        "changed": 93692,
+        "deferred": 102598,
+        "deferred_unprocessed": 590,
+        "downstream_followup_planned": 880,
+        "failed": 31,
+        "imported": 606,
+        "missing": 22,
+        "new": 35364,
+        "skipped_existing_media": 780,
+        "skipped_placeholder": 36,
+        "skipped_unsupported": 202,
+        "unchanged": 47760
+      },
+      "DynamicSyncRunItem.reason": {
+        "cloud_placeholder": 71705,
+        "downstream_followup": 880,
+        "existing_media_hash": 780,
+        "hidden": 9,
+        "not_processed_budget_stop": 590,
+        "null": 177422,
+        "read_error": 9,
+        "read_timeout": 22,
+        "source_missing": 22,
+        "unsupported_extension": 31122
+      }
+    },
+    "field_value_roles": {
+      "DynamicSourceItem.ai_tagging_status": {
+        "ai_tagged": [
+          "terminal_success"
+        ],
+        "ai_tagging_skipped_non_target": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "deferred": [
+          "downstream_followup"
+        ],
+        "tagged": [
+          "terminal_success"
+        ],
+        "tagged_reused": [
+          "terminal_success"
+        ]
+      },
+      "DynamicSourceItem.classification_status": {
+        "classified": [
+          "terminal_success"
+        ],
+        "classified_reused": [
+          "terminal_success"
+        ],
+        "deferred": [
+          "downstream_followup"
+        ]
+      },
+      "DynamicSourceItem.deferred_reason": {
+        "cloud_placeholder": [
+          "placeholder"
+        ],
+        "existing_media_hash": [
+          "terminal_stable_noop"
+        ],
+        "hidden": [
+          "terminal_stable_noop"
+        ],
+        "non_target_content_class": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "not_processed_budget_stop": [
+          "continuation"
+        ],
+        "null": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "unsupported_extension": [
+          "terminal_stable_noop"
+        ]
+      },
+      "DynamicSourceItem.failure_reason": {
+        "null": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "read_error": [
+          "retryable_or_failure"
+        ],
+        "read_timeout": [
+          "retryable_or_failure"
+        ],
+        "source_missing": [
+          "retryable_or_failure"
+        ]
+      },
+      "DynamicSourceItem.import_status": {
+        "deferred": [
+          "downstream_followup"
+        ],
+        "failed": [
+          "retryable_or_failure"
+        ],
+        "imported": [
+          "terminal_success"
+        ],
+        "skipped": [
+          "historical_diagnostic_or_context_dependent"
+        ]
+      },
+      "DynamicSourceItem.localization_status": {
+        "blocked_import_failed": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "deferred": [
+          "downstream_followup"
+        ],
+        "localization_not_applicable_non_target": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "localized": [
+          "terminal_success"
+        ]
+      },
+      "DynamicSourceItem.source_status": {
+        "available": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "deferred": [
+          "downstream_followup"
+        ],
+        "failed": [
+          "retryable_or_failure"
+        ],
+        "missing": [
+          "historical_diagnostic_or_context_dependent"
+        ]
+      },
+      "DynamicSourceItem.sync_state": {
+        "deferred": [
+          "downstream_followup"
+        ],
+        "deferred_unprocessed": [
+          "continuation"
+        ],
+        "downstream_followup_planned": [
+          "downstream_followup"
+        ],
+        "failed": [
+          "retryable_or_failure"
+        ],
+        "imported": [
+          "terminal_success"
+        ],
+        "missing": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "skipped_existing_media": [
+          "terminal_stable_noop"
+        ],
+        "unchanged": [
+          "terminal_stable_noop"
+        ]
+      },
+      "DynamicSyncRun.status": {
+        "completed": [
+          "terminal_success"
+        ],
+        "completed_with_failures": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "failed": [
+          "retryable_or_failure"
+        ]
+      },
+      "DynamicSyncRunItem.action": {
+        "defer": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "downstream_followup": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "import": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "record_only": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "skip": [
+          "historical_diagnostic_or_context_dependent"
+        ]
+      },
+      "DynamicSyncRunItem.item_state": {
+        "changed": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "deferred": [
+          "downstream_followup"
+        ],
+        "deferred_unprocessed": [
+          "continuation"
+        ],
+        "downstream_followup_planned": [
+          "downstream_followup"
+        ],
+        "failed": [
+          "retryable_or_failure"
+        ],
+        "imported": [
+          "terminal_success"
+        ],
+        "missing": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "new": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "skipped_existing_media": [
+          "terminal_stable_noop"
+        ],
+        "skipped_placeholder": [
+          "placeholder"
+        ],
+        "skipped_unsupported": [
+          "terminal_stable_noop"
+        ],
+        "unchanged": [
+          "terminal_stable_noop"
+        ]
+      },
+      "DynamicSyncRunItem.reason": {
+        "cloud_placeholder": [
+          "placeholder"
+        ],
+        "downstream_followup": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "existing_media_hash": [
+          "terminal_stable_noop"
+        ],
+        "hidden": [
+          "terminal_stable_noop"
+        ],
+        "not_processed_budget_stop": [
+          "continuation"
+        ],
+        "null": [
+          "historical_diagnostic_or_context_dependent"
+        ],
+        "read_error": [
+          "retryable_or_failure"
+        ],
+        "read_timeout": [
+          "retryable_or_failure"
+        ],
+        "source_missing": [
+          "retryable_or_failure"
+        ],
+        "unsupported_extension": [
+          "terminal_stable_noop"
+        ]
+      }
+    },
+    "report_summary_status_fields": {
+      "gui_execute_acceptance.run_status": null,
+      "gui_execute_acceptance.status": "db_truth_acceptance_passed_validator_tooling_deferred",
+      "gui_execute_acceptance.validation_script_status": null,
+      "launcher_web_admin_acceptance.status": "production_gui_run18_db_truth_acceptance_passed_validator_tooling_deferred",
+      "summary.public_redaction.passed": true
+    },
+    "ui_terminal_statuses_current": [
+      "completed",
+      "completed_with_failures",
+      "completed_with_followup_required",
+      "cancelled",
+      "blocked_preflight",
+      "failed"
+    ]
+  }
+}
