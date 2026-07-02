@@ -27,6 +27,7 @@
 - New production GUI evidence after the previous report: the user performed real Web Admin GUI Execute run `#16` on head `33441ae22bc44f1f74d9d3b7abbcee4308e00435`. The run imported media but failed before downstream stages, so it is not an acceptance pass.
 - Bounded run #16 fix: retryable source read/hydration failures may stop further import attempts in the current run, but they no longer prevent classification / AI tagging / localization from running for media already imported in that run. Runs with downstream-complete imported media plus retryable source failures now end as `completed_with_failures` rather than plain `failed`.
 - New production GUI evidence after that fix: the user performed real Web Admin GUI Execute run `#17`. It reached `completed_with_failures` and ran all visible stages, but it still did not complete run #16's `155` already-imported downstream-incomplete media. This is a current-scope acceptance blocker and is diagnosed below.
+- Current-head P1 fix after Codex review of `f7ce8b482080cb464a29d303bc3b9553900f3adf`: downstream follow-up execute no longer validates or hashes the original source file, app-media-backed follow-up is still selected when filesystem walk has errors, and production manual E2E now fails closed before import writes if the WD tagger model/labels are not available from local cache.
 
 ## Production GUI Execute Run #16 Incident
 
@@ -138,18 +139,20 @@ Fix made for this incident:
 - Normal manual-sync planning now has an explicit app-media-backed downstream follow-up pass. It selects `DynamicSourceItem` rows for the selected root where `media_id` exists, the item is an imported/media-backed representation, app-managed media evidence exists, and classification/AI/localization is incomplete.
 - These records become `downstream_followup_planned`, count under `estimated_downstream_followup_count` / `db_followup_candidates`, preserve `source_item_id`, `media_id`, `content_hash`, and `relative_path_hash`, and do not require source file read/hash/decode/hydration.
 - Follow-up priority now puts `imported` / `not_processed_budget_stop` recovery rows ahead of older `existing_media_hash` media-backed follow-up rows. This prevents cap-limited batches from spending the first batch on older existing-media follow-up before recovering run #16 leftovers.
+- Current-head P1 correction: the follow-up priority was conceptually correct but the sorter used `candidate_priority or 100`, so real priority `0` was treated as `100`. That let newer `existing_media_hash` follow-up rows outrank run #16's `not_processed_budget_stop` recovery rows. The sorter now preserves priority `0`, and a regression test covers priority-0 recovery rows with null/old mtime outranking priority-5 existing-media follow-up.
 - Execute now stably reorders private plan items by group before processing: `downstream_followup_planned` first, then `import_planned`, then other states. It preserves original order within each group. This protects production even if an older or stale persisted private plan had import items before follow-up items.
+- Current-head P1 correction: `downstream_followup_planned` execute no longer calls source-file path validation, source metadata stat, supported-image checks, or content hashing. It records `source_file_required=false`, `source_file_validation_skipped=true`, and `app_media_authoritative=true`, then completes downstream stages from app-managed media. The original iCloud/source file may be missing, placeholder, unreadable, or changed without blocking downstream follow-up.
+- Current-head P1 correction: if filesystem fallback walk records `source_walk_error`, already discovered app-media-backed follow-up still forms a follow-up-only executable batch. Import candidates are treated as unsafe/blocked by the walk error, but safe follow-up is not hidden.
 - Retryable source failures now write lightweight durable retry metadata under `DynamicSourceItem.metadata_json.manual_sync_retry` with `attempt_count`, `last_retry_at`, `last_failure_reason`, `retryable`, and `long_term_state` (`needs_diagnosis` after five attempts). No schema migration was added in this PR.
+- Current-head P1 correction: production execute/readiness now checks the WD tagger model and labels with local-cache-only semantics before any production import writes. If the files are not locally cached, Web Admin readiness and backend execute fail closed with `manual_sync_ai_tagger_model_uncached`; no model download is attempted by the readiness check.
 
 Read-only production proof after the fix:
 
 - Source root: `2`.
+- Current-head read-only proof artifact: `.local_manifests/s3a_m2_delta_e2e/run16_run17_followup_incident/run16-followup-current-p1-proof-public-20260702T044200Z.json`.
 - App-media-backed follow-up rows discoverable by current code: `880`.
-- Run #16 source items discoverable as follow-up: `155/155`.
-- With cap `500`, run #16 source items selected in the next batch: `155/155`.
-- Priority distribution: `0=155` (`not_processed_budget_stop` / imported recovery), `5=725` (`existing_media_hash` media-backed follow-up).
-- App-managed storage present for follow-up rows: `880/880`.
-- Plan expensive operations for this proof: `content_reads=0`, `hashes=0`, `decodes=0`, `hydrations=0`.
+- Normal cap `500` proof: `estimated_import_count=0`, `estimated_downstream_followup_count=500`, run #16 imported source items selected as follow-up `155/155`, `batch_executable=true`, `partial_scan_reason=cap_limited_actionable_batch`, and plan expensive operations `0/0/0/0`.
+- Simulated source-walk-error proof: `estimated_import_count=0`, `estimated_downstream_followup_count=500`, run #16 imported source items selected as follow-up `155/155`, `source_walk_error_count=1`, `source_walk_error_followup_only_batch=true`, `execute_gate_allows_followup_only_partial=true`, and plan expensive operations `0/0/0/0`.
 - Source/iCloud mutation: `False`; production Execute run by CodeX: `False`.
 
 Why previous tests missed this:
@@ -424,7 +427,7 @@ This proves the normal operator flow in an isolated real browser environment. It
 
 - Does manual sync start from root every time: `False` in the effective model for registered roots with source-ledger state. Registered roots start with a priority `DynamicSourceItem` source-delta workset, then fall through to a metadata filesystem walk for files not yet in the ledger. There is still no single global filesystem watermark; this PR uses the durable source-item ledger as the bounded incremental checkpoint model.
 - Where the scan head lives: in `DynamicSourceItem` source identity/state, not in raw public paths. The durable fast identity is `source_root_id + relative_path_hash + file_size + mtime_ns`, plus import/classification/AI/localization status and known `media_id/content_hash` when available.
-- When hashing happens: for new or metadata-changed supported files, duplicate/existing verification when cached identity is insufficient, downstream follow-up source integrity checks, and Execute-time revalidation before any DB writes.
+- When hashing happens: for new or metadata-changed supported files, duplicate/existing verification when cached identity is insufficient, and Execute-time source integrity revalidation before import writes. Downstream follow-up does **not** hash or read the original source file; app-managed media is authoritative for follow-up.
 - When hashing is skipped: known stable source-ledger rows with unchanged root/relative identity/size/mtime and no downstream follow-up can be skipped cheaply and shown as `Unchanged ledger skips`; they do not consume the actionable cap.
 - What invalidates reuse: changed source root, relative identity/path hash, size, `mtime_ns`, content-hash mismatch on revalidation, source missing/deleted/moved, hydration mode/profile/cap/manual-E2E setting change for an unexecuted plan.
 - Moved/deleted/modified handling: deleted/missing files become stable `source_missing/path_missing` reasons; moved files leave the old ledger row stale/missing and are rediscovered by filesystem fallback under the new relative identity; modified files force metadata/hash revalidation and become changed/importable or duplicate/existing as appropriate.
@@ -524,8 +527,8 @@ This proves the normal operator flow in an isolated real browser environment. It
 ## Pre-User Manual Acceptance Safety Fixes
 
 - Status: `fixed_pending_codex_re_review_after_push`.
-- Current runtime-code validation basis: `5a177c857020aa30b8c42554b7d8e8d3bee5bdbe` plus the current working-tree changes in this continuation. The final pushed commit SHA is recorded in the PR body and CodeX closeout because a committed report cannot embed its own final SHA without changing that SHA.
-- Current reviewer status at start of continuation: Codex reviewed exact head `85e9993f8772151e4e9d42ad0a1825e99a59c74e` and returned comments; this continuation addressed the current owner/reviewer items that affect production Execute safety and acceptance proof.
+- Current runtime-code validation basis: Codex reviewed exact remote head `f7ce8b482080cb464a29d303bc3b9553900f3adf`; this current-head P1 continuation adds the bounded fixes described below. The final pushed commit SHA is recorded in the PR body and CodeX closeout because a committed report cannot embed its own final SHA without changing that SHA.
+- Current reviewer status at start of continuation: Codex reviewed exact head `f7ce8b482080cb464a29d303bc3b9553900f3adf` and returned current-scope P1 comments; this continuation addressed the P1s that affect production Execute safety and acceptance proof.
 - S3A-M2 runner execute payload bug: fixed by passing normalized `plan_mode`/`plan_source` into `_public_request_payload(...)`; regression coverage is in `tests/test_s3a_m2_delta_e2e.py`.
 - AI identity/media-tag policy: explicit mature media-tag semantics are retained. High-confidence WD `general/meta/rating/character/copyright/artist` media tags may be normal `media_tags`; low-confidence/edge predictions remain suggestions. AI-only tags still must not create SourceConcept truth, Entity truth, or confirmed entity assignments.
 - Stale priority backlog: repaired in production for the audited `22698` stale rows. This was not a source/iCloud or media import operation.
@@ -535,24 +538,30 @@ This proves the normal operator flow in an isolated real browser environment. It
 - GUI provenance: normal browser flow binds GUI session, `plan_request_id`, plan hash, and runtime head in the run summary. The final validator still requires a user-created production GUI run newer than #8.
 - Confirmation UX: normal Start manual sync uses one human-readable browser confirmation before the full chain; Advanced exact phrase remains advanced-only and was not used in the isolated browser normal-flow test.
 - Historical confirmed non-target AI contamination: not repaired in this continuation. The code path is fixed for future runs, but the historical #7/#8 confirmed `non_anime` AI WD assignment cleanup remains pending owner repair/deferral decision before merge.
+- Current-head downstream follow-up source-file P1: fixed. `downstream_followup_planned` execute no longer rereads or hashes original source files and uses app-managed media as authoritative input.
+- Current-head filesystem-walk-error P1: fixed. App-media-backed follow-up remains selected and executable as a follow-up-only batch even if filesystem fallback reports a source walk error; import candidates stay blocked/partial.
+- Current-head WD cache write-gate P1: fixed. Production manual E2E readiness/execute now fail closed before import writes if WD model/labels are not present in local cache.
+- Current-head follow-up priority bug found during read-only proof: fixed. Priority `0` is no longer coerced to `100`, so run #16 `not_processed_budget_stop` recovery rows are selected before older `existing_media_hash` follow-up rows.
 
 ## Validation
 
-- `py_compile`: passed for `backend/app/services/manual_sync_execute_service.py`, `scripts/validate_s3a_m2_gui_execute_acceptance.py`, `tests/test_s3a_m1_manual_sync_execute.py`, and `tests/test_s3a_m2_delta_e2e.py`.
-- `pytest tests/test_dynamic_library_sync.py -q`: `71 passed in 16.35s`.
-- `pytest tests/test_s3a_m1_manual_sync_execute.py -q`: `81 passed in 97.79s`.
-- `pytest tests/test_s3a_m2_delta_e2e.py -q`: `29 passed in 7.75s`.
-- `pytest tests/test_phase_contracts.py -k "s3a_m2 or public_redaction" -q`: `59 passed, 220 deselected in 0.90s`.
+- `py_compile`: passed for `backend/app/services/ai_tagging_service.py`, `backend/app/services/dynamic_library_sync_service.py`, and `backend/app/services/manual_sync_execute_service.py`.
+- `pytest tests/test_dynamic_library_sync.py -q`: `75 passed in 17.14s`.
+- `pytest tests/test_s3a_m1_manual_sync_execute.py -q`: `84 passed in 92.05s`.
+- `pytest tests/test_s3a_m2_delta_e2e.py -q`: `29 passed in 8.00s`.
+- `pytest tests/test_phase_contracts.py -k "s3a_m2 or public_redaction" -q`: `59 passed, 220 deselected in 0.96s`.
+- `pytest tests/test_manual_gui_acceptance_prepare_script.py -q`: `2 passed in 0.03s`.
 - `scripts/check_phase_contract.py --contract s3a_m2_production_delta_e2e_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain`: passed; `target_met_claimed=false`.
 - `scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s3a-m2-production-delta-e2e-summary.json --explain`: passed; findings `0`.
 - `json.tool` for `docs/reports/s3a-m2-production-delta-e2e-summary.json`: passed.
 - `git diff --check`: passed; only Windows CRLF normalization warnings were printed.
 - `git diff --cached --check`: passed.
-- Run #16 focused coverage added: retryable import failure-budget stop continues downstream for already imported media; GUI validator accepts `completed_with_failures` only when imported downstream stages and tag/Entity/SourceConcept semantics pass.
+- Current-head P1 focused coverage added: downstream follow-up uses app-managed media without source stat/hash; app-backed follow-up remains selected under filesystem walk error; priority `0` follow-up sorts before priority `5` existing-media follow-up; production WD cache missing fails before import writes; Web Admin readiness surfaces `manual_sync_ai_tagger_model_uncached`.
 - Authorized priority backlog repair: pre-audit candidate `22698`; DB backup created; row-level snapshot created; repair executed; after-audit candidate `0`, `legacy_pending_changed_rows=0`, `rows_that_need_repair_or_migration=0`.
 - Repeated local-copy incremental E2E: passed; `850` copied local JPG/PNG files; `11` sequential cycles; isolated test DB/storage/source root; no production DB or source/iCloud mutation; plan expensive ops `0/0/0/0` across cycles; partial-import downstream recovery cycle passed with `3/3` seeded follow-up items completed and `0` duplicate Media rows.
 - Real browser normal-flow validation: passed against isolated test server on port `8024`; normal Start manual sync clicked; browser confirmation accepted; `/manual-sync/execute` observed; isolated GUI-created test job completed; Advanced exact phrase was not used.
-- Production GUI Execute validation: not performed by CodeX in this continuation. The user-performed production GUI Execute run `#16` failed on the previous head before this bounded fix; a new user retry and validator pass are still required.
+- Read-only production plan proof: passed with artifact `.local_manifests/s3a_m2_delta_e2e/run16_run17_followup_incident/run16-followup-current-p1-proof-public-20260702T044200Z.json`; normal cap `500` selected run #16 imported source items as follow-up `155/155`, simulated source-walk-error plan also selected `155/155`, plan expensive ops stayed `0/0/0/0`, and CodeX did not run production Execute.
+- Production GUI Execute validation: not performed by CodeX in this current-head P1 continuation. The user-performed production GUI Execute runs `#16/#17` remain failed/non-acceptance evidence; a new user retry and validator pass are still required.
 
 ## Current Merge / Retry Status
 
@@ -570,7 +579,7 @@ This proves the normal operator flow in an isolated real browser environment. It
 - Automatic/scheduled/startup/system-service sync enabled: `False` / `False` / `False` / `False`.
 - Provider/Pixiv/gallery-dl/SauceNAO/Google/source expansion run: `False`.
 - SourceConcept/Entity bridge work: `False`.
-- Production DB mutation in this continuation: `True`, limited to authorized `DynamicSourceItem` source-ledger terminalization for `22698` audited stale priority backlog rows.
+- Production DB mutation in this current-head P1 continuation: `False`; only read-only production profile/plan/DB proof was performed. Earlier in PR #126, the authorized `22698` stale priority backlog terminalization was performed and remains documented above.
 - Production media import/classification/AI/localization in this continuation: `False` / `False` / `False` / `False`.
 - Cleanup/delete/reset/drop/truncate: `False`.
 - Private paths or hashes in public report: `False`.

@@ -253,6 +253,13 @@ def _assert_manual_e2e_components_ready_for_production() -> None:
             "Production manual E2E execute requires AI tagging to be enabled.",
             status_code=409,
         )
+    wd_ready, wd_reason = _ensure_wd_tagger_model_cache_only()
+    if not wd_ready:
+        raise ManualSyncExecuteError(
+            str(wd_reason or "manual_sync_ai_tagger_model_uncached"),
+            "Production manual E2E execute requires the WD tagger model and labels to be available from local cache before import writes begin.",
+            status_code=409,
+        )
     if not settings.TAG_TRANSLATION_LLM_ENABLED:
         raise ManualSyncExecuteError(
             "manual_sync_localization_llm_disabled",
@@ -372,10 +379,20 @@ def _plan_partial_scan_allows_execute(plan: Dict[str, Any]) -> bool:
     limits = plan.get("limits") or {}
     partial_reason = str(counts.get("partial_scan_reason") or limits.get("partial_scan_reason") or "")
     unsafe_partial = bool(counts.get("unsafe_partial_scan") or limits.get("unsafe_partial_scan"))
+    batch_executable = bool(counts.get("batch_executable") or limits.get("batch_executable"))
+    if (
+        partial_reason == "source_walk_error"
+        and not unsafe_partial
+        and batch_executable
+        and int(counts.get("estimated_import_count") or 0) == 0
+        and int(counts.get("estimated_downstream_followup_count") or 0) > 0
+        and bool(limits.get("source_walk_error_followup_only_batch"))
+    ):
+        return True
     return bool(
         partial_reason == "cap_limited_actionable_batch"
         and not unsafe_partial
-        and (counts.get("batch_executable") or limits.get("batch_executable"))
+        and batch_executable
     )
 
 
@@ -1370,6 +1387,20 @@ def _ensure_clip_model_cache_only() -> tuple[bool, Optional[str]]:
             os.environ["HF_HUB_OFFLINE"] = previous_offline
 
 
+def _ensure_wd_tagger_model_cache_only() -> tuple[bool, Optional[str]]:
+    try:
+        from .ai_tagging_service import check_wd_tagger_model_cache
+    except Exception as exc:
+        return False, f"manual_sync_ai_tagger_cache_check_failed:{exc.__class__.__name__}"
+    status = check_wd_tagger_model_cache()
+    if bool(status.get("ready")):
+        return True, None
+    reason = str(status.get("reason") or "ai_tagger_model_uncached")
+    if reason == "ai_tagger_model_uncached":
+        return False, "manual_sync_ai_tagger_model_uncached"
+    return False, f"manual_sync_{reason}"
+
+
 def _copy_and_import_media(db: Session, source_file: Path) -> tuple[int, int]:
     settings.ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
     unique_filename = get_unique_filename(settings.ORIGINAL_DIR, source_file.name)
@@ -1918,81 +1949,91 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             )
             source_file: Optional[Path] = None
             item_failure_reason: Optional[str] = None
-            try:
-                source_file = _safe_source_file(root_path, relative_path)
-                rel, preflight_reason = _relative_identity_and_preflight_reason(root_path, source_file)
-                if not source_file.exists() or not source_file.is_file():
-                    if state == "downstream_followup_planned":
-                        metadata = {
-                            "file_size": plan_item.get("file_size"),
-                            "mtime_ns": plan_item.get("mtime_ns"),
-                            "source_file_available": False,
-                        }
-                    else:
+            planned_source_item: Optional[DynamicSourceItem] = None
+            if state == "downstream_followup_planned" and downstream_source_item_id > 0:
+                candidate_source_item = db.get(DynamicSourceItem, downstream_source_item_id)
+                if candidate_source_item is not None and candidate_source_item.source_root_id == root.id:
+                    planned_source_item = candidate_source_item
+                    rel = str(candidate_source_item.relative_path or rel)
+
+            if state == "downstream_followup_planned":
+                metadata = {
+                    "file_size": plan_item.get("file_size"),
+                    "mtime_ns": plan_item.get("mtime_ns"),
+                    "source_file_required": False,
+                    "source_file_validation_skipped": True,
+                    "app_media_authoritative": True,
+                }
+            else:
+                try:
+                    source_file = _safe_source_file(root_path, relative_path)
+                    rel, preflight_reason = _relative_identity_and_preflight_reason(root_path, source_file)
+                    if not source_file.exists() or not source_file.is_file():
                         item_failure_reason = "source_missing"
-                else:
-                    metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
-                    item_failure_reason = _manual_public_reason_code(preflight_reason)
-                    if item_failure_reason is None and state == "import_planned":
-                        item_failure_reason = _manual_public_reason_code(
-                            _is_scannable_file(source_file, hydrated_only=request_hydrated_only)
-                        )
-                    expected_hash = str(plan_item.get("content_hash") or "")
-                    if (
-                        item_failure_reason is None
-                        and state in {"skipped_existing_media", "skipped_duplicate"}
-                        and not expected_hash
-                    ):
-                        item_failure_reason = "plan_integrity_missing_content_hash"
-                    planned_size = plan_item.get("file_size")
-                    planned_mtime_ns = plan_item.get("mtime_ns")
-                    if item_failure_reason is None and planned_size is not None:
-                        try:
-                            if int(planned_size) != int(metadata.get("file_size")):
+                    else:
+                        metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
+                        item_failure_reason = _manual_public_reason_code(preflight_reason)
+                        if item_failure_reason is None and state == "import_planned":
+                            item_failure_reason = _manual_public_reason_code(
+                                _is_scannable_file(source_file, hydrated_only=request_hydrated_only)
+                            )
+                        expected_hash = str(plan_item.get("content_hash") or "")
+                        if (
+                            item_failure_reason is None
+                            and state in {"skipped_existing_media", "skipped_duplicate"}
+                            and not expected_hash
+                        ):
+                            item_failure_reason = "plan_integrity_missing_content_hash"
+                        planned_size = plan_item.get("file_size")
+                        planned_mtime_ns = plan_item.get("mtime_ns")
+                        if item_failure_reason is None and planned_size is not None:
+                            try:
+                                if int(planned_size) != int(metadata.get("file_size")):
+                                    item_failure_reason = "content_changed_after_plan"
+                            except (TypeError, ValueError):
                                 item_failure_reason = "content_changed_after_plan"
-                        except (TypeError, ValueError):
-                            item_failure_reason = "content_changed_after_plan"
-                    if item_failure_reason is None and planned_mtime_ns is not None:
-                        try:
-                            if int(planned_mtime_ns) != int(metadata.get("mtime_ns")):
+                        if item_failure_reason is None and planned_mtime_ns is not None:
+                            try:
+                                if int(planned_mtime_ns) != int(metadata.get("mtime_ns")):
+                                    item_failure_reason = "content_changed_after_plan"
+                            except (TypeError, ValueError):
                                 item_failure_reason = "content_changed_after_plan"
-                        except (TypeError, ValueError):
-                            item_failure_reason = "content_changed_after_plan"
-                    should_verify_content = state == "import_planned" or bool(expected_hash)
-                    if item_failure_reason is None and should_verify_content:
-                        current_hash, hash_reason = _calculate_manual_plan_file_hash(
-                            source_file,
-                            max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS)),
-                        )
-                        item_failure_reason = _manual_public_reason_code(hash_reason)
-                        if item_failure_reason is None:
-                            if expected_hash and current_hash and current_hash != expected_hash:
-                                item_failure_reason = "content_changed_after_plan"
-                            current_content_hash = current_hash or current_content_hash
-            except ManualSyncExecuteError as exc:
-                item_failure_reason = _manual_public_reason_code(exc.code)
-            except OSError:
-                item_failure_reason = "read_error"
-            except Exception as exc:
-                item_failure_reason = _manual_public_reason_code(str(exc))
+                        should_verify_content = state == "import_planned" or bool(expected_hash)
+                        if item_failure_reason is None and should_verify_content:
+                            current_hash, hash_reason = _calculate_manual_plan_file_hash(
+                                source_file,
+                                max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS)),
+                            )
+                            item_failure_reason = _manual_public_reason_code(hash_reason)
+                            if item_failure_reason is None:
+                                if expected_hash and current_hash and current_hash != expected_hash:
+                                    item_failure_reason = "content_changed_after_plan"
+                                current_content_hash = current_hash or current_content_hash
+                except ManualSyncExecuteError as exc:
+                    item_failure_reason = _manual_public_reason_code(exc.code)
+                except OSError:
+                    item_failure_reason = "read_error"
+                except Exception as exc:
+                    item_failure_reason = _manual_public_reason_code(str(exc))
             if (
                 bool(plan_item.get("cloud_placeholder_before_hydration"))
                 and item_failure_reason in {"read_error", "read_timeout", "stat_error"}
             ):
                 item_failure_reason = "cloud_hydration_failed"
 
-            item = _get_or_create_source_item(
-                db,
-                root=root,
-                run=run,
-                relative_path=rel,
-                metadata=metadata,
-                content_hash=str(current_content_hash) if current_content_hash else None,
-            )
-            if state == "downstream_followup_planned" and downstream_source_item_id > 0:
-                planned_source_item = db.get(DynamicSourceItem, downstream_source_item_id)
-                if planned_source_item is not None and planned_source_item.source_root_id == root.id:
-                    item = planned_source_item
+            if planned_source_item is not None:
+                item = planned_source_item
+                if current_content_hash and not item.content_hash:
+                    item.content_hash = str(current_content_hash)
+            else:
+                item = _get_or_create_source_item(
+                    db,
+                    root=root,
+                    run=run,
+                    relative_path=rel,
+                    metadata=metadata,
+                    content_hash=str(current_content_hash) if current_content_hash else None,
+                )
 
             reason = _manual_public_reason_code(plan_item.get("reason"))
             if item_failure_reason:

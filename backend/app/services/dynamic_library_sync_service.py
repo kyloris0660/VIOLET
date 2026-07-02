@@ -1127,16 +1127,27 @@ def _plan_manual_sync_incremental_dry_run(
             "cap_limited_actionable_batch" if plan_cap_limited else "filesystem_metadata_walk_incomplete"
         )
 
-    if not (plan_cancelled or plan_no_progress_timeout or walk_errors):
+    walk_error_import_candidates_blocked = 0
+    source_walk_error_followup_only_batch = False
+    if not (plan_cancelled or plan_no_progress_timeout):
         candidate_pool.sort(
             key=lambda record: (
-                int(record.get("candidate_priority") or 100),
+                int(record.get("candidate_priority") if record.get("candidate_priority") is not None else 100),
                 -int(record.get("candidate_mtime_ns") or 0),
                 str(record.get("relative_path_hash_full") or ""),
             )
         )
-        candidate_records = candidate_pool[:effective_max_files]
-        if len(candidate_pool) > len(candidate_records):
+        selection_pool = list(candidate_pool)
+        if walk_errors:
+            walk_error_import_candidates_blocked = sum(
+                1 for record in selection_pool if str(record.get("state") or "") == "import_planned"
+            )
+            selection_pool = [
+                record for record in selection_pool if str(record.get("state") or "") == "downstream_followup_planned"
+            ]
+            source_walk_error_followup_only_batch = bool(selection_pool)
+        candidate_records = selection_pool[:effective_max_files]
+        if len(selection_pool) > len(candidate_records):
             partial_scan = True
             plan_cap_limited = True
             partial_scan_reason = "cap_limited_actionable_batch"
@@ -1224,11 +1235,19 @@ def _plan_manual_sync_incremental_dry_run(
     import_count = int(state_counts.get("import_planned", 0))
     downstream_followup_count = int(state_counts.get("downstream_followup_planned", 0))
     downstream_stage_count = import_count + downstream_followup_count
+    source_walk_error_followup_only_batch = bool(
+        source_walk_error_followup_only_batch
+        and import_count == 0
+        and downstream_followup_count > 0
+    )
     unsafe_partial_scan = bool(
         plan_cancelled
         or plan_no_progress_timeout
-        or walk_errors
-        or (partial_scan and partial_scan_reason not in {None, "cap_limited_actionable_batch"})
+        or (walk_errors and not source_walk_error_followup_only_batch)
+        or (
+            partial_scan
+            and partial_scan_reason not in {None, "cap_limited_actionable_batch", "source_walk_error"}
+        )
     )
     cap_limited_batch = bool(partial_scan and partial_scan_reason == "cap_limited_actionable_batch")
     batch_executable = bool(downstream_stage_count > 0 and not unsafe_partial_scan)
@@ -1320,6 +1339,9 @@ def _plan_manual_sync_incremental_dry_run(
         "more_batches_remain": more_batches_remain,
         "unsafe_partial_scan": unsafe_partial_scan,
         "partial_scan_reason": partial_scan_reason,
+        "source_walk_error_count": len(walk_errors),
+        "source_walk_error_followup_only_batch": source_walk_error_followup_only_batch,
+        "walk_error_import_candidates_blocked": walk_error_import_candidates_blocked,
         "plan_elapsed_seconds": elapsed_seconds,
         "average_ms_per_metadata_candidate": avg_ms_per_candidate,
         "performance_gate": {
@@ -3024,11 +3046,28 @@ def _manual_e2e_clip_cache_readiness() -> Dict[str, Any]:
     return {"ready": True, "reason": None}
 
 
+def _manual_e2e_wd_tagger_cache_readiness() -> Dict[str, Any]:
+    try:
+        from .ai_tagging_service import check_wd_tagger_model_cache
+    except Exception as exc:
+        return {"ready": False, "reason": f"manual_sync_ai_tagger_cache_check_failed:{exc.__class__.__name__}"}
+    status = check_wd_tagger_model_cache()
+    if bool(status.get("ready")):
+        return {"ready": True, "reason": None}
+    reason = str(status.get("reason") or "ai_tagger_model_uncached")
+    if reason == "ai_tagger_model_uncached":
+        reason = "manual_sync_ai_tagger_model_uncached"
+    else:
+        reason = f"manual_sync_{reason}"
+    return {"ready": False, "reason": reason, "model_name": status.get("model_name")}
+
+
 def get_production_readiness(db: Session) -> Dict[str, Any]:
     roots = list_source_roots(db)
     pending = get_pending_summary(db)
     ai_localization = get_ai_localization_readiness(db)
     clip_cache = _manual_e2e_clip_cache_readiness()
+    wd_tagger_cache = _manual_e2e_wd_tagger_cache_readiness()
     blockers: List[str] = []
     warnings: List[str] = []
     manual_execute_blockers: List[Dict[str, str]] = []
@@ -3054,6 +3093,15 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
             {
                 "code": "AI_TAGGING_ENABLED_false",
                 "label": "AI tagging is disabled for this server, so a manual E2E run cannot complete AI tagging.",
+                "scope": "manual_execute",
+            }
+        )
+    elif settings.IS_PRODUCTION_ENV and not bool(wd_tagger_cache.get("ready")):
+        blockers.append(str(wd_tagger_cache.get("reason") or "manual_sync_ai_tagger_model_uncached"))
+        manual_execute_blockers.append(
+            {
+                "code": str(wd_tagger_cache.get("reason") or "manual_sync_ai_tagger_model_uncached"),
+                "label": "Manual E2E requires the WD tagger model and labels to be available from local cache before production import writes begin.",
                 "scope": "manual_execute",
             }
         )
@@ -3150,6 +3198,8 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
             "content_classification_clip_cache_ready": bool(clip_cache.get("ready")),
             "content_classification_clip_cache_reason": clip_cache.get("reason"),
             "ai_tagging_enabled": settings.AI_TAGGING_ENABLED,
+            "ai_tagger_model_cache_ready": bool(wd_tagger_cache.get("ready")),
+            "ai_tagger_model_cache_reason": wd_tagger_cache.get("reason"),
             "tag_translation_llm_enabled": settings.TAG_TRANSLATION_LLM_ENABLED,
             "tag_translation_llm_provider_configured": bool(
                 ai_localization["tag_localization"]["llm_provider_configured"]
@@ -3173,6 +3223,7 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
                 and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED
                 and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED
                 and settings.AI_TAGGING_ENABLED
+                and (not settings.IS_PRODUCTION_ENV or bool(wd_tagger_cache.get("ready")))
                 and settings.CONTENT_CLASSIFICATION_ENABLED
                 and str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower() == "clip"
                 and (not settings.IS_PRODUCTION_ENV or bool(clip_cache.get("ready")))

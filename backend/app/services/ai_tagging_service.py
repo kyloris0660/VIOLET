@@ -117,6 +117,45 @@ def check_model_status() -> Dict[str, Any]:
     return result
 
 
+def check_wd_tagger_model_cache() -> Dict[str, Any]:
+    """Check WD tagger model/label cache without loading or downloading files."""
+    result: Dict[str, Any] = {
+        "ready": False,
+        "reason": None,
+        "model_name": settings.AI_MODEL_NAME,
+        "local_files_only": True,
+        "model_download_allowed": False,
+        "missing_files": [],
+    }
+    try:
+        import huggingface_hub
+        from ..services.wd_tagger import WDTagger
+    except ImportError as exc:
+        result["reason"] = f"ai_tagger_dependency_missing:{exc.__class__.__name__}"
+        return result
+    except Exception as exc:
+        result["reason"] = f"ai_tagger_cache_check_failed:{exc.__class__.__name__}"
+        return result
+
+    model_repo = WDTagger.AVAILABLE_MODELS.get(settings.AI_MODEL_NAME)
+    if not model_repo:
+        result["reason"] = "ai_tagger_model_unknown"
+        return result
+    result["model_repo"] = model_repo
+    missing: list[str] = []
+    for filename in (WDTagger.MODEL_FILENAME, WDTagger.LABEL_FILENAME):
+        try:
+            huggingface_hub.hf_hub_download(model_repo, filename, local_files_only=True)
+        except Exception:
+            missing.append(filename)
+    if missing:
+        result["reason"] = "ai_tagger_model_uncached"
+        result["missing_files"] = missing
+        return result
+    result["ready"] = True
+    return result
+
+
 def _resolve_media_file(media: Media) -> Optional[Path]:
     """Resolve the on-disk path for a media item."""
     file_path = settings.resolve_storage_path(media.path)

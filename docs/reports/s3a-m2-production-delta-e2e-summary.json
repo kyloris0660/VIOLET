@@ -3407,12 +3407,12 @@
     "skipped_unsupported": 104,
     "status": "completed"
   },
-  "report_refreshed_at": "2026-07-01T18:34:32Z",
+  "report_refreshed_at": "2026-07-02T04:42:27Z",
   "reviewer_status": {
     "public_safe": true,
     "latest_review_checked": true,
-    "latest_reviewed_head_sha": "5a177c857020aa30b8c42554b7d8e8d3bee5bdbe",
-    "latest_review_state": "Codex reviewed exact remote head 5a177c8570 with active P1/P2 comments; current working-tree update addresses current-scope run16/run17 follow-up recovery, architecture audit, retry visibility, and validation evidence. Re-review is required after this commit is pushed.",
+    "latest_reviewed_head_sha": "f7ce8b482080cb464a29d303bc3b9553900f3adf",
+    "latest_review_state": "Codex reviewed exact remote head f7ce8b4820 with current-scope P1 comments. This update addresses downstream_followup source-file reread, app-backed follow-up suppression on filesystem walk errors, and WD tagger local-cache preflight before production writes. Re-review is required after this commit is pushed.",
     "current_head_reviewed_by_codex": false,
     "current_head_p1_p2_addressed_in_this_update": true,
     "policy_deferred_or_non_blocking": [
@@ -3507,9 +3507,15 @@
   "run17_followup_recovery_fix": {
     "execute_fix": "stable_execute_order_downstream_followup_before_import_planned",
     "planner_fix": "app_media_backed_downstream_followup_pass_before_source_ledger_filesystem_candidates",
+    "current_head_p1_fix": {
+      "downstream_followup_execute_source_file_policy": "downstream_followup_planned uses app-managed media as authoritative input and does not stat/read/hash/decode/hydrate the original source file",
+      "filesystem_walk_error_policy": "app-media-backed downstream follow-up remains selectable when filesystem fallback records source_walk_error; import candidates are blocked/partial separately",
+      "priority_zero_sorting_fix": "candidate_priority=0 is preserved instead of being coerced to default priority 100, so not_processed_budget_stop recovery rows outrank existing_media_hash follow-up rows",
+      "wd_tagger_cache_preflight": "production manual E2E readiness and execute gate fail closed with manual_sync_ai_tagger_model_uncached before import writes if WD model/labels are not locally cached"
+    },
     "read_only_production_proof": {
       "app_media_followup_rows_discoverable": 880,
-      "artifact_public": ".local_manifests/s3a_m2_delta_e2e/run16_run17_followup_incident/run16-followup-readonly-proof-public-20260701T173923Z.json",
+      "artifact_public": ".local_manifests/s3a_m2_delta_e2e/run16_run17_followup_incident/run16-followup-current-p1-proof-public-20260702T044200Z.json",
       "plan_expensive_ops": {
         "content_reads": 0,
         "decodes": 0,
@@ -3519,9 +3525,17 @@
       "production_execute_run_by_codex": false,
       "run16_source_items_discoverable_as_followup": 155,
       "run16_source_items_selected_with_cap_500": 155,
+      "simulated_source_walk_error": {
+        "estimated_import_count": 0,
+        "estimated_downstream_followup_count": 500,
+        "execute_gate_allows_followup_only_partial": true,
+        "run16_source_items_selected_with_cap_500": 155,
+        "source_walk_error_count": 1,
+        "source_walk_error_followup_only_batch": true
+      },
       "source_icloud_mutated": false
     },
-    "root_cause": "run17_private_plan_had_import_items_before_downstream_followup; import failure budget deferred run16 followup before it executed",
+    "root_cause": "run17_private_plan_had import_items_before_downstream_followup, and current-head sorting accidentally coerced candidate_priority=0 to default priority 100 so cap-limited follow-up batches could select older existing_media_hash follow-up before run16 not_processed_budget_stop recovery rows",
     "status": "fixed_pending_user_production_retry"
   },
   "runtime": {
@@ -3563,9 +3577,9 @@
     "hash_only_when": [
       "new_source_path",
       "metadata_changed",
-      "downstream_followup",
       "ambiguous_existing_media",
-      "execute_integrity_revalidation"
+      "execute_integrity_revalidation_for_imports",
+      "not_downstream_followup_original_source_files"
     ],
     "invalidation_policy": [
       "source_root_id",
@@ -3626,7 +3640,7 @@
       "new or metadata-changed supported file",
       "execute revalidation before write",
       "duplicate/existing-media verification when cached identity is not enough",
-      "downstream follow-up source integrity recheck"
+      "not for downstream follow-up original source files; app-managed media is authoritative for follow-up"
     ],
     "last_successful_scan_boundary": "represented by DynamicSourceItem source identity/state, not a single operator-visible filesystem cursor",
     "moved_deleted_modified_handling": {

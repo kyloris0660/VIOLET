@@ -22,6 +22,7 @@ from app.enums import FileTypeEnum, TagCategoryEnum  # noqa: E402
 from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, TagTranslation  # noqa: E402
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as service  # noqa: E402
+from app.services import manual_sync_execute_service as execute_service  # noqa: E402
 from app.utils.media_processor import calculate_file_hash  # noqa: E402
 
 
@@ -1959,6 +1960,163 @@ def test_manual_sync_dry_run_recovers_imported_downstream_incomplete_without_sou
     assert followup_item["scan_source"] == "app_media_followup"
 
 
+def test_manual_sync_dry_run_keeps_app_media_followup_when_filesystem_walk_errors(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / "run16-leftover.png"
+    _write_png(source_file, (20, 30, 40))
+    source_stat = source_file.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="run16-leftover.png",
+        path="media/original/run16-leftover.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=service._hash_text(source_file.name),
+            file_size=source_stat.st_size,
+            mtime_ns=source_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="deferred_unprocessed",
+            import_status="imported",
+            classification_status="pending",
+            ai_tagging_status="pending",
+            localization_status="waiting_ai_tags",
+            deferred_reason="not_processed_budget_stop",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    def walk_with_error(_root_path, *, walk_errors):
+        walk_errors.append("permission denied")
+        return iter(())
+
+    monkeypatch.setattr(service, "_iter_source_files", walk_with_error)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["partial_scan_reason"] == "source_walk_error"
+    assert plan["counts"]["unsafe_partial_scan"] is False
+    assert plan["counts"]["batch_executable"] is True
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["counts"]["estimated_downstream_followup_count"] == 1
+    assert plan["limits"]["source_walk_error_count"] == 1
+    assert plan["limits"]["source_walk_error_followup_only_batch"] is True
+    assert plan["limits"]["expensive_plan_operations"] == {
+        "content_reads": 0,
+        "hashes": 0,
+        "decodes": 0,
+        "hydrations": 0,
+    }
+    assert execute_service._plan_partial_scan_allows_execute(plan) is True
+    followup_item = next(
+        item for item in plan["private_details"]["items"] if item["state"] == "downstream_followup_planned"
+    )
+    assert followup_item["scan_source"] == "app_media_followup"
+    assert followup_item["content_hash"] == media.hash
+
+
+def test_manual_sync_dry_run_priority_zero_followup_sorts_before_existing_media_followup(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    urgent_media = Media(
+        filename="urgent.png",
+        path="media/original/urgent.png",
+        hash="urgent-hash",
+        file_type=FileTypeEnum.image,
+    )
+    existing_media = Media(
+        filename="existing.png",
+        path="media/original/existing.png",
+        hash="existing-hash",
+        file_type=FileTypeEnum.image,
+    )
+    db.add_all([urgent_media, existing_media])
+    db.flush()
+    urgent = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="urgent.png",
+        relative_path_hash=service._hash_text("urgent.png"),
+        content_hash=urgent_media.hash,
+        source_status="available",
+        sync_state="deferred_unprocessed",
+        import_status="imported",
+        classification_status="deferred",
+        ai_tagging_status="deferred",
+        localization_status="deferred",
+        deferred_reason="not_processed_budget_stop",
+        media_id=urgent_media.id,
+    )
+    newer_existing = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="existing.png",
+        relative_path_hash=service._hash_text("existing.png"),
+        file_size=123,
+        mtime_ns=8_000_000_000_000_000_000,
+        content_hash=existing_media.hash,
+        source_status="available",
+        sync_state="skipped_existing_media",
+        import_status="deferred",
+        classification_status="deferred",
+        ai_tagging_status="deferred",
+        localization_status="deferred",
+        deferred_reason="existing_media_hash",
+        media_id=existing_media.id,
+    )
+    db.add_all([urgent, newer_existing])
+    db.commit()
+
+    assert service._manual_plan_media_followup_candidate_priority(urgent) == 0
+    assert service._manual_plan_media_followup_candidate_priority(newer_existing) == 5
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    selected = plan["private_details"]["items"][0]
+    assert selected["downstream_followup"]["source_item_id"] == urgent.id
+    assert selected["media_id"] == urgent_media.id
+
+
 def test_manual_sync_dry_run_cap_limited_batch_is_executable_and_continuable(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -2756,6 +2914,46 @@ def test_operator_readiness_blocks_uncached_clip_in_production(db, tmp_path, mon
     assert "classification_model_uncached" in blocker_codes
     assert readiness["production_settings"]["content_classification_clip_cache_ready"] is False
     assert readiness["production_settings"]["content_classification_clip_cache_reason"] == "classification_model_uncached"
+
+
+def test_operator_readiness_blocks_uncached_wd_tagger_in_production(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")
+    monkeypatch.setenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+    monkeypatch.setattr(
+        service,
+        "_manual_e2e_clip_cache_readiness",
+        lambda: {"ready": True, "reason": None},
+    )
+    monkeypatch.setattr(
+        service,
+        "_manual_e2e_wd_tagger_cache_readiness",
+        lambda: {"ready": False, "reason": "manual_sync_ai_tagger_model_uncached"},
+    )
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+    blocker_codes = {item["code"] for item in operator["manual_execute_blockers"]}
+
+    assert operator["manual_execute_ready"] is False
+    assert "manual_sync_ai_tagger_model_uncached" in blocker_codes
+    assert readiness["production_settings"]["ai_tagger_model_cache_ready"] is False
+    assert readiness["production_settings"]["ai_tagger_model_cache_reason"] == "manual_sync_ai_tagger_model_uncached"
 
 
 def test_admin_api_register_check_pending_and_fail_closed_sync(client, tmp_path, monkeypatch):
