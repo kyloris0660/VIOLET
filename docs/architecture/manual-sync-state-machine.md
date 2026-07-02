@@ -28,9 +28,9 @@ The R0 audit found:
   actionable follow-up.
 - Run #18's `75` deferred import candidates remain visible as root-scoped DB
   continuation rows.
-- Root 2 still has `20` older app-media-backed/source-missing downstream
-  incomplete rows; current planner priority sees them, but not as canonical
-  app-media follow-up.
+- The audited production source root still has `20` older app-media-backed /
+  source-missing downstream-incomplete rows; current planner priority sees
+  them, but not as canonical app-media follow-up.
 - The first R0/R1 attempt reported `347` next-plan imports through the current
   source-read-capable planner. The safe-default R0 audit no longer recomputes
   that exact number because the current planner may walk/stat source entries.
@@ -98,7 +98,8 @@ Already has a `media_id` and app-managed media exists, but classification,
 AI tagging, or localization is incomplete. It must use app-managed media and
 must not depend on original source-file readability. The 20 older
 source-missing/media-backed rows from R0 belong here unless app storage is
-missing.
+missing. Public reports must identify the source root by marker/hash rather
+than raw label or id.
 
 `IMPORT_CANDIDATE`
 

@@ -28,9 +28,9 @@ The S3A-M2-R R0 read-only audit found:
   actionable follow-up in the next normal plan.
 - The `75` deferred import candidates remain visible as root-scoped DB
   continuation rows.
-- Root 2 has `20` older app-media-backed/source-missing downstream-incomplete
-  rows that need lifecycle cleanup; they are visible, but current planner
-  wording does not classify them as follow-up.
+- The audited production source root has `20` older app-media-backed /
+  source-missing downstream-incomplete rows that need lifecycle cleanup; they
+  are visible, but current planner wording does not classify them as follow-up.
 - The first R0/R1 attempt reported `347` next-plan import candidates via the
   current source-read-capable planner. The safe-default audit does not recompute
   that exact number because the current planner may walk/stat source entries.
@@ -84,7 +84,8 @@ source-read failures, not a clean success and not a systemic failure.
    requested production validation.
 2. Open Web Admin manual sync.
 3. Run Plan.
-4. Confirm the selected root is `icloud-photos-production`.
+4. Confirm the selected source root through the private operator UI; public
+   reports must use the source-root marker/hash, not the raw label or id.
 5. Read counts by WorkItem kind:
    follow-up, import, retry source, placeholder, continuation, no-op diagnostic,
    broken state.

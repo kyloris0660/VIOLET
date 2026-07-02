@@ -5073,6 +5073,21 @@ def test_public_redaction_contract_catches_sensitive_public_urls_unless_redacted
     assert redacted.passed is True
 
 
+def test_public_redaction_contract_allows_only_safe_source_root_public_marker() -> None:
+    safe_marker = check_phase_contract(
+        "public_redaction_contract_v1",
+        {"public_json_payload": {"source_root_public_marker": "audited-root"}},
+    )
+    leaked_marker = check_phase_contract(
+        "public_redaction_contract_v1",
+        {"public_json_payload": {"source_root_public_marker": "icloud-photos-production"}},
+    )
+
+    assert safe_marker.passed is True
+    assert leaked_marker.passed is False
+    assert "public_redaction_private_provenance_value_unredacted" in _error_codes(leaked_marker)
+
+
 def test_public_redaction_contract_allows_public_api_route_text() -> None:
     api_route = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": "GET /api/admin/media"})
     generic_route = check_phase_contract("public_redaction_contract_v1", {"public_markdown_text": "/foo/bar"})

@@ -14,13 +14,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import subprocess
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Iterable, Mapping, Optional
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import sessionmaker
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = ROOT / "backend"
@@ -66,6 +69,30 @@ STABLE_NOOP_REASONS = {
     "zero_byte_file",
 }
 CONTINUATION_REASONS = {"not_processed_budget_stop", "not_processed_cancelled"}
+MANUAL_SYNC_CLASSIFICATION_COMPLETE_STATUSES = {"classified", "classified_reused"}
+MANUAL_SYNC_AI_TAGGING_COMPLETE_STATUSES = {
+    "ai_tagged",
+    "tagged",
+    "tagged_reused",
+    "ai_tagging_skipped_non_target",
+    "skipped_non_target",
+}
+MANUAL_SYNC_LOCALIZATION_COMPLETE_STATUSES = {
+    "localized",
+    "completed",
+    "skipped_no_localizable_tags",
+    "skipped_no_new_tags",
+    "skipped_static_coverage",
+    "localization_not_applicable_non_target",
+}
+MANUAL_SYNC_STABLE_NON_ACTIONABLE_REASONS = {
+    "unsupported_extension",
+    "hidden",
+    "zero_byte",
+    "zero_byte_file",
+    "existing_media_hash",
+    "duplicate_hash",
+}
 
 
 def json_default(value: Any) -> Any:
@@ -163,35 +190,68 @@ def report_value(value: Any) -> str:
     return str(value)
 
 
-def load_production_profile_env() -> dict[str, Any]:
-    from scripts.violet_production_control import _profile_to_env, load_production_profile
+def load_production_profile_context() -> dict[str, Any]:
+    from scripts.violet_production_control import load_production_profile
 
     profile, _path, errors = load_production_profile(repo_root=ROOT)
     if errors or profile is None:
         raise RuntimeError(f"production_profile_invalid:{','.join(errors or ['missing'])}")
-    env = _profile_to_env(profile, repo_root=ROOT)
-    os.environ.update(env)
     return dict(profile)
 
 
-def open_db_session(*, production: bool):
+def runtime_context(*, production: bool) -> dict[str, Any]:
     if production:
-        load_production_profile_env()
-    from app import database as app_database
+        profile = load_production_profile_context()
+        db_profile = profile.get("db") if isinstance(profile.get("db"), Mapping) else {}
+        storage_root = str(profile.get("storage_root") or "").strip()
+    else:
+        db_profile = {
+            "host": "localhost",
+            "port": 5432,
+            "name": "blombooru",
+            "user": "postgres",
+            "password": "",
+        }
+        storage_root = str(ROOT)
+        profile = {"profile_id": "local_default", "storage_root": storage_root, "db": db_profile}
+    return {
+        "profile": profile,
+        "db": dict(db_profile),
+        "storage_root": storage_root,
+        "production": bool(production),
+    }
 
-    app_database.init_engine()
-    if app_database.SessionLocal is None:
-        raise RuntimeError("database_session_unavailable")
-    return app_database.SessionLocal()
+
+def db_url_from_context(context: Mapping[str, Any]) -> URL:
+    db = context.get("db") if isinstance(context.get("db"), Mapping) else {}
+    return URL.create(
+        drivername="postgresql",
+        username=str(db.get("user") or "postgres"),
+        password=str(db.get("password") or ""),
+        host=str(db.get("host") or "localhost"),
+        port=int(db.get("port") or 5432),
+        database=str(db.get("name") or "blombooru"),
+    )
+
+
+def open_db_session_from_context(context: Mapping[str, Any]):
+    engine = create_engine(
+        db_url_from_context(context),
+        pool_pre_ping=True,
+        pool_size=1,
+        max_overflow=0,
+        pool_recycle=3600,
+        pool_timeout=10,
+        connect_args={
+            "connect_timeout": 10,
+            "options": "-c statement_timeout=300000 -c default_transaction_read_only=on",
+        },
+    )
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    return session_factory()
 
 
 def terminal_stage_flags(item: Any) -> dict[str, bool]:
-    from app.services.dynamic_library_sync_service import (
-        MANUAL_SYNC_AI_TAGGING_COMPLETE_STATUSES,
-        MANUAL_SYNC_CLASSIFICATION_COMPLETE_STATUSES,
-        MANUAL_SYNC_LOCALIZATION_COMPLETE_STATUSES,
-    )
-
     classification = str(getattr(item, "classification_status", "") or "")
     ai = str(getattr(item, "ai_tagging_status", "") or "")
     loc = str(getattr(item, "localization_status", "") or "")
@@ -219,17 +279,39 @@ def media_content_class(media_payload: Mapping[str, Any] | None) -> str:
     return str(value or "unclassified")
 
 
-def app_storage_presence(media_payload: Mapping[str, Any] | None) -> bool:
+def resolve_app_storage_path(storage_root: str | Path, stored_path: str) -> Optional[Path]:
+    if not stored_path:
+        return None
+    raw = str(stored_path)
+    if raw.startswith("\\\\") or raw.startswith("//"):
+        return None
+    normalized = raw.replace("\\", "/")
+    if normalized.startswith("/"):
+        return None
+    if len(normalized) >= 2 and normalized[1] == ":" and normalized[0].isalpha():
+        return None
+    if PureWindowsPath(raw).is_absolute():
+        return None
+    try:
+        probe = Path(normalized)
+        if probe.is_absolute() or ".." in probe.parts:
+            return None
+        storage_resolved = Path(storage_root).expanduser().resolve(strict=False)
+        resolved = (storage_resolved / probe).resolve(strict=False)
+        try:
+            resolved.relative_to(storage_resolved)
+        except ValueError:
+            return None
+        return resolved
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def app_storage_presence(media_payload: Mapping[str, Any] | None, *, storage_root: str | Path) -> bool:
     if not media_payload:
         return False
-    from app.config import settings
-
-    media_path = str(media_payload.get("path") or "")
-    try:
-        resolved = settings.resolve_storage_path(media_path)
-        return bool(resolved and resolved.exists())
-    except Exception:
-        return False
+    resolved = resolve_app_storage_path(storage_root, str(media_payload.get("path") or ""))
+    return bool(resolved and resolved.exists())
 
 
 def lifecycle_class_for_item(
@@ -275,6 +357,108 @@ def lifecycle_class_for_item(
     return "HISTORICAL_DIAGNOSTIC"
 
 
+def manual_plan_source_mtime_watermark_ns(known_items: Iterable[Any]) -> Optional[int]:
+    values: list[int] = []
+    for item in known_items:
+        mtime_ns = getattr(item, "mtime_ns", None)
+        if mtime_ns is None:
+            continue
+        import_status = str(getattr(item, "import_status", "") or "")
+        sync_state = str(getattr(item, "sync_state", "") or "")
+        if import_status == "imported" and sync_state in {
+            "imported",
+            "skipped_existing_media",
+            "skipped_duplicate",
+            "unchanged",
+        }:
+            values.append(int(mtime_ns))
+    return max(values) if values else None
+
+
+def manual_plan_mtime_cutoff_ns(watermark_ns: Optional[int], lookback_seconds: int) -> Optional[int]:
+    if watermark_ns is None:
+        return None
+    return max(0, int(watermark_ns) - int(max(0, lookback_seconds)) * 1_000_000_000)
+
+
+def manual_plan_media_backed_pending_noop(item: Any | None) -> bool:
+    if item is None or getattr(item, "media_id", None) is None:
+        return False
+    import_status = str(getattr(item, "import_status", "") or "")
+    sync_state = str(getattr(item, "sync_state", "") or "")
+    if import_status != "pending" or sync_state not in {"new", "changed", "pending"}:
+        return False
+    if not str(getattr(item, "content_hash", None) or ""):
+        return False
+    if str(getattr(item, "failure_reason", None) or getattr(item, "deferred_reason", None) or ""):
+        return False
+    classification_status = str(getattr(item, "classification_status", "") or "")
+    ai_tagging_status = str(getattr(item, "ai_tagging_status", "") or "")
+    localization_status = str(getattr(item, "localization_status", "") or "")
+    return (
+        classification_status in {"", "waiting_import"}
+        and ai_tagging_status in {"", "waiting_import"}
+        and localization_status in {"", "waiting_import", "waiting_ai_tags"}
+    )
+
+
+def manual_plan_media_backed_requires_followup(item: Any | None) -> bool:
+    if item is None or getattr(item, "media_id", None) is None:
+        return False
+    import_status = str(getattr(item, "import_status", "") or "")
+    sync_state = str(getattr(item, "sync_state", "") or "")
+    reason = str(getattr(item, "deferred_reason", None) or getattr(item, "failure_reason", None) or "")
+    media_backed = (
+        import_status == "imported"
+        or sync_state in {"imported", "downstream_followup_planned"}
+        or reason in {"existing_media_hash", "duplicate_hash", "downstream_followup", "not_processed_budget_stop"}
+    )
+    if not media_backed:
+        return False
+    return not downstream_complete(item)
+
+
+def manual_plan_media_followup_candidate_priority(item: Any) -> int:
+    import_status = str(getattr(item, "import_status", "") or "")
+    reason = str(getattr(item, "deferred_reason", None) or getattr(item, "failure_reason", None) or "")
+    sync_state = str(getattr(item, "sync_state", "") or "")
+    if import_status == "imported" or reason == "not_processed_budget_stop" or sync_state == "deferred_unprocessed":
+        return 0
+    if reason in {"existing_media_hash", "duplicate_hash"}:
+        return 5
+    return 10
+
+
+def manual_plan_priority_for_known_item(
+    item: Any,
+    *,
+    mtime_cutoff_ns: Optional[int] = None,
+) -> Optional[int]:
+    import_status = str(getattr(item, "import_status", "") or "")
+    sync_state = str(getattr(item, "sync_state", "") or "")
+    reason = str(getattr(item, "deferred_reason", None) or getattr(item, "failure_reason", None) or "")
+    if manual_plan_media_backed_requires_followup(item):
+        return manual_plan_media_followup_candidate_priority(item)
+    if reason in MANUAL_SYNC_STABLE_NON_ACTIONABLE_REASONS:
+        return None
+    if manual_plan_media_backed_pending_noop(item):
+        return None
+    if sync_state == "skipped_placeholder" or reason in {"cloud_placeholder", "icloud_placeholder"}:
+        return 20
+    if import_status in {"failed", "deferred"} and reason in RETRYABLE_SOURCE_REASONS:
+        return 30
+    if import_status == "pending":
+        item_mtime_ns = getattr(item, "mtime_ns", None)
+        in_mtime_window = bool(
+            mtime_cutoff_ns is None
+            or (item_mtime_ns is not None and int(item_mtime_ns) >= int(mtime_cutoff_ns))
+        )
+        if in_mtime_window:
+            return 40 if sync_state == "new" else 50
+        return 95
+    return None
+
+
 def role_for_state_value(field: str, value: str) -> list[str]:
     text = str(value or "")
     roles: list[str] = []
@@ -298,6 +482,18 @@ def role_for_state_value(field: str, value: str) -> list[str]:
 
 
 def source_root_public(root: Any) -> dict[str, Any]:
+    identity_prefix = str(root.root_path_hash or "")[:12]
+    return {
+        "source_root_public_marker": "audited-root",
+        "label_redacted": True,
+        "root_id_redacted": True,
+        "source_type": str(root.source_type or ""),
+        "is_active": bool(root.is_active),
+        "source_identity_hash_prefix": identity_prefix,
+    }
+
+
+def source_root_private(root: Any) -> dict[str, Any]:
     return {
         "id": int(root.id),
         "label": str(root.label or ""),
@@ -336,23 +532,33 @@ def summarize_run(
     *,
     run_id: int,
     root_id: int,
+    storage_root: str | Path,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], set[str]]:
     from app.models import DynamicSourceItem, DynamicSyncRun, DynamicSyncRunItem
 
     run = db.get(DynamicSyncRun, int(run_id))
     if run is None:
         raise RuntimeError(f"dynamic_sync_run_not_found:{run_id}")
-    rows = (
+    all_rows = (
         db.query(DynamicSyncRunItem, DynamicSourceItem)
         .join(DynamicSourceItem, DynamicSyncRunItem.source_item_id == DynamicSourceItem.id)
         .filter(DynamicSyncRunItem.sync_run_id == int(run_id))
         .order_by(DynamicSyncRunItem.id.asc())
         .all()
     )
+    rows = [(run_item, item) for run_item, item in all_rows if int(item.source_root_id) == int(root_id)]
+    other_root_run_item_count = len(all_rows) - len(rows)
+    all_run_item_state_counts = Counter(str(run_item.item_state or "unknown") for run_item, _item in all_rows)
+    all_run_item_action_counts = Counter(str(run_item.action or "unknown") for run_item, _item in all_rows)
+    all_run_item_reason_counts = Counter(
+        str(run_item.reason or item_reason(item) or run_item.item_state or "unknown") for run_item, item in all_rows
+    )
+    all_run_root_counts = Counter("selected_audited_root" if int(item.source_root_id) == int(root_id) else "other_root" for _run_item, item in all_rows)
     media_ids = [int(item.media_id) for _run_item, item in rows if item.media_id is not None]
     media_payloads = load_media_payloads(db, media_ids)
 
     state_counts: Counter[str] = Counter()
+    action_counts: Counter[str] = Counter()
     reason_counts: Counter[str] = Counter()
     source_state_counts: Counter[str] = Counter()
     import_status_counts: Counter[str] = Counter()
@@ -371,7 +577,7 @@ def summarize_run(
 
     for run_item, item in rows:
         media_payload = media_payloads.get(int(item.media_id)) if item.media_id is not None else None
-        app_present = app_storage_presence(media_payload)
+        app_present = app_storage_presence(media_payload, storage_root=storage_root)
         followup_needed = bool(item.media_id is not None and not downstream_complete(item))
         lifecycle = lifecycle_class_for_item(
             item,
@@ -390,6 +596,7 @@ def summarize_run(
             run18_deferred_import_prefixes.add(str(item.relative_path_hash or "")[:16])
 
         state_counts[state or "unknown"] += 1
+        action_counts[str(run_item.action or "unknown")] += 1
         reason_counts[reason or "unknown"] += 1
         source_state_counts[str(item.sync_state or "unknown")] += 1
         import_status_counts[str(item.import_status or "unknown")] += 1
@@ -437,6 +644,8 @@ def summarize_run(
     request = execute_payload.get("request") if isinstance(execute_payload.get("request"), dict) else {}
 
     imported = int(outcome.get("imported") or state_counts.get("imported", 0))
+    if other_root_run_item_count:
+        imported = int(state_counts.get("imported", 0))
     failed = int(state_counts.get("failed", 0))
     deferred_unprocessed = int(state_counts.get("deferred_unprocessed", 0))
     retryable_failures = sum(int(reason_counts.get(reason, 0)) for reason in RETRYABLE_SOURCE_REASONS)
@@ -453,6 +662,12 @@ def summarize_run(
         "created_at": run.created_at,
         "finished_at": run.finished_at,
         "total_seen": int(run.total_seen or 0),
+        "run_reconciliation_scope": "root_scoped_join_dynamic_source_item",
+        "other_root_run_item_count": int(other_root_run_item_count),
+        "all_run_context_available": True,
+        "immutable_stage_snapshot_available": False,
+        "historical_stage_snapshot_unavailable": True,
+        "current_state_used_for_downstream_completion": True,
         "state_counts": counter_dict(state_counts),
         "reason_counts": counter_dict(reason_counts),
         "source_state_counts": counter_dict(source_state_counts),
@@ -475,7 +690,54 @@ def summarize_run(
         "lifecycle_counts": counter_dict(lifecycle_counts),
         "processed_in_run": counter_dict(processed_counts),
         "remaining_incomplete": counter_dict(incomplete_counts),
+        "run18_recorded_run_item_summary": {
+            "scope": "root_scoped_join_dynamic_source_item",
+            "run_item_count": int(len(rows)),
+            "state_counts": counter_dict(state_counts),
+            "action_counts": counter_dict(action_counts),
+            "reason_counts": counter_dict(reason_counts),
+            "stored_run_summary_json_available": bool(summary_payload),
+            "stored_run_summary_scope_note": (
+                "Stored DynamicSyncRun.summary_json is run-level. Root-scoped reconciliation uses joined DynamicSyncRunItem rows; "
+                "all-run context is reported separately."
+            ),
+            "stored_manual_sync_execute_outcome_counts": outcome,
+            "stored_manual_sync_execute_import_stopped_by": execute_payload.get("import_stopped_by"),
+            "stored_total_seen": int(run.total_seen or 0),
+        },
+        "run18_current_cohort_health_at_audit_time": {
+            "scope": "current DynamicSourceItem/Media/app-storage state for the root-scoped run #18 cohort",
+            "current_state_used_for_downstream_completion": True,
+            "historical_stage_snapshot_unavailable": True,
+            "immutable_stage_snapshot_available": False,
+            "source_state_counts": counter_dict(source_state_counts),
+            "import_status_counts": counter_dict(import_status_counts),
+            "classification_status_counts": counter_dict(classification_counts),
+            "ai_tagging_status_counts": counter_dict(ai_counts),
+            "localization_status_counts": counter_dict(localization_counts),
+            "content_class_counts": counter_dict(content_class_counts),
+            "app_storage_presence": counter_dict(app_storage_counts),
+            "lifecycle_counts": counter_dict(lifecycle_counts),
+            "processed_in_run_current_interpretation": counter_dict(processed_counts),
+            "remaining_incomplete_current_interpretation": counter_dict(incomplete_counts),
+            "downstream_followup_rows": int(downstream_followup),
+            "downstream_followup_complete_current_state": int(downstream_followup_complete),
+            "downstream_followup_actionable_after_run_current_state": int(downstream_followup - downstream_followup_complete),
+            "audit_time_note": (
+                "These values are mutable current DB/app-storage health for the run cohort. Future sync/repair can change them; "
+                "use frozen private artifacts for exact prior audit evidence."
+            ),
+        },
+        "global_context": {
+            "all_run_item_count": int(len(all_rows)),
+            "other_root_run_item_count": int(other_root_run_item_count),
+            "root_scope_counts": counter_dict(all_run_root_counts),
+            "state_counts": counter_dict(all_run_item_state_counts),
+            "action_counts": counter_dict(all_run_item_action_counts),
+            "reason_counts": counter_dict(all_run_item_reason_counts),
+        },
         "reconciliation": {
+            "scope": "root_scoped_join_dynamic_source_item",
             "planned_imports": int(imported + failed + deferred_unprocessed),
             "imported": imported,
             "failed": failed,
@@ -488,7 +750,8 @@ def summarize_run(
             "unprocessed_import_planned_count": int(execute_payload.get("unprocessed_import_planned_count") or 0),
             "request_effective_max_files": request.get("effective_max_files"),
             "request_source": request.get("request_source"),
-            "root_scope": request.get("root_scope"),
+            "root_scope_redacted": True,
+            "root_scope_note": "Raw run request root scope is omitted from the public report.",
         },
         "operator_status_interpretation": {
             "current_status": str(run.status),
@@ -510,14 +773,9 @@ def summarize_root_inventory(
     db: Any,
     *,
     root_id: int,
+    storage_root: str | Path,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     from app.models import DynamicSourceItem
-    from app.services.dynamic_library_sync_service import (
-        _manual_plan_media_backed_requires_followup,
-        _manual_plan_mtime_cutoff_ns,
-        _manual_plan_priority_for_known_item,
-        _manual_plan_source_mtime_watermark_ns,
-    )
 
     items = (
         db.query(DynamicSourceItem)
@@ -527,8 +785,8 @@ def summarize_root_inventory(
     )
     media_ids = [int(item.media_id) for item in items if item.media_id is not None]
     media_payloads = load_media_payloads(db, media_ids)
-    watermark_ns = _manual_plan_source_mtime_watermark_ns(items)
-    mtime_cutoff_ns = _manual_plan_mtime_cutoff_ns(watermark_ns, 7 * 24 * 60 * 60)
+    watermark_ns = manual_plan_source_mtime_watermark_ns(items)
+    mtime_cutoff_ns = manual_plan_mtime_cutoff_ns(watermark_ns, 7 * 24 * 60 * 60)
 
     lifecycle_counts: Counter[str] = Counter()
     sync_state_counts: Counter[str] = Counter()
@@ -558,11 +816,11 @@ def summarize_root_inventory(
 
     for item in items:
         media_payload = media_payloads.get(int(item.media_id)) if item.media_id is not None else None
-        app_present = app_storage_presence(media_payload)
-        current_planner_media_followup_needed = bool(_manual_plan_media_backed_requires_followup(item))
+        app_present = app_storage_presence(media_payload, storage_root=storage_root)
+        current_planner_media_followup_needed = bool(manual_plan_media_backed_requires_followup(item))
         downstream_incomplete = bool(item.media_id is not None and not downstream_complete(item))
         canonical_media_followup_needed = downstream_incomplete
-        priority = _manual_plan_priority_for_known_item(item, mtime_cutoff_ns=mtime_cutoff_ns)
+        priority = manual_plan_priority_for_known_item(item, mtime_cutoff_ns=mtime_cutoff_ns)
         current_priority = priority is not None
         lifecycle = lifecycle_class_for_item(
             item,
@@ -871,7 +1129,7 @@ def summarize_next_plan(
     }
 
 
-def summarize_state_machine(db: Any, *, root_id: int) -> dict[str, Any]:
+def summarize_state_machine(db: Any, *, root_id: int, source_root_public_marker: str) -> dict[str, Any]:
     from sqlalchemy import func
     from app.models import DynamicSourceItem, DynamicSyncRun, DynamicSyncRunItem
 
@@ -983,7 +1241,8 @@ def summarize_state_machine(db: Any, *, root_id: int) -> dict[str, Any]:
 
     return {
         "scope": {
-            "root_id": int(root_id),
+            "source_root_public_marker": source_root_public_marker,
+            "root_id_redacted": True,
             "run_item_counts_scope": "root_scoped_join_dynamic_source_item",
             "global_counts_location": "global_context.field_value_counts",
         },
@@ -1065,6 +1324,8 @@ def build_answers(summary: Mapping[str, Any]) -> dict[str, Any]:
     root = summary["root_inventory"]
     plan = summary["next_normal_plan"]
     run_rec = run["reconciliation"]
+    run_record = run["run18_recorded_run_item_summary"]
+    cohort_health = run["run18_current_cohort_health_at_audit_time"]
     debts = root["debts"]
     plan_counts = plan.get("counts") if isinstance(plan.get("counts"), dict) else {}
     plan_limits = plan.get("limits") if isinstance(plan.get("limits"), dict) else {}
@@ -1086,8 +1347,9 @@ def build_answers(summary: Mapping[str, Any]) -> dict[str, Any]:
             "were_all_880_actionable_at_run_start": True,
             "were_all_880_actionable_after_run": False,
             "answer": (
-                "At run #18 plan time, the 880 follow-up rows were genuinely actionable app-media-backed downstream work. "
-                "After run #18, those same 880 rows are terminal/downstream complete and should no longer be treated as actionable follow-up. "
+                "Run #18 recorded 880 downstream_followup_planned run items in the root-scoped run-item record. "
+                "At run #18 plan time, those rows were genuinely actionable app-media-backed downstream work. "
+                "At this audit time, current cohort health shows those same 880 rows are downstream complete and should no longer be treated as actionable follow-up. "
                 "Future similar rows can still accumulate if historical downstream_followup_planned remains overloaded, so lifecycle cleanup is needed. "
                 "A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling."
             ),
@@ -1098,8 +1360,14 @@ def build_answers(summary: Mapping[str, Any]) -> dict[str, Any]:
             "expected_to_reappear_next_plan": "not_recomputed_by_safe_default",
             "recommended_disposition": "Mark through canonical lifecycle as STABLE_NOOP/HISTORICAL_DIAGNOSTIC unless downstream status regresses.",
             "evidence": {
-                "run18_downstream_followup_rows": run_rec["downstream_followup_rows"],
-                "run18_downstream_followup_complete": run_rec["downstream_followup_complete"],
+                "run18_recorded_downstream_followup_rows": run_record["state_counts"].get("downstream_followup_planned", 0),
+                "run18_current_downstream_followup_complete": cohort_health[
+                    "downstream_followup_complete_current_state"
+                ],
+                "current_state_used_for_downstream_completion": cohort_health[
+                    "current_state_used_for_downstream_completion"
+                ],
+                "historical_stage_snapshot_unavailable": cohort_health["historical_stage_snapshot_unavailable"],
                 "root_app_media_downstream_incomplete_total": debts["app_media_downstream_incomplete_total"],
                 "root_app_media_downstream_incomplete_current_planner_followup_total": debts[
                     "app_media_incomplete_current_planner_followup_total"
@@ -1135,7 +1403,7 @@ def build_answers(summary: Mapping[str, Any]) -> dict[str, Any]:
             "app_media_incomplete_current_planner_followup_rows": debts[
                 "app_media_incomplete_current_planner_followup_total"
             ],
-            "imported_but_downstream_incomplete_root2": debts["imported_but_downstream_incomplete_total"],
+            "imported_but_downstream_incomplete_audited_root": debts["imported_but_downstream_incomplete_total"],
             "invisible_app_media_incomplete": debts["app_media_incomplete_invisible_total"],
             "historical_backlog_can_consume_cap": debts["historical_backlog_can_consume_cap"],
         },
@@ -1221,10 +1489,34 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
         f"tracked dirty files: {', '.join(generator['dirty_files_at_generation']) or 'none'}; "
         f"untracked count: {generator['dirty_untracked_file_count_at_generation']}."
     )
-    lines.append(f"- Production root audited: `{summary['root']['id']} / {summary['root']['label']}`.")
+    lines.append(
+        f"- Production source root audited: `{summary['root']['source_root_public_marker']}` "
+        f"(label redacted: {bool_status(summary['root']['label_redacted'])}; "
+        f"root id redacted: {bool_status(summary['root']['root_id_redacted'])})."
+    )
+    lines.append(
+        f"- Side-effect safety: app config imported `{bool_status(summary['side_effect_safety']['app_config_imported'])}`, "
+        f"app storage mutation `{bool_status(summary['side_effect_safety']['app_storage_mutation_performed_by_audit'])}`."
+    )
     lines.append(f"- Raw private evidence root: `{summary['raw_private_artifact_root']}`.")
     lines.append("")
     lines.append("## R0 Findings")
+    lines.append("")
+    lines.append("### Run #18 record vs current cohort health")
+    lines.append("")
+    lines.append("| Field | Value |")
+    lines.append("|---|---|")
+    lines.append(f"| Run reconciliation scope | {run['run_reconciliation_scope']} |")
+    lines.append(f"| Other-root run item count | {run['other_root_run_item_count']} |")
+    lines.append(f"| Immutable stage snapshot available | {bool_status(run['immutable_stage_snapshot_available'])} |")
+    lines.append(f"| Historical stage snapshot unavailable | {bool_status(run['historical_stage_snapshot_unavailable'])} |")
+    lines.append(f"| Current state used for downstream completion | {bool_status(run['current_state_used_for_downstream_completion'])} |")
+    lines.append("")
+    lines.append(
+        "PR #126 acceptance used DB truth observed after run #18. "
+        "Future reruns of this audit may observe later current `DynamicSourceItem` / Media / app-storage health "
+        "unless comparing against frozen private artifacts from the original audit time."
+    )
     lines.append("")
     lines.append("### 880 downstream follow-up rows")
     q1 = answers["q1_880_downstream_followup"]
@@ -1234,7 +1526,7 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     lines.append("| Question | Answer |")
     lines.append("|---|---|")
     lines.append(f"| Were all 880 genuinely actionable at run #18 plan time? | {bool_status(q1['were_all_880_actionable_at_run_start'])}; they were app-media-backed downstream follow-up work. |")
-    lines.append(f"| Are those same 880 actionable after run #18? | {bool_status(q1['were_all_880_actionable_after_run'])}; 880/880 are terminal/downstream complete. |")
+    lines.append(f"| Are those same 880 actionable at this audit time? | {bool_status(q1['were_all_880_actionable_after_run'])}; current cohort health shows 880/880 downstream complete. |")
     lines.append(f"| Redundant/duplicate/no-op after run? | {bool_status(q1['redundant_duplicate_noop_after_run'])}; classify as stable diagnostic unless downstream status regresses. |")
     lines.append(f"| Did they merely pass through planned state without work? | {bool_status(q1['passed_through_without_work'])}; statuses show downstream completion. |")
     lines.append(f"| Can similar rows accumulate forever? | {bool_status(q1['can_accumulate_forever'])}; if `downstream_followup_planned` is retained as a historical state. |")
@@ -1304,7 +1596,7 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     lines.append(f"| Placeholder / cloud hydration rows | {q3['placeholders']} | Visible diagnostic/deferred debt. |")
     lines.append(f"| Older app-media-backed downstream-incomplete rows | {q3['older_app_media_backed_downstream_incomplete_rows']} | App storage exists, but current planner follow-up classifier catches {q3['app_media_incomplete_current_planner_followup_rows']}; these need canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling. |")
     lines.append(f"| Source-missing media-backed downstream-incomplete rows | {q3['source_missing_media_backed_downstream_incomplete_rows']} | Visible as source-missing/retry style debt, not as follow-up. |")
-    lines.append(f"| Imported but downstream-incomplete under root 2 | {q3['imported_but_downstream_incomplete_root2']} | Acceptance criterion currently satisfied. |")
+    lines.append(f"| Imported but downstream-incomplete under audited source root | {q3['imported_but_downstream_incomplete_audited_root']} | Acceptance criterion currently satisfied. |")
     lines.append(f"| Invisible app-media incomplete rows | {q3['invisible_app_media_incomplete']} | None found. |")
     lines.append(f"| Historical backlog that can consume normal cap | {q3['historical_backlog_can_consume_cap']} | None found by current-priority classifier. |")
     lines.append("")
@@ -1384,7 +1676,9 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
 def build_summary(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     from app.models import DynamicSourceRoot
 
-    db = open_db_session(production=bool(args.production))
+    context = runtime_context(production=bool(args.production))
+    storage_root = str(context.get("storage_root") or "")
+    db = open_db_session_from_context(context)
     try:
         root = db.get(DynamicSourceRoot, int(args.root_id))
         if root is None:
@@ -1393,8 +1687,13 @@ def build_summary(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, A
             db,
             run_id=int(args.run_id),
             root_id=int(args.root_id),
+            storage_root=storage_root,
         )
-        root_summary, debt_examples = summarize_root_inventory(db, root_id=int(args.root_id))
+        root_summary, debt_examples = summarize_root_inventory(
+            db,
+            root_id=int(args.root_id),
+            storage_root=storage_root,
+        )
         next_plan = summarize_next_plan(
             db,
             root=root,
@@ -1404,11 +1703,18 @@ def build_summary(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, A
             allow_source_read_plan=bool(args.allow_source_read_plan),
             root_inventory=root_summary,
         )
-        state_machine = summarize_state_machine(db, root_id=int(args.root_id))
+        root_public = source_root_public(root)
+        state_machine = summarize_state_machine(
+            db,
+            root_id=int(args.root_id),
+            source_root_public_marker=str(root_public["source_root_public_marker"]),
+        )
         generated_at = datetime.now(timezone.utc)
         branch = git_value("branch", "--show-current")
         generator_head = git_value("rev-parse", "HEAD")
         dirty_snapshot = git_status_snapshot()
+        app_config_imported = "app.config" in sys.modules
+        dynamic_sync_service_imported = "app.services.dynamic_library_sync_service" in sys.modules
         public = {
             "phase": PHASE,
             "generated_at": generated_at,
@@ -1429,10 +1735,22 @@ def build_summary(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, A
             "public_safe": True,
             "production_db_mutated": False,
             "source_icloud_mutated": False,
+            "app_storage_mutated": False,
             "production_execute_run": False,
             "default_audit_source_safe": not bool(args.allow_source_read_plan),
             "source_read_capable_plan_requested": bool(args.allow_source_read_plan),
-            "root": source_root_public(root),
+            "side_effect_safety": {
+                "db_session_initialization": "standalone_sqlalchemy_engine_from_profile",
+                "app_database_init_engine_called": False,
+                "app_config_imported": bool(app_config_imported),
+                "dynamic_library_sync_service_imported": bool(dynamic_sync_service_imported),
+                "app_storage_mutation_performed_by_audit": False,
+                "app_storage_presence_check": "path_resolve_and_exists_only_no_mkdir",
+                "db_default_transaction_read_only": True,
+                "source_icloud_reads_performed_by_default_audit": False,
+                "source_read_capable_planner_invoked": bool(next_plan.get("source_read_capable_planner_invoked")),
+            },
+            "root": root_public,
             "run18": run_summary,
             "root_inventory": root_summary,
             "next_normal_plan": next_plan,
@@ -1469,6 +1787,15 @@ def build_summary(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, A
         private = {
             "public": public,
             "private": {
+                "root": source_root_private(root),
+                "runtime_context_private": {
+                    "storage_root_configured": bool(storage_root),
+                    "db_host": str((context.get("db") or {}).get("host") or ""),
+                    "db_port": str((context.get("db") or {}).get("port") or ""),
+                    "db_name": str((context.get("db") or {}).get("name") or ""),
+                    "db_user_present": bool(str((context.get("db") or {}).get("user") or "").strip()),
+                    "db_password_present": bool(str((context.get("db") or {}).get("password") or "").strip()),
+                },
                 "run_rows": run_private_rows,
                 "debt_examples": debt_examples,
                 "private_rows_include_source_item_ids_and_hashes": True,
@@ -1477,7 +1804,12 @@ def build_summary(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, A
         }
         return public, private
     finally:
+        bind = db.get_bind()
         db.close()
+        try:
+            bind.dispose()
+        except Exception:
+            pass
 
 
 def parse_args() -> argparse.Namespace:

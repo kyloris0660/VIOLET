@@ -5,22 +5,35 @@
 - Mode: production read-only audit; no Execute, no DB writes, no source/iCloud mutation.
 - Default evidence mode: DB-only/source-safe; no source walk/stat/open/hash/decode/hydration.
 - Audited baseline main commit: `ff5972b0685def18bd658746e2ba1e3043c28d02`.
-- Generator code head at run: `3ae3267d3685459107486874e66de180be022e44` on branch `codex/s3a-m2-r-manual-sync-stabilization`.
+- Generator code head at run: `182059ebe95e7b06d792249eeac9c55a5d2d76d4` on branch `codex/s3a-m2-r-manual-sync-stabilization`.
 - Report commit head: `not computed` (A committed report cannot truthfully contain the final self-referential commit SHA; use PR closeout/head metadata after commit.).
-- Working tree dirty at generation: yes; tracked dirty files: docs/admin/manual-sync-runbook.md, docs/architecture/manual-sync-state-machine.md, docs/current-handoff.md, docs/project-roadmap.md, docs/reports/s3a-m2-r-closeout.md, docs/reports/s3a-m2-r-post-merge-health-audit.md, docs/reports/s3a-m2-r-post-merge-health-summary.json, scripts/audit_s3a_m2_r_post_merge_health.py; untracked count: 82.
-- Production root audited: `2 / icloud-photos-production`.
+- Working tree dirty at generation: yes; tracked dirty files: docs/admin/manual-sync-runbook.md, docs/architecture/manual-sync-state-machine.md, docs/reports/s3a-m2-r-closeout.md, docs/reports/s3a-m2-r-post-merge-health-audit.md, docs/reports/s3a-m2-r-post-merge-health-summary.json, scripts/audit_s3a_m2_r_post_merge_health.py; untracked count: 82.
+- Production source root audited: `audited-root` (label redacted: yes; root id redacted: yes).
+- Side-effect safety: app config imported `no`, app storage mutation `no`.
 - Raw private evidence root: `.local_manifests/s3a_m2_r/post_merge_health/`.
 
 ## R0 Findings
 
+### Run #18 record vs current cohort health
+
+| Field | Value |
+|---|---|
+| Run reconciliation scope | root_scoped_join_dynamic_source_item |
+| Other-root run item count | 0 |
+| Immutable stage snapshot available | no |
+| Historical stage snapshot unavailable | yes |
+| Current state used for downstream completion | yes |
+
+PR #126 acceptance used DB truth observed after run #18. Future reruns of this audit may observe later current `DynamicSourceItem` / Media / app-storage health unless comparing against frozen private artifacts from the original audit time.
+
 ### 880 downstream follow-up rows
 
-At run #18 plan time, the 880 follow-up rows were genuinely actionable app-media-backed downstream work. After run #18, those same 880 rows are terminal/downstream complete and should no longer be treated as actionable follow-up. Future similar rows can still accumulate if historical downstream_followup_planned remains overloaded, so lifecycle cleanup is needed. A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling.
+Run #18 recorded 880 downstream_followup_planned run items in the root-scoped run-item record. At run #18 plan time, those rows were genuinely actionable app-media-backed downstream work. At this audit time, current cohort health shows those same 880 rows are downstream complete and should no longer be treated as actionable follow-up. Future similar rows can still accumulate if historical downstream_followup_planned remains overloaded, so lifecycle cleanup is needed. A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling.
 
 | Question | Answer |
 |---|---|
 | Were all 880 genuinely actionable at run #18 plan time? | yes; they were app-media-backed downstream follow-up work. |
-| Are those same 880 actionable after run #18? | no; 880/880 are terminal/downstream complete. |
+| Are those same 880 actionable at this audit time? | no; current cohort health shows 880/880 downstream complete. |
 | Redundant/duplicate/no-op after run? | yes; classify as stable diagnostic unless downstream status regresses. |
 | Did they merely pass through planned state without work? | no; statuses show downstream completion. |
 | Can similar rows accumulate forever? | yes; if `downstream_followup_planned` is retained as a historical state. |
@@ -66,7 +79,7 @@ The first R0/R1 attempt reported `347` from the current source-read-capable plan
 | Placeholder / cloud hydration rows | 4 | Visible diagnostic/deferred debt. |
 | Older app-media-backed downstream-incomplete rows | 20 | App storage exists, but current planner follow-up classifier catches 0; these need canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling. |
 | Source-missing media-backed downstream-incomplete rows | 20 | Visible as source-missing/retry style debt, not as follow-up. |
-| Imported but downstream-incomplete under root 2 | 0 | Acceptance criterion currently satisfied. |
+| Imported but downstream-incomplete under audited source root | 0 | Acceptance criterion currently satisfied. |
 | Invisible app-media incomplete rows | 0 | None found. |
 | Historical backlog that can consume normal cap | 0 | None found by current-priority classifier. |
 

@@ -1,16 +1,18 @@
 {
   "answers": {
     "q1_880_downstream_followup": {
-      "answer": "At run #18 plan time, the 880 follow-up rows were genuinely actionable app-media-backed downstream work. After run #18, those same 880 rows are terminal/downstream complete and should no longer be treated as actionable follow-up. Future similar rows can still accumulate if historical downstream_followup_planned remains overloaded, so lifecycle cleanup is needed. A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling.",
+      "answer": "Run #18 recorded 880 downstream_followup_planned run items in the root-scoped run-item record. At run #18 plan time, those rows were genuinely actionable app-media-backed downstream work. At this audit time, current cohort health shows those same 880 rows are downstream complete and should no longer be treated as actionable follow-up. Future similar rows can still accumulate if historical downstream_followup_planned remains overloaded, so lifecycle cleanup is needed. A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling.",
       "can_accumulate_forever": true,
       "can_consume_future_cap": "not_proven_by_safe_default",
       "evidence": {
+        "current_state_used_for_downstream_completion": true,
+        "historical_stage_snapshot_unavailable": true,
         "next_plan_estimated_downstream_followup_count": null,
         "next_plan_evidence_mode": "db_only_source_safe",
         "root_app_media_downstream_incomplete_current_planner_followup_total": 0,
         "root_app_media_downstream_incomplete_total": 20,
-        "run18_downstream_followup_complete": 880,
-        "run18_downstream_followup_rows": 880
+        "run18_current_downstream_followup_complete": 880,
+        "run18_recorded_downstream_followup_rows": 880
       },
       "expected_to_reappear_next_plan": "not_recomputed_by_safe_default",
       "passed_through_without_work": false,
@@ -60,7 +62,7 @@
       "all_deferred_not_processed_budget_stop_total": 179,
       "app_media_incomplete_current_planner_followup_rows": 0,
       "historical_backlog_can_consume_cap": 0,
-      "imported_but_downstream_incomplete_root2": 0,
+      "imported_but_downstream_incomplete_audited_root": 0,
       "invisible_app_media_incomplete": 0,
       "older_app_media_backed_downstream_incomplete_rows": 20,
       "placeholders": 4,
@@ -122,6 +124,7 @@
       "status": "too_many_overlapping_state_fields"
     }
   },
+  "app_storage_mutated": false,
   "artifact_lifecycle": {
     "private_evidence": "one-off local artifact / ignored output",
     "public_report": "public report / handoff",
@@ -141,14 +144,12 @@
     "path_liveness_audit_level": "design_level_report_analysis",
     "state_machine_verified": false
   },
-  "generated_at": "2026-07-02T15:02:34Z",
+  "generated_at": "2026-07-02T15:56:07Z",
   "generator_code_ref": {
     "branch": "codex/s3a-m2-r-manual-sync-stabilization",
     "dirty_files_at_generation": [
       "docs/admin/manual-sync-runbook.md",
       "docs/architecture/manual-sync-state-machine.md",
-      "docs/current-handoff.md",
-      "docs/project-roadmap.md",
       "docs/reports/s3a-m2-r-closeout.md",
       "docs/reports/s3a-m2-r-post-merge-health-audit.md",
       "docs/reports/s3a-m2-r-post-merge-health-summary.json",
@@ -156,11 +157,11 @@
     ],
     "dirty_state_note": "Tracked dirty paths are listed; untracked paths are counted but omitted from the public report.",
     "dirty_untracked_file_count_at_generation": 82,
-    "generator_git_head_at_run": "3ae3267d3685459107486874e66de180be022e44",
+    "generator_git_head_at_run": "182059ebe95e7b06d792249eeac9c55a5d2d76d4",
     "script": "scripts/audit_s3a_m2_r_post_merge_health.py",
     "working_tree_dirty_at_generation": true
   },
-  "generator_git_head_at_run": "3ae3267d3685459107486874e66de180be022e44",
+  "generator_git_head_at_run": "182059ebe95e7b06d792249eeac9c55a5d2d76d4",
   "mode": "production_read_only",
   "next_normal_plan": {
     "counts": {
@@ -587,10 +588,11 @@
   "report_commit_head": null,
   "report_commit_head_note": "A committed report cannot truthfully contain the final self-referential commit SHA; use PR closeout/head metadata after commit.",
   "root": {
-    "id": 2,
     "is_active": true,
-    "label": "icloud-photos-production",
+    "label_redacted": true,
+    "root_id_redacted": true,
     "source_identity_hash_prefix": "153684ac810c",
+    "source_root_public_marker": "audited-root",
     "source_type": "local_path"
   },
   "root_inventory": {
@@ -691,6 +693,7 @@
       "ai_tagging_skipped_non_target": 45,
       "deferred": 86
     },
+    "all_run_context_available": true,
     "app_storage_presence": {
       "missing_or_no_media": 86,
       "present": 914
@@ -706,8 +709,37 @@
       "unknown": 28
     },
     "created_at": "2026-07-02T05:21:04Z",
+    "current_state_used_for_downstream_completion": true,
     "dry_run": false,
     "finished_at": "2026-07-02T05:37:08Z",
+    "global_context": {
+      "action_counts": {
+        "defer": 75,
+        "downstream_followup": 880,
+        "import": 45
+      },
+      "all_run_item_count": 1000,
+      "other_root_run_item_count": 0,
+      "reason_counts": {
+        "downstream_followup": 880,
+        "imported": 32,
+        "non_target_content_class": 2,
+        "not_processed_budget_stop": 75,
+        "read_error": 2,
+        "read_timeout": 9
+      },
+      "root_scope_counts": {
+        "selected_audited_root": 1000
+      },
+      "state_counts": {
+        "deferred_unprocessed": 75,
+        "downstream_followup_planned": 880,
+        "failed": 11,
+        "imported": 34
+      }
+    },
+    "historical_stage_snapshot_unavailable": true,
+    "immutable_stage_snapshot_available": false,
     "import_status_counts": {
       "deferred": 75,
       "failed": 11,
@@ -745,6 +777,7 @@
       "is_success": false,
       "recommended_operator_status": "completed_with_retryable_failures"
     },
+    "other_root_run_item_count": 0,
     "processed_in_run": {
       "actually_processed_or_attempted": 925,
       "not_processed_continuation": 75
@@ -769,13 +802,114 @@
       "request_effective_max_files": 1000,
       "request_source": "web_admin_gui",
       "retryable_source_failures": 11,
-      "root_scope": null,
+      "root_scope_note": "Raw run request root scope is omitted from the public report.",
+      "root_scope_redacted": true,
+      "scope": "root_scoped_join_dynamic_source_item",
       "unprocessed_import_planned_count": 75
     },
     "remaining_incomplete": {
       "terminal_or_no_media": 1000
     },
+    "run18_current_cohort_health_at_audit_time": {
+      "ai_tagging_status_counts": {
+        "ai_tagged": 869,
+        "ai_tagging_skipped_non_target": 45,
+        "deferred": 86
+      },
+      "app_storage_presence": {
+        "missing_or_no_media": 86,
+        "present": 914
+      },
+      "audit_time_note": "These values are mutable current DB/app-storage health for the run cohort. Future sync/repair can change them; use frozen private artifacts for exact prior audit evidence.",
+      "classification_status_counts": {
+        "classified": 914,
+        "deferred": 86
+      },
+      "content_class_counts": {
+        "anime": 841,
+        "no_media": 86,
+        "non_anime": 45,
+        "unknown": 28
+      },
+      "current_state_used_for_downstream_completion": true,
+      "downstream_followup_actionable_after_run_current_state": 0,
+      "downstream_followup_complete_current_state": 880,
+      "downstream_followup_rows": 880,
+      "historical_stage_snapshot_unavailable": true,
+      "immutable_stage_snapshot_available": false,
+      "import_status_counts": {
+        "deferred": 75,
+        "failed": 11,
+        "imported": 914
+      },
+      "lifecycle_counts": {
+        "CONTINUATION": 75,
+        "RETRYABLE_SOURCE_FAILURE": 11,
+        "STABLE_NOOP": 914
+      },
+      "localization_status_counts": {
+        "blocked_import_failed": 11,
+        "deferred": 75,
+        "localization_not_applicable_non_target": 45,
+        "localized": 869
+      },
+      "processed_in_run_current_interpretation": {
+        "actually_processed_or_attempted": 925,
+        "not_processed_continuation": 75
+      },
+      "remaining_incomplete_current_interpretation": {
+        "terminal_or_no_media": 1000
+      },
+      "scope": "current DynamicSourceItem/Media/app-storage state for the root-scoped run #18 cohort",
+      "source_state_counts": {
+        "deferred_unprocessed": 75,
+        "downstream_followup_planned": 880,
+        "failed": 11,
+        "imported": 34
+      }
+    },
+    "run18_recorded_run_item_summary": {
+      "action_counts": {
+        "defer": 75,
+        "downstream_followup": 880,
+        "import": 45
+      },
+      "reason_counts": {
+        "downstream_followup": 880,
+        "imported": 32,
+        "non_target_content_class": 2,
+        "not_processed_budget_stop": 75,
+        "read_error": 2,
+        "read_timeout": 9
+      },
+      "run_item_count": 1000,
+      "scope": "root_scoped_join_dynamic_source_item",
+      "state_counts": {
+        "deferred_unprocessed": 75,
+        "downstream_followup_planned": 880,
+        "failed": 11,
+        "imported": 34
+      },
+      "stored_manual_sync_execute_import_stopped_by": "stopped_by_failure_budget",
+      "stored_manual_sync_execute_outcome_counts": {
+        "ai_tagged": 869,
+        "ai_tagging_skipped_non_target": 45,
+        "classified": 914,
+        "deferred_unprocessed": 75,
+        "downstream_followup_planned": 880,
+        "failed": 11,
+        "imported": 34,
+        "localization_not_applicable_non_target": 45,
+        "localized": 869,
+        "read_error": 2,
+        "read_timeout": 9
+      },
+      "stored_run_summary_json_available": true,
+      "stored_run_summary_scope_note": "Stored DynamicSyncRun.summary_json is run-level. Root-scoped reconciliation uses joined DynamicSyncRunItem rows; all-run context is reported separately.",
+      "stored_total_seen": 1000
+    },
     "run_id": 18,
+    "run_reconciliation_scope": "root_scoped_join_dynamic_source_item",
     "run_type": "manual_sync_execute",
     "source_state_counts": {
       "deferred_unprocessed": 75,
@@ -800,6 +934,17 @@
     ],
     "reason": "R2-R4 implementation spans planner/execute/validator/UI/docs and should be split to avoid a giant unreviewable PR.",
     "stop_after_r0_r1": true
+  },
+  "side_effect_safety": {
+    "app_config_imported": false,
+    "app_database_init_engine_called": false,
+    "app_storage_mutation_performed_by_audit": false,
+    "app_storage_presence_check": "path_resolve_and_exists_only_no_mkdir",
+    "db_default_transaction_read_only": true,
+    "db_session_initialization": "standalone_sqlalchemy_engine_from_profile",
+    "dynamic_library_sync_service_imported": false,
+    "source_icloud_reads_performed_by_default_audit": false,
+    "source_read_capable_planner_invoked": false
   },
   "source_icloud_mutated": false,
   "source_read_capable_plan_requested": false,
@@ -1184,8 +1329,9 @@
     },
     "scope": {
       "global_counts_location": "global_context.field_value_counts",
-      "root_id": 2,
-      "run_item_counts_scope": "root_scoped_join_dynamic_source_item"
+      "root_id_redacted": true,
+      "run_item_counts_scope": "root_scoped_join_dynamic_source_item",
+      "source_root_public_marker": "audited-root"
     },
     "ui_terminal_statuses_current": [
       "completed",
