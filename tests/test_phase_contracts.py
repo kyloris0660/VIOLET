@@ -22,6 +22,14 @@ from scripts.phase_contracts.contract_registry import SOURCE_CONCEPT_FULL_CHAIN_
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "phase_contracts"
 
 
+def test_public_payload_redaction_rejects_content_hash_keys() -> None:
+    findings = contract_checks_module.scan_public_payload(
+        {"public": {"content_hash": "[redacted]", "nested": {"sha256": "[redacted]"}}}
+    )
+
+    assert {finding["code"] for finding in findings} >= {"private_content_hash_key_present"}
+
+
 def _current_test_head() -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -1532,6 +1540,462 @@ def _set_nested(payload: dict, path: str, value: object) -> None:
     for part in parts[:-1]:
         cursor = cursor[part]
     cursor[parts[-1]] = value
+
+
+def _s3a_m2_summary(**overrides: object) -> dict:
+    summary = {
+        "phase": "S3A-M2",
+        "head_sha": "head-abc123",
+        "pipeline_contract": {
+            "contract_id": "s3a_m2_production_delta_e2e_contract_v1",
+            "status": "target_met",
+            "phase_identity": "S3A-M2",
+            "claims": {"target_met": True, "safe_to_merge": True, "full_chain_complete": True},
+            "fresh_dry_run_completed": True,
+            "execute_after_approval": True,
+            "exact_operator_approval_present": True,
+        },
+        "source": {
+            "root_id": 1,
+            "public_source_identity": "source-abc123",
+            "paths_redacted": True,
+        },
+        "registered_roots_public": {
+            "registered_root_count": 1,
+            "in_scope_root_id": 1,
+            "paths_redacted": True,
+            "roots": [
+                {
+                    "id": 1,
+                    "public_source_identity": "source-abc123",
+                    "is_active": True,
+                    "auto_sync_enabled": False,
+                    "in_scope": True,
+                    "path_redacted": True,
+                }
+            ],
+        },
+        "controlled_delta": {
+            "cap": 300,
+            "cap_exceeded": False,
+            "expected_delta_range": "100-300",
+            "silently_truncated": False,
+            "hydrated_only": True,
+        },
+        "dry_run": {
+            "plan_hash": "abcdef1234567890",
+            "total_seen": 120,
+            "estimated_import_count": 100,
+            "estimated_classification_count": 100,
+            "estimated_ai_tagging_count": 100,
+            "approval_phrase": "I APPROVE S3A-M2 PRODUCTION DELTA E2E abcdef123456",
+            "partial_scan": False,
+        },
+        "execute": {
+            "run_id": 9,
+            "status": "completed",
+            "imported": 100,
+            "classified": 100,
+            "ai_tagged": 100,
+            "failed": 0,
+            "deferred": 0,
+        },
+        "classification": {"reported": True, "count": 100, "failed": 0, "skipped": 0},
+        "ai_tagging": {
+            "reported": True,
+            "count": 100,
+            "failed": 0,
+            "skipped": 0,
+            "mature_media_tag_policy": True,
+            "proper_nouns_suggestion_only": False,
+            "no_sourceconcept_or_entity_truth_from_ai_only_tags": True,
+            "no_sourceconcept_or_entity_truth_from_ai_proper_nouns": True,
+        },
+        "localization": {
+            "status": "completed",
+            "translated": 80,
+            "failed": 0,
+            "skipped": 20,
+            "llm_called": True,
+            "provider_call_count": 2,
+            "requested_max_tags": 1500,
+            "candidate_count": 80,
+            "candidate_overflow": False,
+            "localization_limit_status": "under_limit",
+            "dynamic_source_items_target_status": "localized",
+            "dynamic_source_items_deferred_reason": None,
+        },
+        "localization_diagnosis": {
+            "status": "completed",
+            "diagnosis": "benign_all_localizable_tags_already_localized_or_newly_localized",
+            "ai_wd_assignment_count": 1000,
+            "distinct_ai_wd_tag_count": 200,
+            "localizable_distinct_tags": 180,
+            "localizable_already_localized_or_static": 100,
+            "newly_localized_tags": 80,
+            "tags_requiring_localization_after_runner": 0,
+            "proper_noun_suggestion_review_only_tags_skipped": 20,
+            "not_eligible_for_localization": {"proper_noun_suggestion_review_only": 20},
+            "public_safe": True,
+        },
+        "gpu_telemetry": {
+            "status": "collected",
+            "validation_status": "passed",
+            "actual_provider": "DmlExecutionProvider",
+            "max_gpu_memory_used_mib": 2048.0,
+            "peak_gpu_utilization_percent": 72.0,
+        },
+        "runtime": {
+            "total_seconds": 300.0,
+            "stage_durations_seconds": {
+                "import": 30.0,
+                "classification": 60.0,
+                "ai_tagging": 180.0,
+                "localization": 30.0,
+            },
+        },
+        "ledger_consistency": {"status": "passed", "passed": True},
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "production_acceptance": {
+            "performed": True,
+            "approval_phrase_type": "s3a_m2_plan_hash_bound",
+            "approval_phrase_recorded": False,
+            "exact_statement": "production acceptance performed",
+        },
+        "readiness": {
+            "passed": True,
+            "production_settings": {
+                "violet_env": "production",
+                "db_name": "blombooru",
+            },
+        },
+        "api_runner_acceptance": {
+            "dry_run_plan_generated": True,
+            "execute_ran": True,
+            "status_polled_or_serialized": True,
+        },
+        "initial_run_validation": {
+            "passed": True,
+            "blockers": [],
+            "status": "passed",
+            "public_safe": True,
+        },
+        "placeholder_hydration": {
+            "status": "completed",
+            "placeholder_count_before_hydration": 2,
+            "hydration_attempted_count": 2,
+            "hydration_succeeded_count": 2,
+            "hydration_failed_count": 0,
+            "remaining_placeholders_after_hydration": 0,
+            "failure_reasons": {},
+            "manual_user_action_required": False,
+            "source_content_written": False,
+            "source_deleted_moved_renamed": False,
+            "public_safe": True,
+        },
+        "final_inventory": {
+            "current_delta_candidates": 20,
+            "current_importable_hydrated_supported_items": 0,
+            "existing_media": 3,
+            "placeholders_remaining": 0,
+            "unsupported_items": 17,
+            "unreadable_zero_byte_damaged": 0,
+            "unsupported_extension_breakdown": {".txt": 17},
+            "scan_cap_stopped_scan": False,
+            "public_safe": True,
+        },
+        "final_totals": {
+            "imported": 100,
+            "classified": 100,
+            "ai_tagged": 100,
+            "localized": 80,
+        },
+        "launcher_web_admin_acceptance": {
+            "validated": True,
+            "status": "passed_gui_execute_completed",
+            "target_path": "/admin?tab=content#dynamic-library-sync-section",
+            "execute_clicked": True,
+            "gui_execute_completed": True,
+            "gui_execute_run_id": 9,
+            "previous_execute_run_id": 8,
+            "production_execute_run_id_seen": 9,
+            "gui_provenance_valid": True,
+            "request_source": "web_admin_gui",
+            "gui_validation_session_id_present": True,
+            "gui_validation_session_id_hash": "session-hash",
+            "gui_validation_session_signature_valid": True,
+            "gui_plan_hash_bound": True,
+            "gui_plan_flow_verified": True,
+            "gui_plan_request_id_present": True,
+            "runtime_head_matches_current": True,
+            "validated_head_sha": "head-abc123",
+            "public_source_identity": "source-abc123",
+        },
+        "scanner_incremental_model": {
+            "model": "hybrid_source_ledger_metadata_fast_path_with_filesystem_fallback",
+            "durable_state_tables": [
+                "blombooru_dynamic_source_items",
+                "blombooru_dynamic_sync_runs",
+                "blombooru_dynamic_sync_run_items",
+            ],
+            "durable_global_filesystem_cursor": False,
+            "starts_from_root_each_run": "metadata_fallback_only_after_source_ledger_priority_workset",
+            "stable_known_files_fast_skipped_without_hash": True,
+            "hash_only_when": [
+                "new_source_path",
+                "metadata_changed",
+                "downstream_followup",
+                "ambiguous_existing_media",
+                "execute_integrity_revalidation",
+            ],
+            "cap_semantics": "actionable candidates only; unchanged existing media excluded",
+            "next_batch_continuation": "after execute committed DynamicSourceItem states are reused by the next plan",
+            "invalidation_policy": [
+                "source_root_id",
+                "relative_path_hash",
+                "file_size",
+                "mtime_ns",
+                "content_hash_mismatch",
+                "hydration_policy",
+                "profile_or_pipeline_settings",
+            ],
+            "public_safe": True,
+        },
+        "priority_backlog_root_cause": {
+            "table": "blombooru_dynamic_source_items",
+            "root_public_ref": "registered-root-2-public",
+            "total_priority_workset_rows": 22902,
+            "legacy_pending_changed_rows": 22698,
+            "legacy_pending_changed_outside_safety_window": 22698,
+            "rows_matching_existing_media": 35448,
+            "rows_imported_but_still_pending_or_changed": 22698,
+            "rows_that_should_be_actionable_now": 204,
+            "rows_that_need_repair_or_migration": 22698,
+            "root_cause": "historical update-check backlog left imported existing-media rows in changed/pending source-ledger state",
+            "production_db_repair_executed": False,
+            "repair_migration_plan": {
+                "candidate_count": 22698,
+                "candidate_condition": "pending changed rows outside safety window with media_id or existing content hash and no downstream follow-up",
+                "requires_owner_approval": True,
+                "would_modify_db": False,
+                "validation_after_repair": [
+                    "rerun priority backlog audit",
+                    "verify current actionable rows preserved",
+                    "verify public redaction",
+                ],
+            },
+            "public_safe": True,
+        },
+        "local_copy_repeated_incremental_e2e": {
+            "status": "completed",
+            "bulk_run_alone_sufficient": False,
+            "completed": True,
+            "scenario_count": 10,
+            "pass_criteria_failures": [],
+            "plan_expensive_ops_zero_all_cycles": True,
+            "browser_normal_flow_passed": True,
+            "source_originals_mutated": False,
+            "production_db_used": False,
+            "user_retry_recommended": True,
+            "public_safe": True,
+        },
+        "standard_pipeline_flow": {
+            "version": 1,
+            "status": "completed",
+            "future_automation_readiness": "manual_pipeline_standardized_no_automatic_sync_implemented",
+            "automatic_sync_implemented": False,
+            "public_safe": True,
+            "aggregate_basis": {
+                "initial_execute_run_id": 7,
+                "remaining_execute_run_id": 8,
+                "hydration_passes_represented": 2,
+                "final_inventory_delta_candidates": 20,
+            },
+            "steps": {
+                name: {"completed": True, "status": "completed", "evidence": {}}
+                for name in (
+                    "scan_current_source_delta",
+                    "detect_cloud_placeholders",
+                    "hydrate_placeholders_non_destructively",
+                    "rescan_after_hydration",
+                    "import_all_current_importable_items",
+                    "classify_imported_media",
+                    "run_ai_tagging",
+                    "run_localization_or_stable_reasons",
+                    "record_ledger_for_every_planned_item",
+                    "capture_resource_gpu_telemetry",
+                    "validate_public_redaction",
+                    "validate_launcher_web_admin_workflow",
+                    "produce_public_report_and_contract",
+                )
+            },
+        },
+        "ai_tag_assignment_incident": {
+            "status": "repaired",
+            "discovered_by": "manual_production_ui_validation",
+            "affected_run_ids": [7, 8],
+            "affected_media_count": 100,
+            "assignments_inspected": 1000,
+            "root_cause": "manual_sync_execute_forced_force_suggestions_true_for_all_ai_tags",
+            "before": {
+                "all_ai_assignments_are_suggestions": True,
+                "high_conf_nonproper_expected_normal_count": 600,
+                "high_conf_nonproper_incorrect_suggestion_count": 600,
+                "high_conf_proper_expected_normal_count": 25,
+                "high_conf_proper_incorrect_suggestion_count": 25,
+                "high_conf_proper_normal_count": 0,
+                "proper_noun_non_suggestion_count": 0,
+                "proper_noun_suggestion_count": 25,
+            },
+            "repair": {
+                "assignments_converted_from_suggestion_to_normal": 625,
+                "assignments_converted_from_normal_to_suggestion": 0,
+                "assignments_kept_suggestion": 375,
+                "proper_noun_suggestions_inspected": 25,
+                "proper_noun_suggestions_converted_to_normal": 25,
+                "proper_noun_suggestions_kept_suggestion": 0,
+                "proper_noun_suggestions_kept_reason": "below_confirm_threshold_suggestion",
+                "assignments_deleted_or_replaced": 0,
+                "duplicate_rows_created": 0,
+            },
+            "after": {
+                "all_ai_assignments_are_suggestions": False,
+                "high_conf_nonproper_expected_normal_count": 600,
+                "high_conf_nonproper_incorrect_suggestion_count": 0,
+                "high_conf_nonproper_normal_count": 600,
+                "high_conf_proper_expected_normal_count": 25,
+                "high_conf_proper_incorrect_suggestion_count": 0,
+                "high_conf_proper_normal_count": 25,
+                "low_conf_proper_suggestion_count": 3,
+                "proper_noun_non_suggestion_count": 25,
+                "proper_noun_suggestion_count": 3,
+            },
+            "entity_truth_violations_found": 0,
+            "localization_remaining_gap": 0,
+            "cohort_blocker_anomaly_count": 0,
+            "ui_verification": {
+                "status": "passed",
+                "method": "in_app_browser_playwright_against_launcher_started_production_server",
+                "computer_use_attempted": True,
+                "computer_use_result": "unavailable_in_current_tool_session",
+                "sample_count": 8,
+                "normal_visible_pass_count": 8,
+                "proper_suggestion_visible_pass_count": 8,
+                "samples_expect_proper_suggestions": 3,
+                "raw_screenshots_committed": False,
+                "raw_ids_private": True,
+                "public_safe": True,
+            },
+            "public_safe": True,
+        },
+        "post_repair_ui_validation": {
+            "status": "passed",
+            "sample_count": 8,
+            "normal_visible_pass_count": 8,
+            "proper_suggestion_visible_pass_count": 8,
+            "public_safe": True,
+        },
+        "cohort_self_audit": {
+            "status": "passed_after_repair",
+            "baseline_selection": {
+                "method": "latest older non-S3A-M2 media with source='ai_wd' before affected cohort upload window",
+                "limit": 500,
+                "media_count": 50,
+            },
+            "affected_media_count": 100,
+            "baseline_media_count": 50,
+            "blocker_anomaly_count": 0,
+            "normal_ai_tag_semantics_consistent_with_policy": True,
+            "public_safe": True,
+        },
+        "failure_timeline": [
+            {
+                "event": "initial_production_delta_run",
+                "what_happened": "bounded production delta execute ran",
+                "detected_by": "runner ledger and report",
+                "why_earlier_evidence_missed": "no GUI execute evidence was required yet",
+                "production_impact": "production import/classification/AI/localization rows were written",
+                "repair_or_prevention": "aggregate postmortem and GUI execute contract gates added",
+            }
+        ],
+        "deferred_failed_inventory": {
+            "source_field": "pending_summary.pending_deferred",
+            "query_scope": "active_source_roots",
+            "total": 0,
+            "reason_counts": {},
+            "extension_counts": {},
+            "pipeline_status_counts": {},
+            "current_actionable_importable_pending": 0,
+            "current_placeholder_reason_count": 0,
+            "ui_recommendation": "distinguish historical inventory from current actionable blockers",
+            "public_safe": True,
+        },
+        "gui_hang_root_cause": {
+            "status": "not_observed_in_passing_fixture",
+            "endpoint_called": "/api/admin/dynamic-library-sync/manual-sync/plan",
+            "root_cause": "no hang in passing fixture",
+            "backend_request_sent": True,
+            "backend_kept_scanning": False,
+            "cleanup_performed": True,
+            "watchdog_timeout_added": True,
+            "public_safe": True,
+        },
+        "api_vs_gui_divergence": {
+            "runner_gui_planner_diverged": False,
+            "api_runner_proved_backend_only": False,
+            "prevention_added": ["gui_execute_run_id_newer_than_runner_required"],
+            "public_safe": True,
+        },
+        "branch_profile_provenance": {
+            "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+            "head_sha": "head-abc123",
+            "profile_id": "production-default",
+            "db_name": "blombooru",
+            "violet_env": "production",
+            "stale_process_cleanup_status": "clean",
+            "public_safe": True,
+        },
+        "unsupported_inventory": {
+            "extension_counts": {".txt": 17},
+            "current_scope_unsupported_items": 17,
+            "current_image_pipeline_importable_under_existing_rules": 0,
+            "public_safe": True,
+        },
+        "manual_sync_safety_judgement": {
+            "status": "manual_sync_safe_with_operator_checks",
+            "evidence_based": True,
+            "gui_execute_validated": True,
+            "api_runner_e2e_reliable": True,
+            "future_automatic_sync_ready": False,
+            "public_safe": True,
+        },
+        "remaining_blockers": [],
+        "private_artifacts": {
+            "root": ".local_manifests/s3a_m2_delta_e2e",
+            "telemetry_root": ".local_manifests/s3a_m2_delta_e2e/telemetry",
+            "private_artifacts_committed": False,
+        },
+        "public_reports": {
+            "markdown_report_path": "docs/reports/s3a-m2-production-delta-e2e.md",
+            "summary_json_path": "docs/reports/s3a-m2-production-delta-e2e-summary.json",
+        },
+        "safety": {
+            "automatic_sync_enabled": False,
+            "scheduled_sync_enabled": False,
+            "startup_sync_enabled": False,
+            "system_service_enabled": False,
+            "source_icloud_mutation": False,
+            "source_mutation_attempted": False,
+            "provider_pixiv_gallery_dl_saucenao_google_calls": False,
+            "sourceconcept_entity_bridge": False,
+            "cleanup_delete_reset_drop_truncate": False,
+            "full_library_reimport": False,
+            "private_paths_or_hashes_in_public_report": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
 
 
 def _phase47_s2_summary(**overrides: object) -> dict:
@@ -3477,6 +3941,477 @@ def test_s3a_m1_contract_rejects_public_redaction_leak(monkeypatch) -> None:
     result = check_phase_contract("s3a_m1_manual_sync_execute_contract_v1", _s3a_m1_summary())
 
     assert "s3a_m1_public_payload_redaction_failed" in _error_codes(result)
+
+
+def test_s3a_m2_contract_accepts_dry_run_pending_approval() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    _set_nested(summary, "pipeline_contract.status", "dry_run_complete_pending_approval")
+    _set_nested(summary, "pipeline_contract.claims.target_met", False)
+    _set_nested(summary, "pipeline_contract.claims.safe_to_merge", False)
+    _set_nested(summary, "pipeline_contract.claims.full_chain_complete", False)
+    _set_nested(summary, "pipeline_contract.execute_after_approval", False)
+    _set_nested(summary, "pipeline_contract.exact_operator_approval_present", False)
+    _set_nested(summary, "production_acceptance.performed", False)
+    _set_nested(summary, "production_acceptance.exact_statement", "production acceptance not performed")
+    _set_nested(summary, "api_runner_acceptance.execute_ran", False)
+    _set_nested(summary, "execute.status", "not_run")
+    _set_nested(summary, "execute.imported", 0)
+    _set_nested(summary, "classification.count", 0)
+    _set_nested(summary, "ai_tagging.count", 0)
+    _set_nested(summary, "localization.status", "not_run")
+    _set_nested(summary, "localization.translated", 0)
+    _set_nested(summary, "localization.llm_called", False)
+    _set_nested(summary, "localization.provider_call_count", 0)
+    _set_nested(summary, "gpu_telemetry.status", "not_run")
+    _set_nested(summary, "gpu_telemetry.validation_status", "partial_provider_unknown")
+    _set_nested(summary, "gpu_telemetry.actual_provider", "not_loaded_before_execute")
+    _set_nested(summary, "gpu_telemetry.max_gpu_memory_used_mib", 0.0)
+    _set_nested(summary, "gpu_telemetry.peak_gpu_utilization_percent", 0.0)
+    _set_nested(summary, "ledger_consistency.status", "not_run")
+    _set_nested(summary, "ledger_consistency.passed", False)
+    _set_nested(summary, "launcher_web_admin_acceptance.validated", False)
+    _set_nested(summary, "launcher_web_admin_acceptance.status", "pending_after_dry_run")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_s3a_m2_contract_accepts_explicit_cap_1000() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["controlled_delta"]["cap"] = 1000
+    summary["dry_run"]["total_seen"] = 900
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_s3a_m2_contract_rejects_cap_above_1000() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["controlled_delta"]["cap"] = 1001
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_delta_cap_out_of_bounds" in _error_codes(result)
+
+
+def test_s3a_m2_contract_accepts_target_met() -> None:
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", _s3a_m2_summary())
+
+    assert result.passed is True
+
+
+def test_s3a_m2_contract_rejects_cap_exceeded_completion() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["controlled_delta"]["cap_exceeded"] = True
+    summary["dry_run"]["total_seen"] = 301
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_cap_exceeded_wrong_status" in codes
+    assert "s3a_m2_cap_exceeded_claimed_completion" in codes
+
+
+def test_s3a_m2_contract_rejects_localization_when_execute_not_completed() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["execute"]["status"] = "failed"
+    summary["localization"]["executed"] = True
+    summary["localization"]["llm_called"] = True
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_localization_ran_without_completed_execute" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_cpu_fallback_as_gpu_success() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["gpu_telemetry"]["actual_provider"] = "CPUExecutionProvider"
+    summary["gpu_telemetry"]["validation_status"] = "passed"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_gpu_pass_without_gpu_provider" in codes
+    assert "s3a_m2_cpu_fallback_claimed_target" in codes
+
+
+def test_s3a_m2_contract_rejects_missing_launcher_validation_for_target() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["validated"] = False
+    summary["launcher_web_admin_acceptance"]["status"] = "pending_browser_validation_after_runner"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_target_proof_missing" in codes
+    assert "s3a_m2_launcher_validation_not_passed" in codes
+
+
+def test_s3a_m2_contract_rejects_remaining_placeholder_completion() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["placeholder_hydration"]["remaining_placeholders_after_hydration"] = 1
+    summary["final_inventory"]["placeholders_remaining"] = 1
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_placeholders_remaining_after_hydration" in codes
+    assert "s3a_m2_final_placeholders_remaining" in codes
+
+
+def test_s3a_m2_contract_rejects_remaining_importable_delta_completion() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["final_inventory"]["current_importable_hydrated_supported_items"] = 2
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_importable_items_remaining" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_unexplained_localization_gap() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["localization_diagnosis"]["diagnosis"] = "localization_gap_remaining"
+    summary["localization_diagnosis"]["tags_requiring_localization_after_runner"] = 4
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_localization_diagnosis_not_benign" in codes
+    assert "s3a_m2_localization_gap_remaining" in codes
+
+
+def test_s3a_m2_contract_rejects_localization_partial_without_overflow() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["localization"]["status"] = "partial_localization_max_tags_reached"
+    summary["localization"]["candidate_count"] = summary["localization"]["requested_max_tags"]
+    summary["localization"]["candidate_overflow"] = False
+    summary["localization"]["localization_limit_status"] = "exact_limit_no_overflow"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_localization_partial_without_overflow" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_localization_overflow_marked_localized() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["localization"]["candidate_overflow"] = True
+    summary["localization"]["status"] = "completed"
+    summary["localization"]["dynamic_source_items_target_status"] = "localized"
+    summary["localization"]["dynamic_source_items_deferred_reason"] = None
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_localization_overflow_claimed_complete" in codes
+    assert "s3a_m2_localization_overflow_source_items_not_deferred" in codes
+    assert "s3a_m2_localization_overflow_missing_deferred_reason" in codes
+
+
+def test_s3a_m2_contract_rejects_incomplete_standard_pipeline_step() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["standard_pipeline_flow"]["status"] = "incomplete"
+    summary["standard_pipeline_flow"]["steps"]["hydrate_placeholders_non_destructively"]["completed"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_standard_pipeline_flow_incomplete" in codes
+    assert "s3a_m2_standard_pipeline_step_incomplete" in codes
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_click() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["status"] = "passed_gui_execute_completed"
+    summary["launcher_web_admin_acceptance"]["execute_clicked"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_click" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_newer_run() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_execute_run_id"] = 8
+    summary["launcher_web_admin_acceptance"]["production_execute_run_id_seen"] = 8
+    summary["execute"]["run_id"] = 8
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_gui_execute_claim_without_newer_run" in codes
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_gui_provenance() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_provenance_valid"] = False
+    summary["launcher_web_admin_acceptance"]["request_source"] = "standalone_runner"
+    summary["launcher_web_admin_acceptance"]["gui_validation_session_id_present"] = False
+    summary["launcher_web_admin_acceptance"]["gui_validation_session_signature_valid"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_gui_provenance" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_signed_session() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_validation_session_signature_valid"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_gui_provenance" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_bound_plan_flow() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_plan_hash_bound"] = False
+    summary["launcher_web_admin_acceptance"]["gui_plan_flow_verified"] = False
+    summary["launcher_web_admin_acceptance"]["gui_plan_request_id_present"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_bound_plan_flow" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_gui_execute_completion_without_current_head_runtime() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["runtime_head_matches_current"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_gui_execute_claim_without_current_head_runtime" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_deferred_failed_inventory_postmortem() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary.pop("deferred_failed_inventory")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_manual_sync_safety_judgement() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["manual_sync_safety_judgement"]["status"] = "not_assessed"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_manual_sync_safety_judgement_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_scanner_incremental_model() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary.pop("scanner_incremental_model")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_priority_backlog_root_cause() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary.pop("priority_backlog_root_cause")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_incomplete_priority_backlog_repair_plan() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["priority_backlog_root_cause"]["repair_migration_plan"].pop("candidate_condition")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_priority_backlog_repair_plan_incomplete" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_missing_local_copy_incremental_e2e() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary.pop("local_copy_repeated_incremental_e2e")
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_postmortem_section_missing" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_retry_recommendation_from_bulk_only_evidence() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    local_copy = summary["local_copy_repeated_incremental_e2e"]
+    local_copy["completed"] = False
+    local_copy["bulk_run_alone_sufficient"] = True
+    local_copy["scenario_count"] = 1
+    local_copy["browser_normal_flow_passed"] = False
+    local_copy["pass_criteria_failures"] = ["bulk_only_not_incremental"]
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_retry_recommended_without_local_copy_e2e" in codes
+    assert "s3a_m2_retry_recommended_with_local_copy_failures" in codes
+    assert "s3a_m2_retry_recommended_without_required_incremental_cycles" in codes
+    assert "s3a_m2_retry_recommended_without_browser_normal_flow" in codes
+    assert "s3a_m2_retry_recommended_from_bulk_only_evidence" in codes
+
+
+def test_s3a_m2_contract_rejects_scanner_without_metadata_fast_skip() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["scanner_incremental_model"]["stable_known_files_fast_skipped_without_hash"] = False
+    summary["scanner_incremental_model"]["cap_semantics"] = "raw files visited"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_scanner_does_not_fast_skip_stable_known_files" in codes
+    assert "s3a_m2_scanner_cap_semantics_not_actionable" in codes
+
+
+def test_s3a_m2_contract_rejects_safe_judgement_without_gui_execute() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["gui_execute_completed"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_manual_sync_safe_without_gui_execute" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_stale_branch_profile_provenance() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["branch_profile_provenance"]["head_sha"] = "old-head"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_branch_profile_head_mismatch" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_runner_fallback_without_reason() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["status"] = "passed_gui_execute_not_safe_runner_execute_used"
+    summary["launcher_web_admin_acceptance"]["execute_clicked"] = False
+    summary["launcher_web_admin_acceptance"].pop("fallback_reason", None)
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_runner_fallback_missing_reason" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_test_db_production_acceptance() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["readiness"]["production_settings"]["db_name"] = "blombooru_test"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_production_acceptance_on_test_db" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_initial_run_validation_failure() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["initial_run_validation"]["passed"] = False
+    summary["initial_run_validation"]["blockers"] = ["initial_ledger_consistency_not_passed"]
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_initial_run_validation_not_passed" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_stale_launcher_validation_artifact() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["launcher_web_admin_acceptance"]["production_execute_run_id_seen"] = 7
+    summary["launcher_web_admin_acceptance"]["validated_head_sha"] = "old-head"
+    summary["launcher_web_admin_acceptance"]["public_source_identity"] = "source-old"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_launcher_validation_run_id_mismatch" in codes
+    assert "s3a_m2_launcher_validation_head_sha_mismatch" in codes
+    assert "s3a_m2_launcher_validation_source_mismatch" in codes
+
+
+def test_s3a_m2_contract_rejects_all_ai_suggestions_with_high_conf_nonproper_tags() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["ai_tag_assignment_incident"]["status"] = "blocked"
+    summary["ai_tag_assignment_incident"]["after"]["all_ai_assignments_are_suggestions"] = True
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_nonproper_expected_normal_count"] = 12
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_nonproper_incorrect_suggestion_count"] = 12
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_nonproper_normal_count"] = 0
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_ai_tag_assignment_incident_not_resolved" in codes
+    assert "s3a_m2_all_ai_tags_suggestions_with_mature_policy_expected" in codes
+    assert "s3a_m2_high_conf_nonproper_ai_tags_still_suggestions" in codes
+    assert "s3a_m2_high_conf_nonproper_ai_tags_not_normalized" in codes
+
+
+def test_s3a_m2_contract_rejects_high_conf_proper_ai_tags_left_as_suggestions() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_proper_expected_normal_count"] = 7
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_proper_incorrect_suggestion_count"] = 7
+    summary["ai_tag_assignment_incident"]["after"]["high_conf_proper_normal_count"] = 0
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    codes = _error_codes(result)
+    assert "s3a_m2_high_conf_proper_ai_tags_still_suggestions" in codes
+    assert "s3a_m2_high_conf_proper_ai_tags_not_normalized" in codes
+
+
+def test_s3a_m2_contract_rejects_abnormal_cohort_distribution() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["cohort_self_audit"]["status"] = "blocked_anomalies_remaining"
+    summary["cohort_self_audit"]["blocker_anomaly_count"] = 1
+    summary["cohort_self_audit"]["normal_ai_tag_semantics_consistent_with_policy"] = False
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_cohort_self_audit_not_passed" in codes
+    assert "s3a_m2_cohort_blocker_anomalies_remaining" in codes
+    assert "s3a_m2_cohort_ai_tag_semantics_abnormal" in codes
+
+
+def test_s3a_m2_contract_rejects_failed_post_repair_ui_validation() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["ai_tag_assignment_incident"]["ui_verification"]["status"] = "failed"
+    summary["ai_tag_assignment_incident"]["ui_verification"]["normal_visible_pass_count"] = 7
+    summary["post_repair_ui_validation"]["status"] = "failed"
+    summary["post_repair_ui_validation"]["normal_visible_pass_count"] = 7
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_post_repair_ui_validation_not_passed" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_telemetry_outside_local_manifest_tree() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["private_artifacts"]["telemetry_root"] = "telemetry/s3a_m2"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_telemetry_artifact_outside_approved_tree" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_public_content_hash_leak() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["public_example"] = {"content_hash": "a" * 64}
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_public_payload_not_safe" in _error_codes(result)
+
+
+def test_s3a_m2_contract_rejects_public_redaction_leak() -> None:
+    summary = copy.deepcopy(_s3a_m2_summary())
+    summary["source"]["public_source_identity"] = r"C:\Users\private\Pictures\example.png"
+
+    result = check_phase_contract("s3a_m2_production_delta_e2e_contract_v1", summary)
+
+    assert "s3a_m2_public_payload_not_safe" in _error_codes(result)
 
 
 def test_source_concept_full_chain_fails_when_llm_required_but_missing() -> None:

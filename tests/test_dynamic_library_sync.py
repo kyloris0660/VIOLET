@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect as py_inspect
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from app.enums import FileTypeEnum, TagCategoryEnum  # noqa: E402
 from app.models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem, Media, Tag, TagTranslation  # noqa: E402
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as service  # noqa: E402
+from app.services import manual_sync_execute_service as execute_service  # noqa: E402
 from app.utils.media_processor import calculate_file_hash  # noqa: E402
 
 
@@ -86,6 +88,15 @@ def client(db):
         app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def clear_manual_plan_progress_state():
+    yield
+    with dynamic_routes._MANUAL_PLAN_LOCK:
+        dynamic_routes._MANUAL_PLAN_PROGRESS.clear()
+        dynamic_routes._MANUAL_PLAN_CANCELLED.clear()
+        dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY.clear()
+
+
 def _seed_source_tree(root: Path) -> None:
     root.mkdir(parents=True)
     (root / "new.jpg").write_bytes(b"new image")
@@ -133,6 +144,9 @@ def test_update_check_persists_pending_counts_and_repeated_runs_are_idempotent(d
     assert first["deferred_items"] == 2
     assert first["pending_summary"]["pending_new"] == 2
     assert first["pending_summary"]["pending_deferred"] == 2
+    assert first["pending_summary"]["pending_deferred_scope"] == "historical_accumulated_active_source_roots"
+    assert first["pending_summary"]["pending_deferred_includes_historical"] is True
+    assert first["pending_summary"]["current_actionable_pending_import"] == 2
     assert first["pending_summary"]["threshold"] == 100
     assert first["pending_summary"]["threshold_reached"] is False
     assert db.query(DynamicSourceItem).count() == 4
@@ -182,6 +196,21 @@ def test_pending_snapshot_embeds_completed_current_run(app_style_db, tmp_path):
     assert not (embedded["status"] == "running" and embedded["total_seen"] == 0)
 
 
+def test_dynamic_sync_dashboard_exposes_runtime_provenance(client):
+    response = client.get("/api/admin/dynamic-library-sync")
+
+    assert response.status_code == 200
+    payload = response.json()
+    runtime = payload["runtime_provenance"]
+    assert "git_head" in runtime
+    assert "git_branch" in runtime
+    assert "profile_id" in runtime
+    assert "app_port" in runtime
+    assert "violet_env" in runtime
+    assert "db_name" in runtime
+    assert runtime["python_executable_name"]
+
+
 def test_manual_sync_dry_run_plan_reports_public_safe_item_states(db, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -215,17 +244,23 @@ def test_manual_sync_dry_run_plan_reports_public_safe_item_states(db, tmp_path):
     assert plan["job"]["mode"] == "dry_run"
     assert plan["job"]["production_execution_enabled"] is False
     assert plan["ledger"]["db_write_performed"] is False
-    assert counts["import_planned"] == 1
-    assert counts["skipped_duplicate"] == 1
-    assert counts["skipped_existing_media"] == 1
-    assert counts["skipped_zero_byte"] == 1
+    assert counts["import_planned"] == 5
+    assert counts["skipped_duplicate"] == 0
+    assert counts["skipped_existing_media"] == 0
+    assert counts["skipped_zero_byte"] == 0
     assert counts["skipped_unsupported"] == 1
     assert counts["skipped_placeholder"] == 1
-    assert counts["failed"] == 1
-    assert plan["counts"]["estimated_classification_count"] == 1
-    assert plan["counts"]["estimated_ai_tagging_count"] == 1
-    assert plan["counts"]["estimated_localization_workload"] == 1
+    assert counts["failed"] == 0
+    assert plan["counts"]["estimated_classification_count"] == 5
+    assert plan["counts"]["estimated_ai_tagging_count"] == 5
+    assert plan["counts"]["estimated_localization_workload"] == 5
+    assert plan["limits"]["normal_plan_candidate_discovery_only"] is True
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["image_decode_count"] == 0
+    assert plan["limits"]["hydration_attempt_count"] == 0
     assert all(item["bytes_copied"] == 0 for item in plan["ledger"]["per_file_public_records"])
+    assert all(item["content_hash_computed"] is False for item in plan["ledger"]["per_file_public_records"])
     assert "private_details" not in plan
     assert "a_new.png" not in str(plan)
 
@@ -244,20 +279,28 @@ def test_manual_sync_dry_run_plan_defers_files_that_are_still_changing(db, tmp_p
 
     assert plan["counts"]["state_counts"]["skipped_changing"] == 1
     assert plan["counts"]["estimated_import_count"] == 0
-    assert plan["ledger"]["per_file_public_records"][0]["reason"] == "file_still_changing"
+    assert plan["ledger"]["per_file_public_records"] == []
+    assert plan["counts"]["failure_reasons"]["file_still_changing"] == 1
 
 
-def test_manual_sync_dry_run_plan_rejects_hydrated_only_false_at_service(db, tmp_path):
+def test_manual_sync_dry_run_plan_allows_cloud_aware_hydration_policy(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
+    _write_png(source_root / "cloud_backed.png")
+    monkeypatch.setattr(service, "_is_cloud_only", lambda _path: True)
 
-    with pytest.raises(ValueError, match="manual sync dry-run requires hydrated_only=true"):
-        service.plan_manual_sync_dry_run(
-            db,
-            source_path=source_root,
-            hydrated_only=False,
-            stable_age_seconds=0,
-        )
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        hydrated_only=False,
+        stable_age_seconds=0,
+    )
+
+    assert plan["limits"]["hydrated_only"] is False
+    assert plan["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read_execute_stage"
+    assert plan["limits"]["hydration_attempt_count"] == 0
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["ledger"]["per_file_public_records"][0]["cloud_placeholder_before_hydration"] is False
 
 
 def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp_path):
@@ -274,16 +317,458 @@ def test_manual_sync_dry_run_plan_route_is_read_only_and_public_safe(client, tmp
     payload = response.json()
     assert payload["public_safe"] is True
     assert payload["ledger"]["db_write_performed"] is False
+    assert payload["limits"]["hydrated_only"] is False
+    assert payload["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read_execute_stage"
+    assert payload["limits"]["content_read_count"] == 0
+    assert payload["limits"]["hash_required_count"] == 0
+    assert payload["limits"]["image_decode_count"] == 0
+    assert payload["limits"]["hydration_attempt_count"] == 0
     assert payload["counts"]["state_counts"]["import_planned"] == 1
     assert "private_details" not in payload
     assert "new.png" not in str(payload)
+
+
+def test_manual_sync_plan_service_reports_progress_and_cancel(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+    progress_events = []
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        stable_age_seconds=0,
+        progress_callback=progress_events.append,
+        cancel_check=lambda: True,
+    )
+
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["limits"]["plan_cancelled"] is True
+    assert plan["limits"]["last_progress_stage"] == "cancelled"
+    assert plan["counts"]["failure_reasons"]["plan_cancelled"] == 1
+    assert progress_events
+    assert progress_events[-1]["status"] == "running"
+
+
+def test_manual_sync_plan_route_exposes_progress_state(client, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+    plan_request_id = "gui-plan-progress-test"
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "source_path": str(source_root),
+            "max_files": 5,
+            "stable_age_seconds": 0,
+            "plan_request_id": plan_request_id,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["plan_request_id"] == plan_request_id
+    progress_response = client.get(f"/api/admin/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}")
+    assert progress_response.status_code == 200, progress_response.text
+    progress = progress_response.json()
+    assert progress["status"] == "completed"
+    assert progress["phase"] == "completed"
+    assert progress["endpoint"] == "/api/admin/dynamic-library-sync/manual-sync/plan"
+    assert progress["counts"]["estimated_import_count"] == 1
+    assert "source_path" not in progress
+
+
+def test_manual_sync_plan_route_rejects_duplicate_active_plan(client, db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    plan_request_id = "gui-plan-active-test"
+    plan_key = f"root:{root.id}"
+    with dynamic_routes._MANUAL_PLAN_LOCK:
+        dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY[plan_key] = plan_request_id
+        dynamic_routes._MANUAL_PLAN_PROGRESS[plan_request_id] = {
+            "plan_request_id": plan_request_id,
+            "plan_key": plan_key,
+            "status": "running",
+            "phase": "scanning",
+            "started_at_epoch": dynamic_routes._now_epoch(),
+            "updated_at_epoch": dynamic_routes._now_epoch(),
+        }
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={"root_id": root.id, "max_files": 5, "stable_age_seconds": 0},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "manual_sync_plan_already_active"
+
+
+def test_manual_sync_plan_cancel_endpoint_marks_active_plan(client):
+    plan_request_id = "gui-plan-cancel-test"
+    with dynamic_routes._MANUAL_PLAN_LOCK:
+        dynamic_routes._MANUAL_PLAN_PROGRESS[plan_request_id] = {
+            "plan_request_id": plan_request_id,
+            "plan_key": "root:2",
+            "status": "running",
+            "phase": "hashing",
+            "started_at_epoch": dynamic_routes._now_epoch(),
+            "updated_at_epoch": dynamic_routes._now_epoch(),
+            "events": [],
+        }
+        dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY["root:2"] = plan_request_id
+
+    response = client.post(
+        f"/api/admin/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}/cancel"
+    )
+
+    assert response.status_code == 200, response.text
+    progress = response.json()
+    assert progress["status"] == "cancelling"
+    assert progress["cancel_requested"] is True
+    assert dynamic_routes._manual_plan_cancel_requested(plan_request_id) is True
+
+
+def test_manual_sync_plan_cancel_stale_progress_becomes_terminal(client):
+    plan_request_id = "gui-plan-cancel-stale-test"
+    old_epoch = dynamic_routes._now_epoch() - dynamic_routes.MANUAL_SYNC_PLAN_CANCEL_STALE_SECONDS - 5
+    with dynamic_routes._MANUAL_PLAN_LOCK:
+        dynamic_routes._MANUAL_PLAN_PROGRESS[plan_request_id] = {
+            "plan_request_id": plan_request_id,
+            "plan_key": "root:2",
+            "status": "cancelling",
+            "phase": "hashing",
+            "started_at_epoch": old_epoch,
+            "updated_at_epoch": old_epoch,
+            "events": [],
+        }
+        dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY["root:2"] = plan_request_id
+
+    response = client.get(f"/api/admin/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}")
+
+    assert response.status_code == 200, response.text
+    progress = response.json()
+    assert progress["status"] == "cancel_failed"
+    assert progress["phase"] == "cancel_failed"
+    assert progress["error_code"] == "manual_sync_plan_cancel_stale"
+    assert "root:2" not in dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY
+
+
+def test_manual_sync_plan_route_releases_lock_on_unexpected_planner_error(client, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+    plan_request_id = "gui-plan-unexpected-error-test"
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("private path should not leak")
+
+    monkeypatch.setattr(dynamic_routes, "plan_manual_sync_dry_run", boom)
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "source_path": str(source_root),
+            "max_files": 5,
+            "stable_age_seconds": 0,
+            "plan_request_id": plan_request_id,
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "manual_sync_plan_unexpected_error"
+    progress_response = client.get(f"/api/admin/dynamic-library-sync/manual-sync/plan-progress/{plan_request_id}")
+    assert progress_response.status_code == 200
+    progress = progress_response.json()
+    assert progress["status"] == "failed"
+    assert progress["error_code"] == "manual_sync_plan_unexpected_error"
+    assert not dynamic_routes._ACTIVE_MANUAL_PLAN_BY_KEY
 
 
 def test_manual_sync_plan_route_is_sync_worker_thread_endpoint() -> None:
     assert py_inspect.iscoroutinefunction(dynamic_routes.plan_manual_sync) is False
 
 
-def test_manual_sync_dry_run_plan_route_rejects_hydrated_only_false(client, tmp_path):
+def test_manual_sync_execute_route_records_web_admin_gui_provenance(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setattr(dynamic_routes, "start_manual_sync_execute_run", lambda _run_id: None)
+
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "fresh.png", (10, 20, 30))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    session_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/gui-session",
+        headers={"X-Violet-Gui-Client": "web-admin-manual-sync-v1"},
+        json={"client_route": "/admin?tab=content#dynamic-library-sync-section"},
+    )
+    assert session_response.status_code == 200, session_response.text
+    session = session_response.json()
+    session_id = session["gui_validation_session_id"]
+    session_token = session["gui_validation_session_token"]
+
+    plan_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "gui_validation_session_id": session_id,
+            "gui_validation_session_token": session_token,
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+    assert plan_response.status_code == 200, plan_response.text
+    plan = plan_response.json()
+    assert plan["gui_provenance"]["request_source"] == "web_admin_gui"
+    assert plan["gui_provenance"]["gui_validation_session_id"] == session_id
+    assert plan["gui_provenance"]["gui_validation_session_signature_valid"] is True
+    assert plan["gui_provenance"]["gui_plan_flow_bound"] is True
+    assert plan["gui_provenance"]["plan_request_id"]
+
+    execute_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/execute",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "expected_plan_hash": plan["integrity"]["plan_hash"],
+            "confirmation_phrase": plan["integrity"]["confirmation_phrase"],
+            "plan_created_at": plan["job"]["created_at"],
+            "production_acceptance_approved": False,
+            "plan_request_id": plan["plan_request_id"],
+            "gui_validation_session_id": session_id,
+            "gui_validation_session_token": session_token,
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+    assert execute_response.status_code == 200, execute_response.text
+    run = db.query(DynamicSyncRun).one()
+    request = run.summary_json["manual_sync_execute"]["request"]
+    assert request["request_source"] == "web_admin_gui"
+    assert request["gui_validation_session_id"] == session_id
+    assert request["gui_validation_session_signature_valid"] is True
+    assert request["gui_plan_hash_bound"] is True
+    assert request["gui_plan_flow_verified"] is True
+    assert request["gui_plan_request_id"] == plan["plan_request_id"]
+    assert request["runtime_git_head"]
+    assert request["client_route"] == "/admin?tab=content#dynamic-library-sync-section"
+
+    replay_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/execute",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "expected_plan_hash": plan["integrity"]["plan_hash"],
+            "confirmation_phrase": plan["integrity"]["confirmation_phrase"],
+            "plan_created_at": plan["job"]["created_at"],
+            "production_acceptance_approved": False,
+            "plan_request_id": plan["plan_request_id"],
+            "gui_validation_session_id": session_id,
+            "gui_validation_session_token": session_token,
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+
+    assert replay_response.status_code == 409
+    assert replay_response.json()["detail"]["code"] == "gui_plan_flow_already_used"
+
+
+def test_manual_sync_execute_route_rejects_gui_session_without_bound_plan_flow(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "fresh.png", (10, 20, 30))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    plain_plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    session_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/gui-session",
+        headers={"X-Violet-Gui-Client": "web-admin-manual-sync-v1"},
+        json={"client_route": "/admin?tab=content#dynamic-library-sync-section"},
+    )
+    assert session_response.status_code == 200, session_response.text
+    session = session_response.json()
+
+    execute_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/execute",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "expected_plan_hash": plain_plan["integrity"]["plan_hash"],
+            "confirmation_phrase": plain_plan["integrity"]["confirmation_phrase"],
+            "plan_created_at": plain_plan["job"]["created_at"],
+            "production_acceptance_approved": False,
+            "plan_request_id": "gui-plan-scripted-without-plan",
+            "gui_validation_session_id": session["gui_validation_session_id"],
+            "gui_validation_session_token": session["gui_validation_session_token"],
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+
+    assert execute_response.status_code == 409
+    assert execute_response.json()["detail"]["code"] == "gui_plan_flow_not_bound"
+
+
+def test_manual_sync_gui_provenance_rejects_unsigned_session_marker(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "fresh.png", (10, 20, 30))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "gui_validation_session_id": "gui-test-session-unsigned",
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "gui_validation_session_invalid"
+
+
+def test_manual_sync_execute_route_plain_api_does_not_record_gui_provenance(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setattr(dynamic_routes, "start_manual_sync_execute_run", lambda _run_id: None)
+
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "fresh.png", (10, 20, 30))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+
+    plan_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+        },
+    )
+    assert plan_response.status_code == 200, plan_response.text
+    plan = plan_response.json()
+    assert "gui_provenance" not in plan
+
+    execute_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/execute",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "expected_plan_hash": plan["integrity"]["plan_hash"],
+            "confirmation_phrase": plan["integrity"]["confirmation_phrase"],
+            "plan_created_at": plan["job"]["created_at"],
+            "production_acceptance_approved": False,
+        },
+    )
+    assert execute_response.status_code == 200, execute_response.text
+    run = db.query(DynamicSyncRun).one()
+    request = run.summary_json["manual_sync_execute"]["request"]
+    assert request["request_source"] == "api_or_runner"
+    assert request["gui_validation_session_signature_valid"] is False
+    assert "gui_validation_session_id" not in request
+
+
+def test_manual_sync_execute_route_requires_operator_entered_production_phrase(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("POSTGRES_DB", "blombooru")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setattr(dynamic_routes, "start_manual_sync_execute_run", lambda _run_id: None)
+
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "fresh.png", (10, 20, 30))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    session_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/gui-session",
+        headers={"X-Violet-Gui-Client": "web-admin-manual-sync-v1"},
+        json={"client_route": "/admin?tab=content#dynamic-library-sync-section"},
+    )
+    assert session_response.status_code == 200, session_response.text
+    session = session_response.json()
+
+    plan_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "gui_validation_session_id": session["gui_validation_session_id"],
+            "gui_validation_session_token": session["gui_validation_session_token"],
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+    assert plan_response.status_code == 200, plan_response.text
+    plan = plan_response.json()
+
+    execute_response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/execute",
+        json={
+            "root_id": root.id,
+            "max_files": 5,
+            "hydrated_only": True,
+            "stable_age_seconds": 0,
+            "expected_plan_hash": plan["integrity"]["plan_hash"],
+            "confirmation_phrase": plan["integrity"]["confirmation_phrase"],
+            "plan_created_at": plan["job"]["created_at"],
+            "production_acceptance_approved": True,
+            "plan_request_id": plan["plan_request_id"],
+            "gui_validation_session_id": session["gui_validation_session_id"],
+            "gui_validation_session_token": session["gui_validation_session_token"],
+            "client_route": "/admin?tab=content#dynamic-library-sync-section",
+        },
+    )
+
+    assert execute_response.status_code == 409
+    assert execute_response.json()["detail"]["code"] == "production_acceptance_approval_required"
+    assert db.query(DynamicSyncRun).count() == 0
+
+
+def test_manual_sync_dry_run_plan_route_defaults_to_cloud_aware_hydration(client, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     _write_png(source_root / "new.png")
@@ -298,8 +783,29 @@ def test_manual_sync_dry_run_plan_route_rejects_hydrated_only_false(client, tmp_
         },
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "manual sync dry-run requires hydrated_only=true"
+    assert response.status_code == 200
+    assert response.json()["limits"]["hydrated_only"] is False
+    assert response.json()["limits"]["hydration_policy"] == "cloud_aware_non_destructive_read_execute_stage"
+
+
+def test_manual_sync_advanced_full_rescan_route_defaults_to_hydrated_only(client, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+
+    response = client.post(
+        "/api/admin/dynamic-library-sync/manual-sync/plan",
+        json={
+            "source_path": str(source_root),
+            "max_files": 5,
+            "stable_age_seconds": 0,
+            "plan_mode": "advanced_full_rescan",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["limits"]["hydrated_only"] is True
+    assert response.json()["limits"]["plan_mode"] == "advanced_full_rescan"
 
 
 @pytest.mark.parametrize("scanner_reason", ["hidden", "too_large"])
@@ -315,6 +821,7 @@ def test_manual_sync_dry_run_preserves_policy_skip_reasons(db, tmp_path, monkeyp
         source_path=source_root,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     item = plan["ledger"]["per_file_public_records"][0]
 
@@ -337,6 +844,7 @@ def test_manual_sync_dry_run_maps_not_a_file_to_path_policy_skip(db, tmp_path, m
         source_path=source_root,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     item = plan["ledger"]["per_file_public_records"][0]
 
@@ -365,6 +873,7 @@ def test_manual_sync_dry_run_hash_timeout_is_item_level_failure(db, tmp_path, mo
         source_path=source_root,
         max_files=10,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     assert plan["counts"]["state_counts"]["failed"] == 1
@@ -394,11 +903,83 @@ def test_manual_sync_dry_run_image_verify_timeout_is_item_level_failure(db, tmp_
         source_path=source_root,
         max_files=10,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     assert plan["counts"]["state_counts"]["failed"] == 1
     assert plan["counts"]["state_counts"]["import_planned"] == 1
     assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
+
+
+def test_manual_sync_dry_run_does_not_abort_healthy_progress_after_600s(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    for index in range(80):
+        _write_png(source_root / f"healthy_{index:03d}.png", (index, 20, 30))
+
+    monotonic_value = {"value": 0.0}
+
+    def fake_monotonic() -> float:
+        monotonic_value["value"] += 2.0
+        return monotonic_value["value"]
+
+    monkeypatch.setattr(service.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(service, "_verify_supported_image_file_with_timeout", lambda _path, _timeout_sec: None)
+    monkeypatch.setattr(
+        service,
+        "_calculate_manual_plan_file_hash",
+        lambda path, _timeout_sec: (calculate_file_hash(path), None),
+    )
+
+    progress_events = []
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=100,
+        stable_age_seconds=0,
+        progress_callback=progress_events.append,
+    )
+
+    assert monotonic_value["value"] > 600
+    assert plan["limits"]["global_elapsed_timeout_enabled"] is False
+    assert plan["limits"]["plan_timeout"] is False
+    assert plan["limits"]["plan_no_progress_timeout"] is False
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["counts"]["state_counts"]["import_planned"] == 80
+    assert plan["counts"]["failure_reasons"].get("plan_timeout", 0) == 0
+    assert plan["counts"]["failure_reasons"].get("plan_no_progress_timeout", 0) == 0
+
+
+def test_manual_sync_dry_run_no_progress_watchdog_stops_safely(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    _write_png(source_root / "new.png")
+
+    monotonic_value = {"value": 0.0}
+
+    def fake_monotonic() -> float:
+        monotonic_value["value"] += 1.0
+        return monotonic_value["value"]
+
+    def slow_iter(_resolved, *, walk_errors):
+        monotonic_value["value"] += service.MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS + 5
+        yield source_root / "new.png"
+
+    monkeypatch.setattr(service.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(service, "_iter_source_files", slow_iter)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["limits"]["plan_timeout"] is False
+    assert plan["limits"]["plan_no_progress_timeout"] is True
+    assert plan["limits"]["last_progress_stage"] == "no_progress_timeout"
+    assert plan["counts"]["failure_reasons"]["plan_no_progress_timeout"] == 1
 
 
 def test_manual_sync_dry_run_public_reasons_do_not_leak_oserror_paths(db, tmp_path, monkeypatch):
@@ -424,13 +1005,13 @@ def test_manual_sync_dry_run_public_reasons_do_not_leak_oserror_paths(db, tmp_pa
     public_text = str(plan)
 
     assert plan["counts"]["failure_reasons"]["stat_error"] == 1
-    assert plan["ledger"]["per_file_public_records"][0]["reason"] == "stat_error"
+    assert plan["ledger"]["per_file_public_records"] == []
     assert leaked_path not in public_text
     assert "secret-fragment" not in public_text
     assert "private_filename.png" not in public_text
 
 
-def test_manual_sync_dry_run_existing_media_uses_candidate_hash_lookup(db, tmp_path, monkeypatch):
+def test_manual_sync_normal_plan_does_not_hash_or_lookup_existing_media(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     candidate_path = source_root / "existing.png"
@@ -472,9 +1053,1282 @@ def test_manual_sync_dry_run_existing_media_uses_candidate_hash_lookup(db, tmp_p
         stable_age_seconds=0,
     )
 
-    assert queried_hashes == [{candidate_hash}]
-    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
-    assert plan["ledger"]["per_file_public_records"][0]["media_id"] is not None
+    assert queried_hashes == []
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 0
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["ledger"]["per_file_public_records"][0]["content_hash_computed"] is False
+
+
+def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_cap(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    existing_a = source_root / "a_existing.png"
+    existing_b = source_root / "b_existing.png"
+    fresh_path = source_root / "c_fresh.png"
+    _write_png(existing_a, (10, 20, 30))
+    _write_png(existing_b, (30, 40, 50))
+    _write_png(fresh_path, (60, 70, 80))
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    for path in (existing_a, existing_b):
+        media = Media(
+            filename=f"{path.stem}-redacted.png",
+            path=f"media/original/{path.stem}-redacted.png",
+            hash=calculate_file_hash(path),
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
+        stat = path.stat()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=path.name,
+                relative_path_hash=service._hash_text(path.name),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=media.hash,
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
+            )
+        )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    counts = plan["counts"]
+    assert counts["state_counts"]["skipped_existing_media"] == 0
+    assert counts["state_counts"]["import_planned"] == 1
+    assert counts["estimated_import_count"] == 1
+    assert counts["partial_scan"] is False
+    assert counts["plan_items"] == 1
+    assert counts["scanned_files"] == 3
+    assert plan["limits"]["fast_skipped_from_ledger"] == 2
+    assert (
+        plan["limits"]["cap_semantics"]
+        == "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media"
+    )
+
+
+def test_manual_sync_dry_run_registered_root_prioritizes_pending_new_before_changed_existing(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    changed_existing = source_root / "a_changed_existing.png"
+    pending_new = source_root / "z_pending_new.png"
+    _write_png(changed_existing, (10, 20, 30))
+    _write_png(pending_new, (60, 70, 80))
+    existing_stat = changed_existing.stat()
+    pending_stat = pending_new.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="a_changed_existing.png",
+        path="media/original/a_changed_existing.png",
+        hash=calculate_file_hash(changed_existing),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add_all(
+        [
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path="a_changed_existing.png",
+                relative_path_hash=service._hash_text("a_changed_existing.png"),
+                file_size=existing_stat.st_size,
+                mtime_ns=existing_stat.st_mtime_ns,
+                content_hash=media.hash,
+                media_id=media.id,
+                source_status="available",
+                sync_state="changed",
+                import_status="pending",
+                classification_status="waiting_import",
+                ai_tagging_status="waiting_import",
+                localization_status="waiting_ai_tags",
+            ),
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path="z_pending_new.png",
+                relative_path_hash=service._hash_text("z_pending_new.png"),
+                file_size=pending_stat.st_size,
+                mtime_ns=pending_stat.st_mtime_ns,
+                source_status="available",
+                sync_state="new",
+                import_status="pending",
+                classification_status="waiting_import",
+                ai_tagging_status="waiting_import",
+                localization_status="waiting_ai_tags",
+            ),
+        ]
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 0
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["counts"]["batch_executable"] is True
+    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_ledger_followup_then_incremental_mtime_filesystem_metadata_walk"
+    assert plan["limits"]["source_delta_workset"]["priority_workset_files"] == 1
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is True
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_completed"] is True
+    assert plan["limits"]["fast_skipped_from_ledger"] == 1
+    assert plan["limits"]["candidate_pool_count"] == 1
+    assert plan["private_details"]["items"][0]["relative_path"] == "z_pending_new.png"
+    public_plan = {key: value for key, value in plan.items() if key != "private_details"}
+    assert "a_changed_existing.png" not in str(public_plan)
+    assert "z_pending_new.png" not in str(public_plan)
+
+
+def test_manual_sync_dry_run_prioritizes_current_ledger_missing_over_legacy_pending_backlog(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    old_ns = 1_800_000_000_000_000_000
+    watermark_ns = old_ns + 30 * 24 * 60 * 60 * 1_000_000_000
+    recent_ns = watermark_ns + 60 * 1_000_000_000
+
+    watermark_path = source_root / "000_watermark.png"
+    _write_png(watermark_path, (1, 2, 3))
+    os.utime(watermark_path, ns=(watermark_ns, watermark_ns))
+    watermark_stat = watermark_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="watermark.png",
+        path="media/original/watermark.png",
+        hash=calculate_file_hash(watermark_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=watermark_path.name,
+            relative_path_hash=service._hash_text(watermark_path.name),
+            file_size=watermark_stat.st_size,
+            mtime_ns=watermark_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            media_id=media.id,
+        )
+    )
+
+    for index in range(600):
+        path = source_root / f"legacy_pending_{index:04d}.png"
+        _write_png(path, (index % 255, 10, 20))
+        os.utime(path, ns=(old_ns, old_ns))
+        stat = path.stat()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=path.name,
+                relative_path_hash=service._hash_text(path.name),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                source_status="available",
+                sync_state="changed",
+                import_status="pending",
+                classification_status="waiting_import",
+                ai_tagging_status="waiting_import",
+                localization_status="waiting_ai_tags",
+            )
+        )
+
+    for index in range(110):
+        path = source_root / f"z_new_icloud_{index:04d}.jpg"
+        path.write_bytes(b"metadata-only-plan-does-not-decode")
+        os.utime(path, ns=(recent_ns + index, recent_ns + index))
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=500,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 500
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
+    assert plan["counts"]["batch_executable"] is True
+    assert plan["limits"]["mtime_new_candidates"] == 110
+    assert plan["limits"]["ledger_missing_candidates"] == 110
+    assert plan["limits"]["legacy_pending_outside_window_skips"] == 0
+    assert plan["limits"]["legacy_pending_outside_window_candidates"] == 600
+    assert plan["limits"]["candidate_pool_count"] == 710
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["image_decode_count"] == 0
+    assert plan["limits"]["hydration_attempt_count"] == 0
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_completed"] is True
+    private_items = plan["private_details"]["items"]
+    assert sum(1 for item in private_items if str(item["relative_path"]).startswith("z_new_icloud_")) == 110
+    assert sum(1 for item in private_items if str(item["relative_path"]).startswith("legacy_pending_")) == 390
+    assert all(str(item["relative_path"]).startswith("z_new_icloud_") for item in private_items[:110])
+
+
+def test_manual_sync_dry_run_treats_existing_hash_downstream_complete_rows_as_stable_noop(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    path = source_root / "existing_hash_backlog.png"
+    _write_png(path, (90, 10, 30))
+    stat = path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="existing_hash_backlog.png",
+        path="media/original/existing_hash_backlog.png",
+        hash=calculate_file_hash(path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=path.name,
+            relative_path_hash=service._hash_text(path.name),
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="changed",
+            import_status="pending",
+                classification_status="classified_reused",
+                ai_tagging_status="tagged_reused",
+                localization_status="localized",
+            deferred_reason="existing_media_hash",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=10,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"].get("import_planned", 0) == 0
+    assert plan["limits"]["candidate_pool_count"] == 0
+    assert plan["limits"]["source_delta_workset"]["priority_workset_files"] == 0
+    assert plan["private_details"]["items"] == []
+
+
+def test_manual_sync_dry_run_still_discovers_ledger_missing_old_mtime_backfill_after_many_known_files(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    old_ns = 1_800_000_000_000_000_000
+    watermark_ns = old_ns + 30 * 24 * 60 * 60 * 1_000_000_000
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    for index in range(600):
+        path = source_root / f"known_{index:04d}.png"
+        _write_png(path, (index % 255, 20, 30))
+        os.utime(path, ns=(watermark_ns, watermark_ns))
+        stat = path.stat()
+        media = Media(
+            filename=f"known-{index}.png",
+            path=f"media/original/known-{index}.png",
+            hash=f"known-hash-{index}",
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=path.name,
+                relative_path_hash=service._hash_text(path.name),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=media.hash,
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
+            )
+        )
+
+    older_ns = old_ns - 15 * 24 * 60 * 60 * 1_000_000_000
+    for index in range(100):
+        path = source_root / f"z_preserved_capture_{index:04d}.jpg"
+        path.write_bytes(b"metadata-only-plan-does-not-decode")
+        os.utime(path, ns=(older_ns + index, older_ns + index))
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=50,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 50
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
+    assert plan["limits"]["ledger_missing_candidates"] == 100
+    assert plan["limits"]["ledger_missing_old_mtime_candidates"] == 100
+    assert plan["limits"]["fast_skipped_from_ledger"] == 600
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["content_read_count"] == 0
+    assert "z_preserved_capture_" in str(plan["private_details"]["items"])
+    assert "known_" not in str(plan["private_details"]["items"])
+
+
+def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    known_path = source_root / "a_known.png"
+    fresh_path = source_root / "b_fresh.png"
+    _write_png(known_path, (20, 30, 40))
+    _write_png(fresh_path, (60, 70, 80))
+    known_stat = known_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="a_known.png",
+        path="media/original/a_known.png",
+        hash=calculate_file_hash(known_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="a_known.png",
+            relative_path_hash=service._hash_text("a_known.png"),
+            file_size=known_stat.st_size,
+            mtime_ns=known_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 0
+    assert plan["counts"]["total_seen"] == 1
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["limits"]["scanned_files"] == 2
+    assert plan["limits"]["unchanged_known_files"] == 1
+    assert plan["limits"]["max_files_scope"] == "manual_sync_actionable_delta_candidates"
+    assert "a_known.png" not in str(plan)
+    assert "b_fresh.png" not in str(plan)
+
+
+def test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_expensive_reads(
+    db,
+    tmp_path,
+    monkeypatch,
+):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    root = service.register_source_root(db, path=source_root, label="fixture")
+
+    old_count = 1200
+    highest_old_mtime_ns = 0
+    for index in range(old_count):
+        path = source_root / f"old_{index:04d}.png"
+        path.write_bytes(b"stable-old")
+        stat = path.stat()
+        highest_old_mtime_ns = max(highest_old_mtime_ns, stat.st_mtime_ns)
+        media = Media(
+            filename=f"old-{index}.png",
+            path=f"media/original/old-{index}.png",
+            hash=f"old-{index:04d}",
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=path.name,
+                relative_path_hash=service._hash_text(path.name),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=media.hash,
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
+            )
+        )
+    db.commit()
+
+    for index in range(5):
+        path = source_root / f"new_{index:04d}.png"
+        path.write_bytes(b"new")
+        new_mtime_ns = highest_old_mtime_ns + (index + 1) * 1_000_000_000
+        os.utime(path, ns=(new_mtime_ns, new_mtime_ns))
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("normal manual sync plan must not do expensive file reads")
+
+    monkeypatch.setattr(service, "_verify_supported_image_file_with_timeout", forbidden)
+    monkeypatch.setattr(service, "_calculate_manual_plan_file_hash", forbidden)
+    monkeypatch.setattr(service, "_query_existing_media_by_hashes", forbidden)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=10,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 5
+    assert plan["counts"]["plan_items"] == 5
+    assert plan["counts"]["scanned_files"] == old_count + 5
+    assert plan["limits"]["fast_skipped_from_ledger"] == old_count
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["image_decode_count"] == 0
+    assert plan["limits"]["hydration_attempt_count"] == 0
+    assert plan["limits"]["plan_elapsed_seconds"] < 30
+    assert plan["limits"]["root_scan_state"]["current_scan_mode"] == "incremental_watermark_candidate_discovery"
+
+
+def test_manual_sync_dry_run_discovers_unseen_old_mtime_file_under_watermark(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    old_imported_path = source_root / "old_imported.png"
+    unseen_preserved_mtime_path = source_root / "copied_icloud_old_capture.png"
+    _write_png(old_imported_path, (20, 30, 40))
+    _write_png(unseen_preserved_mtime_path, (60, 70, 80))
+    old_ns = 1_800_000_000_000_000_000
+    older_ns = old_ns - (30 * 24 * 60 * 60 * 1_000_000_000)
+    os.utime(old_imported_path, ns=(old_ns, old_ns))
+    os.utime(unseen_preserved_mtime_path, ns=(older_ns, older_ns))
+    old_stat = old_imported_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="old-imported.png",
+        path="media/original/old-imported.png",
+        hash=calculate_file_hash(old_imported_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=old_imported_path.name,
+            relative_path_hash=service._hash_text(old_imported_path.name),
+            file_size=old_stat.st_size,
+            mtime_ns=old_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    assert plan["limits"]["source_mtime_watermark_ns"] == old_ns
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["plan_items"] == 1
+    assert plan["limits"]["fast_skipped_from_ledger"] == 1
+    assert plan["limits"]["stable_old_files_skipped"] == 0
+    assert "copied_icloud_old_capture.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_treats_unchanged_duplicate_ledger_rows_as_stable_skip(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    duplicate_path = source_root / "duplicate.png"
+    fresh_path = source_root / "fresh.png"
+    _write_png(duplicate_path, (20, 30, 40))
+    _write_png(fresh_path, (60, 70, 80))
+    duplicate_stat = duplicate_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=duplicate_path.name,
+            relative_path_hash=service._hash_text(duplicate_path.name),
+            file_size=duplicate_stat.st_size,
+            mtime_ns=duplicate_stat.st_mtime_ns,
+            content_hash="duplicate-content",
+            source_status="available",
+            sync_state="skipped_existing_media",
+            import_status="deferred",
+            classification_status="deferred",
+            ai_tagging_status="deferred",
+            localization_status="deferred",
+            deferred_reason="existing_media_hash",
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["plan_items"] == 1
+    assert plan["limits"]["fast_skipped_from_ledger"] == 1
+    assert "duplicate.png" not in str(plan)
+    assert "fresh.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_fast_skips_media_backed_legacy_pending_rows(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    watermark_path = source_root / "watermark.png"
+    stale_path = source_root / "stale_pending.png"
+    fresh_path = source_root / "fresh.png"
+    _write_png(watermark_path, (10, 20, 30))
+    _write_png(stale_path, (20, 30, 40))
+    _write_png(fresh_path, (60, 70, 80))
+    old_ts = 1_600_000_000
+    os.utime(stale_path, (old_ts, old_ts))
+    stale_stat = stale_path.stat()
+    watermark_stat = watermark_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    stale_media = Media(
+        filename="stale_pending.png",
+        path="media/original/stale_pending.png",
+        hash=calculate_file_hash(stale_path),
+        file_type=FileTypeEnum.image,
+    )
+    watermark_media = Media(
+        filename="watermark.png",
+        path="media/original/watermark.png",
+        hash=calculate_file_hash(watermark_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add_all([stale_media, watermark_media])
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=stale_path.name,
+            relative_path_hash=service._hash_text(stale_path.name),
+            file_size=stale_stat.st_size,
+            mtime_ns=stale_stat.st_mtime_ns,
+            content_hash=stale_media.hash,
+            source_status="available",
+            sync_state="changed",
+            import_status="pending",
+            classification_status="waiting_import",
+            ai_tagging_status="waiting_import",
+            localization_status="waiting_ai_tags",
+            media_id=stale_media.id,
+        )
+    )
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=watermark_path.name,
+            relative_path_hash=service._hash_text(watermark_path.name),
+            file_size=watermark_stat.st_size,
+            mtime_ns=watermark_stat.st_mtime_ns,
+            content_hash=watermark_media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            media_id=watermark_media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["limits"]["legacy_pending_outside_window_skips"] == 1
+    assert plan["limits"]["legacy_pending_outside_window_candidates"] == 0
+    assert plan["limits"]["candidate_pool_count"] == 1
+    assert "stale_pending.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_does_not_fast_skip_media_backed_pending_without_hash(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    watermark_path = source_root / "watermark.png"
+    stale_path = source_root / "stale_pending_without_hash.png"
+    _write_png(watermark_path, (10, 20, 30))
+    _write_png(stale_path, (20, 30, 40))
+    old_ts = 1_600_000_000
+    os.utime(stale_path, (old_ts, old_ts))
+    stale_stat = stale_path.stat()
+    watermark_stat = watermark_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    stale_media = Media(
+        filename="stale_pending_without_hash.png",
+        path="media/original/stale_pending_without_hash.png",
+        hash=calculate_file_hash(stale_path),
+        file_type=FileTypeEnum.image,
+    )
+    watermark_media = Media(
+        filename="watermark.png",
+        path="media/original/watermark.png",
+        hash=calculate_file_hash(watermark_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add_all([stale_media, watermark_media])
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=stale_path.name,
+            relative_path_hash=service._hash_text(stale_path.name),
+            file_size=stale_stat.st_size,
+            mtime_ns=stale_stat.st_mtime_ns,
+            content_hash=None,
+            source_status="available",
+            sync_state="changed",
+            import_status="pending",
+            classification_status="waiting_import",
+            ai_tagging_status="waiting_import",
+            localization_status="waiting_ai_tags",
+            media_id=stale_media.id,
+        )
+    )
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=watermark_path.name,
+            relative_path_hash=service._hash_text(watermark_path.name),
+            file_size=watermark_stat.st_size,
+            mtime_ns=watermark_stat.st_mtime_ns,
+            content_hash=watermark_media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            media_id=watermark_media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    assert plan["limits"]["legacy_pending_outside_window_skips"] == 0
+    assert plan["limits"]["legacy_pending_outside_window_candidates"] == 1
+    assert plan["limits"]["candidate_pool_count"] == 1
+    assert plan["counts"]["plan_items"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+
+
+def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    followup_path = source_root / "a_followup.png"
+    fresh_path = source_root / "b_fresh.png"
+    _write_png(followup_path, (20, 30, 40))
+    _write_png(fresh_path, (60, 70, 80))
+    followup_stat = followup_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="a_followup.png",
+        path="media/original/a_followup.png",
+        hash=calculate_file_hash(followup_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="a_followup.png",
+            relative_path_hash=service._hash_text("a_followup.png"),
+            file_size=followup_stat.st_size,
+            mtime_ns=followup_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="failed_ai_tagger_model_uncached",
+            localization_status="blocked_ai_tagging_failed",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=2,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    followup_item = next(
+        item for item in plan["private_details"]["items"] if item["state"] == "downstream_followup_planned"
+    )
+    assert followup_item["content_hash"] == media.hash
+    assert plan["limits"]["unchanged_known_files"] == 0
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["limits"]["source_delta_workset"]["scan_order"] == "source_ledger_followup_then_incremental_mtime_filesystem_metadata_walk"
+    assert plan["limits"]["source_delta_workset"]["filesystem_walk_after_priority_workset"] is True
+    assert plan["counts"]["estimated_downstream_followup_count"] == 1
+    assert plan["counts"]["estimated_ai_tagging_count"] == 2
+    public_plan = {key: value for key, value in plan.items() if key != "private_details"}
+    assert "a_followup.png" not in str(public_plan)
+
+
+def test_manual_sync_dry_run_recovers_imported_downstream_incomplete_without_source_file(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / "run16-leftover.png"
+    _write_png(source_file, (20, 30, 40))
+    source_stat = source_file.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="run16-leftover.png",
+        path="media/original/run16-leftover.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=service._hash_text(source_file.name),
+            file_size=source_stat.st_size,
+            mtime_ns=source_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="deferred_unprocessed",
+            import_status="imported",
+            classification_status="pending",
+            ai_tagging_status="pending",
+            localization_status="waiting_ai_tags",
+            deferred_reason="not_processed_budget_stop",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+    source_file.unlink()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["counts"]["estimated_downstream_followup_count"] == 1
+    assert plan["limits"]["db_followup_candidates"] == 1
+    assert plan["limits"]["app_media_followup_candidates"] == 1
+    assert plan["limits"]["expensive_plan_operations"] == {
+        "content_reads": 0,
+        "hashes": 0,
+        "decodes": 0,
+        "hydrations": 0,
+    }
+    followup_item = next(
+        item for item in plan["private_details"]["items"] if item["state"] == "downstream_followup_planned"
+    )
+    assert followup_item["media_id"] == media.id
+    assert followup_item["content_hash"] == media.hash
+    assert followup_item["downstream_followup"]["source_item_id"] is not None
+    assert followup_item["scan_source"] == "app_media_followup"
+
+
+def test_manual_sync_dry_run_keeps_app_media_followup_when_filesystem_walk_errors(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / "run16-leftover.png"
+    _write_png(source_file, (20, 30, 40))
+    source_stat = source_file.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    media = Media(
+        filename="run16-leftover.png",
+        path="media/original/run16-leftover.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=service._hash_text(source_file.name),
+            file_size=source_stat.st_size,
+            mtime_ns=source_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="deferred_unprocessed",
+            import_status="imported",
+            classification_status="pending",
+            ai_tagging_status="pending",
+            localization_status="waiting_ai_tags",
+            deferred_reason="not_processed_budget_stop",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    def walk_with_error(_root_path, *, walk_errors):
+        walk_errors.append("permission denied")
+        return iter(())
+
+    monkeypatch.setattr(service, "_iter_source_files", walk_with_error)
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["partial_scan_reason"] == "source_walk_error"
+    assert plan["counts"]["unsafe_partial_scan"] is False
+    assert plan["counts"]["batch_executable"] is True
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["counts"]["estimated_downstream_followup_count"] == 1
+    assert plan["limits"]["source_walk_error_count"] == 1
+    assert plan["limits"]["source_walk_error_followup_only_batch"] is True
+    assert plan["limits"]["expensive_plan_operations"] == {
+        "content_reads": 0,
+        "hashes": 0,
+        "decodes": 0,
+        "hydrations": 0,
+    }
+    assert execute_service._plan_partial_scan_allows_execute(plan) is True
+    followup_item = next(
+        item for item in plan["private_details"]["items"] if item["state"] == "downstream_followup_planned"
+    )
+    assert followup_item["scan_source"] == "app_media_followup"
+    assert followup_item["content_hash"] == media.hash
+
+
+def test_manual_sync_dry_run_priority_zero_followup_sorts_before_existing_media_followup(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    urgent_media = Media(
+        filename="urgent.png",
+        path="media/original/urgent.png",
+        hash="urgent-hash",
+        file_type=FileTypeEnum.image,
+    )
+    existing_media = Media(
+        filename="existing.png",
+        path="media/original/existing.png",
+        hash="existing-hash",
+        file_type=FileTypeEnum.image,
+    )
+    db.add_all([urgent_media, existing_media])
+    db.flush()
+    urgent = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="urgent.png",
+        relative_path_hash=service._hash_text("urgent.png"),
+        content_hash=urgent_media.hash,
+        source_status="available",
+        sync_state="deferred_unprocessed",
+        import_status="imported",
+        classification_status="deferred",
+        ai_tagging_status="deferred",
+        localization_status="deferred",
+        deferred_reason="not_processed_budget_stop",
+        media_id=urgent_media.id,
+    )
+    newer_existing = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="existing.png",
+        relative_path_hash=service._hash_text("existing.png"),
+        file_size=123,
+        mtime_ns=8_000_000_000_000_000_000,
+        content_hash=existing_media.hash,
+        source_status="available",
+        sync_state="skipped_existing_media",
+        import_status="deferred",
+        classification_status="deferred",
+        ai_tagging_status="deferred",
+        localization_status="deferred",
+        deferred_reason="existing_media_hash",
+        media_id=existing_media.id,
+    )
+    db.add_all([urgent, newer_existing])
+    db.commit()
+
+    assert service._manual_plan_media_followup_candidate_priority(urgent) == 0
+    assert service._manual_plan_media_followup_candidate_priority(newer_existing) == 5
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    selected = plan["private_details"]["items"][0]
+    assert selected["downstream_followup"]["source_item_id"] == urgent.id
+    assert selected["media_id"] == urgent_media.id
+
+
+def test_manual_sync_dry_run_cap_limited_batch_is_executable_and_continuable(db, tmp_path, monkeypatch):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    file_count = 1001
+    cap = 1000
+    for index in range(file_count):
+        (source_root / f"item_{index:04d}.png").write_bytes(f"image-{index}".encode("ascii"))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+
+    monkeypatch.setattr(service, "_verify_supported_image_file_with_timeout", lambda _path, _timeout_sec: None)
+    monkeypatch.setattr(
+        service,
+        "_calculate_manual_plan_file_hash",
+        lambda path, _timeout_sec: (f"hash-{Path(path).stem}", None),
+    )
+
+    first_plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=cap,
+        stable_age_seconds=0,
+    )
+
+    assert first_plan["counts"]["state_counts"]["import_planned"] == cap
+    assert first_plan["counts"]["partial_scan"] is True
+    assert first_plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
+    assert first_plan["counts"]["cap_limited_batch"] is True
+    assert first_plan["counts"]["batch_executable"] is True
+    assert first_plan["limits"]["continuation"]["more_batches_remain"] is True
+    assert first_plan["limits"]["cap_semantics"] == "unique_importable_or_downstream_followup_candidates_not_unchanged_or_existing_media"
+
+    for index in range(cap):
+        file_path = source_root / f"item_{index:04d}.png"
+        stat = file_path.stat()
+        media = Media(
+            filename=f"imported-{index}.png",
+            path=f"media/original/imported-{index}.png",
+            hash=f"hash-item_{index:04d}",
+            file_type=FileTypeEnum.image,
+        )
+        db.add(media)
+        db.flush()
+        db.add(
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=f"item_{index:04d}.png",
+                relative_path_hash=service._hash_text(f"item_{index:04d}.png"),
+                file_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=media.hash,
+                source_status="available",
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                media_id=media.id,
+            )
+        )
+    db.commit()
+
+    second_plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=cap,
+        stable_age_seconds=0,
+    )
+
+    assert second_plan["counts"]["state_counts"]["import_planned"] == 1
+    assert second_plan["counts"]["partial_scan"] is False
+    assert second_plan["limits"]["fast_skipped_from_ledger"] == cap
+    assert second_plan["limits"]["hash_required_count"] == 0
+    assert second_plan["limits"]["root_scan_state"]["current_scan_mode"] == "incremental_watermark_candidate_discovery"
+    assert second_plan["limits"]["source_delta_workset"]["stable_known_entries_do_not_consume_actionable_cap"] is True
+
+
+def test_manual_sync_dry_run_reincludes_unresolved_known_items_for_registered_root(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    unresolved_path = source_root / "cloud_now_readable.png"
+    _write_png(unresolved_path, (20, 30, 40))
+    stat = unresolved_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="cloud_now_readable.png",
+            relative_path_hash=service._hash_text("cloud_now_readable.png"),
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            source_status="available",
+            sync_state="skipped_placeholder",
+            import_status="deferred",
+            deferred_reason="cloud_placeholder",
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["total_seen"] == 1
+    assert plan["limits"]["unchanged_known_files"] == 0
+    assert "cloud_now_readable.png" not in str(plan)
+
+
+def test_manual_sync_dry_run_skips_unchanged_stable_unsupported_without_consuming_cap(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    stable_path = source_root / "a_old_video.mov"
+    fresh_path = source_root / "b_fresh.png"
+    stable_path.write_bytes(b"not imported video")
+    _write_png(fresh_path, (60, 70, 80))
+    stable_stat = stable_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="a_old_video.mov",
+            relative_path_hash=service._hash_text("a_old_video.mov"),
+            file_size=stable_stat.st_size,
+            mtime_ns=stable_stat.st_mtime_ns,
+            source_status="deferred",
+            sync_state="skipped_unsupported",
+            import_status="deferred",
+            deferred_reason="unsupported_extension",
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["skipped_unsupported"] == 0
+    assert plan["counts"]["total_seen"] == 1
+    assert plan["counts"]["partial_scan"] is False
+    assert plan["limits"]["scanned_files"] == 2
+    assert plan["limits"]["unchanged_known_files"] == 1
+    assert "a_old_video.mov" not in str(plan)
+
+
+def test_manual_sync_dry_run_retries_unchanged_historical_read_error(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    recovered_path = source_root / "a_recovered.png"
+    _write_png(recovered_path, (60, 70, 80))
+    stat = recovered_path.stat()
+
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path=str(source_root),
+        root_path_hash="registered-root-hash",
+        is_active=True,
+    )
+    db.add(root)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="a_recovered.png",
+            relative_path_hash=service._hash_text("a_recovered.png"),
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            source_status="failed",
+            sync_state="failed",
+            import_status="failed",
+            failure_reason="read_error",
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+    )
+
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["total_seen"] == 1
+    assert plan["limits"]["unchanged_known_files"] == 0
 
 
 def test_update_check_detects_changed_and_missing_items(db, tmp_path):
@@ -937,6 +2791,169 @@ def test_readiness_blocks_unreviewed_proper_noun_llm_alias_even_if_needs_review_
 
     assert "unreviewed_proper_noun_llm_aliases_present" in readiness["blockers_before_s2"]
     assert readiness["s2_ready"] is False
+
+
+def test_operator_readiness_separates_manual_and_background_warnings(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+
+    assert operator["manual_execute_ready"] is False
+    blocker_codes = [item["code"] for item in operator["manual_execute_blockers"]]
+    assert "AI_TAGGING_ENABLED_false" in blocker_codes
+    assert "TAG_TRANSLATION_LLM_ENABLED_false" in blocker_codes
+    background_codes = {item["code"] for item in operator["background_warnings"]}
+    assert "tag_translation_auto_and_background_disabled" in background_codes
+    assert all("_false" not in item["label"] for item in operator["manual_execute_blockers"])
+    assert operator["normal_operator_plan_endpoint"] == "POST /api/admin/dynamic-library-sync/manual-sync/plan"
+    assert operator["legacy_update_check_endpoint"] == "POST /api/admin/dynamic-library-sync/check"
+
+
+def test_operator_readiness_ready_for_manual_e2e_with_background_sync_off(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")
+    monkeypatch.setenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+
+    assert operator["manual_execute_ready"] is True
+    assert operator["manual_execute_blockers"] == []
+    assert operator["cloud_placeholder_hydration_policy"] == "cloud_aware_non_destructive_read"
+    assert readiness["production_settings"]["classification_enabled"] is True
+    assert readiness["production_settings"]["ai_tagging_enabled"] is True
+    assert readiness["production_settings"]["tag_translation_llm_enabled"] is True
+    assert readiness["production_settings"]["tag_translation_llm_provider_configured"] is True
+    background_codes = {item["code"] for item in operator["background_warnings"]}
+    assert "AI_TAGGING_AUTO_LOCALIZATION_false" in background_codes
+    assert "tag_translation_auto_and_background_disabled" in background_codes
+
+
+def test_operator_readiness_blocks_non_clip_manual_e2e_method(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")
+    monkeypatch.setenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+    blocker_codes = {item["code"] for item in operator["manual_execute_blockers"]}
+
+    assert operator["manual_execute_ready"] is False
+    assert "CONTENT_CLASSIFICATION_METHOD_not_clip" in blocker_codes
+    assert readiness["production_settings"]["content_classification_method"] == "heuristic"
+
+
+def test_operator_readiness_blocks_uncached_clip_in_production(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")
+    monkeypatch.setenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+    monkeypatch.setattr(
+        service,
+        "_manual_e2e_clip_cache_readiness",
+        lambda: {"ready": False, "reason": "classification_model_uncached"},
+    )
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+    blocker_codes = {item["code"] for item in operator["manual_execute_blockers"]}
+
+    assert operator["manual_execute_ready"] is False
+    assert "classification_model_uncached" in blocker_codes
+    assert readiness["production_settings"]["content_classification_clip_cache_ready"] is False
+    assert readiness["production_settings"]["content_classification_clip_cache_reason"] == "classification_model_uncached"
+
+
+def test_operator_readiness_blocks_uncached_wd_tagger_in_production(db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_AUTO_LOCALIZATION", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")
+    monkeypatch.setenv("S3B_UNATTENDED_SYNC_ENABLED", "false")
+    monkeypatch.setattr(
+        service,
+        "_manual_e2e_clip_cache_readiness",
+        lambda: {"ready": True, "reason": None},
+    )
+    monkeypatch.setattr(
+        service,
+        "_manual_e2e_wd_tagger_cache_readiness",
+        lambda: {"ready": False, "reason": "manual_sync_ai_tagger_model_uncached"},
+    )
+    source_root = tmp_path / "source"
+    _seed_source_tree(source_root)
+    service.register_source_root(db, path=source_root)
+
+    readiness = service.get_production_readiness(db)
+    operator = readiness["manual_sync_operator_readiness"]
+    blocker_codes = {item["code"] for item in operator["manual_execute_blockers"]}
+
+    assert operator["manual_execute_ready"] is False
+    assert "manual_sync_ai_tagger_model_uncached" in blocker_codes
+    assert readiness["production_settings"]["ai_tagger_model_cache_ready"] is False
+    assert readiness["production_settings"]["ai_tagger_model_cache_reason"] == "manual_sync_ai_tagger_model_uncached"
 
 
 def test_admin_api_register_check_pending_and_fail_closed_sync(client, tmp_path, monkeypatch):

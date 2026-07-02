@@ -1,0 +1,74 @@
+{
+  "after": {
+    "candidate_count": 0,
+    "candidate_reason_counts": {},
+    "root": {
+      "id": 2,
+      "label": "icloud-photos-production",
+      "root_path_hash_prefix": "153684ac810c"
+    },
+    "snapshot_path": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_repair/priority-backlog-pre-repair-root2-20260701T105858Z.jsonl",
+    "uncertain_skipped_counts": {},
+    "watermark": {
+      "mtime_cutoff_ns": 1782049612502310700,
+      "source_mtime_watermark_ns": 1782654412502310700
+    }
+  },
+  "ai_tagging_performed": false,
+  "before": {
+    "candidate_count": 22698,
+    "candidate_reason_counts": {
+      "none": 22698
+    },
+    "root": {
+      "id": 2,
+      "label": "icloud-photos-production",
+      "root_path_hash_prefix": "153684ac810c"
+    },
+    "snapshot_path": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_repair/priority-backlog-pre-repair-root2-20260701T104528Z.jsonl",
+    "uncertain_skipped_counts": {},
+    "watermark": {
+      "mtime_cutoff_ns": 1782049612502310700,
+      "source_mtime_watermark_ns": 1782654412502310700
+    }
+  },
+  "branch": "codex/s3a-m2-production-delta-e2e-gpu-telemetry",
+  "classification_performed": false,
+  "execute": true,
+  "expected_candidates": 22698,
+  "git_head": "85e9993f8772151e4e9d42ad0a1825e99a59c74e",
+  "localization_performed": false,
+  "media_import_performed": false,
+  "production": true,
+  "repair_criteria": {
+    "deletes_rows": false,
+    "excludes_retryable_failures": [
+      "cloud_hydration_failed",
+      "read_error",
+      "read_timeout"
+    ],
+    "import_status": "pending",
+    "outside_safety_window": true,
+    "requires_existing_media_or_hash_and_storage_evidence": true,
+    "requires_source_file_visible_and_metadata_unchanged": true,
+    "runs_import_classification_ai_localization": false,
+    "source_root_id": 2,
+    "sync_state": [
+      "changed",
+      "new"
+    ]
+  },
+  "rollback_snapshot_path": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_repair/priority-backlog-pre-repair-root2-20260701T104528Z.jsonl",
+  "rollback_strategy": "Use the private JSONL snapshot to restore old DynamicSourceItem status/reason/media/hash fields by source_item_id if rollback is ever approved.",
+  "rows_repaired": 22698,
+  "source_icloud_mutation_performed": false,
+  "status": "repaired",
+  "target_state": {
+    "ai_tagging_status": "tagged_reused",
+    "classification_status": "classified_reused",
+    "deferred_reason": "existing_media_hash",
+    "import_status": "skipped",
+    "localization_status": "localized",
+    "sync_state": "skipped_existing_media"
+  }
+}

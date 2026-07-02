@@ -636,14 +636,46 @@ class Settings:
         return val.lower() in ("true", "1", "yes", "on")
 
     @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED(self) -> bool:
+        """Second operator switch for guarded manual execute writes."""
+        val = os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "false")
+        return val.lower() in ("true", "1", "yes", "on")
+
+    @property
     def DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES(self) -> int:
         """Default upper bound for manual sync dry-run planning."""
         return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_PLAN_MAX_FILES", "1000")))
 
     @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES(self) -> int:
+        """Hard cap for guarded manual sync execute requests.
+
+        S3A-M1 defaults to 5. Later approved production delta phases can raise
+        this explicitly through the runtime environment without removing the
+        fail-closed cap.
+        """
+        return max(1, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES", "5")))
+
+    @property
     def DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS(self) -> int:
         """Files newer than this are deferred as still-changing in manual plans."""
         return max(0, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_STABLE_AGE_SECONDS", "2")))
+
+    @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_SAFETY_LOOKBACK_SECONDS(self) -> int:
+        """Recent mtime window included before the root import watermark."""
+        return max(0, int(os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_SAFETY_LOOKBACK_SECONDS", "604800")))
+
+    @property
+    def DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES(self) -> List[str]:
+        """Content classes eligible for WD/anime tagging in manual E2E sync."""
+        raw = os.getenv("DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES", "anime,illustration")
+        values: List[str] = []
+        for value in raw.replace("|", ",").split(","):
+            normalized = value.strip().lower()
+            if normalized and normalized not in values:
+                values.append(normalized)
+        return values
 
     @property
     def DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS(self) -> int:

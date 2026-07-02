@@ -1,4 +1,5 @@
-const CACHE_NAME = 'violet-1-41-0';
+const CACHE_VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
+const CACHE_NAME = `violet-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
     '/static/css/tailwind.css',
     '/static/css/main.css',
@@ -33,7 +34,9 @@ const STATIC_ASSETS = [
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(STATIC_ASSETS);
+            return cache.addAll(
+                STATIC_ASSETS.map((asset) => new Request(`${asset}?v=${CACHE_VERSION}`, { cache: 'reload' }))
+            );
         })
     );
 });

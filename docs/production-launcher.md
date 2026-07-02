@@ -183,7 +183,7 @@ production URL but does not replace the current profile, health, or checklist
 view with the controller's minimal open-browser payload.
 
 `打开手动同步` is state-preserving on success: it opens
-`/admin#dynamic-library-sync-section` on the configured production URL. It does
+`/admin?tab=content#dynamic-library-sync-section` on the configured production URL. It does
 not bypass authentication, does not call the manual sync execute API, and does
 not grant production acceptance. Manual sync execution still requires the Web
 Admin flow, a fresh dry-run plan, exact confirmation phrase, and any separate

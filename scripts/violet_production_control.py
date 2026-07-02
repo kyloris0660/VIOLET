@@ -45,6 +45,7 @@ START_LOCK_TTL_SECONDS = 600.0
 
 AUTOMATION_FLAGS = (
     "DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED",
+    "S3B_UNATTENDED_SYNC_ENABLED",
     "AI_AUTO_TAG_AFTER_IMPORT",
     "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT",
     "TAG_TRANSLATION_AUTO_ENABLED",
@@ -57,6 +58,35 @@ PROFILE_AUTOMATION_FLAGS = {
     "content_classification_auto_after_import": "CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT",
     "tag_translation_auto": "TAG_TRANSLATION_AUTO_ENABLED",
     "tag_translation_background": "TAG_TRANSLATION_BACKGROUND_ENABLED",
+}
+
+MANUAL_E2E_COMPONENT_DEFAULTS = {
+    "ai_tagging_enabled": True,
+    "content_classification_enabled": True,
+    "content_classification_method": "clip",
+    "content_classification_method_explicit": False,
+    "content_classification_method_migrated_from": "",
+    "tag_translation_llm_enabled": True,
+    "ai_tagging_auto_localization": False,
+}
+
+MANUAL_E2E_COMPONENT_ENV = {
+    "ai_tagging_enabled": "AI_TAGGING_ENABLED",
+    "content_classification_enabled": "CONTENT_CLASSIFICATION_ENABLED",
+    "tag_translation_llm_enabled": "TAG_TRANSLATION_LLM_ENABLED",
+    "ai_tagging_auto_localization": "AI_TAGGING_AUTO_LOCALIZATION",
+}
+
+TAG_TRANSLATION_LLM_PROFILE_KEYS = {
+    "provider": "TAG_TRANSLATION_LLM_PROVIDER",
+    "api_key": "TAG_TRANSLATION_LLM_API_KEY",
+    "model": "TAG_TRANSLATION_LLM_MODEL",
+    "base_url": "TAG_TRANSLATION_LLM_BASE_URL",
+    "fallback_enabled": "TAG_TRANSLATION_LLM_FALLBACK_ENABLED",
+    "fallback_provider": "TAG_TRANSLATION_LLM_FALLBACK_PROVIDER",
+    "fallback_api_key": "TAG_TRANSLATION_LLM_FALLBACK_API_KEY",
+    "fallback_model": "TAG_TRANSLATION_LLM_FALLBACK_MODEL",
+    "fallback_base_url": "TAG_TRANSLATION_LLM_FALLBACK_BASE_URL",
 }
 
 DANGEROUS_PRODUCTION_FLAGS = (
@@ -430,6 +460,15 @@ def _local_dotenv_profile_values(repo_root: Path) -> dict[str, str]:
         "POSTGRES_DB",
         "POSTGRES_USER",
         "POSTGRES_PASSWORD",
+        "TAG_TRANSLATION_LLM_PROVIDER",
+        "TAG_TRANSLATION_LLM_API_KEY",
+        "TAG_TRANSLATION_LLM_MODEL",
+        "TAG_TRANSLATION_LLM_BASE_URL",
+        "TAG_TRANSLATION_LLM_FALLBACK_ENABLED",
+        "TAG_TRANSLATION_LLM_FALLBACK_PROVIDER",
+        "TAG_TRANSLATION_LLM_FALLBACK_API_KEY",
+        "TAG_TRANSLATION_LLM_FALLBACK_MODEL",
+        "TAG_TRANSLATION_LLM_FALLBACK_BASE_URL",
         "VIOLET_STORAGE_ROOT",
         "VIOLET_PRODUCTION_STORAGE_ROOT",
         "VIOLET_ACCEPTED_PRODUCTION_STORAGE_ROOT",
@@ -450,6 +489,71 @@ def _auth_policy_bool(value: Any, *, default: bool = True) -> bool:
     if text in {"false", "0", "no", "off"}:
         return False
     return default
+
+
+def _coerce_optional_positive_int(
+    value: Any,
+    *,
+    minimum: int = 1,
+    maximum: int | None = None,
+) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed < minimum:
+        return None
+    if maximum is not None and parsed > maximum:
+        return maximum
+    return parsed
+
+
+def _coerce_manual_e2e_components(value: Any) -> dict[str, Any]:
+    components = dict(MANUAL_E2E_COMPONENT_DEFAULTS)
+    if isinstance(value, Mapping):
+        for key in MANUAL_E2E_COMPONENT_ENV:
+            if key in value:
+                components[key] = _auth_policy_bool(value.get(key), default=bool(MANUAL_E2E_COMPONENT_DEFAULTS[key]))
+        if value.get("content_classification_method") is not None:
+            method = str(value.get("content_classification_method") or "").strip().lower()
+            components["content_classification_method"] = method or MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
+        if value.get("content_classification_method_explicit") is not None:
+            components["content_classification_method_explicit"] = _auth_policy_bool(
+                value.get("content_classification_method_explicit"),
+                default=False,
+            )
+        if value.get("content_classification_method_migrated_from") is not None:
+            components["content_classification_method_migrated_from"] = str(
+                value.get("content_classification_method_migrated_from") or ""
+            )
+    method = str(components.get("content_classification_method") or "").strip().lower()
+    explicit = bool(components.get("content_classification_method_explicit"))
+    if method in {"", "heuristic"} and not explicit:
+        if method == "heuristic":
+            components["content_classification_method_migrated_from"] = "heuristic"
+        components["content_classification_method"] = MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
+    return components
+
+
+def _coerce_tag_translation_llm_profile(value: Any) -> dict[str, str]:
+    profile = {
+        "provider": "openai_compatible",
+        "api_key": "",
+        "model": "",
+        "base_url": "",
+        "fallback_enabled": "",
+        "fallback_provider": "openai_compatible",
+        "fallback_api_key": "",
+        "fallback_model": "",
+        "fallback_base_url": "",
+    }
+    if isinstance(value, Mapping):
+        for key in TAG_TRANSLATION_LLM_PROFILE_KEYS:
+            if key in value and value.get(key) is not None:
+                profile[key] = str(value.get(key))
+    return profile
 
 
 def _settings_candidates_for_profile(repo_root: Path, storage_root: str) -> list[Path]:
@@ -505,6 +609,8 @@ def _default_profile_payload(repo_root: Path = ROOT, profile_id: str = DEFAULT_P
         },
         "safe_startup": True,
         "automation_flags": {name: False for name in PROFILE_AUTOMATION_FLAGS},
+        "manual_e2e_components": dict(MANUAL_E2E_COMPONENT_DEFAULTS),
+        "tag_translation_llm": _coerce_tag_translation_llm_profile({}),
     }
 
 
@@ -519,6 +625,8 @@ def _repair_profile_invariants(profile: Mapping[str, Any], *, repo_root: Path = 
     for key in PROFILE_AUTOMATION_FLAGS:
         flags[key] = False
     repaired["automation_flags"] = flags
+    repaired["manual_e2e_components"] = _coerce_manual_e2e_components(repaired.get("manual_e2e_components"))
+    repaired["tag_translation_llm"] = _coerce_tag_translation_llm_profile(repaired.get("tag_translation_llm"))
     return repaired
 
 
@@ -585,6 +693,18 @@ def discover_local_profile_payload(
         elif local_values.get(dotenv_key):
             db[key] = local_values[dotenv_key]
     profile["db"] = db
+    llm_profile = _coerce_tag_translation_llm_profile(profile.get("tag_translation_llm"))
+    existing_llm = (
+        existing.get("tag_translation_llm", {})
+        if isinstance(existing, Mapping) and isinstance(existing.get("tag_translation_llm"), Mapping)
+        else {}
+    )
+    for profile_key, env_key in TAG_TRANSLATION_LLM_PROFILE_KEYS.items():
+        if existing_llm.get(profile_key) not in (None, ""):
+            continue
+        if local_values.get(env_key):
+            llm_profile[profile_key] = local_values[env_key]
+    profile["tag_translation_llm"] = llm_profile
 
     inferred = {
         "storage_root_from": (
@@ -595,6 +715,7 @@ def discover_local_profile_payload(
         "settings_path_found": settings_path is not None,
         "db_from_settings": bool(settings_db),
         "db_from_dotenv": any(local_values.get(key) for key in ("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")),
+        "tag_translation_llm_from_dotenv": any(local_values.get(key) for key in TAG_TRANSLATION_LLM_PROFILE_KEYS.values()),
         "auth_policy_from": auth_source,
         "local_access_values_written_to_profile": True,
     }
@@ -629,25 +750,43 @@ def _coerce_profile_payload(
         if key in payload and payload.get(key) is not None:
             profile[key] = str(payload.get(key))
     if "app_port" in payload:
-        profile["app_port"] = payload.get("app_port")
+        profile["app_port"] = _coerce_optional_positive_int(payload.get("app_port"), minimum=1, maximum=65535) or DEFAULT_PORT
     if "safe_startup" in payload:
-        profile["safe_startup"] = bool(payload.get("safe_startup"))
+        profile["safe_startup"] = _auth_policy_bool(payload.get("safe_startup"), default=True)
     if "require_auth" in payload:
         profile["require_auth"] = _auth_policy_bool(payload.get("require_auth"), default=True)
+    if "manual_sync_enabled" in payload:
+        profile["manual_sync_enabled"] = _auth_policy_bool(payload.get("manual_sync_enabled"), default=False)
+    if "manual_sync_execute_enabled" in payload:
+        profile["manual_sync_execute_enabled"] = _auth_policy_bool(payload.get("manual_sync_execute_enabled"), default=False)
+    if "manual_sync_execute_max_files" in payload:
+        profile["manual_sync_execute_max_files"] = _coerce_optional_positive_int(
+            payload.get("manual_sync_execute_max_files"),
+            minimum=1,
+        )
+    if "manual_sync_max_duration_seconds" in payload:
+        profile["manual_sync_max_duration_seconds"] = _coerce_optional_positive_int(
+            payload.get("manual_sync_max_duration_seconds"),
+            minimum=1,
+        )
     if isinstance(payload.get("db"), Mapping):
         db = dict(profile["db"])
         for key in ("host", "name", "user", "password"):
             if key in payload["db"] and payload["db"].get(key) is not None:
                 db[key] = str(payload["db"].get(key))
         if "port" in payload["db"]:
-            db["port"] = payload["db"].get("port")
+            db["port"] = _coerce_optional_positive_int(payload["db"].get("port"), minimum=1, maximum=65535) or 5432
         profile["db"] = db
     if isinstance(payload.get("automation_flags"), Mapping):
         flags = dict(profile["automation_flags"])
         for key in PROFILE_AUTOMATION_FLAGS:
             if key in payload["automation_flags"]:
-                flags[key] = bool(payload["automation_flags"].get(key))
+                flags[key] = _auth_policy_bool(payload["automation_flags"].get(key), default=False)
         profile["automation_flags"] = flags
+    if "manual_e2e_components" in payload:
+        profile["manual_e2e_components"] = _coerce_manual_e2e_components(payload.get("manual_e2e_components"))
+    if "tag_translation_llm" in payload:
+        profile["tag_translation_llm"] = _coerce_tag_translation_llm_profile(payload.get("tag_translation_llm"))
     return profile
 
 
@@ -711,6 +850,28 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
         "POSTGRES_USER": str(db.get("user") or "postgres"),
         "POSTGRES_PASSWORD": str(db.get("password") or ""),
     }
+    if profile.get("manual_sync_execute_max_files") is not None:
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] = str(profile.get("manual_sync_execute_max_files"))
+    if profile.get("manual_sync_max_duration_seconds") is not None:
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] = str(profile.get("manual_sync_max_duration_seconds"))
+    if profile.get("manual_sync_enabled") is not None:
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] = (
+            "true" if _auth_policy_bool(profile.get("manual_sync_enabled"), default=False) else "false"
+        )
+    if profile.get("manual_sync_execute_enabled") is not None:
+        profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] = (
+            "true" if _auth_policy_bool(profile.get("manual_sync_execute_enabled"), default=False) else "false"
+        )
+    manual_components = _coerce_manual_e2e_components(profile.get("manual_e2e_components"))
+    for component_key, env_key in MANUAL_E2E_COMPONENT_ENV.items():
+        profile_env[env_key] = "true" if bool(manual_components.get(component_key)) else "false"
+    profile_env["CONTENT_CLASSIFICATION_METHOD"] = str(
+        manual_components.get("content_classification_method") or MANUAL_E2E_COMPONENT_DEFAULTS["content_classification_method"]
+    )
+    llm_profile = _coerce_tag_translation_llm_profile(profile.get("tag_translation_llm"))
+    for profile_key, env_key in TAG_TRANSLATION_LLM_PROFILE_KEYS.items():
+        value = str(llm_profile.get(profile_key) or "")
+        profile_env[env_key] = value
     for flag in AUTOMATION_FLAGS:
         profile_env[flag] = "false"
     for flag in DANGEROUS_PRODUCTION_FLAGS:
@@ -879,6 +1040,22 @@ def is_port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.5) -> bo
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         return sock.connect_ex((host, port)) == 0
+
+
+def is_port_bind_available(port: int, host: str = "0.0.0.0") -> bool:
+    """Return whether the production server can bind the requested TCP port."""
+    try:
+        port_number = int(port)
+    except (TypeError, ValueError):
+        return False
+    if not (1 <= port_number <= 65535):
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port_number))
+        except OSError:
+            return False
+    return True
 
 
 def _load_state(path: Path = STATE_FILE) -> dict[str, Any] | None:
@@ -1419,6 +1596,12 @@ def _profile_automation_enabled(profile: Mapping[str, Any]) -> list[str]:
 def _profile_public(config: RuntimeConfig) -> dict[str, Any]:
     db = config.db
     automation_enabled = _profile_automation_enabled(config.profile_data)
+    manual_components = _coerce_manual_e2e_components(
+        config.profile_data.get("manual_e2e_components") if config.profile_data else None
+    )
+    llm_profile = _coerce_tag_translation_llm_profile(
+        config.profile_data.get("tag_translation_llm") if config.profile_data else None
+    )
     db_user = str(db.get("user") or "").strip()
     return {
         "profile_id": config.profile_id or DEFAULT_PROFILE_ID,
@@ -1445,6 +1628,40 @@ def _profile_public(config: RuntimeConfig) -> dict[str, Any]:
         "python_configured": bool(str(config.expected_python or "").strip()),
         "python_exists": config.expected_python.is_file(),
         "safe_startup": bool(config.profile_data.get("safe_startup", False)) if config.profile_data else False,
+        "manual_sync_enabled": bool(config.profile_data.get("manual_sync_enabled", False)) if config.profile_data else False,
+        "manual_sync_execute_enabled": bool(config.profile_data.get("manual_sync_execute_enabled", False))
+        if config.profile_data
+        else False,
+        "manual_sync_execute_max_files": config.profile_data.get("manual_sync_execute_max_files") if config.profile_data else None,
+        "manual_sync_max_duration_seconds": config.profile_data.get("manual_sync_max_duration_seconds")
+        if config.profile_data
+        else None,
+        "manual_e2e_components": {
+            "ai_tagging_enabled": bool(manual_components.get("ai_tagging_enabled")),
+            "content_classification_enabled": bool(manual_components.get("content_classification_enabled")),
+            "content_classification_method": str(manual_components.get("content_classification_method") or ""),
+            "runtime_env_content_classification_method": str(config.env.get("CONTENT_CLASSIFICATION_METHOD") or ""),
+            "content_classification_method_explicit": bool(
+                manual_components.get("content_classification_method_explicit")
+            ),
+            "content_classification_method_migrated_from": str(
+                manual_components.get("content_classification_method_migrated_from") or ""
+            ),
+            "tag_translation_llm_enabled": bool(manual_components.get("tag_translation_llm_enabled")),
+            "ai_tagging_auto_localization": bool(manual_components.get("ai_tagging_auto_localization")),
+            "auto_or_background_sync_enabled": False,
+        },
+        "tag_translation_llm": {
+            "provider": str(llm_profile.get("provider") or "openai_compatible"),
+            "api_key_present": bool(str(llm_profile.get("api_key") or "").strip()),
+            "model_configured": bool(str(llm_profile.get("model") or "").strip()),
+            "base_url_configured": bool(str(llm_profile.get("base_url") or "").strip()),
+            "fallback_enabled": _truthy(str(llm_profile.get("fallback_enabled") or "")),
+            "fallback_api_key_present": bool(str(llm_profile.get("fallback_api_key") or "").strip()),
+            "fallback_model_configured": bool(str(llm_profile.get("fallback_model") or "").strip()),
+            "fallback_base_url_configured": bool(str(llm_profile.get("fallback_base_url") or "").strip()),
+            "secret_values_redacted": True,
+        },
         "automation_flags_disabled": not automation_enabled,
         "automation_flags_enabled": automation_enabled,
         "development_dotenv_required": False,
@@ -1510,6 +1727,11 @@ GATE_UI_MAP: dict[str, tuple[str, str, str]] = {
         "Safety Flags",
         "Auth policy",
         "Production profile must explicitly preserve the production auth policy.",
+    ),
+    "manual_e2e_classification_method_clip": (
+        "Safety Flags",
+        "Manual E2E classification",
+        "Manual E2E execute requires CONTENT_CLASSIFICATION_METHOD=clip. Use profile-repair or update manual_e2e_components.content_classification_method to clip.",
     ),
     "startup_write_policy_explicit": (
         "Startup Policy",
@@ -1578,6 +1800,9 @@ def checklist_from_gates(gates: list[Gate]) -> list[dict[str, Any]]:
 def _profile_gates(config: RuntimeConfig) -> list[Gate]:
     profile = config.profile_data
     automation_enabled = _profile_automation_enabled(profile)
+    manual_components = _coerce_manual_e2e_components(profile.get("manual_e2e_components") if profile else None)
+    manual_execute_enabled = bool(profile.get("manual_sync_execute_enabled", False)) if profile else False
+    manual_classification_method = str(manual_components.get("content_classification_method") or "").strip().lower()
     return [
         Gate("production_profile_exists", config.profile_exists, "Production profile exists."),
         Gate(
@@ -1617,6 +1842,13 @@ def _profile_gates(config: RuntimeConfig) -> list[Gate]:
             "production_auth_policy",
             "require_auth" in profile,
             "Production profile preserves production auth policy.",
+        ),
+        Gate(
+            "manual_e2e_classification_method_clip",
+            (not manual_execute_enabled)
+            or (not bool(manual_components.get("content_classification_enabled")))
+            or manual_classification_method == "clip",
+            "Production manual E2E uses CONTENT_CLASSIFICATION_METHOD=clip.",
         ),
     ]
 
@@ -1793,6 +2025,28 @@ def profile_update(
         profile["app_port"] = updates["app_port"]
     if "require_auth" in updates and updates["require_auth"] is not None:
         profile["require_auth"] = _auth_policy_bool(updates["require_auth"], default=True)
+    if "manual_sync_enabled" in updates and updates["manual_sync_enabled"] is not None:
+        profile["manual_sync_enabled"] = _auth_policy_bool(updates["manual_sync_enabled"], default=False)
+    if "manual_sync_execute_enabled" in updates and updates["manual_sync_execute_enabled"] is not None:
+        profile["manual_sync_execute_enabled"] = _auth_policy_bool(updates["manual_sync_execute_enabled"], default=False)
+    if "manual_sync_execute_max_files" in updates and updates["manual_sync_execute_max_files"] is not None:
+        profile["manual_sync_execute_max_files"] = _coerce_optional_positive_int(
+            updates["manual_sync_execute_max_files"],
+            minimum=1,
+        )
+    if "manual_sync_max_duration_seconds" in updates and updates["manual_sync_max_duration_seconds"] is not None:
+        profile["manual_sync_max_duration_seconds"] = _coerce_optional_positive_int(
+            updates["manual_sync_max_duration_seconds"],
+            minimum=1,
+        )
+    if "manual_e2e_components" in updates:
+        manual_updates = updates.get("manual_e2e_components")
+        if isinstance(manual_updates, Mapping) and "content_classification_method" in manual_updates:
+            manual_updates = dict(manual_updates)
+            manual_updates.setdefault("content_classification_method_explicit", True)
+        profile["manual_e2e_components"] = _coerce_manual_e2e_components(manual_updates)
+    if "tag_translation_llm" in updates:
+        profile["tag_translation_llm"] = _coerce_tag_translation_llm_profile(updates.get("tag_translation_llm"))
     db_updates = updates.get("db")
     if isinstance(db_updates, Mapping):
         db = dict(profile["db"])
@@ -1800,8 +2054,9 @@ def profile_update(
             if key in db_updates and db_updates[key] is not None:
                 db[key] = str(db_updates[key])
         if "port" in db_updates and db_updates["port"] is not None:
-            db["port"] = db_updates["port"]
+            db["port"] = _coerce_optional_positive_int(db_updates["port"], minimum=1, maximum=65535) or 5432
         profile["db"] = db
+    profile = _repair_profile_invariants(profile, repo_root=repo_root, profile_id=profile_id)
     write_production_profile(profile, repo_root=repo_root, profile_path=path)
     result = profile_status(repo_root=repo_root, profile_id=profile_id, profile_path=path, base_env=base_env)
     result.message = "Production profile updated."
@@ -1940,8 +2195,10 @@ def preflight(
     stale_state_cleanup(config, state_path)
     state = _load_state(state_path)
     port_open = is_port_open(config.port)
-    port_ok = not port_open or is_managed_process(state, config)
-    gate("target_port_available_or_managed", port_ok, "Target port is free or owned by this launcher state.")
+    port_bind_available = is_port_bind_available(config.port)
+    managed_port = is_managed_process(state, config)
+    port_ok = managed_port or (not port_open and port_bind_available)
+    gate("target_port_available_or_managed", port_ok, "Target port is free and bindable, or owned by this launcher state.")
     gate("no_stale_pid_claim", state is None or state_pid(state) is None or process_exists(state_pid(state) or 0), "No stale PID claims a running process.")
 
     enabled_automation = [flag for flag in AUTOMATION_FLAGS if _truthy(config.env.get(flag))]
@@ -2593,6 +2850,7 @@ def open_manual_sync_target(
 def diagnostic_summary(repo_root: Path = ROOT, *, profile_id: str | None = None, profile_path: Path | None = None) -> dict[str, Any]:
     config = resolve_config(repo_root, profile_id=profile_id, profile_path=profile_path)
     current = status(repo_root=repo_root, profile_id=profile_id, profile_path=profile_path)
+    profile_public = _profile_public(config)
     return {
         "running": bool(current.data.get("running")),
         "managed_by_launcher": bool(current.data.get("managed_by_launcher")),
@@ -2609,6 +2867,8 @@ def diagnostic_summary(repo_root: Path = ROOT, *, profile_id: str | None = None,
         "destructive_e2e_allowed": False,
         "log_tail_in_public_json": False,
         "log_tail_redacted": True,
+        "profile": profile_public,
+        "manual_e2e_components": profile_public.get("manual_e2e_components"),
         "startup_write_policy": startup_write_policy_public(config),
     }
 

@@ -1,0 +1,166 @@
+{
+  "generated_at": "2026-07-01T10:57:21Z",
+  "git_head": "85e9993f8772151e4e9d42ad0a1825e99a59c74e",
+  "mode": "production_read_only",
+  "production_db_mutated": false,
+  "public_safe": true,
+  "raw_private_artifact_root": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/",
+  "root_summaries": [
+    {
+      "age_distribution_first_seen_at": {
+        "1-6d": 471,
+        "7-29d": 39625
+      },
+      "age_distribution_last_seen_at": {
+        "1-6d": 39387,
+        "7-29d": 9,
+        "<1d": 700
+      },
+      "age_distribution_updated_at": {
+        "1-6d": 16698,
+        "<1d": 23398
+      },
+      "ai_tagging_status_counts": {
+        "ai_tagged": 403,
+        "deferred": 5393,
+        "tagged": 7570,
+        "tagged_reused": 26730
+      },
+      "classification_status_counts": {
+        "classified": 7936,
+        "classified_reused": 26767,
+        "deferred": 5393
+      },
+      "import_status_counts": {
+        "deferred": 5393,
+        "imported": 12005,
+        "skipped": 22698
+      },
+      "legacy_pending_changed_inside_safety_window": 0,
+      "legacy_pending_changed_outside_safety_window": 0,
+      "legacy_pending_changed_rows": 0,
+      "localization_status_counts": {
+        "deferred": 5393,
+        "localized": 34703
+      },
+      "mtime_cutoff_ns": 1782049612502310700,
+      "mtime_ns_distribution": {
+        "avg": 1.7266614777573038e+18,
+        "max": 1782654952000000000,
+        "median": 1.7390020003804e+18,
+        "min": 1568791892000000000,
+        "p95": 1778944658270283600
+      },
+      "mtime_window_distribution": {
+        "inside_safety_window": 311,
+        "outside_safety_window": 39785
+      },
+      "priority_workset_rows_current_normal": 204,
+      "priority_workset_rows_legacy_pre_fix": 204,
+      "private_repair_candidate_ledger": ".local_manifests/s3a_m2_delta_e2e/priority_backlog_audit/priority-backlog-repair-candidates-root2-20260701T105721Z.jsonl",
+      "reason_cross_tabulation_top": {
+        "cloud_placeholder|deferred|deferred": 203,
+        "cloud_placeholder|missing|deferred": 1,
+        "existing_media_hash|skipped_existing_media|deferred": 735,
+        "existing_media_hash|skipped_existing_media|skipped": 22698,
+        "hidden|deferred|deferred": 1,
+        "none|imported|imported": 65,
+        "none|unchanged|imported": 11940,
+        "source_missing|missing|deferred": 20,
+        "unsupported_extension|deferred|deferred": 4432,
+        "unsupported_extension|missing|deferred": 1
+      },
+      "reconciliation_against_filesystem_and_media": {
+        "file_missing_and_no_media": 4,
+        "file_visible_but_no_media": 200,
+        "real_new_or_changed_candidate": 204
+      },
+      "repair_dry_run": {
+        "candidate_condition": "pending new/changed rows outside safety window with media_id or existing content hash, no downstream follow-up needed",
+        "candidate_count": 0,
+        "proposed_target": {
+          "ai_tagging_status": "ai_tagged_if_media_present_else_waiting_import",
+          "classification_status": "classified_if_media_present_else_waiting_import",
+          "deferred_reason": "existing_media_hash",
+          "import_status": "skipped",
+          "localization_status": "localized_or_not_applicable_if_media_present_else_waiting_ai_tags",
+          "sync_state": "skipped_existing_media"
+        },
+        "requires_owner_approval": true,
+        "would_modify_db": false
+      },
+      "root": {
+        "id": 2,
+        "is_active": true,
+        "label": "icloud-photos-production",
+        "root_path_hash_prefix": "153684ac810c",
+        "source_type": "local_path"
+      },
+      "rows_content_hash_null": 5373,
+      "rows_duplicate_or_existing_by_media_id_or_hash": 35448,
+      "rows_imported_but_still_pending_or_changed": 0,
+      "rows_inside_safety_window": 311,
+      "rows_matching_existing_media": 35448,
+      "rows_matching_existing_media_hash": 34723,
+      "rows_outside_safety_window": 39785,
+      "rows_that_need_repair_or_migration": 0,
+      "rows_that_should_be_actionable_now": 204,
+      "rows_that_should_be_stable_noop": 34703,
+      "rows_with_app_storage_media_present": 35448,
+      "rows_with_downstream_followup_needed": 0,
+      "rows_with_import_status_changed": 0,
+      "rows_with_import_status_deferred": 5393,
+      "rows_with_import_status_failed": 0,
+      "rows_with_import_status_imported": 12005,
+      "rows_with_import_status_pending": 0,
+      "rows_with_media_id": 35448,
+      "rows_with_retryable_failures": 0,
+      "rows_with_sync_state_changed": 0,
+      "rows_with_sync_state_imported": 65,
+      "rows_with_sync_state_pending": 0,
+      "rows_with_terminal_stable_skip_reasons": 27887,
+      "rows_without_media_id": 4648,
+      "source_mtime_watermark_ns": 1782654412502310700,
+      "status_cross_tabulation_top": {
+        "deferred|deferred|deferred|deferred|deferred": 4636,
+        "imported|imported|classified|ai_tagged|localized": 65,
+        "missing|deferred|deferred|deferred|deferred": 22,
+        "skipped_existing_media|deferred|deferred|deferred|deferred": 735,
+        "skipped_existing_media|skipped|classified_reused|tagged_reused|localized": 22698,
+        "unchanged|imported|classified_reused|tagged_reused|localized": 4032,
+        "unchanged|imported|classified_reused|tagged|localized": 37,
+        "unchanged|imported|classified|ai_tagged|localized": 338,
+        "unchanged|imported|classified|tagged|localized": 7533
+      },
+      "sync_state_counts": {
+        "deferred": 4636,
+        "imported": 65,
+        "missing": 22,
+        "skipped_existing_media": 23433,
+        "unchanged": 11940
+      },
+      "total_dynamic_source_items": 40096,
+      "total_priority_workset_rows": 204
+    }
+  ],
+  "roots_audited": [
+    {
+      "id": 2,
+      "is_active": true,
+      "label": "icloud-photos-production",
+      "root_path_hash_prefix": "153684ac810c",
+      "source_type": "local_path"
+    }
+  ],
+  "source_icloud_mutated": false,
+  "source_root_breakdown": {
+    "2": {
+      "label": "icloud-photos-production",
+      "rows_that_need_repair_or_migration": 0,
+      "rows_that_should_be_actionable_now": 204,
+      "rows_that_should_be_stable_noop": 34703,
+      "total_dynamic_source_items": 40096,
+      "total_priority_workset_rows": 204
+    }
+  }
+}

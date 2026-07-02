@@ -1,5 +1,7 @@
+import os
 import sys
 import asyncio
+import json
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +27,7 @@ from app.models import (  # noqa: E402
     ClassificationJob,
     ContentClassEnum,
     DynamicSourceItem,
+    DynamicSourceRoot,
     DynamicSyncRun,
     DynamicSyncRunItem,
     Entity,
@@ -33,6 +36,7 @@ from app.models import (  # noqa: E402
     SourceConcept,
     Tag,
     TagCategoryEnum,
+    TagTranslation,
     blombooru_media_tags,
 )
 from app.routes.admin import ai_tagging as ai_tagging_routes  # noqa: E402
@@ -41,12 +45,13 @@ from app.routes.admin import content_classification as classification_routes  # 
 from app.routes.admin import dynamic_library_sync as dynamic_routes  # noqa: E402
 from app.services import dynamic_library_sync_service as planner  # noqa: E402
 from app.services import manual_sync_execute_service as execute_service  # noqa: E402
-from app.services.dynamic_library_sync_service import S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX  # noqa: E402
+from app.services.dynamic_library_sync_service import S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX  # noqa: E402
 from app.services.manual_sync_execute_service import (  # noqa: E402
     ManualSyncExecuteError,
     create_manual_sync_execute_run,
     execute_manual_sync_run,
 )
+from app.utils.media_processor import calculate_file_hash  # noqa: E402
 from scripts import run_s3a_m1_manual_sync_execute as runner  # noqa: E402
 
 
@@ -98,6 +103,7 @@ def _patch_test_storage(monkeypatch, tmp_path: Path) -> Path:
 
 def _enable_manual_execute(monkeypatch) -> None:
     monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
     monkeypatch.setenv("VIOLET_ENV", "test")
     monkeypatch.setenv("POSTGRES_DB", "blombooru_test")
     monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
@@ -170,7 +176,7 @@ def test_s3a_m1_blank_max_files_api_plan_matches_execute_default(db, tmp_path, m
         db,
         root_id=root.id,
         max_files=None,
-        hydrated_only=True,
+        hydrated_only=False,
         stable_age_seconds=0,
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
@@ -205,14 +211,33 @@ def test_s3a_m1_update_check_default_is_not_manual_execute_cap(monkeypatch):
     assert observed["hydrated_only"] is True
 
 
+def test_s3a_m2_manual_execute_cap_can_be_raised_explicitly(monkeypatch):
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES", "300")
+
+    assert execute_service.MANUAL_SYNC_EXECUTE_MAX_FILES == 5
+    assert execute_service.manual_sync_execute_max_files_cap() == 300
+    assert execute_service.manual_sync_execute_effective_max_files(None) == 300
+    assert execute_service.manual_sync_execute_effective_max_files(300) == 300
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        execute_service.manual_sync_execute_effective_max_files(301)
+
+    assert exc.value.code == "manual_sync_execute_max_files_exceeded"
+
+
 def test_s3a_m1_manual_and_update_check_use_separate_frontend_limits():
     admin_js = (ROOT / "frontend" / "static" / "js" / "admin.js").read_text(encoding="utf-8")
     admin_html = (ROOT / "frontend" / "templates" / "admin.html").read_text(encoding="utf-8")
 
     assert "dynamic-sync-execute-max-files" in admin_html
     assert "dynamic-sync-check-max-files" in admin_html
+    assert "dynamic-sync-execute-cap" in admin_html
     assert "document.getElementById('dynamic-sync-execute-max-files')" in admin_js
     assert "document.getElementById('dynamic-sync-check-max-files')" in admin_js
+    assert "manual_execute_max_files_cap" in admin_js
+    assert "manual_sync_execute_enabled" in admin_js
+    assert "_manualSyncExpectedConfirmationPhrase" in admin_js
+    assert "production_acceptance_approved" in admin_js
 
 
 def test_s3a_m1_plan_integrity_is_public_safe_and_stable(db, tmp_path):
@@ -233,11 +258,20 @@ def test_s3a_m1_plan_integrity_is_public_safe_and_stable(db, tmp_path):
 
     assert first["integrity"]["plan_hash"] == second["integrity"]["plan_hash"]
     assert first["integrity"]["plan_hash"] != later["integrity"]["plan_hash"]
-    assert first["integrity"]["confirmation_phrase"].startswith(S3A_M1_MANUAL_EXECUTE_CONFIRMATION_PREFIX)
+    assert first["integrity"]["confirmation_phrase"].startswith(S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX)
     assert first["integrity"]["hash_excludes_paths"] is True
-    assert first["integrity"]["hash_includes_private_content_fingerprint"] is True
+    assert first["integrity"]["hash_includes_private_content_fingerprint"] is False
     assert "private-name.png" not in str(first)
     assert str(source_root) not in str(first)
+    advanced = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        max_files=5,
+        stable_age_seconds=0,
+        now=plan_time,
+        plan_mode="advanced_full_rescan",
+    )
+    assert advanced["integrity"]["hash_includes_private_content_fingerprint"] is True
 
 
 def test_s3a_m1_plan_hash_is_stable_across_directory_walk_order(db, tmp_path, monkeypatch):
@@ -308,13 +342,14 @@ def test_s3a_m1_execute_recheck_accepts_changed_directory_walk_order(db, tmp_pat
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
     run = create_manual_sync_execute_run(
         db,
         root_id=root.id,
         max_files=5,
-        hydrated_only=True,
+        hydrated_only=False,
         stable_age_seconds=0,
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
@@ -325,6 +360,8 @@ def test_s3a_m1_execute_recheck_accepts_changed_directory_walk_order(db, tmp_pat
 
     assert result["status"] == "completed"
     assert db.get(DynamicSyncRun, run.id).status == "completed"
+    db.refresh(root)
+    assert root.last_checked_at is not None
 
 
 def test_s3a_m1_execute_is_disabled_by_default(db, tmp_path):
@@ -336,6 +373,7 @@ def test_s3a_m1_execute_is_disabled_by_default(db, tmp_path):
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
 
@@ -366,6 +404,7 @@ def test_s3a_m1_execute_rejects_stale_plan_hash(db, tmp_path, monkeypatch):
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
     _write_png(image_path, (90, 80, 70))
@@ -384,6 +423,63 @@ def test_s3a_m1_execute_rejects_stale_plan_hash(db, tmp_path, monkeypatch):
 
     assert exc.value.code == "stale_or_mismatched_plan_hash"
     assert db.query(Media).count() == 0
+
+
+def test_s3a_m1_execute_rejects_partial_scan_plan(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    plan = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=5, stable_age_seconds=0)
+    plan["counts"]["partial_scan"] = True
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        execute_service._verify_execute_gates(
+            db=db,
+            plan=plan,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+            hydrated_only=True,
+            production_acceptance_approved=False,
+        )
+
+    assert exc.value.code == "manual_sync_plan_partial_scan"
+
+
+def test_manual_sync_execute_gate_allows_safe_cap_limited_batch(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    for index in range(2):
+        _write_png(source_root / f"new_{index}.png", (10 + index, 20, 30))
+    plan = planner.plan_manual_sync_dry_run(db, source_path=source_root, max_files=1, stable_age_seconds=0)
+
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["partial_scan_reason"] == "cap_limited_actionable_batch"
+    assert plan["counts"]["batch_executable"] is True
+
+    execute_service._verify_execute_gates(
+        db=db,
+        plan=plan,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+        hydrated_only=True,
+        production_acceptance_approved=False,
+    )
+
+    plan["counts"]["unsafe_partial_scan"] = True
+    plan["counts"]["partial_scan_reason"] = "no_progress_timeout"
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        execute_service._verify_execute_gates(
+            db=db,
+            plan=plan,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+            hydrated_only=True,
+            production_acceptance_approved=False,
+        )
+    assert exc.value.code == "manual_sync_plan_partial_scan"
 
 
 def test_s3a_m1_execute_rejects_old_hash_with_forged_fresh_timestamp(db, tmp_path, monkeypatch):
@@ -436,6 +532,7 @@ def test_s3a_m1_execute_rejects_second_pending_run(db, tmp_path, monkeypatch):
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     first = create_manual_sync_execute_run(
@@ -444,6 +541,7 @@ def test_s3a_m1_execute_rejects_second_pending_run(db, tmp_path, monkeypatch):
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -456,6 +554,7 @@ def test_s3a_m1_execute_rejects_second_pending_run(db, tmp_path, monkeypatch):
             max_files=5,
             hydrated_only=True,
             stable_age_seconds=0,
+            plan_mode="advanced_full_rescan",
             expected_plan_hash=plan["integrity"]["plan_hash"],
             confirmation_phrase=plan["integrity"]["confirmation_phrase"],
             plan_created_at=plan["job"]["created_at"],
@@ -480,6 +579,7 @@ def test_s3a_m1_execute_records_content_change_as_item_failure(db, tmp_path, mon
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -487,6 +587,7 @@ def test_s3a_m1_execute_records_content_change_as_item_failure(db, tmp_path, mon
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -495,12 +596,62 @@ def test_s3a_m1_execute_records_content_change_as_item_failure(db, tmp_path, mon
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_failures"
     assert result["manual_sync_execute"]["outcome_counts"]["content_changed_after_plan"] == 1
-    assert db.get(DynamicSyncRun, run.id).status == "completed"
+    assert db.get(DynamicSyncRun, run.id).status == "completed_with_failures"
     assert db.query(Media).count() == 0
     source_item = db.query(DynamicSourceItem).one()
     assert source_item.failure_reason == "content_changed_after_plan"
+
+
+def test_s3a_m1_execute_rejects_skipped_existing_plan_without_content_hash(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "existing.png"
+    _write_png(source_file)
+    existing_hash = calculate_file_hash(source_file)
+    db.add(
+        Media(
+            filename="existing.png",
+            path="media/original/existing.png",
+            hash=existing_hash,
+            file_type=FileTypeEnum.image,
+        )
+    )
+    db.commit()
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+    payload = json.loads(json.dumps(run.summary_json))
+    payload["manual_sync_execute"]["private_plan_items"][0]["content_hash"] = None
+    run.summary_json = payload
+    db.commit()
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed_with_failures"
+    assert result["manual_sync_execute"]["outcome_counts"]["plan_integrity_missing_content_hash"] == 1
+    source_item = db.query(DynamicSourceItem).one()
+    assert source_item.failure_reason == "plan_integrity_missing_content_hash"
 
 
 def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path, monkeypatch):
@@ -521,6 +672,7 @@ def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path,
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     run = create_manual_sync_execute_run(
@@ -529,6 +681,7 @@ def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path,
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -543,10 +696,12 @@ def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path,
     assert source_item.import_status == "imported"
     assert source_item.classification_status == "skipped_classification_disabled"
     assert source_item.ai_tagging_status == "skipped_ai_tagging_disabled"
-    assert source_item.localization_status == "blocked_llm_calls_forbidden"
+    assert source_item.localization_status == "blocked_ai_tagging_skipped"
+    assert source_item.deferred_reason == "ai_tagging_disabled"
     execute_summary = result["manual_sync_execute"]
     assert execute_summary["source_mutation_performed"] is False
     assert execute_summary["llm_calls_performed"] is False
+    assert execute_summary["localization"]["status"] == "completed_noop_no_imports"
     assert execute_summary["localization"]["scheduled"] is False
     assert "private_plan_items" not in str(result)
 
@@ -588,6 +743,7 @@ def test_s3a_m1_import_preledger_exists_before_media_write(db, tmp_path, monkeyp
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -595,6 +751,7 @@ def test_s3a_m1_import_preledger_exists_before_media_write(db, tmp_path, monkeyp
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -636,6 +793,7 @@ def test_s3a_m1_failed_import_keeps_preledger_without_public_path_leak(db, tmp_p
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -643,6 +801,7 @@ def test_s3a_m1_failed_import_keeps_preledger_without_public_path_leak(db, tmp_p
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -652,7 +811,7 @@ def test_s3a_m1_failed_import_keeps_preledger_without_public_path_leak(db, tmp_p
     result = execute_manual_sync_run(db, run_id=run.id)
     public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_failures"
     assert observed["preledger_rows"] == [("import_in_progress", "import", None)]
     assert db.query(Media).count() == 0
     run_item = db.query(DynamicSyncRunItem).one()
@@ -678,6 +837,7 @@ def test_s3a_m1_generic_sync_serializers_redact_private_plan_items(db, tmp_path,
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
@@ -685,6 +845,7 @@ def test_s3a_m1_generic_sync_serializers_redact_private_plan_items(db, tmp_path,
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
@@ -720,6 +881,7 @@ def test_s3a_m1_execute_blocks_background_translation_llm_side_effects(db, tmp_p
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     with pytest.raises(ManualSyncExecuteError) as exc:
@@ -752,6 +914,7 @@ def test_s3a_m1_execute_blocks_auto_translation_llm_side_effects(db, tmp_path, m
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     with pytest.raises(ManualSyncExecuteError) as exc:
@@ -787,6 +950,7 @@ def test_s3a_m1_execute_blocks_live_translation_worker_with_flags_disabled(db, t
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     with pytest.raises(ManualSyncExecuteError) as exc:
@@ -822,6 +986,7 @@ def test_s3a_m1_execute_translation_gate_allows_stopped_worker_and_llm_disabled(
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
 
     run = create_manual_sync_execute_run(
@@ -830,12 +995,51 @@ def test_s3a_m1_execute_translation_gate_allows_stopped_worker_and_llm_disabled(
         max_files=5,
         hydrated_only=True,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
     )
 
     assert run.status == "pending"
+
+
+def test_s3a_m1_execute_translation_gate_allows_llm_provider_when_auto_background_off(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BACKGROUND_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_AUTO_ENABLED", "false")
+    monkeypatch.setattr(
+        execute_service,
+        "_translation_worker_runtime_state",
+        lambda: {"status": "stopped", "thread_alive": False, "running": False},
+    )
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+    )
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    assert run.status == "pending"
+    assert execute_service._translation_side_effect_blockers() == []
 
 
 def test_s3a_m1_execute_rejects_max_files_over_cap(db, tmp_path, monkeypatch):
@@ -864,6 +1068,36 @@ def test_s3a_m1_execute_rejects_max_files_over_cap(db, tmp_path, monkeypatch):
         )
 
     assert exc.value.code == "manual_sync_execute_max_files_exceeded"
+
+
+def test_s3a_m1_execute_requires_execute_enabled_flag(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "false")
+    source_root = tmp_path / "source"
+    _write_png(source_root / "one.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+        )
+
+    assert exc.value.code == "manual_sync_execute_disabled"
 
 
 def test_s3a_m1_execute_allows_max_files_within_cap_and_records_cap(db, tmp_path, monkeypatch):
@@ -908,6 +1142,7 @@ def test_s3a_m1_execute_blocks_active_ai_job(db, tmp_path, monkeypatch):
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
 
@@ -938,6 +1173,7 @@ def test_s3a_m1_execute_blocks_active_classification_job(db, tmp_path, monkeypat
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
 
@@ -969,6 +1205,7 @@ def test_s3a_m1_execute_blocks_queued_ai_job(db, tmp_path, monkeypatch, status):
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
     db.add(AITagJob(status=status, trigger_source="manual", max_items=1))
@@ -1002,6 +1239,7 @@ def test_s3a_m1_execute_blocks_queued_classification_job(db, tmp_path, monkeypat
         source_path=source_root,
         source_record_id=root.id,
         max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
     )
     db.add(ClassificationJob(status=status, trigger_source="manual", max_items=1))
@@ -1234,6 +1472,7 @@ def test_s3a_m1_execute_skips_uncached_clip_without_download(db, tmp_path, monke
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        include_private_details=True,
     )
     run = create_manual_sync_execute_run(
         db,
@@ -1248,10 +1487,12 @@ def test_s3a_m1_execute_skips_uncached_clip_without_download(db, tmp_path, monke
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_followup_required"
     assert db.query(Media).count() == 1
     source_item = db.query(DynamicSourceItem).one()
     assert source_item.classification_status == "skipped_classification_model_uncached"
+    assert source_item.ai_tagging_status == "blocked_classification_not_completed"
+    assert source_item.localization_status == "blocked_classification_not_completed"
     assert result["manual_sync_execute"]["model_downloads_performed"] is False
 
 
@@ -1444,7 +1685,7 @@ def test_s3a_m1_runner_execute_report_uses_approved_plan_timestamp_and_hash(tmp_
     assert written["json"]["execution"]["status"] == "completed"
 
 
-def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, monkeypatch):
+def test_s3a_m1_heuristic_manual_execute_does_not_bypass_classification_gate(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
     monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
@@ -1453,30 +1694,8 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
     monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
     _patch_test_storage(monkeypatch, tmp_path)
 
-    def fake_ai_tagging(db_arg, media_id):
-        media = db_arg.get(Media, media_id)
-        media.content_class_locked = False
-        tag = Tag(name="unit_ai_style", category=TagCategoryEnum.general)
-        db_arg.add(tag)
-        db_arg.flush()
-        db_arg.execute(
-            blombooru_media_tags.insert().values(
-                media_id=media_id,
-                tag_id=tag.id,
-                source="ai_wd",
-                confidence=0.99,
-                is_locked=False,
-                is_suggestion=False,
-            )
-        )
-        db_arg.commit()
-        return {
-            "media_id": media_id,
-            "tags_added": 1,
-            "suggestions_added": 0,
-            "predictions": [{"name": "unit_ai_style", "confidence": 0.99, "action": "confirmed"}],
-            "provenance": {"provider_backend": "unit"},
-        }
+    def fake_ai_tagging(_db_arg, _media_id):
+        raise AssertionError("manual sync must not run WD tagging before classification has identified a target class")
 
     monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
 
@@ -1489,12 +1708,131 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
     )
     run = create_manual_sync_execute_run(
         db,
         root_id=root.id,
         max_files=5,
         hydrated_only=True,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed_with_followup_required"
+    source_item = db.query(DynamicSourceItem).one()
+    media = db.query(Media).one()
+    assert source_item.ai_tagging_status == "blocked_classification_not_completed"
+    assert source_item.localization_status == "blocked_classification_not_completed"
+    assert source_item.deferred_reason == "classification_not_completed"
+    assert source_item.classification_status == "classification_deferred_ai_tags_unavailable"
+    assert media.content_class is None
+    assert not db.execute(
+        blombooru_media_tags.select().where(blombooru_media_tags.c.media_id == media.id)
+    ).first()
+    stage_rows = {row["name"]: row for row in result["manual_sync_execute"]["stage_rows"]}
+    assert stage_rows["classification"]["method"] == "heuristic"
+    assert stage_rows["classification"]["order"] == "classification_before_ai_tagging"
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.current_metadata_json["ai_tagging"]["status"] == "deferred"
+    assert run_item.current_metadata_json["ai_tagging"]["reason"] == "classification_not_completed"
+
+
+def test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_summary(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setattr(execute_service, "_ensure_clip_model_cache_only", lambda: (True, None))
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    calls: list[tuple[str, int]] = []
+
+    def fake_copy(db_arg, source_file: Path):
+        media = Media(
+            filename=source_file.name,
+            path=f"media/original/{source_file.name}",
+            hash=calculate_file_hash(source_file),
+            file_type=FileTypeEnum.image,
+        )
+        db_arg.add(media)
+        db_arg.flush()
+        calls.append(("import", media.id))
+        return media.id, source_file.stat().st_size
+
+    def fake_classify(db_arg, media_id: int):
+        media = db_arg.get(Media, media_id)
+        media.content_class = ContentClassEnum.anime
+        calls.append(("classification", media_id))
+        return {"media_id": media_id, "content_class": "anime", "method": "clip"}
+
+    def fake_ai(db_arg, media_id: int):
+        tag = Tag(name=f"unit_full_chain_{media_id}", category=TagCategoryEnum.general)
+        db_arg.add(tag)
+        db_arg.flush()
+        db_arg.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media_id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.95,
+                is_locked=False,
+                is_suggestion=False,
+            )
+        )
+        calls.append(("ai_tagging", media_id))
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0, "provenance": {"provider_backend": "unit"}}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        assert cancel_check is not None
+        assert source_item_ids
+        for source_item_id in source_item_ids or []:
+            item = db_arg.get(DynamicSourceItem, int(source_item_id))
+            item.localization_status = "localized"
+        calls.append(("localization", len(media_ids)))
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_copy_and_import_media", fake_copy)
+    monkeypatch.setattr(execute_service, "_classify_imported_media", fake_classify)
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "one.png", (10, 20, 30))
+    _write_png(source_root / "two.png", (30, 40, 50))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+    )
+    assert plan["limits"]["plan_mode"] == "incremental"
+    assert plan["limits"]["content_read_count"] == 0
+    assert plan["limits"]["hash_required_count"] == 0
+    assert plan["limits"]["image_decode_count"] == 0
+    assert plan["counts"]["state_counts"]["import_planned"] == 2
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=False,
         stable_age_seconds=0,
         expected_plan_hash=plan["integrity"]["plan_hash"],
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
@@ -1504,20 +1842,201 @@ def test_s3a_m1_heuristic_classifies_after_ai_tags_are_written(db, tmp_path, mon
     result = execute_manual_sync_run(db, run_id=run.id)
 
     assert result["status"] == "completed"
-    source_item = db.query(DynamicSourceItem).one()
-    media = db.query(Media).one()
-    assert source_item.ai_tagging_status == "ai_tagged"
-    assert source_item.classification_status == "classified"
-    assert media.content_class == ContentClassEnum.anime
-    stage_rows = {row["name"]: row for row in result["manual_sync_execute"]["stage_rows"]}
-    assert stage_rows["classification"]["method"] == "heuristic"
-    assert stage_rows["classification"]["order"] == "ai_tagging_before_classification"
-    run_item = db.query(DynamicSyncRunItem).one()
-    assert run_item.current_metadata_json["ai_tagging"]["status"] == "ai_tagged"
-    assert run_item.current_metadata_json["classification"]["content_class"] == "anime"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["outcome_counts"]["imported"] == 2
+    assert execute_summary["outcome_counts"]["classified"] == 2
+    assert execute_summary["outcome_counts"]["ai_tagged"] == 2
+    assert execute_summary["outcome_counts"]["localized"] == 2
+    stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
+    for stage in ("candidate_discovery", "import", "classification", "ai_tagging", "localization", "summary"):
+        assert stage_rows[stage]["status"] == "completed"
+    assert [name for name, _value in calls] == [
+        "import",
+        "import",
+        "classification",
+        "classification",
+        "ai_tagging",
+        "ai_tagging",
+        "localization",
+    ]
+    assert {item.localization_status for item in db.query(DynamicSourceItem).all()} == {"localized"}
 
 
-def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, monkeypatch):
+def test_manual_sync_execute_gates_ai_and_localization_by_content_class(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_TARGET_CONTENT_CLASSES", "anime,illustration")
+    monkeypatch.setattr(execute_service, "_ensure_clip_model_cache_only", lambda: (True, None))
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    ai_calls: list[int] = []
+    localization_media_ids: list[int] = []
+
+    def fake_copy(db_arg, source_file: Path):
+        media = Media(
+            filename=source_file.name,
+            path=f"media/original/{source_file.name}",
+            hash=calculate_file_hash(source_file),
+            file_type=FileTypeEnum.image,
+        )
+        db_arg.add(media)
+        db_arg.flush()
+        return media.id, source_file.stat().st_size
+
+    def fake_classify(db_arg, media_id: int):
+        media = db_arg.get(Media, media_id)
+        if media.filename.startswith("anime"):
+            media.content_class = ContentClassEnum.anime
+            return {"media_id": media_id, "content_class": "anime", "method": "clip"}
+        if media.filename.startswith("unknown"):
+            media.content_class = ContentClassEnum.unknown
+            return {"media_id": media_id, "content_class": "unknown", "method": "clip"}
+        media.content_class = ContentClassEnum.non_anime
+        return {"media_id": media_id, "content_class": "non_anime", "method": "clip"}
+
+    def fake_ai(db_arg, media_id: int):
+        media = db_arg.get(Media, media_id)
+        assert media.content_class in {ContentClassEnum.anime, ContentClassEnum.unknown}
+        ai_calls.append(media_id)
+        tag = Tag(name=f"unit_target_gate_{media_id}", category=TagCategoryEnum.general)
+        db_arg.add(tag)
+        db_arg.flush()
+        db_arg.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media_id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.95,
+                is_locked=False,
+                is_suggestion=False,
+            )
+        )
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0, "provenance": {"provider_backend": "unit"}}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        localization_media_ids.extend(media_ids)
+        for source_item_id in source_item_ids or []:
+            item = db_arg.get(DynamicSourceItem, int(source_item_id))
+            item.localization_status = "localized"
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_copy_and_import_media", fake_copy)
+    monkeypatch.setattr(execute_service, "_classify_imported_media", fake_classify)
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "anime_target.png", (10, 20, 30))
+    _write_png(source_root / "unknown_uncertain.png", (20, 30, 40))
+    _write_png(source_root / "photo_non_target.png", (30, 40, 50))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        operator_confirmation_statement=plan["integrity"]["operator_confirmation_statement"],
+        confirmation_phrase="",
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    assert len(ai_calls) == 2
+    assert localization_media_ids == ai_calls
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["outcome_counts"]["imported"] == 3
+    assert execute_summary["outcome_counts"]["classified"] == 3
+    assert execute_summary["outcome_counts"]["ai_tagged"] == 2
+    assert execute_summary["outcome_counts"]["ai_tagging_skipped_non_target"] == 1
+    assert execute_summary["outcome_counts"]["localization_not_applicable_non_target"] == 1
+    non_target_media = db.query(Media).filter(Media.filename == "photo_non_target.png").one()
+    assert non_target_media.content_class == ContentClassEnum.non_anime
+    assert not db.execute(
+        blombooru_media_tags.select().where(blombooru_media_tags.c.media_id == non_target_media.id)
+    ).first()
+    non_target_item = (
+        db.query(DynamicSourceItem)
+        .filter(DynamicSourceItem.relative_path == "photo_non_target.png")
+        .one()
+    )
+    assert non_target_item.ai_tagging_status == "ai_tagging_skipped_non_target"
+    assert non_target_item.localization_status == "localization_not_applicable_non_target"
+    unknown_media = db.query(Media).filter(Media.filename == "unknown_uncertain.png").one()
+    assert unknown_media.content_class == ContentClassEnum.unknown
+    assert db.execute(
+        blombooru_media_tags.select().where(blombooru_media_tags.c.media_id == unknown_media.id)
+    ).first()
+
+
+def test_manual_sync_execute_enforces_source_policy_before_import(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    hidden_file = source_root / ".hidden.png"
+    _write_png(hidden_file)
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=False,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        operator_confirmation_statement=plan["integrity"]["operator_confirmation_statement"],
+        confirmation_phrase="",
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["outcome_counts"]["skipped_unsupported"] == 1
+    assert execute_summary["outcome_counts"]["hidden"] == 1
+    assert execute_summary["outcome_counts"].get("imported", 0) == 0
+    assert result["failed_items"] == 0
+    assert db.query(Media).count() == 0
+    item = db.query(DynamicSourceItem).one()
+    assert item.sync_state == "skipped_unsupported"
+    assert item.deferred_reason == "hidden"
+
+
+def test_s3a_m1_manual_execute_ai_proper_nouns_follow_mature_media_tag_policy(db, tmp_path, monkeypatch):
     import app.services.ai_tagging_service as ai_tagging_service
 
     class FakeTagger:
@@ -1533,6 +2052,9 @@ def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, 
         def predict_from_file(self, *_args, **_kwargs):
             return [
                 {"name": "hakurei_reimu", "category": "character", "confidence": 0.99},
+                {"name": "touhou", "category": "copyright", "confidence": 0.98},
+                {"name": "zun", "category": "artist", "confidence": 0.97},
+                {"name": "edge_character", "category": "character", "confidence": 0.25},
             ]
 
     _enable_manual_execute(monkeypatch)
@@ -1550,6 +2072,121 @@ def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, 
         source_record_id=root.id,
         max_files=5,
         stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    rows = {
+        row.name: row
+        for row in db.query(
+            Tag.name,
+            Tag.category,
+            blombooru_media_tags.c.source,
+            blombooru_media_tags.c.is_suggestion,
+            blombooru_media_tags.c.is_locked,
+        )
+        .join(blombooru_media_tags, Tag.id == blombooru_media_tags.c.tag_id)
+        .all()
+    }
+    assert rows["hakurei_reimu"].category == TagCategoryEnum.character
+    assert rows["hakurei_reimu"].source == "ai_wd"
+    assert rows["hakurei_reimu"].is_suggestion is False
+    assert rows["hakurei_reimu"].is_locked is False
+    assert rows["touhou"].category == TagCategoryEnum.copyright
+    assert rows["touhou"].is_suggestion is False
+    assert rows["zun"].category == TagCategoryEnum.artist
+    assert rows["zun"].is_suggestion is False
+    assert rows["edge_character"].category == TagCategoryEnum.character
+    assert rows["edge_character"].is_suggestion is True
+    assert db.query(Entity).count() == 0
+    assert db.query(MediaEntityAssignment).count() == 0
+    assert db.query(SourceConcept).count() == 0
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.current_metadata_json["ai_tagging"]["suggestions_added"] == 1
+    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 3
+
+
+def test_s3a_m2_manual_execute_ai_policy_confirms_mature_categories_and_suggests_low_confidence(
+    db,
+    tmp_path,
+    monkeypatch,
+):
+    import app.services.ai_tagging_service as ai_tagging_service
+
+    class FakeTagger:
+        is_loaded = True
+        current_model = "unit"
+
+        def ensure_loaded(self, *_args, **_kwargs):
+            return None
+
+        def get_runtime_provenance(self, **kwargs):
+            return {"provider": "unit", **kwargs}
+
+        def predict_from_file(self, *_args, **_kwargs):
+            return [
+                {"name": "long_hair", "category": "general", "confidence": 0.92},
+                {"name": "hakurei_reimu", "category": "character", "confidence": 0.99},
+                {"name": "touhou", "category": "copyright", "confidence": 0.99},
+                {"name": "zun", "category": "artist", "confidence": 0.99},
+                {"name": "blue_ribbon", "category": "general", "confidence": 0.25},
+                {"name": "edge_character", "category": "character", "confidence": 0.25},
+            ]
+
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("AI_GENERAL_THRESHOLD", "0.35")
+    monkeypatch.setenv("AI_CHARACTER_THRESHOLD", "0.85")
+    monkeypatch.setenv("AI_SUGGESTION_THRESHOLD", "0.20")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+    monkeypatch.setattr(ai_tagging_service, "_get_tagger", lambda: FakeTagger())
+    db.add_all(
+        [
+            TagTranslation(
+                canonical_name="long_hair",
+                language="zh-CN",
+                display_name="长发",
+                source="manual",
+                status="reviewed",
+                category="general",
+            ),
+            TagTranslation(
+                canonical_name="blue_ribbon",
+                language="zh-CN",
+                display_name="蓝丝带",
+                source="manual",
+                status="reviewed",
+                category="general",
+            ),
+        ]
+    )
+    db.commit()
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
     )
     run = create_manual_sync_execute_run(
         db,
@@ -1565,22 +2202,903 @@ def test_s3a_m1_manual_execute_ai_proper_nouns_remain_suggestions(db, tmp_path, 
     result = execute_manual_sync_run(db, run_id=run.id)
 
     assert result["status"] == "completed"
-    tag = db.query(Tag).filter(Tag.name == "hakurei_reimu").one()
-    assert tag.category == TagCategoryEnum.character
-    media_tag = db.execute(
-        blombooru_media_tags.select().where(
-            blombooru_media_tags.c.tag_id == tag.id,
+    rows = {
+        row.name: row
+        for row in db.query(
+            Tag.name,
+            blombooru_media_tags.c.is_suggestion,
+            blombooru_media_tags.c.is_locked,
         )
-    ).one()
-    assert media_tag.source == "ai_wd"
-    assert media_tag.is_suggestion is True
-    assert media_tag.is_locked is False
+        .join(blombooru_media_tags, Tag.id == blombooru_media_tags.c.tag_id)
+        .all()
+    }
+    assert rows["long_hair"].is_suggestion is False
+    assert rows["long_hair"].is_locked is False
+    assert rows["hakurei_reimu"].is_suggestion is False
+    assert rows["touhou"].is_suggestion is False
+    assert rows["zun"].is_suggestion is False
+    assert rows["blue_ribbon"].is_suggestion is True
+    assert rows["edge_character"].is_suggestion is True
     assert db.query(Entity).count() == 0
     assert db.query(MediaEntityAssignment).count() == 0
     assert db.query(SourceConcept).count() == 0
     run_item = db.query(DynamicSyncRunItem).one()
-    assert run_item.current_metadata_json["ai_tagging"]["suggestions_added"] == 1
-    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 0
+    assert run_item.current_metadata_json["ai_tagging"]["tags_added"] == 4
+    assert run_item.current_metadata_json["ai_tagging"]["suggestions_added"] == 2
+    source_item = db.query(DynamicSourceItem).one()
+    assert source_item.localization_status == "localized"
+    localization = result["manual_sync_execute"]["localization"]
+    assert localization["status"] == "completed_existing_coverage"
+    assert localization["localizable_distinct_tags"] == 2
+    assert localization["tags_requiring_localization_after_runner"] == 0
+    assert localization["llm_called"] is False
+
+
+def test_manual_sync_localization_save_failure_rolls_back_and_records_failure(db, tmp_path, monkeypatch):
+    import app.services.llm_translation_provider as llm_provider_module
+    import app.services.tag_localization_service as localization_service
+
+    class FakeProvider:
+        def is_available(self):
+            return True
+
+        async def translate_tags(self, inputs):
+            return [
+                SimpleNamespace(
+                    canonical_name=inputs[0]["name"],
+                    display_name_zh="单元测试标签",
+                    aliases_zh=[],
+                    confidence=0.9,
+                    needs_review=False,
+                )
+            ]
+
+        def get_provider_name(self):
+            return "unit"
+
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    def fake_ai_tagging(db_arg, media_id):
+        tag = Tag(name="unit_needs_localization", category=TagCategoryEnum.general)
+        db_arg.add(tag)
+        db_arg.flush()
+        db_arg.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media_id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.99,
+                is_locked=False,
+                is_suggestion=False,
+            )
+        )
+        db_arg.commit()
+        return {
+            "media_id": media_id,
+            "tags_added": 1,
+            "suggestions_added": 0,
+            "predictions": [{"name": "unit_needs_localization", "confidence": 0.99, "action": "confirmed"}],
+            "provenance": {"provider_backend": "unit"},
+        }
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(llm_provider_module, "get_llm_provider", lambda: FakeProvider())
+
+    def raise_upsert(*_args, **_kwargs):
+        raise RuntimeError("simulated db write failure")
+
+    monkeypatch.setattr(localization_service, "upsert_translation", raise_upsert)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    localization = result["manual_sync_execute"]["localization"]
+    assert result["status"] == "completed_with_failures"
+    assert localization["status"] == "blocked_localization_gap_remaining"
+    assert localization["errors"] == ["translation_save_failed"]
+    assert localization["failed"] == 1
+    assert result["failed_items"] == 1
+    assert result["manual_sync_execute"]["external_provider_calls_performed"] is True
+    assert db.query(DynamicSourceItem).one().localization_status == "deferred"
+
+
+def test_manual_sync_execute_processes_imported_downstream_followup(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "followup.png"
+    _write_png(source_file)
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="followup.png",
+        path="media/original/followup.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+        content_class="anime",
+    )
+    db.add(media)
+    db.flush()
+    source_stat = source_file.stat()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="followup.png",
+            relative_path_hash=planner._hash_text("followup.png"),
+            file_size=source_stat.st_size,
+            mtime_ns=source_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="failed_ai_tagger_model_uncached",
+            localization_status="blocked_ai_tagging_failed",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    ai_calls: list[int] = []
+    localization_calls: list[list[int]] = []
+
+    def fake_ai_tagging(_db_arg, media_id):
+        ai_calls.append(media_id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(_db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        localization_calls.append(list(media_ids))
+        assert source_item_ids
+        assert cancel_check is not None
+        item = db.get(DynamicSourceItem, int(source_item_ids[0]))
+        item.localization_status = "localized"
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(media_ids),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["counts"]["estimated_ai_tagging_count"] == 1
+    followup_item = next(
+        item for item in plan["private_details"]["items"] if item["state"] == "downstream_followup_planned"
+    )
+    assert followup_item["content_hash"] == media.hash
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["outcome_counts"]["downstream_followup_planned"] == 1
+    assert execute_summary["outcome_counts"]["ai_tagged"] == 1
+    assert execute_summary["imported_media_ids"] == []
+    assert execute_summary["downstream_media_ids"] == [media.id]
+    assert ai_calls == [media.id]
+    assert localization_calls == [[media.id]]
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.item_state == "downstream_followup_planned"
+    assert run_item.action == "downstream_followup"
+    assert run_item.media_id == media.id
+    source_item = db.query(DynamicSourceItem).one()
+    assert source_item.import_status == "imported"
+    assert source_item.content_hash == media.hash
+    assert source_item.ai_tagging_status == "ai_tagged"
+    assert source_item.localization_status == "localized"
+
+
+def test_manual_sync_execute_marks_deferred_localization_gap_as_followup_required(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    def fake_ai_tagging(db_arg, media_id):
+        tag = Tag(name="unit_deferred_localization_tag", category=TagCategoryEnum.general)
+        db_arg.add(tag)
+        db_arg.flush()
+        db_arg.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media_id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.95,
+                is_locked=False,
+                is_suggestion=False,
+            )
+        )
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        for source_item_id in source_item_ids or []:
+            item = db_arg.get(DynamicSourceItem, int(source_item_id))
+            item.localization_status = "deferred"
+            item.deferred_reason = "localization_backend_disabled"
+        return {
+            "status": "blocked_localization_gap_remaining",
+            "blocked_reason": "localization_backend_disabled",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "deferred",
+            "tags_requiring_localization_after_runner": 1,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed_with_followup_required"
+    assert result["failed_items"] == 0
+    assert result["manual_sync_execute"]["outcome_counts"]["localization_deferred"] == 1
+    assert result["manual_sync_execute"]["localization"]["status"] == "blocked_localization_gap_remaining"
+
+
+def test_manual_sync_execute_allows_downstream_followup_when_source_file_missing(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "followup-missing-source.png"
+    _write_png(source_file)
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="followup-missing-source.png",
+        path="media/original/followup-missing-source.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    source_stat = source_file.stat()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=planner._hash_text(source_file.name),
+            file_size=source_stat.st_size,
+            mtime_ns=source_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="failed_ai_tagger_model_uncached",
+            localization_status="blocked_ai_tagging_failed",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+    source_file.unlink()
+
+    ai_calls: list[int] = []
+
+    def fake_ai_tagging(_db_arg, media_id):
+        ai_calls.append(media_id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(_db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        for source_item_id in source_item_ids or []:
+            item = db.get(DynamicSourceItem, int(source_item_id))
+            item.localization_status = "localized"
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        operator_confirmation_statement=plan["integrity"]["operator_confirmation_statement"],
+        confirmation_phrase="",
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    assert ai_calls == [media.id]
+    item = db.query(DynamicSourceItem).one()
+    assert item.import_status == "imported"
+    assert item.ai_tagging_status == "ai_tagged"
+    assert item.localization_status == "localized"
+    assert result["failed_items"] == 0
+
+
+def test_manual_sync_execute_prioritizes_followup_before_import_failure_budget(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES", 20)
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS", 1)
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE", 0.20)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    import_path = source_root / "00-timeout.png"
+    followup_path = source_root / "01-followup.png"
+    _write_png(import_path, (1, 2, 3))
+    _write_png(followup_path, (4, 5, 6))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="01-followup.png",
+        path="media/original/01-followup.png",
+        hash=calculate_file_hash(followup_path),
+        file_type=FileTypeEnum.image,
+        content_class="anime",
+    )
+    db.add(media)
+    db.flush()
+    followup_stat = followup_path.stat()
+    followup_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=followup_path.name,
+        relative_path_hash=planner._hash_text(followup_path.name),
+        file_size=followup_stat.st_size,
+        mtime_ns=followup_stat.st_mtime_ns,
+        content_hash=media.hash,
+        source_status="available",
+        sync_state="deferred_unprocessed",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="pending",
+        localization_status="waiting_ai_tags",
+        deferred_reason="not_processed_budget_stop",
+        media_id=media.id,
+    )
+    db.add(followup_item)
+    db.commit()
+    followup_path.unlink()
+
+    def fake_execute_hash(path: Path, _timeout_sec: int):
+        if Path(path).name == "00-timeout.png":
+            return None, "read_timeout"
+        return calculate_file_hash(path), None
+
+    ai_tagged: list[int] = []
+    localized: list[int] = []
+
+    def fake_ai_tagging(_db_arg, media_id):
+        ai_tagged.append(media_id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        assert source_item_ids == [followup_item.id]
+        item = db_arg.get(DynamicSourceItem, followup_item.id)
+        item.localization_status = "localized"
+        localized.extend(media_ids)
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", fake_execute_hash)
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    summary = dict(run.summary_json or {})
+    execute_payload = dict(summary["manual_sync_execute"])
+    private_items = list(execute_payload["private_plan_items"])
+    execute_payload["private_plan_items"] = sorted(
+        private_items,
+        key=lambda item: 0 if item.get("state") == "import_planned" else 1,
+    )
+    summary["manual_sync_execute"] = execute_payload
+    run.summary_json = summary
+    db.commit()
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed_with_failures"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["outcome_counts"]["downstream_followup_planned"] == 1
+    assert execute_summary["outcome_counts"]["read_timeout"] == 1
+    assert execute_summary["unprocessed_import_planned_count"] == 0
+    assert ai_tagged == [media.id]
+    assert localized == [media.id]
+    db.refresh(followup_item)
+    assert followup_item.import_status == "imported"
+    assert followup_item.ai_tagging_status == "ai_tagged"
+    assert followup_item.localization_status == "localized"
+    run_items = {
+        item.source_item_id: item
+        for item in db.query(DynamicSyncRunItem).filter(DynamicSyncRunItem.sync_run_id == run.id).all()
+    }
+    assert run_items[followup_item.id].item_state == "downstream_followup_planned"
+    assert run_items[followup_item.id].action == "downstream_followup"
+
+
+def test_manual_sync_execute_scopes_downstream_followup_to_planned_source_item(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    planned_path = source_root / "followup.png"
+    other_path = source_root / "other-copy.png"
+    _write_png(planned_path, (30, 40, 50))
+    _write_png(other_path, (30, 40, 50))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="followup.png",
+        path="media/original/followup.png",
+        hash=calculate_file_hash(planned_path),
+        file_type=FileTypeEnum.image,
+        content_class="anime",
+    )
+    db.add(media)
+    db.flush()
+    planned_stat = planned_path.stat()
+    other_stat = other_path.stat()
+    planned_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="followup.png",
+        relative_path_hash=planner._hash_text("followup.png"),
+        file_size=planned_stat.st_size,
+        mtime_ns=planned_stat.st_mtime_ns,
+        content_hash=media.hash,
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="failed_ai_tagger_model_uncached",
+        localization_status="blocked_ai_tagging_failed",
+        media_id=media.id,
+    )
+    other_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="other-copy.png",
+        relative_path_hash=planner._hash_text("other-copy.png"),
+        file_size=other_stat.st_size,
+        mtime_ns=other_stat.st_mtime_ns,
+        content_hash=media.hash,
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="ai_tagged",
+        localization_status="localized",
+        media_id=media.id,
+    )
+    db.add_all([planned_item, other_item])
+    db.commit()
+
+    def fake_ai_tagging(_db_arg, media_id):
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(_db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        assert source_item_ids == [planned_item.id]
+        item = db.get(DynamicSourceItem, planned_item.id)
+        item.localization_status = "localized"
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": 1,
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    db.refresh(planned_item)
+    db.refresh(other_item)
+    assert planned_item.ai_tagging_status == "ai_tagged"
+    assert planned_item.localization_status == "localized"
+    assert other_item.ai_tagging_status == "ai_tagged"
+    assert other_item.localization_status == "localized"
+    run_item = db.query(DynamicSyncRunItem).filter(DynamicSyncRunItem.source_item_id == planned_item.id).one()
+    assert run_item.current_metadata_json["ai_tagging"]["status"] == "ai_tagged"
+    assert result["manual_sync_execute"]["downstream_targets"] == [
+        {"media_id": media.id, "source_item_id": planned_item.id}
+    ]
+
+
+def test_manual_sync_execute_downstream_followup_uses_app_media_not_changed_source_file(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "followup.png"
+    _write_png(source_file, (30, 40, 50))
+    app_file = settings.ORIGINAL_DIR / "app-followup.png"
+    _write_png(app_file, (30, 40, 50))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media_hash = calculate_file_hash(app_file)
+    media = Media(
+        filename=app_file.name,
+        path=f"media/original/{app_file.name}",
+        hash=media_hash,
+        file_type=FileTypeEnum.image,
+        content_class="anime",
+    )
+    db.add(media)
+    db.flush()
+    source_stat = source_file.stat()
+    source_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=source_file.name,
+        relative_path_hash=planner._hash_text(source_file.name),
+        file_size=source_stat.st_size,
+        mtime_ns=source_stat.st_mtime_ns,
+        content_hash=media_hash,
+        source_status="available",
+        sync_state="deferred_unprocessed",
+        import_status="imported",
+        classification_status="pending",
+        ai_tagging_status="pending",
+        localization_status="waiting_ai_tags",
+        deferred_reason="not_processed_budget_stop",
+        media_id=media.id,
+    )
+    db.add(source_item)
+    db.commit()
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+
+    _write_png(source_file, (99, 88, 77))
+
+    def fail_if_source_metadata_is_read(*_args, **_kwargs):
+        raise AssertionError("downstream follow-up must not stat/read the original source file")
+
+    def fail_if_source_hash_is_read(*_args, **_kwargs):
+        raise AssertionError("downstream follow-up must not hash the original source file")
+
+    classified: list[int] = []
+    ai_tagged: list[int] = []
+    localized: list[int] = []
+
+    def fake_classification(db_arg, media_id):
+        media_row = db_arg.get(Media, media_id)
+        media_row.content_class = "anime"
+        classified.append(media_id)
+        return {"media_id": media_id, "content_class": "anime", "method": "clip"}
+
+    def fake_ai_tagging(_db_arg, media_id):
+        ai_tagged.append(media_id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        for item_id in source_item_ids or []:
+            item = db_arg.get(DynamicSourceItem, int(item_id))
+            item.localization_status = "localized"
+            localized.append(int(item.media_id))
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_metadata_for_path", fail_if_source_metadata_is_read)
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", fail_if_source_hash_is_read)
+    monkeypatch.setattr(execute_service, "_classify_imported_media", fake_classification)
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    assert db.query(Media).count() == 1
+    assert classified == [media.id]
+    assert ai_tagged == [media.id]
+    assert localized == [media.id]
+    db.refresh(source_item)
+    assert source_item.media_id == media.id
+    assert source_item.content_hash == media_hash
+    assert source_item.classification_status == "classified"
+    assert source_item.ai_tagging_status == "ai_tagged"
+    assert source_item.localization_status == "localized"
+    run_item = db.query(DynamicSyncRunItem).filter(DynamicSyncRunItem.source_item_id == source_item.id).one()
+    assert run_item.item_state == "downstream_followup_planned"
+    assert run_item.current_metadata_json["source_file_required"] is False
+    assert run_item.current_metadata_json["source_file_validation_skipped"] is True
+    assert run_item.current_metadata_json["app_media_authoritative"] is True
+
+
+def test_manual_sync_execute_production_gate_rejects_unconfigured_localization_provider(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_FALLBACK_ENABLED", "false")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_FALLBACK_API_KEY", "")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_FALLBACK_MODEL", "")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_FALLBACK_BASE_URL", "")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+            production_acceptance_approved=True,
+        )
+
+    assert exc.value.code == "manual_sync_localization_llm_provider_unconfigured"
+
+
+def test_manual_sync_execute_production_gate_rejects_uncached_clip_before_import(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setattr(execute_service, "_ensure_clip_model_cache_only", lambda: (False, "classification_model_uncached"))
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+            production_acceptance_approved=True,
+        )
+
+    assert exc.value.code == "classification_model_uncached"
+    assert db.query(DynamicSyncRun).count() == 0
+    assert db.query(Media).count() == 0
+
+
+def test_manual_sync_execute_production_gate_rejects_uncached_wd_tagger_before_import(
+    db, tmp_path, monkeypatch
+):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("VIOLET_ENV", "production")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setattr(execute_service, "_ensure_clip_model_cache_only", lambda: (True, None))
+    monkeypatch.setattr(
+        execute_service,
+        "_ensure_wd_tagger_model_cache_only",
+        lambda: (False, "manual_sync_ai_tagger_model_uncached"),
+    )
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "new.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+            production_acceptance_approved=True,
+        )
+
+    assert exc.value.code == "manual_sync_ai_tagger_model_uncached"
+    assert db.query(DynamicSyncRun).count() == 0
+    assert db.query(Media).count() == 0
+    assert list(settings.ORIGINAL_DIR.iterdir()) == []
 
 
 def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_path, monkeypatch):
@@ -1593,7 +3111,7 @@ def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_p
     monkeypatch.setattr(
         execute_service,
         "_ai_tag_imported_media",
-        lambda _db_arg, media_id: {"media_id": media_id, "error": "File not found: private-name.png"},
+        lambda _db_arg, _media_id: pytest.fail("heuristic manual E2E must not AI tag before classification gate"),
     )
 
     source_root = tmp_path / "source"
@@ -1619,14 +3137,17 @@ def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_p
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_followup_required"
     media = db.query(Media).one()
     source_item = db.query(DynamicSourceItem).one()
     run_item = db.query(DynamicSyncRunItem).one()
     assert media.content_class is None
-    assert source_item.ai_tagging_status == "failed_ai_tagger_file_missing"
-    assert source_item.classification_status == "classification_skipped_ai_tagging_failed"
-    assert run_item.current_metadata_json["classification"]["reason"] == "classification_skipped_ai_tagging_failed"
+    assert source_item.ai_tagging_status == "blocked_classification_not_completed"
+    assert source_item.localization_status == "blocked_classification_not_completed"
+    assert source_item.deferred_reason == "classification_not_completed"
+    assert source_item.classification_status == "classification_deferred_ai_tags_unavailable"
+    assert run_item.current_metadata_json["classification"]["reason"] == "classification_deferred_ai_tags_unavailable"
+    assert run_item.current_metadata_json["ai_tagging"]["reason"] == "classification_not_completed"
     assert "private-name.png" not in str(result)
 
 
@@ -1660,14 +3181,17 @@ def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_disabled(db, tmp
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_followup_required"
     media = db.query(Media).one()
     source_item = db.query(DynamicSourceItem).one()
     run_item = db.query(DynamicSyncRunItem).one()
     assert media.content_class is None
-    assert source_item.ai_tagging_status == "skipped_ai_tagging_disabled"
+    assert source_item.ai_tagging_status == "blocked_classification_not_completed"
+    assert source_item.localization_status == "blocked_classification_not_completed"
+    assert source_item.deferred_reason == "classification_not_completed"
     assert source_item.classification_status == "classification_deferred_ai_tags_unavailable"
     assert run_item.current_metadata_json["classification"]["reason"] == "classification_deferred_ai_tags_unavailable"
+    assert run_item.current_metadata_json["ai_tagging"]["reason"] == "classification_not_completed"
 
 
 def test_s3a_m1_ai_tagger_model_failure_is_item_level_not_whole_run(db, tmp_path, monkeypatch):
@@ -1846,7 +3370,7 @@ def test_s3a_m1_execute_records_missing_file_and_continues(db, tmp_path, monkeyp
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "completed_with_failures"
     assert result["manual_sync_execute"]["outcome_counts"]["source_missing"] == 1
     assert db.query(Media).count() == 1
     assert db.query(DynamicSyncRunItem).count() == 2
@@ -1902,9 +3426,127 @@ def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
     assert "content_hash" not in str(deferred[0].current_metadata_json)
 
 
+def test_s3a_m1_retryable_import_budget_stop_continues_downstream_for_imported_media(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "clip")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES", 20)
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS", 1)
+    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE", 0.20)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "00-ok.png", (1, 2, 3))
+    _write_png(source_root / "01-ok.png", (4, 5, 6))
+    _write_png(source_root / "02-timeout.png", (7, 8, 9))
+    _write_png(source_root / "03-deferred.png", (10, 11, 12))
+    base_mtime_ns = 1_700_000_000_000_000_000
+    for index, name in enumerate(("00-ok.png", "01-ok.png", "02-timeout.png", "03-deferred.png")):
+        ordered_mtime_ns = base_mtime_ns + (10 - index) * 1_000_000
+        os.utime(source_root / name, ns=(ordered_mtime_ns, ordered_mtime_ns))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+
+    def fake_execute_hash(path: Path, _timeout_sec: int):
+        if Path(path).name == "02-timeout.png":
+            return None, "read_timeout"
+        return calculate_file_hash(path), None
+
+    classified: list[int] = []
+    ai_tagged: list[int] = []
+    localized: list[int] = []
+
+    def fake_classification(db_arg, media_id):
+        media = db_arg.get(Media, media_id)
+        media.content_class = "anime"
+        classified.append(media_id)
+        return {"media_id": media_id, "content_class": "anime", "method": "clip"}
+
+    def fake_ai_tagging(_db_arg, media_id):
+        ai_tagged.append(media_id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fake_localization(db_arg, *, run, media_ids, source_item_ids=None, cancel_check=None):
+        assert cancel_check is not None
+        for source_item_id in source_item_ids or []:
+            item = db_arg.get(DynamicSourceItem, int(source_item_id))
+            item.localization_status = "localized"
+            localized.append(int(item.media_id))
+        return {
+            "status": "completed",
+            "failed": 0,
+            "dynamic_source_items_updated": len(source_item_ids or []),
+            "dynamic_source_items_target_status": "localized",
+            "tags_requiring_localization_after_runner": 0,
+            "llm_called": False,
+            "provider_call_count": 0,
+        }
+
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", fake_execute_hash)
+    monkeypatch.setattr(execute_service, "_classify_imported_media", fake_classification)
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fake_localization)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed_with_failures"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["import_stopped_by"] == "stopped_by_failure_budget"
+    assert execute_summary["downstream_continued_after_import_stop"] is True
+    assert execute_summary["retryable_source_failure_count"] == 1
+    assert execute_summary["stopped_by"] is None
+    assert execute_summary["outcome_counts"]["imported"] == 2
+    assert execute_summary["outcome_counts"]["read_timeout"] == 1
+    assert execute_summary["unprocessed_import_planned_count"] == 1
+    assert result["failed_items"] == 1
+    assert len(classified) == 2
+    assert ai_tagged == classified
+    assert sorted(localized) == sorted(classified)
+    stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
+    assert stage_rows["import"]["status"] == "stopped_by_failure_budget"
+    assert stage_rows["classification"]["status"] == "completed"
+    assert stage_rows["ai_tagging"]["status"] == "completed"
+    assert stage_rows["localization"]["status"] == "completed"
+
+    source_items = {item.relative_path: item for item in db.query(DynamicSourceItem).all()}
+    assert source_items["00-ok.png"].classification_status == "classified"
+    assert source_items["00-ok.png"].ai_tagging_status == "ai_tagged"
+    assert source_items["00-ok.png"].localization_status == "localized"
+    assert source_items["01-ok.png"].classification_status == "classified"
+    assert source_items["01-ok.png"].ai_tagging_status == "ai_tagged"
+    assert source_items["01-ok.png"].localization_status == "localized"
+    assert source_items["02-timeout.png"].failure_reason == "read_timeout"
+    assert source_items["02-timeout.png"].import_status == "failed"
+    retry_metadata = (source_items["02-timeout.png"].metadata_json or {}).get("manual_sync_retry") or {}
+    assert retry_metadata["attempt_count"] == 1
+    assert retry_metadata["last_failure_reason"] == "read_timeout"
+    assert retry_metadata["retryable"] is True
+    assert retry_metadata["long_term_state"] == "retryable"
+    assert source_items["03-deferred.png"].deferred_reason == "not_processed_budget_stop"
+    assert source_items["03-deferred.png"].import_status == "deferred"
+
+
 def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
-    monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_DURATION_SECONDS", -1)
+    monkeypatch.setattr(execute_service, "manual_sync_execute_max_duration_seconds", lambda: -1)
     _patch_test_storage(monkeypatch, tmp_path)
 
     source_root = tmp_path / "source"
@@ -1941,6 +3583,106 @@ def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):
     assert run_items[0].item_state == "deferred_unprocessed"
     assert run_items[0].action == "defer"
     assert run_items[0].reason == "not_processed_budget_stop"
+
+
+def test_s3a_m1_execute_does_not_hash_non_import_skip_items(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_root.mkdir(parents=True)
+    unsupported = source_root / "notes.txt"
+    unsupported.write_text("not media", encoding="utf-8")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+    )
+    assert plan["counts"]["state_counts"]["skipped_unsupported"] == 1
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    def fail_if_hashing_skip_item(path, _timeout):
+        raise AssertionError(f"execute must not hash non-import skip item: {path.name}")
+
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", fail_if_hashing_skip_item)
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed"
+    assert result["manual_sync_execute"]["outcome_counts"]["skipped_unsupported"] == 1
+    assert db.query(Media).count() == 0
+    run_items = db.query(DynamicSyncRunItem).all()
+    assert len(run_items) == 1
+    assert run_items[0].item_state == "skipped_unsupported"
+
+
+def test_s3a_m1_execute_revalidates_existing_media_skip_hash_before_trusting_plan(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    planned_existing = source_root / "existing.png"
+    _write_png(planned_existing, (10, 20, 30))
+    existing_hash = calculate_file_hash(planned_existing)
+    db.add(
+        Media(
+            filename="existing-redacted.png",
+            path="media/original/existing-redacted.png",
+            hash=existing_hash,
+            file_type=FileTypeEnum.image,
+        )
+    )
+    db.commit()
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+    )
+    assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    _write_png(planned_existing, (90, 80, 70))
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert result["status"] == "completed_with_failures"
+    assert result["failed_items"] == 1
+    assert result["manual_sync_execute"]["outcome_counts"]["failed"] == 1
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.item_state == "failed"
+    assert run_item.reason == "content_changed_after_plan"
+    assert db.query(Media).count() == 1
 
 
 def test_s3a_m1_execute_materializes_unprocessed_items_on_cancel(db, tmp_path, monkeypatch):
@@ -1985,3 +3727,314 @@ def test_s3a_m1_execute_materializes_unprocessed_items_on_cancel(db, tmp_path, m
     public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
     assert "cancel-0.png" not in str(public_status)
     assert "cancel-1.png" not in str(public_status)
+
+
+def test_s3a_m1_execute_cancel_after_ai_tagging_skips_localization_finalizer(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_METHOD", "heuristic")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    _patch_test_storage(monkeypatch, tmp_path)
+    finalizer_called = False
+
+    def fake_ai_tagging(_db_arg, media_id):
+        execute_service.request_manual_sync_execute_cancel(run.id)
+        return {"media_id": media_id, "tags_added": 1, "suggestions_added": 0}
+
+    def fail_if_finalizer_runs(*_args, **_kwargs):
+        nonlocal finalizer_called
+        finalizer_called = True
+        raise AssertionError("localization finalizer must not run after cancellation")
+
+    monkeypatch.setattr(execute_service, "_ai_tag_imported_media", fake_ai_tagging)
+    monkeypatch.setattr(execute_service, "_manual_sync_finalize_localization", fail_if_finalizer_runs)
+
+    source_root = tmp_path / "source"
+    _write_png(source_root / "cancel-after-ai.png")
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert finalizer_called is False
+    assert result["status"] == "cancelled"
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["status"] == "cancelled"
+    assert execute_summary["llm_calls_performed"] is False
+    assert execute_summary["localization"]["status"] == "skipped_cancelled_run"
+    assert execute_summary["localization"]["blocked_reason"] == "manual_sync_cancelled_before_localization"
+    assert execute_summary["localization"]["llm_called"] is False
+    assert execute_summary["localization"]["provider_call_count"] == 0
+    assert execute_summary["localization"]["dynamic_source_items_updated"] == 0
+    assert execute_summary["localization"]["dynamic_source_items_target_status"] == "unchanged"
+    assert execute_summary["localization"]["localization_finalizer_called"] is False
+    assert execute_summary["localization"]["localization_db_writes_performed"] is False
+    stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
+    assert stage_rows["localization"]["status"] == "skipped_cancelled_run"
+    assert stage_rows["summary"]["status"] == "cancelled"
+    source_item = db.query(DynamicSourceItem).one()
+    assert source_item.import_status == "imported"
+    assert source_item.ai_tagging_status == "ai_tagged"
+    assert source_item.localization_status == "waiting_localization"
+    assert source_item.deferred_reason is None
+
+
+def test_manual_sync_localization_finalizer_honors_late_cancel_before_provider_call(db, monkeypatch):
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path="/redacted/source",
+        root_path_hash="root-hash",
+        is_active=True,
+    )
+    media = Media(
+        filename="localized.png",
+        path="media/original/localized.png",
+        hash="localized-hash",
+        file_type=FileTypeEnum.image,
+    )
+    tag = Tag(name="new_general_tag_for_cancel", category=TagCategoryEnum.general)
+    run = DynamicSyncRun(run_type="manual_sync_execute", mode="dev_test_execute", status="running", dry_run=False)
+    db.add_all([root, media, tag, run])
+    db.flush()
+    source_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="localized.png",
+        relative_path_hash="localized-relhash",
+        media_id=media.id,
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="ai_tagged",
+        localization_status="waiting_localization",
+    )
+    db.add(source_item)
+    db.flush()
+    db.execute(
+        blombooru_media_tags.insert().values(
+            media_id=media.id,
+            tag_id=tag.id,
+            source="ai_wd",
+            confidence=0.9,
+            is_suggestion=False,
+        )
+    )
+    db.commit()
+
+    cancel_checks = {"count": 0}
+
+    def late_cancel() -> bool:
+        cancel_checks["count"] += 1
+        return cancel_checks["count"] >= 2
+
+    def fail_provider_call():
+        raise AssertionError("LLM provider must not be initialized after late cancel")
+
+    monkeypatch.setattr(execute_service, "_covered_translation_names", lambda _db, *, lang: set())
+    monkeypatch.setattr("app.services.llm_translation_provider.get_llm_provider", fail_provider_call)
+
+    result = execute_service._manual_sync_finalize_localization(
+        db,
+        run=run,
+        media_ids=[media.id],
+        source_item_ids=[source_item.id],
+        cancel_check=late_cancel,
+    )
+
+    assert result["status"] == "skipped_cancelled_run"
+    assert result["llm_called"] is False
+    assert result["provider_call_count"] == 0
+    assert result["localization_db_writes_performed"] is False
+    assert db.get(DynamicSourceItem, source_item.id).localization_status == "waiting_localization"
+
+
+def test_manual_sync_localization_finalizer_preserves_side_effect_counts_on_late_cancel(db, monkeypatch):
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BATCH_MAX_ITEMS", "10")
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path="/redacted/source",
+        root_path_hash="root-hash",
+        is_active=True,
+    )
+    media = Media(
+        filename="localized-late-cancel.png",
+        path="media/original/localized-late-cancel.png",
+        hash="late-cancel-hash",
+        file_type=FileTypeEnum.image,
+    )
+    tag_one = Tag(name="unit_cancel_localization_one", category=TagCategoryEnum.general)
+    tag_two = Tag(name="unit_cancel_localization_two", category=TagCategoryEnum.general)
+    run = DynamicSyncRun(run_type="manual_sync_execute", mode="dev_test_execute", status="running", dry_run=False)
+    db.add_all([root, media, tag_one, tag_two, run])
+    db.flush()
+    source_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="localized-late-cancel.png",
+        relative_path_hash="localized-late-cancel-relhash",
+        media_id=media.id,
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="ai_tagged",
+        localization_status="waiting_localization",
+    )
+    db.add(source_item)
+    db.flush()
+    for tag in (tag_one, tag_two):
+        db.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media.id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.9,
+                is_suggestion=False,
+            )
+        )
+    db.commit()
+
+    class FakeProvider:
+        def is_available(self):
+            return True
+
+        def get_provider_name(self):
+            return "unit"
+
+        async def translate_tags(self, inputs):
+            return [
+                SimpleNamespace(
+                    canonical_name=item["name"],
+                    display_name_zh=f"zh-{index}",
+                    aliases_zh=[],
+                    confidence=0.9,
+                    needs_review=False,
+                )
+                for index, item in enumerate(inputs)
+            ]
+
+    cancel_checks = {"count": 0}
+
+    def late_cancel() -> bool:
+        cancel_checks["count"] += 1
+        return cancel_checks["count"] >= 5
+
+    monkeypatch.setattr(execute_service, "_covered_translation_names", lambda _db, *, lang: set())
+    monkeypatch.setattr("app.services.llm_translation_provider.get_llm_provider", lambda: FakeProvider())
+
+    result = execute_service._manual_sync_finalize_localization(
+        db,
+        run=run,
+        media_ids=[media.id],
+        source_item_ids=[source_item.id],
+        cancel_check=late_cancel,
+    )
+
+    assert result["status"] == "skipped_cancelled_run"
+    assert result["llm_called"] is True
+    assert result["provider_call_count"] == 1
+    assert result["translated"] == 1
+    assert result["localization_db_writes_performed"] is True
+    assert db.query(TagTranslation).count() == 1
+    assert db.get(DynamicSourceItem, source_item.id).localization_status == "waiting_localization"
+
+
+def test_manual_sync_localization_recomputes_missing_tags_after_successful_save(db, monkeypatch):
+    monkeypatch.setenv("TAG_TRANSLATION_LLM_ENABLED", "true")
+    monkeypatch.setenv("TAG_TRANSLATION_BATCH_MAX_ITEMS", "10")
+    root = DynamicSourceRoot(
+        label="fixture",
+        root_path="/redacted/source",
+        root_path_hash="root-hash",
+        is_active=True,
+    )
+    media = Media(
+        filename="localized-success.png",
+        path="media/original/localized-success.png",
+        hash="localized-success-hash",
+        file_type=FileTypeEnum.image,
+    )
+    tag_one = Tag(name="unit_success_localization_one", category=TagCategoryEnum.general)
+    tag_two = Tag(name="unit_success_localization_two", category=TagCategoryEnum.meta)
+    run = DynamicSyncRun(run_type="manual_sync_execute", mode="dev_test_execute", status="running", dry_run=False)
+    db.add_all([root, media, tag_one, tag_two, run])
+    db.flush()
+    source_item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="localized-success.png",
+        relative_path_hash="localized-success-relhash",
+        media_id=media.id,
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="ai_tagged",
+        localization_status="waiting_localization",
+    )
+    db.add(source_item)
+    db.flush()
+    for tag in (tag_one, tag_two):
+        db.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media.id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.9,
+                is_suggestion=False,
+            )
+        )
+    db.commit()
+
+    class FakeProvider:
+        def is_available(self):
+            return True
+
+        def get_provider_name(self):
+            return "unit"
+
+        async def translate_tags(self, inputs):
+            return [
+                SimpleNamespace(
+                    canonical_name=item["name"],
+                    display_name_zh=f"zh-{index}",
+                    aliases_zh=[],
+                    confidence=0.9,
+                    needs_review=False,
+                )
+                for index, item in enumerate(inputs)
+            ]
+
+    monkeypatch.setattr("app.services.llm_translation_provider.get_llm_provider", lambda: FakeProvider())
+
+    result = execute_service._manual_sync_finalize_localization(
+        db,
+        run=run,
+        media_ids=[media.id],
+        source_item_ids=[source_item.id],
+        cancel_check=lambda: False,
+    )
+
+    assert result["status"] == "completed"
+    assert result["translated"] == 2
+    assert result["tags_requiring_localization_after_runner"] == 0
+    assert result["dynamic_source_items_target_status"] == "localized"
+    assert db.query(TagTranslation).count() == 2
+    assert db.get(DynamicSourceItem, source_item.id).localization_status == "localized"

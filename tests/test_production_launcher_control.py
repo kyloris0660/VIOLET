@@ -112,6 +112,7 @@ def safe_backends(monkeypatch):
     monkeypatch.setattr(control, "detect_git_worktree", lambda repo_root=control.ROOT: False)
     monkeypatch.setattr(control, "_storage_root_looks_production", lambda config: (True, "ok"))
     monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: False)
+    monkeypatch.setattr(control, "is_port_bind_available", lambda port, host="0.0.0.0": True)
     monkeypatch.setattr(control, "port_owner_pid", lambda port: None)
 
 
@@ -136,6 +137,62 @@ def _healthy_payload() -> dict[str, object]:
         "schema_status": "compatible",
         "storage_configured": True,
     }
+
+
+def test_profile_to_env_allows_manual_sync_phase_caps_without_automation(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    storage = tmp_path / "storage"
+    storage.mkdir()
+    profile = {
+        "profile_id": control.DEFAULT_PROFILE_ID,
+        "env": "production",
+        "repo_root": str(repo),
+        "python": sys.executable,
+        "app_port": 8123,
+        "storage_root": str(storage),
+        "require_auth": True,
+        "db": {
+            "host": "localhost",
+            "port": 5432,
+            "name": "blombooru",
+            "user": "postgres",
+            "password": "",
+        },
+        "safe_startup": True,
+        "manual_sync_enabled": True,
+        "manual_sync_execute_enabled": True,
+        "manual_sync_execute_max_files": 1000,
+        "manual_sync_max_duration_seconds": 7200,
+        "tag_translation_llm": {
+            "api_key": "test-key",
+            "model": "test-model",
+            "base_url": "http://127.0.0.1:1/v1",
+        },
+    }
+
+    coerced = control._coerce_profile_payload(profile, repo_root=repo)
+    env = control._profile_to_env(coerced, repo_root=repo)
+
+    assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] == "1000"
+    assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] == "7200"
+    assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] == "true"
+    assert env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] == "true"
+    assert env["AI_TAGGING_ENABLED"] == "true"
+    assert env["CONTENT_CLASSIFICATION_ENABLED"] == "true"
+    assert env["CONTENT_CLASSIFICATION_METHOD"] == "clip"
+    assert env["TAG_TRANSLATION_LLM_ENABLED"] == "true"
+    assert env["TAG_TRANSLATION_LLM_API_KEY"] == "test-key"
+    assert env["TAG_TRANSLATION_LLM_MODEL"] == "test-model"
+    assert env["TAG_TRANSLATION_LLM_BASE_URL"] == "http://127.0.0.1:1/v1"
+    assert env["AI_TAGGING_AUTO_LOCALIZATION"] == "false"
+    assert env["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
+    assert env["S3B_UNATTENDED_SYNC_ENABLED"] == "false"
+    assert env["AI_AUTO_TAG_AFTER_IMPORT"] == "false"
+    assert env["CONTENT_CLASSIFICATION_AUTO_AFTER_IMPORT"] == "false"
+    assert env["TAG_TRANSLATION_AUTO_ENABLED"] == "false"
+    assert env["TAG_TRANSLATION_BACKGROUND_ENABLED"] == "false"
+    assert env["VIOLET_ENV"] == "production"
 
 
 def test_preflight_blocks_non_production_env(tmp_path, safe_backends):
@@ -483,6 +540,245 @@ def test_profile_update_stdin_json_accepts_password_payload_without_argv(tmp_pat
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     assert result.data["profile"]["db"]["password_present"] is True
     assert profile["db"]["password"] == "secret-db-password"
+
+
+def test_profile_update_persists_manual_sync_phase_controls(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    payload, error = control._profile_update_stdin_payload(
+        json.dumps(
+            {
+                "manual_sync_enabled": True,
+                "manual_sync_execute_enabled": True,
+                "manual_sync_execute_max_files": 1000,
+                "manual_sync_max_duration_seconds": 7200,
+            }
+        )
+    )
+    assert error is None
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates=payload,
+    )
+
+    profile, _path, _errors = control.load_production_profile(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+    assert result.ok is True
+    assert result.data["profile"]["manual_sync_enabled"] is True
+    assert result.data["profile"]["manual_sync_execute_enabled"] is True
+    assert result.data["profile"]["manual_sync_execute_max_files"] == 1000
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] == "true"
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] == "true"
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] == "1000"
+    assert env_payload["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
+
+
+def test_profile_update_persists_nested_manual_e2e_and_llm_sections(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    payload, error = control._profile_update_stdin_payload(
+        json.dumps(
+            {
+                "manual_sync_enabled": "true",
+                "manual_sync_execute_enabled": "true",
+                "manual_sync_execute_max_files": "1000",
+                "manual_sync_max_duration_seconds": "7200",
+                "manual_e2e_components": {
+                    "ai_tagging_enabled": "true",
+                    "content_classification_enabled": "true",
+                    "content_classification_method": "clip",
+                    "tag_translation_llm_enabled": "true",
+                    "ai_tagging_auto_localization": "false",
+                },
+                "tag_translation_llm": {
+                    "provider": "openai_compatible",
+                    "api_key": "profile-key",
+                    "model": "profile-model",
+                    "base_url": "http://127.0.0.1:9/v1",
+                    "fallback_enabled": "false",
+                    "fallback_api_key": "",
+                    "fallback_model": "",
+                    "fallback_base_url": "",
+                },
+            }
+        )
+    )
+    assert error is None
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates=payload,
+    )
+
+    profile, _path, _errors = control.load_production_profile(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+    assert result.ok is True
+    assert profile["manual_sync_execute_max_files"] == 1000
+    assert profile["manual_sync_max_duration_seconds"] == 7200
+    assert profile["manual_e2e_components"]["ai_tagging_auto_localization"] is False
+    assert profile["manual_e2e_components"]["content_classification_method"] == "clip"
+    assert profile["manual_e2e_components"]["content_classification_method_explicit"] is True
+    assert profile["tag_translation_llm"]["api_key"] == "profile-key"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "clip"
+    assert env_payload["TAG_TRANSLATION_LLM_API_KEY"] == "profile-key"
+    assert env_payload["TAG_TRANSLATION_LLM_FALLBACK_API_KEY"] == ""
+    assert env_payload["AI_TAGGING_AUTO_LOCALIZATION"] == "false"
+
+
+def test_existing_profile_missing_manual_e2e_method_defaults_to_clip(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    profile, _path, _errors = control.load_production_profile(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+    )
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+    status = control.profile_status(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+    )
+
+    assert status.ok is True
+    assert status.data["profile"]["manual_e2e_components"]["content_classification_method"] == "clip"
+    assert status.data["profile"]["manual_e2e_components"]["runtime_env_content_classification_method"] == "clip"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "clip"
+
+
+def test_existing_legacy_heuristic_manual_e2e_profile_migrates_to_clip(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    profile_path = _write_fake_profile(repo, storage, db_user="violet_prod")
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    payload["manual_sync_enabled"] = True
+    payload["manual_sync_execute_enabled"] = True
+    payload["manual_e2e_components"] = {
+        "ai_tagging_enabled": True,
+        "content_classification_enabled": True,
+        "content_classification_method": "heuristic",
+        "tag_translation_llm_enabled": True,
+        "ai_tagging_auto_localization": False,
+    }
+    profile_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    profile, _path, _errors = control.load_production_profile(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+    )
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+    status = control.profile_status(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+    )
+
+    manual = status.data["profile"]["manual_e2e_components"]
+    assert status.ok is True
+    assert manual["content_classification_method"] == "clip"
+    assert manual["content_classification_method_explicit"] is False
+    assert manual["content_classification_method_migrated_from"] == "heuristic"
+    assert manual["runtime_env_content_classification_method"] == "clip"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "clip"
+
+
+def test_profile_update_explicit_non_clip_manual_e2e_method_fails_closed(tmp_path, safe_backends):
+    repo, storage, env = _write_fake_repo(tmp_path)
+    _write_fake_profile(repo, storage, db_user="violet_prod")
+
+    result = control.profile_update(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+        base_env=env,
+        updates={
+            "manual_sync_enabled": True,
+            "manual_sync_execute_enabled": True,
+            "manual_e2e_components": {
+                "ai_tagging_enabled": True,
+                "content_classification_enabled": True,
+                "content_classification_method": "heuristic",
+                "tag_translation_llm_enabled": True,
+                "ai_tagging_auto_localization": False,
+            },
+        },
+    )
+    profile, _path, _errors = control.load_production_profile(
+        repo_root=repo,
+        profile_id=control.DEFAULT_PROFILE_ID,
+    )
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+
+    manual = result.data["profile"]["manual_e2e_components"]
+    assert result.ok is False
+    assert "manual_e2e_classification_method_clip" in result.errors
+    assert manual["content_classification_method"] == "heuristic"
+    assert manual["content_classification_method_explicit"] is True
+    assert manual["runtime_env_content_classification_method"] == "heuristic"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "heuristic"
+
+
+def test_profile_repair_persists_legacy_heuristic_manual_e2e_as_clip(tmp_path, safe_backends):
+    repo, storage, _env = _write_fake_repo(tmp_path)
+    profile_path = _write_fake_profile(repo, storage, db_user="violet_prod")
+    payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    payload["manual_sync_enabled"] = True
+    payload["manual_sync_execute_enabled"] = True
+    payload["manual_e2e_components"] = {
+        "ai_tagging_enabled": True,
+        "content_classification_enabled": True,
+        "content_classification_method": "heuristic",
+        "tag_translation_llm_enabled": True,
+        "ai_tagging_auto_localization": False,
+    }
+    profile_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = control.profile_repair(repo_root=repo, profile_id=control.DEFAULT_PROFILE_ID)
+    repaired = json.loads(profile_path.read_text(encoding="utf-8"))
+    env_payload = control._profile_to_env(repaired, repo_root=repo)
+
+    assert result.ok is True
+    assert repaired["manual_e2e_components"]["content_classification_method"] == "clip"
+    assert repaired["manual_e2e_components"]["content_classification_method_migrated_from"] == "heuristic"
+    assert env_payload["CONTENT_CLASSIFICATION_METHOD"] == "clip"
+
+
+def test_profile_to_env_parses_string_false_without_enabling_manual_or_auto_flags(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    storage = tmp_path / "storage"
+    storage.mkdir()
+    profile = control._coerce_profile_payload(
+        {
+            "repo_root": str(repo),
+            "python": sys.executable,
+            "storage_root": str(storage),
+            "manual_sync_enabled": "false",
+            "manual_sync_execute_enabled": "false",
+            "manual_e2e_components": {
+                "ai_tagging_auto_localization": "false",
+            },
+            "automation_flags": {
+                "dynamic_library_auto_sync": "false",
+                "ai_auto_tag_after_import": "false",
+                "content_classification_auto_after_import": "false",
+                "tag_translation_auto": "false",
+                "tag_translation_background": "false",
+            },
+        },
+        repo_root=repo,
+    )
+
+    env_payload = control._profile_to_env(profile, repo_root=repo)
+
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED"] == "false"
+    assert env_payload["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED"] == "false"
+    assert env_payload["AI_TAGGING_AUTO_LOCALIZATION"] == "false"
+    assert env_payload["DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED"] == "false"
 
 
 def test_profile_update_can_clear_existing_db_password_explicitly(tmp_path, safe_backends):
@@ -843,6 +1139,22 @@ def test_profile_update_allows_identity_changes_when_stopped(tmp_path, safe_back
 def test_preflight_blocks_unknown_process_on_target_port(tmp_path, safe_backends, monkeypatch):
     repo, _storage, env = _write_fake_repo(tmp_path)
     monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: True)
+
+    result = control.preflight(
+        repo_root=repo,
+        base_env=env,
+        db_check=lambda config: (True, "ok"),
+        state_path=tmp_path / "missing-state.json",
+    )
+
+    assert result.ok is False
+    assert "target_port_available_or_managed" in result.errors
+
+
+def test_preflight_blocks_port_bound_without_listener(tmp_path, safe_backends, monkeypatch):
+    repo, _storage, env = _write_fake_repo(tmp_path)
+    monkeypatch.setattr(control, "is_port_open", lambda port, host="127.0.0.1", timeout=0.5: False)
+    monkeypatch.setattr(control, "is_port_bind_available", lambda port, host="0.0.0.0": False)
 
     result = control.preflight(
         repo_root=repo,

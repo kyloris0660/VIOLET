@@ -34,6 +34,9 @@ SECRET_CONTEXT_KEY_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cook
 PRIVATE_PROVENANCE_KEY_RE = re.compile(
     r"(?i)(raw_filename|filename|file_name|source_url|source_urls|original_url|thumbnail_url|source_path|local_path|source_root|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
 )
+PRIVATE_CONTENT_HASH_KEY_RE = re.compile(
+    r"(?i)(^|_)(content_hash|file_hash|sha256|sha_256|md5|phash|perceptual_hash)$"
+)
 FILENAME_VALUE_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov|zip|rar|7z)\b")
 
 POSITIVE_STAGE_STATUSES = {"passed", "pass", "complete", "completed", "executed", "success", "succeeded"}
@@ -425,6 +428,11 @@ def _path_has_private_provenance_context(path: str) -> bool:
     return any(PRIVATE_PROVENANCE_KEY_RE.search(segment) for segment in segments)
 
 
+def _path_has_private_content_hash_context(path: str) -> bool:
+    segments = [segment for segment in re.split(r"[.\[\]]+", path) if segment and segment != "$" and not segment.isdigit()]
+    return any(PRIVATE_CONTENT_HASH_KEY_RE.search(segment) for segment in segments)
+
+
 def _path_has_secret_context(path: str) -> bool:
     segments = [segment for segment in re.split(r"[.\[\]]+", path) if segment and segment != "$" and not segment.isdigit()]
     return any(SECRET_CONTEXT_KEY_RE.search(segment) for segment in segments)
@@ -473,6 +481,7 @@ def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
                 findings.append(finding)
         secret_context = kind in {"value", "empty_container"} and _path_has_secret_context(raw_path)
         provenance_context = kind in {"value", "empty_container"} and _path_has_private_provenance_context(raw_path)
+        content_hash_context = kind in {"value", "empty_container"} and _path_has_private_content_hash_context(raw_path)
         if secret_context and not _safe_redacted(value):
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("secret_key_name_with_unredacted_value", key_name))
@@ -481,10 +490,18 @@ def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("private_provenance_value_unredacted", key_name))
             findings.append(finding)
+        if content_hash_context and not _safe_redacted(value):
+            finding = {"path": display_path, "kind": kind}
+            finding.update(_redacted_match_payload("private_content_hash_value_unredacted", key_name))
+            findings.append(finding)
         if text is not None and kind == "key" and (SECRET_KEY_NAME_RE.search(text) or PRIVATE_PROVENANCE_KEY_RE.search(text)):
             # Key names are not automatically failures; values decide whether a
             # public field is unsafe. Path-like key text is still caught above.
             continue
+        if text is not None and kind == "key" and PRIVATE_CONTENT_HASH_KEY_RE.search(text):
+            finding = {"path": display_path, "kind": kind}
+            finding.update(_redacted_match_payload("private_content_hash_key_present", text))
+            findings.append(finding)
     return findings
 
 
@@ -6431,6 +6448,1158 @@ def _check_phase47_s2_baseline(_contract: PhaseContract, summary: Mapping[str, A
             result.fail("phase47_s2_forbidden_safety_flag", "S2 summary reports a forbidden safety flag.", path=path, expected=False, actual=True)
 
 
+def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "dry_run_complete_pending_approval",
+        "target_met",
+        "completed_partial_gpu_validation",
+        "completed_with_followup_required",
+        "blocked_readiness",
+        "blocked_delta_cap_exceeded",
+        "blocked_execute_not_completed",
+        "blocked_localization_incomplete",
+        "blocked_public_redaction_failed",
+    }
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s3a_m2_unknown_status",
+            "S3A-M2 status must explicitly report dry-run pending approval, target_met, partial completion, or the blocking condition.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if status != "target_met" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m2_non_target_status_claimed_completion",
+            "Only S3A-M2 target_met may claim target_met, safe_to_merge, route approval, or full-chain completion.",
+            path="pipeline_contract.status",
+            expected="target_met for completion claims",
+            actual=result.status,
+        )
+    if str(_get(summary, "pipeline_contract.phase_identity", "") or "") != "S3A-M2":
+        result.fail(
+            "s3a_m2_phase_identity_mismatch",
+            "S3A-M2 summaries must declare the exact phase identity.",
+            path="pipeline_contract.phase_identity",
+            expected="S3A-M2",
+            actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+
+    postmortem_required = status != "dry_run_complete_pending_approval"
+    if postmortem_required:
+        required_postmortem_sections = {
+            "failure_timeline": list,
+            "deferred_failed_inventory": Mapping,
+            "gui_hang_root_cause": Mapping,
+            "api_vs_gui_divergence": Mapping,
+            "branch_profile_provenance": Mapping,
+            "scanner_incremental_model": Mapping,
+            "priority_backlog_root_cause": Mapping,
+            "local_copy_repeated_incremental_e2e": Mapping,
+            "localization_diagnosis": Mapping,
+            "unsupported_inventory": Mapping,
+            "manual_sync_safety_judgement": Mapping,
+            "remaining_blockers": list,
+        }
+        for section_path, expected_type in required_postmortem_sections.items():
+            value = _get(summary, section_path, MISSING)
+            if value is MISSING or not isinstance(value, expected_type):
+                result.fail(
+                    "s3a_m2_postmortem_section_missing",
+                    "Post-execute S3A-M2 summaries must include structured incident/postmortem sections.",
+                    path=section_path,
+                    expected=expected_type.__name__,
+                    actual=None if value is MISSING else type(value).__name__,
+                )
+
+        timeline = _get(summary, "failure_timeline", [])
+        if isinstance(timeline, list) and not timeline:
+            result.fail(
+                "s3a_m2_failure_timeline_empty",
+                "S3A-M2 postmortem must include a chronological failure/correction timeline.",
+                path="failure_timeline",
+                expected="non-empty list",
+                actual=[],
+            )
+        elif isinstance(timeline, list):
+            required_event_fields = {"event", "what_happened", "detected_by", "why_earlier_evidence_missed", "production_impact", "repair_or_prevention"}
+            for index, item in enumerate(timeline):
+                if not isinstance(item, Mapping):
+                    result.fail(
+                        "s3a_m2_failure_timeline_event_invalid",
+                        "Every S3A-M2 timeline event must be a structured public-safe object.",
+                        path=f"failure_timeline[{index}]",
+                        expected="mapping",
+                        actual=type(item).__name__,
+                    )
+                    continue
+                missing_event_fields = sorted(field for field in required_event_fields if not item.get(field))
+                if missing_event_fields:
+                    result.fail(
+                        "s3a_m2_failure_timeline_event_incomplete",
+                        "Every S3A-M2 timeline event must explain detection, missed evidence, impact, and repair/prevention.",
+                        path=f"failure_timeline[{index}]",
+                        expected=sorted(required_event_fields),
+                        actual=missing_event_fields,
+                    )
+
+        deferred_inventory = _get(summary, "deferred_failed_inventory", {})
+        if isinstance(deferred_inventory, Mapping):
+            required_deferred_paths = (
+                "source_field",
+                "query_scope",
+                "total",
+                "reason_counts",
+                "pipeline_status_counts",
+                "current_actionable_importable_pending",
+                "current_placeholder_reason_count",
+                "ui_recommendation",
+            )
+            for key in required_deferred_paths:
+                if key not in deferred_inventory:
+                    result.fail(
+                        "s3a_m2_deferred_failed_inventory_incomplete",
+                        "S3A-M2 must explain the Web Admin deferred/failed inventory instead of leaving the number uninterpreted.",
+                        path=f"deferred_failed_inventory.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+            if status == "target_met":
+                if _as_int(deferred_inventory.get("current_actionable_importable_pending", 0)) != 0:
+                    result.fail(
+                        "s3a_m2_target_with_actionable_deferred_inventory",
+                        "S3A-M2 target_met cannot hide currently importable work inside the deferred/failed inventory.",
+                        path="deferred_failed_inventory.current_actionable_importable_pending",
+                        expected=0,
+                        actual=deferred_inventory.get("current_actionable_importable_pending"),
+                    )
+                if _as_int(deferred_inventory.get("current_placeholder_reason_count", 0)) != 0:
+                    result.fail(
+                        "s3a_m2_target_with_current_placeholder_inventory",
+                        "S3A-M2 target_met cannot leave current placeholder work inside the deferred/failed inventory.",
+                        path="deferred_failed_inventory.current_placeholder_reason_count",
+                        expected=0,
+                        actual=deferred_inventory.get("current_placeholder_reason_count"),
+                    )
+
+        gui_root = _get(summary, "gui_hang_root_cause", {})
+        if isinstance(gui_root, Mapping):
+            for key in ("endpoint_called", "root_cause", "backend_request_sent", "backend_kept_scanning", "cleanup_performed", "watchdog_timeout_added"):
+                if key not in gui_root:
+                    result.fail(
+                        "s3a_m2_gui_hang_root_cause_incomplete",
+                        "S3A-M2 GUI hang analysis must include endpoint, backend activity, cleanup, and watchdog evidence.",
+                        path=f"gui_hang_root_cause.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+
+        api_gui = _get(summary, "api_vs_gui_divergence", {})
+        if isinstance(api_gui, Mapping):
+            for key in ("runner_gui_planner_diverged", "api_runner_proved_backend_only", "prevention_added"):
+                if key not in api_gui:
+                    result.fail(
+                        "s3a_m2_api_gui_divergence_incomplete",
+                        "S3A-M2 must explain why API/runner evidence did not prove the GUI workflow.",
+                        path=f"api_vs_gui_divergence.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+
+        provenance = _get(summary, "branch_profile_provenance", {})
+        if isinstance(provenance, Mapping):
+            summary_head = str(_get(summary, "head_sha", "") or "")
+            provenance_head = str(provenance.get("head_sha") or "")
+            if summary_head and provenance_head and provenance_head != summary_head:
+                result.fail(
+                    "s3a_m2_branch_profile_head_mismatch",
+                    "Branch/profile provenance must match the report head SHA.",
+                    path="branch_profile_provenance.head_sha",
+                    expected=summary_head,
+                    actual=provenance_head,
+                )
+            for key in ("branch", "head_sha", "profile_id", "db_name", "violet_env", "stale_process_cleanup_status"):
+                if not provenance.get(key):
+                    result.fail(
+                        "s3a_m2_branch_profile_provenance_incomplete",
+                        "S3A-M2 must record branch/head/profile/server provenance for GUI validation.",
+                        path=f"branch_profile_provenance.{key}",
+                        expected="non-empty",
+                        actual=provenance.get(key),
+                    )
+
+        scanner_model = _get(summary, "scanner_incremental_model", {})
+        if isinstance(scanner_model, Mapping):
+            required_scanner_paths = (
+                "model",
+                "durable_state_tables",
+                "durable_global_filesystem_cursor",
+                "starts_from_root_each_run",
+                "stable_known_files_fast_skipped_without_hash",
+                "hash_only_when",
+                "cap_semantics",
+                "next_batch_continuation",
+                "invalidation_policy",
+            )
+            for key in required_scanner_paths:
+                if key not in scanner_model:
+                    result.fail(
+                        "s3a_m2_scanner_incremental_model_incomplete",
+                        "S3A-M2 must explain the durable source-ledger/checkpoint model that prevents repeated root-wide duplicate hashing.",
+                        path=f"scanner_incremental_model.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+            if status == "target_met":
+                if not _as_bool(scanner_model.get("stable_known_files_fast_skipped_without_hash")):
+                    result.fail(
+                        "s3a_m2_scanner_does_not_fast_skip_stable_known_files",
+                        "S3A-M2 target_met requires stable known files to be skipped by source ledger metadata without content hashing.",
+                        path="scanner_incremental_model.stable_known_files_fast_skipped_without_hash",
+                        expected=True,
+                        actual=scanner_model.get("stable_known_files_fast_skipped_without_hash"),
+                    )
+                cap_semantics = str(scanner_model.get("cap_semantics") or "")
+                if "actionable" not in cap_semantics or "unchanged" not in cap_semantics:
+                    result.fail(
+                        "s3a_m2_scanner_cap_semantics_not_actionable",
+                        "S3A-M2 cap semantics must be based on actionable candidates and must not be consumed by unchanged existing media.",
+                        path="scanner_incremental_model.cap_semantics",
+                        expected="actionable candidates; unchanged existing media excluded",
+                        actual=cap_semantics,
+                    )
+
+        priority_backlog = _get(summary, "priority_backlog_root_cause", {})
+        if isinstance(priority_backlog, Mapping):
+            required_priority_paths = (
+                "table",
+                "root_public_ref",
+                "total_priority_workset_rows",
+                "legacy_pending_changed_rows",
+                "legacy_pending_changed_outside_safety_window",
+                "rows_matching_existing_media",
+                "rows_imported_but_still_pending_or_changed",
+                "rows_that_should_be_actionable_now",
+                "rows_that_need_repair_or_migration",
+                "root_cause",
+                "repair_migration_plan",
+                "production_db_repair_executed",
+            )
+            for key in required_priority_paths:
+                if key not in priority_backlog:
+                    result.fail(
+                        "s3a_m2_priority_backlog_root_cause_incomplete",
+                        "S3A-M2 must explain the priority workset backlog root cause and repair/migration posture.",
+                        path=f"priority_backlog_root_cause.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+            repair_plan = priority_backlog.get("repair_migration_plan")
+            if isinstance(repair_plan, Mapping):
+                for key in ("candidate_count", "candidate_condition", "requires_owner_approval", "would_modify_db", "validation_after_repair"):
+                    if key not in repair_plan:
+                        result.fail(
+                            "s3a_m2_priority_backlog_repair_plan_incomplete",
+                            "S3A-M2 priority backlog repair must include dry-run conditions, approval requirement, and validation plan.",
+                            path=f"priority_backlog_root_cause.repair_migration_plan.{key}",
+                            expected="present",
+                            actual=None,
+                        )
+
+        local_copy_e2e = _get(summary, "local_copy_repeated_incremental_e2e", {})
+        if isinstance(local_copy_e2e, Mapping):
+            required_local_copy_paths = (
+                "status",
+                "bulk_run_alone_sufficient",
+                "completed",
+                "scenario_count",
+                "pass_criteria_failures",
+                "plan_expensive_ops_zero_all_cycles",
+                "browser_normal_flow_passed",
+                "source_originals_mutated",
+                "production_db_used",
+                "user_retry_recommended",
+            )
+            for key in required_local_copy_paths:
+                if key not in local_copy_e2e:
+                    result.fail(
+                        "s3a_m2_local_copy_incremental_e2e_incomplete",
+                        "S3A-M2 must report the repeated local-copy incremental E2E status before recommending production GUI retry.",
+                        path=f"local_copy_repeated_incremental_e2e.{key}",
+                        expected="present",
+                        actual=None,
+                    )
+            retry_recommended = _as_bool(local_copy_e2e.get("user_retry_recommended", False))
+            if retry_recommended:
+                if not _as_bool(local_copy_e2e.get("completed", False)):
+                    result.fail(
+                        "s3a_m2_retry_recommended_without_local_copy_e2e",
+                        "User production GUI retry must not be recommended before the repeated local-copy incremental E2E completes.",
+                        path="local_copy_repeated_incremental_e2e.completed",
+                        expected=True,
+                        actual=local_copy_e2e.get("completed"),
+                    )
+                failures = local_copy_e2e.get("pass_criteria_failures")
+                if failures:
+                    result.fail(
+                        "s3a_m2_retry_recommended_with_local_copy_failures",
+                        "User production GUI retry must not be recommended while local-copy incremental E2E pass criteria failed.",
+                        path="local_copy_repeated_incremental_e2e.pass_criteria_failures",
+                        expected=[],
+                        actual=failures,
+                    )
+                if _as_int(local_copy_e2e.get("scenario_count", 0)) < 10:
+                    result.fail(
+                        "s3a_m2_retry_recommended_without_required_incremental_cycles",
+                        "User production GUI retry requires the repeated incremental E2E cycle set, not a one-time bulk import.",
+                        path="local_copy_repeated_incremental_e2e.scenario_count",
+                        expected=">=10",
+                        actual=local_copy_e2e.get("scenario_count"),
+                    )
+                if not _as_bool(local_copy_e2e.get("plan_expensive_ops_zero_all_cycles", False)):
+                    result.fail(
+                        "s3a_m2_retry_recommended_with_expensive_plan_ops",
+                        "Normal manual sync Plan must remain metadata-only before recommending production GUI retry.",
+                        path="local_copy_repeated_incremental_e2e.plan_expensive_ops_zero_all_cycles",
+                        expected=True,
+                        actual=local_copy_e2e.get("plan_expensive_ops_zero_all_cycles"),
+                    )
+                if not _as_bool(local_copy_e2e.get("browser_normal_flow_passed", False)):
+                    result.fail(
+                        "s3a_m2_retry_recommended_without_browser_normal_flow",
+                        "User production GUI retry requires real browser evidence for the normal Start manual sync flow.",
+                        path="local_copy_repeated_incremental_e2e.browser_normal_flow_passed",
+                        expected=True,
+                        actual=local_copy_e2e.get("browser_normal_flow_passed"),
+                    )
+                if _as_bool(local_copy_e2e.get("bulk_run_alone_sufficient", True)):
+                    result.fail(
+                        "s3a_m2_retry_recommended_from_bulk_only_evidence",
+                        "A one-time bulk local-copy run is not sufficient evidence for production GUI retry.",
+                        path="local_copy_repeated_incremental_e2e.bulk_run_alone_sufficient",
+                        expected=False,
+                        actual=local_copy_e2e.get("bulk_run_alone_sufficient"),
+                    )
+                if _as_bool(local_copy_e2e.get("source_originals_mutated", False)) or _as_bool(local_copy_e2e.get("production_db_used", False)):
+                    result.fail(
+                        "s3a_m2_local_copy_e2e_safety_violation",
+                        "Local-copy E2E must not mutate original source/iCloud files or use the production DB.",
+                        path="local_copy_repeated_incremental_e2e",
+                        expected="source_originals_mutated=false and production_db_used=false",
+                        actual={
+                            "source_originals_mutated": local_copy_e2e.get("source_originals_mutated"),
+                            "production_db_used": local_copy_e2e.get("production_db_used"),
+                        },
+                    )
+
+        safety_judgement = _get(summary, "manual_sync_safety_judgement", {})
+        if isinstance(safety_judgement, Mapping):
+            safety_status = str(safety_judgement.get("status") or "")
+            allowed_safety_statuses = {
+                "manual_sync_safe_for_normal_use",
+                "manual_sync_safe_with_operator_checks",
+                "manual_sync_not_yet_safe_gui_execute_unvalidated",
+                "manual_sync_not_safe_blockers_remaining",
+            }
+            if safety_status not in allowed_safety_statuses:
+                result.fail(
+                    "s3a_m2_manual_sync_safety_judgement_missing",
+                    "S3A-M2 must include one of the explicit manual sync safety judgement statuses.",
+                    path="manual_sync_safety_judgement.status",
+                    expected=sorted(allowed_safety_statuses),
+                    actual=safety_status,
+                )
+            if status == "target_met" and safety_status not in {"manual_sync_safe_for_normal_use", "manual_sync_safe_with_operator_checks"}:
+                result.fail(
+                    "s3a_m2_target_without_safe_manual_sync_judgement",
+                    "S3A-M2 target_met requires an evidence-based judgement that manual sync is safe for use.",
+                    path="manual_sync_safety_judgement.status",
+                    expected=["manual_sync_safe_for_normal_use", "manual_sync_safe_with_operator_checks"],
+                    actual=safety_status,
+                )
+            if safety_status in {"manual_sync_safe_for_normal_use", "manual_sync_safe_with_operator_checks"}:
+                if not _as_bool(safety_judgement.get("evidence_based", False)):
+                    result.fail(
+                        "s3a_m2_manual_sync_safe_without_evidence",
+                        "Manual sync cannot be marked safe without evidence-based engineering judgement.",
+                        path="manual_sync_safety_judgement.evidence_based",
+                        expected=True,
+                        actual=safety_judgement.get("evidence_based"),
+                    )
+                if not _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_execute_completed", False)):
+                    result.fail(
+                        "s3a_m2_manual_sync_safe_without_gui_execute",
+                        "Manual sync cannot be marked safe for normal use until a GUI Execute run is validated.",
+                        path="launcher_web_admin_acceptance.gui_execute_completed",
+                        expected=True,
+                        actual=_get(summary, "launcher_web_admin_acceptance.gui_execute_completed", None),
+                    )
+
+        if status != "target_met":
+            blockers = _get(summary, "remaining_blockers", [])
+            if isinstance(blockers, list) and not blockers:
+                result.fail(
+                    "s3a_m2_non_target_without_remaining_blockers",
+                    "A non-target S3A-M2 postmortem summary must explicitly list the remaining blockers.",
+                    path="remaining_blockers",
+                    expected="non-empty list",
+                    actual=[],
+                )
+
+        incident = _get(summary, "ai_tag_assignment_incident", {})
+        if _as_int(_get(summary, "final_totals.ai_tagged", _get(summary, "ai_tagging.count", 0))) > 0:
+            if not isinstance(incident, Mapping):
+                result.fail(
+                    "s3a_m2_ai_tag_semantic_validation_missing",
+                    "S3A-M2 cannot use AI-tagged counts as proof without assignment-level semantic validation.",
+                    path="ai_tag_assignment_incident",
+                    expected="mapping",
+                    actual=type(incident).__name__,
+                )
+            else:
+                after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
+                if not after:
+                    result.fail(
+                        "s3a_m2_ai_tag_semantic_validation_missing",
+                        "S3A-M2 cannot use AI-tagged counts as proof without before/after assignment semantics.",
+                        path="ai_tag_assignment_incident.after",
+                        expected="mapping",
+                        actual=after,
+                    )
+
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "pipeline_contract.fresh_dry_run_completed",
+            "source.paths_redacted",
+            "registered_roots_public.paths_redacted",
+            "controlled_delta.hydrated_only",
+            "api_runner_acceptance.dry_run_plan_generated",
+            "classification.reported",
+            "ai_tagging.reported",
+            "ai_tagging.mature_media_tag_policy",
+            "ai_tagging.no_sourceconcept_or_entity_truth_from_ai_only_tags",
+            "public_redaction.passed",
+        ),
+        code="s3a_m2_required_proof_missing",
+        message="S3A-M2 requires fresh dry-run, hydrated-only source handling, stage accounting, mature AI media-tag policy proof, AI-only Entity/SourceConcept safeguards, and public redaction proof.",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "controlled_delta.silently_truncated",
+            "private_artifacts.private_artifacts_committed",
+            "safety.automatic_sync_enabled",
+            "safety.scheduled_sync_enabled",
+            "safety.startup_sync_enabled",
+            "safety.system_service_enabled",
+            "safety.source_icloud_mutation",
+            "safety.source_mutation_attempted",
+            "safety.provider_pixiv_gallery_dl_saucenao_google_calls",
+            "safety.sourceconcept_entity_bridge",
+            "safety.cleanup_delete_reset_drop_truncate",
+            "safety.full_library_reimport",
+            "safety.private_paths_or_hashes_in_public_report",
+        ),
+        code="s3a_m2_forbidden_scope_or_mutation",
+        message="S3A-M2 must keep unattended sync, source/provider expansion, source/iCloud mutation, full-library reimport, destructive cleanup, and private public-report leaks disabled.",
+    )
+
+    cap = _as_int(_get(summary, "controlled_delta.cap", 0))
+    total_seen = _as_int(_get(summary, "dry_run.total_seen", 0))
+    cap_exceeded = _as_bool(_get(summary, "controlled_delta.cap_exceeded", False))
+    if not (6 <= cap <= 1000):
+        result.fail(
+            "s3a_m2_delta_cap_out_of_bounds",
+            "S3A-M2 controlled delta cap must be explicitly above the M1 micro-batch cap and no higher than 1000.",
+            path="controlled_delta.cap",
+            expected="6..1000",
+            actual=cap,
+        )
+    if total_seen > cap and not cap_exceeded:
+        result.fail(
+            "s3a_m2_cap_exceeded_not_reported",
+            "Dry-run counts above the configured cap must set controlled_delta.cap_exceeded.",
+            path="controlled_delta.cap_exceeded",
+            expected=True,
+            actual=False,
+        )
+    if cap_exceeded and status != "blocked_delta_cap_exceeded":
+        result.fail(
+            "s3a_m2_cap_exceeded_wrong_status",
+            "Cap-exceeded dry-runs must stop with blocked_delta_cap_exceeded.",
+            path="pipeline_contract.status",
+            expected="blocked_delta_cap_exceeded",
+            actual=result.status,
+        )
+    if cap_exceeded and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m2_cap_exceeded_claimed_completion",
+            "S3A-M2 cannot claim completion when the production delta exceeded the explicit cap.",
+            path="controlled_delta.cap_exceeded",
+            expected=False,
+            actual=True,
+        )
+
+    execute_requested = _as_bool(_get(summary, "pipeline_contract.execute_after_approval", False))
+    production_performed = _as_bool(_get(summary, "production_acceptance.performed", False))
+    if execute_requested and not _as_bool(_get(summary, "pipeline_contract.exact_operator_approval_present", False)):
+        result.fail(
+            "s3a_m2_execute_without_exact_operator_approval",
+            "S3A-M2 execute requires the exact phase-specific operator approval phrase.",
+            path="pipeline_contract.exact_operator_approval_present",
+            expected=True,
+            actual=False,
+        )
+    if production_performed and not _as_bool(_get(summary, "api_runner_acceptance.execute_ran", False)):
+        result.fail(
+            "s3a_m2_production_acceptance_without_execute",
+            "Production acceptance cannot be marked performed unless the API/runner execute path ran.",
+            path="api_runner_acceptance.execute_ran",
+            expected=True,
+            actual=False,
+        )
+    execute_status_for_localization = str(_get(summary, "execute.status", "") or "").casefold()
+    if execute_status_for_localization != "completed" and (
+        _as_bool(_get(summary, "localization.executed", False)) or _as_bool(_get(summary, "localization.llm_called", False))
+    ):
+        result.fail(
+            "s3a_m2_localization_ran_without_completed_execute",
+            "S3A-M2 localization must not run unless manual execute completed successfully.",
+            path="localization.executed",
+            expected=False,
+            actual=_get(summary, "localization.executed", None),
+        )
+    if production_performed:
+        env_name = str(_get(summary, "readiness.production_settings.violet_env", "") or "").casefold()
+        db_name = str(_get(summary, "readiness.production_settings.db_name", "") or "")
+        db_name_normalized = db_name.casefold()
+        if env_name and env_name != "production":
+            result.fail(
+                "s3a_m2_production_acceptance_not_production_env",
+                "Production acceptance must not be claimed from a non-production VIOLET_ENV.",
+                path="readiness.production_settings.violet_env",
+                expected="production",
+                actual=env_name,
+            )
+        if not db_name:
+            result.fail(
+                "s3a_m2_production_db_identity_missing",
+                "Production acceptance must report the resolved DB identity so test DB execution cannot pass as production.",
+                path="readiness.production_settings.db_name",
+                expected="non-empty production DB name",
+                actual=db_name,
+            )
+        elif db_name_normalized == "blombooru_test" or db_name_normalized.endswith("_test") or db_name_normalized.startswith("test_"):
+            result.fail(
+                "s3a_m2_production_acceptance_on_test_db",
+                "Production acceptance must fail closed when the resolved DB identity is a test database.",
+                path="readiness.production_settings.db_name",
+                expected="production DB name",
+                actual=db_name,
+            )
+        if str(_get(summary, "execute.status", "")).casefold() != "completed":
+            result.fail(
+                "s3a_m2_execute_not_completed",
+                "Performed production acceptance requires a completed manual sync execute run.",
+                path="execute.status",
+                expected="completed",
+                actual=_get(summary, "execute.status", None),
+            )
+        if not _as_bool(_get(summary, "ledger_consistency.passed", False)):
+            result.fail(
+                "s3a_m2_ledger_consistency_failed",
+                "Performed production acceptance requires ledger consistency proof.",
+                path="ledger_consistency.passed",
+                expected=True,
+                actual=_get(summary, "ledger_consistency.passed", None),
+            )
+        localization_status = str(_get(summary, "localization.status", "")).casefold()
+        if localization_status not in {"completed", "completed_noop_no_candidates"}:
+            result.fail(
+                "s3a_m2_localization_not_complete",
+                "Performed production acceptance requires completed localization or an explicit no-candidate completion.",
+                path="localization.status",
+                expected=["completed", "completed_noop_no_candidates"],
+                actual=_get(summary, "localization.status", None),
+            )
+        if _as_int(_get(summary, "localization.failed", 0)) != 0:
+            result.fail(
+                "s3a_m2_localization_failures_present",
+                "Target production acceptance cannot include failed localization rows.",
+                path="localization.failed",
+                expected=0,
+                actual=_get(summary, "localization.failed", None),
+            )
+        loc_diag = str(_get(summary, "localization_diagnosis.diagnosis", "") or "")
+        if loc_diag and loc_diag != "benign_all_localizable_tags_already_localized_or_newly_localized":
+            result.fail(
+                "s3a_m2_localization_diagnosis_not_benign",
+                "Localization diagnosis must explain that remaining localizable tag gaps are resolved or benign.",
+                path="localization_diagnosis.diagnosis",
+                expected="benign_all_localizable_tags_already_localized_or_newly_localized",
+                actual=loc_diag,
+            )
+        if _as_int(_get(summary, "localization_diagnosis.tags_requiring_localization_after_runner", 0)) != 0:
+            result.fail(
+                "s3a_m2_localization_gap_remaining",
+                "S3A-M2 cannot leave localizable tag gaps unreported or unresolved.",
+                path="localization_diagnosis.tags_requiring_localization_after_runner",
+                expected=0,
+                actual=_get(summary, "localization_diagnosis.tags_requiring_localization_after_runner", None),
+            )
+        if str(_get(summary, "localization.status", "") or "") == "partial_localization_max_tags_reached" and not _as_bool(
+            _get(summary, "localization.candidate_overflow", False)
+        ):
+            result.fail(
+                "s3a_m2_localization_partial_without_overflow",
+                "Localization may report partial max-tags only when the candidate query proved overflow beyond the exact limit.",
+                path="localization.candidate_overflow",
+                expected=True,
+                actual=_get(summary, "localization.candidate_overflow", None),
+            )
+        if _as_bool(_get(summary, "localization.candidate_overflow", False)):
+            if localization_status in {"completed", "completed_noop_no_candidates"}:
+                result.fail(
+                    "s3a_m2_localization_overflow_claimed_complete",
+                    "Localization overflow must leave remaining localization work deferred or incomplete, not completed.",
+                    path="localization.status",
+                    expected="deferred or partial overflow status",
+                    actual=_get(summary, "localization.status", None),
+                )
+            if str(_get(summary, "localization.dynamic_source_items_target_status", "") or "") != "deferred":
+                result.fail(
+                    "s3a_m2_localization_overflow_source_items_not_deferred",
+                    "Localization overflow must not mark all imported source items localized.",
+                    path="localization.dynamic_source_items_target_status",
+                    expected="deferred",
+                    actual=_get(summary, "localization.dynamic_source_items_target_status", None),
+                )
+            if not str(_get(summary, "localization.dynamic_source_items_deferred_reason", "") or ""):
+                result.fail(
+                    "s3a_m2_localization_overflow_missing_deferred_reason",
+                    "Localization overflow must include a stable deferred reason for remaining source items.",
+                    path="localization.dynamic_source_items_deferred_reason",
+                    expected="non-empty stable reason",
+                    actual=_get(summary, "localization.dynamic_source_items_deferred_reason", None),
+                )
+
+    gpu_status = str(_get(summary, "gpu_telemetry.validation_status", "") or "").casefold()
+    actual_provider = str(_get(summary, "gpu_telemetry.actual_provider", "") or "")
+    gpu_providers = {"DmlExecutionProvider", "CUDAExecutionProvider"}
+    if gpu_status == "passed" and actual_provider not in gpu_providers:
+        result.fail(
+            "s3a_m2_gpu_pass_without_gpu_provider",
+            "GPU validation cannot pass unless the actual ONNX Runtime provider is DirectML or CUDA.",
+            path="gpu_telemetry.actual_provider",
+            expected=sorted(gpu_providers),
+            actual=actual_provider,
+        )
+    if actual_provider == "CPUExecutionProvider" and status == "target_met":
+        result.fail(
+            "s3a_m2_cpu_fallback_claimed_target",
+            "CPU fallback must be reported as partial and cannot satisfy S3A-M2 GPU validation.",
+            path="gpu_telemetry.actual_provider",
+            expected=sorted(gpu_providers),
+            actual=actual_provider,
+        )
+
+    launcher_status_any = str(_get(summary, "launcher_web_admin_acceptance.status", "") or "").casefold()
+    launcher_execute_clicked = _as_bool(_get(summary, "launcher_web_admin_acceptance.execute_clicked", False))
+    if launcher_status_any == "passed_gui_execute_completed" and not launcher_execute_clicked:
+        result.fail(
+            "s3a_m2_gui_execute_claim_without_click",
+            "Launcher/Web Admin validation must not claim GUI execute completion unless the GUI clicked Execute.",
+            path="launcher_web_admin_acceptance.execute_clicked",
+            expected=True,
+            actual=launcher_execute_clicked,
+        )
+    if launcher_status_any == "passed_gui_execute_completed":
+        gui_completed = _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_execute_completed", False))
+        gui_run_id = _as_int(
+            _get(
+                summary,
+                "launcher_web_admin_acceptance.gui_execute_run_id",
+                _get(summary, "launcher_web_admin_acceptance.production_execute_run_id_seen", 0),
+            )
+        )
+        previous_runner_run_id = max(
+            _as_int(_get(summary, "initial_run.run_id", 0)),
+            _as_int(_get(summary, "remaining_run.run_id", 0)),
+            _as_int(_get(summary, "launcher_web_admin_acceptance.previous_execute_run_id", 0)),
+        )
+        if not gui_completed:
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_completed_run",
+                "Launcher/Web Admin validation must not claim GUI execute completion unless the GUI-created run completed.",
+                path="launcher_web_admin_acceptance.gui_execute_completed",
+                expected=True,
+                actual=_get(summary, "launcher_web_admin_acceptance.gui_execute_completed", None),
+            )
+        if previous_runner_run_id and gui_run_id <= previous_runner_run_id:
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_newer_run",
+                "GUI Execute acceptance must validate a GUI-created run newer than the prior runner/API execute runs.",
+                path="launcher_web_admin_acceptance.gui_execute_run_id",
+                expected=f"> {previous_runner_run_id}",
+                actual=gui_run_id,
+            )
+        gui_provenance_valid = _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_provenance_valid", False))
+        request_source = str(_get(summary, "launcher_web_admin_acceptance.request_source", "") or "")
+        gui_session_present = _as_bool(
+            _get(summary, "launcher_web_admin_acceptance.gui_validation_session_id_present", False)
+        )
+        gui_session_signature_valid = _as_bool(
+            _get(summary, "launcher_web_admin_acceptance.gui_validation_session_signature_valid", False)
+        )
+        if (
+            not gui_provenance_valid
+            or request_source != "web_admin_gui"
+            or not gui_session_present
+            or not gui_session_signature_valid
+        ):
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_gui_provenance",
+                "GUI Execute acceptance must be backed by a Web Admin GUI-created run with a signed durable GUI validation session marker.",
+                path="launcher_web_admin_acceptance",
+                expected={
+                    "gui_provenance_valid": True,
+                    "request_source": "web_admin_gui",
+                    "gui_validation_session_id_present": True,
+                    "gui_validation_session_signature_valid": True,
+                },
+                actual={
+                    "gui_provenance_valid": gui_provenance_valid,
+                    "request_source": request_source,
+                    "gui_validation_session_id_present": gui_session_present,
+                    "gui_validation_session_signature_valid": gui_session_signature_valid,
+                },
+            )
+        gui_plan_hash_bound = _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_plan_hash_bound", False))
+        gui_plan_flow_verified = _as_bool(_get(summary, "launcher_web_admin_acceptance.gui_plan_flow_verified", False))
+        gui_plan_request_id_present = _as_bool(
+            _get(summary, "launcher_web_admin_acceptance.gui_plan_request_id_present", False)
+        )
+        if not (gui_plan_hash_bound and gui_plan_flow_verified and gui_plan_request_id_present):
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_bound_plan_flow",
+                "GUI Execute acceptance must bind the Web Admin session to the browser-generated plan request id and plan hash.",
+                path="launcher_web_admin_acceptance",
+                expected={
+                    "gui_plan_hash_bound": True,
+                    "gui_plan_flow_verified": True,
+                    "gui_plan_request_id_present": True,
+                },
+                actual={
+                    "gui_plan_hash_bound": gui_plan_hash_bound,
+                    "gui_plan_flow_verified": gui_plan_flow_verified,
+                    "gui_plan_request_id_present": gui_plan_request_id_present,
+                },
+            )
+        if not _as_bool(_get(summary, "launcher_web_admin_acceptance.runtime_head_matches_current", False)):
+            result.fail(
+                "s3a_m2_gui_execute_claim_without_current_head_runtime",
+                "GUI Execute acceptance must validate that the GUI-created run was produced by the current report head.",
+                path="launcher_web_admin_acceptance.runtime_head_matches_current",
+                expected=True,
+                actual=_get(summary, "launcher_web_admin_acceptance.runtime_head_matches_current", None),
+            )
+    if launcher_status_any == "passed_gui_execute_not_safe_runner_execute_used":
+        if launcher_execute_clicked:
+            result.fail(
+                "s3a_m2_runner_fallback_claim_with_gui_execute_click",
+                "Runner fallback status must not also claim the GUI clicked Execute.",
+                path="launcher_web_admin_acceptance.execute_clicked",
+                expected=False,
+                actual=True,
+            )
+        if not str(_get(summary, "launcher_web_admin_acceptance.fallback_reason", "") or ""):
+            result.fail(
+                "s3a_m2_runner_fallback_missing_reason",
+                "Runner fallback status must include a stable public-safe fallback reason.",
+                path="launcher_web_admin_acceptance.fallback_reason",
+                expected="non-empty public-safe reason",
+                actual=_get(summary, "launcher_web_admin_acceptance.fallback_reason", None),
+            )
+
+    if status == "dry_run_complete_pending_approval":
+        if production_performed or _as_bool(_get(summary, "api_runner_acceptance.execute_ran", False)):
+            result.fail(
+                "s3a_m2_dry_run_status_after_execute",
+                "Dry-run pending approval status must not report production execute.",
+                path="production_acceptance.performed",
+                expected=False,
+                actual=production_performed,
+            )
+
+    if status == "target_met":
+        incident = _get(summary, "ai_tag_assignment_incident", {})
+        cohort = _get(summary, "cohort_self_audit", {})
+        if not isinstance(incident, Mapping):
+            result.fail(
+                "s3a_m2_ai_tag_assignment_incident_missing",
+                "S3A-M2 target_met requires an assignment-level AI tag incident/self-audit section.",
+                path="ai_tag_assignment_incident",
+            )
+            incident = {}
+        if not isinstance(cohort, Mapping):
+            result.fail(
+                "s3a_m2_cohort_self_audit_missing",
+                "S3A-M2 target_met requires cohort-level comparison against the mature pipeline.",
+                path="cohort_self_audit",
+            )
+            cohort = {}
+        incident_status = str(incident.get("status") or "")
+        if incident_status not in {"repaired", "passed_no_incident"}:
+            result.fail(
+                "s3a_m2_ai_tag_assignment_incident_not_resolved",
+                "S3A-M2 target_met requires the AI tag assignment incident to be repaired or explicitly absent after audit.",
+                path="ai_tag_assignment_incident.status",
+                expected=["repaired", "passed_no_incident"],
+                actual=incident_status,
+            )
+        incident_after = incident.get("after") if isinstance(incident.get("after"), Mapping) else {}
+        expected_nonproper_normal = _as_int(incident_after.get("high_conf_nonproper_expected_normal_count", 0))
+        incorrect_nonproper_suggestions = _as_int(incident_after.get("high_conf_nonproper_incorrect_suggestion_count", 0))
+        nonproper_normal_count = _as_int(incident_after.get("high_conf_nonproper_normal_count", 0))
+        expected_proper_normal = _as_int(incident_after.get("high_conf_proper_expected_normal_count", 0))
+        incorrect_proper_suggestions = _as_int(incident_after.get("high_conf_proper_incorrect_suggestion_count", 0))
+        proper_normal_count = _as_int(incident_after.get("high_conf_proper_normal_count", 0))
+        if (expected_nonproper_normal > 0 or expected_proper_normal > 0) and _as_bool(
+            incident_after.get("all_ai_assignments_are_suggestions", False)
+        ):
+            result.fail(
+                "s3a_m2_all_ai_tags_suggestions_with_mature_policy_expected",
+                "S3A-M2 cannot pass when all AI tags are suggestions while mature-policy high-confidence tags should be normal media tags.",
+                path="ai_tag_assignment_incident.after.all_ai_assignments_are_suggestions",
+                expected=False,
+                actual=True,
+            )
+        if incorrect_nonproper_suggestions != 0:
+            result.fail(
+                "s3a_m2_high_conf_nonproper_ai_tags_still_suggestions",
+                "High-confidence non-proper AI tags must be normal media tags after repair.",
+                path="ai_tag_assignment_incident.after.high_conf_nonproper_incorrect_suggestion_count",
+                expected=0,
+                actual=incorrect_nonproper_suggestions,
+            )
+        if expected_nonproper_normal > 0 and nonproper_normal_count <= 0:
+            result.fail(
+                "s3a_m2_high_conf_nonproper_ai_tags_not_normalized",
+                "S3A-M2 target_met requires normal non-suggestion AI tag assignments for high-confidence non-proper tags.",
+                path="ai_tag_assignment_incident.after.high_conf_nonproper_normal_count",
+                expected="> 0",
+                actual=nonproper_normal_count,
+            )
+        if incorrect_proper_suggestions != 0:
+            result.fail(
+                "s3a_m2_high_conf_proper_ai_tags_still_suggestions",
+                "High-confidence mature-policy character/copyright/artist AI media tags must not be forced into suggestions.",
+                path="ai_tag_assignment_incident.after.high_conf_proper_incorrect_suggestion_count",
+                expected=0,
+                actual=incorrect_proper_suggestions,
+            )
+        if expected_proper_normal > 0 and proper_normal_count < expected_proper_normal:
+            result.fail(
+                "s3a_m2_high_conf_proper_ai_tags_not_normalized",
+                "S3A-M2 target_met requires mature-policy character/copyright/artist AI media tags to be normal media tags when above threshold.",
+                path="ai_tag_assignment_incident.after.high_conf_proper_normal_count",
+                expected=f">= {expected_proper_normal}",
+                actual=proper_normal_count,
+            )
+        if _as_int(incident.get("entity_truth_violations_found", 0)) != 0:
+            result.fail(
+                "s3a_m2_ai_only_entity_truth_violation",
+                "AI-only proper nouns must not create SourceConcept truth, Entity truth, or confirmed entity assignments.",
+                path="ai_tag_assignment_incident.entity_truth_violations_found",
+                expected=0,
+                actual=incident.get("entity_truth_violations_found"),
+            )
+        if _as_int(incident.get("localization_remaining_gap", 0)) != 0:
+            result.fail(
+                "s3a_m2_incident_localization_gap_remaining",
+                "AI tag assignment repair must not leave unexplained localization gaps.",
+                path="ai_tag_assignment_incident.localization_remaining_gap",
+                expected=0,
+                actual=incident.get("localization_remaining_gap"),
+            )
+        ui_verification = incident.get("ui_verification")
+        if not isinstance(ui_verification, Mapping):
+            ui_verification = _get(summary, "post_repair_ui_validation", {})
+        if not isinstance(ui_verification, Mapping) or str(ui_verification.get("status") or "") != "passed":
+            result.fail(
+                "s3a_m2_post_repair_ui_validation_not_passed",
+                "S3A-M2 target_met requires post-repair UI validation showing normal tags outside suggestion grouping.",
+                path="ai_tag_assignment_incident.ui_verification.status",
+                expected="passed",
+                actual=ui_verification.get("status") if isinstance(ui_verification, Mapping) else None,
+            )
+        elif _as_int(ui_verification.get("normal_visible_pass_count", 0)) < _as_int(ui_verification.get("sample_count", 0)):
+            result.fail(
+                "s3a_m2_post_repair_ui_normal_tags_not_visible",
+                "Every post-repair UI sample with normal AI tags must show normal GENERAL/META groups.",
+                path="ai_tag_assignment_incident.ui_verification.normal_visible_pass_count",
+                expected=ui_verification.get("sample_count"),
+                actual=ui_verification.get("normal_visible_pass_count"),
+            )
+        cohort_status = str(cohort.get("status") or "")
+        if cohort_status not in {"passed", "passed_after_repair"}:
+            result.fail(
+                "s3a_m2_cohort_self_audit_not_passed",
+                "Cohort-level S3A-M2 regression audit must pass before target_met.",
+                path="cohort_self_audit.status",
+                expected=["passed", "passed_after_repair"],
+                actual=cohort_status,
+            )
+        if _as_int(cohort.get("blocker_anomaly_count", 0)) != 0:
+            result.fail(
+                "s3a_m2_cohort_blocker_anomalies_remaining",
+                "S3A-M2 target_met cannot leave cohort-level blocker anomalies unresolved.",
+                path="cohort_self_audit.blocker_anomaly_count",
+                expected=0,
+                actual=cohort.get("blocker_anomaly_count"),
+            )
+        if not _as_bool(cohort.get("normal_ai_tag_semantics_consistent_with_policy", False)):
+            result.fail(
+                "s3a_m2_cohort_ai_tag_semantics_abnormal",
+                "Cohort audit must prove normal-vs-suggestion AI tag assignment semantics match policy.",
+                path="cohort_self_audit.normal_ai_tag_semantics_consistent_with_policy",
+                expected=True,
+                actual=cohort.get("normal_ai_tag_semantics_consistent_with_policy"),
+            )
+        if _as_int(cohort.get("affected_media_count", 0)) <= 0 or _as_int(cohort.get("baseline_media_count", 0)) <= 0:
+            result.fail(
+                "s3a_m2_cohort_sample_missing",
+                "Cohort audit must include both affected S3A-M2 media and an older mature-pipeline baseline cohort.",
+                path="cohort_self_audit",
+                expected="affected_media_count > 0 and baseline_media_count > 0",
+                actual={
+                    "affected_media_count": cohort.get("affected_media_count"),
+                    "baseline_media_count": cohort.get("baseline_media_count"),
+                },
+            )
+        if not _as_bool(incident.get("public_safe", False)) or not _as_bool(cohort.get("public_safe", False)):
+            result.fail(
+                "s3a_m2_incident_or_cohort_report_not_public_safe",
+                "Incident and cohort audit summaries must be explicitly public safe.",
+                path="ai_tag_assignment_incident.public_safe",
+                expected=True,
+                actual={"incident_public_safe": incident.get("public_safe"), "cohort_public_safe": cohort.get("public_safe")},
+            )
+        initial_validation = _get(summary, "initial_run_validation", {})
+        if not isinstance(initial_validation, Mapping) or not _as_bool(initial_validation.get("passed", False)):
+            result.fail(
+                "s3a_m2_initial_run_validation_not_passed",
+                "S3A-M2 aggregate target_met requires the initial production run to be validated before claiming aggregate completion.",
+                path="initial_run_validation.passed",
+                expected=True,
+                actual=initial_validation.get("passed") if isinstance(initial_validation, Mapping) else None,
+            )
+        required_target_true = (
+            "production_acceptance.performed",
+            "pipeline_contract.exact_operator_approval_present",
+            "api_runner_acceptance.execute_ran",
+            "ledger_consistency.passed",
+            "launcher_web_admin_acceptance.validated",
+            "standard_pipeline_flow.public_safe",
+        )
+        _check_required_boolean_paths(
+            summary,
+            result,
+            required_target_true,
+            code="s3a_m2_target_proof_missing",
+            message="S3A-M2 target_met requires approved production execute, ledger proof, and launcher/Web Admin validation.",
+        )
+        if str(_get(summary, "standard_pipeline_flow.status", "") or "").casefold() != "completed":
+            result.fail(
+                "s3a_m2_standard_pipeline_flow_incomplete",
+                "S3A-M2 target_met requires the standardized scan/hydrate/rescan/import/classify/AI/localize/ledger/telemetry/redaction/GUI/report flow to be complete.",
+                path="standard_pipeline_flow.status",
+                expected="completed",
+                actual=_get(summary, "standard_pipeline_flow.status", None),
+            )
+        for step_name in (
+            "scan_current_source_delta",
+            "detect_cloud_placeholders",
+            "hydrate_placeholders_non_destructively",
+            "rescan_after_hydration",
+            "import_all_current_importable_items",
+            "classify_imported_media",
+            "run_ai_tagging",
+            "run_localization_or_stable_reasons",
+            "record_ledger_for_every_planned_item",
+            "capture_resource_gpu_telemetry",
+            "validate_public_redaction",
+            "validate_launcher_web_admin_workflow",
+            "produce_public_report_and_contract",
+        ):
+            step_path = f"standard_pipeline_flow.steps.{step_name}.completed"
+            if not _as_bool(_get(summary, step_path, False)):
+                result.fail(
+                    "s3a_m2_standard_pipeline_step_incomplete",
+                    "Every standard S3A-M2 pipeline step must be completed before target_met.",
+                    path=step_path,
+                    expected=True,
+                    actual=_get(summary, step_path, None),
+                )
+        launcher_status = str(_get(summary, "launcher_web_admin_acceptance.status", "")).casefold()
+        allowed_launcher_statuses = {
+            "passed_gui_execute_completed",
+        }
+        if launcher_status not in allowed_launcher_statuses:
+            result.fail(
+                "s3a_m2_launcher_validation_not_passed",
+                "S3A-M2 target_met requires a real launcher/Web Admin GUI Execute validation to pass.",
+                path="launcher_web_admin_acceptance.status",
+                expected=sorted(allowed_launcher_statuses),
+                actual=_get(summary, "launcher_web_admin_acceptance.status", None),
+            )
+        expected_execute_run_id = _as_int(_get(summary, "execute.run_id", 0))
+        launcher_execute_run_id = _as_int(_get(summary, "launcher_web_admin_acceptance.production_execute_run_id_seen", 0))
+        if expected_execute_run_id and launcher_execute_run_id != expected_execute_run_id:
+            result.fail(
+                "s3a_m2_launcher_validation_run_id_mismatch",
+                "Launcher/Web Admin validation artifact must identify the production execute run it validates.",
+                path="launcher_web_admin_acceptance.production_execute_run_id_seen",
+                expected=expected_execute_run_id,
+                actual=launcher_execute_run_id,
+            )
+        expected_head_sha = str(_get(summary, "head_sha", "") or "")
+        launcher_head_sha = str(_get(summary, "launcher_web_admin_acceptance.validated_head_sha", "") or "")
+        if expected_head_sha and launcher_head_sha != expected_head_sha:
+            result.fail(
+                "s3a_m2_launcher_validation_head_sha_mismatch",
+                "Launcher/Web Admin validation artifact must match the report head SHA.",
+                path="launcher_web_admin_acceptance.validated_head_sha",
+                expected=expected_head_sha,
+                actual=launcher_head_sha,
+            )
+        expected_source_identity = str(_get(summary, "source.public_source_identity", "") or "")
+        launcher_source_identity = str(_get(summary, "launcher_web_admin_acceptance.public_source_identity", "") or "")
+        if expected_source_identity and launcher_source_identity != expected_source_identity:
+            result.fail(
+                "s3a_m2_launcher_validation_source_mismatch",
+                "Launcher/Web Admin validation artifact must match the public-safe source identity for this execute.",
+                path="launcher_web_admin_acceptance.public_source_identity",
+                expected=expected_source_identity,
+                actual=launcher_source_identity,
+            )
+        if gpu_status != "passed" or actual_provider not in gpu_providers:
+            result.fail(
+                "s3a_m2_gpu_validation_not_passed",
+                "S3A-M2 target_met requires GPU validation through DirectML or CUDA.",
+                path="gpu_telemetry.validation_status",
+                expected="passed",
+                actual=_get(summary, "gpu_telemetry.validation_status", None),
+            )
+        placeholder_status = str(_get(summary, "placeholder_hydration.status", "") or "").casefold()
+        if placeholder_status not in {"completed", "completed_with_stable_failures", "not_required"}:
+            result.fail(
+                "s3a_m2_placeholder_hydration_missing",
+                "S3A-M2 target_met requires placeholder hydration evidence or an explicit not-required state.",
+                path="placeholder_hydration.status",
+                expected=["completed", "completed_with_stable_failures", "not_required"],
+                actual=_get(summary, "placeholder_hydration.status", None),
+            )
+        if _as_int(_get(summary, "placeholder_hydration.remaining_placeholders_after_hydration", 0)) != 0:
+            result.fail(
+                "s3a_m2_placeholders_remaining_after_hydration",
+                "S3A-M2 target_met cannot treat remaining iCloud placeholders as completed work.",
+                path="placeholder_hydration.remaining_placeholders_after_hydration",
+                expected=0,
+                actual=_get(summary, "placeholder_hydration.remaining_placeholders_after_hydration", None),
+            )
+        if _as_int(_get(summary, "final_inventory.current_importable_hydrated_supported_items", 0)) != 0:
+            result.fail(
+                "s3a_m2_importable_items_remaining",
+                "All currently importable hydrated supported delta items must be imported before target_met.",
+                path="final_inventory.current_importable_hydrated_supported_items",
+                expected=0,
+                actual=_get(summary, "final_inventory.current_importable_hydrated_supported_items", None),
+            )
+        if _as_int(_get(summary, "final_inventory.placeholders_remaining", 0)) != 0:
+            result.fail(
+                "s3a_m2_final_placeholders_remaining",
+                "Final inventory must show zero remaining placeholders or stable accepted failure details outside target_met.",
+                path="final_inventory.placeholders_remaining",
+                expected=0,
+                actual=_get(summary, "final_inventory.placeholders_remaining", None),
+            )
+        if _as_bool(_get(summary, "final_inventory.scan_cap_stopped_scan", False)):
+            result.fail(
+                "s3a_m2_final_inventory_cap_stopped_scan",
+                "Final remaining-delta inventory must not be cap-truncated when target_met is claimed.",
+                path="final_inventory.scan_cap_stopped_scan",
+                expected=False,
+                actual=True,
+            )
+        if _as_int(_get(summary, "final_totals.imported", _get(summary, "execute.imported", 0))) <= 0:
+            result.fail(
+                "s3a_m2_target_without_imported_delta",
+                "S3A-M2 target_met requires a real imported production delta.",
+                path="final_totals.imported",
+                expected="> 0",
+                actual=_get(summary, "final_totals.imported", _get(summary, "execute.imported", None)),
+            )
+        if _as_int(_get(summary, "final_totals.classified", _get(summary, "classification.count", 0))) <= 0:
+            result.fail(
+                "s3a_m2_target_without_classification",
+                "S3A-M2 target_met requires classification work to complete for the delta.",
+                path="final_totals.classified",
+                expected="> 0",
+                actual=_get(summary, "final_totals.classified", _get(summary, "classification.count", None)),
+            )
+        if _as_int(_get(summary, "final_totals.ai_tagged", _get(summary, "ai_tagging.count", 0))) <= 0:
+            result.fail(
+                "s3a_m2_target_without_ai_tagging",
+                "S3A-M2 target_met requires AI tagging work to complete for the delta.",
+                path="final_totals.ai_tagged",
+                expected="> 0",
+                actual=_get(summary, "final_totals.ai_tagged", _get(summary, "ai_tagging.count", None)),
+            )
+        telemetry_root = str(_get(summary, "private_artifacts.telemetry_root", "") or "")
+        if telemetry_root and not telemetry_root.replace("\\", "/").startswith(".local_manifests/s3a_m2_delta_e2e/telemetry"):
+            result.fail(
+                "s3a_m2_telemetry_artifact_outside_approved_tree",
+                "S3A-M2 raw telemetry must stay under .local_manifests/s3a_m2_delta_e2e/telemetry.",
+                path="private_artifacts.telemetry_root",
+                expected=".local_manifests/s3a_m2_delta_e2e/telemetry",
+                actual=telemetry_root,
+            )
+
+    public_payloads: list[Any] = [summary]
+    for report_key in ("markdown_report_path", "ai_tag_incident_report_path", "gui_validation_postmortem_path"):
+        report_path = _get(summary, f"public_reports.{report_key}", None)
+        if not isinstance(report_path, str) or not report_path:
+            continue
+        path = (CONTRACT_ROOT / report_path).resolve()
+        try:
+            path.relative_to(CONTRACT_ROOT)
+            if path.exists():
+                public_payloads.append({f"public_{report_key}_text": path.read_text(encoding="utf-8")})
+        except Exception:
+            result.fail(
+                "s3a_m2_public_report_path_invalid",
+                "S3A-M2 public markdown report path must stay under the repository root.",
+                path=f"public_reports.{report_key}",
+                expected="repo-relative path",
+                actual=report_path,
+            )
+    findings: list[dict[str, Any]] = []
+    for payload in public_payloads:
+        findings.extend(scan_public_payload(payload))
+    if findings:
+        result.fail(
+            "s3a_m2_public_payload_not_safe",
+            "S3A-M2 public artifacts must not leak local paths, filenames, secrets, source roots, source URLs, or private provenance.",
+            path="public_redaction",
+            actual=findings[:5],
+        )
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -6456,6 +7625,7 @@ CUSTOM_CHECKS = {
     "s2g_real1_bounded_ai_tagging_validation": _check_s2g_real1_bounded_ai_tagging_validation,
     "s2g_manual_sync_foundation": _check_s2g_manual_sync_foundation,
     "s3a_m1_manual_sync_execute": _check_s3a_m1_manual_sync_execute,
+    "s3a_m2_production_delta_e2e": _check_s3a_m2_production_delta_e2e,
     "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "s3a_prod1_operator_incremental_sync": _check_s3a_prod1_operator_incremental_sync,
     "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync": _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync,

@@ -1,0 +1,58 @@
+# S3A-M2 AI Tag Assignment Incident
+
+## Discovery
+
+- Discovered by manual production UI validation of newly imported S3A-M2 media.
+- Visible symptom: high-confidence non-proper AI tags appeared only under suggestion UI grouping.
+
+## Scope
+
+- Affected run IDs: `[7, 8]`.
+- Affected media: `349`.
+- Assignments inspected: `17464`.
+
+## Root Cause
+
+- `manual_sync_execute_used_an_overbroad_suggestion_override; the first repair then retained an over-strict proper-noun suggestion-only policy instead of mature media-tag semantics.`.
+- Why missed: previous gates counted ai_tagged media and an over-strict proper-noun suggestion safety rule, but did not assert mature assignment-level normal-vs-suggestion semantics for high-confidence visual or character/copyright/artist media tags.
+
+## Repair
+
+- Status: `repaired`.
+- Before: `{'all_ai_assignments_are_suggestions': False, 'high_conf_nonproper_expected_normal_count': 12973, 'high_conf_nonproper_incorrect_suggestion_count': 0, 'high_conf_proper_expected_normal_count': 157, 'high_conf_proper_incorrect_suggestion_count': 157, 'high_conf_proper_normal_count': 0, 'proper_noun_non_suggestion_count': 0, 'proper_noun_suggestion_count': 207, 'classification_unknown_or_empty_rate_percent': 6.59}`.
+- Repair results: `{'assignments_converted_from_suggestion_to_normal': 157, 'assignments_converted_from_normal_to_suggestion': 0, 'assignments_kept_suggestion': 4334, 'assignments_kept_normal': 12973, 'proper_noun_suggestions_inspected': 207, 'proper_noun_suggestions_converted_to_normal': 157, 'proper_noun_suggestions_kept_suggestion': 50, 'proper_noun_suggestions_kept_reason': 'below_confirm_threshold_suggestion', 'assignments_deleted_or_replaced': 0, 'duplicate_rows_created': 0, 'classification_rechecked': False, 'classification_items_rechecked': 0, 'classification_items_changed': 0, 'db_commit_performed': True, 'after_audit_session': 'fresh_session_after_commit', 'post_commit_fresh_session_verified': True}`.
+- After: `{'all_ai_assignments_are_suggestions': False, 'high_conf_nonproper_expected_normal_count': 12973, 'high_conf_nonproper_incorrect_suggestion_count': 0, 'high_conf_nonproper_normal_count': 12973, 'high_conf_proper_expected_normal_count': 157, 'high_conf_proper_incorrect_suggestion_count': 0, 'high_conf_proper_normal_count': 157, 'low_conf_proper_suggestion_count': 50, 'proper_noun_non_suggestion_count': 157, 'proper_noun_suggestion_count': 50, 'classification_content_class_counts': {'anime': 314, 'non_anime': 12, 'unknown': 23}, 'classification_unknown_or_empty_rate_percent': 6.59}`.
+- UI verification: `{'status': 'passed', 'method': 'playwright_msedge_against_launcher_started_production_server_after_second_repair', 'computer_use_attempted': True, 'computer_use_result': 'unavailable_in_current_tool_session; tool discovery did not expose computer-use controls after clean retry, fallback used Playwright/Edge', 'sample_count': 8, 'normal_visible_pass_count': 8, 'mature_proper_normal_visible_pass_count': 3, 'proper_suggestion_visible_pass_count': 8, 'any_suggestion_visible_pass_count': 8, 'samples_expect_proper_suggestions': 0, 'screenshot_count': 3, 'raw_artifact': '.local_manifests/s3a_m2_delta_e2e/incident/ui-validation-private.json', 'raw_screenshots_committed': False, 'raw_ids_private': True, 'public_safe': True}`.
+
+## Cohort Self-Audit
+
+- Baseline selection: `{'method': "latest older non-S3A-M2 media with source='ai_wd' before affected cohort upload window", 'limit': 500, 'media_count': 194}`.
+- S3A-M2 cohort size: `349`; baseline size: `194`.
+- Affected tag assignment: `{'media_count': 349, 'assignment_count': 17464, 'distinct_ai_tag_count': 1704, 'tag_count_per_media': {'min': 9, 'avg': 50.04, 'median': 49.0, 'p95': 72, 'max': 99}, 'normal_tag_count_per_media': {'min': 5, 'avg': 37.622, 'median': 37.0, 'p95': 54, 'max': 81}, 'suggestion_tag_count_per_media': {'min': 0, 'avg': 12.418, 'median': 12.0, 'p95': 21, 'max': 29}, 'category_counts': {'character': 207, 'general': 16905, 'meta': 352}, 'suggestion_counts': {'false': 13130, 'true': 4334}, 'category_suggestion_counts': {'character|suggestion=false': 157, 'character|suggestion=true': 50, 'general|suggestion=false': 12621, 'general|suggestion=true': 4284, 'meta|suggestion=false': 352}, 'confidence_bucket_counts': {'0.20-0.349': 4303, '0.35-0.499': 2969, '0.50-0.649': 2519, '0.65-0.849': 3479, '>=0.85': 4194}, 'source_counts': {'ai_wd': 17464}, 'all_ai_assignments_are_suggestions': False, 'proper_noun_suggestion_count': 50, 'proper_noun_non_suggestion_count': 157, 'proper_noun_suggestion_rate_percent': 24.155, 'high_conf_proper_expected_normal_count': 157, 'high_conf_proper_incorrect_suggestion_count': 0, 'high_conf_proper_normal_count': 157, 'high_conf_proper_suggestion_rate_percent': 0.0, 'low_conf_proper_suggestion_count': 50, 'high_conf_nonproper_expected_normal_count': 12973, 'high_conf_nonproper_incorrect_suggestion_count': 0, 'high_conf_nonproper_normal_count': 12973, 'high_conf_nonproper_suggestion_rate_percent': 0.0, 'low_conf_or_edge_suggestion_count': 4284, 'missing_confidence_count': 0, 'rows_needing_repair_count': 0}`.
+- Baseline tag assignment: `{'media_count': 194, 'assignment_count': 10000, 'distinct_ai_tag_count': 1455, 'tag_count_per_media': {'min': 9, 'avg': 51.546, 'median': 50.0, 'p95': 80, 'max': 97}, 'normal_tag_count_per_media': {'min': 7, 'avg': 39.526, 'median': 39.0, 'p95': 61, 'max': 81}, 'suggestion_tag_count_per_media': {'min': 1, 'avg': 12.021, 'median': 11.0, 'p95': 21, 'max': 26}, 'category_counts': {'character': 135, 'general': 9667, 'meta': 198}, 'suggestion_counts': {'false': 7668, 'true': 2332}, 'category_suggestion_counts': {'character|suggestion=false': 127, 'character|suggestion=true': 8, 'general|suggestion=false': 7343, 'general|suggestion=true': 2324, 'meta|suggestion=false': 198}, 'confidence_bucket_counts': {'0.20-0.349': 2328, '0.35-0.499': 1573, '0.50-0.649': 1387, '0.65-0.849': 2047, '>=0.85': 2665}, 'source_counts': {'ai_wd': 10000}, 'all_ai_assignments_are_suggestions': False, 'proper_noun_suggestion_count': 8, 'proper_noun_non_suggestion_count': 127, 'proper_noun_suggestion_rate_percent': 5.926, 'high_conf_proper_expected_normal_count': 127, 'high_conf_proper_incorrect_suggestion_count': 0, 'high_conf_proper_normal_count': 127, 'high_conf_proper_suggestion_rate_percent': 0.0, 'low_conf_proper_suggestion_count': 8, 'high_conf_nonproper_expected_normal_count': 7541, 'high_conf_nonproper_incorrect_suggestion_count': 0, 'high_conf_nonproper_normal_count': 7541, 'high_conf_nonproper_suggestion_rate_percent': 0.0, 'low_conf_or_edge_suggestion_count': 2324, 'missing_confidence_count': 0, 'rows_needing_repair_count': 0}`.
+- Affected classification: `{'media_count': 349, 'content_class_counts': {'anime': 314, 'non_anime': 12, 'unknown': 23}, 'content_class_source_counts': {'clip': 349}, 'content_class_model_counts': {'clip-vit-base-patch32': 349}, 'dynamic_source_classification_status_counts': {'classified': 349}, 'dynamic_source_ai_tagging_status_counts': {'ai_tagged': 349}, 'unknown_or_empty_count': 23, 'unknown_or_empty_rate_percent': 6.59}`.
+- Baseline classification: `{'media_count': 194, 'content_class_counts': {'anime': 182, 'non_anime': 2, 'null': 10}, 'content_class_source_counts': {'heuristic': 184, 'null': 10}, 'content_class_model_counts': {'null': 10, 'wd_tag_count_phase47_s2_no_clip_download': 184}, 'dynamic_source_classification_status_counts': {'classified': 184}, 'dynamic_source_ai_tagging_status_counts': {'tagged': 184}, 'unknown_or_empty_count': 10, 'unknown_or_empty_rate_percent': 5.155}`.
+- Affected localization: `{'lang': 'zh-CN', 'localizable_distinct_tags': 1646, 'localizable_covered_by_db_or_static': 1646, 'localizable_remaining_gap': 0, 'proper_noun_distinct_tags': 58, 'proper_noun_covered_by_db_or_static': 30, 'proper_noun_suggestion_localization_policy': 'entity_truth_deferred_display_strings_optional_without_sourceconcept_or_entity_truth', 'suggestion_only_tags_create_hidden_localization_gap': False}`.
+- Storage/thumbnail: `{'media_count': 349, 'app_storage_file_present': 349, 'app_storage_file_missing': 0, 'thumbnail_present': 349, 'thumbnail_missing': 0, 'paths_redacted': True}`.
+- Ledger: `{'runs': [{'run_id': 7, 'status': 'completed', 'expected_total_seen': 453, 'represented_run_items': 453, 'represented_all_planned_items': True}, {'run_id': 8, 'status': 'completed', 'expected_total_seen': 173, 'represented_run_items': 173, 'represented_all_planned_items': True}], 'expected_total_seen': 626, 'represented_run_items': 626, 'represented_all_planned_items': True, 'state_counts': {'imported': 349, 'skipped_existing_media': 39, 'skipped_placeholder': 36, 'skipped_unsupported': 202}, 'reason_counts': {'cloud_placeholder': 36, 'existing_media_hash': 39, 'hidden': 2, 'imported': 349, 'unsupported_extension': 200}, 'public_safe': True}`.
+- Entity truth: `{'media_entity_candidates_from_ai_tag': 0, 'media_entity_assignments_on_affected_media': 0, 'media_entity_assignments_from_ai_tag_or_llm_suggestion': 0, 'confirmed_or_locked_ai_entity_assignments': 0, 'sourceconcept_truth_from_ai_only_detected': False, 'violations_found': 0, 'public_safe': True}`.
+- Anomalies: `[]`.
+- Blocker anomalies remaining: `0`.
+
+No private filenames, paths, content hashes, prompts, API keys, source URLs, or raw media identifiers are included in this public incident report.
+
+## Non-Target AI / Localization Follow-Up Incident
+
+- Discovery: real production Web Admin smoke test for job `#13` made the staged pipeline usable enough for manual UI inspection, and the project owner observed that non-anime/non-target images must not enter WD anime tagging or localization.
+- Read-only audit artifact: `.local_manifests/s3a_m2_delta_e2e/non_target_ai_audit/manual-sync-non-target-ai-audit-runs-7-8-13.json`.
+- Runs audited: `[7, 8, 13]`; DB writes performed by audit: `False`.
+- Aggregate media scope: `414` media; content classes `anime=379`, `non_anime=12`, `unknown=23`.
+- Job #13 result: `anime=65`; confirmed non-target media with AI tags from this latest job: `0`.
+- Historical #7/#8 confirmed non-target impact: `12` `non_anime` media received `source='ai_wd'` assignments.
+- Confirmed non-target AI assignment count: `429`; distinct confirmed non-target AI tags: `238`; zh-CN coverage among those tags: `237`.
+- Historical #7/#8 unknown/uncertain media with AI tags: `23`; unknown/uncertain AI assignment count: `1216`. Unknown is not non-target and is not included in default destructive repair candidates.
+- Root cause class: manual execute treated AI/localization as downstream stages for every imported media row instead of enforcing classification as the gate for confirmed non-target WD/anime-tagging applicability.
+- Future-run prevention: manual execute now performs classification before AI tagging; confirmed `non_anime` skips AI/localization, classified `unknown` remains downstream-eligible, and classifier-unavailable/unclassified rows become classification blockers instead of non-target skips.
+- Repair status: `not_executed_requires_project_owner_approval`.
+- Proposed repair: back up affected row identities privately, remove/invalidate only AI-generated `ai_wd` media-tag assignments on confirmed `non_anime` #7/#8 media after project-owner approval, preserve manual tags and target/anime/unknown media tags, mark affected confirmed non-target source rows non-applicable where appropriate, and re-run aggregate validation plus Entity/SourceConcept truth checks.
+- Remaining blocker: the historical confirmed non-target assignment pollution is not repaired yet, so this PR is not safe to merge solely on the basis of job #13 completion.
