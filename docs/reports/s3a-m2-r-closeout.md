@@ -31,14 +31,20 @@ split rather than shipped as another giant PR.
   run #18 the correct operator meaning is
   `completed_with_retryable_failures`.
 - The `75` run #18 deferred import candidates are visible in the next normal
-  plan.
+  plan as root-scoped DB continuation rows.
 - Root 2 has `20` older app-media-backed/source-missing downstream-incomplete
   rows. They are visible, but current planner wording does not classify them as
   follow-up. The canonical model should classify them as `APP_MEDIA_FOLLOWUP`
   when app storage exists, or `BROKEN_STATE` if app storage is missing.
-- Next normal plan is explainable:
-  `347` estimated imports, `0` downstream follow-up, no unsafe partial scan,
-  and dry-run-only import/classification/AI/localization work `0/0/0/0`.
+- The first R0/R1 attempt reported `347` estimated imports from the current
+  source-read-capable planner. The safe-default R0 audit no longer recomputes
+  that exact number because the current planner may walk/stat source entries.
+  DB-only evidence explains the known buckets: `75` run #18 deferred
+  continuation rows, `104` other continuation rows, `11` retryable source-read
+  failures, `4` placeholder rows excluded from import, and `20`
+  app-media-backed follow-up candidates that are not import work. Ledger-missing
+  and mtime-derived filesystem categories require explicit opt-in planner
+  evidence.
 
 ## R1 Design
 

@@ -2,9 +2,11 @@
 """Read-only S3A-M2-R post-merge manual-sync health audit.
 
 This audit is intentionally diagnostic. It loads the ignored production
-profile, reads the production DB, optionally invokes the current dry-run
-planner, and writes public-safe aggregate reports. It never executes manual
-sync and never updates source files, app storage, or database rows.
+profile, reads the production DB, and writes public-safe aggregate reports.
+By default it does not walk, stat, hash, decode, or open source/iCloud
+originals. The current source-read-capable dry-run planner is opt-in only via
+``--allow-source-read-plan``. The audit never executes manual sync and never
+updates source files, app storage, or database rows.
 """
 
 from __future__ import annotations
@@ -106,6 +108,41 @@ def git_value(*args: str) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def git_status_snapshot() -> dict[str, Any]:
+    completed = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    if completed.returncode != 0:
+        return {
+            "working_tree_dirty_at_generation": None,
+            "dirty_files_at_generation": [],
+            "dirty_untracked_file_count_at_generation": None,
+            "dirty_state_error": completed.stderr.strip() or "git_status_failed",
+        }
+    tracked: list[str] = []
+    untracked_count = 0
+    for raw_line in completed.stdout.splitlines():
+        if not raw_line:
+            continue
+        status = raw_line[:2]
+        path = raw_line[3:].strip()
+        if status == "??":
+            untracked_count += 1
+        elif path:
+            tracked.append(path)
+    return {
+        "working_tree_dirty_at_generation": bool(completed.stdout.strip()),
+        "dirty_files_at_generation": sorted(tracked),
+        "dirty_untracked_file_count_at_generation": int(untracked_count),
+        "dirty_state_note": "Tracked dirty paths are listed; untracked paths are counted but omitted from the public report.",
+    }
+
+
 def counter_dict(counter: Counter[Any]) -> dict[str, int]:
     return {str(key): int(value) for key, value in sorted(counter.items(), key=lambda row: str(row[0]))}
 
@@ -116,6 +153,14 @@ def top_counter(counter: Counter[Any], *, limit: int = 40) -> dict[str, int]:
 
 def bool_status(value: bool) -> str:
     return "yes" if value else "no"
+
+
+def report_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return bool_status(value)
+    if value is None:
+        return "not computed"
+    return str(value)
 
 
 def load_production_profile_env() -> dict[str, Any]:
@@ -625,9 +670,121 @@ def summarize_next_plan(
     max_files: int,
     run_deferred_prefixes: set[str],
     include_plan: bool,
+    allow_source_read_plan: bool,
+    root_inventory: Mapping[str, Any],
 ) -> dict[str, Any]:
     if not include_plan:
-        return {"skipped": True, "reason": "include_next_plan_false"}
+        return {
+            "skipped": True,
+            "evidence_mode": "not_run",
+            "reason": "include_next_plan_false",
+            "source_read_capable_planner_invoked": False,
+        }
+
+    if not allow_source_read_plan:
+        from app.models import DynamicSourceItem
+
+        continuation_rows = (
+            db.query(DynamicSourceItem.relative_path_hash)
+            .filter(DynamicSourceItem.source_root_id == int(root.id))
+            .filter(
+                (DynamicSourceItem.sync_state == "deferred_unprocessed")
+                | (DynamicSourceItem.deferred_reason.in_(list(CONTINUATION_REASONS)))
+                | (DynamicSourceItem.failure_reason.in_(list(CONTINUATION_REASONS)))
+            )
+            .all()
+        )
+        continuation_prefixes = {str(row[0] or "")[:16] for row in continuation_rows}
+        run18_visible = len({prefix for prefix in run_deferred_prefixes if prefix in continuation_prefixes})
+        debts = root_inventory.get("debts") if isinstance(root_inventory.get("debts"), dict) else {}
+        reason_counts = (
+            root_inventory.get("reason_counts_top") if isinstance(root_inventory.get("reason_counts_top"), dict) else {}
+        )
+        continuation_total = int(debts.get("deferred_not_processed_budget_stop_total") or 0)
+        other_continuation = max(0, continuation_total - run18_visible)
+        retry_read = int(debts.get("retryable_source_read_failure_total") or 0)
+        retry_all = int(debts.get("retryable_source_failure_total") or 0)
+        placeholders = int(debts.get("placeholder_total") or 0)
+        app_followup = int(debts.get("app_media_downstream_incomplete_total") or 0)
+        unsupported = int(reason_counts.get("unsupported_extension") or reason_counts.get("unsupported") or 0)
+        stat_error = int(reason_counts.get("stat_error") or reason_counts.get("source_stat_error") or 0)
+        return {
+            "skipped": False,
+            "evidence_mode": "db_only_source_safe",
+            "source_read_capable_planner_invoked": False,
+            "source_read_policy": {
+                "default_avoids_source_walk_stat_open_hash_decode": True,
+                "default_avoids_cloud_files_hydration_risk": True,
+                "source_read_capable_plan_requires_flag": "--allow-source-read-plan",
+                "source_read_capable_plan_status": "not_run_in_safe_default",
+                "safe_default_precision_note": (
+                    "The exact normal-plan import estimate and filesystem delta categories are not recomputed "
+                    "because the current planner may walk/stat source entries. DB-only evidence classifies "
+                    "known ledger continuation, retry, placeholder, and app-media debt only."
+                ),
+            },
+            "counts": {
+                "estimated_import_count": None,
+                "estimated_import_count_status": "not_computed_in_safe_default",
+                "estimated_downstream_followup_count": None,
+                "estimated_downstream_followup_count_status": "not_computed_by_current_planner_in_safe_default",
+                "batch_executable": None,
+                "partial_scan": None,
+                "partial_scan_reason": "not_run_source_read_capable_planner",
+                "more_batches_remain": None,
+                "unsafe_partial_scan": None,
+                "plan_items": None,
+                "total_seen": None,
+                "scanned_files": 0,
+            },
+            "limits": {
+                "stat_required_count": 0,
+                "hash_required_count": 0,
+                "source_file_walk_count": 0,
+                "execute_import_classification_ai_localization": "0/0/0/0 because this audit is read-only DB analysis",
+                "limit_precision_note": "These are safe-audit operation counts, not current planner limits.",
+            },
+            "source_delta_workset": {
+                "status": "not_computed_in_safe_default",
+                "reason": "requires source walk/stat path in current planner",
+            },
+            "run18_deferred_continuation_visibility_db_only": {
+                "run18_deferred_import_count": len(run_deferred_prefixes),
+                "present_as_root_continuation_rows": int(run18_visible),
+                "missing_from_root_continuation_rows": max(0, len(run_deferred_prefixes) - run18_visible),
+                "plan_position_status": "not_computed_in_safe_default",
+                "note": (
+                    "Visibility here means the run #18 deferred rows still exist as root-scoped DB continuation "
+                    "rows. Ordering inside the current normal planner is not recomputed without opt-in source-read planning."
+                ),
+            },
+            "db_only_import_candidate_breakdown": {
+                "previous_347_exact_plan_count_status": "not_recomputed_in_safe_default",
+                "exact_normal_plan_import_count": None,
+                "exact_normal_plan_import_count_reason": "requires opt-in source-read-capable planner path",
+                "run18_deferred_continuation_rows": int(run18_visible),
+                "other_continuation_rows": int(other_continuation),
+                "known_db_continuation_total": int(continuation_total),
+                "known_retryable_source_read_failure_rows": int(retry_read),
+                "known_retryable_source_failure_rows_including_source_missing": int(retry_all),
+                "known_placeholder_deferred_rows_excluded_from_import": int(placeholders),
+                "known_app_media_followup_candidates_not_import": int(app_followup),
+                "root_scope_stat_error_reason_rows": int(stat_error),
+                "root_scope_unsupported_reason_rows": int(unsupported),
+                "ledger_missing_candidates": "unknown_without_source_walk_stat",
+                "mtime_new_candidates": "unknown_without_source_walk_stat",
+                "safety_window_candidates": "unknown_without_source_walk_stat",
+                "old_mtime_known_pending_candidates": "unknown_without_source_walk_stat",
+                "long_term_blocker_assessment": (
+                    "Known DB continuation/retry/placeholder/app-media debt is visible. The safe default cannot "
+                    "prove whether ledger-missing or mtime-derived filesystem candidates are long-term blockers."
+                ),
+            },
+            "current_plan_boundary_note": (
+                "Default R0 evidence is DB-only and source-safe. Source-read-capable planner evidence is omitted "
+                "unless --allow-source-read-plan is passed."
+            ),
+        }
 
     from app.services.dynamic_library_sync_service import MANUAL_SYNC_NORMAL_PLAN_MODE, plan_manual_sync_dry_run
 
@@ -649,6 +806,14 @@ def summarize_next_plan(
     source_delta = limits.get("source_delta_workset") if isinstance(limits.get("source_delta_workset"), dict) else {}
     return {
         "skipped": False,
+        "evidence_mode": "source_read_capable_opt_in",
+        "source_read_capable_planner_invoked": True,
+        "source_read_policy": {
+            "source_read_capable_plan_requires_flag": "--allow-source-read-plan",
+            "hydrated_only": False,
+            "default_safe_audit": False,
+            "note": "This opt-in path may walk/stat source entries and is not used by default R0 validation.",
+        },
         "counts": {
             "estimated_import_count": int(counts.get("estimated_import_count") or 0),
             "estimated_downstream_followup_count": int(counts.get("estimated_downstream_followup_count") or 0),
@@ -700,7 +865,7 @@ def summarize_next_plan(
             "note": "Position uses public relative_path_hash prefixes; detailed paths remain private.",
         },
         "current_plan_boundary_note": (
-            "Current dry-run planner is read-only but still stats source entries. In this run hash_required_count was "
+            "Opt-in current dry-run planner is read-only but may stat source entries. In this run hash_required_count was "
             f"{int(limits.get('hash_required_count') or 0)}."
         ),
     }
@@ -716,6 +881,27 @@ def summarize_state_machine(db: Any, *, root_id: int) -> dict[str, Any]:
             for condition in filters:
                 query = query.filter(condition)
         rows = query.group_by(column).all()
+        return {str(value or "null"): int(count) for value, count in sorted(rows, key=lambda row: str(row[0]))}
+
+    def grouped_run_item_root(column: Any) -> dict[str, int]:
+        rows = (
+            db.query(column, func.count(DynamicSyncRunItem.id))
+            .join(DynamicSourceItem, DynamicSyncRunItem.source_item_id == DynamicSourceItem.id)
+            .filter(DynamicSourceItem.source_root_id == int(root_id))
+            .group_by(column)
+            .all()
+        )
+        return {str(value or "null"): int(count) for value, count in sorted(rows, key=lambda row: str(row[0]))}
+
+    def grouped_run_status_root() -> dict[str, int]:
+        rows = (
+            db.query(DynamicSyncRun.status, func.count(func.distinct(DynamicSyncRun.id)))
+            .join(DynamicSyncRunItem, DynamicSyncRunItem.sync_run_id == DynamicSyncRun.id)
+            .join(DynamicSourceItem, DynamicSyncRunItem.source_item_id == DynamicSourceItem.id)
+            .filter(DynamicSourceItem.source_root_id == int(root_id))
+            .group_by(DynamicSyncRun.status)
+            .all()
+        )
         return {str(value or "null"): int(count) for value, count in sorted(rows, key=lambda row: str(row[0]))}
 
     fields = {
@@ -759,6 +945,12 @@ def summarize_state_machine(db: Any, *, root_id: int) -> dict[str, Any]:
             DynamicSourceItem.deferred_reason,
             [DynamicSourceItem.source_root_id == int(root_id)],
         ),
+        "DynamicSyncRun.status": grouped_run_status_root(),
+        "DynamicSyncRunItem.item_state": grouped_run_item_root(DynamicSyncRunItem.item_state),
+        "DynamicSyncRunItem.action": grouped_run_item_root(DynamicSyncRunItem.action),
+        "DynamicSyncRunItem.reason": grouped_run_item_root(DynamicSyncRunItem.reason),
+    }
+    global_fields = {
         "DynamicSyncRun.status": grouped(DynamicSyncRun, DynamicSyncRun.status),
         "DynamicSyncRunItem.item_state": grouped(DynamicSyncRunItem, DynamicSyncRunItem.item_state),
         "DynamicSyncRunItem.action": grouped(DynamicSyncRunItem, DynamicSyncRunItem.action),
@@ -790,8 +982,17 @@ def summarize_state_machine(db: Any, *, root_id: int) -> dict[str, Any]:
             report_status_fields = {"load_error": exc.__class__.__name__}
 
     return {
+        "scope": {
+            "root_id": int(root_id),
+            "run_item_counts_scope": "root_scoped_join_dynamic_source_item",
+            "global_counts_location": "global_context.field_value_counts",
+        },
         "field_value_counts": fields,
         "field_value_roles": role_map,
+        "global_context": {
+            "note": "Global run/run-item counts are retained only as context; root-specific inventory uses DynamicSourceItem.source_root_id filtering.",
+            "field_value_counts": global_fields,
+        },
         "report_summary_status_fields": report_status_fields,
         "ui_terminal_statuses_current": [
             "completed",
@@ -865,19 +1066,36 @@ def build_answers(summary: Mapping[str, Any]) -> dict[str, Any]:
     plan = summary["next_normal_plan"]
     run_rec = run["reconciliation"]
     debts = root["debts"]
+    plan_counts = plan.get("counts") if isinstance(plan.get("counts"), dict) else {}
+    plan_limits = plan.get("limits") if isinstance(plan.get("limits"), dict) else {}
+    deferred_visibility = (
+        plan.get("run18_deferred_continuation_visibility_db_only")
+        if isinstance(plan.get("run18_deferred_continuation_visibility_db_only"), dict)
+        else plan.get("run18_deferred_import_visibility", {})
+    )
+    import_breakdown = (
+        plan.get("db_only_import_candidate_breakdown")
+        if isinstance(plan.get("db_only_import_candidate_breakdown"), dict)
+        else {
+            "exact_normal_plan_import_count": plan_counts.get("estimated_import_count"),
+            "exact_normal_plan_import_count_reason": "computed_by_opt_in_source_read_capable_plan",
+        }
+    )
     return {
         "q1_880_downstream_followup": {
-            "were_all_880_actionable": False,
+            "were_all_880_actionable_at_run_start": True,
+            "were_all_880_actionable_after_run": False,
             "answer": (
-                "No. The 880 run #18 follow-up rows were actionable at run start as app-media-backed downstream work, "
-                "but after run #18 they are terminal/stable: 880/880 are downstream complete and 0 of those rows remain current follow-up. "
+                "At run #18 plan time, the 880 follow-up rows were genuinely actionable app-media-backed downstream work. "
+                "After run #18, those same 880 rows are terminal/downstream complete and should no longer be treated as actionable follow-up. "
+                "Future similar rows can still accumulate if historical downstream_followup_planned remains overloaded, so lifecycle cleanup is needed. "
                 "A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling."
             ),
             "redundant_duplicate_noop_after_run": True,
             "passed_through_without_work": False,
             "can_accumulate_forever": True,
-            "can_consume_future_cap": False,
-            "expected_to_reappear_next_plan": False,
+            "can_consume_future_cap": "not_proven_by_safe_default",
+            "expected_to_reappear_next_plan": "not_recomputed_by_safe_default",
             "recommended_disposition": "Mark through canonical lifecycle as STABLE_NOOP/HISTORICAL_DIAGNOSTIC unless downstream status regresses.",
             "evidence": {
                 "run18_downstream_followup_rows": run_rec["downstream_followup_rows"],
@@ -886,7 +1104,8 @@ def build_answers(summary: Mapping[str, Any]) -> dict[str, Any]:
                 "root_app_media_downstream_incomplete_current_planner_followup_total": debts[
                     "app_media_incomplete_current_planner_followup_total"
                 ],
-                "next_plan_estimated_downstream_followup_count": plan.get("counts", {}).get("estimated_downstream_followup_count"),
+                "next_plan_estimated_downstream_followup_count": plan_counts.get("estimated_downstream_followup_count"),
+                "next_plan_evidence_mode": plan.get("evidence_mode"),
             },
         },
         "q2_120_planned_imports": {
@@ -900,7 +1119,8 @@ def build_answers(summary: Mapping[str, Any]) -> dict[str, Any]:
             "failed": run_rec["failed"],
             "deferred_unprocessed": run_rec["deferred_unprocessed"],
             "failure_budget_stop": run_rec["import_stopped_by"],
-            "deferred_visible_next_plan": plan.get("run18_deferred_import_visibility", {}),
+            "deferred_visible_next_plan": deferred_visibility,
+            "next_plan_import_candidate_breakdown": import_breakdown,
             "can_failure_budget_repeat": True,
             "requires_retry_list": True,
         },
@@ -920,27 +1140,44 @@ def build_answers(summary: Mapping[str, Any]) -> dict[str, Any]:
             "historical_backlog_can_consume_cap": debts["historical_backlog_can_consume_cap"],
         },
         "q4_next_normal_manual_sync_health": {
-            "healthy": bool(
-                not plan.get("skipped")
-                and plan.get("counts", {}).get("batch_executable")
-                and not plan.get("counts", {}).get("unsafe_partial_scan")
+            "evidence_mode": plan.get("evidence_mode"),
+            "safe_default_source_read_capable_planner_invoked": bool(plan.get("source_read_capable_planner_invoked")),
+            "healthy": (
+                None
+                if plan.get("evidence_mode") == "db_only_source_safe"
+                else bool(
+                    not plan.get("skipped")
+                    and plan_counts.get("batch_executable")
+                    and not plan_counts.get("unsafe_partial_scan")
+                )
             ),
-            "estimated_import_count": plan.get("counts", {}).get("estimated_import_count"),
-            "estimated_downstream_followup_count": plan.get("counts", {}).get("estimated_downstream_followup_count"),
+            "health_precision_note": (
+                "Safe default does not recompute executable planner health because that path may walk/stat source entries."
+                if plan.get("evidence_mode") == "db_only_source_safe"
+                else "Planner health computed by opt-in source-read-capable plan."
+            ),
+            "estimated_import_count": plan_counts.get("estimated_import_count"),
+            "estimated_import_count_status": plan_counts.get("estimated_import_count_status"),
+            "estimated_downstream_followup_count": plan_counts.get("estimated_downstream_followup_count"),
+            "estimated_downstream_followup_count_status": plan_counts.get("estimated_downstream_followup_count_status"),
+            "import_candidate_breakdown": import_breakdown,
             "retryable_source_read_failure_count": debts["retryable_source_read_failure_total"],
             "retryable_source_failure_count_including_source_missing": debts["retryable_source_failure_total"],
             "placeholder_count": debts["placeholder_total"],
             "continuation_count": debts["deferred_not_processed_budget_stop_total"],
-            "hidden_by_mtime_or_safety_window": False,
+            "hidden_by_mtime_or_safety_window": "unknown_without_source_walk_stat",
             "hidden_by_stable_noop": False,
             "app_media_backed_incomplete_invisible": debts["app_media_incomplete_invisible_total"],
             "app_media_backed_incomplete_current_planner_followup": debts[
                 "app_media_incomplete_current_planner_followup_total"
             ],
             "plan_expensive_ops": {
-                "stat_required_count": plan.get("limits", {}).get("stat_required_count"),
-                "hash_required_count": plan.get("limits", {}).get("hash_required_count"),
-                "execute_import_classification_ai_localization": "0/0/0/0 because this was dry-run planning only",
+                "stat_required_count": plan_limits.get("stat_required_count"),
+                "hash_required_count": plan_limits.get("hash_required_count"),
+                "execute_import_classification_ai_localization": plan_limits.get(
+                    "execute_import_classification_ai_localization",
+                    "0/0/0/0 because this was dry-run planning only",
+                ),
             },
         },
         "q5_state_machine_complexity": {
@@ -963,6 +1200,7 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     answers = summary["answers"]
     state = summary["state_machine_inventory"]
     path_rows = summary["path_liveness"]
+    generator = summary["generator_code_ref"]
 
     lines: list[str] = []
     lines.append("# S3A-M2-R Post-Merge Manual Sync Health Audit")
@@ -970,8 +1208,19 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     lines.append("## Scope")
     lines.append("")
     lines.append("- Mode: production read-only audit; no Execute, no DB writes, no source/iCloud mutation.")
-    lines.append(f"- Base merge commit verified by branch start: `{BASE_MERGE_COMMIT}`.")
-    lines.append(f"- Audit head: `{summary['head_sha']}` on branch `{summary['branch']}`.")
+    lines.append("- Default evidence mode: DB-only/source-safe; no source walk/stat/open/hash/decode/hydration.")
+    lines.append(f"- Audited baseline main commit: `{summary['audited_baseline_main_commit']}`.")
+    lines.append(
+        f"- Generator code head at run: `{generator['generator_git_head_at_run']}` "
+        f"on branch `{generator['branch']}`."
+    )
+    lines.append(f"- Report commit head: `{report_value(summary['report_commit_head'])}` ({summary['report_commit_head_note']}).")
+    lines.append(
+        "- Working tree dirty at generation: "
+        f"{report_value(generator['working_tree_dirty_at_generation'])}; "
+        f"tracked dirty files: {', '.join(generator['dirty_files_at_generation']) or 'none'}; "
+        f"untracked count: {generator['dirty_untracked_file_count_at_generation']}."
+    )
     lines.append(f"- Production root audited: `{summary['root']['id']} / {summary['root']['label']}`.")
     lines.append(f"- Raw private evidence root: `{summary['raw_private_artifact_root']}`.")
     lines.append("")
@@ -984,12 +1233,13 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     lines.append("")
     lines.append("| Question | Answer |")
     lines.append("|---|---|")
-    lines.append(f"| Were all 880 genuinely actionable follow-up items? | {bool_status(q1['were_all_880_actionable'])}; they were actionable at run start, but 0 remain actionable after run #18. |")
+    lines.append(f"| Were all 880 genuinely actionable at run #18 plan time? | {bool_status(q1['were_all_880_actionable_at_run_start'])}; they were app-media-backed downstream follow-up work. |")
+    lines.append(f"| Are those same 880 actionable after run #18? | {bool_status(q1['were_all_880_actionable_after_run'])}; 880/880 are terminal/downstream complete. |")
     lines.append(f"| Redundant/duplicate/no-op after run? | {bool_status(q1['redundant_duplicate_noop_after_run'])}; classify as stable diagnostic unless downstream status regresses. |")
     lines.append(f"| Did they merely pass through planned state without work? | {bool_status(q1['passed_through_without_work'])}; statuses show downstream completion. |")
-    lines.append(f"| Can similar rows accumulate forever? | {bool_status(q1['can_accumulate_forever'])}; yes if `downstream_followup_planned` is retained as a historical state. |")
-    lines.append(f"| Can they consume future caps? | {bool_status(q1['can_consume_future_cap'])}; current planner reports 0 downstream follow-up next plan. |")
-    lines.append(f"| Expected to reappear next normal plan? | {bool_status(q1['expected_to_reappear_next_plan'])}. |")
+    lines.append(f"| Can similar rows accumulate forever? | {bool_status(q1['can_accumulate_forever'])}; if `downstream_followup_planned` is retained as a historical state. |")
+    lines.append(f"| Can they consume future caps? | {report_value(q1['can_consume_future_cap'])}; safe default does not rerun the source-read-capable planner. |")
+    lines.append(f"| Expected to reappear next normal plan? | {report_value(q1['expected_to_reappear_next_plan'])}; not recomputed in source-safe mode. |")
     lines.append(f"| Recommended disposition | {q1['recommended_disposition']} |")
     lines.append("")
     lines.append("### 120 planned imports")
@@ -1004,10 +1254,42 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     lines.append("- `completed_with_failures` is a partial success for run #18: DB truth for processed imports/follow-up passed, but source-read retry/deferred continuation remains.")
     lines.append("- Operator wording should become `completed_with_retryable_failures`; validator/report should not call it a clean completed run or a systemic failure.")
     visibility = q2["deferred_visible_next_plan"]
+    if plan.get("evidence_mode") == "db_only_source_safe":
+        lines.append(
+            f"- Run #18 deferred imports visible as root-scoped DB continuation rows: "
+            f"{visibility.get('present_as_root_continuation_rows')} / {visibility.get('run18_deferred_import_count')}; "
+            "planner ordering is not recomputed in safe default mode."
+        )
+    else:
+        lines.append(
+            f"- Run #18 deferred imports visible in next plan by public hash prefix: "
+            f"{visibility.get('selected_in_next_plan')} / {visibility.get('run18_deferred_import_count')}; "
+            f"first position `{visibility.get('first_selected_position')}`, last `{visibility.get('last_selected_position')}`."
+        )
+    breakdown = q2["next_plan_import_candidate_breakdown"]
+    lines.append("")
+    lines.append("Safe-default breakdown of the earlier 347 next-plan import-candidate claim:")
+    lines.append("")
+    lines.append("| Bucket | Count / status |")
+    lines.append("|---|---:|")
+    lines.append(f"| Exact 347 normal-plan import count | {report_value(breakdown.get('exact_normal_plan_import_count'))} |")
+    lines.append(f"| Exact count reason | {breakdown.get('exact_normal_plan_import_count_reason')} |")
+    lines.append(f"| Run #18 deferred continuation rows | {report_value(breakdown.get('run18_deferred_continuation_rows'))} |")
+    lines.append(f"| Other continuation rows | {report_value(breakdown.get('other_continuation_rows'))} |")
+    lines.append(f"| Known DB continuation total | {report_value(breakdown.get('known_db_continuation_total'))} |")
+    lines.append(f"| Known retryable source-read failures | {report_value(breakdown.get('known_retryable_source_read_failure_rows'))} |")
+    lines.append(f"| Placeholder rows excluded from import | {report_value(breakdown.get('known_placeholder_deferred_rows_excluded_from_import'))} |")
+    lines.append(f"| App-media follow-up candidates, not import | {report_value(breakdown.get('known_app_media_followup_candidates_not_import'))} |")
+    lines.append(f"| Root-scope stat-error reason rows | {report_value(breakdown.get('root_scope_stat_error_reason_rows'))} |")
+    lines.append(f"| Root-scope unsupported reason rows | {report_value(breakdown.get('root_scope_unsupported_reason_rows'))} |")
+    lines.append(f"| Ledger-missing candidates | {report_value(breakdown.get('ledger_missing_candidates'))} |")
+    lines.append(f"| Mtime-new / safety-window / old-mtime candidates | {report_value(breakdown.get('mtime_new_candidates'))} / {report_value(breakdown.get('safety_window_candidates'))} / {report_value(breakdown.get('old_mtime_known_pending_candidates'))} |")
+    lines.append("")
     lines.append(
-        f"- Run #18 deferred imports visible in next plan by public hash prefix: "
-        f"{visibility.get('selected_in_next_plan')} / {visibility.get('run18_deferred_import_count')}; "
-        f"first position `{visibility.get('first_selected_position')}`, last `{visibility.get('last_selected_position')}`."
+        "The first R0/R1 attempt reported `347` from the current source-read-capable planner. "
+        "This safe-default report does not recompute that exact number because the planner path can walk/stat source entries. "
+        "The DB-only evidence proves the 75 run #18 deferred rows remain visible as continuation and identifies the known DB debt buckets; "
+        "ledger-missing and mtime-derived filesystem categories require explicit opt-in planner evidence."
     )
     lines.append("")
     lines.append("### Remaining debt inventory")
@@ -1031,20 +1313,22 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     lines.append("")
     lines.append("| Check | Result |")
     lines.append("|---|---|")
-    lines.append(f"| Healthy/readable next plan | {bool_status(q4['healthy'])} |")
-    lines.append(f"| Estimated imports | {q4['estimated_import_count']} |")
-    lines.append(f"| Estimated downstream follow-up | {q4['estimated_downstream_followup_count']} |")
+    lines.append(f"| Evidence mode | {q4['evidence_mode']} |")
+    lines.append(f"| Source-read-capable planner invoked | {bool_status(q4['safe_default_source_read_capable_planner_invoked'])} |")
+    lines.append(f"| Healthy/readable next plan | {report_value(q4['healthy'])}; {q4['health_precision_note']} |")
+    lines.append(f"| Estimated imports | {report_value(q4['estimated_import_count'])}; {report_value(q4['estimated_import_count_status'])} |")
+    lines.append(f"| Estimated downstream follow-up | {report_value(q4['estimated_downstream_followup_count'])}; {report_value(q4['estimated_downstream_followup_count_status'])} |")
     lines.append(f"| Retryable source-read failure debt | {q4['retryable_source_read_failure_count']} |")
     lines.append(f"| Retryable/source-missing rows including media-backed old debt | {q4['retryable_source_failure_count_including_source_missing']} |")
     lines.append(f"| Placeholder debt | {q4['placeholder_count']} |")
     lines.append(f"| Continuation debt | {q4['continuation_count']} |")
-    lines.append(f"| Hidden by mtime/safety window | {bool_status(q4['hidden_by_mtime_or_safety_window'])} |")
-    lines.append(f"| Hidden by stable no-op | {bool_status(q4['hidden_by_stable_noop'])} |")
+    lines.append(f"| Hidden by mtime/safety window | {report_value(q4['hidden_by_mtime_or_safety_window'])} |")
+    lines.append(f"| Hidden by stable no-op | {report_value(q4['hidden_by_stable_noop'])} |")
     lines.append(f"| App-media incomplete invisible | {q4['app_media_backed_incomplete_invisible']} |")
     lines.append(f"| App-media incomplete caught as current planner follow-up | {q4['app_media_backed_incomplete_current_planner_followup']} |")
     lines.append(f"| Plan stat/hash counts | stat `{q4['plan_expensive_ops']['stat_required_count']}`, hash `{q4['plan_expensive_ops']['hash_required_count']}` |")
     lines.append("")
-    lines.append("Important nuance: the current dry-run planner is read-only, but not purely metadata-only in implementation terms because it stats source entries. The R1 target model should make Plan metadata-only and reserve source reads/hash/decode for Execute.")
+    lines.append("Important nuance: the current dry-run planner is not used by default in this R0 audit because it can walk/stat source entries. The R1 target model should make Plan metadata-only and reserve source reads/hash/decode for Execute.")
     lines.append("")
     lines.append("## State-Machine Inventory")
     lines.append("")
@@ -1066,7 +1350,14 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     lines.append(json.dumps(state["report_summary_status_fields"], ensure_ascii=False, indent=2, sort_keys=True, default=json_default))
     lines.append("```")
     lines.append("")
-    lines.append("## Path Liveness Audit")
+    lines.append("## Design-Level Path Liveness Audit")
+    lines.append("")
+    lines.append(
+        "This is report-level path analysis, not executable formal verification. "
+        "Executable verification is deferred to PR-R1/R2: lifecycle table-driven tests, "
+        "WorkItem boundary tests, root-scoped validator tests, report/status contradiction "
+        "regression tests, and browser validation for UI/progress."
+    )
     lines.append("")
     lines.append("| Path | Terminates | Invisible risk | Cap forever | Blocks unrelated | Report risk | Source mutation | Missing test focus |")
     lines.append("|---|---|---|---|---|---|---|---|")
@@ -1083,9 +1374,9 @@ def markdown_report(summary: Mapping[str, Any]) -> str:
     lines.append("## R0 Conclusion")
     lines.append("")
     lines.append("- PR #126 acceptance was truthful for current-stage DB truth, but current operator wording and reports still blur partial success, retryable item failures, and continuation.")
-    lines.append("- The 880 follow-up batch is no longer a hidden long-term blocker in the next normal plan, but `downstream_followup_planned` should stop serving as both historical source state and active work label.")
+    lines.append("- The run #18 880 follow-up rows were real actionable follow-up at plan time and are terminal after run #18; this safe-default report does not prove future planner cap behavior for similar overloaded historical states.")
     lines.append("- The 20 older media-backed/source-missing downstream-incomplete rows are visible but semantically misclassified for the desired model: FOLLOWUP should use app-managed media and not depend on source readability.")
-    lines.append("- The 75 run #18 deferred import candidates are visible in the next normal plan, but the next plan also sees additional import candidates; this needs WorkItem ordering and retry/debt UI rather than another giant execution PR.")
+    lines.append("- The 75 run #18 deferred import candidates are visible as DB continuation rows. Exact normal-plan ordering/import count requires explicit opt-in source-read-capable planner evidence and is not part of default R0 validation.")
     lines.append("- R2/R3/R4 are too large for a single low-risk PR if implemented all at once. This branch should stop at R0/R1 and split implementation into lifecycle/WorkItem core, UI/tooling cleanup, and docs/runbook follow-through.")
     return "\n".join(lines)
 
@@ -1110,27 +1401,54 @@ def build_summary(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, A
             max_files=int(args.max_files),
             run_deferred_prefixes=run_deferred_prefixes,
             include_plan=not bool(args.skip_next_plan),
+            allow_source_read_plan=bool(args.allow_source_read_plan),
+            root_inventory=root_summary,
         )
         state_machine = summarize_state_machine(db, root_id=int(args.root_id))
         generated_at = datetime.now(timezone.utc)
+        branch = git_value("branch", "--show-current")
+        generator_head = git_value("rev-parse", "HEAD")
+        dirty_snapshot = git_status_snapshot()
         public = {
             "phase": PHASE,
             "generated_at": generated_at,
             "mode": "production_read_only" if args.production else "local_read_only",
-            "branch": git_value("branch", "--show-current"),
-            "head_sha": git_value("rev-parse", "HEAD"),
-            "base_merge_commit": BASE_MERGE_COMMIT,
-            "base_merge_commit_is_head": git_value("rev-parse", "HEAD") == BASE_MERGE_COMMIT,
+            "branch": branch,
+            "audited_baseline_main_commit": BASE_MERGE_COMMIT,
+            "generator_git_head_at_run": generator_head,
+            "generator_code_ref": {
+                "branch": branch,
+                "script": "scripts/audit_s3a_m2_r_post_merge_health.py",
+                "generator_git_head_at_run": generator_head,
+                **dirty_snapshot,
+            },
+            "report_commit_head": None,
+            "report_commit_head_note": "A committed report cannot truthfully contain the final self-referential commit SHA; use PR closeout/head metadata after commit.",
+            "pr_head_at_closeout": None,
+            "pr_head_at_closeout_note": "Reported in PR/final closeout after the report regeneration commit.",
             "public_safe": True,
             "production_db_mutated": False,
             "source_icloud_mutated": False,
             "production_execute_run": False,
+            "default_audit_source_safe": not bool(args.allow_source_read_plan),
+            "source_read_capable_plan_requested": bool(args.allow_source_read_plan),
             "root": source_root_public(root),
             "run18": run_summary,
             "root_inventory": root_summary,
             "next_normal_plan": next_plan,
             "state_machine_inventory": state_machine,
             "path_liveness": path_liveness_matrix(),
+            "formal_verification_status": {
+                "state_machine_verified": False,
+                "path_liveness_audit_level": "design_level_report_analysis",
+                "executable_verification_deferred_to": [
+                    "lifecycle table-driven tests",
+                    "WorkItem boundary tests",
+                    "root-scoped validator tests",
+                    "report/status contradiction regression tests",
+                    "browser validation for UI/progress",
+                ],
+            },
             "raw_private_artifact_root": ".local_manifests/s3a_m2_r/post_merge_health/",
             "artifact_lifecycle": {
                 "script": "phase-scoped operational runner",
@@ -1168,7 +1486,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--root-id", type=int, default=DEFAULT_ROOT_ID)
     parser.add_argument("--run-id", type=int, default=DEFAULT_RUN_ID)
     parser.add_argument("--max-files", type=int, default=1000)
-    parser.add_argument("--skip-next-plan", action="store_true", help="Skip invoking the current dry-run planner.")
+    parser.add_argument("--skip-next-plan", action="store_true", help="Skip all next-plan evidence.")
+    parser.add_argument(
+        "--allow-source-read-plan",
+        action="store_true",
+        help=(
+            "Opt in to the current dry-run planner path. This may walk/stat source entries and is not used "
+            "by the default source/iCloud-safe R0 audit."
+        ),
+    )
     parser.add_argument("--write-public", action="store_true", help="Write public JSON/Markdown reports under docs/reports.")
     parser.add_argument("--output-dir", type=Path, default=PRIVATE_OUTPUT_DIR)
     return parser.parse_args()

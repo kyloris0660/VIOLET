@@ -51,7 +51,8 @@
 - PR #122 / `PROD-LAUNCHER-UX1/PF1` is merged. Merge commit: `aece424df2814ef0d840f9fe472a9d19478d2020`. It added the Electron production launcher, local production profile/runtime config, root-level Windows entrypoint, and production/development runtime separation.
 - PR #123 / `PD1-A-R1` is merged. Merge commit: `4724530d83767a62b6525a58bb1a1d04e973d48e`. It reconciled the post-#122 route and made `production_development_separation_contract_v1` the current executable separation gate.
 - PR #124 / `S2G-M1` is merged. Merge commit: `7b4602d4e536b1eef4fdc50548ceeb2c858cb5a9`. It added the AI tagging execution profile, local capability probe/report, provider fallback/load-control/provenance foundation, manual sync dry-run planner, manual sync status/plan API surface, and `s2g_manual_sync_foundation_contract_v1`; it did not run production writes.
-- S3A-M1 is the active feature branch. It adds guarded manual sync execute, Admin UI controls, launcher entry, CLI runner, and `s3a_m1_manual_sync_execute_contract_v1`. Production acceptance remains pending separate exact operator approval.
+- PR #125 / S3A-M1 is merged. It added guarded manual sync execute, Admin UI controls, launcher entry, CLI runner, and `s3a_m1_manual_sync_execute_contract_v1`.
+- PR #126 / S3A-M2 is merged. Owner-run Web Admin GUI Execute run #18 is the current-stage DB-truth acceptance evidence; S3A-M2-R is the active follow-up for R0/R1 audit/design only.
 - The V.I.O.L.E.T. root-level Windows launcher is now the accepted personal production entrypoint for current daily library operation.
 - Current root-level daily entry: root-level `V.I.O.L.E.T. Production Launcher.exe` in the canonical local checkout.
 - The launcher uses local ignored production profile/runtime config. Development `.env` must not be converted into production and must not be treated as the production source of truth.

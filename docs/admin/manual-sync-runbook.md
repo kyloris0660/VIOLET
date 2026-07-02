@@ -26,11 +26,17 @@ The S3A-M2-R R0 read-only audit found:
   `75` deferred continuation rows.
 - The `880` follow-up rows completed downstream work and should not reappear as
   actionable follow-up in the next normal plan.
-- The `75` deferred import candidates are visible in the next normal plan.
+- The `75` deferred import candidates remain visible as root-scoped DB
+  continuation rows.
 - Root 2 has `20` older app-media-backed/source-missing downstream-incomplete
   rows that need lifecycle cleanup; they are visible, but current planner
   wording does not classify them as follow-up.
-- The next normal plan estimates `347` imports and `0` downstream follow-up.
+- The first R0/R1 attempt reported `347` next-plan import candidates via the
+  current source-read-capable planner. The safe-default audit does not recompute
+  that exact number because the current planner may walk/stat source entries.
+  DB-only evidence accounts for `75` run #18 continuation rows, `104` other
+  continuation rows, `11` retryable source-read failures, `4` placeholder rows,
+  and `20` app-media follow-up candidates that are not import work.
 
 ## How To Read Terminal Statuses
 

@@ -119,7 +119,7 @@ Explicit ordering:
 - Entity bridge must have preview, manual confirmation, audit trail, rollback/supersede behavior, and write guards before any truth-path write.
 - Provider/gallery-dl/Pixiv/SauceNAO/Google/source-enrichment runs and any non-4.7 product utility scale-up require separate policy, budget, ledger, and approval.
 - Provider-2, R2, PX1-B, Entity bridge, SourceConcept truth promotion, and new provider expansion remain blocked until R1R and A1R produce valid route evidence.
-- S3A-M1 is the current manual execute/UI phase after S2G-M1. It implements the explicit execute path before acceptance, remains manual, exact-confirmation-gated, and production-profile-bound. S3B remains disabled by default and opt-in only.
+- S3A-M1 and S3A-M2 are merged. PR #126 owner-run Web Admin GUI Execute run #18 is the current-stage DB-truth acceptance evidence; S3A-M2-R is the current R0/R1 audit/design follow-up, not full stabilization completion. S3B remains disabled by default and opt-in only.
 - Future S3A/S3B production execution must bind to production profile/runtime config, not development `.env`.
 - Dynamic sync automatic production writes are disabled by default. Manual check-for-updates and pending counts are product behavior; threshold-triggered or unattended production writes require explicit user opt-in and visible config.
 - AI tagging and tag localization are one S2 execution chain: baseline import -> AI tagging job -> new tags collected -> `_schedule_localization` -> background worker / auto translate -> `blombooru_tag_translations` -> frontend Chinese display and trusted search aliases.

@@ -3,8 +3,11 @@
 ## Scope
 
 - Mode: production read-only audit; no Execute, no DB writes, no source/iCloud mutation.
-- Base merge commit verified by branch start: `ff5972b0685def18bd658746e2ba1e3043c28d02`.
-- Audit head: `ff5972b0685def18bd658746e2ba1e3043c28d02` on branch `codex/s3a-m2-r-manual-sync-stabilization`.
+- Default evidence mode: DB-only/source-safe; no source walk/stat/open/hash/decode/hydration.
+- Audited baseline main commit: `ff5972b0685def18bd658746e2ba1e3043c28d02`.
+- Generator code head at run: `3ae3267d3685459107486874e66de180be022e44` on branch `codex/s3a-m2-r-manual-sync-stabilization`.
+- Report commit head: `not computed` (A committed report cannot truthfully contain the final self-referential commit SHA; use PR closeout/head metadata after commit.).
+- Working tree dirty at generation: yes; tracked dirty files: docs/admin/manual-sync-runbook.md, docs/architecture/manual-sync-state-machine.md, docs/current-handoff.md, docs/project-roadmap.md, docs/reports/s3a-m2-r-closeout.md, docs/reports/s3a-m2-r-post-merge-health-audit.md, docs/reports/s3a-m2-r-post-merge-health-summary.json, scripts/audit_s3a_m2_r_post_merge_health.py; untracked count: 82.
 - Production root audited: `2 / icloud-photos-production`.
 - Raw private evidence root: `.local_manifests/s3a_m2_r/post_merge_health/`.
 
@@ -12,16 +15,17 @@
 
 ### 880 downstream follow-up rows
 
-No. The 880 run #18 follow-up rows were actionable at run start as app-media-backed downstream work, but after run #18 they are terminal/stable: 880/880 are downstream complete and 0 of those rows remain current follow-up. A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling.
+At run #18 plan time, the 880 follow-up rows were genuinely actionable app-media-backed downstream work. After run #18, those same 880 rows are terminal/downstream complete and should no longer be treated as actionable follow-up. Future similar rows can still accumulate if historical downstream_followup_planned remains overloaded, so lifecycle cleanup is needed. A separate older 20-row media-backed/source-missing debt remains and needs canonical APP_MEDIA_FOLLOWUP/BROKEN_STATE handling.
 
 | Question | Answer |
 |---|---|
-| Were all 880 genuinely actionable follow-up items? | no; they were actionable at run start, but 0 remain actionable after run #18. |
+| Were all 880 genuinely actionable at run #18 plan time? | yes; they were app-media-backed downstream follow-up work. |
+| Are those same 880 actionable after run #18? | no; 880/880 are terminal/downstream complete. |
 | Redundant/duplicate/no-op after run? | yes; classify as stable diagnostic unless downstream status regresses. |
 | Did they merely pass through planned state without work? | no; statuses show downstream completion. |
-| Can similar rows accumulate forever? | yes; yes if `downstream_followup_planned` is retained as a historical state. |
-| Can they consume future caps? | no; current planner reports 0 downstream follow-up next plan. |
-| Expected to reappear next normal plan? | no. |
+| Can similar rows accumulate forever? | yes; if `downstream_followup_planned` is retained as a historical state. |
+| Can they consume future caps? | not_proven_by_safe_default; safe default does not rerun the source-read-capable planner. |
+| Expected to reappear next normal plan? | not_recomputed_by_safe_default; not recomputed in source-safe mode. |
 | Recommended disposition | Mark through canonical lifecycle as STABLE_NOOP/HISTORICAL_DIAGNOSTIC unless downstream status regresses. |
 
 ### 120 planned imports
@@ -30,7 +34,26 @@ Run #18 reconciles as 120 planned import-family items: 34 imported, 11 retryable
 
 - `completed_with_failures` is a partial success for run #18: DB truth for processed imports/follow-up passed, but source-read retry/deferred continuation remains.
 - Operator wording should become `completed_with_retryable_failures`; validator/report should not call it a clean completed run or a systemic failure.
-- Run #18 deferred imports visible in next plan by public hash prefix: 75 / 75; first position `167`, last `241`.
+- Run #18 deferred imports visible as root-scoped DB continuation rows: 75 / 75; planner ordering is not recomputed in safe default mode.
+
+Safe-default breakdown of the earlier 347 next-plan import-candidate claim:
+
+| Bucket | Count / status |
+|---|---:|
+| Exact 347 normal-plan import count | not computed |
+| Exact count reason | requires opt-in source-read-capable planner path |
+| Run #18 deferred continuation rows | 75 |
+| Other continuation rows | 104 |
+| Known DB continuation total | 179 |
+| Known retryable source-read failures | 11 |
+| Placeholder rows excluded from import | 4 |
+| App-media follow-up candidates, not import | 20 |
+| Root-scope stat-error reason rows | 0 |
+| Root-scope unsupported reason rows | 4433 |
+| Ledger-missing candidates | unknown_without_source_walk_stat |
+| Mtime-new / safety-window / old-mtime candidates | unknown_without_source_walk_stat / unknown_without_source_walk_stat / unknown_without_source_walk_stat |
+
+The first R0/R1 attempt reported `347` from the current source-read-capable planner. This safe-default report does not recompute that exact number because the planner path can walk/stat source entries. The DB-only evidence proves the 75 run #18 deferred rows remain visible as continuation and identifies the known DB debt buckets; ledger-missing and mtime-derived filesystem categories require explicit opt-in planner evidence.
 
 ### Remaining debt inventory
 
@@ -51,20 +74,22 @@ Run #18 reconciles as 120 planned import-family items: 34 imported, 11 retryable
 
 | Check | Result |
 |---|---|
-| Healthy/readable next plan | yes |
-| Estimated imports | 347 |
-| Estimated downstream follow-up | 0 |
+| Evidence mode | db_only_source_safe |
+| Source-read-capable planner invoked | no |
+| Healthy/readable next plan | not computed; Safe default does not recompute executable planner health because that path may walk/stat source entries. |
+| Estimated imports | not computed; not_computed_in_safe_default |
+| Estimated downstream follow-up | not computed; not_computed_by_current_planner_in_safe_default |
 | Retryable source-read failure debt | 11 |
 | Retryable/source-missing rows including media-backed old debt | 31 |
 | Placeholder debt | 4 |
 | Continuation debt | 179 |
-| Hidden by mtime/safety window | no |
+| Hidden by mtime/safety window | unknown_without_source_walk_stat |
 | Hidden by stable no-op | no |
 | App-media incomplete invisible | 0 |
 | App-media incomplete caught as current planner follow-up | 0 |
-| Plan stat/hash counts | stat `40260`, hash `0` |
+| Plan stat/hash counts | stat `0`, hash `0` |
 
-Important nuance: the current dry-run planner is read-only, but not purely metadata-only in implementation terms because it stats source entries. The R1 target model should make Plan metadata-only and reserve source reads/hash/decode for Execute.
+Important nuance: the current dry-run planner is not used by default in this R0 audit because it can walk/stat source entries. The R1 target model should make Plan metadata-only and reserve source reads/hash/decode for Execute.
 
 ## State-Machine Inventory
 
@@ -102,7 +127,9 @@ Report/status fields currently observed:
 }
 ```
 
-## Path Liveness Audit
+## Design-Level Path Liveness Audit
+
+This is report-level path analysis, not executable formal verification. Executable verification is deferred to PR-R1/R2: lifecycle table-driven tests, WorkItem boundary tests, root-scoped validator tests, report/status contradiction regression tests, and browser validation for UI/progress.
 
 | Path | Terminates | Invisible risk | Cap forever | Blocks unrelated | Report risk | Source mutation | Missing test focus |
 |---|---|---|---|---|---|---|---|
@@ -130,7 +157,7 @@ Report/status fields currently observed:
 ## R0 Conclusion
 
 - PR #126 acceptance was truthful for current-stage DB truth, but current operator wording and reports still blur partial success, retryable item failures, and continuation.
-- The 880 follow-up batch is no longer a hidden long-term blocker in the next normal plan, but `downstream_followup_planned` should stop serving as both historical source state and active work label.
+- The run #18 880 follow-up rows were real actionable follow-up at plan time and are terminal after run #18; this safe-default report does not prove future planner cap behavior for similar overloaded historical states.
 - The 20 older media-backed/source-missing downstream-incomplete rows are visible but semantically misclassified for the desired model: FOLLOWUP should use app-managed media and not depend on source readability.
-- The 75 run #18 deferred import candidates are visible in the next normal plan, but the next plan also sees additional import candidates; this needs WorkItem ordering and retry/debt UI rather than another giant execution PR.
+- The 75 run #18 deferred import candidates are visible as DB continuation rows. Exact normal-plan ordering/import count requires explicit opt-in source-read-capable planner evidence and is not part of default R0 validation.
 - R2/R3/R4 are too large for a single low-risk PR if implemented all at once. This branch should stop at R0/R1 and split implementation into lifecycle/WorkItem core, UI/tooling cleanup, and docs/runbook follow-through.

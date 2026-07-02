@@ -26,13 +26,17 @@ The R0 audit found:
 
 - Run #18's `880` follow-up rows are complete and should not reappear as
   actionable follow-up.
-- Run #18's `75` deferred import candidates are visible in the next normal plan.
+- Run #18's `75` deferred import candidates remain visible as root-scoped DB
+  continuation rows.
 - Root 2 still has `20` older app-media-backed/source-missing downstream
   incomplete rows; current planner priority sees them, but not as canonical
   app-media follow-up.
-- The next normal plan is explainable (`347` imports, `0` downstream follow-up,
-  dry-run-only import/classification/AI/localization work `0/0/0/0`), but Plan
-  still stats source entries.
+- The first R0/R1 attempt reported `347` next-plan imports through the current
+  source-read-capable planner. The safe-default R0 audit no longer recomputes
+  that exact number because the current planner may walk/stat source entries.
+  DB-only evidence can explain known continuation/retry/placeholder/app-media
+  buckets, while ledger-missing and mtime-derived filesystem candidates require
+  explicit opt-in planner evidence.
 
 ## Canonical Lifecycle Classifier
 
