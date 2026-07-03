@@ -1,8 +1,9 @@
 # Manual Sync Runbook
 
-Status: S3A-M2-R R1 operator runbook seed. This document describes the manual
-operator model after PR #126 and the R0 health audit. It does not authorize a
-production Execute run.
+Status: S3A-M2-R PR-R1 operator runbook update. This document describes the
+manual operator model after PR #126, the R0 health audit, and the PR-R1 backend
+lifecycle/WorkItem implementation. It does not authorize a production Execute
+run.
 
 ## Current Operator Posture
 
@@ -111,16 +112,45 @@ The UI should show:
 Do not leave the operator staring at a blank stage during classification, AI
 tagging, localization, or summary/report generation.
 
+## PR-R1 Backend Semantics
+
+`APP_MEDIA_FOLLOWUP` now means app-managed media exists and downstream work is
+currently incomplete. It is executed as `FOLLOWUP`, does not read the original
+source file, and may remain actionable even when the source file is missing.
+
+`IMPORT_CANDIDATE` is source-read-capable import work. Execute may revalidate,
+hash, copy, classify, AI-tag, and localize under the existing manual sync
+guards.
+
+`RETRYABLE_SOURCE_FAILURE` is item-level source/cloud/read debt. It does not
+block app-media follow-up, and it maps legacy run wording toward
+`completed_with_retryable_failures` when processed work completed.
+Failed `cloud_hydration_failed` source attempts stay in this bucket unless the
+row has explicit placeholder evidence.
+
+`PLACEHOLDER_DEFERRED` is actual placeholder evidence such as
+`skipped_placeholder`, `cloud_placeholder`, or `icloud_placeholder`. It is
+visible and non-executable by default.
+
+`CONTINUATION` is unprocessed work left by cap, budget stop, or cancellation. It
+must stay visible in the next plan and must not be treated as terminal failure.
+
+`STABLE_NOOP` and `HISTORICAL_DIAGNOSTIC` do not consume actionable cap.
+Stable media-backed no-op requires app-managed storage presence and cannot hide
+downstream-incomplete media.
+
+`BROKEN_STATE` is visible and non-executable by default. Missing app-managed
+media for a media-backed item is broken even when downstream statuses appear
+terminal.
+
 ## Current Deferred Work
 
-R2/R3 should implement:
+PR-R2 should implement:
 
-- canonical lifecycle classifier;
-- typed WorkItem plan output;
-- `completed_with_retryable_failures` and continuation status vocabulary;
-- retry/debt report;
-- validator/report cleanup;
+- UI progress and heartbeat;
+- Chinese operator-facing labels and status text;
+- retry/debt report polish;
+- validator/report cleanup and Markdown/public-redaction hardening where needed;
 - preflight script bug fix;
-- Chinese UI labels and heartbeat/progress display;
-- table-driven lifecycle/liveness tests;
-- browser validation on a controlled test server.
+- browser validation on a controlled test server;
+- final GUI-path acceptance when production operator behavior is in scope.

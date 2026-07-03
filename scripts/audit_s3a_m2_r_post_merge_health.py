@@ -32,6 +32,13 @@ if str(ROOT) not in sys.path:
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.services.manual_sync_lifecycle import (  # noqa: E402
+    app_media_exists as lifecycle_app_media_exists,
+    classify_source_item,
+    map_manual_sync_operator_status,
+    source_item_downstream_complete,
+)
+
 PHASE = "S3A-M2-R"
 BASE_MERGE_COMMIT = "ff5972b0685def18bd658746e2ba1e3043c28d02"
 DEFAULT_ROOT_ID = 2
@@ -263,8 +270,7 @@ def terminal_stage_flags(item: Any) -> dict[str, bool]:
 
 
 def downstream_complete(item: Any) -> bool:
-    flags = terminal_stage_flags(item)
-    return bool(flags["classification_done"] and flags["ai_tagging_done"] and flags["localization_done"])
+    return source_item_downstream_complete(item)
 
 
 def item_reason(item: Any) -> str:
@@ -308,10 +314,7 @@ def resolve_app_storage_path(storage_root: str | Path, stored_path: str) -> Opti
 
 
 def app_storage_presence(media_payload: Mapping[str, Any] | None, *, storage_root: str | Path) -> bool:
-    if not media_payload:
-        return False
-    resolved = resolve_app_storage_path(storage_root, str(media_payload.get("path") or ""))
-    return bool(resolved and resolved.exists())
+    return lifecycle_app_media_exists(media_payload, storage_root=storage_root)
 
 
 def lifecycle_class_for_item(
@@ -322,39 +325,14 @@ def lifecycle_class_for_item(
     media_followup_needed: bool,
     current_priority: bool,
 ) -> str:
-    import_status = str(getattr(item, "import_status", "") or "")
-    sync_state = str(getattr(item, "sync_state", "") or "")
-    reason = item_reason(item)
-    has_media = getattr(item, "media_id", None) is not None
-    has_media_row = media_payload is not None
-
-    if has_media and not has_media_row:
-        return "BROKEN_STATE"
-    if has_media and media_followup_needed:
-        if not app_storage_present:
-            return "BROKEN_STATE"
-        return "APP_MEDIA_FOLLOWUP"
-    if sync_state == "deferred_unprocessed" or reason in CONTINUATION_REASONS:
-        return "CONTINUATION"
-    if import_status in {"failed", "deferred"} and reason in RETRYABLE_SOURCE_REASONS:
-        return "RETRYABLE_SOURCE_FAILURE"
-    if sync_state == "skipped_placeholder" or reason in PLACEHOLDER_REASONS:
-        return "PLACEHOLDER_DEFERRED"
-    if import_status == "pending" and current_priority:
-        return "IMPORT_CANDIDATE"
-    if import_status == "imported" and has_media and downstream_complete(item):
-        return "STABLE_NOOP"
-    if sync_state in {"unchanged", "skipped_existing_media", "skipped_duplicate"}:
-        return "STABLE_NOOP"
-    if reason in STABLE_NOOP_REASONS:
-        return "STABLE_NOOP"
-    if import_status == "skipped":
-        return "STABLE_NOOP"
-    if import_status == "pending":
-        return "HISTORICAL_DIAGNOSTIC"
-    if sync_state in {"missing", "deferred"}:
-        return "HISTORICAL_DIAGNOSTIC"
-    return "HISTORICAL_DIAGNOSTIC"
+    decision = classify_source_item(
+        item,
+        media=media_payload,
+        media_lookup_performed=getattr(item, "media_id", None) is not None,
+        app_media_exists=app_storage_present if getattr(item, "media_id", None) is not None else None,
+        current_priority=current_priority,
+    )
+    return decision.kind.value
 
 
 def manual_plan_source_mtime_watermark_ns(known_items: Iterable[Any]) -> Optional[int]:
@@ -755,10 +733,13 @@ def summarize_run(
         },
         "operator_status_interpretation": {
             "current_status": str(run.status),
-            "recommended_operator_status": (
-                "completed_with_retryable_failures"
-                if str(run.status) == "completed_with_failures" and retryable_failures == failed and failed > 0
-                else str(run.status)
+            "recommended_operator_status": map_manual_sync_operator_status(
+                run_status=str(run.status),
+                outcome_counts=outcome,
+                retryable_source_failure_count=retryable_failures,
+                unprocessed_count=int(execute_payload.get("unprocessed_count") or 0),
+                unprocessed_import_planned_count=int(execute_payload.get("unprocessed_import_planned_count") or 0),
+                import_stopped_by=execute_payload.get("import_stopped_by"),
             ),
             "is_success": False,
             "is_partial_success": bool(str(run.status) == "completed_with_failures" and retryable_failures == failed and imported > 0),

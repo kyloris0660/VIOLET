@@ -1,0 +1,277 @@
+{
+  "phase": "S3A-M2-R PR-R1",
+  "generated_at": "2026-07-03",
+  "pipeline_contract": {
+    "contract_id": "s3a_m2_r_lifecycle_workitem_contract_v1",
+    "status": "pr_r1_core_complete",
+    "phase_identity": "S3A-M2-R PR-R1",
+    "claims": {
+      "pr_r1_core_complete": true,
+      "full_s3a_m2_r_complete": false,
+      "target_met": false,
+      "safe_to_merge": false,
+      "full_chain_complete": false
+    },
+    "executed_stages": [
+      "lifecycle_classifier",
+      "workitem_boundary_tests",
+      "planner_lifecycle_adapter",
+      "workitem_authoritative_runtime_boundaries",
+      "operator_status_mapping",
+      "root_scoped_report_inventory",
+      "phase_contract_check"
+    ]
+  },
+  "lifecycle_classifier": {
+    "implemented": true,
+    "module": "app.services.manual_sync_lifecycle",
+    "lifecycle_kinds": [
+      "APP_MEDIA_FOLLOWUP",
+      "IMPORT_CANDIDATE",
+      "RETRYABLE_SOURCE_FAILURE",
+      "PLACEHOLDER_DEFERRED",
+      "STABLE_NOOP",
+      "HISTORICAL_DIAGNOSTIC",
+      "CONTINUATION",
+      "BROKEN_STATE",
+      "FATAL_BLOCKER"
+    ],
+    "work_item_kinds": [
+      "FOLLOWUP",
+      "IMPORT",
+      "RETRY_SOURCE",
+      "PLACEHOLDER",
+      "NOOP_DIAGNOSTIC",
+      "BROKEN_STATE"
+    ],
+    "decision_fields": [
+      "kind",
+      "work_item_kind",
+      "reason_code",
+      "operator_label",
+      "operator_label_zh",
+      "is_actionable",
+      "is_visible_in_normal_ui",
+      "consumes_actionable_cap",
+      "can_execute",
+      "allowed_source_reads",
+      "allowed_db_writes",
+      "terminal_after_execute",
+      "requires_operator_attention",
+      "validator_severity",
+      "report_bucket",
+      "attempted_in_run",
+      "current_downstream_complete",
+      "attempted_but_current_incomplete",
+      "not_processed_continuation",
+      "stable_noop",
+      "broken_state",
+      "evidence"
+    ]
+  },
+  "work_item_source_read_boundaries": {
+    "FOLLOWUP": {
+      "allowed_source_reads": false,
+      "can_execute": true,
+      "consumes_actionable_cap": true,
+      "boundary": "app_managed_media_only"
+    },
+    "IMPORT": {
+      "allowed_source_reads": true,
+      "can_execute": true,
+      "consumes_actionable_cap": true,
+      "boundary": "execute_revalidates_hashes_and_copies_source"
+    },
+    "RETRY_SOURCE": {
+      "allowed_source_reads": true,
+      "can_execute": true,
+      "consumes_actionable_cap": true,
+      "boundary": "retry_policy_source_read"
+    },
+    "PLACEHOLDER": {
+      "allowed_source_reads": false,
+      "can_execute": false,
+      "consumes_actionable_cap": false,
+      "boundary": "visible_deferred_no_default_execute"
+    },
+    "NOOP_DIAGNOSTIC": {
+      "allowed_source_reads": false,
+      "can_execute": false,
+      "consumes_actionable_cap": false,
+      "boundary": "diagnostic_only"
+    },
+    "BROKEN_STATE": {
+      "allowed_source_reads": false,
+      "can_execute": false,
+      "consumes_actionable_cap": false,
+      "boundary": "visible_non_executable"
+    }
+  },
+  "operator_status_mapping": {
+    "implemented": true,
+    "legacy_completed_with_failures_mapped": true,
+    "statuses": [
+      "completed",
+      "completed_with_retryable_failures",
+      "completed_with_followup_required",
+      "completed_with_continuation",
+      "completed_with_retryable_failures_plus_continuation",
+      "failed_systemic",
+      "cancelled",
+      "blocked_preflight"
+    ]
+  },
+  "work_item_authority": {
+    "implemented": true,
+    "authoritative_for": [
+      "import_eligibility",
+      "source_read_boundary",
+      "execute_path",
+      "actionable_cap",
+      "deferred_unprocessed_materialization",
+      "plan_report_import_counts",
+      "retry_identity_preservation"
+    ],
+    "legacy_state_role": "compatibility_and_display_only_for_pr_r1_lifecycle_paths",
+    "retry_source_import_eligible": false,
+    "retry_source_counted_as": "retry_work",
+    "retry_source_deferred_materialization": "preserve_retry_identity_not_generic_continuation"
+  },
+  "debt_model": {
+    "older_app_media_source_missing_downstream_incomplete": {
+      "count": 20,
+      "interpretation": "APP_MEDIA_FOLLOWUP_when_app_media_exists_else_BROKEN_STATE"
+    },
+    "run18_deferred_continuation": {
+      "count": 75,
+      "interpretation": "CONTINUATION_not_failed_import"
+    },
+    "run18_retryable_source_failures": {
+      "count": 11,
+      "interpretation": "RETRYABLE_SOURCE_FAILURE_item_level_debt"
+    },
+    "historical_downstream_followup_rows": {
+      "count": 880,
+      "interpretation": "STABLE_NOOP_when_current_downstream_complete"
+    }
+  },
+  "validation": {
+    "table_driven_lifecycle_scenarios": {
+      "count": 28,
+      "passed": true
+    },
+    "source_read_boundary_tests": {
+      "passed": true
+    },
+    "app_media_missing_broken_state_covered": true,
+    "attempted_vs_completed_separation_covered": true,
+    "root_scoped_validator_report_coverage": true,
+    "phase_contract_tests_passed": true,
+    "runtime_boundary_tests": {
+      "passed": true,
+      "covered": [
+        "RETRY_SOURCE_does_not_import_or_copy",
+        "RETRY_SOURCE_success_marks_ready_for_explicit_IMPORT_replan",
+        "BROKEN_STATE_no_dynamic_source_item_core_status_mutation",
+        "NOOP_DIAGNOSTIC_no_dynamic_source_item_core_status_mutation",
+        "PLACEHOLDER_no_media_backed_imported_state_mutation",
+        "BROKEN_STATE_does_not_consume_actionable_cap",
+        "hydrated_placeholder_becomes_import_candidate",
+        "downstream_complete_missing_media_row_becomes_broken_state",
+        "retry_continuation_broken_reasons_preserved_in_plan",
+        "non_executable_diagnostics_filtered_from_deferred_unprocessed_tail",
+        "current_complete_media_backed_stale_retry_reason_becomes_stable_noop",
+        "downstream_complete_missing_app_storage_becomes_broken_state",
+        "successful_retry_source_existing_media_replans_as_followup_or_stable_noop",
+        "work_item_kind_first_import_eligibility_and_counts",
+        "retry_source_not_import_eligible_or_counted_as_import",
+        "unprocessed_retry_source_preserves_retry_identity_not_deferred_unprocessed",
+        "media_backed_stable_noop_evidence_preserved_for_stale_retry_reasons"
+      ]
+    },
+    "full_s3a_m2_r_completion_claimed": false,
+    "browser_validation": {
+      "status": "not_in_scope_for_pr_r1",
+      "reserved_for": "PR-R2"
+    }
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s3a-m2-r-lifecycle-workitem-closeout.md",
+    "summary_json_path": "docs/reports/s3a-m2-r-lifecycle-workitem-summary.json"
+  },
+  "public_redaction": {
+    "passed": true,
+    "scope": "aggregate_public_summary_and_markdown"
+  },
+  "safety": {
+    "no_production_execute": true,
+    "production_execute_ran": false,
+    "no_source_icloud_mutation": true,
+    "source_icloud_mutation": false,
+    "no_app_storage_repair_or_mutation": true,
+    "app_storage_repair_or_mutation": false,
+    "no_db_import": true,
+    "db_import": false,
+    "no_production_classification_ai_localization": true,
+    "production_classification_ai_localization": false,
+    "no_provider_or_source_metadata_calls": true,
+    "provider_or_source_metadata_calls": false,
+    "no_sourceconcept_entity_media_tags_truth_writes": true,
+    "sourceconcept_entity_media_tags_truth_writes": false,
+    "cleanup_delete_reset_drop_truncate": false,
+    "db_migration": false,
+    "automatic_or_unattended_sync": false
+  },
+  "scope": {
+    "full_s3a_m2_r_completion_claimed": false,
+    "ui_progress_browser_validation_in_scope": false,
+    "production_gui_acceptance_required_for_pr_r1": false,
+    "remaining_for_pr_r2": [
+      "UI progress and heartbeat",
+      "Chinese operator labels",
+      "preflight script polish",
+      "validator and report cleanup",
+      "Markdown public redaction hardening if needed",
+      "browser validation",
+      "final GUI path acceptance when production operator behavior is in scope"
+    ]
+  },
+  "artifact_lifecycle": {
+    "manual_sync_lifecycle_module": "durable production code",
+    "phase_contract": "reusable validation/safety tool",
+    "audit_adapter_updates": "phase-scoped operational runner",
+    "public_reports": "public report / handoff"
+  },
+  "reviewer_fix_round": {
+    "scope": "PR-R1 bounded lifecycle and WorkItem correctness fixes only",
+    "final_bounded_round": true,
+    "fixed": [
+      "media-backed retryable source failures stay RETRY_SOURCE instead of APP_MEDIA_FOLLOWUP",
+      "cloud_hydration_failed failed source attempts are retryable while actual placeholders stay PLACEHOLDER",
+      "current-complete media-backed rows become STABLE_NOOP before stale continuation reasons",
+      "planner app-media follow-up requires Media row and app-storage evidence",
+      "operator status mapping rejects mixed non-retryable failures and budget-stop stage failures as systemic",
+      "PLACEHOLDER source-read boundary is contract-enforced",
+      "RETRY_SOURCE execute path cannot fall through to import/copy",
+      "non-executable BROKEN_STATE NOOP_DIAGNOSTIC and PLACEHOLDER record diagnostics without rewriting DynamicSourceItem core status fields",
+      "BROKEN_STATE and NOOP_DIAGNOSTIC remain visible without consuming actionable cap",
+      "hydrated stale placeholders can re-enter as IMPORT_CANDIDATE when current planner evidence is import-ready",
+      "media-backed STABLE_NOOP decisions verify Media row evidence so stale media_id cannot hide broken state",
+      "planner public records preserve lifecycle reason_code for retry continuation and broken diagnostics",
+      "BROKEN_STATE NOOP_DIAGNOSTIC and PLACEHOLDER remaining after cancel or budget stop are not materialized as deferred_unprocessed source items",
+      "current-complete media-backed rows with stale retry reasons become STABLE_NOOP when Media row and app media exist",
+      "downstream-complete media-backed rows with missing app storage become BROKEN_STATE instead of STABLE_NOOP",
+      "successful RETRY_SOURCE with existing media_id restores media-backed imported semantics so the next plan surfaces FOLLOWUP or STABLE_NOOP instead of invisible pending noop",
+      "WorkItemKind is authoritative for import eligibility source-read boundary execute path actionable cap deferred materialization plan counts and retry identity",
+      "RETRY_SOURCE is counted as retry work and is never eligible_for_db_import under the retry boundary",
+      "unprocessed RETRY_SOURCE preserves original retry reason instead of becoming generic deferred_unprocessed continuation",
+      "media-backed STABLE_NOOP and BROKEN_STATE evidence decisions are preserved instead of being reclassified without Media/app-storage evidence"
+    ],
+    "not_in_scope": [
+      "PR-R2 UI progress or browser validation",
+      "production Execute",
+      "provider or source metadata calls",
+      "SourceConcept Entity or media_tags truth work"
+    ]
+  }
+}

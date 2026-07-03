@@ -2167,6 +2167,144 @@ def test_registry_contains_all_required_contracts() -> None:
     assert len(registered) >= 15
 
 
+def _s3a_m2_r_lifecycle_summary(**overrides: object) -> dict:
+    summary = {
+        "phase": "S3A-M2-R PR-R1",
+        "pipeline_contract": {
+            "contract_id": "s3a_m2_r_lifecycle_workitem_contract_v1",
+            "status": "pr_r1_core_complete",
+            "phase_identity": "S3A-M2-R PR-R1",
+            "claims": {
+                "pr_r1_core_complete": True,
+                "full_s3a_m2_r_complete": False,
+                "target_met": False,
+                "safe_to_merge": False,
+                "full_chain_complete": False,
+            },
+        },
+        "lifecycle_classifier": {
+            "implemented": True,
+            "module": "backend/app/services/manual_sync_lifecycle.py",
+            "lifecycle_kinds": [
+                "APP_MEDIA_FOLLOWUP",
+                "IMPORT_CANDIDATE",
+                "RETRYABLE_SOURCE_FAILURE",
+                "PLACEHOLDER_DEFERRED",
+                "STABLE_NOOP",
+                "HISTORICAL_DIAGNOSTIC",
+                "CONTINUATION",
+                "BROKEN_STATE",
+                "FATAL_BLOCKER",
+            ],
+            "work_item_kinds": [
+                "FOLLOWUP",
+                "IMPORT",
+                "RETRY_SOURCE",
+                "PLACEHOLDER",
+                "NOOP_DIAGNOSTIC",
+                "BROKEN_STATE",
+            ],
+        },
+        "work_item_source_read_boundaries": {
+            "FOLLOWUP": {"allowed_source_reads": False, "can_execute": True, "consumes_actionable_cap": True},
+            "IMPORT": {"allowed_source_reads": True, "can_execute": True, "consumes_actionable_cap": True},
+            "RETRY_SOURCE": {"allowed_source_reads": True, "can_execute": True, "consumes_actionable_cap": True},
+            "PLACEHOLDER": {"allowed_source_reads": False, "can_execute": False, "consumes_actionable_cap": False},
+            "NOOP_DIAGNOSTIC": {"allowed_source_reads": False, "can_execute": False, "consumes_actionable_cap": False},
+            "BROKEN_STATE": {"allowed_source_reads": False, "can_execute": False, "consumes_actionable_cap": False},
+        },
+        "operator_status_mapping": {
+            "implemented": True,
+            "legacy_completed_with_failures_mapped": True,
+        },
+        "debt_model": {
+            "older_app_media_source_missing_downstream_incomplete": {"count": 20, "kind": "APP_MEDIA_FOLLOWUP_or_BROKEN_STATE"},
+            "run18_deferred_continuation": {"count": 75, "kind": "CONTINUATION"},
+            "run18_retryable_source_failures": {"count": 11, "kind": "RETRYABLE_SOURCE_FAILURE"},
+        },
+        "validation": {
+            "table_driven_lifecycle_scenarios": {"count": 27, "passed": True},
+            "source_read_boundary_tests": {"passed": True},
+            "app_media_missing_broken_state_covered": True,
+            "attempted_vs_completed_separation_covered": True,
+            "root_scoped_validator_report_coverage": True,
+            "phase_contract_tests_passed": True,
+        },
+        "public_reports": {
+            "markdown_report_path": "docs/reports/s3a-m2-r-lifecycle-workitem-closeout.md",
+            "summary_json_path": "docs/reports/s3a-m2-r-lifecycle-workitem-summary.json",
+        },
+        "public_redaction": {"passed": True},
+        "safety": {
+            "no_production_execute": True,
+            "production_execute_ran": False,
+            "no_source_icloud_mutation": True,
+            "source_icloud_mutation": False,
+            "no_app_storage_repair_or_mutation": True,
+            "app_storage_repair_or_mutation": False,
+            "no_db_import": True,
+            "db_import": False,
+            "no_production_classification_ai_localization": True,
+            "production_classification_ai_localization": False,
+            "no_provider_or_source_metadata_calls": True,
+            "provider_or_source_metadata_calls": False,
+            "no_sourceconcept_entity_media_tags_truth_writes": True,
+            "sourceconcept_entity_media_tags_truth_writes": False,
+        },
+        "scope": {
+            "full_s3a_m2_r_completion_claimed": False,
+            "ui_progress_browser_validation_in_scope": False,
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
+def test_s3a_m2_r_lifecycle_workitem_contract_accepts_core_completion_summary() -> None:
+    result = check_phase_contract("s3a_m2_r_lifecycle_workitem_contract_v1", _s3a_m2_r_lifecycle_summary())
+
+    assert result.passed is True
+
+
+def test_s3a_m2_r_lifecycle_workitem_contract_rejects_overclaim_and_mutation() -> None:
+    summary = _s3a_m2_r_lifecycle_summary()
+    _set_nested(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", True)
+    _set_nested(summary, "scope.full_s3a_m2_r_completion_claimed", True)
+    _set_nested(summary, "safety.production_execute_ran", True)
+
+    result = check_phase_contract("s3a_m2_r_lifecycle_workitem_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_lifecycle_overclaimed_full_completion" in codes
+    assert "s3a_m2_r_lifecycle_forbidden_scope_or_mutation" in codes
+
+
+def test_s3a_m2_r_lifecycle_workitem_contract_requires_source_boundaries_and_scenarios() -> None:
+    summary = _s3a_m2_r_lifecycle_summary()
+    _set_nested(summary, "work_item_source_read_boundaries.FOLLOWUP.allowed_source_reads", True)
+    _set_nested(summary, "validation.table_driven_lifecycle_scenarios.count", 10)
+
+    result = check_phase_contract("s3a_m2_r_lifecycle_workitem_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_source_boundary_invalid" in codes
+    assert "s3a_m2_r_lifecycle_scenario_count_too_low" in codes
+
+
+def test_s3a_m2_r_lifecycle_workitem_contract_validates_placeholder_boundary() -> None:
+    summary = _s3a_m2_r_lifecycle_summary()
+    _set_nested(summary, "work_item_source_read_boundaries.PLACEHOLDER.allowed_source_reads", True)
+
+    result = check_phase_contract("s3a_m2_r_lifecycle_workitem_contract_v1", summary)
+
+    assert "s3a_m2_r_source_boundary_invalid" in _error_codes(result)
+    assert any(
+        error.path == "work_item_source_read_boundaries.PLACEHOLDER.allowed_source_reads"
+        for error in result.errors
+    )
+
+
 def test_phase47_s2_contract_accepts_gate1_blocked_summary_without_completion_claim() -> None:
     result = check_phase_contract("phase47_s2_baseline_contract_v1", _phase47_s2_summary())
 

@@ -54,6 +54,11 @@ from .dynamic_library_sync_service import (
     serialize_sync_run,
     validate_source_root_path,
 )
+from .manual_sync_lifecycle import (
+    app_media_exists as lifecycle_app_media_exists,
+    map_manual_sync_operator_status,
+    source_item_downstream_complete,
+)
 
 
 class ManualSyncExecuteError(RuntimeError):
@@ -83,7 +88,7 @@ CLASSIFICATION_DONE_STATUSES = {"classified", "classified_reused"}
 RETRYABLE_SOURCE_FAILURE_REASONS = {
     "cloud_hydration_failed",
     "cloud_network_unavailable",
-    "icloud_placeholder",
+    "content_changed_after_plan",
     "permission_denied",
     "read_error",
     "read_timeout",
@@ -446,12 +451,59 @@ def _retryable_source_failure_count(counts: Counter[str]) -> int:
 
 
 def _manual_sync_plan_item_execute_priority(plan_item: Dict[str, Any]) -> int:
+    work_item_kind = str(plan_item.get("work_item_kind") or "")
+    if work_item_kind == "FOLLOWUP":
+        return 0
+    if work_item_kind == "IMPORT":
+        return 10
+    if work_item_kind == "RETRY_SOURCE":
+        return 15
     state = str(plan_item.get("state") or "")
     if state == "downstream_followup_planned":
         return 0
     if state == "import_planned":
         return 10
     return 20
+
+
+NON_DEFERRED_WORK_ITEM_KINDS = {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}
+NON_DEFERRED_LIFECYCLE_KINDS = {
+    "BROKEN_STATE",
+    "FATAL_BLOCKER",
+    "HISTORICAL_DIAGNOSTIC",
+    "PLACEHOLDER_DEFERRED",
+    "STABLE_NOOP",
+}
+ACTIONABLE_WORK_ITEM_KINDS = {"FOLLOWUP", "IMPORT", "RETRY_SOURCE"}
+DEFERRABLE_WORK_ITEM_KINDS = {"FOLLOWUP", "IMPORT"}
+ACTIONABLE_PLAN_STATES = {"downstream_followup_planned", "import_planned"}
+
+
+def _plan_item_is_actionable_work(plan_item: Dict[str, Any]) -> bool:
+    work_item_kind = str(plan_item.get("work_item_kind") or "")
+    lifecycle_kind = str(plan_item.get("lifecycle_kind") or "")
+    if work_item_kind in NON_DEFERRED_WORK_ITEM_KINDS or lifecycle_kind in NON_DEFERRED_LIFECYCLE_KINDS:
+        return False
+    if plan_item.get("can_execute") is False:
+        return False
+    if plan_item.get("is_actionable") is False:
+        return False
+    if plan_item.get("consumes_actionable_cap") is False:
+        return False
+    if work_item_kind:
+        return work_item_kind in ACTIONABLE_WORK_ITEM_KINDS
+    state = str(plan_item.get("state") or "")
+    return state in ACTIONABLE_PLAN_STATES
+
+
+def _plan_item_can_materialize_deferred_unprocessed(plan_item: Dict[str, Any]) -> bool:
+    if not _plan_item_is_actionable_work(plan_item):
+        return False
+    work_item_kind = str(plan_item.get("work_item_kind") or "")
+    if work_item_kind:
+        return work_item_kind in DEFERRABLE_WORK_ITEM_KINDS
+    state = str(plan_item.get("state") or "")
+    return state in ACTIONABLE_PLAN_STATES
 
 
 def _order_manual_sync_execute_plan_items(plan_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1164,6 +1216,28 @@ def _record_run_item(
     return run_item
 
 
+def _record_non_executable_run_item(
+    db: Session,
+    *,
+    run: DynamicSyncRun,
+    item: DynamicSourceItem,
+    state: str,
+    reason: Optional[str],
+    metadata: Dict[str, Any],
+) -> None:
+    _record_run_item(
+        db,
+        run=run,
+        item=item,
+        state=state,
+        action="diagnostic",
+        reason=reason,
+        eligible=False,
+        media_id=item.media_id,
+        current_metadata=metadata,
+    )
+
+
 def _annotate_run_item_stage(
     db: Session,
     *,
@@ -1254,6 +1328,85 @@ def _mark_item_failed(
     )
 
 
+def _mark_retry_source_ready_for_import(
+    db: Session,
+    *,
+    run: DynamicSyncRun,
+    item: DynamicSourceItem,
+    metadata: Dict[str, Any],
+    content_hash: Optional[str],
+    previous_reason: Optional[str],
+) -> None:
+    now = _utcnow()
+    media_row: Optional[Media] = None
+    media_backed_retry_restored = False
+    if item.media_id is not None:
+        media_row = db.get(Media, int(item.media_id))
+        media_backed_retry_restored = bool(
+            media_row is not None
+            and lifecycle_app_media_exists(media_row, storage_root=settings.STORAGE_ROOT)
+        )
+    item.source_status = "available"
+    if media_backed_retry_restored:
+        item.sync_state = "imported"
+        item.import_status = "imported"
+        next_work_item_kind = "NOOP_DIAGNOSTIC" if source_item_downstream_complete(item) else "FOLLOWUP"
+        retry_status = "media_backed_restored"
+    else:
+        item.sync_state = "new"
+        item.import_status = "pending"
+        item.classification_status = "waiting_import"
+        item.ai_tagging_status = "waiting_import"
+        item.localization_status = "waiting_ai_tags"
+        next_work_item_kind = "IMPORT"
+        retry_status = "ready_for_import"
+    item.failure_reason = None
+    item.deferred_reason = None
+    item.file_size = metadata.get("file_size")
+    item.mtime = metadata.get("mtime")
+    item.mtime_ns = metadata.get("mtime_ns")
+    if content_hash:
+        item.content_hash = str(content_hash)
+    item.last_checked_at = now
+    item.last_seen_at = now
+    item.last_sync_run_id = run.id
+    item.last_seen_run_id = run.id
+    item_metadata = dict(item.metadata_json or {})
+    retry = dict(item_metadata.get("manual_sync_retry") or {})
+    retry.update(
+        {
+            "last_retry_at": now.isoformat(),
+            "last_success_at": now.isoformat(),
+            "previous_failure_reason": previous_reason,
+            "retryable": False,
+            "ready_for_import": not media_backed_retry_restored,
+            "media_backed_retry_restored": media_backed_retry_restored,
+            "next_work_item_kind": next_work_item_kind,
+        }
+    )
+    item_metadata["manual_sync_retry"] = retry
+    item.metadata_json = item_metadata
+    _record_run_item(
+        db,
+        run=run,
+        item=item,
+        state="retry_source_ready_for_import",
+        action="retry_source",
+        reason="retry_source_ready_for_import",
+        eligible=False,
+        media_id=item.media_id,
+        current_metadata={
+            **metadata,
+            "retry_source": {
+                "status": retry_status,
+                "previous_reason": previous_reason,
+                "next_work_item_kind": next_work_item_kind,
+                "media_backed_retry_restored": media_backed_retry_restored,
+            },
+        },
+    )
+
+
 def _mark_item_import_in_progress(
     db: Session,
     *,
@@ -1290,6 +1443,8 @@ def _materialize_deferred_unprocessed_items(
 ) -> int:
     created = 0
     for plan_item in plan_items:
+        if not _plan_item_can_materialize_deferred_unprocessed(plan_item):
+            continue
         relative_path = str(plan_item.get("relative_path") or "")
         metadata = {"safe_label": plan_item.get("safe_label"), "planned_state": plan_item.get("state")}
         item = _get_or_create_source_item(
@@ -1944,25 +2099,46 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             metadata: Dict[str, Any] = {}
             current_content_hash = plan_item.get("content_hash")
             state = str(plan_item.get("state") or "failed")
+            work_item_kind = str(plan_item.get("work_item_kind") or "")
+            can_execute = plan_item.get("can_execute")
+            is_followup_work_item = work_item_kind == "FOLLOWUP" or (
+                not work_item_kind and state == "downstream_followup_planned"
+            )
+            is_import_work_item = work_item_kind == "IMPORT" or (
+                not work_item_kind and state == "import_planned"
+            )
+            is_retry_source_work_item = work_item_kind == "RETRY_SOURCE"
+            reason = _manual_public_reason_code(plan_item.get("reason"))
             downstream_source_item_id = int(
                 ((plan_item.get("downstream_followup") or {}).get("source_item_id") or 0)
             )
+            plan_source_item_id = int(plan_item.get("source_item_id") or downstream_source_item_id or 0)
             source_file: Optional[Path] = None
             item_failure_reason: Optional[str] = None
             planned_source_item: Optional[DynamicSourceItem] = None
-            if state == "downstream_followup_planned" and downstream_source_item_id > 0:
-                candidate_source_item = db.get(DynamicSourceItem, downstream_source_item_id)
+            if plan_source_item_id > 0:
+                candidate_source_item = db.get(DynamicSourceItem, plan_source_item_id)
                 if candidate_source_item is not None and candidate_source_item.source_root_id == root.id:
                     planned_source_item = candidate_source_item
                     rel = str(candidate_source_item.relative_path or rel)
 
-            if state == "downstream_followup_planned":
+            if is_followup_work_item:
                 metadata = {
                     "file_size": plan_item.get("file_size"),
                     "mtime_ns": plan_item.get("mtime_ns"),
                     "source_file_required": False,
                     "source_file_validation_skipped": True,
                     "app_media_authoritative": True,
+                }
+            elif can_execute is False or work_item_kind in {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}:
+                metadata = {
+                    "file_size": plan_item.get("file_size"),
+                    "mtime_ns": plan_item.get("mtime_ns"),
+                    "source_file_required": False,
+                    "source_file_validation_skipped": True,
+                    "non_executable_work_item": True,
+                    "work_item_kind": work_item_kind,
+                    "lifecycle_kind": plan_item.get("lifecycle_kind"),
                 }
             else:
                 try:
@@ -1973,7 +2149,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     else:
                         metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
                         item_failure_reason = _manual_public_reason_code(preflight_reason)
-                        if item_failure_reason is None and state == "import_planned":
+                        if item_failure_reason is None and (is_import_work_item or is_retry_source_work_item):
                             item_failure_reason = _manual_public_reason_code(
                                 _is_scannable_file(source_file, hydrated_only=request_hydrated_only)
                             )
@@ -1998,7 +2174,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                                     item_failure_reason = "content_changed_after_plan"
                             except (TypeError, ValueError):
                                 item_failure_reason = "content_changed_after_plan"
-                        should_verify_content = state == "import_planned" or bool(expected_hash)
+                        should_verify_content = is_import_work_item or is_retry_source_work_item or bool(expected_hash)
                         if item_failure_reason is None and should_verify_content:
                             current_hash, hash_reason = _calculate_manual_plan_file_hash(
                                 source_file,
@@ -2021,6 +2197,27 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             ):
                 item_failure_reason = "cloud_hydration_failed"
 
+            if can_execute is False or work_item_kind in {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}:
+                diagnostic_reason = reason or str(plan_item.get("lifecycle_reason_code") or "").strip() or work_item_kind.lower()
+                diagnostic_metadata = {**metadata, "safe_label": plan_item.get("safe_label")}
+                if planned_source_item is not None:
+                    _record_non_executable_run_item(
+                        db,
+                        run=run,
+                        item=planned_source_item,
+                        state=state,
+                        reason=diagnostic_reason,
+                        metadata=diagnostic_metadata,
+                    )
+                counts[state] += 1
+                if diagnostic_reason:
+                    counts[diagnostic_reason] += 1
+                processed_items += 1
+                processed_plan_items += 1
+                consecutive_failures = 0
+                db.commit()
+                continue
+
             if planned_source_item is not None:
                 item = planned_source_item
                 if current_content_hash and not item.content_hash:
@@ -2035,7 +2232,6 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     content_hash=str(current_content_hash) if current_content_hash else None,
                 )
 
-            reason = _manual_public_reason_code(plan_item.get("reason"))
             if item_failure_reason:
                 stable_skip_state = _manual_sync_execute_skip_state_for_reason(item_failure_reason)
                 if stable_skip_state:
@@ -2061,6 +2257,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     item=item,
                     reason=item_failure_reason,
                     metadata=failure_metadata,
+                    action="retry_source" if is_retry_source_work_item else "import",
                 )
                 counts["failed"] += 1
                 counts[item_failure_reason] += 1
@@ -2080,7 +2277,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     break
                 continue
 
-            if state == "downstream_followup_planned":
+            if is_followup_work_item:
                 media_id = int(plan_item.get("media_id") or item.media_id or 0)
                 if media_id <= 0:
                     _mark_item_failed(
@@ -2136,7 +2333,23 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     break
                 continue
 
-            if state != "import_planned":
+            if is_retry_source_work_item:
+                _mark_retry_source_ready_for_import(
+                    db,
+                    run=run,
+                    item=item,
+                    metadata={**metadata, "safe_label": plan_item.get("safe_label")},
+                    content_hash=str(current_content_hash) if current_content_hash else None,
+                    previous_reason=reason or str(plan_item.get("lifecycle_reason_code") or "").strip() or None,
+                )
+                counts["retry_source_ready_for_import"] += 1
+                processed_items += 1
+                processed_plan_items += 1
+                consecutive_failures = 0
+                db.commit()
+                continue
+
+            if not is_import_work_item:
                 _mark_item_skipped(db, run=run, item=item, state=state, reason=reason, metadata=metadata)
                 counts[state] += 1
                 processed_items += 1
@@ -2275,22 +2488,43 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         if run.status == "cancelled" and stop_reason is None:
             stop_reason = "cancelled"
         remaining_plan_items = private_items[processed_plan_items:]
-        unprocessed_count = len(remaining_plan_items) if stop_reason or run.status == "cancelled" else 0
+        remaining_actionable_plan_items = (
+            [item for item in remaining_plan_items if _plan_item_is_actionable_work(item)]
+            if stop_reason or run.status == "cancelled"
+            else []
+        )
+        remaining_deferrable_plan_items = [
+            item for item in remaining_actionable_plan_items if _plan_item_can_materialize_deferred_unprocessed(item)
+        ]
+        unprocessed_retry_source_count = sum(
+            1 for item in remaining_actionable_plan_items if str(item.get("work_item_kind") or "") == "RETRY_SOURCE"
+        )
+        skipped_or_recorded_diagnostic_count = (
+            len(remaining_plan_items) - len(remaining_actionable_plan_items)
+            if stop_reason or run.status == "cancelled"
+            else 0
+        )
+        unprocessed_count = len(remaining_deferrable_plan_items)
+        unprocessed_actionable_count = len(remaining_actionable_plan_items)
         unprocessed_import_planned_count = (
-            sum(1 for item in remaining_plan_items if str(item.get("state") or "") == "import_planned")
+            sum(1 for item in remaining_deferrable_plan_items if str(item.get("work_item_kind") or "") == "IMPORT")
             if unprocessed_count
             else 0
         )
         if unprocessed_count:
             deferred_reason = "not_processed_cancelled" if stop_reason == "cancelled" or run.status == "cancelled" else "not_processed_budget_stop"
-            _materialize_deferred_unprocessed_items(
+            materialized_count = _materialize_deferred_unprocessed_items(
                 db,
                 root=root,
                 run=run,
-                plan_items=remaining_plan_items,
+                plan_items=remaining_deferrable_plan_items,
                 reason=deferred_reason,
             )
-            counts["deferred_unprocessed"] += unprocessed_count
+            counts["deferred_unprocessed"] += materialized_count
+        if unprocessed_retry_source_count:
+            counts["retry_source_not_deferred"] += unprocessed_retry_source_count
+        if skipped_or_recorded_diagnostic_count:
+            counts["diagnostic_not_deferred"] += skipped_or_recorded_diagnostic_count
         import_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
         run.summary_json = _set_stage(
             run.summary_json or {},
@@ -2802,10 +3036,22 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             )
         ):
             summary_status = "completed_with_failures"
+        operator_status = map_manual_sync_operator_status(
+            run_status=summary_status,
+            outcome_counts=counts,
+            retryable_source_failure_count=_retryable_source_failure_count(counts),
+            unprocessed_count=unprocessed_count,
+            unprocessed_import_planned_count=unprocessed_import_planned_count,
+            localization_incomplete=localization_incomplete,
+            stopped_by=stop_reason,
+            import_stopped_by=import_stop_reason,
+        )
         run.summary_json = _set_stage(run.summary_json or {}, "summary", status=summary_status, processed=1, failed=0)
         _update_execute_summary(
             run,
             status=summary_status,
+            operator_status=operator_status,
+            operator_status_source="manual_sync_lifecycle_v1",
             current_stage="summary",
             outcome_counts=dict(sorted(counts.items())),
             localization_failed_items=int(counts["localization_failed"]),
@@ -2820,7 +3066,10 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             downstream_continued_after_import_stop=downstream_continued_after_import_stop,
             retryable_source_failure_count=_retryable_source_failure_count(counts),
             unprocessed_count=unprocessed_count,
+            unprocessed_actionable_count=unprocessed_actionable_count,
+            unprocessed_retry_source_count=unprocessed_retry_source_count,
             unprocessed_import_planned_count=unprocessed_import_planned_count,
+            skipped_or_recorded_diagnostic_count=skipped_or_recorded_diagnostic_count,
             budgets=_budget_policy_payload(),
             localization=localization_result,
             source_mutation_performed=False,
@@ -2872,6 +3121,19 @@ def serialize_manual_sync_execute_run(run: DynamicSyncRun) -> Dict[str, Any]:
     summary = dict(payload.get("summary") or {})
     execute = dict(summary.get("manual_sync_execute") or {})
     execute.pop("private_plan_items", None)
+    if "operator_status" not in execute:
+        counts = execute.get("outcome_counts") if isinstance(execute.get("outcome_counts"), dict) else {}
+        execute["operator_status"] = map_manual_sync_operator_status(
+            run_status=str(payload.get("status") or execute.get("status") or ""),
+            outcome_counts=counts,
+            retryable_source_failure_count=execute.get("retryable_source_failure_count"),
+            unprocessed_count=int(execute.get("unprocessed_count") or 0),
+            unprocessed_import_planned_count=int(execute.get("unprocessed_import_planned_count") or 0),
+            localization_incomplete=str(execute.get("status") or "") == "completed_with_followup_required",
+            stopped_by=execute.get("stopped_by"),
+            import_stopped_by=execute.get("import_stopped_by"),
+        )
+        execute["operator_status_source"] = "manual_sync_lifecycle_v1"
     summary["manual_sync_execute"] = execute
     payload["summary"] = summary
     payload["manual_sync_execute"] = execute
