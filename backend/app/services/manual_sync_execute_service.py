@@ -84,7 +84,7 @@ CLASSIFICATION_DONE_STATUSES = {"classified", "classified_reused"}
 RETRYABLE_SOURCE_FAILURE_REASONS = {
     "cloud_hydration_failed",
     "cloud_network_unavailable",
-    "icloud_placeholder",
+    "content_changed_after_plan",
     "permission_denied",
     "read_error",
     "read_timeout",
@@ -1945,14 +1945,18 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             metadata: Dict[str, Any] = {}
             current_content_hash = plan_item.get("content_hash")
             state = str(plan_item.get("state") or "failed")
+            work_item_kind = str(plan_item.get("work_item_kind") or "")
+            can_execute = plan_item.get("can_execute")
+            reason = _manual_public_reason_code(plan_item.get("reason"))
             downstream_source_item_id = int(
                 ((plan_item.get("downstream_followup") or {}).get("source_item_id") or 0)
             )
+            plan_source_item_id = int(plan_item.get("source_item_id") or downstream_source_item_id or 0)
             source_file: Optional[Path] = None
             item_failure_reason: Optional[str] = None
             planned_source_item: Optional[DynamicSourceItem] = None
-            if state == "downstream_followup_planned" and downstream_source_item_id > 0:
-                candidate_source_item = db.get(DynamicSourceItem, downstream_source_item_id)
+            if plan_source_item_id > 0:
+                candidate_source_item = db.get(DynamicSourceItem, plan_source_item_id)
                 if candidate_source_item is not None and candidate_source_item.source_root_id == root.id:
                     planned_source_item = candidate_source_item
                     rel = str(candidate_source_item.relative_path or rel)
@@ -1964,6 +1968,16 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     "source_file_required": False,
                     "source_file_validation_skipped": True,
                     "app_media_authoritative": True,
+                }
+            elif can_execute is False or work_item_kind in {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}:
+                metadata = {
+                    "file_size": plan_item.get("file_size"),
+                    "mtime_ns": plan_item.get("mtime_ns"),
+                    "source_file_required": False,
+                    "source_file_validation_skipped": True,
+                    "non_executable_work_item": True,
+                    "work_item_kind": work_item_kind,
+                    "lifecycle_kind": plan_item.get("lifecycle_kind"),
                 }
             else:
                 try:
@@ -2036,7 +2050,6 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     content_hash=str(current_content_hash) if current_content_hash else None,
                 )
 
-            reason = _manual_public_reason_code(plan_item.get("reason"))
             if item_failure_reason:
                 stable_skip_state = _manual_sync_execute_skip_state_for_reason(item_failure_reason)
                 if stable_skip_state:
@@ -2079,6 +2092,25 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 )
                 if stop_reason:
                     break
+                continue
+
+            if can_execute is False or work_item_kind in {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}:
+                diagnostic_reason = reason or str(plan_item.get("lifecycle_reason_code") or "").strip() or work_item_kind.lower()
+                _mark_item_skipped(
+                    db,
+                    run=run,
+                    item=item,
+                    state=state,
+                    reason=diagnostic_reason,
+                    metadata={**metadata, "safe_label": plan_item.get("safe_label")},
+                )
+                counts[state] += 1
+                if diagnostic_reason:
+                    counts[diagnostic_reason] += 1
+                processed_items += 1
+                processed_plan_items += 1
+                consecutive_failures = 0
+                db.commit()
                 continue
 
             if state == "downstream_followup_planned":

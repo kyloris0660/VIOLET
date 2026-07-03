@@ -37,7 +37,7 @@ RETRYABLE_SOURCE_FAILURE_REASONS = frozenset(
     {
         "cloud_hydration_failed",
         "cloud_network_unavailable",
-        "icloud_placeholder",
+        "content_changed_after_plan",
         "permission_denied",
         "read_error",
         "read_timeout",
@@ -48,14 +48,27 @@ RETRYABLE_SOURCE_READ_REASONS = frozenset(
     {
         "cloud_hydration_failed",
         "cloud_network_unavailable",
-        "icloud_placeholder",
+        "content_changed_after_plan",
         "permission_denied",
         "read_error",
         "read_timeout",
     }
 )
-PLACEHOLDER_REASONS = frozenset({"cloud_placeholder", "icloud_placeholder", "cloud_hydration_failed"})
+PLACEHOLDER_REASONS = frozenset({"cloud_placeholder", "icloud_placeholder"})
 CONTINUATION_REASONS = frozenset({"not_processed_budget_stop", "not_processed_cancelled"})
+APP_MEDIA_FOLLOWUP_REASONS = frozenset(
+    {
+        "ai_tagger_model_uncached",
+        "ai_tagging_failed",
+        "classification_failed",
+        "duplicate_hash",
+        "downstream_followup",
+        "existing_media_hash",
+        "localization_failed",
+        "not_processed_budget_stop",
+        "source_missing",
+    }
+)
 STABLE_NOOP_REASONS = frozenset(
     {
         "duplicate_hash",
@@ -200,10 +213,12 @@ def source_item_is_media_backed(item: Any) -> bool:
     import_status = _text(_value(item, "import_status"))
     sync_state = _text(_value(item, "sync_state"))
     reason = source_item_reason(item)
+    if import_status in {"failed", "deferred"} and reason in RETRYABLE_SOURCE_FAILURE_REASONS - {"source_missing"}:
+        return False
     return (
-        import_status in {"imported", "failed", "deferred"}
-        or sync_state in {"imported", "downstream_followup_planned", "failed", "deferred"}
-        or reason in {"existing_media_hash", "duplicate_hash", "downstream_followup", "not_processed_budget_stop", "source_missing"}
+        import_status == "imported"
+        or sync_state in {"imported", "downstream_followup_planned", "deferred_unprocessed"}
+        or reason in APP_MEDIA_FOLLOWUP_REASONS
     )
 
 
@@ -419,7 +434,23 @@ def classify_source_item(
     media_row_present = media is not None
     current_complete = bool(has_media and source_item_downstream_complete(item))
     media_backed = source_item_is_media_backed(item)
-    followup_needed = bool(media_backed and not current_complete)
+    placeholder_deferred = bool(sync_state == "skipped_placeholder" or reason in PLACEHOLDER_REASONS)
+    source_retry_needed = bool(
+        not placeholder_deferred
+        and import_status in {"failed", "deferred"}
+        and reason in RETRYABLE_SOURCE_FAILURE_REASONS
+    )
+    source_missing_app_media_followup = bool(
+        reason == "source_missing"
+        and has_media
+        and media_backed
+        and not current_complete
+    )
+    followup_needed = bool(
+        media_backed
+        and not current_complete
+        and (not source_retry_needed or source_missing_app_media_followup)
+    )
     run_state = _text(_value(run_item, "item_state")) if run_item is not None else ""
     run_action = _text(_value(run_item, "action")) if run_item is not None else ""
     attempted = bool(
@@ -439,6 +470,9 @@ def classify_source_item(
         "app_media_exists": app_media_exists,
         "current_downstream_complete": current_complete,
         "media_backed": media_backed,
+        "placeholder_deferred": placeholder_deferred,
+        "source_retry_needed": source_retry_needed,
+        "source_missing_app_media_followup": source_missing_app_media_followup,
         "followup_needed": followup_needed,
         "current_priority": current_priority,
         "run_item_state": run_state,
@@ -464,6 +498,22 @@ def classify_source_item(
             current_downstream_complete=current_complete,
             attempted_but_current_incomplete=attempted_but_current_incomplete,
         )
+    if source_retry_needed and not source_missing_app_media_followup:
+        return _decision(
+            LifecycleKind.RETRYABLE_SOURCE_FAILURE,
+            reason_code=reason,
+            evidence=evidence,
+            attempted_in_run=attempted,
+            current_downstream_complete=current_complete,
+        )
+    if media_backed and current_complete and app_media_exists is not False:
+        return _decision(
+            LifecycleKind.STABLE_NOOP,
+            reason_code=reason or sync_state or "downstream_complete",
+            evidence=evidence,
+            attempted_in_run=attempted,
+            current_downstream_complete=current_complete,
+        )
     if followup_needed:
         return _decision(
             LifecycleKind.APP_MEDIA_FOLLOWUP,
@@ -482,18 +532,10 @@ def classify_source_item(
             current_downstream_complete=current_complete,
             not_processed_continuation=True,
         )
-    if sync_state == "skipped_placeholder" or reason in PLACEHOLDER_REASONS:
+    if placeholder_deferred:
         return _decision(
             LifecycleKind.PLACEHOLDER_DEFERRED,
             reason_code=reason or "placeholder_deferred",
-            evidence=evidence,
-            attempted_in_run=attempted,
-            current_downstream_complete=current_complete,
-        )
-    if import_status in {"failed", "deferred"} and reason in RETRYABLE_SOURCE_FAILURE_REASONS:
-        return _decision(
-            LifecycleKind.RETRYABLE_SOURCE_FAILURE,
-            reason_code=reason,
             evidence=evidence,
             attempted_in_run=attempted,
             current_downstream_complete=current_complete,
@@ -555,6 +597,8 @@ def classify_plan_item_state(
         return _decision(LifecycleKind.PLACEHOLDER_DEFERRED, reason_code=reason_code or "placeholder_deferred", evidence=evidence)
     if state_value in {"failed"} and reason_code in RETRYABLE_SOURCE_FAILURE_REASONS:
         return _decision(LifecycleKind.RETRYABLE_SOURCE_FAILURE, reason_code=reason_code, evidence=evidence)
+    if state_value == "broken_state" or reason_code in {"app_media_missing", "media_row_missing", "broken_state"}:
+        return _decision(LifecycleKind.BROKEN_STATE, reason_code=reason_code or "broken_state", evidence=evidence)
     if state_value in {"skipped_existing_media", "skipped_duplicate", "skipped_unsupported", "unchanged"}:
         return _decision(LifecycleKind.STABLE_NOOP, reason_code=reason_code or state_value, evidence=evidence)
     return _decision(LifecycleKind.HISTORICAL_DIAGNOSTIC, reason_code=reason_code or state_value, evidence=evidence)
@@ -584,6 +628,8 @@ def map_manual_sync_operator_status(
         else sum(_truthy_count(counts.get(reason)) for reason in RETRYABLE_SOURCE_FAILURE_REASONS)
     )
     continuation = max(_truthy_count(unprocessed_count), _truthy_count(unprocessed_import_planned_count))
+    failed = _truthy_count(counts.get("failed"))
+    non_retryable_failed = max(0, failed - retryable)
     followup_required = bool(
         downstream_incomplete_count
         or localization_incomplete
@@ -600,6 +646,18 @@ def map_manual_sync_operator_status(
         return "failed_systemic"
     if status in {"cancelled", "cancelling"} or stopped == "cancelled":
         return "cancelled"
+    if non_retryable_failed:
+        return "failed_systemic"
+    if stopped in {"stopped_by_failure_budget", "stopped_by_duration_budget"} and followup_required:
+        return "failed_systemic"
+    if status == "failed" and stopped in {"stopped_by_failure_budget", "stopped_by_duration_budget"}:
+        if continuation and retryable:
+            return "completed_with_retryable_failures_plus_continuation"
+        if continuation:
+            return "completed_with_continuation"
+        if retryable and failed <= retryable:
+            return "completed_with_retryable_failures"
+        return "failed_systemic"
     if followup_required:
         return "completed_with_followup_required"
     if status == "failed" and continuation and stopped not in {"stopped_by_failure_budget", "stopped_by_duration_budget"}:
@@ -611,12 +669,7 @@ def map_manual_sync_operator_status(
     if retryable:
         return "completed_with_retryable_failures"
     if status in {"completed", "completed_with_failures"}:
-        failed = _truthy_count(counts.get("failed"))
-        if failed and failed > retryable:
-            return "failed_systemic"
         return "completed"
-    if status == "failed" and stopped in {"stopped_by_failure_budget", "stopped_by_duration_budget"}:
-        return "completed_with_continuation" if continuation else "completed_with_retryable_failures"
     if status == "failed":
         return "failed_systemic"
     return status or "failed_systemic"

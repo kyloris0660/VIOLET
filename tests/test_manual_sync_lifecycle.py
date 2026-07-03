@@ -164,6 +164,46 @@ def _media(**overrides: object) -> SimpleNamespace:
             True,
         ),
         (
+            "media_backed_read_timeout_retry_source",
+            _item(
+                media_id=10,
+                sync_state="failed",
+                import_status="failed",
+                classification_status="pending",
+                ai_tagging_status="pending",
+                localization_status="waiting_ai_tags",
+                failure_reason="read_timeout",
+            ),
+            _media(),
+            True,
+            False,
+            LifecycleKind.RETRYABLE_SOURCE_FAILURE,
+            WorkItemKind.RETRY_SOURCE,
+            True,
+            True,
+            True,
+        ),
+        (
+            "media_backed_cloud_hydration_failed_retry_source",
+            _item(
+                media_id=10,
+                sync_state="failed",
+                import_status="failed",
+                classification_status="pending",
+                ai_tagging_status="pending",
+                localization_status="waiting_ai_tags",
+                failure_reason="cloud_hydration_failed",
+            ),
+            _media(),
+            True,
+            False,
+            LifecycleKind.RETRYABLE_SOURCE_FAILURE,
+            WorkItemKind.RETRY_SOURCE,
+            True,
+            True,
+            True,
+        ),
+        (
             "failure_budget_stop_continuation",
             _item(sync_state="deferred_unprocessed", import_status="deferred", deferred_reason="not_processed_budget_stop"),
             None,
@@ -310,10 +350,42 @@ def _media(**overrides: object) -> SimpleNamespace:
             False,
         ),
         (
+            "placeholder_icloud_marker",
+            _item(sync_state="skipped_placeholder", import_status="deferred", deferred_reason="icloud_placeholder"),
+            None,
+            None,
+            False,
+            LifecycleKind.PLACEHOLDER_DEFERRED,
+            WorkItemKind.PLACEHOLDER,
+            False,
+            False,
+            False,
+        ),
+        (
             "stale_legacy_noop",
             _item(sync_state="skipped_existing_media", import_status="deferred", deferred_reason="existing_media_hash"),
             None,
             None,
+            False,
+            LifecycleKind.STABLE_NOOP,
+            WorkItemKind.NOOP_DIAGNOSTIC,
+            False,
+            False,
+            False,
+        ),
+        (
+            "media_backed_downstream_complete_ignores_stale_continuation",
+            _item(
+                media_id=10,
+                sync_state="imported",
+                import_status="imported",
+                classification_status="classified",
+                ai_tagging_status="ai_tagged",
+                localization_status="localized",
+                deferred_reason="not_processed_budget_stop",
+            ),
+            _media(),
+            True,
             False,
             LifecycleKind.STABLE_NOOP,
             WorkItemKind.NOOP_DIAGNOSTIC,
@@ -350,6 +422,30 @@ def _media(**overrides: object) -> SimpleNamespace:
             LifecycleKind.APP_MEDIA_FOLLOWUP,
             WorkItemKind.FOLLOWUP,
             False,
+            True,
+            True,
+        ),
+        (
+            "cloud_hydration_failed_source_attempt_retry",
+            _item(sync_state="failed", import_status="failed", failure_reason="cloud_hydration_failed"),
+            None,
+            None,
+            False,
+            LifecycleKind.RETRYABLE_SOURCE_FAILURE,
+            WorkItemKind.RETRY_SOURCE,
+            True,
+            True,
+            True,
+        ),
+        (
+            "content_changed_after_plan_retry",
+            _item(sync_state="failed", import_status="failed", failure_reason="content_changed_after_plan"),
+            None,
+            None,
+            False,
+            LifecycleKind.RETRYABLE_SOURCE_FAILURE,
+            WorkItemKind.RETRY_SOURCE,
+            True,
             True,
             True,
         ),
@@ -455,6 +551,14 @@ def test_manual_sync_lifecycle_operator_status_mapping() -> None:
         )
         == "completed_with_retryable_failures"
     )
+    assert (
+        map_manual_sync_operator_status(
+            run_status="completed_with_failures",
+            outcome_counts={"failed": 5, "read_timeout": 1},
+            retryable_source_failure_count=1,
+        )
+        == "failed_systemic"
+    )
     assert map_manual_sync_operator_status(run_status="completed", outcome_counts={}) == "completed"
     assert map_manual_sync_operator_status(run_status="failed", outcome_counts={"failed": 1}) == "failed_systemic"
     assert (
@@ -478,6 +582,15 @@ def test_manual_sync_lifecycle_operator_status_mapping() -> None:
     assert (
         map_manual_sync_operator_status(
             run_status="failed",
+            outcome_counts={"classification_failed": 2, "ai_tagging_failed": 1},
+            downstream_incomplete_count=3,
+            import_stopped_by="stopped_by_failure_budget",
+        )
+        == "failed_systemic"
+    )
+    assert (
+        map_manual_sync_operator_status(
+            run_status="failed",
             outcome_counts={"failed": 1},
             unprocessed_import_planned_count=3,
         )
@@ -488,6 +601,7 @@ def test_manual_sync_lifecycle_operator_status_mapping() -> None:
 def test_manual_sync_lifecycle_plan_state_boundaries() -> None:
     followup = classify_plan_item_state(state="downstream_followup_planned", reason="downstream_followup", media_id=10)
     import_candidate = classify_plan_item_state(state="import_planned")
+    placeholder = classify_plan_item_state(state="skipped_placeholder", reason="icloud_placeholder")
     noop = classify_plan_item_state(state="skipped_existing_media", reason="existing_media_hash", media_id=10)
     broken = classify_source_item(
         _item(
@@ -507,6 +621,10 @@ def test_manual_sync_lifecycle_plan_state_boundaries() -> None:
     assert followup.allowed_source_reads is False
     assert import_candidate.work_item_kind == WorkItemKind.IMPORT
     assert import_candidate.allowed_source_reads is True
+    assert placeholder.work_item_kind == WorkItemKind.PLACEHOLDER
+    assert placeholder.allowed_source_reads is False
+    assert placeholder.can_execute is False
+    assert placeholder.consumes_actionable_cap is False
     assert noop.work_item_kind == WorkItemKind.NOOP_DIAGNOSTIC
     assert noop.consumes_actionable_cap is False
     assert broken.work_item_kind == WorkItemKind.BROKEN_STATE

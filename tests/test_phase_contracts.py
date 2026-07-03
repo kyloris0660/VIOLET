@@ -2209,6 +2209,7 @@ def _s3a_m2_r_lifecycle_summary(**overrides: object) -> dict:
             "FOLLOWUP": {"allowed_source_reads": False, "can_execute": True, "consumes_actionable_cap": True},
             "IMPORT": {"allowed_source_reads": True, "can_execute": True, "consumes_actionable_cap": True},
             "RETRY_SOURCE": {"allowed_source_reads": True, "can_execute": True, "consumes_actionable_cap": True},
+            "PLACEHOLDER": {"allowed_source_reads": False, "can_execute": False, "consumes_actionable_cap": False},
             "NOOP_DIAGNOSTIC": {"allowed_source_reads": False, "can_execute": False, "consumes_actionable_cap": False},
             "BROKEN_STATE": {"allowed_source_reads": False, "can_execute": False, "consumes_actionable_cap": False},
         },
@@ -2222,7 +2223,7 @@ def _s3a_m2_r_lifecycle_summary(**overrides: object) -> dict:
             "run18_retryable_source_failures": {"count": 11, "kind": "RETRYABLE_SOURCE_FAILURE"},
         },
         "validation": {
-            "table_driven_lifecycle_scenarios": {"count": 24, "passed": True},
+            "table_driven_lifecycle_scenarios": {"count": 27, "passed": True},
             "source_read_boundary_tests": {"passed": True},
             "app_media_missing_broken_state_covered": True,
             "attempted_vs_completed_separation_covered": True,
@@ -2289,6 +2290,19 @@ def test_s3a_m2_r_lifecycle_workitem_contract_requires_source_boundaries_and_sce
 
     assert "s3a_m2_r_source_boundary_invalid" in codes
     assert "s3a_m2_r_lifecycle_scenario_count_too_low" in codes
+
+
+def test_s3a_m2_r_lifecycle_workitem_contract_validates_placeholder_boundary() -> None:
+    summary = _s3a_m2_r_lifecycle_summary()
+    _set_nested(summary, "work_item_source_read_boundaries.PLACEHOLDER.allowed_source_reads", True)
+
+    result = check_phase_contract("s3a_m2_r_lifecycle_workitem_contract_v1", summary)
+
+    assert "s3a_m2_r_source_boundary_invalid" in _error_codes(result)
+    assert any(
+        error.path == "work_item_source_read_boundaries.PLACEHOLDER.allowed_source_reads"
+        for error in result.errors
+    )
 
 
 def test_phase47_s2_contract_accepts_gate1_blocked_summary_without_completion_claim() -> None:

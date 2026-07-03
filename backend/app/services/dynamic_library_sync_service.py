@@ -33,6 +33,7 @@ from ..models import (
 from ..services.job_control import build_ai_tagging_execution_profile
 from ..services.manual_sync_lifecycle import (
     LifecycleKind,
+    app_media_exists as lifecycle_app_media_exists,
     classify_plan_item_state,
     classify_source_item,
     source_item_downstream_complete,
@@ -66,6 +67,7 @@ MANUAL_SYNC_FILE_STATES: tuple[str, ...] = (
     "ai_tagged_in_test",
     "localization_scheduled_in_test",
     "failed",
+    "broken_state",
 )
 
 MANUAL_SYNC_PIPELINE_STAGES: tuple[str, ...] = (
@@ -90,7 +92,7 @@ MANUAL_SYNC_ADVANCED_FULL_RESCAN_MODE = "advanced_full_rescan"
 MANUAL_SYNC_RETRYABLE_SOURCE_FAILURE_REASONS = {
     "cloud_hydration_failed",
     "cloud_network_unavailable",
-    "icloud_placeholder",
+    "content_changed_after_plan",
     "permission_denied",
     "read_error",
     "read_timeout",
@@ -123,8 +125,10 @@ MANUAL_SYNC_LOCALIZATION_COMPLETE_STATUSES = {
 
 MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
     {
+        "app_media_missing",
         "cloud_placeholder",
         "cloud_hydration_failed",
+        "cloud_network_unavailable",
         "classification_model_uncached",
         "content_changed_after_plan",
         "corrupted_image",
@@ -136,8 +140,10 @@ MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
         "icloud_placeholder",
         "image_verify_failed",
         "import_failed",
+        "media_row_missing",
         "not_a_file",
         "path_escape",
+        "permission_denied",
         "plan_no_progress_timeout",
         "plan_timeout",
         "plan_cancelled",
@@ -331,6 +337,8 @@ def _manual_state_for_reason(reason: str) -> str:
         return "skipped_changing"
     if reason in {"corrupted_image", "image_verify_failed"}:
         return "failed"
+    if reason in {"app_media_missing", "media_row_missing", "broken_state"}:
+        return "broken_state"
     if reason in {
         "source_missing",
         "stat_error",
@@ -338,6 +346,8 @@ def _manual_state_for_reason(reason: str) -> str:
         "read_timeout",
         "content_changed_after_plan",
         "cloud_hydration_failed",
+        "cloud_network_unavailable",
+        "permission_denied",
     }:
         return "failed"
     return "skipped_unsupported"
@@ -912,10 +922,49 @@ def _plan_manual_sync_incremental_dry_run(
     }
     app_media_followup_candidates_total = len(app_media_followup_items)
     db_followup_candidates = app_media_followup_candidates_total
+
+    media_evidence_cache: Dict[int, tuple[Optional[Media], Optional[bool]]] = {}
+
+    def _prime_media_evidence(media_ids: Iterable[Optional[int]]) -> None:
+        ids = sorted({int(media_id) for media_id in media_ids if media_id is not None})
+        missing = [media_id for media_id in ids if media_id not in media_evidence_cache]
+        if not missing:
+            return
+        rows = {
+            int(media.id): media
+            for media in db.query(Media).filter(Media.id.in_(missing)).all()
+            if media.id is not None
+        }
+        for media_id in missing:
+            media_row = rows.get(media_id)
+            media_evidence_cache[media_id] = (
+                media_row,
+                lifecycle_app_media_exists(media_row, storage_root=settings.STORAGE_ROOT)
+                if media_row is not None
+                else None,
+            )
+
+    def _media_evidence(media_id: Optional[int]) -> tuple[Optional[Media], Optional[bool]]:
+        if media_id is None:
+            return None, None
+        _prime_media_evidence([int(media_id)])
+        return media_evidence_cache[int(media_id)]
+
+    _prime_media_evidence(item.media_id for item in app_media_followup_items)
     for followup_index, known_item in enumerate(app_media_followup_items, start=1):
-        lifecycle_decision = classify_source_item(known_item, current_priority=True)
+        media_row, app_exists = _media_evidence(known_item.media_id)
+        lifecycle_decision = classify_source_item(
+            known_item,
+            media=media_row,
+            media_lookup_performed=True,
+            app_media_exists=app_exists,
+            current_priority=True,
+        )
         rel = str(known_item.relative_path or "")
         rel_hash_full = str(known_item.relative_path_hash or _hash_text(rel))
+        is_followup = lifecycle_decision.kind == LifecycleKind.APP_MEDIA_FOLLOWUP
+        state = "downstream_followup_planned" if is_followup else "broken_state"
+        reason = "downstream_followup" if is_followup else lifecycle_decision.reason_code
         metadata = {
             "file_size": known_item.file_size,
             "mtime": known_item.mtime,
@@ -923,6 +972,8 @@ def _plan_manual_sync_incremental_dry_run(
             "suffix": Path(rel).suffix.lower(),
             "app_media_backed_followup": True,
             "source_file_required": False,
+            "app_media_exists": app_exists,
+            "media_row_present": media_row is not None,
         }
         candidate_pool.append(
             {
@@ -931,13 +982,13 @@ def _plan_manual_sync_incremental_dry_run(
                 "relative_path_hash": rel_hash_full[:16],
                 "relative_path_hash_full": rel_hash_full,
                 "metadata": metadata,
-                "reason": "downstream_followup",
+                "reason": reason,
                 "content_hash": str(known_item.content_hash or "") or None,
                 "media_id": int(known_item.media_id) if known_item.media_id is not None else None,
                 "cloud_placeholder_before_hydration": False,
-                "followup": _manual_plan_followup_payload(known_item),
+                "followup": _manual_plan_followup_payload(known_item) if is_followup else {},
                 "scan_source": "app_media_followup",
-                "state": "downstream_followup_planned",
+                "state": state,
                 "lifecycle_decision": lifecycle_decision.to_public_dict(),
                 "candidate_priority": _manual_plan_media_followup_candidate_priority(known_item),
                 "candidate_mtime_ns": known_item.mtime_ns,
@@ -1118,6 +1169,34 @@ def _plan_manual_sync_incremental_dry_run(
                 candidate_priority = 40
             else:
                 candidate_priority = 90
+        if known_item is not None:
+            if state == "downstream_followup_planned" and media_id:
+                media_row, app_exists = _media_evidence(media_id)
+                lifecycle_decision = classify_source_item(
+                    known_item,
+                    media=media_row,
+                    media_lookup_performed=True,
+                    app_media_exists=app_exists,
+                    current_priority=True,
+                )
+                if lifecycle_decision.kind == LifecycleKind.BROKEN_STATE:
+                    state = "broken_state"
+                    reason = lifecycle_decision.reason_code
+                    followup_payload = {}
+            else:
+                lifecycle_decision = classify_source_item(known_item, current_priority=True)
+        else:
+            lifecycle_decision = classify_plan_item_state(
+                state=state,
+                reason="downstream_followup" if state == "downstream_followup_planned" else None,
+                media_id=media_id,
+            )
+        if known_item is not None and not reason and lifecycle_decision.kind in {
+            LifecycleKind.RETRYABLE_SOURCE_FAILURE,
+            LifecycleKind.CONTINUATION,
+            LifecycleKind.BROKEN_STATE,
+        }:
+            reason = lifecycle_decision.reason_code
         record = {
             "safe_label": safe_label,
             "relative_path": rel,
@@ -1131,15 +1210,7 @@ def _plan_manual_sync_incremental_dry_run(
             "followup": followup_payload,
             "scan_source": scan_source,
             "state": state,
-            "lifecycle_decision": (
-                classify_source_item(known_item, current_priority=True).to_public_dict()
-                if known_item is not None and state == "downstream_followup_planned"
-                else classify_plan_item_state(
-                    state=state,
-                    reason="downstream_followup" if state == "downstream_followup_planned" else None,
-                    media_id=media_id,
-                ).to_public_dict()
-            ),
+            "lifecycle_decision": lifecycle_decision.to_public_dict(),
             "candidate_priority": candidate_priority,
             "candidate_mtime_ns": mtime_ns,
             "known_source_item": known_item is not None,
@@ -1270,16 +1341,17 @@ def _plan_manual_sync_incremental_dry_run(
             }
         )
         if include_private_details:
-            private_items.append(
-                {
-                    **item,
-                    "relative_path": record["relative_path"],
-                    "content_hash": record.get("content_hash") if state == "downstream_followup_planned" else None,
-                    "mtime_ns": metadata.get("mtime_ns"),
-                    "cloud_placeholder_before_hydration": False,
-                    "downstream_followup": dict(record.get("followup") or {}),
-                }
-            )
+            private_item = {
+                **item,
+                "relative_path": record["relative_path"],
+                "content_hash": record.get("content_hash") if state == "downstream_followup_planned" else None,
+                "mtime_ns": metadata.get("mtime_ns"),
+                "cloud_placeholder_before_hydration": False,
+                "downstream_followup": dict(record.get("followup") or {}),
+            }
+            if record.get("source_item_id") is not None:
+                private_item["source_item_id"] = int(record["source_item_id"])
+            private_items.append(private_item)
 
     if walk_errors:
         partial_scan = True

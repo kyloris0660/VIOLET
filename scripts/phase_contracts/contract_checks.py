@@ -7685,6 +7685,7 @@ def _check_s3a_m2_r_lifecycle_workitem(_contract: PhaseContract, summary: Mappin
         "FOLLOWUP": (False, True, True),
         "IMPORT": (True, True, True),
         "RETRY_SOURCE": (True, True, True),
+        "PLACEHOLDER": (False, False, False),
         "NOOP_DIAGNOSTIC": (False, False, False),
         "BROKEN_STATE": (False, False, False),
     }

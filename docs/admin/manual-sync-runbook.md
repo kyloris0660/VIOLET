@@ -125,6 +125,12 @@ guards.
 `RETRYABLE_SOURCE_FAILURE` is item-level source/cloud/read debt. It does not
 block app-media follow-up, and it maps legacy run wording toward
 `completed_with_retryable_failures` when processed work completed.
+Failed `cloud_hydration_failed` source attempts stay in this bucket unless the
+row has explicit placeholder evidence.
+
+`PLACEHOLDER_DEFERRED` is actual placeholder evidence such as
+`skipped_placeholder`, `cloud_placeholder`, or `icloud_placeholder`. It is
+visible and non-executable by default.
 
 `CONTINUATION` is unprocessed work left by cap, budget stop, or cancellation. It
 must stay visible in the next plan and must not be treated as terminal failure.

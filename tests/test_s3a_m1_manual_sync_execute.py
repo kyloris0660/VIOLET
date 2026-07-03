@@ -2346,6 +2346,7 @@ def test_manual_sync_execute_processes_imported_downstream_followup(db, tmp_path
         file_type=FileTypeEnum.image,
         content_class="anime",
     )
+    _write_png(settings.ORIGINAL_DIR / "followup.png")
     db.add(media)
     db.flush()
     source_stat = source_file.stat()
@@ -2530,6 +2531,7 @@ def test_manual_sync_execute_allows_downstream_followup_when_source_file_missing
         hash=calculate_file_hash(source_file),
         file_type=FileTypeEnum.image,
     )
+    _write_png(settings.ORIGINAL_DIR / "followup-missing-source.png")
     db.add(media)
     db.flush()
     source_stat = source_file.stat()
@@ -2631,6 +2633,7 @@ def test_manual_sync_execute_prioritizes_followup_before_import_failure_budget(d
         file_type=FileTypeEnum.image,
         content_class="anime",
     )
+    _write_png(settings.ORIGINAL_DIR / "01-followup.png", (4, 5, 6))
     db.add(media)
     db.flush()
     followup_stat = followup_path.stat()
@@ -2755,6 +2758,7 @@ def test_manual_sync_execute_scopes_downstream_followup_to_planned_source_item(d
         file_type=FileTypeEnum.image,
         content_class="anime",
     )
+    _write_png(settings.ORIGINAL_DIR / "followup.png", (30, 40, 50))
     db.add(media)
     db.flush()
     planned_stat = planned_path.stat()

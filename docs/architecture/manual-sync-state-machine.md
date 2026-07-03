@@ -115,14 +115,17 @@ discover it without content reads.
 
 `RETRYABLE_SOURCE_FAILURE`
 
-A source read/stat/hydration failure prevented import. It is item-level debt.
-It may be retried by a retry-source work item, but failure must not block
-app-media follow-up or unrelated imports within the approved failure budget.
+A source read/stat/hydration failure prevented import. `read_timeout`,
+`read_error`, `cloud_hydration_failed`, `cloud_network_unavailable`,
+`permission_denied`, and changed-source retry reasons are item-level debt. They
+may be retried by a retry-source work item, but failure must not block app-media
+follow-up or unrelated imports within the approved failure budget.
 
 `PLACEHOLDER_DEFERRED`
 
-Cloud placeholder or hydration-risk item. It is visible diagnostic debt and may
-be retried only under an explicit cloud-aware policy. It must not mutate
+Actual cloud/iCloud placeholder evidence, such as `skipped_placeholder`,
+`cloud_placeholder`, or `icloud_placeholder`. It is visible diagnostic debt and
+may be retried only under an explicit cloud-aware policy. It must not mutate
 iCloud/source.
 
 `STABLE_NOOP`
@@ -168,7 +171,9 @@ Typed WorkItems should be generated from lifecycle decisions.
 
 Critical rules:
 
-- `FOLLOWUP` uses app-managed media. It must not require source readability.
+- `FOLLOWUP` uses app-managed media. It must not require source readability, and
+  planner must verify the Media row and app-storage file before exposing it as
+  executable.
 - `IMPORT` uses source file revalidation/hash/copy.
 - `RETRY_SOURCE` may touch source, but failure remains item-level.
 - `NOOP_DIAGNOSTIC` never consumes actionable cap.

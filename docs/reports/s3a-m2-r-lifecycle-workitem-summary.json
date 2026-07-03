@@ -140,7 +140,7 @@
   },
   "validation": {
     "table_driven_lifecycle_scenarios": {
-      "count": 21,
+      "count": 27,
       "passed": true
     },
     "source_read_boundary_tests": {
@@ -202,5 +202,22 @@
     "phase_contract": "reusable validation/safety tool",
     "audit_adapter_updates": "phase-scoped operational runner",
     "public_reports": "public report / handoff"
+  },
+  "reviewer_fix_round": {
+    "scope": "PR-R1 bounded lifecycle and WorkItem correctness fixes only",
+    "fixed": [
+      "media-backed retryable source failures stay RETRY_SOURCE instead of APP_MEDIA_FOLLOWUP",
+      "cloud_hydration_failed failed source attempts are retryable while actual placeholders stay PLACEHOLDER",
+      "current-complete media-backed rows become STABLE_NOOP before stale continuation reasons",
+      "planner app-media follow-up requires Media row and app-storage evidence",
+      "operator status mapping rejects mixed non-retryable failures and budget-stop stage failures as systemic",
+      "PLACEHOLDER source-read boundary is contract-enforced"
+    ],
+    "not_in_scope": [
+      "PR-R2 UI progress or browser validation",
+      "production Execute",
+      "provider or source metadata calls",
+      "SourceConcept Entity or media_tags truth work"
+    ]
   }
 }

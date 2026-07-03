@@ -39,8 +39,8 @@ PR-R1 实现的 `WorkItemKind`：
 
 - `APP_MEDIA_FOLLOWUP` -> `FOLLOWUP`：已有 app-managed media，但 classification / AI tagging / localization 当前不完整。
 - `IMPORT_CANDIDATE` -> `IMPORT`：需要源文件 revalidate/hash/copy/import 的导入候选。
-- `RETRYABLE_SOURCE_FAILURE` -> `RETRY_SOURCE`：read error / read timeout / source missing 等 item-level 源侧失败。
-- `PLACEHOLDER_DEFERRED` -> `PLACEHOLDER`：cloud / iCloud placeholder 或 hydration 风险，默认不可执行。
+- `RETRYABLE_SOURCE_FAILURE` -> `RETRY_SOURCE`：read error / read timeout / failed cloud hydration / changed-source retry 等 item-level 源侧失败。
+- `PLACEHOLDER_DEFERRED` -> `PLACEHOLDER`：真实 cloud / iCloud placeholder evidence，默认不可执行。
 - `STABLE_NOOP` / `HISTORICAL_DIAGNOSTIC` -> `NOOP_DIAGNOSTIC`：诊断可见但不消耗 actionable cap。
 - `BROKEN_STATE` -> `BROKEN_STATE`：可见、默认不可执行，需要 operator/repair 阶段处理。
 
@@ -98,6 +98,23 @@ PR-R1 增加表驱动 lifecycle 测试、planner service-level 集成测试、ex
 公共摘要：
 
 - `docs/reports/s3a-m2-r-lifecycle-workitem-summary.json`
+
+## Reviewer Fix Round
+
+本轮只处理 PR-R1 reviewer 标出的 lifecycle / WorkItem 正确性问题：
+
+- media-backed `read_timeout`、`cloud_hydration_failed`、`content_changed_after_plan` 等源侧 retry 仍归为
+  `RETRYABLE_SOURCE_FAILURE` / `RETRY_SOURCE`，不会被 `media_id` 抢先解释成 `APP_MEDIA_FOLLOWUP`。
+- `cloud_hydration_failed` 失败源尝试保持 retryable；只有 `skipped_placeholder`、`cloud_placeholder`、
+  `icloud_placeholder` 等真实 placeholder evidence 才归为 `PLACEHOLDER_DEFERRED`。
+- current downstream complete 且 app media 存在的 media-backed row 会先归为 `STABLE_NOOP`，不会被陈旧
+  `not_processed_budget_stop` 继续消耗 cap。
+- planner 的 app-media follow-up path 会预取 Media row 和 app-storage existence evidence；缺 Media row 或缺
+  app file 时输出 visible / non-executable `BROKEN_STATE`。
+- legacy `completed_with_failures` / budget stop status mapping 会先识别混合 non-retryable failures 和
+  failure-budget stage failures，避免误报成 retry-only 或 follow-up-required。
+- phase contract 已把 `PLACEHOLDER` 加入 source-read boundary：`allowed_source_reads=false`、
+  `can_execute=false`、`consumes_actionable_cap=false`。
 
 ## 安全确认
 

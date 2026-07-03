@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -108,8 +108,28 @@ def _seed_source_tree(root: Path) -> None:
 def _write_png(path: Path, color: tuple[int, int, int] = (1, 2, 3)) -> None:
     from PIL import Image
 
+    path.parent.mkdir(parents=True, exist_ok=True)
     image = Image.new("RGB", (1, 1), color)
     image.save(path)
+
+
+def _patch_app_storage(monkeypatch, tmp_path: Path) -> Path:
+    storage = tmp_path / "app_storage"
+    original = storage / "media" / "original"
+    thumbs = storage / "media" / "thumbnails"
+    original.mkdir(parents=True, exist_ok=True)
+    thumbs.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(service.settings, "STORAGE_ROOT", storage)
+    monkeypatch.setattr(service.settings, "MEDIA_DIR", storage / "media")
+    monkeypatch.setattr(service.settings, "ORIGINAL_DIR", original)
+    monkeypatch.setattr(service.settings, "THUMBNAIL_DIR", thumbs)
+    return storage
+
+
+def _write_app_media(storage: Path, stored_path: str, color: tuple[int, int, int] = (1, 2, 3)) -> Path:
+    app_path = storage / stored_path
+    _write_png(app_path, color)
+    return app_path
 
 
 def test_dynamic_sync_migration_is_idempotent_and_indexed():
@@ -1660,7 +1680,8 @@ def test_manual_sync_dry_run_treats_unchanged_duplicate_ledger_rows_as_stable_sk
     assert "fresh.png" not in str(plan)
 
 
-def test_manual_sync_dry_run_does_not_let_stable_noop_hide_downstream_incomplete_duplicate(db, tmp_path):
+def test_manual_sync_dry_run_does_not_let_stable_noop_hide_downstream_incomplete_duplicate(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     duplicate_path = source_root / "duplicate.png"
@@ -1674,6 +1695,7 @@ def test_manual_sync_dry_run_does_not_let_stable_noop_hide_downstream_incomplete
         hash=calculate_file_hash(duplicate_path),
         file_type=FileTypeEnum.image,
     )
+    _write_app_media(app_storage, media.path, (20, 30, 40))
     db.add(media)
     db.flush()
     db.add(
@@ -1871,7 +1893,8 @@ def test_manual_sync_dry_run_does_not_fast_skip_media_backed_pending_without_has
     assert plan["counts"]["state_counts"]["import_planned"] == 1
 
 
-def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(db, tmp_path):
+def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     followup_path = source_root / "a_followup.png"
@@ -1894,6 +1917,7 @@ def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(
         hash=calculate_file_hash(followup_path),
         file_type=FileTypeEnum.image,
     )
+    _write_app_media(app_storage, media.path, (20, 30, 40))
     db.add(media)
     db.flush()
     db.add(
@@ -1940,7 +1964,8 @@ def test_manual_sync_dry_run_reincludes_imported_items_with_downstream_followup(
     assert "a_followup.png" not in str(public_plan)
 
 
-def test_manual_sync_dry_run_recovers_imported_downstream_incomplete_without_source_file(db, tmp_path):
+def test_manual_sync_dry_run_recovers_imported_downstream_incomplete_without_source_file(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     source_file = source_root / "run16-leftover.png"
@@ -1961,6 +1986,7 @@ def test_manual_sync_dry_run_recovers_imported_downstream_incomplete_without_sou
         hash=calculate_file_hash(source_file),
         file_type=FileTypeEnum.image,
     )
+    _write_app_media(app_storage, media.path, (20, 30, 40))
     db.add(media)
     db.flush()
     db.add(
@@ -2017,7 +2043,213 @@ def test_manual_sync_dry_run_recovers_imported_downstream_incomplete_without_sou
     assert followup_item["consumes_actionable_cap"] is True
 
 
+def test_manual_sync_dry_run_marks_app_media_followup_missing_app_file_broken(db, tmp_path, monkeypatch):
+    _patch_app_storage(monkeypatch, tmp_path)
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / "missing-app-file.png"
+    _write_png(source_file, (20, 30, 40))
+    source_stat = source_file.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="missing-app-file.png",
+        path="media/original/missing-app-file.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=service._hash_text(source_file.name),
+            file_size=source_stat.st_size,
+            mtime_ns=source_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="pending",
+            ai_tagging_status="pending",
+            localization_status="waiting_ai_tags",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+    source_file.unlink()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["broken_state"] == 1
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 0
+    broken = plan["private_details"]["items"][0]
+    assert broken["state"] == "broken_state"
+    assert broken["lifecycle_kind"] == "BROKEN_STATE"
+    assert broken["work_item_kind"] == "BROKEN_STATE"
+    assert broken["lifecycle_reason_code"] == "app_media_missing"
+    assert broken["can_execute"] is False
+    assert broken["consumes_actionable_cap"] is False
+    assert broken["allowed_source_reads"] is False
+
+
+def test_manual_sync_dry_run_marks_app_media_followup_missing_media_row_broken(db, tmp_path, monkeypatch):
+    _patch_app_storage(monkeypatch, tmp_path)
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / "missing-media-row.png"
+    _write_png(source_file, (20, 30, 40))
+    source_stat = source_file.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="missing-media-row.png",
+        path="media/original/missing-media-row.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    media_id = int(media.id)
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=service._hash_text(source_file.name),
+            file_size=source_stat.st_size,
+            mtime_ns=source_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="pending",
+            ai_tagging_status="pending",
+            localization_status="waiting_ai_tags",
+            media_id=media_id,
+        )
+    )
+    db.commit()
+    db.execute(text("PRAGMA foreign_keys=OFF"))
+    db.execute(text("DELETE FROM blombooru_media WHERE id = :media_id"), {"media_id": media_id})
+    db.commit()
+    db.execute(text("PRAGMA foreign_keys=ON"))
+    source_file.unlink()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["broken_state"] == 1
+    broken = plan["private_details"]["items"][0]
+    assert broken["lifecycle_kind"] == "BROKEN_STATE"
+    assert broken["work_item_kind"] == "BROKEN_STATE"
+    assert broken["lifecycle_reason_code"] == "media_row_missing"
+    assert broken["can_execute"] is False
+    assert broken["consumes_actionable_cap"] is False
+
+
+def test_manual_sync_dry_run_preserves_media_backed_source_retry_and_followup(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    retry_path = source_root / "retry-timeout.png"
+    followup_path = source_root / "followup-source-missing.png"
+    _write_png(retry_path, (20, 30, 40))
+    _write_png(followup_path, (60, 70, 80))
+    retry_stat = retry_path.stat()
+    followup_stat = followup_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    retry_media = Media(
+        filename="retry-timeout.png",
+        path="media/original/retry-timeout.png",
+        hash=calculate_file_hash(retry_path),
+        file_type=FileTypeEnum.image,
+    )
+    followup_media = Media(
+        filename="followup-source-missing.png",
+        path="media/original/followup-source-missing.png",
+        hash=calculate_file_hash(followup_path),
+        file_type=FileTypeEnum.image,
+    )
+    _write_app_media(app_storage, followup_media.path, (60, 70, 80))
+    db.add_all([retry_media, followup_media])
+    db.flush()
+    db.add_all(
+        [
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=retry_path.name,
+                relative_path_hash=service._hash_text(retry_path.name),
+                file_size=retry_stat.st_size,
+                mtime_ns=retry_stat.st_mtime_ns,
+                content_hash=retry_media.hash,
+                source_status="failed",
+                sync_state="failed",
+                import_status="failed",
+                classification_status="pending",
+                ai_tagging_status="pending",
+                localization_status="waiting_ai_tags",
+                failure_reason="read_timeout",
+                media_id=retry_media.id,
+            ),
+            DynamicSourceItem(
+                source_root_id=root.id,
+                relative_path=followup_path.name,
+                relative_path_hash=service._hash_text(followup_path.name),
+                file_size=followup_stat.st_size,
+                mtime_ns=followup_stat.st_mtime_ns,
+                content_hash=followup_media.hash,
+                source_status="failed",
+                sync_state="failed",
+                import_status="failed",
+                classification_status="pending",
+                ai_tagging_status="pending",
+                localization_status="waiting_ai_tags",
+                failure_reason="source_missing",
+                media_id=followup_media.id,
+            ),
+        ]
+    )
+    db.commit()
+    followup_path.unlink()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["work_item_counts"]["RETRY_SOURCE"] == 1
+    assert plan["counts"]["work_item_counts"]["FOLLOWUP"] == 1
+    retry_item = next(item for item in plan["private_details"]["items"] if item["work_item_kind"] == "RETRY_SOURCE")
+    assert retry_item["lifecycle_kind"] == "RETRYABLE_SOURCE_FAILURE"
+    assert retry_item["state"] == "import_planned"
+    assert retry_item["allowed_source_reads"] is True
+    followup_item = next(item for item in plan["private_details"]["items"] if item["work_item_kind"] == "FOLLOWUP")
+    assert followup_item["lifecycle_kind"] == "APP_MEDIA_FOLLOWUP"
+    assert followup_item["allowed_source_reads"] is False
+
+
 def test_manual_sync_dry_run_keeps_app_media_followup_when_filesystem_walk_errors(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     source_file = source_root / "run16-leftover.png"
@@ -2038,6 +2270,7 @@ def test_manual_sync_dry_run_keeps_app_media_followup_when_filesystem_walk_error
         hash=calculate_file_hash(source_file),
         file_type=FileTypeEnum.image,
     )
+    _write_app_media(app_storage, media.path, (20, 30, 40))
     db.add(media)
     db.flush()
     db.add(
@@ -2101,7 +2334,8 @@ def test_manual_sync_dry_run_keeps_app_media_followup_when_filesystem_walk_error
     assert followup_item["allowed_source_reads"] is False
 
 
-def test_manual_sync_dry_run_priority_zero_followup_sorts_before_existing_media_followup(db, tmp_path):
+def test_manual_sync_dry_run_priority_zero_followup_sorts_before_existing_media_followup(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     root = DynamicSourceRoot(
@@ -2124,6 +2358,8 @@ def test_manual_sync_dry_run_priority_zero_followup_sorts_before_existing_media_
         hash="existing-hash",
         file_type=FileTypeEnum.image,
     )
+    _write_app_media(app_storage, urgent_media.path, (1, 2, 3))
+    _write_app_media(app_storage, existing_media.path, (4, 5, 6))
     db.add_all([urgent_media, existing_media])
     db.flush()
     urgent = DynamicSourceItem(
