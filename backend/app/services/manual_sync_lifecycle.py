@@ -489,7 +489,8 @@ def classify_source_item(
             current_downstream_complete=current_complete,
             attempted_but_current_incomplete=attempted_but_current_incomplete,
         )
-    if media_backed and app_media_exists is False:
+    current_complete_media_backed = bool(has_media and current_complete)
+    if (media_backed or current_complete_media_backed) and app_media_exists is False:
         return _decision(
             LifecycleKind.BROKEN_STATE,
             reason_code="app_media_missing",
@@ -497,6 +498,14 @@ def classify_source_item(
             attempted_in_run=attempted,
             current_downstream_complete=current_complete,
             attempted_but_current_incomplete=attempted_but_current_incomplete,
+        )
+    if current_complete_media_backed and app_media_exists is True:
+        return _decision(
+            LifecycleKind.STABLE_NOOP,
+            reason_code=reason or sync_state or "downstream_complete",
+            evidence=evidence,
+            attempted_in_run=attempted,
+            current_downstream_complete=current_complete,
         )
     if source_retry_needed and not source_missing_app_media_followup:
         return _decision(

@@ -132,6 +132,13 @@ def _write_app_media(storage: Path, stored_path: str, color: tuple[int, int, int
     return app_path
 
 
+def _touch_app_media(storage: Path, stored_path: str) -> Path:
+    app_path = storage / stored_path
+    app_path.parent.mkdir(parents=True, exist_ok=True)
+    app_path.write_bytes(b"app-media")
+    return app_path
+
+
 def test_dynamic_sync_migration_is_idempotent_and_indexed():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     try:
@@ -1081,7 +1088,8 @@ def test_manual_sync_normal_plan_does_not_hash_or_lookup_existing_media(db, tmp_
     assert plan["ledger"]["per_file_public_records"][0]["content_hash_computed"] is False
 
 
-def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_cap(db, tmp_path):
+def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_cap(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     existing_a = source_root / "a_existing.png"
@@ -1099,6 +1107,7 @@ def test_manual_sync_dry_run_existing_media_does_not_consume_import_candidate_ca
             hash=calculate_file_hash(path),
             file_type=FileTypeEnum.image,
         )
+        _touch_app_media(app_storage, media.path)
         db.add(media)
         db.flush()
         stat = path.stat()
@@ -1228,7 +1237,8 @@ def test_manual_sync_dry_run_registered_root_prioritizes_pending_new_before_chan
     assert "z_pending_new.png" not in str(public_plan)
 
 
-def test_manual_sync_dry_run_prioritizes_current_ledger_missing_over_legacy_pending_backlog(db, tmp_path):
+def test_manual_sync_dry_run_prioritizes_current_ledger_missing_over_legacy_pending_backlog(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     old_ns = 1_800_000_000_000_000_000
@@ -1247,6 +1257,7 @@ def test_manual_sync_dry_run_prioritizes_current_ledger_missing_over_legacy_pend
         hash=calculate_file_hash(watermark_path),
         file_type=FileTypeEnum.image,
     )
+    _touch_app_media(app_storage, media.path)
     db.add(media)
     db.flush()
     db.add(
@@ -1323,7 +1334,8 @@ def test_manual_sync_dry_run_prioritizes_current_ledger_missing_over_legacy_pend
     assert all(str(item["relative_path"]).startswith("z_new_icloud_") for item in private_items[:110])
 
 
-def test_manual_sync_dry_run_treats_existing_hash_downstream_complete_rows_as_stable_noop(db, tmp_path):
+def test_manual_sync_dry_run_treats_existing_hash_downstream_complete_rows_as_stable_noop(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     path = source_root / "existing_hash_backlog.png"
@@ -1337,6 +1349,7 @@ def test_manual_sync_dry_run_treats_existing_hash_downstream_complete_rows_as_st
         hash=calculate_file_hash(path),
         file_type=FileTypeEnum.image,
     )
+    _touch_app_media(app_storage, media.path)
     db.add(media)
     db.flush()
     db.add(
@@ -1374,7 +1387,8 @@ def test_manual_sync_dry_run_treats_existing_hash_downstream_complete_rows_as_st
     assert plan["private_details"]["items"] == []
 
 
-def test_manual_sync_dry_run_still_discovers_ledger_missing_old_mtime_backfill_after_many_known_files(db, tmp_path):
+def test_manual_sync_dry_run_still_discovers_ledger_missing_old_mtime_backfill_after_many_known_files(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     old_ns = 1_800_000_000_000_000_000
@@ -1392,6 +1406,7 @@ def test_manual_sync_dry_run_still_discovers_ledger_missing_old_mtime_backfill_a
             hash=f"known-hash-{index}",
             file_type=FileTypeEnum.image,
         )
+        _touch_app_media(app_storage, media.path)
         db.add(media)
         db.flush()
         db.add(
@@ -1440,7 +1455,8 @@ def test_manual_sync_dry_run_still_discovers_ledger_missing_old_mtime_backfill_a
     assert "known_" not in str(plan["private_details"]["items"])
 
 
-def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root(db, tmp_path):
+def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     known_path = source_root / "a_known.png"
@@ -1463,6 +1479,7 @@ def test_manual_sync_dry_run_cap_skips_unchanged_known_items_for_registered_root
         hash=calculate_file_hash(known_path),
         file_type=FileTypeEnum.image,
     )
+    _touch_app_media(app_storage, media.path)
     db.add(media)
     db.flush()
     db.add(
@@ -1508,6 +1525,7 @@ def test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_exp
     tmp_path,
     monkeypatch,
 ):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     root = service.register_source_root(db, path=source_root, label="fixture")
@@ -1525,6 +1543,7 @@ def test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_exp
             hash=f"old-{index:04d}",
             file_type=FileTypeEnum.image,
         )
+        _touch_app_media(app_storage, media.path)
         db.add(media)
         db.flush()
         db.add(
@@ -1579,7 +1598,8 @@ def test_manual_sync_incremental_plan_fast_skips_large_stable_ledger_without_exp
     assert plan["limits"]["root_scan_state"]["current_scan_mode"] == "incremental_watermark_candidate_discovery"
 
 
-def test_manual_sync_dry_run_discovers_unseen_old_mtime_file_under_watermark(db, tmp_path):
+def test_manual_sync_dry_run_discovers_unseen_old_mtime_file_under_watermark(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     old_imported_path = source_root / "old_imported.png"
@@ -1599,6 +1619,7 @@ def test_manual_sync_dry_run_discovers_unseen_old_mtime_file_under_watermark(db,
         hash=calculate_file_hash(old_imported_path),
         file_type=FileTypeEnum.image,
     )
+    _touch_app_media(app_storage, media.path)
     db.add(media)
     db.flush()
     db.add(
@@ -1735,7 +1756,8 @@ def test_manual_sync_dry_run_does_not_let_stable_noop_hide_downstream_incomplete
     assert followup["allowed_source_reads"] is False
 
 
-def test_manual_sync_dry_run_fast_skips_media_backed_legacy_pending_rows(db, tmp_path):
+def test_manual_sync_dry_run_fast_skips_media_backed_legacy_pending_rows(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     watermark_path = source_root / "watermark.png"
@@ -1762,6 +1784,7 @@ def test_manual_sync_dry_run_fast_skips_media_backed_legacy_pending_rows(db, tmp
         hash=calculate_file_hash(watermark_path),
         file_type=FileTypeEnum.image,
     )
+    _touch_app_media(app_storage, watermark_media.path)
     db.add_all([stale_media, watermark_media])
     db.flush()
     db.add(
@@ -1815,7 +1838,8 @@ def test_manual_sync_dry_run_fast_skips_media_backed_legacy_pending_rows(db, tmp
     assert "stale_pending.png" not in str(plan)
 
 
-def test_manual_sync_dry_run_does_not_fast_skip_media_backed_pending_without_hash(db, tmp_path):
+def test_manual_sync_dry_run_does_not_fast_skip_media_backed_pending_without_hash(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     watermark_path = source_root / "watermark.png"
@@ -1840,6 +1864,7 @@ def test_manual_sync_dry_run_does_not_fast_skip_media_backed_pending_without_has
         hash=calculate_file_hash(watermark_path),
         file_type=FileTypeEnum.image,
     )
+    _touch_app_media(app_storage, watermark_media.path)
     db.add_all([stale_media, watermark_media])
     db.flush()
     db.add(
@@ -2472,6 +2497,7 @@ def test_manual_sync_dry_run_priority_zero_followup_sorts_before_existing_media_
 
 
 def test_manual_sync_dry_run_cap_limited_batch_is_executable_and_continuable(db, tmp_path, monkeypatch):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     file_count = 1001
@@ -2512,6 +2538,7 @@ def test_manual_sync_dry_run_cap_limited_batch_is_executable_and_continuable(db,
             hash=f"hash-item_{index:04d}",
             file_type=FileTypeEnum.image,
         )
+        _touch_app_media(app_storage, media.path)
         db.add(media)
         db.flush()
         db.add(
@@ -2691,6 +2718,61 @@ def test_manual_sync_dry_run_downstream_complete_missing_media_row_is_broken(db,
     assert item["lifecycle_kind"] == "BROKEN_STATE"
     assert item["work_item_kind"] == "BROKEN_STATE"
     assert item["lifecycle_reason_code"] == "media_row_missing"
+    assert plan["counts"]["state_counts"]["broken_state"] == 1
+    assert plan["counts"]["lifecycle_counts"].get("STABLE_NOOP", 0) == 0
+
+
+def test_manual_sync_dry_run_downstream_complete_missing_app_file_is_broken(db, tmp_path, monkeypatch):
+    _patch_app_storage(monkeypatch, tmp_path)
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / "missing-app-file.png"
+    _write_png(source_file, (20, 30, 40))
+    stat = source_file.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="missing-app-file.png",
+        path="media/original/missing-app-file.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=service._hash_text(source_file.name),
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    item = plan["private_details"]["items"][0]
+    assert item["lifecycle_kind"] == "BROKEN_STATE"
+    assert item["work_item_kind"] == "BROKEN_STATE"
+    assert item["lifecycle_reason_code"] == "app_media_missing"
+    assert item["can_execute"] is False
+    assert item["consumes_actionable_cap"] is False
     assert plan["counts"]["state_counts"]["broken_state"] == 1
     assert plan["counts"]["lifecycle_counts"].get("STABLE_NOOP", 0) == 0
 

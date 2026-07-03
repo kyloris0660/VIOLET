@@ -1099,16 +1099,12 @@ def _plan_manual_sync_incremental_dry_run(
             and getattr(known_item, "media_id", None) is not None
             and source_item_downstream_complete(known_item)
         ):
-            media_row, _app_exists = _media_evidence(known_item.media_id)
+            media_row, app_exists = _media_evidence(known_item.media_id)
             media_decision = classify_source_item(
                 known_item,
                 media=media_row,
                 media_lookup_performed=True,
-                # Stable/no-op planning verifies the Media row so stale media_id
-                # cannot hide BROKEN_STATE. App file existence is enforced for
-                # app-media FOLLOWUP decisions, where app storage is required to
-                # execute the work item without source reads.
-                app_media_exists=None,
+                app_media_exists=app_exists,
                 current_priority=True,
             )
             if media_decision.kind == LifecycleKind.BROKEN_STATE:

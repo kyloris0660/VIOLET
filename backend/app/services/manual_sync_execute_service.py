@@ -54,7 +54,11 @@ from .dynamic_library_sync_service import (
     serialize_sync_run,
     validate_source_root_path,
 )
-from .manual_sync_lifecycle import map_manual_sync_operator_status
+from .manual_sync_lifecycle import (
+    app_media_exists as lifecycle_app_media_exists,
+    map_manual_sync_operator_status,
+    source_item_downstream_complete,
+)
 
 
 class ManualSyncExecuteError(RuntimeError):
@@ -453,6 +457,33 @@ def _manual_sync_plan_item_execute_priority(plan_item: Dict[str, Any]) -> int:
     if state == "import_planned":
         return 10
     return 20
+
+
+NON_DEFERRED_WORK_ITEM_KINDS = {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}
+NON_DEFERRED_LIFECYCLE_KINDS = {
+    "BROKEN_STATE",
+    "FATAL_BLOCKER",
+    "HISTORICAL_DIAGNOSTIC",
+    "PLACEHOLDER_DEFERRED",
+    "STABLE_NOOP",
+}
+ACTIONABLE_WORK_ITEM_KINDS = {"FOLLOWUP", "IMPORT", "RETRY_SOURCE"}
+ACTIONABLE_PLAN_STATES = {"downstream_followup_planned", "import_planned"}
+
+
+def _plan_item_can_materialize_deferred_unprocessed(plan_item: Dict[str, Any]) -> bool:
+    work_item_kind = str(plan_item.get("work_item_kind") or "")
+    lifecycle_kind = str(plan_item.get("lifecycle_kind") or "")
+    if work_item_kind in NON_DEFERRED_WORK_ITEM_KINDS or lifecycle_kind in NON_DEFERRED_LIFECYCLE_KINDS:
+        return False
+    if plan_item.get("can_execute") is False:
+        return False
+    if plan_item.get("is_actionable") is False:
+        return False
+    if plan_item.get("consumes_actionable_cap") is False:
+        return False
+    state = str(plan_item.get("state") or "")
+    return work_item_kind in ACTIONABLE_WORK_ITEM_KINDS or state in ACTIONABLE_PLAN_STATES
 
 
 def _order_manual_sync_execute_plan_items(plan_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1287,12 +1318,28 @@ def _mark_retry_source_ready_for_import(
     previous_reason: Optional[str],
 ) -> None:
     now = _utcnow()
+    media_row: Optional[Media] = None
+    media_backed_retry_restored = False
+    if item.media_id is not None:
+        media_row = db.get(Media, int(item.media_id))
+        media_backed_retry_restored = bool(
+            media_row is not None
+            and lifecycle_app_media_exists(media_row, storage_root=settings.STORAGE_ROOT)
+        )
     item.source_status = "available"
-    item.sync_state = "new"
-    item.import_status = "pending"
-    item.classification_status = "waiting_import"
-    item.ai_tagging_status = "waiting_import"
-    item.localization_status = "waiting_ai_tags"
+    if media_backed_retry_restored:
+        item.sync_state = "imported"
+        item.import_status = "imported"
+        next_work_item_kind = "NOOP_DIAGNOSTIC" if source_item_downstream_complete(item) else "FOLLOWUP"
+        retry_status = "media_backed_restored"
+    else:
+        item.sync_state = "new"
+        item.import_status = "pending"
+        item.classification_status = "waiting_import"
+        item.ai_tagging_status = "waiting_import"
+        item.localization_status = "waiting_ai_tags"
+        next_work_item_kind = "IMPORT"
+        retry_status = "ready_for_import"
     item.failure_reason = None
     item.deferred_reason = None
     item.file_size = metadata.get("file_size")
@@ -1312,8 +1359,9 @@ def _mark_retry_source_ready_for_import(
             "last_success_at": now.isoformat(),
             "previous_failure_reason": previous_reason,
             "retryable": False,
-            "ready_for_import": True,
-            "next_work_item_kind": "IMPORT",
+            "ready_for_import": not media_backed_retry_restored,
+            "media_backed_retry_restored": media_backed_retry_restored,
+            "next_work_item_kind": next_work_item_kind,
         }
     )
     item_metadata["manual_sync_retry"] = retry
@@ -1330,9 +1378,10 @@ def _mark_retry_source_ready_for_import(
         current_metadata={
             **metadata,
             "retry_source": {
-                "status": "ready_for_import",
+                "status": retry_status,
                 "previous_reason": previous_reason,
-                "next_work_item_kind": "IMPORT",
+                "next_work_item_kind": next_work_item_kind,
+                "media_backed_retry_restored": media_backed_retry_restored,
             },
         },
     )
@@ -1374,6 +1423,8 @@ def _materialize_deferred_unprocessed_items(
 ) -> int:
     created = 0
     for plan_item in plan_items:
+        if not _plan_item_can_materialize_deferred_unprocessed(plan_item):
+            continue
         relative_path = str(plan_item.get("relative_path") or "")
         metadata = {"safe_label": plan_item.get("safe_label"), "planned_state": plan_item.get("state")}
         item = _get_or_create_source_item(
@@ -2410,22 +2461,35 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         if run.status == "cancelled" and stop_reason is None:
             stop_reason = "cancelled"
         remaining_plan_items = private_items[processed_plan_items:]
-        unprocessed_count = len(remaining_plan_items) if stop_reason or run.status == "cancelled" else 0
+        remaining_actionable_plan_items = (
+            [item for item in remaining_plan_items if _plan_item_can_materialize_deferred_unprocessed(item)]
+            if stop_reason or run.status == "cancelled"
+            else []
+        )
+        skipped_or_recorded_diagnostic_count = (
+            len(remaining_plan_items) - len(remaining_actionable_plan_items)
+            if stop_reason or run.status == "cancelled"
+            else 0
+        )
+        unprocessed_count = len(remaining_actionable_plan_items)
+        unprocessed_actionable_count = unprocessed_count
         unprocessed_import_planned_count = (
-            sum(1 for item in remaining_plan_items if str(item.get("state") or "") == "import_planned")
+            sum(1 for item in remaining_actionable_plan_items if str(item.get("state") or "") == "import_planned")
             if unprocessed_count
             else 0
         )
         if unprocessed_count:
             deferred_reason = "not_processed_cancelled" if stop_reason == "cancelled" or run.status == "cancelled" else "not_processed_budget_stop"
-            _materialize_deferred_unprocessed_items(
+            materialized_count = _materialize_deferred_unprocessed_items(
                 db,
                 root=root,
                 run=run,
-                plan_items=remaining_plan_items,
+                plan_items=remaining_actionable_plan_items,
                 reason=deferred_reason,
             )
-            counts["deferred_unprocessed"] += unprocessed_count
+            counts["deferred_unprocessed"] += materialized_count
+        if skipped_or_recorded_diagnostic_count:
+            counts["diagnostic_not_deferred"] += skipped_or_recorded_diagnostic_count
         import_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
         run.summary_json = _set_stage(
             run.summary_json or {},
@@ -2967,7 +3031,9 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             downstream_continued_after_import_stop=downstream_continued_after_import_stop,
             retryable_source_failure_count=_retryable_source_failure_count(counts),
             unprocessed_count=unprocessed_count,
+            unprocessed_actionable_count=unprocessed_actionable_count,
             unprocessed_import_planned_count=unprocessed_import_planned_count,
+            skipped_or_recorded_diagnostic_count=skipped_or_recorded_diagnostic_count,
             budgets=_budget_policy_payload(),
             localization=localization_result,
             source_mutation_performed=False,

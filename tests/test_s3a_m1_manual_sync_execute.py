@@ -101,6 +101,12 @@ def _patch_test_storage(monkeypatch, tmp_path: Path) -> Path:
     return storage
 
 
+def _write_app_media(storage: Path, stored_path: str, color: tuple[int, int, int] = (1, 2, 3)) -> Path:
+    app_path = storage / stored_path
+    _write_png(app_path, color)
+    return app_path
+
+
 def _replace_execute_private_plan_items(db, run: DynamicSyncRun, items: list[dict]) -> None:
     summary = dict(run.summary_json or {})
     execute_payload = dict(summary["manual_sync_execute"])
@@ -3778,6 +3784,100 @@ def test_manual_sync_execute_successful_retry_replans_as_explicit_import(db, tmp
     assert next_item["can_execute"] is True
 
 
+def test_manual_sync_execute_successful_retry_existing_media_replans_as_followup(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    app_storage = _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "retry-existing-media.png"
+    _write_png(source_file, (17, 18, 19))
+    stat = source_file.stat()
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="retry-existing-media.png",
+        path="media/original/retry-existing-media.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    _write_app_media(app_storage, media.path, (17, 18, 19))
+    db.add(media)
+    db.flush()
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=source_file.name,
+        relative_path_hash=planner._hash_text(source_file.name),
+        file_size=stat.st_size,
+        mtime_ns=stat.st_mtime_ns,
+        content_hash=media.hash,
+        source_status="failed",
+        sync_state="failed",
+        import_status="failed",
+        classification_status="classified",
+        ai_tagging_status="failed_ai_tagger_model_uncached",
+        localization_status="blocked_ai_tagging_failed",
+        failure_reason="read_timeout",
+        media_id=media.id,
+    )
+    db.add(item)
+    db.commit()
+
+    monkeypatch.setattr(
+        execute_service,
+        "_calculate_manual_plan_file_hash",
+        lambda path, _timeout_sec: (calculate_file_hash(path), None),
+    )
+    monkeypatch.setattr(
+        execute_service,
+        "_copy_and_import_media",
+        lambda _db_arg, _source_file: (_ for _ in ()).throw(AssertionError("RETRY_SOURCE imported unexpectedly")),
+    )
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+    assert plan["private_details"]["items"][0]["work_item_kind"] == "RETRY_SOURCE"
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert db.query(Media).count() == 1
+    assert result["manual_sync_execute"]["outcome_counts"]["retry_source_ready_for_import"] == 1
+    db.refresh(item)
+    assert item.media_id == media.id
+    assert item.sync_state == "imported"
+    assert item.import_status == "imported"
+    assert item.failure_reason is None
+    assert item.classification_status == "classified"
+    assert item.ai_tagging_status == "failed_ai_tagger_model_uncached"
+
+    next_plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+    next_item = next_plan["private_details"]["items"][0]
+    assert next_item["lifecycle_kind"] == "APP_MEDIA_FOLLOWUP"
+    assert next_item["work_item_kind"] == "FOLLOWUP"
+    assert next_item["can_execute"] is True
+    assert next_item["allowed_source_reads"] is False
+
+
 def test_manual_sync_execute_broken_state_does_not_mutate_source_item(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     _patch_test_storage(monkeypatch, tmp_path)
@@ -4159,6 +4259,90 @@ def test_s3a_m1_execute_materializes_unprocessed_items_on_cancel(db, tmp_path, m
     public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
     assert "cancel-0.png" not in str(public_status)
     assert "cancel-1.png" not in str(public_status)
+
+
+def test_manual_sync_execute_does_not_materialize_tail_diagnostics_as_deferred(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
+    monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
+    monkeypatch.setattr(execute_service, "_is_cancel_requested", lambda _run_id: True)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    import_file = source_root / "cancel-actionable.png"
+    _write_png(import_file, (21, 22, 23))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    broken = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path="broken-diagnostic.png",
+        relative_path_hash=planner._hash_text("broken-diagnostic.png"),
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="pending",
+        ai_tagging_status="pending",
+        localization_status="waiting_ai_tags",
+        failure_reason=None,
+        deferred_reason=None,
+    )
+    db.add(broken)
+    db.commit()
+    before = _source_item_core_snapshot(broken)
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+    actionable_item = dict(plan["private_details"]["items"][0])
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=1,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+    _replace_execute_private_plan_items(
+        db,
+        run,
+        [
+            actionable_item,
+            {
+                "safe_label": "diagnostic-00001",
+                "relative_path": broken.relative_path,
+                "source_item_id": broken.id,
+                "state": "broken_state",
+                "reason": "app_media_missing",
+                "lifecycle_reason_code": "app_media_missing",
+                "lifecycle_kind": "BROKEN_STATE",
+                "work_item_kind": "BROKEN_STATE",
+                "can_execute": False,
+                "is_actionable": False,
+                "consumes_actionable_cap": False,
+                "allowed_source_reads": False,
+            },
+        ],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["unprocessed_count"] == 1
+    assert execute_summary["unprocessed_actionable_count"] == 1
+    assert execute_summary["skipped_or_recorded_diagnostic_count"] == 1
+    assert execute_summary["outcome_counts"]["deferred_unprocessed"] == 1
+    assert execute_summary["outcome_counts"]["diagnostic_not_deferred"] == 1
+    db.refresh(broken)
+    assert _source_item_core_snapshot(broken) == before
+    run_items = db.query(DynamicSyncRunItem).all()
+    assert len(run_items) == 1
+    assert run_items[0].item_state == "deferred_unprocessed"
+    assert run_items[0].source_item_id != broken.id
 
 
 def test_s3a_m1_execute_cancel_after_ai_tagging_skips_localization_finalizer(db, tmp_path, monkeypatch):

@@ -140,7 +140,7 @@
   },
   "validation": {
     "table_driven_lifecycle_scenarios": {
-      "count": 27,
+      "count": 28,
       "passed": true
     },
     "source_read_boundary_tests": {
@@ -161,7 +161,11 @@
         "BROKEN_STATE_does_not_consume_actionable_cap",
         "hydrated_placeholder_becomes_import_candidate",
         "downstream_complete_missing_media_row_becomes_broken_state",
-        "retry_continuation_broken_reasons_preserved_in_plan"
+        "retry_continuation_broken_reasons_preserved_in_plan",
+        "non_executable_diagnostics_filtered_from_deferred_unprocessed_tail",
+        "current_complete_media_backed_stale_retry_reason_becomes_stable_noop",
+        "downstream_complete_missing_app_storage_becomes_broken_state",
+        "successful_retry_source_existing_media_replans_as_followup_or_stable_noop"
       ]
     },
     "full_s3a_m2_r_completion_claimed": false,
@@ -232,7 +236,11 @@
       "BROKEN_STATE and NOOP_DIAGNOSTIC remain visible without consuming actionable cap",
       "hydrated stale placeholders can re-enter as IMPORT_CANDIDATE when current planner evidence is import-ready",
       "media-backed STABLE_NOOP decisions verify Media row evidence so stale media_id cannot hide broken state",
-      "planner public records preserve lifecycle reason_code for retry continuation and broken diagnostics"
+      "planner public records preserve lifecycle reason_code for retry continuation and broken diagnostics",
+      "BROKEN_STATE NOOP_DIAGNOSTIC and PLACEHOLDER remaining after cancel or budget stop are not materialized as deferred_unprocessed source items",
+      "current-complete media-backed rows with stale retry reasons become STABLE_NOOP when Media row and app media exist",
+      "downstream-complete media-backed rows with missing app storage become BROKEN_STATE instead of STABLE_NOOP",
+      "successful RETRY_SOURCE with existing media_id restores media-backed imported semantics so the next plan surfaces FOLLOWUP or STABLE_NOOP instead of invisible pending noop"
     ],
     "not_in_scope": [
       "PR-R2 UI progress or browser validation",
