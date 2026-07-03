@@ -380,6 +380,11 @@ def _safe_redacted(value: Any) -> bool:
     return text.startswith("redacted_") or text.startswith("[redacted") or text.endswith("_redacted")
 
 
+def _safe_public_provenance_marker(raw_path: str, value: Any) -> bool:
+    key_name = raw_path.rsplit(".", 1)[-1]
+    return key_name == "source_root_public_marker" and str(value).strip() == "audited-root"
+
+
 def _format_json_path(parent: str, segment: str | int) -> str:
     if isinstance(segment, int):
         return f"{parent}[{segment}]"
@@ -486,7 +491,7 @@ def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("secret_key_name_with_unredacted_value", key_name))
             findings.append(finding)
-        if provenance_context and not _safe_redacted(value):
+        if provenance_context and not _safe_redacted(value) and not _safe_public_provenance_marker(raw_path, value):
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("private_provenance_value_unredacted", key_name))
             findings.append(finding)

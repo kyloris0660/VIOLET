@@ -1,7 +1,7 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated for S3A-M1 on `2026-06-24`.
-> Active PR branch: `codex/s3a-m1-manual-sync-execute-ui`.
+> Last updated for S3A-M2-R R0/R1 on `2026-07-02`.
+> Active PR branch: `codex/s3a-m2-r-manual-sync-stabilization`.
 > Read this file first for active state, then use `docs/project-roadmap.md` for phase history.
 
 ## Canonical Context
@@ -11,12 +11,30 @@
 | Repository | `kyloris0660/VIOLET` |
 | Canonical URL | `https://github.com/kyloris0660/VIOLET` |
 | Local path | `[canonical local checkout path]` |
-| Current phase | `S3A-M1: Manual Sync Execute + UI` |
-| Baseline main | PR #124 merge `7b4602d4e536b1eef4fdc50548ceeb2c858cb5a9` |
+| Current phase | `S3A-M2-R: Manual Sync Stabilization / R0-R1 audit and lifecycle design` |
+| Baseline main | PR #126 merge `ff5972b0685def18bd658746e2ba1e3043c28d02` |
 | Stack | FastAPI + PostgreSQL 17 + Jinja2/Tailwind + vanilla JavaScript + Electron launcher |
 | Python | `.\venv\Scripts\python.exe` |
 
 ## Current Accepted State
+
+- PR #126 / `S3A-M2 Production Delta Manual Sync E2E + GPU Telemetry` is
+  merged. Merge commit:
+  `ff5972b0685def18bd658746e2ba1e3043c28d02`.
+- PR #126 achieved current-stage production GUI manual-sync DB-truth acceptance
+  through owner-run Web Admin GUI Execute run #18. Run #18 completed as legacy
+  `completed_with_failures`, imported 34 new media, recovered run #16 stranded
+  imported media, left 11 retryable read failures and 75 deferred continuation
+  import candidates, and did not introduce Entity/SourceConcept truth
+  pollution.
+- The active follow-up is S3A-M2-R stabilization, not S3B and not the
+  SourceConcept/provider/entity route. R0/R1 records the post-merge read-only
+  audit and canonical lifecycle/WorkItem design before implementation refactor.
+- R0 outputs:
+  `docs/reports/s3a-m2-r-post-merge-health-audit.md` and
+  `docs/reports/s3a-m2-r-post-merge-health-summary.json`.
+- R1 design: `docs/architecture/manual-sync-state-machine.md`.
+- Operator runbook seed: `docs/admin/manual-sync-runbook.md`.
 
 - PR #96, PR #97, PR #98, PR #99, and PR #100 are merged: SC1 delivered the SourceConcept resolver core, SC2-P0 planned SC2, SC2 added search/evidence UI, DOC1 restructured docs, and Phase 4.5-SCV1 generated a read-only coverage/search/gap audit.
 - Phase 4.5-SCV2-P0 generated a read-only current-DB inventory and governed split for controlled medium expansion on branch `codex/phase45-scv2-p0-controlled-medium-expansion-policy`.
@@ -33,7 +51,8 @@
 - PR #122 / `PROD-LAUNCHER-UX1/PF1` is merged. Merge commit: `aece424df2814ef0d840f9fe472a9d19478d2020`. It added the Electron production launcher, local production profile/runtime config, root-level Windows entrypoint, and production/development runtime separation.
 - PR #123 / `PD1-A-R1` is merged. Merge commit: `4724530d83767a62b6525a58bb1a1d04e973d48e`. It reconciled the post-#122 route and made `production_development_separation_contract_v1` the current executable separation gate.
 - PR #124 / `S2G-M1` is merged. Merge commit: `7b4602d4e536b1eef4fdc50548ceeb2c858cb5a9`. It added the AI tagging execution profile, local capability probe/report, provider fallback/load-control/provenance foundation, manual sync dry-run planner, manual sync status/plan API surface, and `s2g_manual_sync_foundation_contract_v1`; it did not run production writes.
-- S3A-M1 is the active feature branch. It adds guarded manual sync execute, Admin UI controls, launcher entry, CLI runner, and `s3a_m1_manual_sync_execute_contract_v1`. Production acceptance remains pending separate exact operator approval.
+- PR #125 / S3A-M1 is merged. It added guarded manual sync execute, Admin UI controls, launcher entry, CLI runner, and `s3a_m1_manual_sync_execute_contract_v1`.
+- PR #126 / S3A-M2 is merged. Owner-run Web Admin GUI Execute run #18 is the current-stage DB-truth acceptance evidence; S3A-M2-R is the active follow-up for R0/R1 audit/design only.
 - The V.I.O.L.E.T. root-level Windows launcher is now the accepted personal production entrypoint for current daily library operation.
 - Current root-level daily entry: root-level `V.I.O.L.E.T. Production Launcher.exe` in the canonical local checkout.
 - The launcher uses local ignored production profile/runtime config. Development `.env` must not be converted into production and must not be treated as the production source of truth.
@@ -44,19 +63,34 @@
 
 ## Current Route
 
-`S3A-M1` - Manual Sync Execute + UI.
+`S3A-M2-R` - Manual Sync Stabilization and State-Machine Cleanup.
+
+This is a post-merge cleanup/stabilization phase after PR #126. It should turn
+the one successful production GUI manual sync path into a maintainable,
+diagnosable, operator-usable foundation before returning to the main roadmap.
+If implementation remains broad, keep the split:
+
+1. PR-R0: health audit + lifecycle/WorkItem design + runbook seed.
+2. PR-R1: lifecycle classifier / WorkItem refactor + tests.
+3. PR-R2: UI/progress/report/preflight cleanup + browser validation.
 
 Accepted near-term order:
 
 1. `S2G-M1`: merged in PR #124. AI tagging execution profile, bounded local capability probe, provider fallback, load-control/provenance policy, manual sync dry-run planner, sync job/ledger foundation, controlled dry-run pipeline foundation, and public-safe report/contract are complete. No production writes.
-2. `S3A-M1`: current. Implement guarded manual-sync execute path, final visible controls, launcher entry, dev/test validation, and keep small production acceptance pending explicit operator approval and production profile/runtime identity gates.
-3. `R1R`: SourceConcept route redo under GOV3 contracts; no confirmed Entity assignments and no new provider/Pixiv live calls unless separately approved.
-4. `A1R`: rerun route audit after R1R outputs exist.
-5. `Pixiv/source metadata strategy polish`: settle Pixiv/source metadata reliability before adding providers.
-6. `S3B`: opt-in scheduled/unattended incremental sync, disabled by default until approved.
-7. `S2F0`: low-priority desired-media gap audit/support decision report only.
+2. `S3A-M1`: merged in PR #125. Added guarded manual-sync execute path and UI/launcher wiring.
+3. `S3A-M2`: merged in PR #126. Owner-run production GUI Execute run #18 met current-stage DB-truth acceptance, with cleanup debt explicitly deferred.
+4. `S3A-M2-R`: current cleanup/stabilization phase. Do not start S3B, provider/source metadata expansion, SourceConcept, Entity bridge, or large production import.
+5. `R1R`: SourceConcept route redo under GOV3 contracts; no confirmed Entity assignments and no new provider/Pixiv live calls unless separately approved.
+6. `A1R`: rerun route audit after R1R outputs exist.
+7. `Pixiv/source metadata strategy polish`: settle Pixiv/source metadata reliability before adding providers.
+8. `S3B`: opt-in scheduled/unattended incremental sync, disabled by default until approved.
+9. `S2F0`: low-priority desired-media gap audit/support decision report only.
 
-S3A-M1 intentionally stops before automatic sync, scheduled sync, production execution, production import/classification/AI/localization writes, R1R, A1R, provider expansion, Entity bridge, SourceConcept truth promotion, or any production `media_tags` truth mutation unless a separate exact production acceptance approval is given after a fresh dry-run plan.
+S3A-M2-R intentionally stops before automatic sync, scheduled sync, unattended
+production execution, provider/source metadata expansion, R1R, A1R, Entity
+bridge, SourceConcept truth promotion, or any new production `media_tags` truth
+mutation. Production Execute is not part of R0/R1 and requires separate owner
+approval for any later manual validation run.
 
 SourceConcept/provider/entity work remains separate. R1 target was met for deterministic/source-layer triage evidence, but INC1 identified a pipeline fidelity incident because R1 did not prove the full SC1 resolver chain with bounded LLM pair adjudication. A1 route approval remains blocked pending R1R full-chain remediation and A1R rerun; old R1/A1 evidence must not approve R2. This does not block the product utility route as long as that route does not promote SourceConcept/Entity truth.
 
@@ -68,14 +102,18 @@ SourceConcept/provider/entity work remains separate. R1 target was met for deter
 - A1 route approval now uses status `blocked_pending_pipeline_fidelity_remediation`: no R2, PX1-B, Provider-2, scale-up, Entity bridge, or SourceConcept truth promotion may start until R1R full-chain remediation and A1R rerun complete.
 - PR #122 production launcher reports establish the temporary Windows personal launcher path and document deferred runtime/schema hardening debt.
 - S2G-M1 local capability evidence records DirectML as the recommended provider on the current development machine, CPU fallback completed, AI batch size `2`, concurrency `1`, and public redaction passed. This is development evidence only; it is not production acceptance.
-- S3A-M1 uses that profile for local-only AI execution and adds exact confirmation plus plan-hash gates. Production acceptance is still pending.
+- S3A-M2-R uses PR #126 production evidence only as audited input; it does not
+  start a new production Execute during R0/R1.
 
 ## Hard Non-Goals Without Explicit Approval
 
 - No push to `main`; agents do not merge PRs.
 - No production import, production DB data import, production classification, production AI tagging, production localization, cleanup/drop/truncate, destructive operation, source/iCloud mutation, SourceConcept table mutation, Entity truth write, confirmed assignment write, `media_tags` mutation, or app-managed storage mutation without explicit approval.
 - No provider/gallery-dl/Pixiv/SauceNAO/Google/source enrichment run unless a later phase explicitly approves it.
-- No full LLM batch, SourceConcept resolver, Entity bridge, R1R, A1R, R2, confirmed assignment creation, S3A/S3B automatic production sync, desired-media backfill, or full-library production execution during S3A-M1.
+- No full LLM batch, SourceConcept resolver, Entity bridge, R1R, A1R, R2,
+  confirmed assignment creation, S3A/S3B automatic production sync,
+  desired-media backfill, or full-library production execution during
+  S3A-M2-R.
 - Dynamic sync automatic production writes must remain disabled by default. Manual update checks and pending counts are allowed; manual sync execution requires explicit approved policy/config.
 - No source/iCloud/staging/app-managed storage mutation.
 - No Entity Resolver, similarity/clustering, SourceConcept editing, Entity bridge, promotion, confirmed assignment, trusted Entity creation, or `media_tags` mutation.
