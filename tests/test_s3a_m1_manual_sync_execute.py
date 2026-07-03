@@ -634,7 +634,7 @@ def test_s3a_m1_execute_records_content_change_as_item_failure(db, tmp_path, mon
     assert source_item.failure_reason == "content_changed_after_plan"
 
 
-def test_s3a_m1_execute_rejects_skipped_existing_plan_without_content_hash(db, tmp_path, monkeypatch):
+def test_s3a_m1_execute_does_not_rehash_skipped_existing_noop_without_content_hash(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     _patch_test_storage(monkeypatch, tmp_path)
 
@@ -660,6 +660,9 @@ def test_s3a_m1_execute_rejects_skipped_existing_plan_without_content_hash(db, t
         stable_age_seconds=0,
         plan_mode="advanced_full_rescan",
     )
+    plan_item = plan["ledger"]["per_file_public_records"][0]
+    assert plan_item["work_item_kind"] == "NOOP_DIAGNOSTIC"
+    assert plan_item["can_execute"] is False
     run = create_manual_sync_execute_run(
         db,
         root_id=root.id,
@@ -678,10 +681,13 @@ def test_s3a_m1_execute_rejects_skipped_existing_plan_without_content_hash(db, t
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed_with_failures"
-    assert result["manual_sync_execute"]["outcome_counts"]["plan_integrity_missing_content_hash"] == 1
-    source_item = db.query(DynamicSourceItem).one()
-    assert source_item.failure_reason == "plan_integrity_missing_content_hash"
+    assert result["status"] == "completed"
+    assert result["manual_sync_execute"]["outcome_counts"]["skipped_existing_media"] == 1
+    assert result["manual_sync_execute"]["outcome_counts"].get("plan_integrity_missing_content_hash", 0) == 0
+    assert all(
+        item.failure_reason != "plan_integrity_missing_content_hash"
+        for item in db.query(DynamicSourceItem).all()
+    )
 
 
 def test_s3a_m1_dev_execute_imports_without_ai_or_llm_side_effects(db, tmp_path, monkeypatch):
@@ -4159,12 +4165,11 @@ def test_s3a_m1_execute_does_not_hash_non_import_skip_items(db, tmp_path, monkey
     assert result["status"] == "completed"
     assert result["manual_sync_execute"]["outcome_counts"]["skipped_unsupported"] == 1
     assert db.query(Media).count() == 0
-    run_items = db.query(DynamicSyncRunItem).all()
-    assert len(run_items) == 1
-    assert run_items[0].item_state == "skipped_unsupported"
+    assert db.query(DynamicSyncRunItem).count() == 0
+    assert db.query(DynamicSourceItem).count() == 0
 
 
-def test_s3a_m1_execute_revalidates_existing_media_skip_hash_before_trusting_plan(db, tmp_path, monkeypatch):
+def test_s3a_m1_execute_does_not_rehash_existing_media_noop_under_workitem_boundary(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "false")
     monkeypatch.setenv("AI_TAGGING_ENABLED", "false")
@@ -4193,6 +4198,7 @@ def test_s3a_m1_execute_revalidates_existing_media_skip_hash_before_trusting_pla
         plan_mode="advanced_full_rescan",
     )
     assert plan["counts"]["state_counts"]["skipped_existing_media"] == 1
+    assert plan["ledger"]["per_file_public_records"][0]["work_item_kind"] == "NOOP_DIAGNOSTIC"
     run = create_manual_sync_execute_run(
         db,
         root_id=root.id,
@@ -4205,15 +4211,18 @@ def test_s3a_m1_execute_revalidates_existing_media_skip_hash_before_trusting_pla
         plan_created_at=plan["job"]["created_at"],
     )
 
+    def fail_if_hashing_noop_item(path, _timeout):
+        raise AssertionError(f"execute must not hash existing-media NOOP item: {path.name}")
+
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", fail_if_hashing_noop_item)
     _write_png(planned_existing, (90, 80, 70))
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "completed_with_failures"
-    assert result["failed_items"] == 1
-    assert result["manual_sync_execute"]["outcome_counts"]["failed"] == 1
-    run_item = db.query(DynamicSyncRunItem).one()
-    assert run_item.item_state == "failed"
-    assert run_item.reason == "content_changed_after_plan"
+    assert result["status"] == "completed"
+    assert result["failed_items"] == 0
+    assert result["manual_sync_execute"]["outcome_counts"]["skipped_existing_media"] == 1
+    assert result["manual_sync_execute"]["outcome_counts"].get("failed", 0) == 0
+    assert db.query(DynamicSyncRunItem).count() == 0
     assert db.query(Media).count() == 1
 
 
@@ -4272,6 +4281,24 @@ def test_manual_sync_execute_does_not_materialize_tail_diagnostics_as_deferred(d
     import_file = source_root / "cancel-actionable.png"
     _write_png(import_file, (21, 22, 23))
     root = planner.register_source_root(db, path=source_root, label="fixture")
+    retry_file = source_root / "retry-tail.png"
+    _write_png(retry_file, (31, 32, 33))
+    retry_stat = retry_file.stat()
+    retry = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=retry_file.name,
+        relative_path_hash=planner._hash_text(retry_file.name),
+        file_size=retry_stat.st_size,
+        mtime_ns=retry_stat.st_mtime_ns,
+        source_status="failed",
+        sync_state="failed",
+        import_status="failed",
+        classification_status="deferred",
+        ai_tagging_status="deferred",
+        localization_status="blocked_import_failed",
+        failure_reason="read_timeout",
+        deferred_reason=None,
+    )
     broken = DynamicSourceItem(
         source_root_id=root.id,
         relative_path="broken-diagnostic.png",
@@ -4285,8 +4312,9 @@ def test_manual_sync_execute_does_not_materialize_tail_diagnostics_as_deferred(d
         failure_reason=None,
         deferred_reason=None,
     )
-    db.add(broken)
+    db.add_all([retry, broken])
     db.commit()
+    before_retry = _source_item_core_snapshot(retry)
     before = _source_item_core_snapshot(broken)
     plan = planner.plan_manual_sync_dry_run(
         db,
@@ -4313,6 +4341,20 @@ def test_manual_sync_execute_does_not_materialize_tail_diagnostics_as_deferred(d
         [
             actionable_item,
             {
+                "safe_label": "retry-00001",
+                "relative_path": retry.relative_path,
+                "source_item_id": retry.id,
+                "state": "retry_source_planned",
+                "reason": "read_timeout",
+                "lifecycle_reason_code": "read_timeout",
+                "lifecycle_kind": "RETRYABLE_SOURCE_FAILURE",
+                "work_item_kind": "RETRY_SOURCE",
+                "can_execute": True,
+                "is_actionable": True,
+                "consumes_actionable_cap": True,
+                "allowed_source_reads": True,
+            },
+            {
                 "safe_label": "diagnostic-00001",
                 "relative_path": broken.relative_path,
                 "source_item_id": broken.id,
@@ -4333,10 +4375,14 @@ def test_manual_sync_execute_does_not_materialize_tail_diagnostics_as_deferred(d
 
     execute_summary = result["manual_sync_execute"]
     assert execute_summary["unprocessed_count"] == 1
-    assert execute_summary["unprocessed_actionable_count"] == 1
+    assert execute_summary["unprocessed_actionable_count"] == 2
+    assert execute_summary["unprocessed_retry_source_count"] == 1
     assert execute_summary["skipped_or_recorded_diagnostic_count"] == 1
     assert execute_summary["outcome_counts"]["deferred_unprocessed"] == 1
+    assert execute_summary["outcome_counts"]["retry_source_not_deferred"] == 1
     assert execute_summary["outcome_counts"]["diagnostic_not_deferred"] == 1
+    db.refresh(retry)
+    assert _source_item_core_snapshot(retry) == before_retry
     db.refresh(broken)
     assert _source_item_core_snapshot(broken) == before
     run_items = db.query(DynamicSyncRunItem).all()

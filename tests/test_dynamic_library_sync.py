@@ -881,7 +881,7 @@ def test_manual_sync_dry_run_maps_not_a_file_to_path_policy_skip(db, tmp_path, m
     assert plan["counts"]["state_counts"]["failed"] == 0
 
 
-def test_manual_sync_dry_run_hash_timeout_is_item_level_failure(db, tmp_path, monkeypatch):
+def test_manual_sync_dry_run_hash_timeout_is_retry_source_work(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     _write_png(source_root / "a_timeout.png")
@@ -903,13 +903,21 @@ def test_manual_sync_dry_run_hash_timeout_is_item_level_failure(db, tmp_path, mo
         plan_mode="advanced_full_rescan",
     )
 
-    assert plan["counts"]["state_counts"]["failed"] == 1
+    assert plan["counts"]["state_counts"]["failed"] == 0
+    assert plan["counts"]["state_counts"]["retry_source_planned"] == 1
     assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 1
+    assert plan["counts"]["estimated_retry_source_count"] == 1
+    assert plan["counts"]["work_item_counts"]["RETRY_SOURCE"] == 1
+    assert plan["counts"]["work_item_counts"]["IMPORT"] == 1
     assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
     assert {item["reason"] for item in plan["ledger"]["per_file_public_records"]} == {"read_timeout", None}
+    retry_item = next(item for item in plan["ledger"]["per_file_public_records"] if item["reason"] == "read_timeout")
+    assert retry_item["work_item_kind"] == "RETRY_SOURCE"
+    assert retry_item["eligible_for_db_import"] is False
 
 
-def test_manual_sync_dry_run_image_verify_timeout_is_item_level_failure(db, tmp_path, monkeypatch):
+def test_manual_sync_dry_run_image_verify_timeout_is_retry_source_work(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     _write_png(source_root / "a_timeout.png")
@@ -933,8 +941,13 @@ def test_manual_sync_dry_run_image_verify_timeout_is_item_level_failure(db, tmp_
         plan_mode="advanced_full_rescan",
     )
 
-    assert plan["counts"]["state_counts"]["failed"] == 1
+    assert plan["counts"]["state_counts"]["failed"] == 0
+    assert plan["counts"]["state_counts"]["retry_source_planned"] == 1
     assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 1
+    assert plan["counts"]["estimated_retry_source_count"] == 1
+    assert plan["counts"]["work_item_counts"]["RETRY_SOURCE"] == 1
+    assert plan["counts"]["work_item_counts"]["IMPORT"] == 1
     assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
 
 
@@ -2262,17 +2275,48 @@ def test_manual_sync_dry_run_preserves_media_backed_source_retry_and_followup(db
     )
 
     assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 0
+    assert plan["counts"]["state_counts"]["retry_source_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["counts"]["estimated_retry_source_count"] == 1
     assert plan["counts"]["work_item_counts"]["RETRY_SOURCE"] == 1
     assert plan["counts"]["work_item_counts"]["FOLLOWUP"] == 1
     retry_item = next(item for item in plan["private_details"]["items"] if item["work_item_kind"] == "RETRY_SOURCE")
     assert retry_item["lifecycle_kind"] == "RETRYABLE_SOURCE_FAILURE"
-    assert retry_item["state"] == "import_planned"
+    assert retry_item["state"] == "retry_source_planned"
     assert retry_item["reason"] == "read_timeout"
+    assert retry_item["eligible_for_db_import"] is False
     assert retry_item["allowed_source_reads"] is True
     assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
     followup_item = next(item for item in plan["private_details"]["items"] if item["work_item_kind"] == "FOLLOWUP")
     assert followup_item["lifecycle_kind"] == "APP_MEDIA_FOLLOWUP"
     assert followup_item["allowed_source_reads"] is False
+
+
+def test_manual_sync_dry_run_import_candidate_remains_import_eligible_and_counted(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / "fresh-import.png"
+    _write_png(source_file, (90, 80, 70))
+    root = service.register_source_root(db, path=source_root, label="fixture")
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["estimated_import_count"] == 1
+    assert plan["counts"].get("estimated_retry_source_count", 0) == 0
+    assert plan["counts"]["work_item_counts"]["IMPORT"] == 1
+    item = plan["private_details"]["items"][0]
+    assert item["lifecycle_kind"] == "IMPORT_CANDIDATE"
+    assert item["work_item_kind"] == "IMPORT"
+    assert item["state"] == "import_planned"
+    assert item["eligible_for_db_import"] is True
 
 
 def test_manual_sync_dry_run_broken_state_does_not_consume_actionable_cap(db, tmp_path, monkeypatch):
@@ -2777,6 +2821,67 @@ def test_manual_sync_dry_run_downstream_complete_missing_app_file_is_broken(db, 
     assert plan["counts"]["lifecycle_counts"].get("STABLE_NOOP", 0) == 0
 
 
+@pytest.mark.parametrize("stale_reason", ["read_timeout", "source_missing"])
+def test_manual_sync_dry_run_preserves_current_complete_media_backed_stable_noop_evidence(
+    db,
+    tmp_path,
+    monkeypatch,
+    stale_reason,
+):
+    app_storage = _patch_app_storage(monkeypatch, tmp_path)
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    source_file = source_root / f"stale-{stale_reason}.png"
+    _write_png(source_file, (20, 30, 40))
+    stat = source_file.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename=source_file.name,
+        path=f"media/original/{source_file.name}",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    _write_app_media(app_storage, media.path, (20, 30, 40))
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=service._hash_text(source_file.name),
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="failed",
+            sync_state="failed",
+            import_status="failed",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized",
+            failure_reason=stale_reason,
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["counts"].get("estimated_retry_source_count", 0) == 0
+    assert plan["counts"]["state_counts"].get("retry_source_planned", 0) == 0
+    assert plan["counts"]["work_item_counts"].get("RETRY_SOURCE", 0) == 0
+    assert plan["private_details"]["items"] == []
+    assert plan["limits"]["fast_skipped_from_ledger"] == 1
+
+
 def test_manual_sync_dry_run_skips_unchanged_stable_unsupported_without_consuming_cap(db, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -2864,7 +2969,11 @@ def test_manual_sync_dry_run_retries_unchanged_historical_read_error(db, tmp_pat
         stable_age_seconds=0,
     )
 
-    assert plan["counts"]["state_counts"]["import_planned"] == 1
+    assert plan["counts"]["state_counts"]["import_planned"] == 0
+    assert plan["counts"]["state_counts"]["retry_source_planned"] == 1
+    assert plan["counts"]["estimated_import_count"] == 0
+    assert plan["counts"]["estimated_retry_source_count"] == 1
+    assert plan["counts"]["work_item_counts"]["RETRY_SOURCE"] == 1
     assert plan["counts"]["total_seen"] == 1
     assert plan["limits"]["unchanged_known_files"] == 0
 

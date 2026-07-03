@@ -16,6 +16,7 @@
       "lifecycle_classifier",
       "workitem_boundary_tests",
       "planner_lifecycle_adapter",
+      "workitem_authoritative_runtime_boundaries",
       "operator_status_mapping",
       "root_scoped_report_inventory",
       "phase_contract_check"
@@ -120,6 +121,22 @@
       "blocked_preflight"
     ]
   },
+  "work_item_authority": {
+    "implemented": true,
+    "authoritative_for": [
+      "import_eligibility",
+      "source_read_boundary",
+      "execute_path",
+      "actionable_cap",
+      "deferred_unprocessed_materialization",
+      "plan_report_import_counts",
+      "retry_identity_preservation"
+    ],
+    "legacy_state_role": "compatibility_and_display_only_for_pr_r1_lifecycle_paths",
+    "retry_source_import_eligible": false,
+    "retry_source_counted_as": "retry_work",
+    "retry_source_deferred_materialization": "preserve_retry_identity_not_generic_continuation"
+  },
   "debt_model": {
     "older_app_media_source_missing_downstream_incomplete": {
       "count": 20,
@@ -165,7 +182,11 @@
         "non_executable_diagnostics_filtered_from_deferred_unprocessed_tail",
         "current_complete_media_backed_stale_retry_reason_becomes_stable_noop",
         "downstream_complete_missing_app_storage_becomes_broken_state",
-        "successful_retry_source_existing_media_replans_as_followup_or_stable_noop"
+        "successful_retry_source_existing_media_replans_as_followup_or_stable_noop",
+        "work_item_kind_first_import_eligibility_and_counts",
+        "retry_source_not_import_eligible_or_counted_as_import",
+        "unprocessed_retry_source_preserves_retry_identity_not_deferred_unprocessed",
+        "media_backed_stable_noop_evidence_preserved_for_stale_retry_reasons"
       ]
     },
     "full_s3a_m2_r_completion_claimed": false,
@@ -240,7 +261,11 @@
       "BROKEN_STATE NOOP_DIAGNOSTIC and PLACEHOLDER remaining after cancel or budget stop are not materialized as deferred_unprocessed source items",
       "current-complete media-backed rows with stale retry reasons become STABLE_NOOP when Media row and app media exist",
       "downstream-complete media-backed rows with missing app storage become BROKEN_STATE instead of STABLE_NOOP",
-      "successful RETRY_SOURCE with existing media_id restores media-backed imported semantics so the next plan surfaces FOLLOWUP or STABLE_NOOP instead of invisible pending noop"
+      "successful RETRY_SOURCE with existing media_id restores media-backed imported semantics so the next plan surfaces FOLLOWUP or STABLE_NOOP instead of invisible pending noop",
+      "WorkItemKind is authoritative for import eligibility source-read boundary execute path actionable cap deferred materialization plan counts and retry identity",
+      "RETRY_SOURCE is counted as retry work and is never eligible_for_db_import under the retry boundary",
+      "unprocessed RETRY_SOURCE preserves original retry reason instead of becoming generic deferred_unprocessed continuation",
+      "media-backed STABLE_NOOP and BROKEN_STATE evidence decisions are preserved instead of being reclassified without Media/app-storage evidence"
     ],
     "not_in_scope": [
       "PR-R2 UI progress or browser validation",

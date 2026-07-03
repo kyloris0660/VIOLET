@@ -451,6 +451,13 @@ def _retryable_source_failure_count(counts: Counter[str]) -> int:
 
 
 def _manual_sync_plan_item_execute_priority(plan_item: Dict[str, Any]) -> int:
+    work_item_kind = str(plan_item.get("work_item_kind") or "")
+    if work_item_kind == "FOLLOWUP":
+        return 0
+    if work_item_kind == "IMPORT":
+        return 10
+    if work_item_kind == "RETRY_SOURCE":
+        return 15
     state = str(plan_item.get("state") or "")
     if state == "downstream_followup_planned":
         return 0
@@ -468,10 +475,11 @@ NON_DEFERRED_LIFECYCLE_KINDS = {
     "STABLE_NOOP",
 }
 ACTIONABLE_WORK_ITEM_KINDS = {"FOLLOWUP", "IMPORT", "RETRY_SOURCE"}
+DEFERRABLE_WORK_ITEM_KINDS = {"FOLLOWUP", "IMPORT"}
 ACTIONABLE_PLAN_STATES = {"downstream_followup_planned", "import_planned"}
 
 
-def _plan_item_can_materialize_deferred_unprocessed(plan_item: Dict[str, Any]) -> bool:
+def _plan_item_is_actionable_work(plan_item: Dict[str, Any]) -> bool:
     work_item_kind = str(plan_item.get("work_item_kind") or "")
     lifecycle_kind = str(plan_item.get("lifecycle_kind") or "")
     if work_item_kind in NON_DEFERRED_WORK_ITEM_KINDS or lifecycle_kind in NON_DEFERRED_LIFECYCLE_KINDS:
@@ -482,8 +490,20 @@ def _plan_item_can_materialize_deferred_unprocessed(plan_item: Dict[str, Any]) -
         return False
     if plan_item.get("consumes_actionable_cap") is False:
         return False
+    if work_item_kind:
+        return work_item_kind in ACTIONABLE_WORK_ITEM_KINDS
     state = str(plan_item.get("state") or "")
-    return work_item_kind in ACTIONABLE_WORK_ITEM_KINDS or state in ACTIONABLE_PLAN_STATES
+    return state in ACTIONABLE_PLAN_STATES
+
+
+def _plan_item_can_materialize_deferred_unprocessed(plan_item: Dict[str, Any]) -> bool:
+    if not _plan_item_is_actionable_work(plan_item):
+        return False
+    work_item_kind = str(plan_item.get("work_item_kind") or "")
+    if work_item_kind:
+        return work_item_kind in DEFERRABLE_WORK_ITEM_KINDS
+    state = str(plan_item.get("state") or "")
+    return state in ACTIONABLE_PLAN_STATES
 
 
 def _order_manual_sync_execute_plan_items(plan_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -2081,6 +2101,13 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             state = str(plan_item.get("state") or "failed")
             work_item_kind = str(plan_item.get("work_item_kind") or "")
             can_execute = plan_item.get("can_execute")
+            is_followup_work_item = work_item_kind == "FOLLOWUP" or (
+                not work_item_kind and state == "downstream_followup_planned"
+            )
+            is_import_work_item = work_item_kind == "IMPORT" or (
+                not work_item_kind and state == "import_planned"
+            )
+            is_retry_source_work_item = work_item_kind == "RETRY_SOURCE"
             reason = _manual_public_reason_code(plan_item.get("reason"))
             downstream_source_item_id = int(
                 ((plan_item.get("downstream_followup") or {}).get("source_item_id") or 0)
@@ -2095,7 +2122,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     planned_source_item = candidate_source_item
                     rel = str(candidate_source_item.relative_path or rel)
 
-            if state == "downstream_followup_planned":
+            if is_followup_work_item:
                 metadata = {
                     "file_size": plan_item.get("file_size"),
                     "mtime_ns": plan_item.get("mtime_ns"),
@@ -2122,7 +2149,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     else:
                         metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
                         item_failure_reason = _manual_public_reason_code(preflight_reason)
-                        if item_failure_reason is None and state == "import_planned":
+                        if item_failure_reason is None and (is_import_work_item or is_retry_source_work_item):
                             item_failure_reason = _manual_public_reason_code(
                                 _is_scannable_file(source_file, hydrated_only=request_hydrated_only)
                             )
@@ -2147,7 +2174,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                                     item_failure_reason = "content_changed_after_plan"
                             except (TypeError, ValueError):
                                 item_failure_reason = "content_changed_after_plan"
-                        should_verify_content = state == "import_planned" or bool(expected_hash)
+                        should_verify_content = is_import_work_item or is_retry_source_work_item or bool(expected_hash)
                         if item_failure_reason is None and should_verify_content:
                             current_hash, hash_reason = _calculate_manual_plan_file_hash(
                                 source_file,
@@ -2230,7 +2257,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     item=item,
                     reason=item_failure_reason,
                     metadata=failure_metadata,
-                    action="retry_source" if work_item_kind == "RETRY_SOURCE" else "import",
+                    action="retry_source" if is_retry_source_work_item else "import",
                 )
                 counts["failed"] += 1
                 counts[item_failure_reason] += 1
@@ -2250,7 +2277,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     break
                 continue
 
-            if state == "downstream_followup_planned":
+            if is_followup_work_item:
                 media_id = int(plan_item.get("media_id") or item.media_id or 0)
                 if media_id <= 0:
                     _mark_item_failed(
@@ -2306,7 +2333,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     break
                 continue
 
-            if work_item_kind == "RETRY_SOURCE":
+            if is_retry_source_work_item:
                 _mark_retry_source_ready_for_import(
                     db,
                     run=run,
@@ -2322,7 +2349,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 db.commit()
                 continue
 
-            if state != "import_planned":
+            if not is_import_work_item:
                 _mark_item_skipped(db, run=run, item=item, state=state, reason=reason, metadata=metadata)
                 counts[state] += 1
                 processed_items += 1
@@ -2462,19 +2489,25 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             stop_reason = "cancelled"
         remaining_plan_items = private_items[processed_plan_items:]
         remaining_actionable_plan_items = (
-            [item for item in remaining_plan_items if _plan_item_can_materialize_deferred_unprocessed(item)]
+            [item for item in remaining_plan_items if _plan_item_is_actionable_work(item)]
             if stop_reason or run.status == "cancelled"
             else []
+        )
+        remaining_deferrable_plan_items = [
+            item for item in remaining_actionable_plan_items if _plan_item_can_materialize_deferred_unprocessed(item)
+        ]
+        unprocessed_retry_source_count = sum(
+            1 for item in remaining_actionable_plan_items if str(item.get("work_item_kind") or "") == "RETRY_SOURCE"
         )
         skipped_or_recorded_diagnostic_count = (
             len(remaining_plan_items) - len(remaining_actionable_plan_items)
             if stop_reason or run.status == "cancelled"
             else 0
         )
-        unprocessed_count = len(remaining_actionable_plan_items)
-        unprocessed_actionable_count = unprocessed_count
+        unprocessed_count = len(remaining_deferrable_plan_items)
+        unprocessed_actionable_count = len(remaining_actionable_plan_items)
         unprocessed_import_planned_count = (
-            sum(1 for item in remaining_actionable_plan_items if str(item.get("state") or "") == "import_planned")
+            sum(1 for item in remaining_deferrable_plan_items if str(item.get("work_item_kind") or "") == "IMPORT")
             if unprocessed_count
             else 0
         )
@@ -2484,10 +2517,12 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 db,
                 root=root,
                 run=run,
-                plan_items=remaining_actionable_plan_items,
+                plan_items=remaining_deferrable_plan_items,
                 reason=deferred_reason,
             )
             counts["deferred_unprocessed"] += materialized_count
+        if unprocessed_retry_source_count:
+            counts["retry_source_not_deferred"] += unprocessed_retry_source_count
         if skipped_or_recorded_diagnostic_count:
             counts["diagnostic_not_deferred"] += skipped_or_recorded_diagnostic_count
         import_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
@@ -3032,6 +3067,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             retryable_source_failure_count=_retryable_source_failure_count(counts),
             unprocessed_count=unprocessed_count,
             unprocessed_actionable_count=unprocessed_actionable_count,
+            unprocessed_retry_source_count=unprocessed_retry_source_count,
             unprocessed_import_planned_count=unprocessed_import_planned_count,
             skipped_or_recorded_diagnostic_count=skipped_or_recorded_diagnostic_count,
             budgets=_budget_policy_payload(),

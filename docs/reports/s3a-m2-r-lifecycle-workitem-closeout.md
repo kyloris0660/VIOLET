@@ -13,6 +13,7 @@
 
 - 新增 `manual_sync_lifecycle`，作为手动同步 lifecycle / WorkItem 的共享解释层。
 - 将 planner、execute 边界、operator status mapping、root-scoped debt inventory 的高风险路径接入 lifecycle decision。
+- 将 PR-R1 lifecycle 路径的 import eligibility、source-read boundary、execute path、actionable cap、`deferred_unprocessed` 物化、plan/report import counts、retry identity preservation 改为以 `work_item_kind` / `LifecycleDecision` 为权威；legacy `state` 保留为兼容和展示语义。
 - 明确区分 `attempted_in_run`、`current_downstream_complete`、`attempted_but_current_incomplete`、`not_processed_continuation`、`stable_noop`、`broken_state`。
 - 保留 legacy 状态兼容，同时把 `completed_with_failures` 按 item outcome 映射为 retryable、follow-up、continuation 或 systemic failure。
 
@@ -66,6 +67,10 @@ PR-R1 模型把“本轮是否尝试过”和“当前下游是否健康完成�
 
 ## 本轮 Reviewer 修复
 
+- 最终根因闭环：`RETRY_SOURCE` 即使 legacy `state` 曾为 `import_planned`，也不再被视为 import-eligible，不计入 `estimated_import_count`，不写 `eligible_for_db_import=true`，而是计入 retry work。
+- 最终根因闭环：cancel、duration budget 或 failure budget 后，只允许语义上可延迟的 `IMPORT` / `FOLLOWUP` 被物化为 `deferred_unprocessed`；未处理的 `RETRY_SOURCE` 保留 retry identity 和原始 retry reason，不变成 generic continuation。
+- 最终根因闭环：尾部 `BROKEN_STATE` / `NOOP_DIAGNOSTIC` / `PLACEHOLDER` 诊断不会通过 deferred tail 或 execute fallback 改写 `DynamicSourceItem` 核心字段。
+- 最终根因闭环：media-backed current-complete 行在已有 Media row 和 app media evidence 时保持 `STABLE_NOOP`；缺 Media row 或缺 app media evidence 时保持 `BROKEN_STATE`，不会被无证据 fallback 重新分类为 stale retry。
 - `RETRY_SOURCE` 不再 fall through 到 normal import/copy path；成功 retry 后，无既有 media 的行只转为 ready-for-import，下一轮显式 re-plan 为 `IMPORT`；已有 app media 的行恢复为 media-backed imported 语义，下一轮显式 re-plan 为 `FOLLOWUP` 或 `STABLE_NOOP`，不会留下 `media_id + pending` 的隐形 no-op。
 - `BROKEN_STATE`、`NOOP_DIAGNOSTIC`、`PLACEHOLDER` 可记录 run-item diagnostic，但不改写 `DynamicSourceItem` 的 import/stage/status 核心字段。
 - `BROKEN_STATE` 和 `NOOP_DIAGNOSTIC` 保持可见，但不占用 `max_files` actionable cap。

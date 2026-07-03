@@ -33,6 +33,7 @@ from ..models import (
 from ..services.job_control import build_ai_tagging_execution_profile
 from ..services.manual_sync_lifecycle import (
     LifecycleKind,
+    WorkItemKind,
     app_media_exists as lifecycle_app_media_exists,
     classify_plan_item_state,
     classify_source_item,
@@ -62,6 +63,7 @@ MANUAL_SYNC_FILE_STATES: tuple[str, ...] = (
     "skipped_existing_media",
     "downstream_followup_planned",
     "import_planned",
+    "retry_source_planned",
     "imported_in_test",
     "classified_in_test",
     "ai_tagged_in_test",
@@ -355,6 +357,16 @@ def _manual_state_for_reason(reason: str) -> str:
     return "skipped_unsupported"
 
 
+def _manual_plan_state_for_work_item(work_item_kind: str, fallback_state: str) -> str:
+    if work_item_kind == "IMPORT":
+        return "import_planned"
+    if work_item_kind == "FOLLOWUP":
+        return "downstream_followup_planned"
+    if work_item_kind == "RETRY_SOURCE":
+        return "retry_source_planned"
+    return fallback_state
+
+
 def _public_counter(counter: Counter, keys: Iterable[str]) -> Dict[str, int]:
     return {key: int(counter.get(key, 0)) for key in keys}
 
@@ -468,12 +480,12 @@ def _lookup_existing_media_id_by_hash(
 def _build_manual_pipeline_stages(
     *,
     state_counts: Counter,
+    import_count: int,
+    downstream_followup_count: int,
     ai_profile: Dict[str, Any],
     max_duration_seconds: int,
     estimated_runtime_seconds: float,
 ) -> List[Dict[str, Any]]:
-    import_count = int(state_counts.get("import_planned", 0))
-    downstream_followup_count = int(state_counts.get("downstream_followup_planned", 0))
     downstream_count = import_count + downstream_followup_count
     duration_limited = estimated_runtime_seconds > max_duration_seconds
     stage_rows = [
@@ -722,10 +734,12 @@ def manual_sync_operator_confirmation_statement(plan: Dict[str, Any], *, product
     plan_hash = str((plan.get("integrity") or {}).get("plan_hash") or "")
     import_count = int(counts.get("estimated_import_count") or 0)
     followup_count = int(counts.get("estimated_downstream_followup_count") or 0)
+    retry_count = int(counts.get("estimated_retry_source_count") or 0)
     env = "production" if production else "test"
+    retry_fragment = f" and {retry_count} source retries" if retry_count else ""
     return (
         f"I confirm VIOLET {env} manual sync will process "
-        f"{import_count} imports and {followup_count} follow-up items for plan {plan_hash[:12]}"
+        f"{import_count} imports and {followup_count} follow-up items{retry_fragment} for plan {plan_hash[:12]}"
     )
 
 
@@ -798,6 +812,8 @@ def _plan_manual_sync_incremental_dry_run(
     max_duration_seconds = settings.DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS
 
     state_counts: Counter = Counter()
+    lifecycle_counts: Counter = Counter()
+    work_item_counts: Counter = Counter()
     reason_counts: Counter = Counter()
     unsupported_extension_counts: Counter = Counter()
     reason_extension_counts: Dict[str, Counter] = {}
@@ -1107,7 +1123,7 @@ def _plan_manual_sync_incremental_dry_run(
                 app_media_exists=app_exists,
                 current_priority=True,
             )
-            if media_decision.kind == LifecycleKind.BROKEN_STATE:
+            if media_decision.kind in {LifecycleKind.BROKEN_STATE, LifecycleKind.STABLE_NOOP}:
                 forced_lifecycle_decision = media_decision
                 reason = media_decision.reason_code
         if (
@@ -1165,6 +1181,10 @@ def _plan_manual_sync_incremental_dry_run(
             state_counts[state] += 1
             reason_counts[reason] += 1
             _record_reason_extension(reason, rel)
+            continue
+
+        if forced_lifecycle_decision is not None and forced_lifecycle_decision.kind == LifecycleKind.STABLE_NOOP:
+            unchanged_ledger_skips += 1
             continue
 
         if forced_lifecycle_decision is not None:
@@ -1231,6 +1251,7 @@ def _plan_manual_sync_incremental_dry_run(
                 reason="downstream_followup" if state == "downstream_followup_planned" else None,
                 media_id=media_id,
             )
+        state = _manual_plan_state_for_work_item(str(lifecycle_decision.work_item_kind.value), state)
         if known_item is not None and not reason and lifecycle_decision.kind in {
             LifecycleKind.RETRYABLE_SOURCE_FAILURE,
             LifecycleKind.CONTINUATION,
@@ -1285,14 +1306,20 @@ def _plan_manual_sync_incremental_dry_run(
                 return bool(lifecycle.get("consumes_actionable_cap", True))
             return True
 
+        def _record_work_item_kind(record: Dict[str, Any]) -> str:
+            lifecycle = record.get("lifecycle_decision")
+            if isinstance(lifecycle, dict):
+                return str(lifecycle.get("work_item_kind") or "")
+            return ""
+
         if walk_errors:
             walk_error_import_candidates_blocked = sum(
-                1 for record in selection_pool if str(record.get("state") or "") == "import_planned"
+                1 for record in selection_pool if _record_work_item_kind(record) == "IMPORT"
             )
             selection_pool = [
                 record
                 for record in selection_pool
-                if str(record.get("state") or "") == "downstream_followup_planned"
+                if _record_work_item_kind(record) == "FOLLOWUP"
                 or not _record_consumes_actionable_cap(record)
             ]
             source_walk_error_followup_only_batch = bool(selection_pool)
@@ -1310,7 +1337,8 @@ def _plan_manual_sync_incremental_dry_run(
     mtime_new_candidates = 0
     safety_window_candidates = 0
     for record in candidate_records:
-        if str(record.get("state") or "") != "import_planned":
+        lifecycle = record.get("lifecycle_decision")
+        if not isinstance(lifecycle, dict) or str(lifecycle.get("work_item_kind") or "") != "IMPORT":
             continue
         record_mtime_ns = record.get("candidate_mtime_ns")
         if source_mtime_watermark_ns is None or (
@@ -1343,9 +1371,11 @@ def _plan_manual_sync_incremental_dry_run(
         )
         lifecycle_kind = str(lifecycle_decision.get("kind") or "")
         work_item_kind = str(lifecycle_decision.get("work_item_kind") or "")
+        state = _manual_plan_state_for_work_item(work_item_kind, state)
         lifecycle_counts[lifecycle_kind] += 1
         work_item_counts[work_item_kind] += 1
         state_counts[state] += 1
+        is_import_work_item = work_item_kind == "IMPORT"
         if public_reason:
             reason_counts[public_reason] += 1
             _record_reason_extension(public_reason, str(record["relative_path"] or ""))
@@ -1356,7 +1386,7 @@ def _plan_manual_sync_incremental_dry_run(
             "initial_state": "candidate",
             "state": state,
             "reason": public_reason,
-            "eligible_for_db_import": state == "import_planned",
+            "eligible_for_db_import": is_import_work_item,
             "bytes_copied": 0,
             "media_id": record.get("media_id"),
             "file_size": metadata.get("file_size"),
@@ -1411,9 +1441,11 @@ def _plan_manual_sync_incremental_dry_run(
         partial_scan_reason = "source_walk_error"
         reason_counts["source_walk_error"] += len(walk_errors)
 
-    import_count = int(state_counts.get("import_planned", 0))
-    downstream_followup_count = int(state_counts.get("downstream_followup_planned", 0))
+    import_count = int(work_item_counts.get("IMPORT", 0))
+    downstream_followup_count = int(work_item_counts.get("FOLLOWUP", 0))
+    retry_source_count = int(work_item_counts.get("RETRY_SOURCE", 0))
     downstream_stage_count = import_count + downstream_followup_count
+    executable_work_count = downstream_stage_count + retry_source_count
     source_walk_error_followup_only_batch = bool(
         source_walk_error_followup_only_batch
         and import_count == 0
@@ -1429,7 +1461,7 @@ def _plan_manual_sync_incremental_dry_run(
         )
     )
     cap_limited_batch = bool(partial_scan and partial_scan_reason == "cap_limited_actionable_batch")
-    batch_executable = bool(downstream_stage_count > 0 and not unsafe_partial_scan)
+    batch_executable = bool(executable_work_count > 0 and not unsafe_partial_scan)
     more_batches_remain = bool(cap_limited_batch)
     estimated_runtime_seconds = _estimate_manual_sync_runtime_seconds(
         import_count=import_count,
@@ -1438,6 +1470,8 @@ def _plan_manual_sync_incremental_dry_run(
     )
     stages = _build_manual_pipeline_stages(
         state_counts=state_counts,
+        import_count=import_count,
+        downstream_followup_count=downstream_followup_count,
         ai_profile=profile,
         max_duration_seconds=max_duration_seconds,
         estimated_runtime_seconds=estimated_runtime_seconds,
@@ -1657,6 +1691,7 @@ def _plan_manual_sync_incremental_dry_run(
             "plan_items": len(public_items),
             "estimated_import_count": import_count,
             "estimated_downstream_followup_count": downstream_followup_count,
+            "estimated_retry_source_count": retry_source_count,
             "estimated_classification_count": downstream_stage_count,
             "estimated_ai_tagging_count": downstream_stage_count,
             "estimated_localization_workload": downstream_stage_count,
@@ -1786,6 +1821,8 @@ def plan_manual_sync_dry_run(
     read_timeout_seconds = max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS))
 
     state_counts: Counter = Counter()
+    lifecycle_counts: Counter = Counter()
+    work_item_counts: Counter = Counter()
     reason_counts: Counter = Counter()
     public_items: List[Dict[str, Any]] = []
     private_items: List[Dict[str, Any]] = []
@@ -2128,7 +2165,14 @@ def plan_manual_sync_dry_run(
             state = _manual_state_for_reason(str(reason or "read_error"))
 
         public_reason = _manual_public_reason_code(reason)
+        lifecycle_decision = classify_plan_item_state(state=state, reason=public_reason, media_id=media_id).to_public_dict()
+        lifecycle_kind = str(lifecycle_decision.get("kind") or "")
+        work_item_kind = str(lifecycle_decision.get("work_item_kind") or "")
+        state = _manual_plan_state_for_work_item(work_item_kind, state)
+        lifecycle_counts[lifecycle_kind] += 1
+        work_item_counts[work_item_kind] += 1
         state_counts[state] += 1
+        is_import_work_item = work_item_kind == "IMPORT"
         if public_reason:
             reason_counts[public_reason] += 1
             _record_reason_extension(public_reason, str(record["relative_path"] or ""))
@@ -2140,13 +2184,21 @@ def plan_manual_sync_dry_run(
             "initial_state": "candidate",
             "state": state,
             "reason": public_reason,
-            "eligible_for_db_import": state == "import_planned",
+            "eligible_for_db_import": is_import_work_item,
             "bytes_copied": 0,
             "media_id": media_id,
             "file_size": metadata.get("file_size"),
             "content_hash_computed": bool(content_hash),
             "cloud_placeholder_before_hydration": bool(record.get("cloud_placeholder_before_hydration")),
             "scan_source": str(record.get("scan_source") or ""),
+            "lifecycle_kind": lifecycle_kind,
+            "work_item_kind": work_item_kind,
+            "lifecycle_reason_code": str(lifecycle_decision.get("reason_code") or ""),
+            "is_actionable": bool(lifecycle_decision.get("is_actionable")),
+            "consumes_actionable_cap": bool(lifecycle_decision.get("consumes_actionable_cap")),
+            "can_execute": bool(lifecycle_decision.get("can_execute")),
+            "allowed_source_reads": bool(lifecycle_decision.get("allowed_source_reads")),
+            "allowed_db_writes": list(lifecycle_decision.get("allowed_db_writes") or []),
         }
         if state == "downstream_followup_planned":
             item["downstream_followup"] = dict(record.get("followup") or {})
@@ -2163,6 +2215,10 @@ def plan_manual_sync_dry_run(
                 "cloud_placeholder_before_hydration": bool(record.get("cloud_placeholder_before_hydration")),
                 "scan_source": str(record.get("scan_source") or ""),
                 "downstream_followup": dict(record.get("followup") or {}),
+                "lifecycle_kind": lifecycle_kind,
+                "work_item_kind": work_item_kind,
+                "allowed_source_reads": bool(lifecycle_decision.get("allowed_source_reads")),
+                "can_execute": bool(lifecycle_decision.get("can_execute")),
             }
         )
         if include_private_details:
@@ -2182,9 +2238,11 @@ def plan_manual_sync_dry_run(
         partial_scan_reason = "source_walk_error"
         reason_counts["source_walk_error"] += len(walk_errors)
 
-    import_count = int(state_counts.get("import_planned", 0))
-    downstream_followup_count = int(state_counts.get("downstream_followup_planned", 0))
+    import_count = int(work_item_counts.get("IMPORT", 0))
+    downstream_followup_count = int(work_item_counts.get("FOLLOWUP", 0))
+    retry_source_count = int(work_item_counts.get("RETRY_SOURCE", 0))
     downstream_stage_count = import_count + downstream_followup_count
+    executable_work_count = downstream_stage_count + retry_source_count
     unsafe_partial_scan = bool(
         plan_cancelled
         or plan_no_progress_timeout
@@ -2192,7 +2250,7 @@ def plan_manual_sync_dry_run(
         or (partial_scan and partial_scan_reason not in {None, "cap_limited_actionable_batch"})
     )
     cap_limited_batch = bool(partial_scan and partial_scan_reason == "cap_limited_actionable_batch")
-    batch_executable = bool(downstream_stage_count > 0 and not unsafe_partial_scan)
+    batch_executable = bool(executable_work_count > 0 and not unsafe_partial_scan)
     more_batches_remain = bool(cap_limited_batch)
     estimated_runtime_seconds = _estimate_manual_sync_runtime_seconds(
         import_count=import_count,
@@ -2201,6 +2259,8 @@ def plan_manual_sync_dry_run(
     )
     stages = _build_manual_pipeline_stages(
         state_counts=state_counts,
+        import_count=import_count,
+        downstream_followup_count=downstream_followup_count,
         ai_profile=profile,
         max_duration_seconds=max_duration_seconds,
         estimated_runtime_seconds=estimated_runtime_seconds,
@@ -2348,10 +2408,13 @@ def plan_manual_sync_dry_run(
             "plan_items": len(public_items),
             "estimated_import_count": import_count,
             "estimated_downstream_followup_count": downstream_followup_count,
+            "estimated_retry_source_count": retry_source_count,
             "estimated_classification_count": downstream_stage_count,
             "estimated_ai_tagging_count": downstream_stage_count,
             "estimated_localization_workload": downstream_stage_count,
             "state_counts": state_counts_public,
+            "lifecycle_counts": _public_counter(lifecycle_counts, LifecycleKind._value2member_map_.keys()),
+            "work_item_counts": _public_counter(work_item_counts, WorkItemKind._value2member_map_.keys()),
             "failure_reasons": reason_counts_public,
             "partial_scan": partial_scan,
             "partial_scan_reason": partial_scan_reason,
