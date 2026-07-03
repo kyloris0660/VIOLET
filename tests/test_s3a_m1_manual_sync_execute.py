@@ -101,6 +101,30 @@ def _patch_test_storage(monkeypatch, tmp_path: Path) -> Path:
     return storage
 
 
+def _replace_execute_private_plan_items(db, run: DynamicSyncRun, items: list[dict]) -> None:
+    summary = dict(run.summary_json or {})
+    execute_payload = dict(summary["manual_sync_execute"])
+    execute_payload["private_plan_items"] = items
+    summary["manual_sync_execute"] = execute_payload
+    run.summary_json = summary
+    db.commit()
+
+
+def _source_item_core_snapshot(item: DynamicSourceItem) -> dict:
+    return {
+        "source_status": item.source_status,
+        "sync_state": item.sync_state,
+        "import_status": item.import_status,
+        "classification_status": item.classification_status,
+        "ai_tagging_status": item.ai_tagging_status,
+        "localization_status": item.localization_status,
+        "failure_reason": item.failure_reason,
+        "deferred_reason": item.deferred_reason,
+        "media_id": item.media_id,
+        "content_hash": item.content_hash,
+    }
+
+
 def _enable_manual_execute(monkeypatch) -> None:
     monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED", "true")
     monkeypatch.setenv("DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED", "true")
@@ -3551,6 +3575,405 @@ def test_s3a_m1_retryable_import_budget_stop_continues_downstream_for_imported_m
     assert retry_metadata["long_term_state"] == "retryable"
     assert source_items["03-deferred.png"].deferred_reason == "not_processed_budget_stop"
     assert source_items["03-deferred.png"].import_status == "deferred"
+
+
+def test_manual_sync_execute_retry_source_read_timeout_does_not_import_or_copy(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "retry-timeout.png"
+    _write_png(source_file, (1, 2, 3))
+    stat = source_file.stat()
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=source_file.name,
+            relative_path_hash=planner._hash_text(source_file.name),
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            source_status="failed",
+            sync_state="failed",
+            import_status="failed",
+            failure_reason="read_timeout",
+        )
+    )
+    db.commit()
+
+    monkeypatch.setattr(execute_service, "_calculate_manual_plan_file_hash", lambda _path, _timeout_sec: (None, "read_timeout"))
+
+    def fail_copy(_db_arg, _source_file):
+        raise AssertionError("RETRY_SOURCE must not call import/copy")
+
+    monkeypatch.setattr(execute_service, "_copy_and_import_media", fail_copy)
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+    assert plan["private_details"]["items"][0]["work_item_kind"] == "RETRY_SOURCE"
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert db.query(Media).count() == 0
+    assert list(settings.ORIGINAL_DIR.iterdir()) == []
+    execute_summary = result["manual_sync_execute"]
+    assert execute_summary["outcome_counts"]["failed"] == 1
+    assert execute_summary["outcome_counts"]["read_timeout"] == 1
+    item = db.query(DynamicSourceItem).one()
+    assert item.import_status == "failed"
+    assert item.failure_reason == "read_timeout"
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.action == "retry_source"
+
+
+def test_manual_sync_execute_retry_source_cloud_hydration_success_does_not_import(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "hydrated-now.png"
+    _write_png(source_file, (4, 5, 6))
+    stat = source_file.stat()
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=source_file.name,
+        relative_path_hash=planner._hash_text(source_file.name),
+        file_size=stat.st_size,
+        mtime_ns=stat.st_mtime_ns,
+        source_status="failed",
+        sync_state="failed",
+        import_status="failed",
+        failure_reason="cloud_hydration_failed",
+    )
+    db.add(item)
+    db.commit()
+
+    monkeypatch.setattr(
+        execute_service,
+        "_calculate_manual_plan_file_hash",
+        lambda path, _timeout_sec: (calculate_file_hash(path), None),
+    )
+
+    def fail_copy(_db_arg, _source_file):
+        raise AssertionError("successful RETRY_SOURCE must re-plan as IMPORT, not import immediately")
+
+    monkeypatch.setattr(execute_service, "_copy_and_import_media", fail_copy)
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+    assert plan["private_details"]["items"][0]["work_item_kind"] == "RETRY_SOURCE"
+    assert plan["private_details"]["items"][0]["reason"] == "cloud_hydration_failed"
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    result = execute_manual_sync_run(db, run_id=run.id)
+
+    assert db.query(Media).count() == 0
+    assert list(settings.ORIGINAL_DIR.iterdir()) == []
+    assert result["manual_sync_execute"]["outcome_counts"]["retry_source_ready_for_import"] == 1
+    db.refresh(item)
+    assert item.sync_state == "new"
+    assert item.import_status == "pending"
+    assert item.failure_reason is None
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.item_state == "retry_source_ready_for_import"
+    assert run_item.action == "retry_source"
+
+
+def test_manual_sync_execute_successful_retry_replans_as_explicit_import(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "retry-ready.png"
+    _write_png(source_file, (7, 8, 9))
+    stat = source_file.stat()
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=source_file.name,
+        relative_path_hash=planner._hash_text(source_file.name),
+        file_size=stat.st_size,
+        mtime_ns=stat.st_mtime_ns,
+        source_status="failed",
+        sync_state="failed",
+        import_status="failed",
+        failure_reason="read_timeout",
+    )
+    db.add(item)
+    db.commit()
+
+    monkeypatch.setattr(
+        execute_service,
+        "_calculate_manual_plan_file_hash",
+        lambda path, _timeout_sec: (calculate_file_hash(path), None),
+    )
+    monkeypatch.setattr(
+        execute_service,
+        "_copy_and_import_media",
+        lambda _db_arg, _source_file: (_ for _ in ()).throw(AssertionError("RETRY_SOURCE imported unexpectedly")),
+    )
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+
+    execute_manual_sync_run(db, run_id=run.id)
+    next_plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert db.query(Media).count() == 0
+    next_item = next_plan["private_details"]["items"][0]
+    assert next_item["lifecycle_kind"] == "IMPORT_CANDIDATE"
+    assert next_item["work_item_kind"] == "IMPORT"
+    assert next_item["can_execute"] is True
+
+
+def test_manual_sync_execute_broken_state_does_not_mutate_source_item(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "broken.png"
+    _write_png(source_file, (10, 20, 30))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=source_file.name,
+        relative_path_hash=planner._hash_text(source_file.name),
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="pending",
+        ai_tagging_status="pending",
+        localization_status="waiting_ai_tags",
+        failure_reason=None,
+        deferred_reason=None,
+    )
+    db.add(item)
+    db.commit()
+    before = _source_item_core_snapshot(item)
+    plan = planner.plan_manual_sync_dry_run(db, source_path=source_root, source_record_id=root.id, max_files=5, stable_age_seconds=0)
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+    _replace_execute_private_plan_items(
+        db,
+        run,
+        [
+            {
+                "safe_label": "diagnostic-00001",
+                "relative_path": source_file.name,
+                "source_item_id": item.id,
+                "state": "broken_state",
+                "reason": "app_media_missing",
+                "lifecycle_reason_code": "app_media_missing",
+                "lifecycle_kind": "BROKEN_STATE",
+                "work_item_kind": "BROKEN_STATE",
+                "can_execute": False,
+                "allowed_source_reads": False,
+            }
+        ],
+    )
+
+    execute_manual_sync_run(db, run_id=run.id)
+
+    db.refresh(item)
+    assert _source_item_core_snapshot(item) == before
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.action == "diagnostic"
+    assert run_item.reason == "app_media_missing"
+
+
+def test_manual_sync_execute_noop_diagnostic_does_not_mutate_source_item(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "noop.png"
+    _write_png(source_file, (11, 21, 31))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=source_file.name,
+        relative_path_hash=planner._hash_text(source_file.name),
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="ai_tagged",
+        localization_status="localized",
+        failure_reason=None,
+        deferred_reason=None,
+    )
+    db.add(item)
+    db.commit()
+    before = _source_item_core_snapshot(item)
+    plan = planner.plan_manual_sync_dry_run(db, source_path=source_root, source_record_id=root.id, max_files=5, stable_age_seconds=0)
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+    _replace_execute_private_plan_items(
+        db,
+        run,
+        [
+            {
+                "safe_label": "diagnostic-00001",
+                "relative_path": source_file.name,
+                "source_item_id": item.id,
+                "state": "unchanged",
+                "reason": "downstream_complete",
+                "lifecycle_reason_code": "downstream_complete",
+                "lifecycle_kind": "STABLE_NOOP",
+                "work_item_kind": "NOOP_DIAGNOSTIC",
+                "can_execute": False,
+                "allowed_source_reads": False,
+            }
+        ],
+    )
+
+    execute_manual_sync_run(db, run_id=run.id)
+
+    db.refresh(item)
+    assert _source_item_core_snapshot(item) == before
+    assert db.query(DynamicSyncRunItem).one().action == "diagnostic"
+
+
+def test_manual_sync_execute_placeholder_does_not_mutate_imported_media_backed_state(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+
+    source_root = tmp_path / "source"
+    source_file = source_root / "placeholder.png"
+    _write_png(source_file, (12, 22, 32))
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="placeholder.png",
+        path="media/original/placeholder.png",
+        hash=calculate_file_hash(source_file),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    item = DynamicSourceItem(
+        source_root_id=root.id,
+        relative_path=source_file.name,
+        relative_path_hash=planner._hash_text(source_file.name),
+        source_status="available",
+        sync_state="imported",
+        import_status="imported",
+        classification_status="classified",
+        ai_tagging_status="ai_tagged",
+        localization_status="localized",
+        media_id=media.id,
+        content_hash=media.hash,
+        failure_reason=None,
+        deferred_reason=None,
+    )
+    db.add(item)
+    db.commit()
+    before = _source_item_core_snapshot(item)
+    plan = planner.plan_manual_sync_dry_run(db, source_path=source_root, source_record_id=root.id, max_files=5, stable_age_seconds=0)
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+    )
+    _replace_execute_private_plan_items(
+        db,
+        run,
+        [
+            {
+                "safe_label": "diagnostic-00001",
+                "relative_path": source_file.name,
+                "source_item_id": item.id,
+                "state": "skipped_placeholder",
+                "reason": "cloud_placeholder",
+                "lifecycle_reason_code": "cloud_placeholder",
+                "lifecycle_kind": "PLACEHOLDER_DEFERRED",
+                "work_item_kind": "PLACEHOLDER",
+                "can_execute": False,
+                "allowed_source_reads": False,
+                "media_id": media.id,
+            }
+        ],
+    )
+
+    execute_manual_sync_run(db, run_id=run.id)
+
+    db.refresh(item)
+    assert _source_item_core_snapshot(item) == before
+    run_item = db.query(DynamicSyncRunItem).one()
+    assert run_item.action == "diagnostic"
+    assert run_item.reason == "cloud_placeholder"
 
 
 def test_s3a_m1_execute_stops_on_duration_budget(db, tmp_path, monkeypatch):

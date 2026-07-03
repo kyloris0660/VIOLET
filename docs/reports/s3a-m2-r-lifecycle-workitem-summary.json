@@ -150,6 +150,20 @@
     "attempted_vs_completed_separation_covered": true,
     "root_scoped_validator_report_coverage": true,
     "phase_contract_tests_passed": true,
+    "runtime_boundary_tests": {
+      "passed": true,
+      "covered": [
+        "RETRY_SOURCE_does_not_import_or_copy",
+        "RETRY_SOURCE_success_marks_ready_for_explicit_IMPORT_replan",
+        "BROKEN_STATE_no_dynamic_source_item_core_status_mutation",
+        "NOOP_DIAGNOSTIC_no_dynamic_source_item_core_status_mutation",
+        "PLACEHOLDER_no_media_backed_imported_state_mutation",
+        "BROKEN_STATE_does_not_consume_actionable_cap",
+        "hydrated_placeholder_becomes_import_candidate",
+        "downstream_complete_missing_media_row_becomes_broken_state",
+        "retry_continuation_broken_reasons_preserved_in_plan"
+      ]
+    },
     "full_s3a_m2_r_completion_claimed": false,
     "browser_validation": {
       "status": "not_in_scope_for_pr_r1",
@@ -205,13 +219,20 @@
   },
   "reviewer_fix_round": {
     "scope": "PR-R1 bounded lifecycle and WorkItem correctness fixes only",
+    "final_bounded_round": true,
     "fixed": [
       "media-backed retryable source failures stay RETRY_SOURCE instead of APP_MEDIA_FOLLOWUP",
       "cloud_hydration_failed failed source attempts are retryable while actual placeholders stay PLACEHOLDER",
       "current-complete media-backed rows become STABLE_NOOP before stale continuation reasons",
       "planner app-media follow-up requires Media row and app-storage evidence",
       "operator status mapping rejects mixed non-retryable failures and budget-stop stage failures as systemic",
-      "PLACEHOLDER source-read boundary is contract-enforced"
+      "PLACEHOLDER source-read boundary is contract-enforced",
+      "RETRY_SOURCE execute path cannot fall through to import/copy",
+      "non-executable BROKEN_STATE NOOP_DIAGNOSTIC and PLACEHOLDER record diagnostics without rewriting DynamicSourceItem core status fields",
+      "BROKEN_STATE and NOOP_DIAGNOSTIC remain visible without consuming actionable cap",
+      "hydrated stale placeholders can re-enter as IMPORT_CANDIDATE when current planner evidence is import-ready",
+      "media-backed STABLE_NOOP decisions verify Media row evidence so stale media_id cannot hide broken state",
+      "planner public records preserve lifecycle reason_code for retry continuation and broken diagnostics"
     ],
     "not_in_scope": [
       "PR-R2 UI progress or browser validation",

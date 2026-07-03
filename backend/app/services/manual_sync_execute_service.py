@@ -1165,6 +1165,28 @@ def _record_run_item(
     return run_item
 
 
+def _record_non_executable_run_item(
+    db: Session,
+    *,
+    run: DynamicSyncRun,
+    item: DynamicSourceItem,
+    state: str,
+    reason: Optional[str],
+    metadata: Dict[str, Any],
+) -> None:
+    _record_run_item(
+        db,
+        run=run,
+        item=item,
+        state=state,
+        action="diagnostic",
+        reason=reason,
+        eligible=False,
+        media_id=item.media_id,
+        current_metadata=metadata,
+    )
+
+
 def _annotate_run_item_stage(
     db: Session,
     *,
@@ -1252,6 +1274,67 @@ def _mark_item_failed(
         reason=reason,
         eligible=False,
         current_metadata=metadata,
+    )
+
+
+def _mark_retry_source_ready_for_import(
+    db: Session,
+    *,
+    run: DynamicSyncRun,
+    item: DynamicSourceItem,
+    metadata: Dict[str, Any],
+    content_hash: Optional[str],
+    previous_reason: Optional[str],
+) -> None:
+    now = _utcnow()
+    item.source_status = "available"
+    item.sync_state = "new"
+    item.import_status = "pending"
+    item.classification_status = "waiting_import"
+    item.ai_tagging_status = "waiting_import"
+    item.localization_status = "waiting_ai_tags"
+    item.failure_reason = None
+    item.deferred_reason = None
+    item.file_size = metadata.get("file_size")
+    item.mtime = metadata.get("mtime")
+    item.mtime_ns = metadata.get("mtime_ns")
+    if content_hash:
+        item.content_hash = str(content_hash)
+    item.last_checked_at = now
+    item.last_seen_at = now
+    item.last_sync_run_id = run.id
+    item.last_seen_run_id = run.id
+    item_metadata = dict(item.metadata_json or {})
+    retry = dict(item_metadata.get("manual_sync_retry") or {})
+    retry.update(
+        {
+            "last_retry_at": now.isoformat(),
+            "last_success_at": now.isoformat(),
+            "previous_failure_reason": previous_reason,
+            "retryable": False,
+            "ready_for_import": True,
+            "next_work_item_kind": "IMPORT",
+        }
+    )
+    item_metadata["manual_sync_retry"] = retry
+    item.metadata_json = item_metadata
+    _record_run_item(
+        db,
+        run=run,
+        item=item,
+        state="retry_source_ready_for_import",
+        action="retry_source",
+        reason="retry_source_ready_for_import",
+        eligible=False,
+        media_id=item.media_id,
+        current_metadata={
+            **metadata,
+            "retry_source": {
+                "status": "ready_for_import",
+                "previous_reason": previous_reason,
+                "next_work_item_kind": "IMPORT",
+            },
+        },
     )
 
 
@@ -2036,6 +2119,27 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             ):
                 item_failure_reason = "cloud_hydration_failed"
 
+            if can_execute is False or work_item_kind in {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}:
+                diagnostic_reason = reason or str(plan_item.get("lifecycle_reason_code") or "").strip() or work_item_kind.lower()
+                diagnostic_metadata = {**metadata, "safe_label": plan_item.get("safe_label")}
+                if planned_source_item is not None:
+                    _record_non_executable_run_item(
+                        db,
+                        run=run,
+                        item=planned_source_item,
+                        state=state,
+                        reason=diagnostic_reason,
+                        metadata=diagnostic_metadata,
+                    )
+                counts[state] += 1
+                if diagnostic_reason:
+                    counts[diagnostic_reason] += 1
+                processed_items += 1
+                processed_plan_items += 1
+                consecutive_failures = 0
+                db.commit()
+                continue
+
             if planned_source_item is not None:
                 item = planned_source_item
                 if current_content_hash and not item.content_hash:
@@ -2075,6 +2179,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     item=item,
                     reason=item_failure_reason,
                     metadata=failure_metadata,
+                    action="retry_source" if work_item_kind == "RETRY_SOURCE" else "import",
                 )
                 counts["failed"] += 1
                 counts[item_failure_reason] += 1
@@ -2092,25 +2197,6 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 )
                 if stop_reason:
                     break
-                continue
-
-            if can_execute is False or work_item_kind in {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}:
-                diagnostic_reason = reason or str(plan_item.get("lifecycle_reason_code") or "").strip() or work_item_kind.lower()
-                _mark_item_skipped(
-                    db,
-                    run=run,
-                    item=item,
-                    state=state,
-                    reason=diagnostic_reason,
-                    metadata={**metadata, "safe_label": plan_item.get("safe_label")},
-                )
-                counts[state] += 1
-                if diagnostic_reason:
-                    counts[diagnostic_reason] += 1
-                processed_items += 1
-                processed_plan_items += 1
-                consecutive_failures = 0
-                db.commit()
                 continue
 
             if state == "downstream_followup_planned":
@@ -2167,6 +2253,22 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 )
                 if stop_reason:
                     break
+                continue
+
+            if work_item_kind == "RETRY_SOURCE":
+                _mark_retry_source_ready_for_import(
+                    db,
+                    run=run,
+                    item=item,
+                    metadata={**metadata, "safe_label": plan_item.get("safe_label")},
+                    content_hash=str(current_content_hash) if current_content_hash else None,
+                    previous_reason=reason or str(plan_item.get("lifecycle_reason_code") or "").strip() or None,
+                )
+                counts["retry_source_ready_for_import"] += 1
+                processed_items += 1
+                processed_plan_items += 1
+                consecutive_failures = 0
+                db.commit()
                 continue
 
             if state != "import_planned":

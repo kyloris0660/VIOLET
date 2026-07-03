@@ -141,6 +141,8 @@ MANUAL_SYNC_PUBLIC_REASON_CODES: frozenset[str] = frozenset(
         "image_verify_failed",
         "import_failed",
         "media_row_missing",
+        "not_processed_budget_stop",
+        "not_processed_cancelled",
         "not_a_file",
         "path_escape",
         "permission_denied",
@@ -1091,6 +1093,27 @@ def _plan_manual_sync_incremental_dry_run(
         in_mtime_window = bool(mtime_cutoff_ns is None or (mtime_ns is not None and int(mtime_ns) >= int(mtime_cutoff_ns)))
         known_import_status = str(getattr(known_item, "import_status", "") or "") if known_item is not None else ""
         media_backed_pending_noop = _manual_plan_media_backed_pending_noop(known_item)
+        forced_lifecycle_decision = None
+        if (
+            known_item is not None
+            and getattr(known_item, "media_id", None) is not None
+            and source_item_downstream_complete(known_item)
+        ):
+            media_row, _app_exists = _media_evidence(known_item.media_id)
+            media_decision = classify_source_item(
+                known_item,
+                media=media_row,
+                media_lookup_performed=True,
+                # Stable/no-op planning verifies the Media row so stale media_id
+                # cannot hide BROKEN_STATE. App file existence is enforced for
+                # app-media FOLLOWUP decisions, where app storage is required to
+                # execute the work item without source reads.
+                app_media_exists=None,
+                current_priority=True,
+            )
+            if media_decision.kind == LifecycleKind.BROKEN_STATE:
+                forced_lifecycle_decision = media_decision
+                reason = media_decision.reason_code
         if (
             scan_source == "source_ledger_followup"
             and known_item is not None
@@ -1119,6 +1142,7 @@ def _plan_manual_sync_incremental_dry_run(
         if (
             scan_source == "mtime_window_metadata"
             and known_item is not None
+            and forced_lifecycle_decision is None
             and not in_mtime_window
             and not _manual_plan_existing_requires_lifecycle_work(known_item)
             and _manual_plan_can_skip_unchanged_known_item(known_item, metadata)
@@ -1126,7 +1150,11 @@ def _plan_manual_sync_incremental_dry_run(
             stable_old_files_skipped += 1
             continue
 
-        if known_item is not None and _manual_plan_can_skip_unchanged_known_item(known_item, metadata):
+        if (
+            known_item is not None
+            and forced_lifecycle_decision is None
+            and _manual_plan_can_skip_unchanged_known_item(known_item, metadata)
+        ):
             unchanged_ledger_skips += 1
             continue
 
@@ -1136,14 +1164,17 @@ def _plan_manual_sync_incremental_dry_run(
             reason_counts[reason] += 1
             _record_reason_extension(reason, rel)
             continue
-        if reason is not None and reason != "downstream_followup":
+        if forced_lifecycle_decision is None and reason is not None and reason != "downstream_followup":
             state = _manual_state_for_reason(reason)
             state_counts[state] += 1
             reason_counts[reason] += 1
             _record_reason_extension(reason, rel)
             continue
 
-        if reason == "downstream_followup" and media_id:
+        if forced_lifecycle_decision is not None:
+            state = "broken_state"
+            candidate_priority = 100
+        elif reason == "downstream_followup" and media_id:
             state = "downstream_followup_planned"
             candidate_priority = 0
         else:
@@ -1169,8 +1200,21 @@ def _plan_manual_sync_incremental_dry_run(
                 candidate_priority = 40
             else:
                 candidate_priority = 90
-        if known_item is not None:
-            if state == "downstream_followup_planned" and media_id:
+        if forced_lifecycle_decision is not None:
+            lifecycle_decision = forced_lifecycle_decision
+            followup_payload = {}
+        elif known_item is not None:
+            stale_placeholder = bool(
+                str(getattr(known_item, "sync_state", "") or "") == "skipped_placeholder"
+                or str(getattr(known_item, "deferred_reason", "") or "") in {"cloud_placeholder", "icloud_placeholder"}
+            )
+            if state == "import_planned" and reason is None and stale_placeholder:
+                lifecycle_decision = classify_plan_item_state(
+                    state=state,
+                    reason=None,
+                    media_id=media_id,
+                )
+            elif state == "downstream_followup_planned" and media_id:
                 media_row, app_exists = _media_evidence(media_id)
                 lifecycle_decision = classify_source_item(
                     known_item,
@@ -1203,7 +1247,7 @@ def _plan_manual_sync_incremental_dry_run(
             "relative_path_hash": rel_hash,
             "relative_path_hash_full": rel_hash_full,
             "metadata": metadata,
-            "reason": "downstream_followup" if state == "downstream_followup_planned" else None,
+            "reason": reason,
             "content_hash": known_content_hash if state == "downstream_followup_planned" else None,
             "media_id": media_id,
             "cloud_placeholder_before_hydration": False,
@@ -1214,6 +1258,7 @@ def _plan_manual_sync_incremental_dry_run(
             "candidate_priority": candidate_priority,
             "candidate_mtime_ns": mtime_ns,
             "known_source_item": known_item is not None,
+            "source_item_id": int(known_item.id) if known_item is not None and known_item.id is not None else None,
         }
         candidate_pool.append(record)
         _progress("candidate_discovered", current_item_index=index, current_item_label=safe_label, scan_source=scan_source)
@@ -1237,16 +1282,28 @@ def _plan_manual_sync_incremental_dry_run(
             )
         )
         selection_pool = list(candidate_pool)
+
+        def _record_consumes_actionable_cap(record: Dict[str, Any]) -> bool:
+            lifecycle = record.get("lifecycle_decision")
+            if isinstance(lifecycle, dict):
+                return bool(lifecycle.get("consumes_actionable_cap", True))
+            return True
+
         if walk_errors:
             walk_error_import_candidates_blocked = sum(
                 1 for record in selection_pool if str(record.get("state") or "") == "import_planned"
             )
             selection_pool = [
-                record for record in selection_pool if str(record.get("state") or "") == "downstream_followup_planned"
+                record
+                for record in selection_pool
+                if str(record.get("state") or "") == "downstream_followup_planned"
+                or not _record_consumes_actionable_cap(record)
             ]
             source_walk_error_followup_only_batch = bool(selection_pool)
-        candidate_records = selection_pool[:effective_max_files]
-        if len(selection_pool) > len(candidate_records):
+        actionable_records = [record for record in selection_pool if _record_consumes_actionable_cap(record)]
+        diagnostic_records = [record for record in selection_pool if not _record_consumes_actionable_cap(record)]
+        candidate_records = actionable_records[:effective_max_files] + diagnostic_records
+        if len(actionable_records) > min(len(actionable_records), effective_max_files):
             partial_scan = True
             plan_cap_limited = True
             partial_scan_reason = "cap_limited_actionable_batch"
