@@ -24,6 +24,8 @@ class AdminPanel {
         this.dynamicSyncOperatorReadiness = {};
         this.dynamicSyncManualWarnings = [];
         this.dynamicSyncBackgroundWarnings = [];
+        this.dynamicSyncExecuteRequestStartedAt = null;
+        this.dynamicSyncExecuteRequestTimer = null;
         window.adminPanel = this;
         this.init();
     }
@@ -1907,35 +1909,105 @@ class AdminPanel {
         return translated && translated !== key ? translated : fallback;
     }
 
+    _manualSyncOperatorStatusLabel(status) {
+        const labels = {
+            completed: '已完成：本批次没有剩余操作员动作',
+            completed_with_retryable_failures: '已完成但有可重试源文件债务',
+            completed_with_followup_required: '已完成但需要后续补处理',
+            completed_with_continuation: '已完成当前批次，还有下一批需要继续计划',
+            completed_with_retryable_failures_plus_continuation: '已完成当前批次，同时有可重试债务和后续批次',
+            failed_systemic: '系统性失败：需要先排查环境或流程问题',
+            blocked_preflight: '预检阻断：尚未进入执行',
+            cancelled: '已取消：已提交结果保留，剩余项目需要重新计划',
+        };
+        return labels[status] || status || '-';
+    }
+
+    _manualSyncWorkItemKindLabel(kind) {
+        const labels = {
+            IMPORT: '导入新媒体',
+            FOLLOWUP: '应用媒体后续补处理',
+            RETRY_SOURCE: '重试源文件读取',
+            BROKEN_STATE: '状态异常诊断',
+            PLACEHOLDER: '云占位/暂缓项目',
+            NOOP_DIAGNOSTIC: '无需执行的诊断项',
+        };
+        return labels[kind] || kind || '-';
+    }
+
+    _manualSyncLifecycleKindLabel(kind) {
+        const labels = {
+            APP_MEDIA_FOLLOWUP: '应用内媒体需要补处理',
+            IMPORT_CANDIDATE: '可导入候选',
+            RETRYABLE_SOURCE_FAILURE: '源文件读取可重试失败',
+            PLACEHOLDER_DEFERRED: '云占位暂缓',
+            STABLE_NOOP: '稳定无操作',
+            HISTORICAL_DIAGNOSTIC: '历史诊断记录',
+            CONTINUATION: '批次续跑',
+            BROKEN_STATE: '状态异常',
+            FATAL_BLOCKER: '致命阻断',
+        };
+        return labels[kind] || kind || '-';
+    }
+
+    _manualSyncStageLabel(stage) {
+        const labels = {
+            plan: '计划',
+            candidate_discovery: '候选发现',
+            import: '导入/重试',
+            classification: '分类',
+            ai_tagging: 'AI 标签',
+            localization: '本地化',
+            summary: '摘要/报告',
+        };
+        return labels[stage] || stage || '-';
+    }
+
+    _manualSyncStageStatusLabel(status) {
+        const labels = {
+            queued: '等待中',
+            pending: '等待中',
+            running: '进行中',
+            cancelling: '取消中',
+            completed: '已完成',
+            failed: '失败',
+            cancelled: '已取消',
+            blocked: '已阻断',
+        };
+        return labels[status] || status || '-';
+    }
+
     _renderManualSyncStageStrip(stageStatus = {}) {
         const strip = document.getElementById('dynamic-sync-stage-strip');
         if (!strip) return;
         const stages = [
-            ['plan', 'Plan'],
-            ['import', 'Import'],
-            ['classification', 'Classification'],
-            ['ai_tagging', 'AI tagging'],
-            ['localization', 'Localization'],
-            ['summary', 'Complete'],
+            ['plan', '计划'],
+            ['import', '导入/重试'],
+            ['classification', '分类'],
+            ['ai_tagging', 'AI 标签'],
+            ['localization', '本地化'],
+            ['summary', '摘要/报告'],
         ];
         strip.innerHTML = stages.map(([key, label]) => {
             const status = stageStatus[key] || 'queued';
             const style = status === 'completed'
                 ? 'border-green-500 text-green-400'
                 : (status === 'running' ? 'border-warning text-warning' : (status === 'failed' ? 'border-red-500 text-red-400' : 'border text-secondary'));
-            return `<div class="p-2 border ${style}"><div class="font-bold">${this.escapeHtml(label)}</div><div class="text-[10px]">${this.escapeHtml(status)}</div></div>`;
+            return `<div class="p-2 border ${style}"><div class="font-bold">${this.escapeHtml(label)}</div><div class="text-[10px]">${this.escapeHtml(this._manualSyncStageStatusLabel(status))}</div></div>`;
         }).join('');
     }
 
-    _manualSyncSetProgress({ visible = true, label = '', detail = '', inFlight = false, stageStatus = null } = {}) {
+    _manualSyncSetProgress({ visible = true, label = '', detail = '', inFlight = false, stageStatus = null, pending = false } = {}) {
         const progress = document.getElementById('dynamic-sync-progress');
         const labelEl = document.getElementById('dynamic-sync-progress-label');
         const detailEl = document.getElementById('dynamic-sync-progress-detail');
         const elapsedEl = document.getElementById('dynamic-sync-progress-elapsed');
+        const pendingEl = document.getElementById('dynamic-sync-progress-pending');
         if (progress) progress.classList.toggle('hidden', !visible);
         if (labelEl && label) labelEl.textContent = label;
         if (detailEl && detail) detailEl.textContent = detail;
         if (stageStatus) this._renderManualSyncStageStrip(stageStatus);
+        if (pendingEl) pendingEl.classList.toggle('hidden', !pending);
 
         if (inFlight && !this.dynamicSyncProgressStartedAt) {
             this.dynamicSyncProgressStartedAt = Date.now();
@@ -1991,9 +2063,9 @@ class AdminPanel {
             inFlight: ['running', 'cancelling'].includes(status),
             stageStatus: { plan: status === 'completed' ? 'completed' : (status === 'failed' ? 'failed' : 'running') },
         });
-        if (labelEl) labelEl.textContent = `Plan ${status}: ${phase}`;
+        if (labelEl) labelEl.textContent = `计划${this._manualSyncStageStatusLabel(status)}：${phase}`;
         if (detailEl) {
-            detailEl.textContent = `current=${item}, index=${index}, updated=${progressPayload.updated_at || progressPayload.last_progress_at || '-'}`;
+            detailEl.textContent = `当前项目=${item}，序号=${index}，最后更新=${progressPayload.updated_at || progressPayload.last_progress_at || '-'}`;
         }
         if (elapsedEl) elapsedEl.textContent = `${Math.max(0, Math.round(progressPayload.elapsed_seconds || 0))}s`;
         if (requestEl) requestEl.textContent = progressPayload.plan_request_id ? `request=${progressPayload.plan_request_id}` : '';
@@ -2007,13 +2079,13 @@ class AdminPanel {
         }
         if (countsEl) {
             const fields = [
-                ['metadata seen', counts.metadata_entries_seen || counts.seen || 0],
-                ['ledger follow-up', counts.db_followup_candidates || 0],
-                ['mtime-new', counts.mtime_new_candidates || 0],
-                ['safety-window', counts.safety_window_candidates || 0],
-                ['selected', counts.batch_candidates || counts.planned || 0],
-                ['plan reads/hash/decode/hydrate', `${counts.content_reads || 0}/${counts.hashes || 0}/${counts.decodes || 0}/${counts.hydrations || 0}`],
-                ['failed', counts.failed || 0],
+                ['元数据已看见', counts.metadata_entries_seen || counts.seen || 0],
+                ['应用媒体补处理', counts.db_followup_candidates || 0],
+                ['mtime 新候选', counts.mtime_new_candidates || 0],
+                ['安全窗口候选', counts.safety_window_candidates || 0],
+                ['已选批次', counts.batch_candidates || counts.planned || 0],
+                ['读取/哈希/解码/水合', `${counts.content_reads || 0}/${counts.hashes || 0}/${counts.decodes || 0}/${counts.hydrations || 0}`],
+                ['失败', counts.failed || 0],
             ];
             countsEl.innerHTML = fields.map(([key, value]) => (
                 `<div class="bg p-2 border"><span class="text-secondary">${this.escapeHtml(key)}</span><br><span class="font-bold">${value}</span></div>`
@@ -2028,7 +2100,7 @@ class AdminPanel {
         if (cancelBtn) {
             cancelBtn.classList.toggle('hidden', !['running', 'cancelling'].includes(status));
             cancelBtn.disabled = status === 'cancelling';
-            cancelBtn.textContent = status === 'cancelling' ? 'Cancelling plan...' : 'Cancel plan';
+            cancelBtn.textContent = status === 'cancelling' ? '正在取消计划...' : '取消计划';
         }
     }
 
@@ -2331,6 +2403,8 @@ class AdminPanel {
         if (!resultEl) return;
         const counts = plan.counts || {};
         const states = counts.state_counts || {};
+        const workItemCounts = counts.work_item_counts || {};
+        const lifecycleCounts = counts.lifecycle_counts || {};
         const integrity = plan.integrity || {};
         const limits = plan.limits || {};
         const confirmationPhrase = this._manualSyncExpectedConfirmationPhrase(plan);
@@ -2344,17 +2418,21 @@ class AdminPanel {
         const skippedExistingBeforeCap = limits.skipped_existing_before_cap || 0;
         const skippedDuplicateBeforeCap = limits.skipped_duplicate_before_cap || 0;
         const downstreamFollowup = counts.estimated_downstream_followup_count || limits.downstream_followup_count || 0;
-        const actionableCount = (counts.estimated_import_count || 0) + downstreamFollowup;
+        const retrySource = counts.estimated_retry_source_count || workItemCounts.RETRY_SOURCE || 0;
+        const actionableCount = (counts.estimated_import_count || 0) + downstreamFollowup + retrySource;
+        const advancedRetryBlocked = !!(counts.advanced_full_rescan_retry_source_execution_not_validated || limits.advanced_full_rescan_retry_source_execution_not_validated);
         const batchExecutable = !!(counts.batch_executable || limits.batch_executable);
         const capLimitedBatch = !!(counts.cap_limited_batch || limits.cap_limited_batch);
         const unsafePartial = !!(counts.unsafe_partial_scan || limits.unsafe_partial_scan);
         const showAdvancedExecute = this.dynamicSyncLastPlanSource === 'advanced' || limits.plan_mode === 'advanced_full_rescan';
         const complete = !counts.partial_scan || batchExecutable;
         const actionable = actionableCount > 0;
-        const canExecute = batchExecutable && actionable && this.dynamicSyncExecuteEnabled;
+        const canExecute = batchExecutable && actionable && this.dynamicSyncExecuteEnabled && !advancedRetryBlocked;
         const requiresConfirmation = canExecute;
         let planMessage = '执行会保持禁用，直到计划安全完成、存在可写入项目，并且手动 E2E 就绪。';
-        if (canExecute) {
+        if (advancedRetryBlocked) {
+            planMessage = '高级 full-rescan 发现了重试源文件债务；PR-R2 未验证此模式执行，当前仅作为可见诊断，不允许 Execute。';
+        } else if (canExecute) {
             planMessage = capLimitedBatch
                 ? '这个安全的有界批次已可执行。本批次完成后仍有后续工作，请再次点击“开始手动同步”继续下一批。'
                 : '计划已就绪。普通流程会在你确认浏览器弹窗后自动执行完整链路。';
@@ -2365,6 +2443,20 @@ class AdminPanel {
         } else if (counts.partial_scan) {
             planMessage = '这个计划仍是部分扫描。需要先形成明确安全的批次边界，再执行。';
         }
+        const workItemSummaryHtml = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE', 'BROKEN_STATE', 'PLACEHOLDER', 'NOOP_DIAGNOSTIC']
+            .map(kind => {
+                const value = Number(workItemCounts[kind] || 0);
+                const executable = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE'].includes(kind);
+                return `<div class="bg p-2 border">
+                    <span class="text-secondary">${this.escapeHtml(this._manualSyncWorkItemKindLabel(kind))}</span><br>
+                    <span class="font-bold">${value}</span>
+                    <span class="text-[10px] ${executable ? 'text-green-400' : 'text-secondary'}">${executable ? '可执行工作' : '诊断/不可执行'}</span>
+                </div>`;
+            }).join('');
+        const lifecycleSummary = Object.entries(lifecycleCounts)
+            .filter(([, value]) => value)
+            .map(([kind, value]) => `${this.escapeHtml(this._manualSyncLifecycleKindLabel(kind))}=${value}`)
+            .join('，') || '-';
         resultEl.classList.remove('hidden');
         resultEl.innerHTML = `
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
@@ -2376,9 +2468,11 @@ class AdminPanel {
             <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Actionable cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Cap means:</span> ${this.escapeHtml(limits.cap_semantics || 'unique importable/downstream candidates')} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
             <div class="mb-2"><span class="text-secondary">Batch:</span> ${batchExecutable ? 'executable bounded batch' : 'not executable'} | <span class="text-secondary">Partial reason:</span> ${this.escapeHtml(counts.partial_scan_reason || limits.partial_scan_reason || '-')} | <span class="text-secondary">More batches:</span> ${continuation.more_batches_remain ? 'yes' : 'no'}</div>
             <div class="mb-2"><span class="text-secondary">Workset:</span> ${this.escapeHtml(workset.scan_order || '-')} | <span class="text-secondary">Priority items:</span> ${workset.priority_workset_processed || 0}/${workset.priority_workset_files || 0} | <span class="text-secondary">Filesystem fallback:</span> ${workset.filesystem_walk_after_priority_workset ? 'ran' : (workset.starts_from_filesystem_root_when_no_priority_workset ? 'root walk' : 'not reached')} | <span class="text-secondary">Filesystem complete:</span> ${workset.filesystem_walk_completed ? 'yes' : 'no'}</div>
-            <div class="mb-2"><span class="text-secondary">Incremental ledger:</span> ${workset.incremental_source_ledger_used ? 'source item ledger' : 'ad-hoc root scan'} | <span class="text-secondary">Fast skip identity:</span> ${this.escapeHtml((workset.fast_skip_identity || []).join('+') || '-')} | <span class="text-secondary">Actionable:</span> ${actionableCount} (${counts.estimated_import_count || 0} import, ${downstreamFollowup} follow-up)</div>
+            <div class="mb-2"><span class="text-secondary">Incremental ledger:</span> ${workset.incremental_source_ledger_used ? 'source item ledger' : 'ad-hoc root scan'} | <span class="text-secondary">Fast skip identity:</span> ${this.escapeHtml((workset.fast_skip_identity || []).join('+') || '-')} | <span class="text-secondary">Actionable:</span> ${actionableCount} (${counts.estimated_import_count || 0} import, ${downstreamFollowup} follow-up, ${retrySource} retry-source)</div>
             <div class="mb-2"><span class="text-secondary">Scan model:</span> ${this.escapeHtml(rootScan.model || '-')} | <span class="text-secondary">Start basis:</span> ${this.escapeHtml(rootScan.current_scan_start_basis || '-')} | <span class="text-secondary">Root last checked:</span> ${this.escapeHtml(rootScan.root_last_checked_at || '-')} | <span class="text-secondary">Last run:</span> ${rootScan.last_successful_or_terminal_run_id || '-'}</div>
             <div class="mb-2"><span class="text-secondary">Fast-skipped:</span> ${limits.fast_skipped_from_ledger || 0} | <span class="text-secondary">Stat checked:</span> ${limits.stat_required_count || 0} | <span class="text-secondary">Hash checked:</span> ${limits.hash_required_count || 0} | <span class="text-secondary">Existing skipped before cap:</span> ${skippedExistingBeforeCap} | <span class="text-secondary">Duplicates skipped before cap:</span> ${skippedDuplicateBeforeCap}</div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">${workItemSummaryHtml}</div>
+            <div class="mb-2 text-secondary"><span class="text-secondary">Lifecycle:</span> ${lifecycleSummary}</div>
             <div class="mb-2 text-secondary"><span class="text-secondary">Expires:</span> <span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             <div class="mb-2 ${canExecute ? 'text-green-400' : 'text-warning'}">${this.escapeHtml(planMessage)}</div>
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
@@ -2423,12 +2517,14 @@ class AdminPanel {
         const counts = (this.dynamicSyncPlan || {}).counts || {};
         const limits = (this.dynamicSyncPlan || {}).limits || {};
         const complete = this.dynamicSyncPlan && (!counts.partial_scan || counts.batch_executable || limits.batch_executable);
-        const actionable = ((counts.estimated_import_count || 0) + (counts.estimated_downstream_followup_count || 0)) > 0;
+        const retrySource = counts.estimated_retry_source_count || (counts.work_item_counts || {}).RETRY_SOURCE || 0;
+        const actionable = ((counts.estimated_import_count || 0) + (counts.estimated_downstream_followup_count || 0) + retrySource) > 0;
+        const advancedRetryBlocked = !!(counts.advanced_full_rescan_retry_source_execution_not_validated || limits.advanced_full_rescan_retry_source_execution_not_validated);
         const active = this._manualSyncActiveJobRunning();
-        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches) || active || this.dynamicSyncActionInFlight;
+        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches && !advancedRetryBlocked) || active || this.dynamicSyncActionInFlight;
         const confirmBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
         if (confirmBtn) {
-            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches) || active || this.dynamicSyncActionInFlight;
+            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches && !advancedRetryBlocked) || active || this.dynamicSyncActionInFlight;
         }
         const copyBtn = document.getElementById('dynamic-sync-copy-confirmation-btn');
         if (copyBtn) {
@@ -2460,9 +2556,10 @@ class AdminPanel {
         const statement = this._manualSyncExpectedOperatorStatement(plan);
         const importCount = counts.estimated_import_count || 0;
         const followupCount = counts.estimated_downstream_followup_count || 0;
+        const retrySourceCount = counts.estimated_retry_source_count || (counts.work_item_counts || {}).RETRY_SOURCE || 0;
         const confirmationText = [
             '确认开始完整手动同步流程？',
-            `本批次将处理 ${importCount} 个导入项目和 ${followupCount} 个后续补处理项目。`,
+            `本批次将处理 ${importCount} 个导入项目、${followupCount} 个后续补处理项目和 ${retrySourceCount} 个源文件重试项目。`,
             `批次上限：${limits.max_files || 'server default'}`,
             `计划哈希：${((plan.integrity || {}).plan_hash || '').slice(0, 12)}`,
             '阶段：导入 -> 分类 -> AI 标签 -> 本地化 -> 报告。',
@@ -2475,6 +2572,44 @@ class AdminPanel {
         }
         await this.executeManualSyncPlan({ operatorConfirmedFullChain: true, allowDuringPlanFlow: true });
         return true;
+    }
+
+    _manualSyncStartExecutePendingTicker({ requestId = '' } = {}) {
+        this._manualSyncStopExecutePendingTicker();
+        this.dynamicSyncExecuteRequestStartedAt = Date.now();
+        const render = () => {
+            const seconds = Math.max(0, Math.round((Date.now() - this.dynamicSyncExecuteRequestStartedAt) / 1000));
+            this._manualSyncSetProgress({
+                visible: true,
+                inFlight: true,
+                pending: true,
+                label: '执行请求已提交',
+                detail: [
+                    '正在验证计划和操作员确认，创建 execute run，并等待首个后端进度心跳。',
+                    `elapsed=${seconds}s`,
+                    requestId ? `request=${requestId}` : null,
+                ].filter(Boolean).join(' '),
+                stageStatus: { plan: 'completed', import: 'running' },
+            });
+        };
+        render();
+        this.dynamicSyncExecuteRequestTimer = window.setInterval(render, 1000);
+    }
+
+    _manualSyncStopExecutePendingTicker() {
+        if (this.dynamicSyncExecuteRequestTimer) {
+            window.clearInterval(this.dynamicSyncExecuteRequestTimer);
+            this.dynamicSyncExecuteRequestTimer = null;
+        }
+        this.dynamicSyncExecuteRequestStartedAt = null;
+        const pendingEl = document.getElementById('dynamic-sync-progress-pending');
+        if (pendingEl) pendingEl.classList.add('hidden');
+    }
+
+    _manualSyncYieldForPaint() {
+        return new Promise(resolve => {
+            window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+        });
     }
 
     async runManualSyncDryRunPlan({ source = 'operator', autoExecute = false } = {}) {
@@ -2654,14 +2789,17 @@ class AdminPanel {
             return;
         }
         this._manualSyncSetControlsBusy(true);
+        this._manualSyncStartExecutePendingTicker({ requestId: body.plan_request_id || '' });
         this._manualSyncSetProgress({
             visible: true,
             inFlight: true,
-            label: 'Starting full manual sync',
-            detail: 'POST /api/admin/dynamic-library-sync/manual-sync/execute',
+            pending: true,
+            label: '执行请求已提交',
+            detail: '正在验证计划和操作员确认，创建 execute run，并等待首个后端进度心跳。',
             stageStatus: { plan: 'completed', import: 'running' },
         });
         try {
+            await this._manualSyncYieldForPaint();
             const job = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/execute', {
                 method: 'POST',
                 headers: {
@@ -2672,19 +2810,22 @@ class AdminPanel {
             });
             this.dynamicSyncJobId = job.id;
             this.dynamicSyncLatestJob = job;
+            this._manualSyncStopExecutePendingTicker();
             this._renderManualSyncJob(job);
             this._startManualSyncPolling(job.id);
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: true,
-                label: `Running job #${job.id}`,
-                detail: 'Waiting for import, classification, AI tagging, localization, and report stages.',
+                pending: !((job.manual_sync_execute || {}).last_heartbeat_at),
+                label: `执行任务 #${job.id} 已创建`,
+                detail: '等待导入、分类、AI 标签、本地化和摘要阶段的真实进度。',
                 stageStatus: { plan: 'completed', import: 'running' },
             });
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.execute_started', 'Manual sync execute started.'), 'success');
         } catch (e) {
             const message = `Manual sync execute blocked: ${e.message || e}`;
-            this._manualSyncSetProgress({ visible: true, inFlight: false, label: 'Execute not started', detail: message, stageStatus: { plan: 'completed', import: 'failed' } });
+            this._manualSyncStopExecutePendingTicker();
+            this._manualSyncSetProgress({ visible: true, inFlight: false, pending: false, label: '执行未启动', detail: message, stageStatus: { plan: 'completed', import: 'failed' } });
             app.showNotification(message, 'error');
             this._manualSyncSetControlsBusy(false);
             this._updateManualSyncExecuteButton();
@@ -2728,6 +2869,13 @@ class AdminPanel {
         const outcomes = execute.outcome_counts || {};
         const active = ['pending', 'running', 'cancelling'].includes(job.status);
         const currentStage = execute.current_stage || 'import';
+        const stageRows = Array.isArray(execute.stage_rows) ? execute.stage_rows : [];
+        const operatorStatus = execute.operator_status || job.status || '-';
+        const operatorStatusLabel = execute.operator_status_label_zh || this._manualSyncOperatorStatusLabel(operatorStatus);
+        const planCounts = ((execute.plan || {}).counts || {});
+        const workItemCounts = planCounts.work_item_counts || {};
+        const heartbeat = execute.last_heartbeat_at || job.finished_at || job.started_at || '-';
+        const currentItem = execute.current_item_label || '-';
         const stableSkipped = [
             'skipped_existing_media',
             'skipped_duplicate',
@@ -2748,6 +2896,10 @@ class AdminPanel {
             classified: '已分类',
             ai_tagged: 'AI 标签',
             localized: '已本地化',
+            retry_source_ready_for_import: '源文件重试成功，待下一次导入',
+            retry_source_not_deferred: '未执行的源文件重试债务',
+            deferred_unprocessed: '续跑待处理',
+            diagnostic_not_deferred: '诊断项',
             failed: '失败',
         };
         const visibleOutcomes = Object.entries(outcomes)
@@ -2756,7 +2908,16 @@ class AdminPanel {
             .join('，') || '-';
         const stageOrder = ['plan', 'import', 'classification', 'ai_tagging', 'localization', 'summary'];
         const stageStatus = {};
-        if (job.status === 'completed' || job.status === 'completed_with_failures' || job.status === 'completed_with_followup_required') {
+        const stageRowsByName = Object.fromEntries(stageRows.map(row => [row.name, row]));
+        if (stageRows.length) {
+            stageStatus.plan = 'completed';
+            ['import', 'classification', 'ai_tagging', 'localization', 'summary'].forEach(stage => {
+                const rowStatus = String((stageRowsByName[stage] || {}).status || '').toLowerCase();
+                stageStatus[stage] = ['completed', 'completed_existing_coverage'].includes(rowStatus)
+                    ? 'completed'
+                    : (['running', 'pending'].includes(rowStatus) ? 'running' : (['failed', 'cancelled'].includes(rowStatus) || rowStatus.startsWith('stopped_by') || rowStatus.startsWith('blocked_') ? 'failed' : 'queued'));
+            });
+        } else if (job.status === 'completed' || job.status === 'completed_with_failures' || job.status === 'completed_with_followup_required') {
             stageOrder.forEach((stage) => { stageStatus[stage] = 'completed'; });
         } else if (job.status === 'failed' || job.status === 'cancelled') {
             const failedIndex = Math.max(1, stageOrder.indexOf(currentStage));
@@ -2770,18 +2931,26 @@ class AdminPanel {
             });
         }
         this._renderManualSyncStageStrip(stageStatus);
+        const workItemSummary = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE', 'BROKEN_STATE', 'PLACEHOLDER', 'NOOP_DIAGNOSTIC']
+            .map(kind => `${this.escapeHtml(this._manualSyncWorkItemKindLabel(kind))}=${Number(workItemCounts[kind] || 0)}`)
+            .join('，');
+        const errorText = job.error_message || execute.error_code || execute.error_message || '';
         statusEl.innerHTML = `
-            <div>最新手动同步任务 #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | 当前阶段=${this.escapeHtml(execute.current_stage || '-')}</div>
-            <div>计划项=${job.total_seen || 0}，导入=${job.new_items || 0}，稳定跳过/不适用=${stableSkipped}，失败=${job.failed_items || 0}</div>
+            <div>最新手动同步任务 #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | 操作员状态=${this.escapeHtml(operatorStatusLabel)}</div>
+            <div>当前阶段=${this.escapeHtml(this._manualSyncStageLabel(currentStage))} | 阶段状态=${this.escapeHtml(this._manualSyncStageStatusLabel(execute.current_stage_status || stageStatus[currentStage] || '-'))} | 当前项目=${this.escapeHtml(currentItem)} | 心跳=${this.escapeHtml(heartbeat)}</div>
+            <div>计划项=${job.total_seen || 0}，导入=${job.new_items || 0}，稳定跳过/不适用=${stableSkipped}，失败=${job.failed_items || 0}，待下一次导入=${execute.unprocessed_import_planned_count || 0}</div>
+            <div class="text-secondary">WorkItem：${workItemSummary}</div>
             <div class="text-secondary">结果拆解：${visibleOutcomes}</div>
+            ${errorText ? `<div class="text-red-400">错误：${this.escapeHtml(errorText)}</div>` : ''}
         `;
         if (cancelBtn) cancelBtn.disabled = !active;
         if (active) {
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: true,
-                label: `Running job #${job.id}`,
-                detail: `stage=${execute.current_stage || '-'}, seen=${job.total_seen || 0}, imported=${job.new_items || 0}`,
+                pending: false,
+                label: `执行任务 #${job.id}：${this._manualSyncStageLabel(currentStage)}`,
+                detail: `status=${this._manualSyncStageStatusLabel(execute.current_stage_status || 'running')}，current=${currentItem}，heartbeat=${heartbeat}，seen=${job.total_seen || 0}，imported=${job.new_items || 0}`,
                 stageStatus,
             });
         }
@@ -2804,7 +2973,8 @@ class AdminPanel {
                     this._manualSyncSetProgress({
                         visible: true,
                         inFlight: false,
-                        label: `Job finished: ${job.status || '-'}`,
+                        pending: false,
+                        label: `任务结束：${this._manualSyncOperatorStatusLabel((job.manual_sync_execute || {}).operator_status || job.status || '-')}`,
                         detail: `Job #${job.id}: seen=${job.total_seen || 0}, imported=${job.new_items || 0}, failed=${job.failed_items || 0}`,
                     });
                     this.loadDynamicSyncDashboard();

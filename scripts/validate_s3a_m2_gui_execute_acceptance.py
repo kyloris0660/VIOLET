@@ -518,6 +518,30 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
         gui_provenance = gui_provenance_for_run(run, expected_session_id=args.gui_validation_session_id)
         outcome = execute_payload.get("outcome_counts") if isinstance(execute_payload.get("outcome_counts"), dict) else {}
         localization_payload = execute_payload.get("localization") if isinstance(execute_payload.get("localization"), dict) else {}
+        plan_payload = execute_payload.get("plan") if isinstance(execute_payload.get("plan"), dict) else {}
+        plan_counts = plan_payload.get("counts") if isinstance(plan_payload.get("counts"), dict) else {}
+        work_item_counts = (
+            execute_payload.get("work_item_counts")
+            if isinstance(execute_payload.get("work_item_counts"), dict)
+            else plan_counts.get("work_item_counts")
+        )
+        work_item_counts = {
+            str(key): int(value or 0)
+            for key, value in dict(work_item_counts or {}).items()
+        }
+        work_item_summary = (
+            execute_payload.get("work_item_summary")
+            if isinstance(execute_payload.get("work_item_summary"), dict)
+            else {
+                "import_work": int(work_item_counts.get("IMPORT", 0)),
+                "app_media_followup": int(work_item_counts.get("FOLLOWUP", 0)),
+                "retry_source_debt": int(work_item_counts.get("RETRY_SOURCE", 0)),
+                "broken_diagnostics": int(work_item_counts.get("BROKEN_STATE", 0)),
+                "placeholder_deferred": int(work_item_counts.get("PLACEHOLDER", 0)),
+                "noop_diagnostics": int(work_item_counts.get("NOOP_DIAGNOSTIC", 0)),
+                "uses_work_item_kind_first_semantics": bool(work_item_counts),
+            }
+        )
 
         imported = int(outcome.get("imported") or item_summary["state_counts"].get("imported", 0))
         classified = stage_count_from_status(item_summary["classification_status_counts"], "classified", "classified_reused")
@@ -593,7 +617,11 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             blockers.append("ai_tag_assignment_semantics_invalid")
         if int(entity_summary.get("violations_found") or 0) != 0:
             blockers.append("ai_only_entity_truth_violation")
-        if item_summary["remaining_importable_db_pending_count"] > 0:
+        retry_created_pending_import = bool(
+            int(outcome.get("retry_source_ready_for_import") or 0) > 0
+            and int(item_summary["remaining_importable_db_pending_count"]) > 0
+        )
+        if item_summary["remaining_importable_db_pending_count"] > 0 and not retry_created_pending_import:
             blockers.append("remaining_importable_db_pending_items")
         if item_summary["remaining_placeholder_db_count"] > 0:
             blockers.append("remaining_placeholder_items")
@@ -618,6 +646,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             },
             "min_run_id": int(args.min_run_id),
             "run_status": str(run.status),
+            "operator_status": str(execute_payload.get("operator_status") or run.status),
+            "operator_status_label_zh": str(execute_payload.get("operator_status_label_zh") or ""),
             "acceptable_terminal_statuses": sorted(acceptable_terminal_statuses),
             "run_type": str(run.run_type),
             "run_mode": str(run.mode),
@@ -643,6 +673,26 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
                 "expected_total_seen": expected_total_seen,
                 "run_item_count": int(item_summary["run_item_count"]),
                 "passed": ledger_ok,
+            },
+            "operator_progress": {
+                "current_stage": execute_payload.get("current_stage"),
+                "current_stage_status": execute_payload.get("current_stage_status"),
+                "current_item_label": execute_payload.get("current_item_label"),
+                "last_heartbeat_at": execute_payload.get("last_heartbeat_at"),
+                "stage_rows": execute_payload.get("stage_rows") if isinstance(execute_payload.get("stage_rows"), list) else [],
+            },
+            "operator_work_summary": {
+                "work_item_counts": work_item_counts,
+                "work_item_summary": work_item_summary,
+                "planned_import_work": int(work_item_counts.get("IMPORT", 0)),
+                "planned_retry_source_work": int(work_item_counts.get("RETRY_SOURCE", 0)),
+                "planned_followup_work": int(work_item_counts.get("FOLLOWUP", 0)),
+                "non_executable_diagnostics": int(work_item_counts.get("BROKEN_STATE", 0))
+                + int(work_item_counts.get("PLACEHOLDER", 0))
+                + int(work_item_counts.get("NOOP_DIAGNOSTIC", 0)),
+                "successful_retry_pending_import_visible": bool(
+                    retry_created_pending_import
+                ),
             },
             "state_counts": item_summary["state_counts"],
             "reason_counts": item_summary["reason_counts"],

@@ -1883,9 +1883,17 @@ def test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_s
     assert execute_summary["outcome_counts"]["classified"] == 2
     assert execute_summary["outcome_counts"]["ai_tagged"] == 2
     assert execute_summary["outcome_counts"]["localized"] == 2
+    assert execute_summary["last_heartbeat_at"]
+    assert execute_summary["operator_status"] == "completed"
+    assert execute_summary["operator_status_label_zh"].startswith("已完成")
+    assert "IMPORT" in execute_summary["operator_labels"]["work_item_kinds"]
+    assert execute_summary["work_item_counts"]["IMPORT"] == 2
+    assert execute_summary["work_item_summary"]["import_work"] == 2
+    assert execute_summary["work_item_summary"]["uses_work_item_kind_first_semantics"] is True
     stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
     for stage in ("candidate_discovery", "import", "classification", "ai_tagging", "localization", "summary"):
         assert stage_rows[stage]["status"] == "completed"
+        assert stage_rows[stage]["updated_at"]
     assert [name for name, _value in calls] == [
         "import",
         "import",

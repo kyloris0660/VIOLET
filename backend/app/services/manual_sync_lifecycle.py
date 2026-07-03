@@ -33,6 +33,59 @@ class WorkItemKind(str, Enum):
     BROKEN_STATE = "BROKEN_STATE"
 
 
+OPERATOR_STATUS_LABELS_ZH = {
+    "completed": "已完成：本批次没有剩余操作员动作",
+    "completed_with_retryable_failures": "已完成但有可重试源文件债务：稍后可重试源文件读取",
+    "completed_with_followup_required": "已完成但需要后续补处理：分类、AI 标签或本地化仍有未完成项",
+    "completed_with_continuation": "已完成当前批次：还有下一批需要继续计划",
+    "completed_with_retryable_failures_plus_continuation": "已完成当前批次：同时有可重试源文件债务和后续批次",
+    "failed_systemic": "系统性失败：需要先排查环境或流程问题",
+    "blocked_preflight": "预检阻断：尚未进入执行",
+    "cancelled": "已取消：已提交的结果保留，剩余项目需要重新计划",
+}
+
+WORK_ITEM_KIND_LABELS_ZH = {
+    "IMPORT": "导入新媒体",
+    "FOLLOWUP": "应用媒体后续补处理",
+    "RETRY_SOURCE": "重试源文件读取",
+    "BROKEN_STATE": "状态异常诊断",
+    "PLACEHOLDER": "云占位/暂缓项目",
+    "NOOP_DIAGNOSTIC": "无需执行的诊断项",
+}
+
+LIFECYCLE_KIND_LABELS_ZH = {
+    "APP_MEDIA_FOLLOWUP": "应用内媒体需要补处理",
+    "IMPORT_CANDIDATE": "可导入候选",
+    "RETRYABLE_SOURCE_FAILURE": "源文件读取可重试失败",
+    "PLACEHOLDER_DEFERRED": "云占位暂缓",
+    "STABLE_NOOP": "稳定无操作",
+    "HISTORICAL_DIAGNOSTIC": "历史诊断记录",
+    "CONTINUATION": "批次续跑",
+    "BROKEN_STATE": "状态异常",
+    "FATAL_BLOCKER": "致命阻断",
+}
+
+
+def operator_status_label_zh(status: str) -> str:
+    return OPERATOR_STATUS_LABELS_ZH.get(str(status or ""), str(status or "未知状态"))
+
+
+def work_item_kind_label_zh(kind: str) -> str:
+    return WORK_ITEM_KIND_LABELS_ZH.get(str(kind or ""), str(kind or "未知工作项"))
+
+
+def lifecycle_kind_label_zh(kind: str) -> str:
+    return LIFECYCLE_KIND_LABELS_ZH.get(str(kind or ""), str(kind or "未知生命周期分类"))
+
+
+def manual_sync_operator_label_catalog() -> dict[str, dict[str, str]]:
+    return {
+        "operator_statuses": dict(OPERATOR_STATUS_LABELS_ZH),
+        "work_item_kinds": dict(WORK_ITEM_KIND_LABELS_ZH),
+        "lifecycle_kinds": dict(LIFECYCLE_KIND_LABELS_ZH),
+    }
+
+
 RETRYABLE_SOURCE_FAILURE_REASONS = frozenset(
     {
         "cloud_hydration_failed",

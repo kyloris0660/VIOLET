@@ -7830,6 +7830,225 @@ def _check_s3a_m2_r_lifecycle_workitem(_contract: PhaseContract, summary: Mappin
         )
 
 
+def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "operator_ready",
+        "blocked_browser_validation",
+        "blocked_local_gui_acceptance",
+        "blocked_production_plan_only",
+        "blocked_public_redaction_failed",
+        "blocked_contract_failed",
+    }
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s3a_m2_r_operator_unknown_status",
+            "S3A-M2-R PR-R2 status must explicitly report operator readiness or the blocking gate.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if str(_get(summary, "pipeline_contract.phase_identity", "") or "") != "S3A-M2-R PR-R2":
+        result.fail(
+            "s3a_m2_r_operator_phase_identity_mismatch",
+            "The PR-R2 summary must declare the exact phase identity.",
+            path="pipeline_contract.phase_identity",
+            expected="S3A-M2-R PR-R2",
+            actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+    if status != "operator_ready" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m2_r_operator_non_ready_claimed_completion",
+            "Only operator_ready may claim target_met, safe_to_merge, or full-chain completion.",
+            path="pipeline_contract.status",
+            expected="operator_ready for completion claims",
+            actual=result.status,
+        )
+
+    required_true_paths = (
+        "ui_progress.plan_progress_visible",
+        "ui_progress.execute_transition_visible_before_run_id",
+        "ui_progress.execute_duplicate_submit_disabled",
+        "ui_progress.stage_heartbeat_visible",
+        "ui_progress.error_state_visible",
+        "work_item_kind_first.import_counts_from_work_item_kind",
+        "work_item_kind_first.retry_counts_from_work_item_kind",
+        "work_item_kind_first.legacy_state_does_not_override_work_item_kind",
+        "work_item_kind_first.noop_and_placeholder_non_executable",
+        "work_item_kind_first.broken_diagnostics_visible_non_actionable",
+        "work_item_kind_first.successful_retry_creates_visible_pending_import",
+        "work_item_kind_first.source_missing_retry_debt_visible",
+        "work_item_kind_first.missing_media_or_app_file_visible",
+        "browser_validation.execute_transition_checked",
+        "local_gui_acceptance.gui_plan_passed",
+        "local_gui_acceptance.gui_execute_passed",
+        "production_plan_only.gui_path_used",
+        "production_plan_only.execute_not_run",
+        "production_plan_only.no_unsafe_execute_implied",
+        "advanced_full_rescan_policy.retry_source_not_executable_until_validated",
+        "public_redaction.passed",
+        "safety.no_production_execute_without_owner_approval",
+        "safety.no_source_icloud_mutation",
+        "safety.no_app_storage_repair_or_mutation",
+        "safety.no_destructive_cleanup",
+        "safety.no_provider_pixiv_sourceconcept_entity_work",
+    )
+    _check_required_boolean_paths(
+        summary,
+        result,
+        required_true_paths,
+        code="s3a_m2_r_operator_required_proof_missing",
+        message="PR-R2 requires UI progress, WorkItemKind-first, browser/local GUI, production Plan-only, redaction, and safety proofs.",
+    )
+
+    expected_operator_statuses = {
+        "completed",
+        "completed_with_retryable_failures",
+        "completed_with_followup_required",
+        "completed_with_continuation",
+        "completed_with_retryable_failures_plus_continuation",
+        "failed_systemic",
+        "blocked_preflight",
+        "cancelled",
+    }
+    expected_work_item_kinds = {"IMPORT", "FOLLOWUP", "RETRY_SOURCE", "BROKEN_STATE", "PLACEHOLDER", "NOOP_DIAGNOSTIC"}
+    expected_lifecycle_kinds = {
+        "APP_MEDIA_FOLLOWUP",
+        "IMPORT_CANDIDATE",
+        "RETRYABLE_SOURCE_FAILURE",
+        "PLACEHOLDER_DEFERRED",
+        "STABLE_NOOP",
+        "HISTORICAL_DIAGNOSTIC",
+        "CONTINUATION",
+        "BROKEN_STATE",
+        "FATAL_BLOCKER",
+    }
+    catalog_expectations = (
+        ("operator_labels.operator_statuses", expected_operator_statuses, "s3a_m2_r_operator_status_labels_missing"),
+        ("operator_labels.work_item_kinds", expected_work_item_kinds, "s3a_m2_r_work_item_labels_missing"),
+        ("operator_labels.lifecycle_kinds", expected_lifecycle_kinds, "s3a_m2_r_lifecycle_labels_missing"),
+    )
+    for path, expected, code in catalog_expectations:
+        labels = _get(summary, path, {})
+        keys = set(labels.keys()) if isinstance(labels, Mapping) else set(str(value) for value in (labels or []))
+        missing = sorted(expected - keys)
+        if missing:
+            result.fail(
+                code,
+                "PR-R2 public summary must include Chinese operator labels for every required status/kind.",
+                path=path,
+                expected=sorted(expected),
+                actual=sorted(keys),
+            )
+
+    if str(_get(summary, "browser_validation.status", "")).casefold() != "passed":
+        result.fail(
+            "s3a_m2_r_browser_validation_not_passed",
+            "PR-R2 cannot claim operator readiness without passed real browser validation.",
+            path="browser_validation.status",
+            expected="passed",
+            actual=_get(summary, "browser_validation.status", None),
+        )
+    if str(_get(summary, "local_gui_acceptance.status", "")).casefold() != "passed":
+        result.fail(
+            "s3a_m2_r_local_gui_acceptance_not_passed",
+            "PR-R2 cannot claim operator readiness without local-image GUI Plan and Execute acceptance.",
+            path="local_gui_acceptance.status",
+            expected="passed",
+            actual=_get(summary, "local_gui_acceptance.status", None),
+        )
+    if str(_get(summary, "production_plan_only.status", "")).casefold() != "passed":
+        result.fail(
+            "s3a_m2_r_production_plan_only_not_passed",
+            "PR-R2 cannot claim operator readiness without production GUI Plan-only acceptance.",
+            path="production_plan_only.status",
+            expected="passed",
+            actual=_get(summary, "production_plan_only.status", None),
+        )
+    if _as_bool(_get(summary, "s3b_disabled.enabled", True)):
+        result.fail(
+            "s3a_m2_r_s3b_enabled",
+            "PR-R2 must keep S3B unattended/scheduled/startup sync disabled.",
+            path="s3b_disabled.enabled",
+            expected=False,
+            actual=_get(summary, "s3b_disabled.enabled", None),
+        )
+
+    production_execute_ran = _as_bool(_get(summary, "safety.production_execute_ran", False))
+    owner_approved = _as_bool(_get(summary, "production_execute.owner_approved", False))
+    if production_execute_ran and not owner_approved:
+        result.fail(
+            "s3a_m2_r_production_execute_without_owner_approval",
+            "Production Execute is forbidden unless explicit owner approval is recorded.",
+            path="production_execute.owner_approved",
+            expected=True,
+            actual=_get(summary, "production_execute.owner_approved", None),
+        )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "safety.source_icloud_mutation",
+            "safety.app_storage_repair_or_mutation",
+            "safety.destructive_cleanup",
+            "safety.provider_pixiv_sourceconcept_entity_work",
+            "scope.s3b_started",
+            "scope.pixiv_provider_sourceconcept_entity_started",
+        ),
+        code="s3a_m2_r_operator_forbidden_scope_or_mutation",
+        message="PR-R2 must not enable S3B, start provider/SourceConcept/Entity work, mutate source/iCloud/app storage, or run destructive cleanup.",
+    )
+
+    final_acceptance_complete = all(
+        _as_bool(_get(summary, path, False))
+        for path in (
+            "browser_validation.execute_transition_checked",
+            "local_gui_acceptance.gui_plan_passed",
+            "local_gui_acceptance.gui_execute_passed",
+            "production_plan_only.gui_path_used",
+            "production_plan_only.execute_not_run",
+            "public_redaction.passed",
+        )
+    )
+    if _as_bool(_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", False)) and not (
+        status == "operator_ready" and final_acceptance_complete
+    ):
+        result.fail(
+            "s3a_m2_r_operator_full_completion_overclaimed",
+            "Full S3A-M2-R completion cannot be claimed until GUI/local/production Plan-only/redaction acceptance is complete.",
+            path="pipeline_contract.claims.full_s3a_m2_r_complete",
+            expected="operator_ready with all final acceptance gates",
+            actual=_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", None),
+        )
+
+    public_payloads: list[Any] = [summary]
+    report_path = _get(summary, "public_reports.markdown_report_path", None)
+    if isinstance(report_path, str) and report_path:
+        path = (CONTRACT_ROOT / report_path).resolve()
+        try:
+            path.relative_to(CONTRACT_ROOT)
+            if path.exists():
+                public_payloads.append({"public_markdown_text": path.read_text(encoding="utf-8")})
+        except Exception:
+            result.fail(
+                "s3a_m2_r_operator_public_report_path_invalid",
+                "PR-R2 public markdown report path must stay under the repository root.",
+                path="public_reports.markdown_report_path",
+                expected="repo-relative path",
+                actual=report_path,
+            )
+    findings: list[dict[str, Any]] = []
+    for payload in public_payloads:
+        findings.extend(scan_public_payload(payload))
+    if findings:
+        result.fail(
+            "s3a_m2_r_operator_public_payload_not_safe",
+            "PR-R2 public artifacts must not leak local paths, filenames, source roots, content hashes, URLs, secrets, or private provenance.",
+            path="public_redaction",
+            actual=findings[:5],
+        )
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -7857,6 +8076,7 @@ CUSTOM_CHECKS = {
     "s3a_m1_manual_sync_execute": _check_s3a_m1_manual_sync_execute,
     "s3a_m2_production_delta_e2e": _check_s3a_m2_production_delta_e2e,
     "s3a_m2_r_lifecycle_workitem": _check_s3a_m2_r_lifecycle_workitem,
+    "s3a_m2_r_operator_validation": _check_s3a_m2_r_operator_validation,
     "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "s3a_prod1_operator_incremental_sync": _check_s3a_prod1_operator_incremental_sync,
     "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync": _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync,

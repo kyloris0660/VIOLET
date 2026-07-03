@@ -1704,6 +1704,7 @@ def _plan_manual_sync_incremental_dry_run(
             "unsafe_partial_scan": unsafe_partial_scan,
             "cap_limited_batch": cap_limited_batch,
             "batch_executable": batch_executable,
+            "advanced_full_rescan_retry_source_execution_not_validated": False,
             "more_batches_remain": more_batches_remain,
             "unsupported_extension_breakdown": dict(
                 sorted((key, int(value)) for key, value in unsupported_extension_counts.items())
@@ -2243,6 +2244,7 @@ def plan_manual_sync_dry_run(
     retry_source_count = int(work_item_counts.get("RETRY_SOURCE", 0))
     downstream_stage_count = import_count + downstream_followup_count
     executable_work_count = downstream_stage_count + retry_source_count
+    advanced_retry_source_execution_not_validated = bool(retry_source_count > 0)
     unsafe_partial_scan = bool(
         plan_cancelled
         or plan_no_progress_timeout
@@ -2250,7 +2252,11 @@ def plan_manual_sync_dry_run(
         or (partial_scan and partial_scan_reason not in {None, "cap_limited_actionable_batch"})
     )
     cap_limited_batch = bool(partial_scan and partial_scan_reason == "cap_limited_actionable_batch")
-    batch_executable = bool(executable_work_count > 0 and not unsafe_partial_scan)
+    batch_executable = bool(
+        executable_work_count > 0
+        and not unsafe_partial_scan
+        and not advanced_retry_source_execution_not_validated
+    )
     more_batches_remain = bool(cap_limited_batch)
     estimated_runtime_seconds = _estimate_manual_sync_runtime_seconds(
         import_count=import_count,
@@ -2299,6 +2305,7 @@ def plan_manual_sync_dry_run(
         "batch_mode": "bounded_actionable_batch",
         "batch_candidate_cap": effective_max_files,
         "batch_executable": batch_executable,
+        "advanced_full_rescan_retry_source_execution_not_validated": advanced_retry_source_execution_not_validated,
         "cap_limited_batch": cap_limited_batch,
         "more_batches_remain": more_batches_remain,
         "unsafe_partial_scan": unsafe_partial_scan,
@@ -2421,6 +2428,7 @@ def plan_manual_sync_dry_run(
             "unsafe_partial_scan": unsafe_partial_scan,
             "cap_limited_batch": cap_limited_batch,
             "batch_executable": batch_executable,
+            "advanced_full_rescan_retry_source_execution_not_validated": advanced_retry_source_execution_not_validated,
             "more_batches_remain": more_batches_remain,
             "unsupported_extension_breakdown": dict(
                 sorted((key, int(value)) for key, value in unsupported_extension_counts.items())

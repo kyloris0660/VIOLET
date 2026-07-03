@@ -1,0 +1,219 @@
+{
+  "phase": "S3A-M2-R PR-R2",
+  "pipeline_contract": {
+    "contract_id": "s3a_m2_r_operator_validation_contract_v1",
+    "status": "operator_ready",
+    "phase_identity": "S3A-M2-R PR-R2",
+    "claims": {
+      "operator_ready": true,
+      "full_s3a_m2_r_complete": true,
+      "target_met": true,
+      "safe_to_merge": true,
+      "full_chain_complete": true
+    }
+  },
+  "ui_progress": {
+    "plan_progress_visible": true,
+    "execute_transition_visible_before_run_id": true,
+    "execute_duplicate_submit_disabled": true,
+    "stage_heartbeat_visible": true,
+    "error_state_visible": true,
+    "stages_visible": [
+      "plan",
+      "import",
+      "classification",
+      "ai_tagging",
+      "localization",
+      "summary"
+    ],
+    "execute_transition_states": [
+      "execute_request_submitted",
+      "validating_plan_and_confirmation",
+      "creating_execute_run",
+      "preparing_manual_sync_execution",
+      "waiting_for_first_backend_progress_heartbeat"
+    ]
+  },
+  "operator_labels": {
+    "operator_statuses": {
+      "completed": "已完成：本批次没有剩余操作员动作",
+      "completed_with_retryable_failures": "已完成但有可重试源文件债务：稍后可重试源文件读取",
+      "completed_with_followup_required": "已完成但需要后续补处理：分类、AI 标签或本地化仍有未完成项",
+      "completed_with_continuation": "已完成当前批次：还有下一批需要继续计划",
+      "completed_with_retryable_failures_plus_continuation": "已完成当前批次：同时有可重试源文件债务和后续批次",
+      "failed_systemic": "系统性失败：需要先排查环境或流程问题",
+      "blocked_preflight": "预检阻断：尚未进入执行",
+      "cancelled": "已取消：已提交的结果保留，剩余项目需要重新计划"
+    },
+    "work_item_kinds": {
+      "IMPORT": "导入新媒体",
+      "FOLLOWUP": "应用媒体后续补处理",
+      "RETRY_SOURCE": "重试源文件读取",
+      "BROKEN_STATE": "状态异常诊断",
+      "PLACEHOLDER": "云占位/暂缓项目",
+      "NOOP_DIAGNOSTIC": "无需执行的诊断项"
+    },
+    "lifecycle_kinds": {
+      "APP_MEDIA_FOLLOWUP": "应用内媒体需要补处理",
+      "IMPORT_CANDIDATE": "可导入候选",
+      "RETRYABLE_SOURCE_FAILURE": "源文件读取可重试失败",
+      "PLACEHOLDER_DEFERRED": "云占位暂缓",
+      "STABLE_NOOP": "稳定无操作",
+      "HISTORICAL_DIAGNOSTIC": "历史诊断记录",
+      "CONTINUATION": "批次续跑",
+      "BROKEN_STATE": "状态异常",
+      "FATAL_BLOCKER": "致命阻断"
+    }
+  },
+  "work_item_kind_first": {
+    "import_counts_from_work_item_kind": true,
+    "retry_counts_from_work_item_kind": true,
+    "legacy_state_does_not_override_work_item_kind": true,
+    "noop_and_placeholder_non_executable": true,
+    "broken_diagnostics_visible_non_actionable": true,
+    "successful_retry_creates_visible_pending_import": true,
+    "source_missing_retry_debt_visible": true,
+    "missing_media_or_app_file_visible": true,
+    "local_execute_work_item_counts": {
+      "IMPORT": 3,
+      "FOLLOWUP": 1,
+      "BROKEN_STATE": 1
+    },
+    "local_retry_plan_work_item_counts": {
+      "RETRY_SOURCE": 1
+    },
+    "production_plan_work_item_counts": {
+      "IMPORT": 244,
+      "FOLLOWUP": 20,
+      "RETRY_SOURCE": 11
+    }
+  },
+  "browser_validation": {
+    "status": "passed",
+    "browser": "Microsoft Edge via Playwright",
+    "execute_transition_checked": true,
+    "duplicate_execute_disabled_checked": true,
+    "pending_placeholder_checked": true,
+    "stage_strip_checked": true,
+    "terminal_status_checked": true,
+    "public_surface_redaction_checked": true
+  },
+  "local_gui_acceptance": {
+    "status": "passed",
+    "gui_plan_passed": true,
+    "gui_execute_passed": true,
+    "local_profile_only": true,
+    "production_execute_ran": false,
+    "plan_counts": {
+      "plan_items": 5,
+      "import_work": 3,
+      "followup_work": 1,
+      "retry_source_work": 0,
+      "broken_diagnostics": 1,
+      "continuation": true
+    },
+    "execute_result": {
+      "operator_status": "completed",
+      "imported": 2,
+      "duplicate_or_existing": 1,
+      "classified": 3,
+      "ai_tagged": 1,
+      "localized": 1,
+      "failed": 0
+    },
+    "retry_debt_plan": {
+      "status": "passed",
+      "retry_source_work": 1,
+      "visible_in_ui": true
+    },
+    "recovered_retry_plan": {
+      "status": "passed",
+      "pending_import_work": 1,
+      "visible_in_ui": true
+    }
+  },
+  "production_plan_only": {
+    "status": "passed",
+    "gui_path_used": true,
+    "execute_not_run": true,
+    "no_unsafe_execute_implied": true,
+    "selected_registered_root": true,
+    "max_files": 500,
+    "estimated_import_count": 244,
+    "estimated_downstream_followup_count": 20,
+    "estimated_retry_source_count": 11,
+    "more_batches_remain": false,
+    "cap_limited_batch": false,
+    "public_surface_redaction_checked": true
+  },
+  "advanced_full_rescan_policy": {
+    "retry_source_not_executable_until_validated": true,
+    "unit_contract_coverage": true,
+    "gui_recovered_retry_visible_as_pending_import": true
+  },
+  "public_redaction": {
+    "passed": true,
+    "finding_count": 0,
+    "public_artifacts_aggregate_only": true
+  },
+  "s3b_disabled": {
+    "enabled": false,
+    "automatic_sync_enabled": false,
+    "scheduled_sync_enabled": false,
+    "startup_sync_enabled": false,
+    "service_sync_enabled": false
+  },
+  "production_execute": {
+    "ran": false,
+    "owner_approved": false,
+    "approval_reference": null
+  },
+  "safety": {
+    "no_production_execute_without_owner_approval": true,
+    "production_execute_ran": false,
+    "no_source_icloud_mutation": true,
+    "source_icloud_mutation": false,
+    "no_app_storage_repair_or_mutation": true,
+    "app_storage_repair_or_mutation": false,
+    "no_destructive_cleanup": true,
+    "destructive_cleanup": false,
+    "no_provider_pixiv_sourceconcept_entity_work": true,
+    "provider_pixiv_sourceconcept_entity_work": false,
+    "no_production_import": true,
+    "no_production_classification": true,
+    "no_production_ai_tagging": true,
+    "no_production_localization": true
+  },
+  "scope": {
+    "s3b_started": false,
+    "pixiv_provider_sourceconcept_entity_started": false,
+    "sourceconcept_started": false,
+    "entity_bridge_started": false,
+    "confirmed_assignment_started": false
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
+        "classification": "Public report / handoff / roadmap update",
+        "redacted": true,
+        "committed": true
+      },
+      {
+        "path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json",
+        "classification": "Public report / handoff / roadmap update",
+        "redacted": true,
+        "committed": true
+      }
+    ],
+    "local_evidence_artifacts": {
+      "classification": "One-off local artifact / ignored output",
+      "committed": false,
+      "redacted_for_public_report": true
+    }
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
+    "summary_json_path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json"
+  }
+}

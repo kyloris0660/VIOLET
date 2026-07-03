@@ -52,6 +52,7 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
         'id="dynamic-sync-progress-request"',
         'id="dynamic-sync-progress-meta"',
         'id="dynamic-sync-progress-counts"',
+        'id="dynamic-sync-progress-pending"',
         'id="dynamic-sync-progress-events"',
         'id="dynamic-sync-plan-cancel-btn"',
         'id="dynamic-sync-confirm-execute-btn"',
@@ -72,6 +73,11 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "cancelManualSyncPlan" in script
     assert "Manual sync plan had no visible progress" in script
     assert "Healthy progress may continue beyond 600s" in script
+    assert "_manualSyncStartExecutePendingTicker" in script
+    assert "_manualSyncYieldForPaint" in script
+    assert "执行请求已提交" in script
+    assert "等待首个后端进度心跳" in script
+    assert "pending: true" in script
     assert "10 * 60 * 1000" not in script
     assert "/api/admin/dynamic-library-sync/manual-sync/gui-session" in script
     assert "POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root." in script
@@ -84,6 +90,10 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "Fast-skipped:" in script
     assert "More batches:" in script
     assert "source item ledger" in script
+    assert "_manualSyncWorkItemKindLabel" in script
+    assert "重试源文件读取" in script
+    assert "状态异常诊断" in script
+    assert "无需执行的诊断项" in script
     assert "dynamicSyncRoots = []" in script
     assert "_selectedDynamicSyncRoot" in script
     assert "_renderManualSyncOperatorSummary" in script
@@ -118,7 +128,8 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     assert "body.operator_confirmation_statement = operatorConfirmedFullChain ? operatorStatement : null;" in script
     assert "allowDuringPlanFlow" in script
     assert "production_acceptance_approved = !!this.dynamicSyncProductionMode && (operatorConfirmedFullChain || confirmation === expected)" in script
-    assert "complete && actionable && matches" in script
+    assert "complete && actionable && matches && !advancedRetryBlocked" in script
+    assert "retrySourceCount" in script
     assert "batchExecutable && actionable" in script
     assert "此计划不可执行，因此不需要操作员确认。" in script
     assert "写入前需要操作员确认：" in script

@@ -910,6 +910,9 @@ def test_manual_sync_dry_run_hash_timeout_is_retry_source_work(db, tmp_path, mon
     assert plan["counts"]["estimated_retry_source_count"] == 1
     assert plan["counts"]["work_item_counts"]["RETRY_SOURCE"] == 1
     assert plan["counts"]["work_item_counts"]["IMPORT"] == 1
+    assert plan["counts"]["batch_executable"] is False
+    assert plan["counts"]["advanced_full_rescan_retry_source_execution_not_validated"] is True
+    assert plan["limits"]["advanced_full_rescan_retry_source_execution_not_validated"] is True
     assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
     assert {item["reason"] for item in plan["ledger"]["per_file_public_records"]} == {"read_timeout", None}
     retry_item = next(item for item in plan["ledger"]["per_file_public_records"] if item["reason"] == "read_timeout")
