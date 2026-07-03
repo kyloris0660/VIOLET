@@ -1,7 +1,7 @@
 # Manual Sync State Machine
 
-Status: R1 design for `S3A-M2-R`, based on the post-merge read-only audit in
-`docs/reports/s3a-m2-r-post-merge-health-audit.md`.
+Status: PR-R1 backend implementation for `S3A-M2-R`, based on the post-merge
+read-only audit in `docs/reports/s3a-m2-r-post-merge-health-audit.md`.
 
 This document defines the canonical lifecycle and WorkItem model for production
 manual sync. It is not an approval to run production Execute, mutate source
@@ -40,11 +40,11 @@ The R0 audit found:
 
 ## Canonical Lifecycle Classifier
 
-Introduce a single classifier in:
+PR-R1 introduces a single classifier in:
 
 `backend/app/services/manual_sync_lifecycle.py`
 
-Proposed public API:
+Public API shape:
 
 ```python
 class LifecycleKind(str, Enum):
@@ -61,9 +61,13 @@ class LifecycleKind(str, Enum):
 
 classify_source_item(
     item: DynamicSourceItem,
-    media: Media | None,
-    app_storage_state: AppStorageState,
-    root_context: ManualSyncRootContext,
+    *,
+    media: Media | None = None,
+    media_lookup_performed: bool = False,
+    app_media_exists: bool | None = None,
+    current_priority: bool = False,
+    attempted_in_run: bool = False,
+    run_item: DynamicSyncRunItem | None = None,
 ) -> LifecycleDecision
 ```
 
@@ -85,10 +89,12 @@ classify_source_item(
 - `report_bucket`
 - `evidence`
 
-The classifier is the canonical interpretation for Plan, Execute, Validator,
-Report, and UI labels. During migration, call sites may keep local predicates,
-but they must be checked against `LifecycleDecision` in tests until fully
-replaced.
+The classifier is now the canonical interpretation layer for PR-R1 planner
+bucket classification, app-media follow-up discovery, duplicate/stable-noop
+distinction, retryable source failure classification, continuation, placeholder,
+operator-status mapping, and validator/report debt inventory. Some older local
+predicates remain as compatibility adapters, but high-risk decisions are checked
+against `LifecycleDecision` in tests.
 
 ## Lifecycle Kinds
 
@@ -217,25 +223,27 @@ Validate:
 - fails on privacy leaks and real contradictions;
 - reports remaining retry/debt/continuation explicitly.
 
-## Migration Path
+## PR-R1 Migration Slice
 
-R2 should avoid rewriting the entire manual sync stack in one pass.
+PR-R1 intentionally avoids rewriting the entire manual sync stack in one pass.
 
-Recommended first migration slice:
+Implemented slice:
 
-1. Implement `manual_sync_lifecycle.py` with dataclasses/enums and table-driven
+1. Implemented `manual_sync_lifecycle.py` with dataclasses/enums and table-driven
    tests.
-2. Use the classifier in planner output buckets for:
+2. Used the classifier in planner output buckets for:
    `APP_MEDIA_FOLLOWUP`, `IMPORT_CANDIDATE`, `RETRYABLE_SOURCE_FAILURE`,
    `PLACEHOLDER_DEFERRED`, `STABLE_NOOP`, `CONTINUATION`, and `BROKEN_STATE`.
-3. Use the classifier in validator/report debt inventory.
-4. Keep execute's current core path, but assert its plan items match allowed
-   WorkItem kind/source-read rules.
-5. Migrate UI labels after backend counts are stable.
+3. Used the classifier in validator/report debt inventory and root-scoped
+   reconciliation helpers.
+4. Kept execute's current core path, while adding canonical `operator_status`
+   interpretation and preserving legacy `run.status` compatibility.
+5. Deferred UI/progress/browser validation and richer Chinese operator labels
+   to PR-R2.
 
 ## Required Tests
 
-Add table-driven tests for:
+PR-R1 table-driven tests cover:
 
 - fully successful import;
 - import plus classification failure;
@@ -251,3 +259,8 @@ Add table-driven tests for:
 - source-missing media-backed downstream incomplete;
 - `completed_with_failures` legacy mapping to
   `completed_with_retryable_failures`.
+- missing media row and missing app-managed media as `BROKEN_STATE`;
+- attempted follow-up separated from current downstream completion health;
+- root-scoped inventory excluding other roots;
+- `NOOP_DIAGNOSTIC` not consuming actionable cap;
+- continuation staying visible without becoming terminal failure.

@@ -7605,6 +7605,230 @@ def _check_s3a_m2_production_delta_e2e(_contract: PhaseContract, summary: Mappin
         )
 
 
+def _check_s3a_m2_r_lifecycle_workitem(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "pr_r1_core_complete",
+        "blocked_validation",
+        "blocked_public_redaction_failed",
+        "blocked_contract_failed",
+    }
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s3a_m2_r_lifecycle_unknown_status",
+            "S3A-M2-R PR-R1 status must explicitly report core completion or the blocking condition.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if status != "pr_r1_core_complete" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m2_r_lifecycle_non_complete_status_claimed_completion",
+            "Only pr_r1_core_complete may claim PR-R1 completion.",
+            path="pipeline_contract.status",
+            expected="pr_r1_core_complete for completion claims",
+            actual=result.status,
+        )
+    if str(_get(summary, "pipeline_contract.phase_identity", "") or "") != "S3A-M2-R PR-R1":
+        result.fail(
+            "s3a_m2_r_lifecycle_phase_identity_mismatch",
+            "The lifecycle WorkItem summary must declare the exact PR-R1 phase identity.",
+            path="pipeline_contract.phase_identity",
+            expected="S3A-M2-R PR-R1",
+            actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+    if _as_bool(_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", False)) or _as_bool(
+        _get(summary, "scope.full_s3a_m2_r_completion_claimed", False)
+    ):
+        result.fail(
+            "s3a_m2_r_lifecycle_overclaimed_full_completion",
+            "PR-R1 must not claim full S3A-M2-R completion.",
+            path="pipeline_contract.claims.full_s3a_m2_r_complete",
+            expected=False,
+            actual=True,
+        )
+
+    expected_lifecycle = {
+        "APP_MEDIA_FOLLOWUP",
+        "IMPORT_CANDIDATE",
+        "RETRYABLE_SOURCE_FAILURE",
+        "PLACEHOLDER_DEFERRED",
+        "STABLE_NOOP",
+        "HISTORICAL_DIAGNOSTIC",
+        "CONTINUATION",
+        "BROKEN_STATE",
+        "FATAL_BLOCKER",
+    }
+    lifecycle_kinds = set(str(value) for value in (_get(summary, "lifecycle_classifier.lifecycle_kinds", []) or []))
+    missing_lifecycle = sorted(expected_lifecycle - lifecycle_kinds)
+    if missing_lifecycle:
+        result.fail(
+            "s3a_m2_r_lifecycle_kinds_missing",
+            "The public summary must list every canonical LifecycleKind.",
+            path="lifecycle_classifier.lifecycle_kinds",
+            expected=sorted(expected_lifecycle),
+            actual=sorted(lifecycle_kinds),
+        )
+    expected_work = {"FOLLOWUP", "IMPORT", "RETRY_SOURCE", "PLACEHOLDER", "NOOP_DIAGNOSTIC", "BROKEN_STATE"}
+    work_kinds = set(str(value) for value in (_get(summary, "lifecycle_classifier.work_item_kinds", []) or []))
+    missing_work = sorted(expected_work - work_kinds)
+    if missing_work:
+        result.fail(
+            "s3a_m2_r_work_item_kinds_missing",
+            "The public summary must list every canonical WorkItemKind.",
+            path="lifecycle_classifier.work_item_kinds",
+            expected=sorted(expected_work),
+            actual=sorted(work_kinds),
+        )
+
+    boundary_expectations = {
+        "FOLLOWUP": (False, True, True),
+        "IMPORT": (True, True, True),
+        "RETRY_SOURCE": (True, True, True),
+        "NOOP_DIAGNOSTIC": (False, False, False),
+        "BROKEN_STATE": (False, False, False),
+    }
+    for work_kind, (source_reads, can_execute, consumes_cap) in boundary_expectations.items():
+        boundary = _get(summary, f"work_item_source_read_boundaries.{work_kind}", {})
+        if not isinstance(boundary, Mapping):
+            result.fail(
+                "s3a_m2_r_source_boundary_missing",
+                "Every WorkItem source-read boundary must be a structured mapping.",
+                path=f"work_item_source_read_boundaries.{work_kind}",
+                expected="mapping",
+                actual=type(boundary).__name__,
+            )
+            continue
+        if _as_bool(boundary.get("allowed_source_reads")) is not source_reads:
+            result.fail(
+                "s3a_m2_r_source_boundary_invalid",
+                "WorkItem allowed_source_reads does not match the canonical boundary.",
+                path=f"work_item_source_read_boundaries.{work_kind}.allowed_source_reads",
+                expected=source_reads,
+                actual=boundary.get("allowed_source_reads"),
+            )
+        if _as_bool(boundary.get("can_execute")) is not can_execute:
+            result.fail(
+                "s3a_m2_r_execute_boundary_invalid",
+                "WorkItem can_execute does not match the canonical boundary.",
+                path=f"work_item_source_read_boundaries.{work_kind}.can_execute",
+                expected=can_execute,
+                actual=boundary.get("can_execute"),
+            )
+        if _as_bool(boundary.get("consumes_actionable_cap")) is not consumes_cap:
+            result.fail(
+                "s3a_m2_r_cap_boundary_invalid",
+                "WorkItem cap consumption does not match the canonical boundary.",
+                path=f"work_item_source_read_boundaries.{work_kind}.consumes_actionable_cap",
+                expected=consumes_cap,
+                actual=boundary.get("consumes_actionable_cap"),
+            )
+
+    if _as_int(_get(summary, "validation.table_driven_lifecycle_scenarios.count", 0)) < 20:
+        result.fail(
+            "s3a_m2_r_lifecycle_scenario_count_too_low",
+            "PR-R1 must table-test at least the requested lifecycle scenarios.",
+            path="validation.table_driven_lifecycle_scenarios.count",
+            expected=">=20",
+            actual=_get(summary, "validation.table_driven_lifecycle_scenarios.count", None),
+        )
+    _check_required_boolean_paths(
+        summary,
+        result,
+        (
+            "lifecycle_classifier.implemented",
+            "operator_status_mapping.implemented",
+            "operator_status_mapping.legacy_completed_with_failures_mapped",
+            "validation.table_driven_lifecycle_scenarios.passed",
+            "validation.source_read_boundary_tests.passed",
+            "validation.app_media_missing_broken_state_covered",
+            "validation.attempted_vs_completed_separation_covered",
+            "validation.root_scoped_validator_report_coverage",
+            "validation.phase_contract_tests_passed",
+            "public_redaction.passed",
+            "safety.no_production_execute",
+            "safety.no_source_icloud_mutation",
+            "safety.no_app_storage_repair_or_mutation",
+            "safety.no_db_import",
+            "safety.no_production_classification_ai_localization",
+            "safety.no_provider_or_source_metadata_calls",
+            "safety.no_sourceconcept_entity_media_tags_truth_writes",
+        ),
+        code="s3a_m2_r_lifecycle_required_proof_missing",
+        message="PR-R1 requires classifier, status mapping, lifecycle tests, root-scoped report coverage, redaction, and safety proofs.",
+    )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "pipeline_contract.claims.full_s3a_m2_r_complete",
+            "scope.full_s3a_m2_r_completion_claimed",
+            "scope.ui_progress_browser_validation_in_scope",
+            "safety.production_execute_ran",
+            "safety.source_icloud_mutation",
+            "safety.app_storage_repair_or_mutation",
+            "safety.db_import",
+            "safety.production_classification_ai_localization",
+            "safety.provider_or_source_metadata_calls",
+            "safety.sourceconcept_entity_media_tags_truth_writes",
+        ),
+        code="s3a_m2_r_lifecycle_forbidden_scope_or_mutation",
+        message="PR-R1 must not run production Execute, mutate source/iCloud/app storage, write production truth, run providers, or claim PR-R2 UI/browser scope.",
+    )
+
+    if _as_int(_get(summary, "debt_model.older_app_media_source_missing_downstream_incomplete.count", 0)) != 20:
+        result.fail(
+            "s3a_m2_r_older_app_media_debt_count_missing",
+            "The public summary must preserve the R0 20-row app-media/source-missing debt interpretation.",
+            path="debt_model.older_app_media_source_missing_downstream_incomplete.count",
+            expected=20,
+            actual=_get(summary, "debt_model.older_app_media_source_missing_downstream_incomplete.count", None),
+        )
+    if _as_int(_get(summary, "debt_model.run18_deferred_continuation.count", 0)) != 75:
+        result.fail(
+            "s3a_m2_r_run18_continuation_count_missing",
+            "The public summary must preserve the R0 75-row continuation interpretation.",
+            path="debt_model.run18_deferred_continuation.count",
+            expected=75,
+            actual=_get(summary, "debt_model.run18_deferred_continuation.count", None),
+        )
+    if _as_int(_get(summary, "debt_model.run18_retryable_source_failures.count", 0)) != 11:
+        result.fail(
+            "s3a_m2_r_run18_retryable_count_missing",
+            "The public summary must preserve the R0 11-row retryable source-failure interpretation.",
+            path="debt_model.run18_retryable_source_failures.count",
+            expected=11,
+            actual=_get(summary, "debt_model.run18_retryable_source_failures.count", None),
+        )
+
+    public_payloads: list[Any] = [summary]
+    report_path = _get(summary, "public_reports.markdown_report_path", None)
+    if isinstance(report_path, str) and report_path:
+        path = (CONTRACT_ROOT / report_path).resolve()
+        try:
+            path.relative_to(CONTRACT_ROOT)
+            if path.exists():
+                public_payloads.append({"public_markdown_text": path.read_text(encoding="utf-8")})
+        except Exception:
+            result.fail(
+                "s3a_m2_r_public_report_path_invalid",
+                "PR-R1 public markdown report path must stay under the repository root.",
+                path="public_reports.markdown_report_path",
+                expected="repo-relative path",
+                actual=report_path,
+            )
+    findings: list[dict[str, Any]] = []
+    for payload in public_payloads:
+        findings.extend(scan_public_payload(payload))
+    if findings:
+        result.fail(
+            "s3a_m2_r_public_payload_not_safe",
+            "PR-R1 public artifacts must not leak local paths, filenames, source roots, content hashes, secrets, or private provenance.",
+            path="public_redaction",
+            actual=findings[:5],
+        )
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -7631,6 +7855,7 @@ CUSTOM_CHECKS = {
     "s2g_manual_sync_foundation": _check_s2g_manual_sync_foundation,
     "s3a_m1_manual_sync_execute": _check_s3a_m1_manual_sync_execute,
     "s3a_m2_production_delta_e2e": _check_s3a_m2_production_delta_e2e,
+    "s3a_m2_r_lifecycle_workitem": _check_s3a_m2_r_lifecycle_workitem,
     "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "s3a_prod1_operator_incremental_sync": _check_s3a_prod1_operator_incremental_sync,
     "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync": _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync,

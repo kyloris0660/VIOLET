@@ -1660,6 +1660,59 @@ def test_manual_sync_dry_run_treats_unchanged_duplicate_ledger_rows_as_stable_sk
     assert "fresh.png" not in str(plan)
 
 
+def test_manual_sync_dry_run_does_not_let_stable_noop_hide_downstream_incomplete_duplicate(db, tmp_path):
+    source_root = tmp_path / "manual_source"
+    source_root.mkdir()
+    duplicate_path = source_root / "duplicate.png"
+    _write_png(duplicate_path, (20, 30, 40))
+    duplicate_stat = duplicate_path.stat()
+
+    root = service.register_source_root(db, path=source_root, label="fixture")
+    media = Media(
+        filename="duplicate.png",
+        path="media/original/duplicate.png",
+        hash=calculate_file_hash(duplicate_path),
+        file_type=FileTypeEnum.image,
+    )
+    db.add(media)
+    db.flush()
+    db.add(
+        DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path=duplicate_path.name,
+            relative_path_hash=service._hash_text(duplicate_path.name),
+            file_size=duplicate_stat.st_size,
+            mtime_ns=duplicate_stat.st_mtime_ns,
+            content_hash=media.hash,
+            source_status="available",
+            sync_state="skipped_existing_media",
+            import_status="deferred",
+            classification_status="classified",
+            ai_tagging_status="failed_ai_tagger_model_uncached",
+            localization_status="blocked_ai_tagging_failed",
+            deferred_reason="existing_media_hash",
+            media_id=media.id,
+        )
+    )
+    db.commit()
+
+    plan = service.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=1,
+        stable_age_seconds=0,
+        include_private_details=True,
+    )
+
+    assert plan["counts"]["state_counts"]["downstream_followup_planned"] == 1
+    assert plan["counts"]["lifecycle_counts"]["APP_MEDIA_FOLLOWUP"] == 1
+    assert plan["counts"]["work_item_counts"]["FOLLOWUP"] == 1
+    followup = plan["private_details"]["items"][0]
+    assert followup["lifecycle_kind"] == "APP_MEDIA_FOLLOWUP"
+    assert followup["allowed_source_reads"] is False
+
+
 def test_manual_sync_dry_run_fast_skips_media_backed_legacy_pending_rows(db, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
@@ -1958,6 +2011,10 @@ def test_manual_sync_dry_run_recovers_imported_downstream_incomplete_without_sou
     assert followup_item["content_hash"] == media.hash
     assert followup_item["downstream_followup"]["source_item_id"] is not None
     assert followup_item["scan_source"] == "app_media_followup"
+    assert followup_item["lifecycle_kind"] == "APP_MEDIA_FOLLOWUP"
+    assert followup_item["work_item_kind"] == "FOLLOWUP"
+    assert followup_item["allowed_source_reads"] is False
+    assert followup_item["consumes_actionable_cap"] is True
 
 
 def test_manual_sync_dry_run_keeps_app_media_followup_when_filesystem_walk_errors(db, tmp_path, monkeypatch):
@@ -2039,6 +2096,9 @@ def test_manual_sync_dry_run_keeps_app_media_followup_when_filesystem_walk_error
     )
     assert followup_item["scan_source"] == "app_media_followup"
     assert followup_item["content_hash"] == media.hash
+    assert followup_item["lifecycle_kind"] == "APP_MEDIA_FOLLOWUP"
+    assert followup_item["work_item_kind"] == "FOLLOWUP"
+    assert followup_item["allowed_source_reads"] is False
 
 
 def test_manual_sync_dry_run_priority_zero_followup_sorts_before_existing_media_followup(db, tmp_path):

@@ -2720,6 +2720,7 @@ def test_manual_sync_execute_prioritizes_followup_before_import_failure_budget(d
 
     assert result["status"] == "completed_with_failures"
     execute_summary = result["manual_sync_execute"]
+    assert execute_summary["operator_status"] == "completed_with_retryable_failures"
     assert execute_summary["outcome_counts"]["downstream_followup_planned"] == 1
     assert execute_summary["outcome_counts"]["read_timeout"] == 1
     assert execute_summary["unprocessed_import_planned_count"] == 0
@@ -2953,6 +2954,7 @@ def test_manual_sync_execute_downstream_followup_uses_app_media_not_changed_sour
     result = execute_manual_sync_run(db, run_id=run.id)
 
     assert result["status"] == "completed"
+    assert result["manual_sync_execute"]["operator_status"] == "completed"
     assert db.query(Media).count() == 1
     assert classified == [media.id]
     assert ai_tagged == [media.id]
@@ -3371,6 +3373,7 @@ def test_s3a_m1_execute_records_missing_file_and_continues(db, tmp_path, monkeyp
     result = execute_manual_sync_run(db, run_id=run.id)
 
     assert result["status"] == "completed_with_failures"
+    assert result["manual_sync_execute"]["operator_status"] == "completed_with_retryable_failures"
     assert result["manual_sync_execute"]["outcome_counts"]["source_missing"] == 1
     assert db.query(Media).count() == 1
     assert db.query(DynamicSyncRunItem).count() == 2
@@ -3411,6 +3414,7 @@ def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
 
     assert result["status"] == "failed"
     assert result["manual_sync_execute"]["status"] == "stopped_by_failure_budget"
+    assert result["manual_sync_execute"]["operator_status"] == "completed_with_retryable_failures_plus_continuation"
     assert result["manual_sync_execute"]["stopped_by"] == "stopped_by_failure_budget"
     assert result["manual_sync_execute"]["unprocessed_count"] == 1
     assert result["manual_sync_execute"]["unprocessed_import_planned_count"] == 1
@@ -3509,6 +3513,7 @@ def test_s3a_m1_retryable_import_budget_stop_continues_downstream_for_imported_m
 
     assert result["status"] == "completed_with_failures"
     execute_summary = result["manual_sync_execute"]
+    assert execute_summary["operator_status"] == "completed_with_retryable_failures_plus_continuation"
     assert execute_summary["import_stopped_by"] == "stopped_by_failure_budget"
     assert execute_summary["downstream_continued_after_import_stop"] is True
     assert execute_summary["retryable_source_failure_count"] == 1

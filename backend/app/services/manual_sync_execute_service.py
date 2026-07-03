@@ -54,6 +54,7 @@ from .dynamic_library_sync_service import (
     serialize_sync_run,
     validate_source_root_path,
 )
+from .manual_sync_lifecycle import map_manual_sync_operator_status
 
 
 class ManualSyncExecuteError(RuntimeError):
@@ -2802,10 +2803,22 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             )
         ):
             summary_status = "completed_with_failures"
+        operator_status = map_manual_sync_operator_status(
+            run_status=summary_status,
+            outcome_counts=counts,
+            retryable_source_failure_count=_retryable_source_failure_count(counts),
+            unprocessed_count=unprocessed_count,
+            unprocessed_import_planned_count=unprocessed_import_planned_count,
+            localization_incomplete=localization_incomplete,
+            stopped_by=stop_reason,
+            import_stopped_by=import_stop_reason,
+        )
         run.summary_json = _set_stage(run.summary_json or {}, "summary", status=summary_status, processed=1, failed=0)
         _update_execute_summary(
             run,
             status=summary_status,
+            operator_status=operator_status,
+            operator_status_source="manual_sync_lifecycle_v1",
             current_stage="summary",
             outcome_counts=dict(sorted(counts.items())),
             localization_failed_items=int(counts["localization_failed"]),
@@ -2872,6 +2885,19 @@ def serialize_manual_sync_execute_run(run: DynamicSyncRun) -> Dict[str, Any]:
     summary = dict(payload.get("summary") or {})
     execute = dict(summary.get("manual_sync_execute") or {})
     execute.pop("private_plan_items", None)
+    if "operator_status" not in execute:
+        counts = execute.get("outcome_counts") if isinstance(execute.get("outcome_counts"), dict) else {}
+        execute["operator_status"] = map_manual_sync_operator_status(
+            run_status=str(payload.get("status") or execute.get("status") or ""),
+            outcome_counts=counts,
+            retryable_source_failure_count=execute.get("retryable_source_failure_count"),
+            unprocessed_count=int(execute.get("unprocessed_count") or 0),
+            unprocessed_import_planned_count=int(execute.get("unprocessed_import_planned_count") or 0),
+            localization_incomplete=str(execute.get("status") or "") == "completed_with_followup_required",
+            stopped_by=execute.get("stopped_by"),
+            import_stopped_by=execute.get("import_stopped_by"),
+        )
+        execute["operator_status_source"] = "manual_sync_lifecycle_v1"
     summary["manual_sync_execute"] = execute
     payload["summary"] = summary
     payload["manual_sync_execute"] = execute
