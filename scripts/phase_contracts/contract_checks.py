@@ -7974,9 +7974,19 @@ def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mappi
             actual=_get(summary, "s3b_disabled.enabled", None),
         )
 
-    production_execute_ran = _as_bool(_get(summary, "safety.production_execute_ran", False))
+    production_execute_ran = _as_bool(_get(summary, "production_execute.ran", False))
+    safety_production_execute_ran = _as_bool(_get(summary, "safety.production_execute_ran", False))
+    if production_execute_ran != safety_production_execute_ran:
+        result.fail(
+            "s3a_m2_r_production_execute_flags_disagree",
+            "production_execute.ran and safety.production_execute_ran must agree so the PR-R2 summary cannot false-pass.",
+            path="production_execute.ran",
+            expected=safety_production_execute_ran,
+            actual=production_execute_ran,
+        )
     owner_approved = _as_bool(_get(summary, "production_execute.owner_approved", False))
-    if production_execute_ran and not owner_approved:
+    production_execute_indicated = production_execute_ran or safety_production_execute_ran
+    if production_execute_indicated and not owner_approved:
         result.fail(
             "s3a_m2_r_production_execute_without_owner_approval",
             "Production Execute is forbidden unless explicit owner approval is recorded.",
@@ -7984,6 +7994,17 @@ def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mappi
             expected=True,
             actual=_get(summary, "production_execute.owner_approved", None),
         )
+    if production_execute_indicated:
+        approval_reference = str(_get(summary, "production_execute.approval_reference", "") or "").strip()
+        approval_justification = str(_get(summary, "production_execute.approval_justification", "") or "").strip()
+        if not approval_reference and not approval_justification:
+            result.fail(
+                "s3a_m2_r_production_execute_approval_reference_missing",
+                "Production Execute approval must include an approval_reference or explicit approval_justification.",
+                path="production_execute.approval_reference",
+                expected="non-empty approval_reference or approval_justification",
+                actual=_get(summary, "production_execute.approval_reference", None),
+            )
     _check_explicit_false_paths(
         summary,
         result,

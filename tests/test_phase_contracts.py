@@ -2379,7 +2379,7 @@ def _s3a_m2_r_operator_validation_summary(**overrides: object) -> dict:
         "advanced_full_rescan_policy": {"retry_source_not_executable_until_validated": True},
         "public_redaction": {"passed": True, "finding_count": 0},
         "s3b_disabled": {"enabled": False},
-        "production_execute": {"owner_approved": False},
+        "production_execute": {"ran": False, "owner_approved": False, "approval_reference": None},
         "safety": {
             "no_production_execute_without_owner_approval": True,
             "production_execute_ran": False,
@@ -2426,6 +2426,19 @@ def test_s3a_m2_r_operator_validation_contract_accepts_operator_ready_summary() 
     result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", _s3a_m2_r_operator_validation_summary())
 
     assert result.passed is True
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_production_execute_flag_mismatch() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "production_execute.ran", True)
+    _set_nested(summary, "safety.production_execute_ran", False)
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_production_execute_flags_disagree" in codes
+    assert "s3a_m2_r_production_execute_without_owner_approval" in codes
+    assert "s3a_m2_r_production_execute_approval_reference_missing" in codes
 
 
 def test_s3a_m2_r_operator_validation_contract_rejects_missing_gui_and_plan_only_gates() -> None:

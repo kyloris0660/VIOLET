@@ -1429,6 +1429,8 @@ CONTRACTS: dict[str, PhaseContract] = {
             "advanced_full_rescan_policy.retry_source_not_executable_until_validated",
             "public_redaction.passed",
             "s3b_disabled.enabled",
+            "production_execute.ran",
+            "production_execute.owner_approved",
             "safety.no_production_execute_without_owner_approval",
             "safety.production_execute_ran",
             "safety.no_source_icloud_mutation",

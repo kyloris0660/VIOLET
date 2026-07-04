@@ -2720,9 +2720,12 @@ class AdminPanel {
                 detail: `metadata seen=${finalScanned}, plan items=${finalPlanItems}, import=${(plan.counts || {}).estimated_import_count || 0}`,
                 stageStatus: { plan: 'completed' },
             });
+            const retrySource = (plan.counts || {}).estimated_retry_source_count || ((plan.counts || {}).work_item_counts || {}).RETRY_SOURCE || 0;
             const actionable = ((plan.counts || {}).estimated_import_count || 0)
-                + ((plan.counts || {}).estimated_downstream_followup_count || 0);
-            const executable = !!((plan.counts || {}).batch_executable || (plan.limits || {}).batch_executable);
+                + ((plan.counts || {}).estimated_downstream_followup_count || 0)
+                + retrySource;
+            const advancedRetryBlocked = !!((plan.counts || {}).advanced_full_rescan_retry_source_execution_not_validated || (plan.limits || {}).advanced_full_rescan_retry_source_execution_not_validated);
+            const executable = !!((plan.counts || {}).batch_executable || (plan.limits || {}).batch_executable) && !advancedRetryBlocked;
             if (autoExecute && actionable > 0 && executable) {
                 await this._confirmAndExecuteManualSyncPlan();
             } else {
@@ -2909,11 +2912,20 @@ class AdminPanel {
         const stageOrder = ['plan', 'import', 'classification', 'ai_tagging', 'localization', 'summary'];
         const stageStatus = {};
         const stageRowsByName = Object.fromEntries(stageRows.map(row => [row.name, row]));
+        const terminalCompletedStageStatuses = [
+            'completed',
+            'completed_existing_coverage',
+            'completed_with_failures',
+            'completed_with_retryable_failures',
+            'completed_with_followup_required',
+            'completed_with_continuation',
+            'completed_with_retryable_failures_plus_continuation',
+        ];
         if (stageRows.length) {
             stageStatus.plan = 'completed';
             ['import', 'classification', 'ai_tagging', 'localization', 'summary'].forEach(stage => {
                 const rowStatus = String((stageRowsByName[stage] || {}).status || '').toLowerCase();
-                stageStatus[stage] = ['completed', 'completed_existing_coverage'].includes(rowStatus)
+                stageStatus[stage] = terminalCompletedStageStatuses.includes(rowStatus)
                     ? 'completed'
                     : (rowStatus === 'running' ? 'running' : (['failed', 'cancelled'].includes(rowStatus) || rowStatus.startsWith('stopped_by') || rowStatus.startsWith('blocked_') ? 'failed' : 'queued'));
             });

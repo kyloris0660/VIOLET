@@ -1,5 +1,12 @@
 {
   "phase": "S3A-M2-R PR-R2",
+  "repository": "kyloris0660/VIOLET",
+  "pr": 129,
+  "branch": "codex/s3a-m2-r-ui-operator-validation-r2",
+  "head": {
+    "input_head_before_final_fix": "bf7abb9f00347dbd64fc930a2952ec919b3ce6b9",
+    "final_pushed_head_note": "The final pushed git SHA is recorded in the PR body and delivery report after commit; a committed report cannot self-reference its resulting SHA."
+  },
   "pipeline_contract": {
     "contract_id": "s3a_m2_r_operator_validation_contract_v1",
     "status": "operator_ready",
@@ -12,12 +19,34 @@
       "full_chain_complete": true
     }
   },
+  "pr129_final_evidence_operator_consistency_fix": {
+    "status": "passed",
+    "blocker_fixes": {
+      "closeout_summary_counts_consistent": true,
+      "normal_web_admin_actionable_definition_includes_retry_source": true,
+      "terminal_completed_with_stage_statuses_not_rendered_as_queued": true,
+      "contract_checks_production_execute_ran_and_safety_flag_agreement": true
+    },
+    "normal_actionable_work_item_kinds": [
+      "IMPORT",
+      "FOLLOWUP",
+      "RETRY_SOURCE"
+    ],
+    "normal_non_executable_work_item_kinds": [
+      "BROKEN_STATE",
+      "PLACEHOLDER",
+      "NOOP_DIAGNOSTIC"
+    ]
+  },
   "ui_progress": {
     "plan_progress_visible": true,
     "execute_transition_visible_before_run_id": true,
     "execute_duplicate_submit_disabled": true,
     "stage_heartbeat_visible": true,
     "error_state_visible": true,
+    "waiting_for_first_real_worker_heartbeat_visible": true,
+    "queued_stages_not_rendered_as_running": true,
+    "terminal_non_clean_stages_not_rendered_as_queued": true,
     "stages_visible": [
       "plan",
       "import",
@@ -36,33 +65,33 @@
   },
   "operator_labels": {
     "operator_statuses": {
-      "completed": "已完成：本批次没有剩余操作员动作",
-      "completed_with_retryable_failures": "已完成但有可重试源文件债务：稍后可重试源文件读取",
-      "completed_with_followup_required": "已完成但需要后续补处理：分类、AI 标签或本地化仍有未完成项",
-      "completed_with_continuation": "已完成当前批次：还有下一批需要继续计划",
-      "completed_with_retryable_failures_plus_continuation": "已完成当前批次：同时有可重试源文件债务和后续批次",
-      "failed_systemic": "系统性失败：需要先排查环境或流程问题",
-      "blocked_preflight": "预检阻断：尚未进入执行",
-      "cancelled": "已取消：已提交的结果保留，剩余项目需要重新计划"
+      "completed": "已完成：本批次没有剩余操作员动作。",
+      "completed_with_retryable_failures": "已完成但有可重试源文件债务：稍后可重试源文件读取。",
+      "completed_with_followup_required": "已完成但需要后续补处理：分类、AI 标签或本地化仍有未完成项。",
+      "completed_with_continuation": "已完成当前批次：还有下一批需要继续计划。",
+      "completed_with_retryable_failures_plus_continuation": "已完成当前批次：同时有可重试源文件债务和后续批次。",
+      "failed_systemic": "系统性失败：需要先排查环境或流程问题。",
+      "blocked_preflight": "预检阻断：尚未进入执行。",
+      "cancelled": "已取消：已提交的结果保留，剩余项目需要重新计划。"
     },
     "work_item_kinds": {
-      "IMPORT": "导入新媒体",
-      "FOLLOWUP": "应用媒体后续补处理",
-      "RETRY_SOURCE": "重试源文件读取",
-      "BROKEN_STATE": "状态异常诊断",
-      "PLACEHOLDER": "云占位/暂缓项目",
-      "NOOP_DIAGNOSTIC": "无需执行的诊断项"
+      "IMPORT": "导入新媒体。",
+      "FOLLOWUP": "应用内媒体后续补处理。",
+      "RETRY_SOURCE": "重试源文件读取。",
+      "BROKEN_STATE": "状态异常诊断，不作为可执行工作。",
+      "PLACEHOLDER": "占位或暂缓项目，不在当前批次执行。",
+      "NOOP_DIAGNOSTIC": "无需执行的诊断项。"
     },
     "lifecycle_kinds": {
-      "APP_MEDIA_FOLLOWUP": "应用内媒体需要补处理",
-      "IMPORT_CANDIDATE": "可导入候选",
-      "RETRYABLE_SOURCE_FAILURE": "源文件读取可重试失败",
-      "PLACEHOLDER_DEFERRED": "云占位暂缓",
-      "STABLE_NOOP": "稳定无操作",
-      "HISTORICAL_DIAGNOSTIC": "历史诊断记录",
-      "CONTINUATION": "批次续跑",
-      "BROKEN_STATE": "状态异常",
-      "FATAL_BLOCKER": "致命阻断"
+      "APP_MEDIA_FOLLOWUP": "应用内媒体需要补处理。",
+      "IMPORT_CANDIDATE": "可导入候选。",
+      "RETRYABLE_SOURCE_FAILURE": "源文件读取可重试失败。",
+      "PLACEHOLDER_DEFERRED": "占位或暂缓，等待后续恢复。",
+      "STABLE_NOOP": "稳定无操作。",
+      "HISTORICAL_DIAGNOSTIC": "历史诊断记录。",
+      "CONTINUATION": "批次续跑。",
+      "BROKEN_STATE": "状态异常。",
+      "FATAL_BLOCKER": "致命阻断。"
     }
   },
   "work_item_kind_first": {
@@ -74,17 +103,38 @@
     "successful_retry_creates_visible_pending_import": true,
     "source_missing_retry_debt_visible": true,
     "missing_media_or_app_file_visible": true,
-    "local_execute_work_item_counts": {
-      "IMPORT": 3,
-      "FOLLOWUP": 1,
-      "BROKEN_STATE": 1
-    },
-    "local_retry_plan_work_item_counts": {
-      "RETRY_SOURCE": 1
+    "normal_incremental_retry_source_executable": true,
+    "advanced_full_rescan_retry_source_non_executable": true,
+    "local_final_db_truth": {
+      "dynamic_source_items": 15,
+      "media_linked_items": 13,
+      "import_status": {
+        "imported": 13,
+        "failed": 1,
+        "deferred": 1
+      },
+      "classification_status": {
+        "classified": 13,
+        "deferred": 2
+      },
+      "ai_tagging_status": {
+        "ai_tagged": 13,
+        "deferred": 2
+      },
+      "localization_status": {
+        "localized": 13,
+        "blocked_import_failed": 1,
+        "deferred": 1
+      },
+      "sync_state": {
+        "imported": 13,
+        "missing": 1,
+        "skipped_existing_media": 1
+      }
     },
     "production_plan_work_item_counts": {
       "FOLLOWUP": 20,
-      "IMPORT": 256,
+      "IMPORT": 312,
       "RETRY_SOURCE": 11
     }
   },
@@ -98,6 +148,7 @@
     "terminal_status_checked": true,
     "public_surface_redaction_checked": true,
     "queued_stage_no_fake_running_checked": true,
+    "run_created_at_before_real_worker_heartbeat_checked": true,
     "pending_execute_response_last_heartbeat_at_present": false,
     "pending_execute_response_run_created_at_present": true
   },
@@ -107,60 +158,248 @@
     "gui_execute_passed": true,
     "local_profile_only": true,
     "production_execute_ran": false,
-    "plan_counts": {
-      "plan_items": 5,
-      "import_work": 3,
-      "followup_work": 1,
-      "retry_source_work": 0,
-      "broken_diagnostics": 1,
-      "continuation": true
-    },
-    "execute_result": {
-      "operator_status": "completed",
-      "imported": 4,
-      "duplicate_or_existing": 0,
-      "classified": 4,
-      "ai_tagged": 1,
-      "localized": 1,
-      "failed": 0
-    },
-    "retry_debt_plan": {
+    "isolated_incremental_gui_e2e": {
       "status": "passed",
-      "retry_source_work": 1,
-      "visible_in_ui": true
-    },
-    "recovered_retry_plan": {
-      "status": "passed",
-      "pending_import_work": 1,
-      "visible_in_ui": true
+      "browser": "Microsoft Edge via Playwright",
+      "all_plan_steps_used_real_web_admin_ui": true,
+      "execute_steps_used_real_click_and_confirmation_when_execute_was_valid": true,
+      "server_started": true,
+      "server_stopped": true,
+      "fake_local_llm_stopped": true,
+      "post_validation_port_audit_clean": true,
+      "controlled_test_hooks_used": [
+        "controlled image fixture generation",
+        "isolated DB seeding for retry debt, source-missing debt, broken diagnostics, placeholder equivalent, and terminal non-clean run",
+        "local-only downstream completion marker after real Execute to isolate incremental planner behavior",
+        "advanced full-rescan negative fixture with bounded local test data"
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "scenario": "Empty baseline Plan",
+          "real_browser_clicks": true,
+          "controlled_db_seed": false,
+          "plan_items": 0,
+          "work_item_counts": {},
+          "execute_ran": false,
+          "result": "baseline empty plan visible and non-executable"
+        },
+        {
+          "round": 1,
+          "scenario": "Initial import via GUI",
+          "real_browser_clicks": true,
+          "controlled_db_seed": false,
+          "plan_items": 3,
+          "work_item_counts": {
+            "IMPORT": 3
+          },
+          "execute_ran": true,
+          "execute_run_id_visible": true,
+          "immediate_pending_visible": true,
+          "duplicate_submit_disabled": true,
+          "run_created_at_present": true,
+          "last_heartbeat_at_absent_until_worker_progress": true,
+          "new_items": 3,
+          "terminal_status": "completed_with_failures"
+        },
+        {
+          "round": 2,
+          "scenario": "No-op stable rerun",
+          "real_browser_clicks": true,
+          "controlled_db_seed": false,
+          "plan_items": 0,
+          "work_item_counts": {},
+          "execute_ran": false,
+          "result": "stable imported items did not reappear as executable import work"
+        },
+        {
+          "round": 3,
+          "scenario": "Incremental add via GUI",
+          "real_browser_clicks": true,
+          "controlled_db_seed": false,
+          "plan_items": 2,
+          "work_item_counts": {
+            "IMPORT": 2
+          },
+          "execute_ran": true,
+          "new_items": 2,
+          "terminal_status": "completed_with_failures"
+        },
+        {
+          "round": 4,
+          "scenario": "Duplicate or existing media",
+          "real_browser_clicks": true,
+          "controlled_db_seed": false,
+          "plan_items": 1,
+          "work_item_counts": {
+            "IMPORT": 1
+          },
+          "execute_ran": true,
+          "new_items": 0,
+          "terminal_status": "completed",
+          "result": "duplicate content did not create a new imported media row"
+        },
+        {
+          "round": 5,
+          "scenario": "Cap-limited continuation",
+          "real_browser_clicks": true,
+          "controlled_db_seed": false,
+          "batches": [
+            {
+              "batch": 1,
+              "work_item_counts": {
+                "IMPORT": 2
+              },
+              "cap_limited": true,
+              "more_batches": true,
+              "new_items": 2
+            },
+            {
+              "batch": 2,
+              "work_item_counts": {
+                "IMPORT": 2
+              },
+              "cap_limited": true,
+              "more_batches": true,
+              "new_items": 2
+            },
+            {
+              "batch": 3,
+              "work_item_counts": {
+                "IMPORT": 1
+              },
+              "cap_limited": false,
+              "more_batches": false,
+              "new_items": 1
+            }
+          ]
+        },
+        {
+          "round": 6,
+          "scenario": "RETRY_SOURCE normal incremental plan",
+          "real_browser_clicks": true,
+          "controlled_db_seed": true,
+          "retry_only_plan_work_item_counts": {
+            "RETRY_SOURCE": 1
+          },
+          "retry_only_batch_executable": true,
+          "retry_execute_ran": true,
+          "retry_created_next_plan_import": 1,
+          "source_missing_debt_visible": true,
+          "source_missing_execute_ran": false
+        },
+        {
+          "round": 7,
+          "scenario": "BROKEN_STATE missing app media diagnostic",
+          "real_browser_clicks": true,
+          "controlled_db_seed": true,
+          "work_item_counts": {
+            "BROKEN_STATE": 1
+          },
+          "execute_ran": false,
+          "result": "broken diagnostic remained visible and non-executable"
+        },
+        {
+          "round": 8,
+          "scenario": "Placeholder or hydrated placeholder equivalent",
+          "real_browser_clicks": true,
+          "controlled_db_seed": true,
+          "placeholder_non_executable": true,
+          "hydrated_recovery_plan_work_item_counts": {
+            "IMPORT": 1,
+            "BROKEN_STATE": 1
+          },
+          "hydrated_execute_ran": true,
+          "limitation": "Real iCloud placeholder was not touched; isolated ledger placeholder state plus readable-file recovery was used."
+        },
+        {
+          "round": 9,
+          "scenario": "Advanced full-rescan retry-source fail-closed",
+          "real_browser_clicks": true,
+          "controlled_db_seed": true,
+          "work_item_counts": {
+            "RETRY_SOURCE": 1,
+            "NOOP_DIAGNOSTIC": 1
+          },
+          "batch_executable": false,
+          "server_execute_rejected": true,
+          "server_rejection_error_code": "advanced_full_rescan_retry_source_execute_not_validated"
+        },
+        {
+          "round": 10,
+          "scenario": "Terminal non-clean status rendering",
+          "real_browser_clicks": true,
+          "controlled_db_seed": true,
+          "summary_stage_not_queued": true,
+          "terminal_warning_state_visible": true
+        },
+        {
+          "round": 11,
+          "scenario": "Public redaction and artifact safety",
+          "real_browser_clicks": false,
+          "controlled_db_seed": false,
+          "aggregate_only_public_report": true,
+          "raw_evidence_committed": false
+        }
+      ]
     }
   },
   "production_plan_only": {
     "status": "passed",
     "gui_path_used": true,
+    "launcher_managed_web_admin_path": true,
     "execute_not_run": true,
     "no_unsafe_execute_implied": true,
     "selected_registered_root": true,
     "max_files": 500,
-    "estimated_import_count": 256,
+    "plan_items": 343,
+    "estimated_import_count": 312,
     "estimated_downstream_followup_count": 20,
     "estimated_retry_source_count": 11,
+    "work_item_counts": {
+      "FOLLOWUP": 20,
+      "IMPORT": 312,
+      "RETRY_SOURCE": 11
+    },
+    "state_counts": {
+      "skipped_unsupported": 10,
+      "downstream_followup_planned": 20,
+      "import_planned": 312,
+      "retry_source_planned": 11,
+      "failed": 4,
+      "broken_state": 0
+    },
+    "lifecycle_counts": {
+      "APP_MEDIA_FOLLOWUP": 20,
+      "CONTINUATION": 179,
+      "IMPORT_CANDIDATE": 133,
+      "RETRYABLE_SOURCE_FAILURE": 11
+    },
     "more_batches_remain": false,
     "cap_limited_batch": false,
     "public_surface_redaction_checked": true,
-    "latest_execute_run_unchanged": true
+    "latest_execute_run_unchanged": true,
+    "latest_execute_before_id": 18,
+    "latest_execute_after_id": 18,
+    "production_import_ran": false,
+    "production_classification_ran": false,
+    "production_ai_tagging_ran": false,
+    "production_localization_ran": false,
+    "s3b_disabled_checked": true
   },
   "advanced_full_rescan_policy": {
     "retry_source_not_executable_until_validated": true,
     "unit_contract_coverage": true,
     "gui_recovered_retry_visible_as_pending_import": true,
     "server_side_execute_rejection": true,
-    "server_side_rejection_error_code": "advanced_full_rescan_retry_source_execute_not_validated"
+    "server_side_rejection_error_code": "advanced_full_rescan_retry_source_execute_not_validated",
+    "valid_hash_and_confirmation_still_rejected": true
   },
   "public_redaction": {
     "passed": true,
     "finding_count": 0,
-    "public_artifacts_aggregate_only": true
+    "public_artifacts_aggregate_only": true,
+    "raw_browser_traces_logs_db_evidence_committed": false
   },
   "s3b_disabled": {
     "enabled": false,
@@ -172,7 +411,8 @@
   "production_execute": {
     "ran": false,
     "owner_approved": false,
-    "approval_reference": null
+    "approval_reference": null,
+    "approval_justification": "Not applicable: production Execute did not run."
   },
   "safety": {
     "no_production_execute_without_owner_approval": true,
@@ -193,9 +433,32 @@
   "scope": {
     "s3b_started": false,
     "pixiv_provider_sourceconcept_entity_started": false,
+    "provider_gallery_dl_saucenao_google_started": false,
     "sourceconcept_started": false,
     "entity_bridge_started": false,
-    "confirmed_assignment_started": false
+    "confirmed_assignment_started": false,
+    "media_tags_truth_started": false
+  },
+  "validation": {
+    "python_identity": {
+      "status": "passed",
+      "sys_executable": "repo venv python",
+      "version": "3.12.0"
+    },
+    "py_compile_changed_python_files": "passed",
+    "node_check_admin_js": "passed",
+    "focused_pytest": {
+      "tests/test_admin_dynamic_sync_ui.py -q": "10 passed",
+      "tests/test_phase_contracts.py -q": "288 passed",
+      "tests/test_s3a_m2_delta_e2e.py -q": "30 passed",
+      "tests/test_s3a_m1_manual_sync_execute.py -q": "93 passed",
+      "tests/test_dynamic_library_sync.py -q": "86 passed",
+      "tests/test_manual_sync_lifecycle.py -q": "33 passed"
+    },
+    "browser_validation": "passed",
+    "local_incremental_gui_e2e": "passed",
+    "production_plan_only": "passed",
+    "server_port_audit_after_validation": "passed"
   },
   "artifact_lifecycle": {
     "artifacts": [
@@ -221,19 +484,5 @@
   "public_reports": {
     "markdown_report_path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
     "summary_json_path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json"
-  },
-  "pr129_validation_correctness_fix_rerun": {
-    "status": "passed",
-    "head_before_fix": "3f3f30809b4dff63853aa4670897cb20acda23e6",
-    "server_side_advanced_full_rescan_retry_source_execute_rejected": true,
-    "server_side_rejection_error_code": "advanced_full_rescan_retry_source_execute_not_validated",
-    "api_execute_cannot_enqueue_blocked_advanced_retry_source_plan": true,
-    "execute_run_created_at_distinct_from_worker_heartbeat": true,
-    "pending_execute_response_last_heartbeat_at_present": false,
-    "pending_execute_response_run_created_at_present": true,
-    "pending_stage_rows_render_as_waiting_not_running": true,
-    "no_fake_running_stage_before_execute_response": true,
-    "gui_acceptance_validator_unrelated_pending_import_blocks_acceptance": true,
-    "advanced_full_rescan_retry_source_remains_non_executable": true
   }
 }

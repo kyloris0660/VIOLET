@@ -143,6 +143,34 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     assert "S3A-M1 PRODUCTION MANUAL SYNC EXECUTE" not in script
 
 
+def test_dynamic_sync_start_flow_counts_retry_source_as_actionable_work() -> None:
+    script = _text(ADMIN_JS)
+
+    auto_execute_block = script[script.index("async runManualSyncDryRunPlan") : script.index("async executeManualSyncPlan")]
+
+    assert "const retrySource = (plan.counts || {}).estimated_retry_source_count" in auto_execute_block
+    assert "+ retrySource" in auto_execute_block
+    assert "advanced_full_rescan_retry_source_execution_not_validated" in auto_execute_block
+    assert "const executable = !!((plan.counts || {}).batch_executable || (plan.limits || {}).batch_executable) && !advancedRetryBlocked;" in auto_execute_block
+    assert "if (autoExecute && actionable > 0 && executable)" in auto_execute_block
+
+
+def test_dynamic_sync_stage_strip_treats_terminal_non_clean_statuses_as_completed() -> None:
+    script = _text(ADMIN_JS)
+
+    for status in (
+        "completed_with_failures",
+        "completed_with_retryable_failures",
+        "completed_with_followup_required",
+        "completed_with_continuation",
+        "completed_with_retryable_failures_plus_continuation",
+    ):
+        assert status in script
+
+    assert "terminalCompletedStageStatuses.includes(rowStatus)" in script
+    assert "completed_with_retryable_failures" in script[script.index("terminalCompletedStageStatuses") :]
+
+
 def test_dynamic_sync_ui_does_not_render_raw_i18n_keys_or_internal_blocker_prefixes() -> None:
     script = _text(ADMIN_JS)
 
