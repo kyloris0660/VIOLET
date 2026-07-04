@@ -403,6 +403,38 @@ def _plan_partial_scan_allows_execute(plan: Dict[str, Any]) -> bool:
     )
 
 
+def _advanced_full_rescan_retry_source_not_validated(plan: Dict[str, Any]) -> bool:
+    counts = plan.get("counts") or {}
+    limits = plan.get("limits") or {}
+    plan_mode = str(limits.get("plan_mode") or counts.get("plan_mode") or "").strip().lower()
+    if plan_mode != "advanced_full_rescan":
+        return False
+    if bool(
+        counts.get("advanced_full_rescan_retry_source_execution_not_validated")
+        or limits.get("advanced_full_rescan_retry_source_execution_not_validated")
+    ):
+        return True
+    work_item_counts = counts.get("work_item_counts") if isinstance(counts.get("work_item_counts"), dict) else {}
+    retry_source_count = max(
+        int(counts.get("estimated_retry_source_count") or 0),
+        int(work_item_counts.get("RETRY_SOURCE") or 0),
+    )
+    batch_executable = bool(counts.get("batch_executable") or limits.get("batch_executable"))
+    return retry_source_count > 0 and not batch_executable
+
+
+def _assert_advanced_full_rescan_retry_source_execute_validated(plan: Dict[str, Any]) -> None:
+    if _advanced_full_rescan_retry_source_not_validated(plan):
+        raise ManualSyncExecuteError(
+            "advanced_full_rescan_retry_source_execute_not_validated",
+            (
+                "Advanced full-rescan retry-source execute is not validated for this PR-R2 flow. "
+                "Re-run as a normal manual plan or defer this retry-source work to a dedicated validation stage."
+            ),
+            status_code=409,
+        )
+
+
 def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[str, Any]:
     return {
         "scheduled": False,
@@ -707,6 +739,7 @@ def _verify_execute_gates(
             ),
             status_code=409,
         )
+    _assert_advanced_full_rescan_retry_source_execute_validated(plan)
 
     if settings.IS_PRODUCTION_ENV:
         expected_phrase = manual_sync_execute_confirmation_phrase(plan_hash, production=True)
@@ -779,6 +812,7 @@ def _verify_execute_recheck(
             "Manual sync execute recheck rejected an unsafe partial plan. Re-run the dry-run.",
             status_code=409,
         )
+    _assert_advanced_full_rescan_retry_source_execute_validated(plan)
     if settings.IS_PRODUCTION_ENV and not production_acceptance_approved:
         raise ManualSyncExecuteError(
             "production_acceptance_approval_required",
@@ -951,7 +985,8 @@ def create_manual_sync_execute_run(
                 "current_stage_status": "pending",
                 "current_item_label": None,
                 "current_item_index": 0,
-                "last_heartbeat_at": now.isoformat(),
+                "run_created_at": now.isoformat(),
+                "last_heartbeat_at": None,
                 "operator_labels": manual_sync_operator_label_catalog(),
                 "request": _public_request_payload(
                     root_id=root_id,
@@ -1056,7 +1091,6 @@ def _update_execute_summary(run: DynamicSyncRun, **updates: Any) -> None:
     payload = dict(run.summary_json or {})
     execute = dict(payload.get("manual_sync_execute") or {})
     execute.update(updates)
-    execute["last_heartbeat_at"] = _utcnow().isoformat()
     if "operator_status" in updates:
         execute["operator_status_label_zh"] = operator_status_label_zh(str(updates.get("operator_status") or ""))
     execute.setdefault("operator_labels", manual_sync_operator_label_catalog())

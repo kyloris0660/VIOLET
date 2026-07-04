@@ -75,6 +75,10 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "Healthy progress may continue beyond 600s" in script
     assert "_manualSyncStartExecutePendingTicker" in script
     assert "_manualSyncYieldForPaint" in script
+    assert "waiting_for_first_backend_progress_heartbeat" in script
+    assert "stageStatus: { plan: 'completed', import: 'queued' }" in script
+    assert "rowStatus === 'running' ? 'running'" in script
+    assert "['running', 'pending'].includes(rowStatus)" not in script
     assert "执行请求已提交" in script
     assert "等待首个后端进度心跳" in script
     assert "pending: true" in script

@@ -83,8 +83,8 @@
       "RETRY_SOURCE": 1
     },
     "production_plan_work_item_counts": {
-      "IMPORT": 244,
       "FOLLOWUP": 20,
+      "IMPORT": 256,
       "RETRY_SOURCE": 11
     }
   },
@@ -96,7 +96,10 @@
     "pending_placeholder_checked": true,
     "stage_strip_checked": true,
     "terminal_status_checked": true,
-    "public_surface_redaction_checked": true
+    "public_surface_redaction_checked": true,
+    "queued_stage_no_fake_running_checked": true,
+    "pending_execute_response_last_heartbeat_at_present": false,
+    "pending_execute_response_run_created_at_present": true
   },
   "local_gui_acceptance": {
     "status": "passed",
@@ -114,9 +117,9 @@
     },
     "execute_result": {
       "operator_status": "completed",
-      "imported": 2,
-      "duplicate_or_existing": 1,
-      "classified": 3,
+      "imported": 4,
+      "duplicate_or_existing": 0,
+      "classified": 4,
       "ai_tagged": 1,
       "localized": 1,
       "failed": 0
@@ -139,17 +142,20 @@
     "no_unsafe_execute_implied": true,
     "selected_registered_root": true,
     "max_files": 500,
-    "estimated_import_count": 244,
+    "estimated_import_count": 256,
     "estimated_downstream_followup_count": 20,
     "estimated_retry_source_count": 11,
     "more_batches_remain": false,
     "cap_limited_batch": false,
-    "public_surface_redaction_checked": true
+    "public_surface_redaction_checked": true,
+    "latest_execute_run_unchanged": true
   },
   "advanced_full_rescan_policy": {
     "retry_source_not_executable_until_validated": true,
     "unit_contract_coverage": true,
-    "gui_recovered_retry_visible_as_pending_import": true
+    "gui_recovered_retry_visible_as_pending_import": true,
+    "server_side_execute_rejection": true,
+    "server_side_rejection_error_code": "advanced_full_rescan_retry_source_execute_not_validated"
   },
   "public_redaction": {
     "passed": true,
@@ -215,5 +221,19 @@
   "public_reports": {
     "markdown_report_path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
     "summary_json_path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json"
+  },
+  "pr129_validation_correctness_fix_rerun": {
+    "status": "passed",
+    "head_before_fix": "3f3f30809b4dff63853aa4670897cb20acda23e6",
+    "server_side_advanced_full_rescan_retry_source_execute_rejected": true,
+    "server_side_rejection_error_code": "advanced_full_rescan_retry_source_execute_not_validated",
+    "api_execute_cannot_enqueue_blocked_advanced_retry_source_plan": true,
+    "execute_run_created_at_distinct_from_worker_heartbeat": true,
+    "pending_execute_response_last_heartbeat_at_present": false,
+    "pending_execute_response_run_created_at_present": true,
+    "pending_stage_rows_render_as_waiting_not_running": true,
+    "no_fake_running_stage_before_execute_response": true,
+    "gui_acceptance_validator_unrelated_pending_import_blocks_acceptance": true,
+    "advanced_full_rescan_retry_source_remains_non_executable": true
   }
 }

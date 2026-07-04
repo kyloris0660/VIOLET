@@ -433,6 +433,76 @@ def test_s3a_m2_gui_validator_scopes_remaining_inventory_to_validated_root() -> 
         engine.dispose()
 
 
+def test_s3a_m2_gui_validator_does_not_waive_unrelated_pending_imports() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        root = DynamicSourceRoot(label="gui", root_path="/safe/gui", root_path_hash="hash-gui", is_active=True)
+        db.add(root)
+        db.flush()
+        run = DynamicSyncRun(id=10, run_type="manual_sync_execute", mode="production_acceptance", status="completed")
+        db.add(run)
+        db.flush()
+        retry_ready_item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="retry-ready.png",
+            relative_path_hash="rel-retry-ready",
+            source_status="available",
+            sync_state="new",
+            import_status="pending",
+            failure_reason=None,
+        )
+        unrelated_pending_item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="unrelated-pending.png",
+            relative_path_hash="rel-unrelated-pending",
+            source_status="available",
+            sync_state="new",
+            import_status="pending",
+        )
+        db.add_all([retry_ready_item, unrelated_pending_item])
+        db.flush()
+        db.add(
+            DynamicSyncRunItem(
+                sync_run_id=run.id,
+                source_item_id=retry_ready_item.id,
+                item_state="retry_source_ready_for_import",
+                action="retry_source",
+                reason="retry_source_ready_for_import",
+                eligible_for_db_import=False,
+            )
+        )
+        db.commit()
+
+        summary = gui_validator.run_items_summary(db, 10, root_id=root.id)
+
+        assert summary["remaining_importable_db_pending_count"] == 2
+        assert summary["retry_created_pending_import_count"] == 1
+        assert summary["unrelated_remaining_importable_db_pending_count"] == 1
+        assert gui_validator.retry_created_pending_import_visible(
+            {"retry_source_ready_for_import": 1},
+            summary,
+        ) is True
+        assert gui_validator.unrelated_pending_import_blocks_acceptance(summary) is True
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
 def test_s3a_m2_gui_validator_applies_manual_e2e_profile_flags(tmp_path: Path, monkeypatch) -> None:
     profile_path = tmp_path / "production-profile.json"
     profile_path.write_text(

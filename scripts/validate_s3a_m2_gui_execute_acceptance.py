@@ -358,17 +358,22 @@ def run_items_summary(db: Any, run_id: int, *, root_id: int | None = None) -> di
     state_counts: Counter[str] = Counter()
     reason_counts: Counter[str] = Counter()
     source_item_ids: list[int] = []
+    retry_ready_source_item_ids: set[int] = set()
     media_ids: set[int] = set()
     skipped_placeholder_run_item_count = 0
     for row in rows:
-        state_counts[str(row.item_state or "unknown")] += 1
+        item_state = str(row.item_state or "unknown")
+        state_counts[item_state] += 1
         reason_counts[str(row.reason or row.item_state or "unknown")] += 1
         if str(row.item_state or "") == "skipped_placeholder" or str(row.reason or "") in {
             "cloud_placeholder",
             "icloud_placeholder",
         }:
             skipped_placeholder_run_item_count += 1
-        source_item_ids.append(int(row.source_item_id))
+        source_item_id = int(row.source_item_id)
+        source_item_ids.append(source_item_id)
+        if item_state == "retry_source_ready_for_import":
+            retry_ready_source_item_ids.add(source_item_id)
         if row.media_id is not None:
             media_ids.add(int(row.media_id))
 
@@ -411,7 +416,10 @@ def run_items_summary(db: Any, run_id: int, *, root_id: int | None = None) -> di
     if source_root_ids:
         remaining_importable_query = remaining_importable_query.filter(DynamicSourceItem.source_root_id.in_(source_root_ids))
         remaining_placeholders_query = remaining_placeholders_query.filter(DynamicSourceItem.source_root_id.in_(source_root_ids))
-    remaining_importable = remaining_importable_query.count()
+    remaining_importable_ids = [int(value) for (value,) in remaining_importable_query.with_entities(DynamicSourceItem.id).all()]
+    retry_created_pending_import_ids = sorted(set(remaining_importable_ids) & retry_ready_source_item_ids)
+    unrelated_remaining_importable_ids = sorted(set(remaining_importable_ids) - set(retry_created_pending_import_ids))
+    remaining_importable = len(remaining_importable_ids)
     remaining_placeholders = remaining_placeholders_query.count()
     return {
         "run_item_count": len(rows),
@@ -426,12 +434,25 @@ def run_items_summary(db: Any, run_id: int, *, root_id: int | None = None) -> di
         "ai_tagging_status_counts": dict(sorted(ai_status_counts.items())),
         "localization_status_counts": dict(sorted(localization_status_counts.items())),
         "remaining_importable_db_pending_count": int(remaining_importable),
+        "retry_created_pending_import_count": int(len(retry_created_pending_import_ids)),
+        "unrelated_remaining_importable_db_pending_count": int(len(unrelated_remaining_importable_ids)),
         "remaining_placeholder_db_count": int(remaining_placeholders),
     }
 
 
 def stage_count_from_status(counts: Mapping[str, int], *accepted: str) -> int:
     return sum(int(counts.get(key, 0)) for key in accepted)
+
+
+def retry_created_pending_import_visible(outcome: Mapping[str, Any], item_summary: Mapping[str, Any]) -> bool:
+    return bool(
+        int(outcome.get("retry_source_ready_for_import") or 0) > 0
+        and int(item_summary.get("retry_created_pending_import_count") or 0) > 0
+    )
+
+
+def unrelated_pending_import_blocks_acceptance(item_summary: Mapping[str, Any]) -> bool:
+    return int(item_summary.get("unrelated_remaining_importable_db_pending_count") or 0) > 0
 
 
 def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -617,11 +638,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             blockers.append("ai_tag_assignment_semantics_invalid")
         if int(entity_summary.get("violations_found") or 0) != 0:
             blockers.append("ai_only_entity_truth_violation")
-        retry_created_pending_import = bool(
-            int(outcome.get("retry_source_ready_for_import") or 0) > 0
-            and int(item_summary["remaining_importable_db_pending_count"]) > 0
-        )
-        if item_summary["remaining_importable_db_pending_count"] > 0 and not retry_created_pending_import:
+        retry_created_pending_import = retry_created_pending_import_visible(outcome, item_summary)
+        if unrelated_pending_import_blocks_acceptance(item_summary):
             blockers.append("remaining_importable_db_pending_items")
         if item_summary["remaining_placeholder_db_count"] > 0:
             blockers.append("remaining_placeholder_items")
@@ -703,6 +721,10 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             },
             "final_inventory": {
                 "remaining_importable_db_pending_count": item_summary["remaining_importable_db_pending_count"],
+                "retry_created_pending_import_count": item_summary["retry_created_pending_import_count"],
+                "unrelated_remaining_importable_db_pending_count": item_summary[
+                    "unrelated_remaining_importable_db_pending_count"
+                ],
                 "remaining_placeholder_db_count": item_summary["remaining_placeholder_db_count"],
                 "skipped_placeholder_run_item_count": item_summary["skipped_placeholder_run_item_count"],
                 "source_root_ids": item_summary["source_root_ids"],

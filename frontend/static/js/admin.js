@@ -2589,7 +2589,7 @@ class AdminPanel {
                     `elapsed=${seconds}s`,
                     requestId ? `request=${requestId}` : null,
                 ].filter(Boolean).join(' '),
-                stageStatus: { plan: 'completed', import: 'running' },
+                stageStatus: { plan: 'completed', import: 'queued' },
             });
         };
         render();
@@ -2796,7 +2796,7 @@ class AdminPanel {
             pending: true,
             label: '执行请求已提交',
             detail: '正在验证计划和操作员确认，创建 execute run，并等待首个后端进度心跳。',
-            stageStatus: { plan: 'completed', import: 'running' },
+            stageStatus: { plan: 'completed', import: 'queued' },
         });
         try {
             await this._manualSyncYieldForPaint();
@@ -2819,7 +2819,7 @@ class AdminPanel {
                 pending: !((job.manual_sync_execute || {}).last_heartbeat_at),
                 label: `执行任务 #${job.id} 已创建`,
                 detail: '等待导入、分类、AI 标签、本地化和摘要阶段的真实进度。',
-                stageStatus: { plan: 'completed', import: 'running' },
+                stageStatus: { plan: 'completed', import: 'queued' },
             });
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.execute_started', 'Manual sync execute started.'), 'success');
         } catch (e) {
@@ -2874,7 +2874,7 @@ class AdminPanel {
         const operatorStatusLabel = execute.operator_status_label_zh || this._manualSyncOperatorStatusLabel(operatorStatus);
         const planCounts = ((execute.plan || {}).counts || {});
         const workItemCounts = planCounts.work_item_counts || {};
-        const heartbeat = execute.last_heartbeat_at || job.finished_at || job.started_at || '-';
+        const heartbeat = execute.last_heartbeat_at || (active ? 'waiting_for_first_backend_progress_heartbeat' : (job.finished_at || job.started_at || '-'));
         const currentItem = execute.current_item_label || '-';
         const stableSkipped = [
             'skipped_existing_media',
@@ -2915,7 +2915,7 @@ class AdminPanel {
                 const rowStatus = String((stageRowsByName[stage] || {}).status || '').toLowerCase();
                 stageStatus[stage] = ['completed', 'completed_existing_coverage'].includes(rowStatus)
                     ? 'completed'
-                    : (['running', 'pending'].includes(rowStatus) ? 'running' : (['failed', 'cancelled'].includes(rowStatus) || rowStatus.startsWith('stopped_by') || rowStatus.startsWith('blocked_') ? 'failed' : 'queued'));
+                    : (rowStatus === 'running' ? 'running' : (['failed', 'cancelled'].includes(rowStatus) || rowStatus.startsWith('stopped_by') || rowStatus.startsWith('blocked_') ? 'failed' : 'queued'));
             });
         } else if (job.status === 'completed' || job.status === 'completed_with_failures' || job.status === 'completed_with_followup_required') {
             stageOrder.forEach((stage) => { stageStatus[stage] = 'completed'; });
@@ -2948,7 +2948,7 @@ class AdminPanel {
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: true,
-                pending: false,
+                pending: active && !execute.last_heartbeat_at,
                 label: `执行任务 #${job.id}：${this._manualSyncStageLabel(currentStage)}`,
                 detail: `status=${this._manualSyncStageStatusLabel(execute.current_stage_status || 'running')}，current=${currentItem}，heartbeat=${heartbeat}，seen=${job.total_seen || 0}，imported=${job.new_items || 0}`,
                 stageStatus,

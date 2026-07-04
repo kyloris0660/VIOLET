@@ -6,6 +6,18 @@ PR-R2 已把 S3A-M2-R 收口到操作员可用状态：用户可以通过 Web Ad
 
 本阶段没有启动 S3B，没有回到 Pixiv、SourceConcept 或 Entity 工作，也没有运行生产 Execute。
 
+## PR #129 本轮验证正确性修复复验
+
+本轮只修复 PR-R2 当前 blocker，没有重写 lifecycle classifier 或 WorkItem core，也没有启动 S3B、provider、Pixiv、SourceConcept、Entity 或生产 Execute。
+
+- 后端 execute gate 和 recheck 已权威拒绝 advanced full-rescan 中未验证的 `RETRY_SOURCE` 执行；API/服务层测试覆盖有效 plan hash 与有效确认语仍返回 `advanced_full_rescan_retry_source_execute_not_validated`，且不会创建 execute run。
+- execute run 创建时间与真实 worker heartbeat 已拆开：创建 run 时记录 `run_created_at`，`last_heartbeat_at` 保持为空；worker 进入真实阶段后才写入 heartbeat。
+- Web Admin Execute 确认后立即显示 pending/等待首个后端进度心跳状态，重复提交按钮禁用；Playwright 延迟 Execute POST 的窗口中确认所有非当前阶段均为 queued/waiting，没有把 pending 阶段渲染成 running。
+- GUI acceptance validator 的 retry-created pending import 豁免已收紧到本次 run 的 `retry_source_ready_for_import` source item；同一 root 下无关 pending import 仍会阻断 acceptance。
+- 本地/test GUI 复验通过：Microsoft Edge + Playwright 真实 Web Admin 主按钮路径，Execute response 中 run id 已返回、`run_created_at` 存在、`last_heartbeat_at` 为空；终态 `completed`，聚合结果为 imported 4、classified 4、AI tagged 1、localized 1、failed 0。
+- 生产 Web Admin Plan-only 复验通过：仅运行 Plan，latest execute run 未变化，生产 Execute 未运行；聚合 Plan-only counts 为 `IMPORT=256`、`FOLLOWUP=20`、`RETRY_SOURCE=11`，`max_files=500`，无 continuation/cap-limited batch。
+- public artifact 仍保持 aggregate-only；本轮本地浏览器、fake LLM 和 GUI 证据均为 ignored local artifact，未提交。
+
 ## 本阶段实现
 
 - Web Admin 手动同步 Plan/Execute 增加可见进度、阶段 strip、elapsed/heartbeat、当前安全标签、粗粒度计数、终态和错误显示。
