@@ -1914,7 +1914,7 @@ class AdminPanel {
             completed: '已完成：本批次没有剩余操作员动作',
             completed_with_retryable_failures: '已完成但有可重试源文件债务',
             completed_with_followup_required: '已完成但需要后续补处理',
-            completed_with_continuation: '已完成当前批次，还有下一批需要继续计划',
+            completed_with_continuation: '已完成当前批次，还有下一批或源文件重试恢复后的导入需要继续计划',
             completed_with_retryable_failures_plus_continuation: '已完成当前批次，同时有可重试债务和后续批次',
             failed_systemic: '系统性失败：需要先排查环境或流程问题',
             blocked_preflight: '预检阻断：尚未进入执行',
@@ -2446,10 +2446,12 @@ class AdminPanel {
         const workItemSummaryHtml = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE', 'BROKEN_STATE', 'PLACEHOLDER', 'NOOP_DIAGNOSTIC']
             .map(kind => {
                 const value = Number(workItemCounts[kind] || 0);
-                const executable = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE'].includes(kind);
+                const retrySourceBlockedInAdvancedMode = kind === 'RETRY_SOURCE' && advancedRetryBlocked;
+                const executable = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE'].includes(kind) && !retrySourceBlockedInAdvancedMode;
                 return `<div class="bg p-2 border">
                     <span class="text-secondary">${this.escapeHtml(this._manualSyncWorkItemKindLabel(kind))}</span><br>
                     <span class="font-bold">${value}</span>
+                    ${retrySourceBlockedInAdvancedMode ? '<span class="text-[10px] text-warning">当前高级模式不可执行</span>' : ''}
                     <span class="text-[10px] ${executable ? 'text-green-400' : 'text-secondary'}">${executable ? '可执行工作' : '诊断/不可执行'}</span>
                 </div>`;
             }).join('');
@@ -2920,12 +2922,14 @@ class AdminPanel {
             'completed_with_followup_required',
             'completed_with_continuation',
             'completed_with_retryable_failures_plus_continuation',
+            'completed_with_localization_failures',
+            'completed_with_localization_continuation_failures',
         ];
         if (stageRows.length) {
             stageStatus.plan = 'completed';
             ['import', 'classification', 'ai_tagging', 'localization', 'summary'].forEach(stage => {
                 const rowStatus = String((stageRowsByName[stage] || {}).status || '').toLowerCase();
-                stageStatus[stage] = terminalCompletedStageStatuses.includes(rowStatus)
+                stageStatus[stage] = (terminalCompletedStageStatuses.includes(rowStatus) || rowStatus.startsWith('completed_with_'))
                     ? 'completed'
                     : (rowStatus === 'running' ? 'running' : (['failed', 'cancelled'].includes(rowStatus) || rowStatus.startsWith('stopped_by') || rowStatus.startsWith('blocked_') ? 'failed' : 'queued'));
             });

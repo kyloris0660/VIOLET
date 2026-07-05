@@ -37,7 +37,7 @@ OPERATOR_STATUS_LABELS_ZH = {
     "completed": "已完成：本批次没有剩余操作员动作",
     "completed_with_retryable_failures": "已完成但有可重试源文件债务：稍后可重试源文件读取",
     "completed_with_followup_required": "已完成但需要后续补处理：分类、AI 标签或本地化仍有未完成项",
-    "completed_with_continuation": "已完成当前批次：还有下一批需要继续计划",
+    "completed_with_continuation": "已完成当前批次：还有下一批或源文件重试恢复后的导入需要继续计划",
     "completed_with_retryable_failures_plus_continuation": "已完成当前批次：同时有可重试源文件债务和后续批次",
     "failed_systemic": "系统性失败：需要先排查环境或流程问题",
     "blocked_preflight": "预检阻断：尚未进入执行",
@@ -689,7 +689,11 @@ def map_manual_sync_operator_status(
         if retryable_source_failure_count is not None
         else sum(_truthy_count(counts.get(reason)) for reason in RETRYABLE_SOURCE_FAILURE_REASONS)
     )
-    continuation = max(_truthy_count(unprocessed_count), _truthy_count(unprocessed_import_planned_count))
+    continuation = max(
+        _truthy_count(unprocessed_count),
+        _truthy_count(unprocessed_import_planned_count),
+        _truthy_count(counts.get("retry_source_ready_for_import")),
+    )
     failed = _truthy_count(counts.get("failed"))
     non_retryable_failed = max(0, failed - retryable)
     followup_required = bool(

@@ -2375,6 +2375,24 @@ def _s3a_m2_r_operator_validation_summary(**overrides: object) -> dict:
             "gui_path_used": True,
             "execute_not_run": True,
             "no_unsafe_execute_implied": True,
+            "selected_plan_items": 343,
+            "plan_items": 343,
+            "work_item_counts": {"FOLLOWUP": 20, "IMPORT": 312, "RETRY_SOURCE": 11},
+            "lifecycle_counts": {
+                "APP_MEDIA_FOLLOWUP": 20,
+                "CONTINUATION": 179,
+                "IMPORT_CANDIDATE": 133,
+                "RETRYABLE_SOURCE_FAILURE": 11,
+            },
+            "state_counts": {
+                "skipped_unsupported": 10,
+                "downstream_followup_planned": 20,
+                "import_planned": 312,
+                "retry_source_planned": 11,
+                "failed": 4,
+            },
+            "state_counts_total": 357,
+            "state_counts_scope": "broader planner state rows including skipped/failed diagnostics outside selected plan items",
         },
         "advanced_full_rescan_policy": {"retry_source_not_executable_until_validated": True},
         "public_redaction": {"passed": True, "finding_count": 0},
@@ -2439,6 +2457,18 @@ def test_s3a_m2_r_operator_validation_contract_rejects_production_execute_flag_m
     assert "s3a_m2_r_production_execute_flags_disagree" in codes
     assert "s3a_m2_r_production_execute_without_owner_approval" in codes
     assert "s3a_m2_r_production_execute_approval_reference_missing" in codes
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_production_plan_count_mismatch() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "production_plan_only.work_item_counts.IMPORT", 311)
+    _set_nested(summary, "production_plan_only.state_counts_scope", "")
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_production_plan_only_work_item_count_mismatch" in codes
+    assert "s3a_m2_r_production_plan_only_state_count_scope_missing" in codes
 
 
 def test_s3a_m2_r_operator_validation_contract_rejects_missing_gui_and_plan_only_gates() -> None:

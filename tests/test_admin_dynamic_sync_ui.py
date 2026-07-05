@@ -155,6 +155,16 @@ def test_dynamic_sync_start_flow_counts_retry_source_as_actionable_work() -> Non
     assert "if (autoExecute && actionable > 0 && executable)" in auto_execute_block
 
 
+def test_dynamic_sync_work_item_cards_distinguish_normal_and_advanced_retry_source_execution() -> None:
+    script = _text(ADMIN_JS)
+    render_block = script[script.index("_renderManualSyncPlan(plan)") : script.index("\n    _manualSyncExpectedConfirmationPhrase(plan)")]
+
+    assert "const retrySourceBlockedInAdvancedMode = kind === 'RETRY_SOURCE' && advancedRetryBlocked;" in render_block
+    assert "const executable = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE'].includes(kind) && !retrySourceBlockedInAdvancedMode;" in render_block
+    assert "当前高级模式不可执行" in render_block
+    assert "text-green-400" in render_block
+
+
 def test_dynamic_sync_stage_strip_treats_terminal_non_clean_statuses_as_completed() -> None:
     script = _text(ADMIN_JS)
 
@@ -164,10 +174,11 @@ def test_dynamic_sync_stage_strip_treats_terminal_non_clean_statuses_as_complete
         "completed_with_followup_required",
         "completed_with_continuation",
         "completed_with_retryable_failures_plus_continuation",
+        "completed_with_localization_failures",
     ):
         assert status in script
 
-    assert "terminalCompletedStageStatuses.includes(rowStatus)" in script
+    assert "rowStatus.startsWith('completed_with_')" in script
     assert "completed_with_retryable_failures" in script[script.index("terminalCompletedStageStatuses") :]
 
 

@@ -581,6 +581,13 @@ def test_manual_sync_lifecycle_operator_status_mapping() -> None:
         == "failed_systemic"
     )
     assert map_manual_sync_operator_status(run_status="completed", outcome_counts={}) == "completed"
+    assert (
+        map_manual_sync_operator_status(
+            run_status="completed",
+            outcome_counts={"retry_source_ready_for_import": 1},
+        )
+        == "completed_with_continuation"
+    )
     assert map_manual_sync_operator_status(run_status="failed", outcome_counts={"failed": 1}) == "failed_systemic"
     assert (
         map_manual_sync_operator_status(

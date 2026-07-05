@@ -3192,10 +3192,13 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             or localization_result.get("dynamic_source_items_target_status") == "deferred"
             or int(localization_result.get("tags_requiring_localization_after_runner") or 0)
         )
+        retry_source_ready_for_import = int(counts["retry_source_ready_for_import"])
         if not stop_reason and run.status not in {"cancelled", "failed"} and int(counts["localization_failed"]):
             summary_status = "completed_with_localization_failures"
         elif not stop_reason and run.status not in {"cancelled", "failed"} and localization_incomplete:
             summary_status = "completed_with_followup_required"
+        elif not stop_reason and run.status not in {"cancelled", "failed"} and retry_source_ready_for_import:
+            summary_status = "completed_with_continuation"
         elif (
             not stop_reason
             and run.status not in {"cancelled", "failed"}
@@ -3265,6 +3268,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             if int(counts["localization_failed"]):
                 run.status = "completed_with_failures"
             elif localization_incomplete:
+                run.status = "completed_with_followup_required"
+            elif retry_source_ready_for_import:
                 run.status = "completed_with_followup_required"
             elif int(counts["failed"]) or int(unprocessed_import_planned_count) or bool(import_stop_reason):
                 run.status = "completed_with_failures"

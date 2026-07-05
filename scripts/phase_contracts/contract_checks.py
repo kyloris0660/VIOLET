@@ -7965,6 +7965,54 @@ def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mappi
             expected="passed",
             actual=_get(summary, "production_plan_only.status", None),
         )
+    production_selected_plan_items = _as_int(
+        _get(summary, "production_plan_only.selected_plan_items", _get(summary, "production_plan_only.plan_items", 0))
+    )
+    production_work_item_counts = _get(summary, "production_plan_only.work_item_counts", {})
+    production_lifecycle_counts = _get(summary, "production_plan_only.lifecycle_counts", {})
+    production_state_counts = _get(summary, "production_plan_only.state_counts", {})
+    if production_selected_plan_items:
+        if isinstance(production_work_item_counts, Mapping):
+            work_item_total = sum(_as_int(value) for value in production_work_item_counts.values())
+            if work_item_total != production_selected_plan_items:
+                result.fail(
+                    "s3a_m2_r_production_plan_only_work_item_count_mismatch",
+                    "Production Plan-only selected_plan_items must equal the selected WorkItem counts total.",
+                    path="production_plan_only.work_item_counts",
+                    expected=production_selected_plan_items,
+                    actual=work_item_total,
+                )
+        if isinstance(production_lifecycle_counts, Mapping):
+            lifecycle_total = sum(_as_int(value) for value in production_lifecycle_counts.values())
+            if lifecycle_total != production_selected_plan_items:
+                result.fail(
+                    "s3a_m2_r_production_plan_only_lifecycle_count_mismatch",
+                    "Production Plan-only selected_plan_items must equal the selected lifecycle counts total.",
+                    path="production_plan_only.lifecycle_counts",
+                    expected=production_selected_plan_items,
+                    actual=lifecycle_total,
+                )
+        if isinstance(production_state_counts, Mapping):
+            state_total = sum(_as_int(value) for value in production_state_counts.values())
+            if state_total != production_selected_plan_items:
+                state_scope = str(_get(summary, "production_plan_only.state_counts_scope", "") or "").strip()
+                declared_state_total = _as_int(_get(summary, "production_plan_only.state_counts_total", -1), -1)
+                if not state_scope or state_scope == "selected_plan_items" or declared_state_total != state_total:
+                    result.fail(
+                        "s3a_m2_r_production_plan_only_state_count_scope_missing",
+                        "Production Plan-only state_counts may differ from selected_plan_items only when an explicit broader state_counts_scope and matching state_counts_total are recorded.",
+                        path="production_plan_only.state_counts",
+                        expected={
+                            "selected_plan_items": production_selected_plan_items,
+                            "state_counts_scope": "explicit broader-than-selected scope",
+                            "state_counts_total": state_total,
+                        },
+                        actual={
+                            "state_counts_total": state_total,
+                            "declared_state_counts_total": declared_state_total,
+                            "state_counts_scope": state_scope,
+                        },
+                    )
     if _as_bool(_get(summary, "s3b_disabled.enabled", True)):
         result.fail(
             "s3a_m2_r_s3b_enabled",

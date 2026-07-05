@@ -3800,7 +3800,12 @@ def test_manual_sync_execute_retry_source_cloud_hydration_success_does_not_impor
 
     assert db.query(Media).count() == 0
     assert list(settings.ORIGINAL_DIR.iterdir()) == []
-    assert result["manual_sync_execute"]["outcome_counts"]["retry_source_ready_for_import"] == 1
+    execute_summary = result["manual_sync_execute"]
+    assert result["status"] == "completed_with_followup_required"
+    assert execute_summary["status"] == "completed_with_continuation"
+    assert execute_summary["operator_status"] == "completed_with_continuation"
+    assert "重试恢复后的导入需要继续计划" in execute_summary["operator_status_label_zh"]
+    assert execute_summary["outcome_counts"]["retry_source_ready_for_import"] == 1
     db.refresh(item)
     assert item.sync_state == "new"
     assert item.import_status == "pending"
