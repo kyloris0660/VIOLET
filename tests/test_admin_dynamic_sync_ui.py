@@ -55,6 +55,10 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
         'id="dynamic-sync-progress-pending"',
         'id="dynamic-sync-progress-events"',
         'id="dynamic-sync-plan-cancel-btn"',
+        'id="dynamic-sync-page-confirmation"',
+        'id="dynamic-sync-page-confirmation-summary"',
+        'id="dynamic-sync-page-confirm-execute-btn"',
+        'id="dynamic-sync-page-cancel-confirmation-btn"',
         'id="dynamic-sync-confirm-execute-btn"',
         'id="dynamic-sync-copy-confirmation-btn"',
         'id="dynamic-sync-confirmation-phrase"',
@@ -62,6 +66,7 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
         assert marker in template or marker in script
 
     assert "dynamicSyncActionInFlight" in script
+    assert "dynamicSyncPageConfirmationState" in script
     assert "_manualSyncSetProgress" in script
     assert "gui_validation_session_token" in script
     assert "X-Violet-Gui-Client" in script
@@ -123,14 +128,22 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     script = _text(ADMIN_JS)
 
     operator_index = template.index('id="dynamic-sync-operator-card"')
+    page_confirmation_index = template.index('id="dynamic-sync-page-confirmation"')
     confirmation_index = template.index('id="dynamic-sync-confirmation"')
     advanced_index = template.index('id="dynamic-sync-advanced-controls"')
 
-    assert operator_index < confirmation_index < advanced_index
+    assert operator_index < page_confirmation_index < confirmation_index < advanced_index
     assert "useExpectedConfirmation" not in script
     assert "confirmationEl.value = expected" not in script
     assert "_confirmAndExecuteManualSyncPlan" in script
-    assert "window.confirm(confirmationText)" in script
+    handoff_block = script[script.index("async _confirmAndExecuteManualSyncPlan") : script.index("\n    _manualSyncStartExecutePendingTicker")]
+    assert "return this._enterManualSyncAwaitingConfirmation(plan);" in handoff_block
+    assert "window.confirm(confirmationText)" not in handoff_block
+    assert "_renderManualSyncPageConfirmation" in script
+    assert "_manualSyncPlanExecutionState" in script
+    assert "Plan ready; awaiting page confirmation" in script
+    assert "Plan ready; execution not started" in script
+    assert "Operator confirmation statement:" in script
     assert "body.confirmation_phrase = operatorConfirmedFullChain ? '' : confirmation;" in script
     assert "body.operator_confirmation_statement = operatorConfirmedFullChain ? operatorStatement : null;" in script
     assert "allowDuringPlanFlow" in script
@@ -146,6 +159,27 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     assert "S3A-M1 PRODUCTION MANUAL SYNC EXECUTE" not in script
 
 
+def test_dynamic_sync_normal_start_uses_recoverable_page_confirmation() -> None:
+    script = _text(ADMIN_JS)
+
+    auto_execute_block = script[script.index("async runManualSyncDryRunPlan") : script.index("async executeManualSyncPlan")]
+    handoff_block = script[script.index("async _confirmAndExecuteManualSyncPlan") : script.index("\n    _manualSyncStartExecutePendingTicker")]
+    page_confirm_start = script.index("async confirmAndExecuteManualSyncReadyPlan")
+    page_confirm_block = script[page_confirm_start : script.index("\n    _renderManualSyncPlan(plan)", page_confirm_start)]
+    cancel_block = script[script.index("cancelManualSyncPageConfirmation") : script.index("\n    async confirmAndExecuteManualSyncReadyPlan")]
+
+    assert "if (autoExecute && actionable > 0 && executable)" in auto_execute_block
+    assert "await this._confirmAndExecuteManualSyncPlan();" in auto_execute_block
+    assert "return this._enterManualSyncAwaitingConfirmation(plan);" in handoff_block
+    assert "await this.executeManualSyncPlan({ operatorConfirmedFullChain: true, allowDuringPlanFlow: true });" in page_confirm_block
+    assert "runManualSyncDryRunPlan" not in page_confirm_block
+    assert "this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'cancelled' });" in cancel_block
+    assert "The operator chose not to execute yet. The current Plan remains visible" in cancel_block
+    assert "Manual sync Execute was not started. The current Plan is still available on the page." in cancel_block
+    assert "this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'expired' });" in script
+    assert "Execute has not started." in script
+
+
 def test_dynamic_sync_start_flow_counts_retry_source_as_actionable_work() -> None:
     script = _text(ADMIN_JS)
 
@@ -156,6 +190,7 @@ def test_dynamic_sync_start_flow_counts_retry_source_as_actionable_work() -> Non
     assert "advanced_full_rescan_retry_source_execution_not_validated" in auto_execute_block
     assert "const executable = !!((plan.counts || {}).batch_executable || (plan.limits || {}).batch_executable) && !advancedRetryBlocked;" in auto_execute_block
     assert "if (autoExecute && actionable > 0 && executable)" in auto_execute_block
+    assert "await this._confirmAndExecuteManualSyncPlan();" in auto_execute_block
 
 
 def test_dynamic_sync_work_item_cards_distinguish_normal_and_advanced_retry_source_execution() -> None:

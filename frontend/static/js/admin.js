@@ -26,6 +26,7 @@ class AdminPanel {
         this.dynamicSyncBackgroundWarnings = [];
         this.dynamicSyncExecuteRequestStartedAt = null;
         this.dynamicSyncExecuteRequestTimer = null;
+        this.dynamicSyncPageConfirmationState = 'idle';
         window.adminPanel = this;
         this.init();
     }
@@ -376,9 +377,18 @@ class AdminPanel {
         if (dynamicSyncPlanRoot) {
             dynamicSyncPlanRoot.addEventListener('change', () => {
                 this.dynamicSyncPlan = null;
+                this._hideManualSyncPageConfirmation();
                 this._renderManualSyncOperatorSummary();
                 this._updateManualSyncExecuteButton();
             });
+        }
+        const dynamicSyncPageConfirmExecuteBtn = document.getElementById('dynamic-sync-page-confirm-execute-btn');
+        if (dynamicSyncPageConfirmExecuteBtn) {
+            dynamicSyncPageConfirmExecuteBtn.addEventListener('click', () => this.confirmAndExecuteManualSyncReadyPlan());
+        }
+        const dynamicSyncPageCancelConfirmationBtn = document.getElementById('dynamic-sync-page-cancel-confirmation-btn');
+        if (dynamicSyncPageCancelConfirmationBtn) {
+            dynamicSyncPageCancelConfirmationBtn.addEventListener('click', () => this.cancelManualSyncPageConfirmation());
         }
         const dynamicSyncConfirmExecuteBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
         if (dynamicSyncConfirmExecuteBtn) {
@@ -2154,6 +2164,8 @@ class AdminPanel {
             'dynamic-sync-start-btn',
             'dynamic-sync-dry-run-btn',
             'dynamic-sync-check-btn',
+            'dynamic-sync-page-confirm-execute-btn',
+            'dynamic-sync-page-cancel-confirmation-btn',
             'dynamic-sync-confirm-execute-btn',
             'dynamic-sync-copy-confirmation-btn',
             'dynamic-sync-execute-btn',
@@ -2395,6 +2407,188 @@ class AdminPanel {
         return session;
     }
 
+    _manualSyncPlanExecutionState(plan) {
+        const counts = (plan || {}).counts || {};
+        const limits = (plan || {}).limits || {};
+        const workItemCounts = counts.work_item_counts || {};
+        const integrity = (plan || {}).integrity || {};
+        const importCount = Number(counts.estimated_import_count || workItemCounts.IMPORT || 0);
+        const followupCount = Number(counts.estimated_downstream_followup_count || workItemCounts.FOLLOWUP || 0);
+        const retrySourceCount = Number(counts.estimated_retry_source_count || workItemCounts.RETRY_SOURCE || 0);
+        const brokenStateCount = Number(workItemCounts.BROKEN_STATE || 0);
+        const placeholderCount = Number(workItemCounts.PLACEHOLDER || 0);
+        const noopDiagnosticCount = Number(workItemCounts.NOOP_DIAGNOSTIC || 0);
+        const diagnosticCount = brokenStateCount + placeholderCount + noopDiagnosticCount;
+        const actionableCount = importCount + followupCount + retrySourceCount;
+        const batchExecutable = !!(counts.batch_executable || limits.batch_executable);
+        const complete = !!(plan && (!counts.partial_scan || batchExecutable));
+        const advancedRetryBlocked = !!(counts.advanced_full_rescan_retry_source_execution_not_validated || limits.advanced_full_rescan_retry_source_execution_not_validated);
+        const active = this._manualSyncActiveJobRunning();
+        const expiresAt = integrity.expires_at || '';
+        const expiresAtMs = expiresAt ? Date.parse(expiresAt) : NaN;
+        const expired = Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
+        const planItems = Number(counts.plan_items || counts.total_seen || 0);
+        const planHash = integrity.plan_hash || '';
+        const root = this._selectedDynamicSyncRoot();
+        const rootHash = root && root.root_path_hash ? String(root.root_path_hash).slice(0, 12) : '';
+        const rootMarker = root
+            ? `root#${root.id}${rootHash ? ` (${rootHash})` : ''}`
+            : 'root unavailable';
+        const canExecute = !!(
+            this.dynamicSyncExecuteEnabled
+            && plan
+            && complete
+            && batchExecutable
+            && actionableCount > 0
+            && !advancedRetryBlocked
+            && !expired
+            && !active
+            && !this.dynamicSyncActionInFlight
+        );
+        return {
+            importCount,
+            followupCount,
+            retrySourceCount,
+            brokenStateCount,
+            placeholderCount,
+            noopDiagnosticCount,
+            diagnosticCount,
+            actionableCount,
+            batchExecutable,
+            complete,
+            advancedRetryBlocked,
+            active,
+            expired,
+            expiresAt,
+            planItems,
+            planHash,
+            planHashPrefix: String(planHash).slice(0, 16),
+            rootMarker,
+            canExecute,
+        };
+    }
+
+    _hideManualSyncPageConfirmation() {
+        const panel = document.getElementById('dynamic-sync-page-confirmation');
+        const summary = document.getElementById('dynamic-sync-page-confirmation-summary');
+        const executeBtn = document.getElementById('dynamic-sync-page-confirm-execute-btn');
+        const cancelBtn = document.getElementById('dynamic-sync-page-cancel-confirmation-btn');
+        this.dynamicSyncPageConfirmationState = 'idle';
+        if (panel) panel.classList.add('hidden');
+        if (summary) summary.innerHTML = '';
+        if (executeBtn) executeBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = false;
+    }
+
+    _renderManualSyncPageConfirmation(plan, { state = 'awaiting' } = {}) {
+        const panel = document.getElementById('dynamic-sync-page-confirmation');
+        const summary = document.getElementById('dynamic-sync-page-confirmation-summary');
+        const executeBtn = document.getElementById('dynamic-sync-page-confirm-execute-btn');
+        const cancelBtn = document.getElementById('dynamic-sync-page-cancel-confirmation-btn');
+        if (!panel || !summary) return;
+        if (!plan) {
+            this._hideManualSyncPageConfirmation();
+            return;
+        }
+        const executionState = this._manualSyncPlanExecutionState(plan);
+        const operatorStatement = this._manualSyncExpectedOperatorStatement(plan);
+        const expired = executionState.expired || state === 'expired';
+        const executing = state === 'executing';
+        const blocked = executionState.advancedRetryBlocked || !executionState.batchExecutable || executionState.actionableCount <= 0;
+        const canExecute = executionState.canExecute && !expired && !blocked && !executing;
+        this.dynamicSyncPageConfirmationState = expired ? 'expired' : state;
+        panel.classList.remove('hidden');
+        panel.dataset.state = this.dynamicSyncPageConfirmationState;
+        const productionWarning = this.dynamicSyncProductionMode
+            ? '生产警告：点击确认会执行写入，包含导入、分类、AI 标签、本地化和汇总报告。'
+            : '测试/本地警告：点击确认会在当前隔离环境执行手动同步写入。';
+        const stateMessage = expired
+            ? '当前 Plan 已过期；Execute 已禁用，请重新生成 Plan。'
+            : executing
+                ? 'Execute 请求已提交；正在等待后端创建运行并产生首个真实心跳。'
+                : state === 'cancelled'
+                    ? '已暂不执行；当前 Plan 仍保留，可在过期前确认执行，或重新生成 Plan。'
+                    : blocked
+                        ? 'Plan 已完成，但当前批次不可执行；请查看阻塞/诊断说明。'
+                        : 'Plan 已就绪，等待操作员在页面内确认；Execute 尚未启动。';
+        summary.innerHTML = `
+            <div class="font-bold text-warning">${this.escapeHtml(stateMessage)}</div>
+            <div>${this.escapeHtml(productionWarning)}</div>
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                <div><span class="text-secondary">Plan hash</span><br><span class="font-mono">${this.escapeHtml(executionState.planHashPrefix || '-')}</span></div>
+                <div><span class="text-secondary">Root marker</span><br><span class="font-mono">${this.escapeHtml(executionState.rootMarker)}</span></div>
+                <div><span class="text-secondary">Plan items</span><br><span class="font-bold">${executionState.planItems}</span></div>
+                <div><span class="text-secondary">Expires</span><br><span class="font-mono">${this.escapeHtml(executionState.expiresAt || '-')}</span></div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                <div><span class="text-secondary">IMPORT</span><br><span class="font-bold">${executionState.importCount}</span></div>
+                <div><span class="text-secondary">FOLLOWUP</span><br><span class="font-bold">${executionState.followupCount}</span></div>
+                <div><span class="text-secondary">RETRY_SOURCE</span><br><span class="font-bold">${executionState.retrySourceCount}</span></div>
+                <div><span class="text-secondary">BROKEN_STATE</span><br><span class="font-bold">${executionState.brokenStateCount}</span></div>
+                <div><span class="text-secondary">PLACEHOLDER</span><br><span class="font-bold">${executionState.placeholderCount}</span></div>
+                <div><span class="text-secondary">NOOP_DIAGNOSTIC</span><br><span class="font-bold">${executionState.noopDiagnosticCount}</span></div>
+            </div>
+            <div><span class="text-secondary">Non-executable diagnostics:</span> ${executionState.diagnosticCount}</div>
+            <div><span class="text-secondary">Operator confirmation statement:</span></div>
+            <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(operatorStatement || '-')}</code>
+        `;
+        if (executeBtn) {
+            executeBtn.disabled = !canExecute;
+            executeBtn.textContent = executing ? '正在提交 Execute...' : (expired ? 'Plan 已过期，请重新 Plan' : '确认并执行当前 Plan');
+        }
+        if (cancelBtn) {
+            cancelBtn.disabled = executing || this.dynamicSyncActionInFlight;
+        }
+    }
+
+    _enterManualSyncAwaitingConfirmation(plan) {
+        if (!plan) return false;
+        this._renderManualSyncPageConfirmation(plan, { state: 'awaiting' });
+        const executionState = this._manualSyncPlanExecutionState(plan);
+        this._manualSyncSetProgress({
+            visible: true,
+            inFlight: false,
+            pending: false,
+            label: 'Plan ready; awaiting page confirmation',
+            detail: `plan_items=${executionState.planItems}, import=${executionState.importCount}, followup=${executionState.followupCount}, retry_source=${executionState.retrySourceCount}. Execute has not started.`,
+            stageStatus: { plan: 'completed' },
+        });
+        app.showNotification('Plan ready. Confirm from the page-level Execute panel when you are ready.', 'success');
+        this._updateManualSyncExecuteButton();
+        return true;
+    }
+
+    cancelManualSyncPageConfirmation() {
+        if (!this.dynamicSyncPlan) return;
+        this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'cancelled' });
+        this._manualSyncSetProgress({
+            visible: true,
+            inFlight: false,
+            pending: false,
+            label: 'Plan ready; execution not started',
+            detail: 'The operator chose not to execute yet. The current Plan remains visible and can still be executed before it expires.',
+            stageStatus: { plan: 'completed' },
+        });
+        app.showNotification('Manual sync Execute was not started. The current Plan is still available on the page.', 'warning');
+    }
+
+    async confirmAndExecuteManualSyncReadyPlan() {
+        if (!this.dynamicSyncPlan || this.dynamicSyncActionInFlight) return;
+        const executionState = this._manualSyncPlanExecutionState(this.dynamicSyncPlan);
+        if (executionState.expired) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'expired' });
+            app.showNotification('This manual sync Plan has expired. Generate a new Plan before Execute.', 'error');
+            return;
+        }
+        if (!executionState.canExecute) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'awaiting' });
+            app.showNotification('This manual sync Plan is not executable in the current state.', 'error');
+            return;
+        }
+        this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'executing' });
+        await this.executeManualSyncPlan({ operatorConfirmedFullChain: true, allowDuringPlanFlow: true });
+    }
+
     _renderManualSyncPlan(plan) {
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
@@ -2443,6 +2637,11 @@ class AdminPanel {
             planMessage = '这个计划没有可导入项目或后续补处理项目。执行已按预期禁用，不需要确认。';
         } else if (counts.partial_scan) {
             planMessage = '这个计划仍是部分扫描。需要先形成明确安全的批次边界，再执行。';
+        }
+        if (canExecute) {
+            planMessage = capLimitedBatch
+                ? '这个安全的有界批次已可执行。本批次完成后仍可能有后续工作；确认页面内 Execute 控件后才会开始写入。'
+                : '计划已就绪。请在页面内确认面板中确认后执行完整链路；不会依赖浏览器原生确认弹窗。';
         }
         const workItemSummaryHtml = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE', 'BROKEN_STATE', 'PLACEHOLDER', 'NOOP_DIAGNOSTIC']
             .map(kind => {
@@ -2533,6 +2732,26 @@ class AdminPanel {
         if (copyBtn) {
             copyBtn.disabled = !expected || this.dynamicSyncActionInFlight;
         }
+        const pageConfirmBtn = document.getElementById('dynamic-sync-page-confirm-execute-btn');
+        const pageCancelBtn = document.getElementById('dynamic-sync-page-cancel-confirmation-btn');
+        if (pageConfirmBtn || pageCancelBtn) {
+            const executionState = this._manualSyncPlanExecutionState(this.dynamicSyncPlan);
+            const pageConfirmationActive = ['awaiting', 'cancelled'].includes(this.dynamicSyncPageConfirmationState);
+            if (pageConfirmBtn) {
+                pageConfirmBtn.disabled = !(pageConfirmationActive && executionState.canExecute);
+                if (executionState.expired && this.dynamicSyncPlan) {
+                    pageConfirmBtn.textContent = 'Plan 已过期，请重新 Plan';
+                    pageConfirmBtn.disabled = true;
+                } else if (this.dynamicSyncActionInFlight) {
+                    pageConfirmBtn.textContent = '正在处理...';
+                } else {
+                    pageConfirmBtn.textContent = '确认并执行当前 Plan';
+                }
+            }
+            if (pageCancelBtn) {
+                pageCancelBtn.disabled = this.dynamicSyncActionInFlight || active;
+            }
+        }
         const startBtn = document.getElementById('dynamic-sync-start-btn');
         if (startBtn) {
             startBtn.disabled = !this.dynamicSyncExecuteEnabled || active || this.dynamicSyncActionInFlight;
@@ -2554,27 +2773,7 @@ class AdminPanel {
     async _confirmAndExecuteManualSyncPlan() {
         const plan = this.dynamicSyncPlan;
         if (!plan) return false;
-        const counts = plan.counts || {};
-        const limits = plan.limits || {};
-        const statement = this._manualSyncExpectedOperatorStatement(plan);
-        const importCount = counts.estimated_import_count || 0;
-        const followupCount = counts.estimated_downstream_followup_count || 0;
-        const retrySourceCount = counts.estimated_retry_source_count || (counts.work_item_counts || {}).RETRY_SOURCE || 0;
-        const confirmationText = [
-            '确认开始完整手动同步流程？',
-            `本批次将处理 ${importCount} 个导入项目、${followupCount} 个后续补处理项目和 ${retrySourceCount} 个源文件重试项目。`,
-            `批次上限：${limits.max_files || 'server default'}`,
-            `计划哈希：${((plan.integrity || {}).plan_hash || '').slice(0, 12)}`,
-            '阶段：导入 -> 分类 -> AI 标签 -> 本地化 -> 报告。',
-            '自动/计划/启动/系统服务同步保持关闭。',
-            statement ? `操作员确认声明：${statement}` : '',
-        ].filter(Boolean).join('\n');
-        if (!window.confirm(confirmationText)) {
-            app.showNotification('手动同步计划未执行。', 'warning');
-            return false;
-        }
-        await this.executeManualSyncPlan({ operatorConfirmedFullChain: true, allowDuringPlanFlow: true });
-        return true;
+        return this._enterManualSyncAwaitingConfirmation(plan);
     }
 
     _manualSyncStartExecutePendingTicker({ requestId = '' } = {}) {
@@ -2636,6 +2835,7 @@ class AdminPanel {
             resultEl.classList.remove('hidden');
             resultEl.innerHTML = `<div class="text-warning">Planning current source delta... request=${this.escapeHtml(planRequestId)}. Healthy progress may continue beyond 600s; no-progress watchdog=${Math.round(noProgressTimeoutMs / 1000)}s.</div>`;
         }
+        this._hideManualSyncPageConfirmation();
         this._manualSyncSetControlsBusy(true);
         if (dryRunBtn) dryRunBtn.disabled = true;
         if (startBtn) startBtn.disabled = true;
@@ -2732,10 +2932,12 @@ class AdminPanel {
             if (autoExecute && actionable > 0 && executable) {
                 await this._confirmAndExecuteManualSyncPlan();
             } else {
+                this._hideManualSyncPageConfirmation();
                 app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.plan_ready', 'Dry-run plan ready.'), 'success');
             }
         } catch (e) {
             this.dynamicSyncPlan = null;
+            this._hideManualSyncPageConfirmation();
             this._updateManualSyncExecuteButton();
             if (e.name === 'AbortError' && !noProgressCancelRequested) {
                 await this.cancelManualSyncPlan({ silent: true });
@@ -2765,6 +2967,17 @@ class AdminPanel {
 
     async executeManualSyncPlan({ operatorConfirmedFullChain = false, allowDuringPlanFlow = false } = {}) {
         if (!this.dynamicSyncPlan || (!allowDuringPlanFlow && this.dynamicSyncActionInFlight) || this._manualSyncActiveJobRunning()) return;
+        const executionState = this._manualSyncPlanExecutionState(this.dynamicSyncPlan);
+        if (executionState.expired) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'expired' });
+            app.showNotification('This manual sync Plan has expired. Generate a new Plan before Execute.', 'error');
+            return;
+        }
+        if (!executionState.canExecute) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'awaiting' });
+            app.showNotification('This manual sync Plan is not executable in the current state.', 'error');
+            return;
+        }
         const body = this._manualSyncRequestBody();
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
         const integrity = this.dynamicSyncPlan.integrity || {};
@@ -2794,6 +3007,9 @@ class AdminPanel {
             app.showNotification('GUI validation session is missing. Re-run Start manual sync before Execute.', 'error');
             return;
         }
+        if (operatorConfirmedFullChain) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'executing' });
+        }
         this._manualSyncSetControlsBusy(true);
         this._manualSyncStartExecutePendingTicker({ requestId: body.plan_request_id || '' });
         this._manualSyncSetProgress({
@@ -2817,6 +3033,7 @@ class AdminPanel {
             this.dynamicSyncJobId = job.id;
             this.dynamicSyncLatestJob = job;
             this._manualSyncStopExecutePendingTicker();
+            this._hideManualSyncPageConfirmation();
             this._renderManualSyncJob(job);
             this._startManualSyncPolling(job.id);
             this._manualSyncSetProgress({
@@ -2833,6 +3050,9 @@ class AdminPanel {
             this._manualSyncStopExecutePendingTicker();
             this._manualSyncSetProgress({ visible: true, inFlight: false, pending: false, label: '执行未启动', detail: message, stageStatus: { plan: 'completed', import: 'failed' } });
             app.showNotification(message, 'error');
+            if (operatorConfirmedFullChain && this.dynamicSyncPlan) {
+                this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'awaiting' });
+            }
             this._manualSyncSetControlsBusy(false);
             this._updateManualSyncExecuteButton();
         }
