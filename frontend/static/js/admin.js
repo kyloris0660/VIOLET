@@ -1973,6 +1973,7 @@ class AdminPanel {
             failed: '失败',
             cancelled: '已取消',
             blocked: '已阻断',
+            skipped: '已跳过/已停止',
         };
         return labels[status] || status || '-';
     }
@@ -1992,7 +1993,7 @@ class AdminPanel {
             const status = stageStatus[key] || 'queued';
             const style = status === 'completed'
                 ? 'border-green-500 text-green-400'
-                : (status === 'running' ? 'border-warning text-warning' : (status === 'failed' ? 'border-red-500 text-red-400' : 'border text-secondary'));
+                : (status === 'running' ? 'border-warning text-warning' : (status === 'failed' ? 'border-red-500 text-red-400' : (status === 'skipped' ? 'border-secondary text-secondary' : 'border text-secondary')));
             return `<div class="p-2 border ${style}"><div class="font-bold">${this.escapeHtml(label)}</div><div class="text-[10px]">${this.escapeHtml(this._manualSyncStageStatusLabel(status))}</div></div>`;
         }).join('');
     }
@@ -2881,6 +2882,8 @@ class AdminPanel {
         const workItemCounts = planCounts.work_item_counts || {};
         const heartbeat = execute.last_heartbeat_at || (active ? 'waiting_for_first_backend_progress_heartbeat' : (job.finished_at || job.started_at || '-'));
         const currentItem = execute.current_item_label || '-';
+        const retryReadyForImport = Number(outcomes.retry_source_ready_for_import || 0);
+        const nextImportReadyCount = Number(execute.next_import_ready_count || 0) || ((Number(execute.unprocessed_import_planned_count || 0)) + retryReadyForImport);
         const stableSkipped = [
             'skipped_existing_media',
             'skipped_duplicate',
@@ -2929,9 +2932,10 @@ class AdminPanel {
             stageStatus.plan = 'completed';
             ['import', 'classification', 'ai_tagging', 'localization', 'summary'].forEach(stage => {
                 const rowStatus = String((stageRowsByName[stage] || {}).status || '').toLowerCase();
+                const skippedTerminalRunStatus = rowStatus.startsWith('skipped_') && rowStatus.endsWith('_run');
                 stageStatus[stage] = (terminalCompletedStageStatuses.includes(rowStatus) || rowStatus.startsWith('completed_with_'))
                     ? 'completed'
-                    : (rowStatus === 'running' ? 'running' : (['failed', 'cancelled'].includes(rowStatus) || rowStatus.startsWith('stopped_by') || rowStatus.startsWith('blocked_') ? 'failed' : 'queued'));
+                    : (skippedTerminalRunStatus ? 'skipped' : (rowStatus === 'running' ? 'running' : (['failed', 'cancelled'].includes(rowStatus) || rowStatus.startsWith('stopped_by') || rowStatus.startsWith('blocked_') ? 'failed' : 'queued')));
             });
         } else if (job.status === 'completed' || job.status === 'completed_with_failures' || job.status === 'completed_with_followup_required') {
             stageOrder.forEach((stage) => { stageStatus[stage] = 'completed'; });
@@ -2954,7 +2958,7 @@ class AdminPanel {
         statusEl.innerHTML = `
             <div>最新手动同步任务 #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | 操作员状态=${this.escapeHtml(operatorStatusLabel)}</div>
             <div>当前阶段=${this.escapeHtml(this._manualSyncStageLabel(currentStage))} | 阶段状态=${this.escapeHtml(this._manualSyncStageStatusLabel(execute.current_stage_status || stageStatus[currentStage] || '-'))} | 当前项目=${this.escapeHtml(currentItem)} | 心跳=${this.escapeHtml(heartbeat)}</div>
-            <div>计划项=${job.total_seen || 0}，导入=${job.new_items || 0}，稳定跳过/不适用=${stableSkipped}，失败=${job.failed_items || 0}，待下一次导入=${execute.unprocessed_import_planned_count || 0}</div>
+            <div>计划项=${job.total_seen || 0}，导入=${job.new_items || 0}，稳定跳过/不适用=${stableSkipped}，失败=${job.failed_items || 0}，待下一次导入=${nextImportReadyCount}</div>
             <div class="text-secondary">WorkItem：${workItemSummary}</div>
             <div class="text-secondary">结果拆解：${visibleOutcomes}</div>
             ${errorText ? `<div class="text-red-400">错误：${this.escapeHtml(errorText)}</div>` : ''}

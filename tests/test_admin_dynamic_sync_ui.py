@@ -82,6 +82,9 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "执行请求已提交" in script
     assert "等待首个后端进度心跳" in script
     assert "pending: true" in script
+    assert "const retryReadyForImport = Number(outcomes.retry_source_ready_for_import || 0);" in script
+    assert "const nextImportReadyCount = Number(execute.next_import_ready_count || 0) || ((Number(execute.unprocessed_import_planned_count || 0)) + retryReadyForImport);" in script
+    assert "待下一次导入=${nextImportReadyCount}" in script
     assert "10 * 60 * 1000" not in script
     assert "/api/admin/dynamic-library-sync/manual-sync/gui-session" in script
     assert "POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root." in script
@@ -180,6 +183,14 @@ def test_dynamic_sync_stage_strip_treats_terminal_non_clean_statuses_as_complete
 
     assert "rowStatus.startsWith('completed_with_')" in script
     assert "completed_with_retryable_failures" in script[script.index("terminalCompletedStageStatuses") :]
+
+
+def test_dynamic_sync_stage_strip_treats_skipped_run_statuses_as_terminal_not_queued() -> None:
+    script = _text(ADMIN_JS)
+
+    assert "rowStatus.startsWith('skipped_') && rowStatus.endsWith('_run')" in script
+    assert "skippedTerminalRunStatus ? 'skipped'" in script
+    assert "skipped: '已跳过/已停止'" in script
 
 
 def test_dynamic_sync_ui_does_not_render_raw_i18n_keys_or_internal_blocker_prefixes() -> None:

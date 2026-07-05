@@ -565,16 +565,21 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
         )
 
         imported = int(outcome.get("imported") or item_summary["state_counts"].get("imported", 0))
+        planned_followup_work = int(work_item_counts.get("FOLLOWUP", 0))
+        downstream_targets = execute_payload.get("downstream_targets")
+        downstream_target_count = len(downstream_targets) if isinstance(downstream_targets, list) else 0
+        downstream_expected_workload = imported + max(planned_followup_work, downstream_target_count)
         classified = stage_count_from_status(item_summary["classification_status_counts"], "classified", "classified_reused")
         ai_tagged = stage_count_from_status(item_summary["ai_tagging_status_counts"], "ai_tagged", "tagged", "tagged_reused")
         localized = stage_count_from_status(item_summary["localization_status_counts"], "localized")
         localization_status = str(localization_payload.get("status") or "unknown")
         localization_failed = int(localization_payload.get("failed") or outcome.get("localization_failed") or 0)
         localization_remaining_gap = int(localization_payload.get("tags_requiring_localization_after_runner") or 0)
-        localization_ok = imported <= 0 or (
+        localization_ok = downstream_expected_workload <= 0 or (
             localization_status in {"completed", "completed_existing_coverage"}
             and localization_failed == 0
             and localization_remaining_gap == 0
+            and localized >= downstream_expected_workload
         )
         expected_total_seen = int(run.total_seen or 0)
         ledger_ok = expected_total_seen == int(item_summary["run_item_count"])
@@ -626,12 +631,18 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             blockers.append("gui_run_not_completed")
         if not ledger_ok:
             blockers.append("ledger_row_count_mismatch")
-        if imported <= 0 and not args.allow_zero_import:
+        if imported <= 0 and downstream_expected_workload <= 0 and not args.allow_zero_import:
             blockers.append("gui_run_imported_zero")
+        if downstream_expected_workload > 0 and classified < downstream_expected_workload:
+            blockers.append("classification_incomplete_for_downstream_workload")
         if imported > 0 and classified < imported:
             blockers.append("classification_incomplete_for_imported_items")
+        if downstream_expected_workload > 0 and ai_tagged < downstream_expected_workload:
+            blockers.append("ai_tagging_incomplete_for_downstream_workload")
         if imported > 0 and ai_tagged < imported:
             blockers.append("ai_tagging_incomplete_for_imported_items")
+        if downstream_expected_workload > 0 and not localization_ok:
+            blockers.append("localization_incomplete_or_unaccepted_for_downstream_workload")
         if imported > 0 and not localization_ok:
             blockers.append("localization_incomplete_or_unaccepted_for_gui_e2e")
         if not tag_semantics_ok:
@@ -678,6 +689,15 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             "classified": classified,
             "ai_tagged": ai_tagged,
             "localized_source_items": localized,
+            "downstream_validation": {
+                "expected_workload": int(downstream_expected_workload),
+                "imported_media": imported,
+                "planned_followup_work": planned_followup_work,
+                "downstream_targets": downstream_target_count,
+                "classification_passed": classified >= downstream_expected_workload,
+                "ai_tagging_passed": ai_tagged >= downstream_expected_workload,
+                "localization_passed": localization_ok,
+            },
             "localization_summary": {
                 "status": str(localization_payload.get("status") or "unknown"),
                 "translated": int(localization_payload.get("translated") or 0),
@@ -704,7 +724,7 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
                 "work_item_summary": work_item_summary,
                 "planned_import_work": int(work_item_counts.get("IMPORT", 0)),
                 "planned_retry_source_work": int(work_item_counts.get("RETRY_SOURCE", 0)),
-                "planned_followup_work": int(work_item_counts.get("FOLLOWUP", 0)),
+                "planned_followup_work": planned_followup_work,
                 "non_executable_diagnostics": int(work_item_counts.get("BROKEN_STATE", 0))
                 + int(work_item_counts.get("PLACEHOLDER", 0))
                 + int(work_item_counts.get("NOOP_DIAGNOSTIC", 0)),

@@ -32,7 +32,7 @@ HTTP_URL_RE = re.compile(r"(?i)\bhttps?://[^\s\"'<>]+")
 SECRET_KEY_NAME_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer)")
 SECRET_CONTEXT_KEY_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer|credential)")
 PRIVATE_PROVENANCE_KEY_RE = re.compile(
-    r"(?i)(raw_filename|filename|file_name|source_url|source_urls|original_url|thumbnail_url|source_path|local_path|source_root|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
+    r"(?i)(raw_filename|filename|file_name|source_url|source_urls|original_url|thumbnail_url|source_path|local_path|source_root|selected_root_label|source_root_label|root_label|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
 )
 PRIVATE_CONTENT_HASH_KEY_RE = re.compile(
     r"(?i)(^|_)(content_hash|file_hash|sha256|sha_256|md5|phash|perceptual_hash)$"
@@ -7830,6 +7830,87 @@ def _check_s3a_m2_r_lifecycle_workitem(_contract: PhaseContract, summary: Mappin
         )
 
 
+def _s3a_m2_r_label_is_placeholder(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if "\ufffd" in text:
+        return True
+    if text.count("?") >= 4:
+        return True
+    return text.replace("?", "").strip() == ""
+
+
+def _s3a_m2_r_non_clean_full_chain_evidence(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    non_clean_markers = (
+        "failed",
+        "deferred",
+        "blocked",
+        "missing",
+        "source_missing",
+        "read_timeout",
+        "cloud_hydration_failed",
+        "localization_failed",
+        "localization_deferred",
+    )
+
+    def add_count(path: str, key: str, count: Any) -> None:
+        amount = _as_int(count)
+        if amount <= 0:
+            return
+        key_folded = str(key or "").casefold()
+        if any(marker in key_folded for marker in non_clean_markers):
+            findings.append({"path": f"{path}.{key}", "count": amount})
+
+    db_truth = _get(summary, "work_item_kind_first.local_final_db_truth", {})
+    if isinstance(db_truth, Mapping):
+        for status_key in (
+            "import_status",
+            "classification_status",
+            "ai_tagging_status",
+            "localization_status",
+            "source_status",
+            "sync_state",
+            "failure_reason",
+            "deferred_reason",
+        ):
+            counts = db_truth.get(status_key)
+            if isinstance(counts, Mapping):
+                for key, count in counts.items():
+                    add_count(f"work_item_kind_first.local_final_db_truth.{status_key}", str(key), count)
+
+    rounds = _get(summary, "local_gui_acceptance.isolated_incremental_gui_e2e.rounds", [])
+
+    def scan_execute_payload(path: str, payload: Any) -> None:
+        if not isinstance(payload, Mapping):
+            return
+        status = str(payload.get("status") or "").casefold()
+        if "failed" in status or "deferred" in status:
+            findings.append({"path": f"{path}.status", "status": status})
+        outcome_counts = payload.get("outcome_counts")
+        if isinstance(outcome_counts, Mapping):
+            for key, count in outcome_counts.items():
+                add_count(f"{path}.outcome_counts", str(key), count)
+
+    if isinstance(rounds, Sequence) and not isinstance(rounds, (str, bytes, bytearray)):
+        for index, round_payload in enumerate(rounds):
+            if not isinstance(round_payload, Mapping):
+                continue
+            round_path = f"local_gui_acceptance.isolated_incremental_gui_e2e.rounds[{index}]"
+            scan_execute_payload(f"{round_path}.execute", round_payload.get("execute"))
+            scan_execute_payload(f"{round_path}.retry_execute", round_payload.get("retry_execute"))
+            batches = round_payload.get("batches")
+            if isinstance(batches, Sequence) and not isinstance(batches, (str, bytes, bytearray)):
+                for batch_index, batch in enumerate(batches):
+                    if isinstance(batch, Mapping):
+                        scan_execute_payload(
+                            f"{round_path}.batches[{batch_index}].execute",
+                            batch.get("execute"),
+                        )
+    return findings
+
+
 def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     allowed_statuses = {
         "operator_ready",
@@ -7940,6 +8021,18 @@ def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mappi
                 expected=sorted(expected),
                 actual=sorted(keys),
             )
+        if isinstance(labels, Mapping):
+            placeholder_labels = sorted(
+                key for key in expected if key in labels and _s3a_m2_r_label_is_placeholder(labels.get(key))
+            )
+            if placeholder_labels:
+                result.fail(
+                    f"{code}_placeholder_or_empty",
+                    "PR-R2 required Chinese operator labels must be readable text, not empty or question-mark placeholders.",
+                    path=path,
+                    expected="readable Chinese operator labels",
+                    actual={key: labels.get(key) for key in placeholder_labels},
+                )
 
     if str(_get(summary, "browser_validation.status", "")).casefold() != "passed":
         result.fail(
@@ -8079,6 +8172,44 @@ def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mappi
             "public_redaction.passed",
         )
     )
+    non_clean_full_chain_evidence = _s3a_m2_r_non_clean_full_chain_evidence(summary)
+    result.details["s3a_m2_r_non_clean_full_chain_evidence"] = non_clean_full_chain_evidence[:20]
+    full_s3a_m2_r_claimed = _as_bool(_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", False)) or _as_bool(
+        _get(summary, "scope.full_s3a_m2_r_completion_claimed", False)
+    )
+    if non_clean_full_chain_evidence and result.full_chain_complete_claimed:
+        result.fail(
+            "s3a_m2_r_operator_full_chain_overclaimed_with_non_clean_evidence",
+            "PR-R2 must not claim full-chain completion while local GUI evidence still includes failed/deferred downstream work.",
+            path="pipeline_contract.claims.full_chain_complete",
+            expected=False,
+            actual=_get(summary, "pipeline_contract.claims.full_chain_complete", None),
+        )
+    if non_clean_full_chain_evidence and full_s3a_m2_r_claimed:
+        result.fail(
+            "s3a_m2_r_operator_full_s3a_m2_r_overclaimed_with_non_clean_evidence",
+            "PR-R2 operator readiness must not be overloaded as full S3A-M2-R completion when failed/deferred downstream work remains visible.",
+            path="pipeline_contract.claims.full_s3a_m2_r_complete",
+            expected=False,
+            actual=_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", None),
+        )
+    if non_clean_full_chain_evidence and (result.target_met_claimed or result.safe_to_merge_claimed):
+        claim_scope = str(
+            _get(
+                summary,
+                "pipeline_contract.claims.safe_to_merge_scope",
+                _get(summary, "pipeline_contract.claims.target_met_scope", ""),
+            )
+            or ""
+        ).strip()
+        if claim_scope != "operator_ready_visible_non_clean_debt":
+            result.fail(
+                "s3a_m2_r_operator_non_clean_safe_to_merge_scope_missing",
+                "target_met/safe_to_merge with non-clean E2E evidence must explicitly mean operator-ready with visible non-clean debt, not clean full-chain completion.",
+                path="pipeline_contract.claims.safe_to_merge_scope",
+                expected="operator_ready_visible_non_clean_debt",
+                actual=claim_scope or None,
+            )
     if _as_bool(_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", False)) and not (
         status == "operator_ready" and final_acceptance_complete
     ):

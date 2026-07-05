@@ -2314,10 +2314,12 @@ def _s3a_m2_r_operator_validation_summary(**overrides: object) -> dict:
             "phase_identity": "S3A-M2-R PR-R2",
             "claims": {
                 "operator_ready": True,
-                "full_s3a_m2_r_complete": True,
+                "full_s3a_m2_r_complete": False,
                 "target_met": True,
                 "safe_to_merge": True,
-                "full_chain_complete": True,
+                "full_chain_complete": False,
+                "target_met_scope": "operator_ready_visible_non_clean_debt",
+                "safe_to_merge_scope": "operator_ready_visible_non_clean_debt",
             },
         },
         "ui_progress": {
@@ -2469,6 +2471,62 @@ def test_s3a_m2_r_operator_validation_contract_rejects_production_plan_count_mis
 
     assert "s3a_m2_r_production_plan_only_work_item_count_mismatch" in codes
     assert "s3a_m2_r_production_plan_only_state_count_scope_missing" in codes
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_non_clean_full_chain_claims() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "pipeline_contract.claims.full_chain_complete", True)
+    _set_nested(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", True)
+    _set_nested(
+        summary,
+        "work_item_kind_first.local_final_db_truth",
+        {
+            "import_status": {"imported": 2, "failed": 1},
+            "localization_status": {"localized": 2, "deferred": 1},
+        },
+    )
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_operator_full_chain_overclaimed_with_non_clean_evidence" in codes
+    assert "s3a_m2_r_operator_full_s3a_m2_r_overclaimed_with_non_clean_evidence" in codes
+
+
+def test_s3a_m2_r_operator_validation_contract_allows_operator_ready_with_visible_non_clean_debt() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(
+        summary,
+        "work_item_kind_first.local_final_db_truth",
+        {
+            "import_status": {"imported": 2, "failed": 1},
+            "localization_status": {"localized": 2, "deferred": 1},
+        },
+    )
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_placeholder_chinese_label() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "operator_labels.operator_statuses.completed_with_continuation", "????????")
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_operator_status_labels_missing_placeholder_or_empty" in codes
+
+
+def test_public_redaction_contract_rejects_production_source_root_label_leak() -> None:
+    result = check_phase_contract(
+        "public_redaction_contract_v1",
+        {"selected_root_label_public": "2: icloud-photos-production (153684ac)"},
+    )
+    codes = _error_codes(result)
+
+    assert "public_redaction_private_provenance_value_unredacted" in codes
 
 
 def test_s3a_m2_r_operator_validation_contract_rejects_missing_gui_and_plan_only_gates() -> None:
