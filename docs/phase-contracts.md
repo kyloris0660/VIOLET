@@ -31,6 +31,7 @@ extend a contract first.
 - `localization_contract_v1`
 - `source_metadata_contract_v1`
 - `source_concept_full_chain_contract_v1`
+- `r1r_full_source_concept_pipeline_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`
@@ -55,6 +56,14 @@ extend a contract first.
 claim. It distinguishes deterministic-only output from full-chain completion
 and fails if a phase silently skips required bounded LLM pair adjudication while
 claiming full-chain completion.
+
+`r1r_full_source_concept_pipeline_contract_v1` is the focused SCV2-R1R replay
+contract. It requires development/test/restored-snapshot isolation, a
+stage-level SC1 required-stage manifest, LLM pair planning/selection/judgment
+truthfulness, SourceConcept-owned write scope, mutation proof, review-pack
+manifest inclusion, public redaction, and explicit downstream route
+non-authorization. It allows truthful blocked statuses, but only
+`target_met_full_chain` may claim full-chain completion.
 
 ## Route Gate
 

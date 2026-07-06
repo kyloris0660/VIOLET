@@ -16,7 +16,10 @@ if str(ROOT) not in sys.path:
 
 from scripts.phase_contracts import REQUIRED_CONTRACT_IDS, check_phase_contract, list_contracts, load_summary_file  # noqa: E402
 from scripts.phase_contracts import contract_checks as contract_checks_module  # noqa: E402
-from scripts.phase_contracts.contract_registry import SOURCE_CONCEPT_FULL_CHAIN_STAGES  # noqa: E402
+from scripts.phase_contracts.contract_registry import (  # noqa: E402
+    R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
+    SOURCE_CONCEPT_FULL_CHAIN_STAGES,
+)
 
 
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "phase_contracts"
@@ -74,6 +77,149 @@ def _source_concept_summary(**overrides: object) -> dict:
         "validation_pack": {"generated": True},
         "review_pack": {"generated": True},
         "conclusion": "full_chain_completed",
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
+def _r1r_stage_manifest(*, omit: set[str] | None = None, executed_without_label: str | None = None) -> list[dict]:
+    omitted = omit or set()
+    rows = []
+    for stage in R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES:
+        if stage in omitted:
+            continue
+        row = {
+            "stage_name": stage,
+            "required": True,
+            "requested": True,
+            "configured": True,
+            "executed": True,
+            "skipped": False,
+            "skip_reason": None,
+            "input_count": 1,
+            "output_count": 1,
+            "evidence_artifact_label": f"r1r-private-{stage}",
+            "public_safe_summary_fields": ["count"],
+            "private_artifact_label": f"r1r-private-{stage}",
+            "contract_check_name": stage,
+            "status": "verified",
+        }
+        if stage == "provider_cache_adapter_or_zero_eligible_proof":
+            row["input_count"] = 0
+            row["output_count"] = 0
+            row["zero_eligible_proof"] = True
+            row["status"] = "skipped_not_applicable"
+            row["executed"] = False
+            row["skipped"] = True
+            row["skip_reason"] = "not_in_input_scope_zero_eligible"
+        if stage == executed_without_label:
+            row["evidence_artifact_label"] = ""
+        rows.append(row)
+    return rows
+
+
+def _r1r_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+            "status": "target_met_full_chain",
+            "claims": {"target_met": True, "full_chain_complete": True, "safe_to_merge": False},
+        },
+        "environment_isolation": {
+            "violet_env": "test",
+            "violet_env_is_production": False,
+            "production_profile_active": False,
+            "db_name": "blombooru_test",
+            "db_target_is_production": False,
+            "dev_test_restored_snapshot_db_used": True,
+            "storage_root_is_production": False,
+            "source_icloud_app_storage_write_target": False,
+            "dynamic_production_launcher_used": False,
+            "production_db_storage_source_roots_private_ledgers_used_as_fixtures": False,
+            "production_write_attempted": False,
+        },
+        "sc1_required_stage_manifest": _r1r_stage_manifest(),
+        "sc1_full_chain_proof": {
+            "complete_sc1_pipeline_executed": True,
+            "deterministic_pipeline_executed": True,
+            "llm_pair_adjudication_requested": True,
+            "llm_pair_adjudication_executed": True,
+            "llm_eligible_pair_count": 12,
+            "llm_selected_pair_count": 12,
+            "llm_judgment_count": 12,
+            "llm_same_count": 3,
+            "llm_cannot_count": 2,
+            "llm_uncertain_count": 7,
+            "all_required_stage_statuses_verified": True,
+            "missing_required_stages": [],
+            "skipped_required_stages": ["provider_cache_adapter_or_zero_eligible_proof"],
+            "stage_manifest_artifact": "r1r-private-stage-manifest",
+            "review_pack_includes_stage_manifest": True,
+            "deterministic_only_output_used_as_full_chain_route_approval_evidence": False,
+        },
+        "sc1_r1_r1r_fidelity_table": [
+            {
+                "pipeline_step": "bounded_llm_pair_adjudication",
+                "sc1_expected": "required",
+                "sc1_actual_evidence": "300 judgments",
+                "old_r1_actual_evidence": "disabled",
+                "r1r_actual_evidence": "12 judgments",
+                "r1r_status": "verified",
+                "impact_if_missing": "route blocked",
+                "contract_guard": "r1r_full_source_concept_pipeline_contract_v1",
+            }
+        ],
+        "llm_adjudication_plan": {
+            "required": True,
+            "eligible_pair_count": 12,
+            "selected_pair_count": 12,
+            "max_calls": 300,
+            "budget_usd": 50.0,
+            "projected_budget_usd": 0.2,
+        },
+        "llm_readiness": {
+            "passed": True,
+            "operator_approved": True,
+            "provider_available": True,
+            "cache_ready": True,
+            "budget_ready": True,
+        },
+        "mutation_proof": {"passed": True, "forbidden_changed_tables": [], "unexpected_changed_tables": []},
+        "post_commit_verification": {"passed": True},
+        "review_pack": {"generated": True, "includes_stage_manifest": True},
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "route_authorization": {
+            "r2_authorized": False,
+            "px1_b_authorized": False,
+            "provider_2_authorized": False,
+            "scale_up_authorized": False,
+            "entity_bridge_authorized": False,
+            "source_concept_truth_promotion_authorized": False,
+            "route_approval_authorized": False,
+            "a1r_still_required": True,
+        },
+        "forbidden_writes": {
+            "entity_truth": False,
+            "entity_alias_truth": False,
+            "confirmed_assignments": False,
+            "media_tags": False,
+            "source_metadata": False,
+            "provider_cache": False,
+            "source_icloud_app_storage": False,
+        },
+        "source_concept_write_scope": {
+            "allowed_tables": [
+                "blombooru_source_concept_resolution_runs",
+                "blombooru_source_concept_signals",
+                "blombooru_source_concepts",
+                "blombooru_source_concept_aliases",
+                "blombooru_source_concept_evidence",
+                "blombooru_source_concept_signal_links",
+                "blombooru_source_concept_search_index",
+            ],
+            "changed_tables": ["blombooru_source_concept_signals"],
+        },
     }
     for key, value in overrides.items():
         summary[key] = value
@@ -5120,6 +5266,201 @@ def test_source_concept_blocked_status_with_blocked_stage_cannot_claim_safe_to_m
 
     assert result.passed is False
     assert "blocked_status_claimed_completion" in _error_codes(result)
+
+
+def test_r1r_contract_accepts_target_met_full_chain_with_stage_manifest() -> None:
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", _r1r_summary())
+
+    assert result.passed is True
+
+
+def test_r1r_contract_accepts_truthful_no_llm_approval_block() -> None:
+    summary = _r1r_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+        "status": "blocked_llm_approval_required",
+        "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
+    }
+    summary["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    summary["sc1_full_chain_proof"]["llm_pair_adjudication_executed"] = False
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 0
+    summary["llm_readiness"]["operator_approved"] = False
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+@pytest.mark.parametrize(
+    ("path", "code"),
+    [
+        ("environment_isolation.production_profile_active", "r1r_environment_isolation_failed"),
+        ("environment_isolation.violet_env_is_production", "r1r_environment_isolation_failed"),
+        ("environment_isolation.db_target_is_production", "r1r_environment_isolation_failed"),
+        ("environment_isolation.production_write_attempted", "r1r_environment_isolation_failed"),
+    ],
+)
+def test_r1r_contract_rejects_production_isolation_failures(path: str, code: str) -> None:
+    summary = _r1r_summary()
+    _set_nested(summary, path, True)
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert code in _error_codes(result)
+
+
+def test_r1r_contract_rejects_production_db_name() -> None:
+    summary = _r1r_summary()
+    summary["environment_isolation"]["db_name"] = "blombooru"
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_production_db_name_rejected" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_target_met_with_llm_disabled_or_zero_judgments() -> None:
+    disabled = _r1r_summary()
+    disabled["sc1_full_chain_proof"]["llm_pair_adjudication_executed"] = False
+    disabled["llm_readiness"]["operator_approved"] = False
+    zero = _r1r_summary()
+    zero["sc1_full_chain_proof"]["llm_judgment_count"] = 0
+
+    disabled_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", disabled)
+    zero_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", zero)
+
+    assert "r1r_llm_used_false_with_target_met_full_chain" in _error_codes(disabled_result)
+    assert "r1r_llm_judgment_count_zero_for_eligible_pairs" in _error_codes(zero_result)
+
+
+def test_r1r_contract_rejects_missing_stage_manifest_or_executed_stage_without_label() -> None:
+    missing = _r1r_summary(sc1_required_stage_manifest=_r1r_stage_manifest(omit={"bounded_llm_judgment_execution"}))
+    unlabeled = _r1r_summary(
+        sc1_required_stage_manifest=_r1r_stage_manifest(executed_without_label="bounded_llm_judgment_execution")
+    )
+
+    missing_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", missing)
+    unlabeled_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", unlabeled)
+
+    assert "r1r_required_stage_manifest_row_missing" in _error_codes(missing_result)
+    assert "r1r_stage_executed_without_evidence_label" in _error_codes(unlabeled_result)
+
+
+def test_r1r_contract_rejects_provider_cache_skip_without_proof() -> None:
+    manifest = _r1r_stage_manifest()
+    for row in manifest:
+        if row["stage_name"] == "provider_cache_adapter_or_zero_eligible_proof":
+            row["zero_eligible_proof"] = False
+            row["not_in_input_scope_proof"] = False
+            row["input_count"] = 5
+            row["skip_reason"] = "not checked"
+    result = check_phase_contract(
+        "r1r_full_source_concept_pipeline_contract_v1",
+        _r1r_summary(sc1_required_stage_manifest=manifest),
+    )
+
+    assert "r1r_provider_cache_adapter_skip_without_zero_scope_proof" in _error_codes(result)
+
+
+@pytest.mark.parametrize(
+    "write_key",
+    [
+        "entity_truth",
+        "media_tags",
+        "source_metadata",
+        "source_icloud_app_storage",
+    ],
+)
+def test_r1r_contract_rejects_forbidden_write_claims(write_key: str) -> None:
+    summary = _r1r_summary()
+    summary["forbidden_writes"][write_key] = True
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_forbidden_write_claimed" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_mutation_outside_source_concept_tables() -> None:
+    summary = _r1r_summary()
+    summary["source_concept_write_scope"]["changed_tables"] = ["blombooru_media_tags"]
+    summary["mutation_proof"]["forbidden_changed_tables"] = ["blombooru_media_tags"]
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_forbidden_table_changed" in codes
+    assert "r1r_source_concept_write_outside_allowlist" in codes
+
+
+def test_r1r_contract_rejects_llm_readiness_status_mismatches() -> None:
+    no_approval = _r1r_summary()
+    no_approval["pipeline_contract"]["status"] = "dry_run_complete_execute_not_requested"
+    no_approval["pipeline_contract"]["claims"] = {"target_met": False, "full_chain_complete": False}
+    no_approval["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    no_approval["llm_readiness"]["operator_approved"] = False
+    provider = _r1r_summary()
+    provider["pipeline_contract"]["status"] = "dry_run_complete_execute_not_requested"
+    provider["pipeline_contract"]["claims"] = {"target_met": False, "full_chain_complete": False}
+    provider["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    provider["llm_readiness"]["provider_available"] = False
+    budget = _r1r_summary()
+    budget["pipeline_contract"]["status"] = "dry_run_complete_execute_not_requested"
+    budget["pipeline_contract"]["claims"] = {"target_met": False, "full_chain_complete": False}
+    budget["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    budget["llm_readiness"]["budget_ready"] = False
+
+    assert "r1r_llm_approval_required_status_missing" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", no_approval)
+    )
+    assert "r1r_provider_unavailable_not_blocked" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", provider)
+    )
+    assert "r1r_budget_unready_not_blocked" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", budget)
+    )
+
+
+def test_r1r_contract_rejects_review_pack_without_manifest_and_redaction_failure() -> None:
+    review = _r1r_summary()
+    review["review_pack"]["includes_stage_manifest"] = False
+    redaction = _r1r_summary()
+    redaction["public_redaction"] = {"passed": False, "finding_count": 1}
+
+    assert "r1r_review_pack_omits_stage_manifest" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", review)
+    )
+    assert "r1r_public_redaction_missing_or_failed" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", redaction)
+    )
+
+
+@pytest.mark.parametrize(
+    "route_key",
+    [
+        "r2_authorized",
+        "px1_b_authorized",
+        "provider_2_authorized",
+        "scale_up_authorized",
+        "entity_bridge_authorized",
+        "source_concept_truth_promotion_authorized",
+        "route_approval_authorized",
+    ],
+)
+def test_r1r_contract_rejects_downstream_route_authorization(route_key: str) -> None:
+    summary = _r1r_summary()
+    summary["route_authorization"][route_key] = True
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_forbidden_route_authorization" in _error_codes(result)
+
+
+def test_r1r_contract_requires_a1r_after_r1r() -> None:
+    summary = _r1r_summary()
+    summary["route_authorization"]["a1r_still_required"] = False
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_a1r_still_required_missing" in _error_codes(result)
 
 
 def test_forbidden_stage_executed_true_fails_even_with_negative_status() -> None:
