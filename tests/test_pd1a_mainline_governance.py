@@ -1,4 +1,4 @@
-"""Focused tests for PD1-A-R1 roadmap persistence."""
+"""Focused tests for current mainline roadmap persistence."""
 
 from __future__ import annotations
 
@@ -27,28 +27,30 @@ def _assert_split_s2g_not_active(text: str) -> None:
     assert "Recommended immediate next phase after PD1-A: `S2G-1`" not in text
 
 
-def test_current_mainline_roadmap_persists_accepted_sequence() -> None:
+def test_current_mainline_roadmap_persists_post_pr129_sequence() -> None:
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
-    assert "PR #113" in text
-    assert "17ec3326bc00e4d025bbe4297fad1157b9cda2ff" in text
-    assert "PR #122" in text
-    assert "aece424df2814ef0d840f9fe472a9d19478d2020" in text
+    assert "PR #129" in text
+    assert "285e76d3eaa76f02acaa9dccf2b7fc91761ca428" in text
+    assert "ef9b4447e48221ece00924afed78101640ed56e9" in text
+    assert "operator-ready" in text
+    assert "Issue #130" in text
     _assert_in_order(
         text,
         [
-            "PD1-A-R1",
-            "S2G: GPU / AI Tagging Execution Foundation",
-            "R1R",
-            "A1R",
-            "Pixiv/source metadata strategy polish",
-            "S3A",
-            "S3B",
-            "S2F0",
+            "1. `S2G-M1",
+            "2. `S3A-M1",
+            "3. `S3A-M2",
+            "4. `S3A-M2-R",
+            "5. `R1R",
+            "6. `A1R",
+            "7. `Pixiv/source metadata strategy polish`",
+            "8. `S3B",
+            "9. `S2F0",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "Single consolidated phase" in text
+    assert "R1R must use dev/test/restored-snapshot DB only" in text
     assert "Production / Development Separation" in text
     assert "What Is Intentionally Not Next" in text
 
@@ -56,27 +58,35 @@ def test_current_mainline_roadmap_persists_accepted_sequence() -> None:
 def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:
     text = _read("docs/roadmap/post-s2-production-roadmap.md")
 
+    assert "PR #129" in text
+    assert "Issue #130" in text
     _assert_in_order(
         text,
         [
-            "PD1-A-R1",
-            "S2G: GPU / AI Tagging Execution Foundation",
-            "R1R",
-            "A1R",
-            "Pixiv/source metadata strategy polish",
-            "S3A",
-            "S3B",
-            "S2F0",
+            "1. `S2G-M1",
+            "2. `S3A-M1",
+            "3. `S3A-M2",
+            "4. `S3A-M2-R",
+            "5. `R1R",
+            "6. `A1R",
+            "7. `Pixiv/source metadata strategy polish`",
+            "8. `S3B",
+            "9. `S2F0",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "Do not introduce new providers before Pixiv/source metadata is settled" in text
+    assert "R1R must use dev/test/restored-snapshot DB only" in text
+    assert "Do not introduce new providers before Pixiv/source metadata is settled" not in text
+    assert "Make the Pixiv/source" in text
+    assert "metadata route reliable before adding providers" in text
 
 
 def test_handoff_points_to_current_mainline_roadmap() -> None:
     text = _read("docs/current-handoff.md")
 
     assert "docs/roadmap/current-mainline-roadmap.md" in text
-    assert "PD1-A-R1" in text
-    assert "S2G: GPU / AI Tagging Execution Foundation" in text
+    assert "R1R-P0: Current Handoff and Roadmap Slim Refresh" in text
+    assert "R1R: Full SourceConcept Pipeline Replay / Remediation" in text
+    assert "A1R: Route audit rerun after R1R outputs exist" in text
+    assert "Current phase | `S3A-M2-R" not in text
     _assert_split_s2g_not_active(text)
