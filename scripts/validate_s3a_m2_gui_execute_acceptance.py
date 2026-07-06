@@ -358,17 +358,22 @@ def run_items_summary(db: Any, run_id: int, *, root_id: int | None = None) -> di
     state_counts: Counter[str] = Counter()
     reason_counts: Counter[str] = Counter()
     source_item_ids: list[int] = []
+    retry_ready_source_item_ids: set[int] = set()
     media_ids: set[int] = set()
     skipped_placeholder_run_item_count = 0
     for row in rows:
-        state_counts[str(row.item_state or "unknown")] += 1
+        item_state = str(row.item_state or "unknown")
+        state_counts[item_state] += 1
         reason_counts[str(row.reason or row.item_state or "unknown")] += 1
         if str(row.item_state or "") == "skipped_placeholder" or str(row.reason or "") in {
             "cloud_placeholder",
             "icloud_placeholder",
         }:
             skipped_placeholder_run_item_count += 1
-        source_item_ids.append(int(row.source_item_id))
+        source_item_id = int(row.source_item_id)
+        source_item_ids.append(source_item_id)
+        if item_state == "retry_source_ready_for_import":
+            retry_ready_source_item_ids.add(source_item_id)
         if row.media_id is not None:
             media_ids.add(int(row.media_id))
 
@@ -411,7 +416,10 @@ def run_items_summary(db: Any, run_id: int, *, root_id: int | None = None) -> di
     if source_root_ids:
         remaining_importable_query = remaining_importable_query.filter(DynamicSourceItem.source_root_id.in_(source_root_ids))
         remaining_placeholders_query = remaining_placeholders_query.filter(DynamicSourceItem.source_root_id.in_(source_root_ids))
-    remaining_importable = remaining_importable_query.count()
+    remaining_importable_ids = [int(value) for (value,) in remaining_importable_query.with_entities(DynamicSourceItem.id).all()]
+    retry_created_pending_import_ids = sorted(set(remaining_importable_ids) & retry_ready_source_item_ids)
+    unrelated_remaining_importable_ids = sorted(set(remaining_importable_ids) - set(retry_created_pending_import_ids))
+    remaining_importable = len(remaining_importable_ids)
     remaining_placeholders = remaining_placeholders_query.count()
     return {
         "run_item_count": len(rows),
@@ -426,12 +434,25 @@ def run_items_summary(db: Any, run_id: int, *, root_id: int | None = None) -> di
         "ai_tagging_status_counts": dict(sorted(ai_status_counts.items())),
         "localization_status_counts": dict(sorted(localization_status_counts.items())),
         "remaining_importable_db_pending_count": int(remaining_importable),
+        "retry_created_pending_import_count": int(len(retry_created_pending_import_ids)),
+        "unrelated_remaining_importable_db_pending_count": int(len(unrelated_remaining_importable_ids)),
         "remaining_placeholder_db_count": int(remaining_placeholders),
     }
 
 
 def stage_count_from_status(counts: Mapping[str, int], *accepted: str) -> int:
     return sum(int(counts.get(key, 0)) for key in accepted)
+
+
+def retry_created_pending_import_visible(outcome: Mapping[str, Any], item_summary: Mapping[str, Any]) -> bool:
+    return bool(
+        int(outcome.get("retry_source_ready_for_import") or 0) > 0
+        and int(item_summary.get("retry_created_pending_import_count") or 0) > 0
+    )
+
+
+def unrelated_pending_import_blocks_acceptance(item_summary: Mapping[str, Any]) -> bool:
+    return int(item_summary.get("unrelated_remaining_importable_db_pending_count") or 0) > 0
 
 
 def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -518,18 +539,47 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
         gui_provenance = gui_provenance_for_run(run, expected_session_id=args.gui_validation_session_id)
         outcome = execute_payload.get("outcome_counts") if isinstance(execute_payload.get("outcome_counts"), dict) else {}
         localization_payload = execute_payload.get("localization") if isinstance(execute_payload.get("localization"), dict) else {}
+        plan_payload = execute_payload.get("plan") if isinstance(execute_payload.get("plan"), dict) else {}
+        plan_counts = plan_payload.get("counts") if isinstance(plan_payload.get("counts"), dict) else {}
+        work_item_counts = (
+            execute_payload.get("work_item_counts")
+            if isinstance(execute_payload.get("work_item_counts"), dict)
+            else plan_counts.get("work_item_counts")
+        )
+        work_item_counts = {
+            str(key): int(value or 0)
+            for key, value in dict(work_item_counts or {}).items()
+        }
+        work_item_summary = (
+            execute_payload.get("work_item_summary")
+            if isinstance(execute_payload.get("work_item_summary"), dict)
+            else {
+                "import_work": int(work_item_counts.get("IMPORT", 0)),
+                "app_media_followup": int(work_item_counts.get("FOLLOWUP", 0)),
+                "retry_source_debt": int(work_item_counts.get("RETRY_SOURCE", 0)),
+                "broken_diagnostics": int(work_item_counts.get("BROKEN_STATE", 0)),
+                "placeholder_deferred": int(work_item_counts.get("PLACEHOLDER", 0)),
+                "noop_diagnostics": int(work_item_counts.get("NOOP_DIAGNOSTIC", 0)),
+                "uses_work_item_kind_first_semantics": bool(work_item_counts),
+            }
+        )
 
         imported = int(outcome.get("imported") or item_summary["state_counts"].get("imported", 0))
+        planned_followup_work = int(work_item_counts.get("FOLLOWUP", 0))
+        downstream_targets = execute_payload.get("downstream_targets")
+        downstream_target_count = len(downstream_targets) if isinstance(downstream_targets, list) else 0
+        downstream_expected_workload = imported + max(planned_followup_work, downstream_target_count)
         classified = stage_count_from_status(item_summary["classification_status_counts"], "classified", "classified_reused")
         ai_tagged = stage_count_from_status(item_summary["ai_tagging_status_counts"], "ai_tagged", "tagged", "tagged_reused")
         localized = stage_count_from_status(item_summary["localization_status_counts"], "localized")
         localization_status = str(localization_payload.get("status") or "unknown")
         localization_failed = int(localization_payload.get("failed") or outcome.get("localization_failed") or 0)
         localization_remaining_gap = int(localization_payload.get("tags_requiring_localization_after_runner") or 0)
-        localization_ok = imported <= 0 or (
+        localization_ok = downstream_expected_workload <= 0 or (
             localization_status in {"completed", "completed_existing_coverage"}
             and localization_failed == 0
             and localization_remaining_gap == 0
+            and localized >= downstream_expected_workload
         )
         expected_total_seen = int(run.total_seen or 0)
         ledger_ok = expected_total_seen == int(item_summary["run_item_count"])
@@ -581,19 +631,26 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             blockers.append("gui_run_not_completed")
         if not ledger_ok:
             blockers.append("ledger_row_count_mismatch")
-        if imported <= 0 and not args.allow_zero_import:
+        if imported <= 0 and downstream_expected_workload <= 0 and not args.allow_zero_import:
             blockers.append("gui_run_imported_zero")
+        if downstream_expected_workload > 0 and classified < downstream_expected_workload:
+            blockers.append("classification_incomplete_for_downstream_workload")
         if imported > 0 and classified < imported:
             blockers.append("classification_incomplete_for_imported_items")
+        if downstream_expected_workload > 0 and ai_tagged < downstream_expected_workload:
+            blockers.append("ai_tagging_incomplete_for_downstream_workload")
         if imported > 0 and ai_tagged < imported:
             blockers.append("ai_tagging_incomplete_for_imported_items")
+        if downstream_expected_workload > 0 and not localization_ok:
+            blockers.append("localization_incomplete_or_unaccepted_for_downstream_workload")
         if imported > 0 and not localization_ok:
             blockers.append("localization_incomplete_or_unaccepted_for_gui_e2e")
         if not tag_semantics_ok:
             blockers.append("ai_tag_assignment_semantics_invalid")
         if int(entity_summary.get("violations_found") or 0) != 0:
             blockers.append("ai_only_entity_truth_violation")
-        if item_summary["remaining_importable_db_pending_count"] > 0:
+        retry_created_pending_import = retry_created_pending_import_visible(outcome, item_summary)
+        if unrelated_pending_import_blocks_acceptance(item_summary):
             blockers.append("remaining_importable_db_pending_items")
         if item_summary["remaining_placeholder_db_count"] > 0:
             blockers.append("remaining_placeholder_items")
@@ -618,6 +675,8 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             },
             "min_run_id": int(args.min_run_id),
             "run_status": str(run.status),
+            "operator_status": str(execute_payload.get("operator_status") or run.status),
+            "operator_status_label_zh": str(execute_payload.get("operator_status_label_zh") or ""),
             "acceptable_terminal_statuses": sorted(acceptable_terminal_statuses),
             "run_type": str(run.run_type),
             "run_mode": str(run.mode),
@@ -630,6 +689,15 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             "classified": classified,
             "ai_tagged": ai_tagged,
             "localized_source_items": localized,
+            "downstream_validation": {
+                "expected_workload": int(downstream_expected_workload),
+                "imported_media": imported,
+                "planned_followup_work": planned_followup_work,
+                "downstream_targets": downstream_target_count,
+                "classification_passed": classified >= downstream_expected_workload,
+                "ai_tagging_passed": ai_tagged >= downstream_expected_workload,
+                "localization_passed": localization_ok,
+            },
             "localization_summary": {
                 "status": str(localization_payload.get("status") or "unknown"),
                 "translated": int(localization_payload.get("translated") or 0),
@@ -644,6 +712,26 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
                 "run_item_count": int(item_summary["run_item_count"]),
                 "passed": ledger_ok,
             },
+            "operator_progress": {
+                "current_stage": execute_payload.get("current_stage"),
+                "current_stage_status": execute_payload.get("current_stage_status"),
+                "current_item_label": execute_payload.get("current_item_label"),
+                "last_heartbeat_at": execute_payload.get("last_heartbeat_at"),
+                "stage_rows": execute_payload.get("stage_rows") if isinstance(execute_payload.get("stage_rows"), list) else [],
+            },
+            "operator_work_summary": {
+                "work_item_counts": work_item_counts,
+                "work_item_summary": work_item_summary,
+                "planned_import_work": int(work_item_counts.get("IMPORT", 0)),
+                "planned_retry_source_work": int(work_item_counts.get("RETRY_SOURCE", 0)),
+                "planned_followup_work": planned_followup_work,
+                "non_executable_diagnostics": int(work_item_counts.get("BROKEN_STATE", 0))
+                + int(work_item_counts.get("PLACEHOLDER", 0))
+                + int(work_item_counts.get("NOOP_DIAGNOSTIC", 0)),
+                "successful_retry_pending_import_visible": bool(
+                    retry_created_pending_import
+                ),
+            },
             "state_counts": item_summary["state_counts"],
             "reason_counts": item_summary["reason_counts"],
             "stage_status_counts": {
@@ -653,6 +741,10 @@ def build_validation(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
             },
             "final_inventory": {
                 "remaining_importable_db_pending_count": item_summary["remaining_importable_db_pending_count"],
+                "retry_created_pending_import_count": item_summary["retry_created_pending_import_count"],
+                "unrelated_remaining_importable_db_pending_count": item_summary[
+                    "unrelated_remaining_importable_db_pending_count"
+                ],
                 "remaining_placeholder_db_count": item_summary["remaining_placeholder_db_count"],
                 "skipped_placeholder_run_item_count": item_summary["skipped_placeholder_run_item_count"],
                 "source_root_ids": item_summary["source_root_ids"],

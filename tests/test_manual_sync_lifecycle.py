@@ -17,6 +17,7 @@ from app.services.manual_sync_lifecycle import (  # noqa: E402
     WorkItemKind,
     classify_plan_item_state,
     classify_source_item,
+    manual_sync_operator_label_catalog,
     map_manual_sync_operator_status,
 )
 
@@ -580,6 +581,13 @@ def test_manual_sync_lifecycle_operator_status_mapping() -> None:
         == "failed_systemic"
     )
     assert map_manual_sync_operator_status(run_status="completed", outcome_counts={}) == "completed"
+    assert (
+        map_manual_sync_operator_status(
+            run_status="completed",
+            outcome_counts={"retry_source_ready_for_import": 1},
+        )
+        == "completed_with_continuation"
+    )
     assert map_manual_sync_operator_status(run_status="failed", outcome_counts={"failed": 1}) == "failed_systemic"
     assert (
         map_manual_sync_operator_status(
@@ -616,6 +624,42 @@ def test_manual_sync_lifecycle_operator_status_mapping() -> None:
         )
         == "failed_systemic"
     )
+
+
+def test_manual_sync_operator_label_catalog_covers_pr_r2_operator_terms() -> None:
+    catalog = manual_sync_operator_label_catalog()
+
+    assert set(catalog["operator_statuses"]) >= {
+        "completed",
+        "completed_with_retryable_failures",
+        "completed_with_followup_required",
+        "completed_with_continuation",
+        "completed_with_retryable_failures_plus_continuation",
+        "failed_systemic",
+        "blocked_preflight",
+        "cancelled",
+    }
+    assert set(catalog["work_item_kinds"]) >= {
+        "IMPORT",
+        "FOLLOWUP",
+        "RETRY_SOURCE",
+        "BROKEN_STATE",
+        "PLACEHOLDER",
+        "NOOP_DIAGNOSTIC",
+    }
+    assert set(catalog["lifecycle_kinds"]) >= {
+        "APP_MEDIA_FOLLOWUP",
+        "IMPORT_CANDIDATE",
+        "RETRYABLE_SOURCE_FAILURE",
+        "PLACEHOLDER_DEFERRED",
+        "STABLE_NOOP",
+        "HISTORICAL_DIAGNOSTIC",
+        "CONTINUATION",
+        "BROKEN_STATE",
+        "FATAL_BLOCKER",
+    }
+    for section in catalog.values():
+        assert all(value and value != key for key, value in section.items())
 
 
 def test_manual_sync_lifecycle_plan_state_boundaries() -> None:

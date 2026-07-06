@@ -1,0 +1,1121 @@
+{
+  "phase": "S3A-M2-R PR-R2",
+  "repository": "kyloris0660/VIOLET",
+  "pr": 129,
+  "branch": "codex/s3a-m2-r-ui-operator-validation-r2",
+  "head": "cabb0b019153e5660f084ef6010b323f31301ba6",
+  "pipeline_contract": {
+    "contract_id": "s3a_m2_r_operator_validation_contract_v1",
+    "status": "operator_ready",
+    "phase_identity": "S3A-M2-R PR-R2",
+    "claims": {
+      "operator_ready": true,
+      "full_s3a_m2_r_complete": false,
+      "target_met": true,
+      "safe_to_merge": true,
+      "full_chain_complete": false,
+      "target_met_scope": "operator_ready_visible_non_clean_debt",
+      "safe_to_merge_scope": "operator_ready_visible_non_clean_debt",
+      "full_chain_complete_blocked_by_non_clean_evidence": true
+    }
+  },
+  "pr129_final_evidence_operator_consistency_fix": {
+    "status": "passed",
+    "blocker_fixes": {
+      "retry_source_ready_for_import_non_clean_operator_status": true,
+      "production_plan_only_counts_explicitly_scoped": true,
+      "completed_with_localization_failures_terminal_stage": true,
+      "advanced_blocked_retry_source_card_non_executable": true,
+      "closeout_summary_counts_consistent": true,
+      "normal_web_admin_actionable_definition_includes_retry_source": true,
+      "terminal_completed_with_stage_statuses_not_rendered_as_queued": true,
+      "contract_checks_production_execute_ran_and_safety_flag_agreement": true,
+      "full_chain_completion_claims_downgraded_for_non_clean_evidence": true,
+      "followup_only_downstream_workload_validated": true,
+      "retry_ready_rows_visible_as_next_import_work": true,
+      "required_chinese_labels_readable_not_question_marks": true,
+      "skipped_terminal_statuses_not_rendered_as_queued": true,
+      "production_root_name_redaction_passed": true,
+      "normal_start_page_confirmation_handoff_reliable": true,
+      "normal_start_native_window_confirm_not_sole_confirmation_path": true,
+      "normal_start_plan_ready_recoverable_after_cancel": true,
+      "normal_start_execute_current_plan_without_replanning": true,
+      "delayed_plan_first_attempt_page_confirmation_browser_tested": true,
+      "confirmation_panel_appears_near_top_after_plan": true
+    },
+    "normal_actionable_work_item_kinds": [
+      "IMPORT",
+      "FOLLOWUP",
+      "RETRY_SOURCE"
+    ],
+    "normal_non_executable_work_item_kinds": [
+      "BROKEN_STATE",
+      "PLACEHOLDER",
+      "NOOP_DIAGNOSTIC"
+    ],
+    "retry_source_ready_for_import_operator_status": "completed_with_continuation",
+    "advanced_blocked_retry_source_card_label": "visible retry-source debt; currently non-executable in advanced full-rescan mode",
+    "operator_ready": true,
+    "full_chain_complete": false,
+    "full_s3a_m2_r_complete": false,
+    "retry_source_ready_for_import_next_import_count_visible": true,
+    "followup_only_validator_coverage": {
+      "failed_or_deferred_downstream_blocks_acceptance": true,
+      "completed_downstream_passes_acceptance": true
+    },
+    "human_acceptance_failure_explanation": "Production human acceptance found that native browser confirmation after a long Plan could fail to appear; no Execute was created, so backend safety was fail-closed, but the UI ended as a dead-end manual-sync-not-executed state.",
+    "confirmation_handoff_fix": {
+      "normal_start_uses_page_level_confirmation": true,
+      "native_window_confirm_removed_from_normal_handoff": true,
+      "plan_ready_awaiting_operator_confirmation_state": true,
+      "page_confirmation_can_execute_current_plan_without_replanning": true,
+      "cancel_does_not_create_execute_and_keeps_plan_recoverable": true,
+      "expired_plan_disables_execute_and_requires_replan": true,
+      "duplicate_execute_disabled_while_request_in_flight": true
+    },
+    "post_human_acceptance_status": "passed",
+    "confirmation_panel_placement_polish": {
+      "status": "passed",
+      "issue": "Page-level confirmation appeared below the long Plan result/progress details, requiring manual scroll.",
+      "fix": "Move the page-level confirmation panel before the detailed Plan result and scroll it into view when normal Start enters awaiting confirmation.",
+      "panel_dom_order": "progress strip -> page-level confirmation -> detailed Plan result",
+      "behavior_changed": false
+    }
+  },
+  "ui_progress": {
+    "plan_progress_visible": true,
+    "execute_transition_visible_before_run_id": true,
+    "execute_duplicate_submit_disabled": true,
+    "stage_heartbeat_visible": true,
+    "error_state_visible": true,
+    "waiting_for_first_real_worker_heartbeat_visible": true,
+    "queued_stages_not_rendered_as_running": true,
+    "terminal_non_clean_stages_not_rendered_as_queued": true,
+    "stages_visible": [
+      "plan",
+      "import",
+      "classification",
+      "ai_tagging",
+      "localization",
+      "summary"
+    ],
+    "execute_transition_states": [
+      "execute_request_submitted",
+      "validating_plan_and_confirmation",
+      "creating_execute_run",
+      "preparing_manual_sync_execution",
+      "waiting_for_first_backend_progress_heartbeat"
+    ],
+    "completed_with_localization_failures_terminal_not_queued": true
+  },
+  "operator_labels": {
+    "operator_statuses": {
+      "completed": "已完成：本批次没有剩余操作员动作",
+      "completed_with_retryable_failures": "已完成但有可重试源文件债务：稍后可重试源文件读取",
+      "completed_with_followup_required": "已完成但需要后续补处理：分类、AI 标签或本地化仍有未完成项",
+      "completed_with_continuation": "已完成当前批次：还有下一批或源文件重试恢复后的导入需要继续计划",
+      "completed_with_retryable_failures_plus_continuation": "已完成当前批次：同时有可重试源文件债务和后续批次",
+      "failed_systemic": "系统性失败：需要先排查环境或流程问题",
+      "blocked_preflight": "预检阻断：尚未进入执行",
+      "cancelled": "已取消：已提交的结果保留，剩余项目需要重新计划"
+    },
+    "work_item_kinds": {
+      "IMPORT": "导入新媒体",
+      "FOLLOWUP": "应用媒体后续补处理",
+      "RETRY_SOURCE": "重试源文件读取",
+      "BROKEN_STATE": "状态异常诊断",
+      "PLACEHOLDER": "云占位/暂缓项目",
+      "NOOP_DIAGNOSTIC": "无需执行的诊断项"
+    },
+    "lifecycle_kinds": {
+      "APP_MEDIA_FOLLOWUP": "应用内媒体需要补处理",
+      "IMPORT_CANDIDATE": "可导入候选",
+      "RETRYABLE_SOURCE_FAILURE": "源文件读取可重试失败",
+      "PLACEHOLDER_DEFERRED": "云占位暂缓",
+      "STABLE_NOOP": "稳定无操作",
+      "HISTORICAL_DIAGNOSTIC": "历史诊断记录",
+      "CONTINUATION": "批次续跑",
+      "BROKEN_STATE": "状态异常",
+      "FATAL_BLOCKER": "致命阻断"
+    }
+  },
+  "work_item_kind_first": {
+    "import_counts_from_work_item_kind": true,
+    "retry_counts_from_work_item_kind": true,
+    "legacy_state_does_not_override_work_item_kind": true,
+    "noop_and_placeholder_non_executable": true,
+    "broken_diagnostics_visible_non_actionable": true,
+    "successful_retry_creates_visible_pending_import": true,
+    "source_missing_retry_debt_visible": true,
+    "missing_media_or_app_file_visible": true,
+    "normal_incremental_retry_source_executable": true,
+    "advanced_full_rescan_retry_source_non_executable": true,
+    "local_final_db_truth": {
+      "ai_tagging_status": {
+        "ai_tagged": 13,
+        "deferred": 3
+      },
+      "classification_status": {
+        "classified": 13,
+        "deferred": 3
+      },
+      "deferred_reason": {
+        "": 15,
+        "existing_media_hash": 1
+      },
+      "dynamic_source_items": 16,
+      "failure_reason": {
+        "": 14,
+        "source_missing": 2
+      },
+      "import_status": {
+        "deferred": 1,
+        "failed": 2,
+        "imported": 13
+      },
+      "localization_status": {
+        "blocked_import_failed": 2,
+        "deferred": 1,
+        "localized": 13
+      },
+      "media_linked_items": 13,
+      "source_status": {
+        "available": 14,
+        "missing": 2
+      },
+      "sync_state": {
+        "imported": 13,
+        "missing": 2,
+        "skipped_existing_media": 1
+      }
+    },
+    "production_plan_work_item_counts": {
+      "IMPORT": 235,
+      "FOLLOWUP": 0,
+      "RETRY_SOURCE": 20,
+      "BROKEN_STATE": 0,
+      "PLACEHOLDER": 0,
+      "NOOP_DIAGNOSTIC": 0
+    },
+    "successful_retry_ready_for_import_not_clean_completed": true,
+    "retry_source_ready_for_import_operator_status": "completed_with_continuation",
+    "advanced_blocked_retry_source_not_labeled_executable": true,
+    "completed_with_localization_failures_terminal_not_queued": true,
+    "retry_source_ready_for_import_next_import_count_visible": true,
+    "skipped_terminal_statuses_terminal_not_queued": true,
+    "followup_only_downstream_workload_validated": true,
+    "production_plan_lifecycle_counts": {
+      "APP_MEDIA_FOLLOWUP": 0,
+      "CONTINUATION": 170,
+      "IMPORT_CANDIDATE": 65,
+      "RETRYABLE_SOURCE_FAILURE": 20
+    },
+    "production_plan_selected_plan_items": 255
+  },
+  "browser_validation": {
+    "status": "passed",
+    "browser": "Microsoft Edge via Playwright",
+    "execute_transition_checked": true,
+    "execute_transition_non_blank_checked": true,
+    "duplicate_execute_disabled_checked": true,
+    "pending_placeholder_visible_before_first_response": true,
+    "stage_strip_checked": true,
+    "terminal_status_checked": true,
+    "public_surface_redaction_checked": true,
+    "queued_stage_no_fake_running_checked": true,
+    "skipped_terminal_stage_not_queued_checked": true,
+    "run_created_at_before_real_worker_heartbeat_checked": true,
+    "pending_execute_response_last_heartbeat_at_present": false,
+    "pending_execute_response_run_created_at_present": true,
+    "normal_start_page_confirmation": {
+      "status": "passed",
+      "delayed_plan_first_attempt": true,
+      "page_confirmation_visible_before_execute": true,
+      "page_confirmation_state_before_execute": "awaiting",
+      "native_dialog_seen": false,
+      "cancel_kept_plan_visible": true,
+      "cancel_confirm_button_still_available": true,
+      "page_confirm_submit_disabled_while_execute_request_in_flight": true,
+      "duplicate_submit_disabled_while_execute_request_in_flight": true,
+      "execute_current_plan_without_replanning": true,
+      "execute_post_occurs_only_after_page_level_confirm_click": true
+    },
+    "confirmation_panel_top_placement_checked": true,
+    "confirmation_panel_visible_without_manual_scroll": true,
+    "confirmation_panel_dom_order": "progress strip before panel before detailed Plan result"
+  },
+  "local_gui_acceptance": {
+    "status": "passed",
+    "gui_plan_passed": true,
+    "gui_execute_passed": true,
+    "local_profile_only": true,
+    "production_execute_ran": false,
+    "isolated_incremental_gui_e2e": {
+      "status": "passed",
+      "browser": "Microsoft Edge via Playwright",
+      "artifact_marker": "ignored-local-pr129-incremental-gui-e2e-20260706-012552",
+      "all_plan_steps_used_real_web_admin_ui": true,
+      "execute_steps_used_real_page_click_confirmation_when_execute_was_valid": true,
+      "server_started": true,
+      "codex_started_test_server_stopped": true,
+      "fake_local_llm_stopped": true,
+      "post_validation_port_audit": "passed: Codex-started test server and fake LLM were stopped; existing launcher-managed production server was left running and not touched",
+      "controlled_test_hooks_used": [
+        "controlled image fixture generation",
+        "isolated DB seeding for retry debt, source-missing debt, broken diagnostics, placeholder equivalent, advanced retry-source blocker, and terminal non-clean/skipped run",
+        "local-only downstream completion marker after real Execute to isolate incremental planner behavior",
+        "delayed Plan response simulation for first normal Start confirmation handoff"
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "scenario": "Empty baseline Plan",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "register root",
+            "select root",
+            "start manual sync"
+          ],
+          "controlled_db_seed": false,
+          "plan_items": 0,
+          "work_item_counts": {},
+          "execute_ran": false
+        },
+        {
+          "round": 1,
+          "scenario": "Initial import via GUI with delayed normal Start confirmation handoff",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "start manual sync",
+            "cancel page confirmation",
+            "page-level confirm execute current plan"
+          ],
+          "controlled_db_seed": true,
+          "plan_items": 3,
+          "work_item_counts": {
+            "IMPORT": 3
+          },
+          "delayed_plan_first_attempt": true,
+          "page_confirmation": {
+            "visible_before_execute": true,
+            "state_before_execute": "awaiting",
+            "native_dialog_seen": false,
+            "cancel_kept_plan_visible": true,
+            "cancel_confirm_button_still_available": true
+          },
+          "execute_ran": true,
+          "immediate_pending": {
+            "non_blank_visible": true,
+            "pending_placeholder_visible": true,
+            "duplicate_submit_disabled": true,
+            "page_confirm_submit_disabled": true,
+            "run_id_from_response": true,
+            "run_created_at_present": true,
+            "last_heartbeat_at_present_in_execute_response": false,
+            "queued_before_first_response": true
+          },
+          "execute": {
+            "status": "completed",
+            "operator_status": "completed",
+            "outcome_counts": {
+              "ai_tagged": 1,
+              "ai_tagging_skipped_non_target": 2,
+              "classified": 3,
+              "imported": 3,
+              "localization_not_applicable_non_target": 2,
+              "localized": 1
+            },
+            "work_item_counts": {
+              "IMPORT": 3
+            },
+            "summary_stage_status": "completed"
+          }
+        },
+        {
+          "round": 2,
+          "scenario": "No-op stable rerun",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "start manual sync"
+          ],
+          "controlled_db_seed": false,
+          "plan_items": 0,
+          "work_item_counts": {},
+          "execute_ran": false
+        },
+        {
+          "round": 3,
+          "scenario": "Incremental add via GUI",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "start manual sync",
+            "page-level confirm execute"
+          ],
+          "controlled_db_seed": true,
+          "plan_items": 2,
+          "work_item_counts": {
+            "IMPORT": 2
+          },
+          "execute_ran": true,
+          "execute": {
+            "status": "completed",
+            "operator_status": "completed",
+            "outcome_counts": {
+              "ai_tagged": 2,
+              "classified": 2,
+              "imported": 2,
+              "localized": 2
+            }
+          }
+        },
+        {
+          "round": 4,
+          "scenario": "Duplicate/existing media",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "start manual sync",
+            "page-level confirm execute if executable"
+          ],
+          "controlled_db_seed": true,
+          "duplicate_existing_visible": true,
+          "db_truth_not_corrupted": true
+        },
+        {
+          "round": 5,
+          "scenario": "Cap-limited continuation",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "start manual sync",
+            "page-level confirm execute",
+            "start next batch"
+          ],
+          "controlled_db_seed": false,
+          "batches": [
+            {
+              "batch": 1,
+              "plan": {
+                "plan_items": 2,
+                "import": 2,
+                "followup": 0,
+                "retry_source": 0,
+                "work_item_counts": {
+                  "IMPORT": 2
+                },
+                "state_counts": {
+                  "candidate": 0,
+                  "skipped_unsupported": 0,
+                  "skipped_placeholder": 0,
+                  "skipped_zero_byte": 0,
+                  "skipped_changing": 0,
+                  "skipped_path_policy_error": 0,
+                  "skipped_duplicate": 0,
+                  "skipped_existing_media": 0,
+                  "downstream_followup_planned": 0,
+                  "import_planned": 2,
+                  "retry_source_planned": 0,
+                  "imported_in_test": 0,
+                  "classified_in_test": 0,
+                  "ai_tagged_in_test": 0,
+                  "localization_scheduled_in_test": 0,
+                  "failed": 0,
+                  "broken_state": 0
+                },
+                "batch_executable": true,
+                "cap_limited_batch": true,
+                "more_batches_remain": true,
+                "advanced_retry_blocked": false
+              },
+              "execute": {
+                "id": 227,
+                "status": "completed",
+                "operator_status": "completed",
+                "operator_status_label_zh": "已完成：本批次没有剩余操作员动作",
+                "total_seen": 2,
+                "new_items": 2,
+                "failed_items": 0,
+                "outcome_counts": {
+                  "ai_tagging_skipped_non_target": 2,
+                  "classified": 2,
+                  "imported": 2,
+                  "localization_not_applicable_non_target": 2
+                },
+                "work_item_counts": {
+                  "IMPORT": 2
+                },
+                "stage_rows": [
+                  {
+                    "name": "candidate_discovery",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "import",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "classification",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "ai_tagging",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "localization",
+                    "status": "completed_noop_no_imports",
+                    "processed": 0,
+                    "failed": 0
+                  },
+                  {
+                    "name": "summary",
+                    "status": "completed",
+                    "processed": 1,
+                    "failed": 0
+                  }
+                ],
+                "run_created_at_present": true,
+                "last_heartbeat_at_present": true
+              },
+              "test_hook": {
+                "action": "mark_downstream_complete",
+                "updated": 7
+              }
+            },
+            {
+              "batch": 2,
+              "plan": {
+                "plan_items": 2,
+                "import": 2,
+                "followup": 0,
+                "retry_source": 0,
+                "work_item_counts": {
+                  "IMPORT": 2
+                },
+                "state_counts": {
+                  "candidate": 0,
+                  "skipped_unsupported": 0,
+                  "skipped_placeholder": 0,
+                  "skipped_zero_byte": 0,
+                  "skipped_changing": 0,
+                  "skipped_path_policy_error": 0,
+                  "skipped_duplicate": 0,
+                  "skipped_existing_media": 0,
+                  "downstream_followup_planned": 0,
+                  "import_planned": 2,
+                  "retry_source_planned": 0,
+                  "imported_in_test": 0,
+                  "classified_in_test": 0,
+                  "ai_tagged_in_test": 0,
+                  "localization_scheduled_in_test": 0,
+                  "failed": 0,
+                  "broken_state": 0
+                },
+                "batch_executable": true,
+                "cap_limited_batch": true,
+                "more_batches_remain": true,
+                "advanced_retry_blocked": false
+              },
+              "execute": {
+                "id": 228,
+                "status": "completed",
+                "operator_status": "completed",
+                "operator_status_label_zh": "已完成：本批次没有剩余操作员动作",
+                "total_seen": 2,
+                "new_items": 2,
+                "failed_items": 0,
+                "outcome_counts": {
+                  "ai_tagged": 1,
+                  "ai_tagging_skipped_non_target": 1,
+                  "classified": 2,
+                  "imported": 2,
+                  "localization_not_applicable_non_target": 1,
+                  "localized": 1
+                },
+                "work_item_counts": {
+                  "IMPORT": 2
+                },
+                "stage_rows": [
+                  {
+                    "name": "candidate_discovery",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "import",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "classification",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "ai_tagging",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "localization",
+                    "status": "completed",
+                    "processed": 1,
+                    "failed": 0
+                  },
+                  {
+                    "name": "summary",
+                    "status": "completed",
+                    "processed": 1,
+                    "failed": 0
+                  }
+                ],
+                "run_created_at_present": true,
+                "last_heartbeat_at_present": true
+              },
+              "test_hook": {
+                "action": "mark_downstream_complete",
+                "updated": 9
+              }
+            },
+            {
+              "batch": 3,
+              "plan": {
+                "plan_items": 2,
+                "import": 2,
+                "followup": 0,
+                "retry_source": 0,
+                "work_item_counts": {
+                  "IMPORT": 2
+                },
+                "state_counts": {
+                  "candidate": 0,
+                  "skipped_unsupported": 0,
+                  "skipped_placeholder": 0,
+                  "skipped_zero_byte": 0,
+                  "skipped_changing": 0,
+                  "skipped_path_policy_error": 0,
+                  "skipped_duplicate": 0,
+                  "skipped_existing_media": 0,
+                  "downstream_followup_planned": 0,
+                  "import_planned": 2,
+                  "retry_source_planned": 0,
+                  "imported_in_test": 0,
+                  "classified_in_test": 0,
+                  "ai_tagged_in_test": 0,
+                  "localization_scheduled_in_test": 0,
+                  "failed": 0,
+                  "broken_state": 0
+                },
+                "batch_executable": true,
+                "cap_limited_batch": false,
+                "more_batches_remain": false,
+                "advanced_retry_blocked": false
+              },
+              "execute": {
+                "id": 229,
+                "status": "completed",
+                "operator_status": "completed",
+                "operator_status_label_zh": "已完成：本批次没有剩余操作员动作",
+                "total_seen": 2,
+                "new_items": 1,
+                "failed_items": 0,
+                "outcome_counts": {
+                  "ai_tagging_skipped_non_target": 1,
+                  "classified": 1,
+                  "imported": 1,
+                  "localization_not_applicable_non_target": 1,
+                  "skipped_existing_media": 1
+                },
+                "work_item_counts": {
+                  "IMPORT": 2
+                },
+                "stage_rows": [
+                  {
+                    "name": "candidate_discovery",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "import",
+                    "status": "completed",
+                    "processed": 2,
+                    "failed": 0
+                  },
+                  {
+                    "name": "classification",
+                    "status": "completed",
+                    "processed": 1,
+                    "failed": 0
+                  },
+                  {
+                    "name": "ai_tagging",
+                    "status": "completed",
+                    "processed": 1,
+                    "failed": 0
+                  },
+                  {
+                    "name": "localization",
+                    "status": "completed_noop_no_imports",
+                    "processed": 0,
+                    "failed": 0
+                  },
+                  {
+                    "name": "summary",
+                    "status": "completed",
+                    "processed": 1,
+                    "failed": 0
+                  }
+                ],
+                "run_created_at_present": true,
+                "last_heartbeat_at_present": true
+              },
+              "test_hook": {
+                "action": "mark_downstream_complete",
+                "updated": 10
+              }
+            }
+          ]
+        },
+        {
+          "round": 6,
+          "scenario": "RETRY_SOURCE normal incremental plan",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "start manual sync",
+            "page-level confirm execute"
+          ],
+          "controlled_db_seed": true,
+          "retry_only_plan_work_item_counts": {
+            "RETRY_SOURCE": 1
+          },
+          "retry_only_batch_executable": true,
+          "retry_execute": {
+            "status": "completed_with_followup_required",
+            "operator_status": "completed_with_continuation",
+            "outcome_counts": {
+              "retry_source_ready_for_import": 1
+            },
+            "summary_stage_status": "completed_with_continuation"
+          },
+          "retry_ready_for_import_not_clean_completed": true,
+          "retry_ready_for_import_remaining_action_visible": true,
+          "retry_ready_for_import_next_import_count_visible": true,
+          "retry_created_import_plan": {
+            "plan_items": 1,
+            "import": 1,
+            "followup": 0,
+            "retry_source": 0,
+            "work_item_counts": {
+              "IMPORT": 1
+            },
+            "state_counts": {
+              "candidate": 0,
+              "skipped_unsupported": 0,
+              "skipped_placeholder": 0,
+              "skipped_zero_byte": 0,
+              "skipped_changing": 0,
+              "skipped_path_policy_error": 0,
+              "skipped_duplicate": 0,
+              "skipped_existing_media": 0,
+              "downstream_followup_planned": 0,
+              "import_planned": 1,
+              "retry_source_planned": 0,
+              "imported_in_test": 0,
+              "classified_in_test": 0,
+              "ai_tagged_in_test": 0,
+              "localization_scheduled_in_test": 0,
+              "failed": 0,
+              "broken_state": 0
+            },
+            "batch_executable": true,
+            "cap_limited_batch": false,
+            "more_batches_remain": false,
+            "advanced_retry_blocked": false
+          },
+          "source_missing_debt_remains_visible": true
+        },
+        {
+          "round": 7,
+          "scenario": "BROKEN_STATE missing app media diagnostic",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "start manual sync"
+          ],
+          "controlled_db_seed": true,
+          "work_item_counts": {
+            "BROKEN_STATE": 1
+          },
+          "non_executable": true
+        },
+        {
+          "round": 8,
+          "scenario": "Placeholder/deferred and hydration equivalent",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "start manual sync",
+            "page-level confirm execute if import-ready"
+          ],
+          "controlled_db_seed": true,
+          "real_icloud_touched": false,
+          "placeholder_non_executable_until_recovery": true
+        },
+        {
+          "round": 9,
+          "scenario": "Advanced full-rescan retry-source fail-closed",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "advanced dry-run button"
+          ],
+          "controlled_db_seed": true,
+          "plan_items": 3,
+          "work_item_counts": {
+            "FOLLOWUP": 0,
+            "IMPORT": 0,
+            "RETRY_SOURCE": 1,
+            "PLACEHOLDER": 0,
+            "NOOP_DIAGNOSTIC": 2,
+            "BROKEN_STATE": 0
+          },
+          "batch_executable": false,
+          "advanced_retry_blocked": true,
+          "retry_source_card_non_executable_label_visible": true,
+          "execute_rejection": {
+            "status": 409,
+            "code": "advanced_full_rescan_retry_source_execute_not_validated"
+          }
+        },
+        {
+          "round": 10,
+          "scenario": "Terminal non-clean stage rendering",
+          "real_browser_clicks": true,
+          "ui_clicks": [
+            "open dynamic sync section"
+          ],
+          "controlled_db_seed": true,
+          "summary_stage_not_queued": true,
+          "skipped_terminal_not_queued": true
+        },
+        {
+          "round": 11,
+          "scenario": "Public redaction / artifact safety",
+          "real_browser_clicks": false,
+          "ui_clicks": [],
+          "controlled_db_seed": false,
+          "aggregate_only_public_report": true,
+          "raw_evidence_committed": false
+        }
+      ],
+      "local_final_db_truth": {
+        "ai_tagging_status": {
+          "ai_tagged": 13,
+          "deferred": 3
+        },
+        "classification_status": {
+          "classified": 13,
+          "deferred": 3
+        },
+        "deferred_reason": {
+          "": 15,
+          "existing_media_hash": 1
+        },
+        "dynamic_source_items": 16,
+        "failure_reason": {
+          "": 14,
+          "source_missing": 2
+        },
+        "import_status": {
+          "deferred": 1,
+          "failed": 2,
+          "imported": 13
+        },
+        "localization_status": {
+          "blocked_import_failed": 2,
+          "deferred": 1,
+          "localized": 13
+        },
+        "media_linked_items": 13,
+        "source_status": {
+          "available": 14,
+          "missing": 2
+        },
+        "sync_state": {
+          "imported": 13,
+          "missing": 2,
+          "skipped_existing_media": 1
+        }
+      },
+      "full_chain_clean": false,
+      "non_clean_evidence_visible": true
+    }
+  },
+  "production_plan_only": {
+    "status": "passed",
+    "gui_path_used": true,
+    "launcher_managed_web_admin_path": true,
+    "normal_start_clicked": true,
+    "page_level_confirmation_visible_after_plan": true,
+    "page_confirm_button_enabled": true,
+    "native_dialog_seen": false,
+    "execute_post_seen": false,
+    "execute_not_run": true,
+    "no_unsafe_execute_implied": true,
+    "selected_registered_root": true,
+    "selected_root_label_public": "[redacted]",
+    "selected_root_public_marker": "audited-root",
+    "plan_mode": "incremental",
+    "max_files": 500,
+    "selected_plan_items": 255,
+    "plan_items": 255,
+    "estimated_import_count": 235,
+    "estimated_downstream_followup_count": 0,
+    "estimated_retry_source_count": 20,
+    "work_item_counts": {
+      "IMPORT": 235,
+      "FOLLOWUP": 0,
+      "RETRY_SOURCE": 20,
+      "BROKEN_STATE": 0,
+      "PLACEHOLDER": 0,
+      "NOOP_DIAGNOSTIC": 0
+    },
+    "lifecycle_counts": {
+      "APP_MEDIA_FOLLOWUP": 0,
+      "CONTINUATION": 170,
+      "IMPORT_CANDIDATE": 65,
+      "RETRYABLE_SOURCE_FAILURE": 20
+    },
+    "state_counts": {
+      "candidate": 0,
+      "skipped_unsupported": 10,
+      "skipped_placeholder": 0,
+      "skipped_zero_byte": 0,
+      "skipped_changing": 0,
+      "skipped_path_policy_error": 0,
+      "skipped_duplicate": 0,
+      "skipped_existing_media": 0,
+      "downstream_followup_planned": 0,
+      "import_planned": 235,
+      "retry_source_planned": 20,
+      "imported_in_test": 0,
+      "classified_in_test": 0,
+      "ai_tagged_in_test": 0,
+      "localization_scheduled_in_test": 0,
+      "failed": 4,
+      "broken_state": 0
+    },
+    "all_state_counts": {
+      "candidate": 0,
+      "skipped_unsupported": 10,
+      "skipped_placeholder": 0,
+      "skipped_zero_byte": 0,
+      "skipped_changing": 0,
+      "skipped_path_policy_error": 0,
+      "skipped_duplicate": 0,
+      "skipped_existing_media": 0,
+      "downstream_followup_planned": 0,
+      "import_planned": 235,
+      "retry_source_planned": 20,
+      "imported_in_test": 0,
+      "classified_in_test": 0,
+      "ai_tagged_in_test": 0,
+      "localization_scheduled_in_test": 0,
+      "failed": 4,
+      "broken_state": 0
+    },
+    "state_counts_total": 269,
+    "state_counts_scope": "broader planner state rows including skipped/failed diagnostics outside selected plan items",
+    "more_batches_remain": false,
+    "cap_limited_batch": false,
+    "batch_executable": true,
+    "public_surface_redaction_checked": true,
+    "latest_execute_run_unchanged": true,
+    "latest_execute_before_id": 19,
+    "latest_execute_after_id": 19,
+    "production_import_ran": false,
+    "production_classification_ran": false,
+    "production_ai_tagging_ran": false,
+    "production_localization_ran": false,
+    "s3b_disabled_checked": true,
+    "selected_root_name_redacted": true
+  },
+  "advanced_full_rescan_policy": {
+    "retry_source_not_executable_until_validated": true,
+    "unit_contract_coverage": true,
+    "gui_recovered_retry_visible_as_pending_import": true,
+    "server_side_execute_rejection": true,
+    "server_side_rejection_error_code": "advanced_full_rescan_retry_source_execute_not_validated",
+    "valid_hash_and_confirmation_still_rejected": true
+  },
+  "public_redaction": {
+    "passed": true,
+    "finding_count": 0,
+    "public_artifacts_aggregate_only": true,
+    "raw_browser_traces_logs_db_evidence_committed": false,
+    "required_chinese_labels_readable": true,
+    "production_root_name_redacted": true
+  },
+  "s3b_disabled": {
+    "enabled": false,
+    "automatic_sync_enabled": false,
+    "scheduled_sync_enabled": false,
+    "startup_sync_enabled": false,
+    "service_sync_enabled": false
+  },
+  "production_execute": {
+    "ran": true,
+    "owner_approved": true,
+    "approval_reference": "Owner final production GUI acceptance after PR-R2 page-level confirmation fix; production Execute was performed by the owner, not by Codex.",
+    "actor": "owner",
+    "codex_ran": false,
+    "codex_ran_during_closeout": false,
+    "non_clean_debt_visible_not_full_chain_claim": true
+  },
+  "safety": {
+    "no_production_execute_without_owner_approval": true,
+    "production_execute_ran": true,
+    "no_source_icloud_mutation": true,
+    "source_icloud_mutation": false,
+    "no_app_storage_repair_or_mutation": true,
+    "app_storage_repair_or_mutation": false,
+    "no_destructive_cleanup": true,
+    "destructive_cleanup": false,
+    "no_provider_pixiv_sourceconcept_entity_work": true,
+    "provider_pixiv_sourceconcept_entity_work": false,
+    "no_production_import": true,
+    "no_production_classification": true,
+    "no_production_ai_tagging": true,
+    "no_production_localization": true,
+    "no_production_execute": false,
+    "production_execute_actor": "owner",
+    "codex_production_execute_ran_during_closeout": false,
+    "codex_no_production_execute_during_closeout": true,
+    "no_production_import_by_codex": true,
+    "no_production_classification_by_codex": true,
+    "no_production_ai_tagging_by_codex": true,
+    "no_production_localization_by_codex": true
+  },
+  "scope": {
+    "s3b_started": false,
+    "pixiv_provider_sourceconcept_entity_started": false,
+    "provider_gallery_dl_saucenao_google_started": false,
+    "sourceconcept_started": false,
+    "entity_bridge_started": false,
+    "confirmed_assignment_started": false,
+    "media_tags_truth_started": false,
+    "full_s3a_m2_r_completion_claimed": false
+  },
+  "validation": {
+    "python_identity": {
+      "status": "passed",
+      "sys_executable": "[redacted-repo-venv-python]",
+      "version": "Python 3.12.0",
+      "sys_executable_is_repo_venv": true
+    },
+    "py_compile_changed_python_files": "passed: tests/test_admin_dynamic_sync_ui.py",
+    "node_check_admin_js": "passed",
+    "focused_pytest": {
+      "tests/test_admin_dynamic_sync_ui.py -q": "13 passed in 0.11s",
+      "tests/test_phase_contracts.py -q": "293 passed in 4.06s",
+      "tests/test_s3a_m1_manual_sync_execute.py -q": "93 passed in 89.19s"
+    },
+    "summary_json_parse": "passed",
+    "s3a_m2_r_operator_validation_contract_v1": "passed: operator_ready; production Execute recorded as owner-approved human acceptance; full_chain_complete_claimed=false with non-clean evidence visible",
+    "public_redaction_contract_v1": "passed",
+    "public_safe_fragment_scan": "passed: no local absolute paths, raw source filenames, content hashes, production source-root labels, credentials, API keys, provider secrets, or unredacted URLs in committed public artifacts",
+    "browser_validation": "passed: full isolated 12-round Microsoft Edge Playwright matrix; includes delayed normal Start page confirmation, cancel/recover, execute current Plan without re-planning, duplicate submit disabled, and native dialog absence",
+    "local_incremental_gui_e2e": "passed: 12 rounds, status passed, artifact marker ignored-local-pr129-incremental-gui-e2e-20260706-012552",
+    "production_plan_only": "passed: launcher-managed Web Admin normal Start Plan-only, page-level confirmation visible, no native dialog, no Execute POST, latest execute id unchanged 19 -> 19",
+    "server_port_audit_after_validation": "passed: no active listeners on 8000/8012-8024 after Codex-started local/test layout validation server was stopped",
+    "git_diff_check": "passed: final run after placement polish and report update",
+    "git_diff_cached_check": "passed: final staged diff check after placement polish",
+    "confirmation_panel_position_browser_check": "passed: Microsoft Edge Playwright local/test normal Start Plan-only layout check; panel visible without manual scroll; Confirm/Cancel visible; cancel recoverable; no Execute POST; no native dialog",
+    "post_human_acceptance": "passed: owner production GUI acceptance executed current Plan through page-level confirmation and sampled import/classification/AI/localization; non-clean debt remained visible"
+  },
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
+        "classification": "Public report / handoff / roadmap update",
+        "redacted": true,
+        "committed": true
+      },
+      {
+        "path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json",
+        "classification": "Public report / handoff / roadmap update",
+        "redacted": true,
+        "committed": true
+      }
+    ],
+    "local_evidence_artifacts": {
+      "classification": "One-off local artifact / ignored output",
+      "committed": false,
+      "redacted_for_public_report": true
+    }
+  },
+  "public_reports": {
+    "markdown_report_path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
+    "summary_json_path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json"
+  },
+  "validation_base_head": "cabb0b019153e5660f084ef6010b323f31301ba6",
+  "report_note": "Post-human-acceptance UI placement polish is validated from base head cabb0b019153e5660f084ef6010b323f31301ba6; final pushed commit head is recorded in the PR body/final delivery because committed reports cannot self-reference their own future Git SHA.",
+  "resume_after_sleep": {
+    "status": "resumed_cleanly_after_state_audit",
+    "tracked_changes_found": [
+      "frontend/static/js/admin.js",
+      "frontend/templates/admin.html",
+      "tests/test_admin_dynamic_sync_ui.py"
+    ],
+    "report_files_were_not_partially_written": true,
+    "stale_codex_test_server_found": false,
+    "existing_launcher_managed_production_server_left_running": true,
+    "partial_local_artifact_from_resume": "ignored-local-pr129-incremental-gui-e2e-20260706-012302",
+    "partial_local_artifact_reason": "first resumed E2E attempt used test env without DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED/EXECUTE_ENABLED, so the UI correctly kept Start disabled",
+    "cleanup_performed": "stopped only Codex-started 8013 test server and 8025 fake LLM PIDs from the failed resumed attempt; no tracked or production cleanup"
+  },
+  "post_human_acceptance": {
+    "status": "passed",
+    "performed_by": "owner",
+    "production_gui_path": true,
+    "normal_start_manual_sync_works": true,
+    "plan_completed": true,
+    "page_level_confirmation_visible": true,
+    "native_browser_confirm_not_required": true,
+    "page_level_confirmation_executed_current_plan": true,
+    "execute_completed_normally": true,
+    "owner_sampled_imported_media_classification_ai_tags_localization": true,
+    "non_clean_debt_states_visible_not_overclaimed": true,
+    "owner_screenshot_followup_plan_execute_confirmation_worked_again": true,
+    "codex_production_execute_during_closeout": false,
+    "production_execute_actor": "owner"
+  },
+  "confirmation_panel_placement_polish": {
+    "status": "passed",
+    "browser": "Microsoft Edge via Playwright",
+    "environment": "isolated local/test server",
+    "normal_start_plan_clicked_in_ui": true,
+    "execute_clicked": false,
+    "execute_post_seen": false,
+    "native_dialog_seen": false,
+    "dom_order_progress_before_panel": true,
+    "dom_order_panel_before_plan_result": true,
+    "panel_visible_without_manual_scroll": true,
+    "panel_rect_top": 212,
+    "panel_rect_bottom": 556,
+    "viewport_height": 768,
+    "confirm_button_visible": true,
+    "confirm_button_enabled": true,
+    "cancel_button_visible": true,
+    "cancel_kept_plan_recoverable": true,
+    "artifact_marker": "ignored-local-pr129-confirmation-panel-position-20260706-133554"
+  }
+}

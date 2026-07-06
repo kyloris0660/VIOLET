@@ -818,6 +818,8 @@ def build_ledger_pending_plan(
     )
     stages = _build_manual_pipeline_stages(
         state_counts=state_counts,
+        import_count=import_count,
+        downstream_followup_count=0,
         ai_profile=profile,
         max_duration_seconds=max_duration_seconds,
         estimated_runtime_seconds=estimated_runtime_seconds,
@@ -1136,6 +1138,8 @@ def build_source_delta_plan(
     )
     stages = _build_manual_pipeline_stages(
         state_counts=state_counts,
+        import_count=import_count,
+        downstream_followup_count=0,
         ai_profile=profile,
         max_duration_seconds=max_duration_seconds,
         estimated_runtime_seconds=estimated_runtime_seconds,

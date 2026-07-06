@@ -512,6 +512,77 @@ def test_manual_sync_execute_gate_allows_safe_cap_limited_batch(db, tmp_path, mo
     assert exc.value.code == "manual_sync_plan_partial_scan"
 
 
+def test_manual_sync_execute_rejects_advanced_full_rescan_retry_source_even_with_valid_confirmation(
+    db,
+    tmp_path,
+    monkeypatch,
+):
+    _enable_manual_execute(monkeypatch)
+    source_root = tmp_path / "source"
+    timeout_file = source_root / "a_timeout.png"
+    valid_file = source_root / "b_valid.png"
+    _write_png(timeout_file)
+    _write_png(valid_file)
+    root = planner.register_source_root(db, path=source_root, label="fixture")
+
+    def fake_hash(path: Path, _timeout_sec: int):
+        if path.name == timeout_file.name:
+            return None, "read_timeout"
+        return calculate_file_hash(path), None
+
+    monkeypatch.setattr(planner, "_verify_supported_image_file_with_timeout", lambda _path, _timeout_sec: None)
+    monkeypatch.setattr(planner, "_calculate_manual_plan_file_hash", fake_hash)
+
+    plan = planner.plan_manual_sync_dry_run(
+        db,
+        source_path=source_root,
+        source_record_id=root.id,
+        max_files=5,
+        stable_age_seconds=0,
+        plan_mode="advanced_full_rescan",
+    )
+
+    assert plan["counts"]["work_item_counts"]["RETRY_SOURCE"] == 1
+    assert plan["counts"]["batch_executable"] is False
+    assert plan["limits"]["advanced_full_rescan_retry_source_execution_not_validated"] is True
+
+    with pytest.raises(ManualSyncExecuteError) as exc:
+        create_manual_sync_execute_run(
+            db,
+            root_id=root.id,
+            max_files=5,
+            hydrated_only=True,
+            stable_age_seconds=0,
+            plan_mode="advanced_full_rescan",
+            expected_plan_hash=plan["integrity"]["plan_hash"],
+            confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+            plan_created_at=plan["job"]["created_at"],
+        )
+
+    assert exc.value.code == "advanced_full_rescan_retry_source_execute_not_validated"
+    assert db.query(DynamicSyncRun).filter(DynamicSyncRun.run_type == "manual_sync_execute").count() == 0
+
+    with pytest.raises(HTTPException) as api_exc:
+        dynamic_routes.execute_manual_sync(
+            dynamic_routes.ManualSyncExecuteRequest(
+                root_id=root.id,
+                max_files=5,
+                hydrated_only=True,
+                stable_age_seconds=0,
+                plan_mode="advanced_full_rescan",
+                expected_plan_hash=plan["integrity"]["plan_hash"],
+                confirmation_phrase=plan["integrity"]["confirmation_phrase"],
+                plan_created_at=plan["job"]["created_at"],
+            ),
+            current_user=SimpleNamespace(id=1),
+            db=db,
+        )
+
+    assert api_exc.value.status_code == 409
+    assert api_exc.value.detail["code"] == "advanced_full_rescan_retry_source_execute_not_validated"
+    assert db.query(DynamicSyncRun).filter(DynamicSyncRun.run_type == "manual_sync_execute").count() == 0
+
+
 def test_s3a_m1_execute_rejects_old_hash_with_forged_fresh_timestamp(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     source_root = tmp_path / "source"
@@ -1883,9 +1954,17 @@ def test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_s
     assert execute_summary["outcome_counts"]["classified"] == 2
     assert execute_summary["outcome_counts"]["ai_tagged"] == 2
     assert execute_summary["outcome_counts"]["localized"] == 2
+    assert execute_summary["last_heartbeat_at"]
+    assert execute_summary["operator_status"] == "completed"
+    assert execute_summary["operator_status_label_zh"].startswith("已完成")
+    assert "IMPORT" in execute_summary["operator_labels"]["work_item_kinds"]
+    assert execute_summary["work_item_counts"]["IMPORT"] == 2
+    assert execute_summary["work_item_summary"]["import_work"] == 2
+    assert execute_summary["work_item_summary"]["uses_work_item_kind_first_semantics"] is True
     stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
     for stage in ("candidate_discovery", "import", "classification", "ai_tagging", "localization", "summary"):
         assert stage_rows[stage]["status"] == "completed"
+        assert stage_rows[stage]["updated_at"]
     assert [name for name, _value in calls] == [
         "import",
         "import",
@@ -3638,6 +3717,16 @@ def test_manual_sync_execute_retry_source_read_timeout_does_not_import_or_copy(d
         confirmation_phrase=plan["integrity"]["confirmation_phrase"],
         plan_created_at=plan["job"]["created_at"],
     )
+    pending_payload = execute_service.serialize_manual_sync_execute_run(run)
+    pending_execute = pending_payload["manual_sync_execute"]
+    assert pending_execute["run_created_at"]
+    assert pending_execute["last_heartbeat_at"] is None
+    assert pending_execute["current_stage"] == "queued"
+    assert pending_execute["current_stage_status"] == "pending"
+    pending_stage_rows = {row["name"]: row for row in pending_execute["stage_rows"]}
+    for stage in ("candidate_discovery", "import", "classification", "ai_tagging", "localization", "summary"):
+        assert pending_stage_rows[stage]["status"] == "pending"
+        assert pending_stage_rows[stage].get("updated_at") is None
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
@@ -3711,7 +3800,12 @@ def test_manual_sync_execute_retry_source_cloud_hydration_success_does_not_impor
 
     assert db.query(Media).count() == 0
     assert list(settings.ORIGINAL_DIR.iterdir()) == []
-    assert result["manual_sync_execute"]["outcome_counts"]["retry_source_ready_for_import"] == 1
+    execute_summary = result["manual_sync_execute"]
+    assert result["status"] == "completed_with_followup_required"
+    assert execute_summary["status"] == "completed_with_continuation"
+    assert execute_summary["operator_status"] == "completed_with_continuation"
+    assert "重试恢复后的导入需要继续计划" in execute_summary["operator_status_label_zh"]
+    assert execute_summary["outcome_counts"]["retry_source_ready_for_import"] == 1
     db.refresh(item)
     assert item.sync_state == "new"
     assert item.import_status == "pending"

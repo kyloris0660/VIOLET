@@ -56,7 +56,9 @@ from .dynamic_library_sync_service import (
 )
 from .manual_sync_lifecycle import (
     app_media_exists as lifecycle_app_media_exists,
+    manual_sync_operator_label_catalog,
     map_manual_sync_operator_status,
+    operator_status_label_zh,
     source_item_downstream_complete,
 )
 
@@ -401,6 +403,38 @@ def _plan_partial_scan_allows_execute(plan: Dict[str, Any]) -> bool:
     )
 
 
+def _advanced_full_rescan_retry_source_not_validated(plan: Dict[str, Any]) -> bool:
+    counts = plan.get("counts") or {}
+    limits = plan.get("limits") or {}
+    plan_mode = str(limits.get("plan_mode") or counts.get("plan_mode") or "").strip().lower()
+    if plan_mode != "advanced_full_rescan":
+        return False
+    if bool(
+        counts.get("advanced_full_rescan_retry_source_execution_not_validated")
+        or limits.get("advanced_full_rescan_retry_source_execution_not_validated")
+    ):
+        return True
+    work_item_counts = counts.get("work_item_counts") if isinstance(counts.get("work_item_counts"), dict) else {}
+    retry_source_count = max(
+        int(counts.get("estimated_retry_source_count") or 0),
+        int(work_item_counts.get("RETRY_SOURCE") or 0),
+    )
+    batch_executable = bool(counts.get("batch_executable") or limits.get("batch_executable"))
+    return retry_source_count > 0 and not batch_executable
+
+
+def _assert_advanced_full_rescan_retry_source_execute_validated(plan: Dict[str, Any]) -> None:
+    if _advanced_full_rescan_retry_source_not_validated(plan):
+        raise ManualSyncExecuteError(
+            "advanced_full_rescan_retry_source_execute_not_validated",
+            (
+                "Advanced full-rescan retry-source execute is not validated for this PR-R2 flow. "
+                "Re-run as a normal manual plan or defer this retry-source work to a dedicated validation stage."
+            ),
+            status_code=409,
+        )
+
+
 def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[str, Any]:
     return {
         "scheduled": False,
@@ -705,6 +739,7 @@ def _verify_execute_gates(
             ),
             status_code=409,
         )
+    _assert_advanced_full_rescan_retry_source_execute_validated(plan)
 
     if settings.IS_PRODUCTION_ENV:
         expected_phrase = manual_sync_execute_confirmation_phrase(plan_hash, production=True)
@@ -777,6 +812,7 @@ def _verify_execute_recheck(
             "Manual sync execute recheck rejected an unsafe partial plan. Re-run the dry-run.",
             status_code=409,
         )
+    _assert_advanced_full_rescan_retry_source_execute_validated(plan)
     if settings.IS_PRODUCTION_ENV and not production_acceptance_approved:
         raise ManualSyncExecuteError(
             "production_acceptance_approval_required",
@@ -946,6 +982,12 @@ def create_manual_sync_execute_run(
             "manual_sync_execute": {
                 "status": "pending",
                 "current_stage": "queued",
+                "current_stage_status": "pending",
+                "current_item_label": None,
+                "current_item_index": 0,
+                "run_created_at": now.isoformat(),
+                "last_heartbeat_at": None,
+                "operator_labels": manual_sync_operator_label_catalog(),
                 "request": _public_request_payload(
                     root_id=root_id,
                     max_files=max_files,
@@ -1022,12 +1064,25 @@ def _set_stage(summary: Dict[str, Any], name: str, **updates: Any) -> Dict[str, 
     payload = dict(summary)
     execute = dict(payload.get("manual_sync_execute") or {})
     rows = [dict(row) for row in execute.get("stage_rows") or []]
+    now_iso = _utcnow().isoformat()
+    row_updates = dict(updates)
+    row_updates.setdefault("updated_at", now_iso)
     for row in rows:
         if row.get("name") == name:
-            row.update(updates)
+            row.update(row_updates)
             break
+    else:
+        rows.append({"name": name, **row_updates})
     execute["stage_rows"] = rows
     execute["current_stage"] = name
+    execute["current_stage_status"] = str(updates.get("status") or "")
+    execute["last_heartbeat_at"] = now_iso
+    if "current_item_label" in updates:
+        execute["current_item_label"] = updates.get("current_item_label")
+    if "current_item_index" in updates:
+        execute["current_item_index"] = updates.get("current_item_index")
+    if "phase_message" in updates:
+        execute["phase_message"] = updates.get("phase_message")
     payload["manual_sync_execute"] = execute
     return payload
 
@@ -1036,6 +1091,9 @@ def _update_execute_summary(run: DynamicSyncRun, **updates: Any) -> None:
     payload = dict(run.summary_json or {})
     execute = dict(payload.get("manual_sync_execute") or {})
     execute.update(updates)
+    if "operator_status" in updates:
+        execute["operator_status_label_zh"] = operator_status_label_zh(str(updates.get("operator_status") or ""))
+    execute.setdefault("operator_labels", manual_sync_operator_label_catalog())
     safety = dict(execute.get("safety") or {})
     if "llm_calls_performed" in updates:
         safety["llm_calls_enabled"] = bool(updates.get("llm_calls_performed"))
@@ -2011,6 +2069,11 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 "Manual sync execute requires the private per-item plan snapshot captured at enqueue.",
                 status_code=409,
             )
+        plan_counts = persisted_plan.get("counts") if isinstance(persisted_plan.get("counts"), dict) else {}
+        plan_work_item_counts = {
+            str(key): int(value or 0)
+            for key, value in dict(plan_counts.get("work_item_counts") or {}).items()
+        }
     except ManualSyncExecuteError as exc:
         failed = _mark_manual_sync_run_failed(db, run, code=exc.code, message=str(exc))
         with _active_execute_lock:
@@ -2036,7 +2099,24 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
     # hash scope and each item is revalidated against the captured snapshot.
     run.status = "running"
     run.started_at = _utcnow()
-    run.summary_json = _set_stage(run.summary_json or {}, "candidate_discovery", status="completed")
+    run.summary_json = _set_stage(
+        run.summary_json or {},
+        "candidate_discovery",
+        status="completed",
+        processed=len(private_items),
+        failed=0,
+        phase_message="Execute run created; preparing import/retry work.",
+    )
+    run.summary_json = _set_stage(
+        run.summary_json or {},
+        "import",
+        status="running",
+        processed=0,
+        failed=0,
+        current_item_index=0,
+        current_item_label=None,
+        phase_message="Import/retry stage is starting.",
+    )
     db.commit()
 
     try:
@@ -2081,6 +2161,24 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 .first()
             )
 
+        def _target_safe_label(target: Dict[str, int]) -> str:
+            media_id = int(target.get("media_id") or 0)
+            source_item_id = int(target.get("source_item_id") or 0)
+            if source_item_id > 0:
+                run_item = (
+                    db.query(DynamicSyncRunItem)
+                    .filter(
+                        DynamicSyncRunItem.sync_run_id == run.id,
+                        DynamicSyncRunItem.source_item_id == source_item_id,
+                    )
+                    .first()
+                )
+                metadata = dict(getattr(run_item, "current_metadata_json", None) or {}) if run_item else {}
+                safe_label = str(metadata.get("safe_label") or "").strip()
+                if safe_label:
+                    return safe_label
+            return f"media-{media_id}" if media_id > 0 else "media-unknown"
+
         for plan_item in private_items:
             if _is_cancel_requested(run_id):
                 run.status = "cancelled"
@@ -2113,6 +2211,19 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 ((plan_item.get("downstream_followup") or {}).get("source_item_id") or 0)
             )
             plan_source_item_id = int(plan_item.get("source_item_id") or downstream_source_item_id or 0)
+            run.summary_json = _set_stage(
+                run.summary_json or {},
+                "import",
+                status="running",
+                processed=processed_items,
+                failed=int(counts["failed"]),
+                current_item_index=processed_plan_items + 1,
+                current_item_label=plan_item.get("safe_label"),
+                work_item_kind=work_item_kind or None,
+                lifecycle_kind=plan_item.get("lifecycle_kind"),
+                phase_message="Validating source/app-media work item.",
+            )
+            db.commit()
             source_file: Optional[Path] = None
             item_failure_reason: Optional[str] = None
             planned_source_item: Optional[DynamicSourceItem] = None
@@ -2568,6 +2679,19 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         def _run_classification_stage() -> None:
             nonlocal consecutive_failures, item_failure_count, processed_items, stop_reason
             stage_processed = 0
+            run.summary_json = _set_stage(
+                run.summary_json or {},
+                "classification",
+                status="running",
+                processed=0,
+                failed=int(counts["classification_failed"]),
+                current_item_index=0,
+                current_item_label=None,
+                phase_message="Classification stage is starting.",
+                method=classification_method,
+                order=classification_order,
+            )
+            db.commit()
             for target in downstream_targets:
                 media_id = int(target.get("media_id") or 0)
                 if stop_reason or run.status == "cancelled":
@@ -2576,6 +2700,19 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     run.status = "cancelled"
                     stop_reason = "cancelled"
                     break
+                run.summary_json = _set_stage(
+                    run.summary_json or {},
+                    "classification",
+                    status="running",
+                    processed=stage_processed,
+                    failed=int(counts["classification_failed"]),
+                    current_item_index=stage_processed + 1,
+                    current_item_label=_target_safe_label(target),
+                    phase_message="Classifying current media.",
+                    method=classification_method,
+                    order=classification_order,
+                )
+                db.commit()
                 item = _target_source_item(target)
                 if item and str(item.classification_status or "") in {"classified", "classified_reused"}:
                     counts["classified_reused"] += 1
@@ -2692,6 +2829,17 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         def _run_ai_tagging_stage() -> None:
             nonlocal ai_provenance, consecutive_failures, item_failure_count, processed_items, stop_reason
             stage_processed = 0
+            run.summary_json = _set_stage(
+                run.summary_json or {},
+                "ai_tagging",
+                status="running",
+                processed=0,
+                failed=int(counts["ai_tagging_failed"]),
+                current_item_index=0,
+                current_item_label=None,
+                phase_message="AI tagging stage is starting.",
+            )
+            db.commit()
             for target in downstream_targets:
                 media_id = int(target.get("media_id") or 0)
                 if stop_reason or run.status == "cancelled":
@@ -2700,6 +2848,17 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     run.status = "cancelled"
                     stop_reason = "cancelled"
                     break
+                run.summary_json = _set_stage(
+                    run.summary_json or {},
+                    "ai_tagging",
+                    status="running",
+                    processed=stage_processed,
+                    failed=int(counts["ai_tagging_failed"]),
+                    current_item_index=stage_processed + 1,
+                    current_item_label=_target_safe_label(target),
+                    phase_message="AI tagging current media.",
+                )
+                db.commit()
                 item = _target_source_item(target)
                 if (
                     item
@@ -2927,6 +3086,17 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             run.status = "cancelled"
             stop_reason = "cancelled"
             db.commit()
+        run.summary_json = _set_stage(
+            run.summary_json or {},
+            "localization",
+            status="running" if not (stop_reason or run.status in {"cancelled", "failed"}) else (stop_reason or str(run.status)),
+            processed=0,
+            failed=0,
+            current_item_index=0,
+            current_item_label=None,
+            phase_message="Localization/report finalization is starting.",
+        )
+        db.commit()
         if stop_reason or run.status in {"cancelled", "failed"}:
             localization_result = _manual_sync_skipped_localization_result(
                 reason=stop_reason or str(run.status or "stopped"),
@@ -3022,10 +3192,13 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             or localization_result.get("dynamic_source_items_target_status") == "deferred"
             or int(localization_result.get("tags_requiring_localization_after_runner") or 0)
         )
+        retry_source_ready_for_import = int(counts["retry_source_ready_for_import"])
         if not stop_reason and run.status not in {"cancelled", "failed"} and int(counts["localization_failed"]):
             summary_status = "completed_with_localization_failures"
         elif not stop_reason and run.status not in {"cancelled", "failed"} and localization_incomplete:
             summary_status = "completed_with_followup_required"
+        elif not stop_reason and run.status not in {"cancelled", "failed"} and retry_source_ready_for_import:
+            summary_status = "completed_with_continuation"
         elif (
             not stop_reason
             and run.status not in {"cancelled", "failed"}
@@ -3059,6 +3232,16 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             imported_media_ids=imported_media_ids,
             downstream_media_ids=downstream_media_ids,
             downstream_targets=downstream_targets,
+            work_item_counts=plan_work_item_counts,
+            work_item_summary={
+                "import_work": int(plan_work_item_counts.get("IMPORT", 0)),
+                "app_media_followup": int(plan_work_item_counts.get("FOLLOWUP", 0)),
+                "retry_source_debt": int(plan_work_item_counts.get("RETRY_SOURCE", 0)),
+                "broken_diagnostics": int(plan_work_item_counts.get("BROKEN_STATE", 0)),
+                "placeholder_deferred": int(plan_work_item_counts.get("PLACEHOLDER", 0)),
+                "noop_diagnostics": int(plan_work_item_counts.get("NOOP_DIAGNOSTIC", 0)),
+                "uses_work_item_kind_first_semantics": True,
+            },
             ai_provider_provenance=ai_provenance,
             stopped_by=stop_reason,
             stop_reason=stop_reason,
@@ -3085,6 +3268,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             if int(counts["localization_failed"]):
                 run.status = "completed_with_failures"
             elif localization_incomplete:
+                run.status = "completed_with_followup_required"
+            elif retry_source_ready_for_import:
                 run.status = "completed_with_followup_required"
             elif int(counts["failed"]) or int(unprocessed_import_planned_count) or bool(import_stop_reason):
                 run.status = "completed_with_failures"
@@ -3134,6 +3319,8 @@ def serialize_manual_sync_execute_run(run: DynamicSyncRun) -> Dict[str, Any]:
             import_stopped_by=execute.get("import_stopped_by"),
         )
         execute["operator_status_source"] = "manual_sync_lifecycle_v1"
+    execute["operator_status_label_zh"] = operator_status_label_zh(str(execute.get("operator_status") or ""))
+    execute.setdefault("operator_labels", manual_sync_operator_label_catalog())
     summary["manual_sync_execute"] = execute
     payload["summary"] = summary
     payload["manual_sync_execute"] = execute

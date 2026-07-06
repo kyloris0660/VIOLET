@@ -32,7 +32,7 @@ HTTP_URL_RE = re.compile(r"(?i)\bhttps?://[^\s\"'<>]+")
 SECRET_KEY_NAME_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer)")
 SECRET_CONTEXT_KEY_RE = re.compile(r"(?i)(api[_-]?key|token|password|secret|cookie|authorization|bearer|credential)")
 PRIVATE_PROVENANCE_KEY_RE = re.compile(
-    r"(?i)(raw_filename|filename|file_name|source_url|source_urls|original_url|thumbnail_url|source_path|local_path|source_root|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
+    r"(?i)(raw_filename|filename|file_name|source_url|source_urls|original_url|thumbnail_url|source_path|local_path|source_root|selected_root_label|source_root_label|root_label|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
 )
 PRIVATE_CONTENT_HASH_KEY_RE = re.compile(
     r"(?i)(^|_)(content_hash|file_hash|sha256|sha_256|md5|phash|perceptual_hash)$"
@@ -7830,6 +7830,425 @@ def _check_s3a_m2_r_lifecycle_workitem(_contract: PhaseContract, summary: Mappin
         )
 
 
+def _s3a_m2_r_label_is_placeholder(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if "\ufffd" in text:
+        return True
+    if text.count("?") >= 4:
+        return True
+    return text.replace("?", "").strip() == ""
+
+
+def _s3a_m2_r_non_clean_full_chain_evidence(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    non_clean_markers = (
+        "failed",
+        "deferred",
+        "blocked",
+        "missing",
+        "source_missing",
+        "read_timeout",
+        "cloud_hydration_failed",
+        "localization_failed",
+        "localization_deferred",
+    )
+
+    def add_count(path: str, key: str, count: Any) -> None:
+        amount = _as_int(count)
+        if amount <= 0:
+            return
+        key_folded = str(key or "").casefold()
+        if any(marker in key_folded for marker in non_clean_markers):
+            findings.append({"path": f"{path}.{key}", "count": amount})
+
+    db_truth = _get(summary, "work_item_kind_first.local_final_db_truth", {})
+    if isinstance(db_truth, Mapping):
+        for status_key in (
+            "import_status",
+            "classification_status",
+            "ai_tagging_status",
+            "localization_status",
+            "source_status",
+            "sync_state",
+            "failure_reason",
+            "deferred_reason",
+        ):
+            counts = db_truth.get(status_key)
+            if isinstance(counts, Mapping):
+                for key, count in counts.items():
+                    add_count(f"work_item_kind_first.local_final_db_truth.{status_key}", str(key), count)
+
+    rounds = _get(summary, "local_gui_acceptance.isolated_incremental_gui_e2e.rounds", [])
+
+    def scan_execute_payload(path: str, payload: Any) -> None:
+        if not isinstance(payload, Mapping):
+            return
+        status = str(payload.get("status") or "").casefold()
+        if "failed" in status or "deferred" in status:
+            findings.append({"path": f"{path}.status", "status": status})
+        outcome_counts = payload.get("outcome_counts")
+        if isinstance(outcome_counts, Mapping):
+            for key, count in outcome_counts.items():
+                add_count(f"{path}.outcome_counts", str(key), count)
+
+    if isinstance(rounds, Sequence) and not isinstance(rounds, (str, bytes, bytearray)):
+        for index, round_payload in enumerate(rounds):
+            if not isinstance(round_payload, Mapping):
+                continue
+            round_path = f"local_gui_acceptance.isolated_incremental_gui_e2e.rounds[{index}]"
+            scan_execute_payload(f"{round_path}.execute", round_payload.get("execute"))
+            scan_execute_payload(f"{round_path}.retry_execute", round_payload.get("retry_execute"))
+            batches = round_payload.get("batches")
+            if isinstance(batches, Sequence) and not isinstance(batches, (str, bytes, bytearray)):
+                for batch_index, batch in enumerate(batches):
+                    if isinstance(batch, Mapping):
+                        scan_execute_payload(
+                            f"{round_path}.batches[{batch_index}].execute",
+                            batch.get("execute"),
+                        )
+    return findings
+
+
+def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "operator_ready",
+        "blocked_browser_validation",
+        "blocked_local_gui_acceptance",
+        "blocked_production_plan_only",
+        "blocked_public_redaction_failed",
+        "blocked_contract_failed",
+    }
+    status = str(result.status or "").casefold()
+    if status not in allowed_statuses:
+        result.fail(
+            "s3a_m2_r_operator_unknown_status",
+            "S3A-M2-R PR-R2 status must explicitly report operator readiness or the blocking gate.",
+            path="pipeline_contract.status",
+            expected=sorted(allowed_statuses),
+            actual=result.status,
+        )
+    if str(_get(summary, "pipeline_contract.phase_identity", "") or "") != "S3A-M2-R PR-R2":
+        result.fail(
+            "s3a_m2_r_operator_phase_identity_mismatch",
+            "The PR-R2 summary must declare the exact phase identity.",
+            path="pipeline_contract.phase_identity",
+            expected="S3A-M2-R PR-R2",
+            actual=_get(summary, "pipeline_contract.phase_identity", None),
+        )
+    if status != "operator_ready" and _completion_or_approval_claimed(result):
+        result.fail(
+            "s3a_m2_r_operator_non_ready_claimed_completion",
+            "Only operator_ready may claim target_met, safe_to_merge, or full-chain completion.",
+            path="pipeline_contract.status",
+            expected="operator_ready for completion claims",
+            actual=result.status,
+        )
+
+    required_true_paths = (
+        "ui_progress.plan_progress_visible",
+        "ui_progress.execute_transition_visible_before_run_id",
+        "ui_progress.execute_duplicate_submit_disabled",
+        "ui_progress.stage_heartbeat_visible",
+        "ui_progress.error_state_visible",
+        "work_item_kind_first.import_counts_from_work_item_kind",
+        "work_item_kind_first.retry_counts_from_work_item_kind",
+        "work_item_kind_first.legacy_state_does_not_override_work_item_kind",
+        "work_item_kind_first.noop_and_placeholder_non_executable",
+        "work_item_kind_first.broken_diagnostics_visible_non_actionable",
+        "work_item_kind_first.successful_retry_creates_visible_pending_import",
+        "work_item_kind_first.source_missing_retry_debt_visible",
+        "work_item_kind_first.missing_media_or_app_file_visible",
+        "browser_validation.execute_transition_checked",
+        "local_gui_acceptance.gui_plan_passed",
+        "local_gui_acceptance.gui_execute_passed",
+        "production_plan_only.gui_path_used",
+        "production_plan_only.execute_not_run",
+        "production_plan_only.no_unsafe_execute_implied",
+        "advanced_full_rescan_policy.retry_source_not_executable_until_validated",
+        "public_redaction.passed",
+        "safety.no_production_execute_without_owner_approval",
+        "safety.no_source_icloud_mutation",
+        "safety.no_app_storage_repair_or_mutation",
+        "safety.no_destructive_cleanup",
+        "safety.no_provider_pixiv_sourceconcept_entity_work",
+    )
+    _check_required_boolean_paths(
+        summary,
+        result,
+        required_true_paths,
+        code="s3a_m2_r_operator_required_proof_missing",
+        message="PR-R2 requires UI progress, WorkItemKind-first, browser/local GUI, production Plan-only, redaction, and safety proofs.",
+    )
+
+    expected_operator_statuses = {
+        "completed",
+        "completed_with_retryable_failures",
+        "completed_with_followup_required",
+        "completed_with_continuation",
+        "completed_with_retryable_failures_plus_continuation",
+        "failed_systemic",
+        "blocked_preflight",
+        "cancelled",
+    }
+    expected_work_item_kinds = {"IMPORT", "FOLLOWUP", "RETRY_SOURCE", "BROKEN_STATE", "PLACEHOLDER", "NOOP_DIAGNOSTIC"}
+    expected_lifecycle_kinds = {
+        "APP_MEDIA_FOLLOWUP",
+        "IMPORT_CANDIDATE",
+        "RETRYABLE_SOURCE_FAILURE",
+        "PLACEHOLDER_DEFERRED",
+        "STABLE_NOOP",
+        "HISTORICAL_DIAGNOSTIC",
+        "CONTINUATION",
+        "BROKEN_STATE",
+        "FATAL_BLOCKER",
+    }
+    catalog_expectations = (
+        ("operator_labels.operator_statuses", expected_operator_statuses, "s3a_m2_r_operator_status_labels_missing"),
+        ("operator_labels.work_item_kinds", expected_work_item_kinds, "s3a_m2_r_work_item_labels_missing"),
+        ("operator_labels.lifecycle_kinds", expected_lifecycle_kinds, "s3a_m2_r_lifecycle_labels_missing"),
+    )
+    for path, expected, code in catalog_expectations:
+        labels = _get(summary, path, {})
+        keys = set(labels.keys()) if isinstance(labels, Mapping) else set(str(value) for value in (labels or []))
+        missing = sorted(expected - keys)
+        if missing:
+            result.fail(
+                code,
+                "PR-R2 public summary must include Chinese operator labels for every required status/kind.",
+                path=path,
+                expected=sorted(expected),
+                actual=sorted(keys),
+            )
+        if isinstance(labels, Mapping):
+            placeholder_labels = sorted(
+                key for key in expected if key in labels and _s3a_m2_r_label_is_placeholder(labels.get(key))
+            )
+            if placeholder_labels:
+                result.fail(
+                    f"{code}_placeholder_or_empty",
+                    "PR-R2 required Chinese operator labels must be readable text, not empty or question-mark placeholders.",
+                    path=path,
+                    expected="readable Chinese operator labels",
+                    actual={key: labels.get(key) for key in placeholder_labels},
+                )
+
+    if str(_get(summary, "browser_validation.status", "")).casefold() != "passed":
+        result.fail(
+            "s3a_m2_r_browser_validation_not_passed",
+            "PR-R2 cannot claim operator readiness without passed real browser validation.",
+            path="browser_validation.status",
+            expected="passed",
+            actual=_get(summary, "browser_validation.status", None),
+        )
+    if str(_get(summary, "local_gui_acceptance.status", "")).casefold() != "passed":
+        result.fail(
+            "s3a_m2_r_local_gui_acceptance_not_passed",
+            "PR-R2 cannot claim operator readiness without local-image GUI Plan and Execute acceptance.",
+            path="local_gui_acceptance.status",
+            expected="passed",
+            actual=_get(summary, "local_gui_acceptance.status", None),
+        )
+    if str(_get(summary, "production_plan_only.status", "")).casefold() != "passed":
+        result.fail(
+            "s3a_m2_r_production_plan_only_not_passed",
+            "PR-R2 cannot claim operator readiness without production GUI Plan-only acceptance.",
+            path="production_plan_only.status",
+            expected="passed",
+            actual=_get(summary, "production_plan_only.status", None),
+        )
+    production_selected_plan_items = _as_int(
+        _get(summary, "production_plan_only.selected_plan_items", _get(summary, "production_plan_only.plan_items", 0))
+    )
+    production_work_item_counts = _get(summary, "production_plan_only.work_item_counts", {})
+    production_lifecycle_counts = _get(summary, "production_plan_only.lifecycle_counts", {})
+    production_state_counts = _get(summary, "production_plan_only.state_counts", {})
+    if production_selected_plan_items:
+        if isinstance(production_work_item_counts, Mapping):
+            work_item_total = sum(_as_int(value) for value in production_work_item_counts.values())
+            if work_item_total != production_selected_plan_items:
+                result.fail(
+                    "s3a_m2_r_production_plan_only_work_item_count_mismatch",
+                    "Production Plan-only selected_plan_items must equal the selected WorkItem counts total.",
+                    path="production_plan_only.work_item_counts",
+                    expected=production_selected_plan_items,
+                    actual=work_item_total,
+                )
+        if isinstance(production_lifecycle_counts, Mapping):
+            lifecycle_total = sum(_as_int(value) for value in production_lifecycle_counts.values())
+            if lifecycle_total != production_selected_plan_items:
+                result.fail(
+                    "s3a_m2_r_production_plan_only_lifecycle_count_mismatch",
+                    "Production Plan-only selected_plan_items must equal the selected lifecycle counts total.",
+                    path="production_plan_only.lifecycle_counts",
+                    expected=production_selected_plan_items,
+                    actual=lifecycle_total,
+                )
+        if isinstance(production_state_counts, Mapping):
+            state_total = sum(_as_int(value) for value in production_state_counts.values())
+            if state_total != production_selected_plan_items:
+                state_scope = str(_get(summary, "production_plan_only.state_counts_scope", "") or "").strip()
+                declared_state_total = _as_int(_get(summary, "production_plan_only.state_counts_total", -1), -1)
+                if not state_scope or state_scope == "selected_plan_items" or declared_state_total != state_total:
+                    result.fail(
+                        "s3a_m2_r_production_plan_only_state_count_scope_missing",
+                        "Production Plan-only state_counts may differ from selected_plan_items only when an explicit broader state_counts_scope and matching state_counts_total are recorded.",
+                        path="production_plan_only.state_counts",
+                        expected={
+                            "selected_plan_items": production_selected_plan_items,
+                            "state_counts_scope": "explicit broader-than-selected scope",
+                            "state_counts_total": state_total,
+                        },
+                        actual={
+                            "state_counts_total": state_total,
+                            "declared_state_counts_total": declared_state_total,
+                            "state_counts_scope": state_scope,
+                        },
+                    )
+    if _as_bool(_get(summary, "s3b_disabled.enabled", True)):
+        result.fail(
+            "s3a_m2_r_s3b_enabled",
+            "PR-R2 must keep S3B unattended/scheduled/startup sync disabled.",
+            path="s3b_disabled.enabled",
+            expected=False,
+            actual=_get(summary, "s3b_disabled.enabled", None),
+        )
+
+    production_execute_ran = _as_bool(_get(summary, "production_execute.ran", False))
+    safety_production_execute_ran = _as_bool(_get(summary, "safety.production_execute_ran", False))
+    if production_execute_ran != safety_production_execute_ran:
+        result.fail(
+            "s3a_m2_r_production_execute_flags_disagree",
+            "production_execute.ran and safety.production_execute_ran must agree so the PR-R2 summary cannot false-pass.",
+            path="production_execute.ran",
+            expected=safety_production_execute_ran,
+            actual=production_execute_ran,
+        )
+    owner_approved = _as_bool(_get(summary, "production_execute.owner_approved", False))
+    production_execute_indicated = production_execute_ran or safety_production_execute_ran
+    if production_execute_indicated and not owner_approved:
+        result.fail(
+            "s3a_m2_r_production_execute_without_owner_approval",
+            "Production Execute is forbidden unless explicit owner approval is recorded.",
+            path="production_execute.owner_approved",
+            expected=True,
+            actual=_get(summary, "production_execute.owner_approved", None),
+        )
+    if production_execute_indicated:
+        approval_reference = str(_get(summary, "production_execute.approval_reference", "") or "").strip()
+        approval_justification = str(_get(summary, "production_execute.approval_justification", "") or "").strip()
+        if not approval_reference and not approval_justification:
+            result.fail(
+                "s3a_m2_r_production_execute_approval_reference_missing",
+                "Production Execute approval must include an approval_reference or explicit approval_justification.",
+                path="production_execute.approval_reference",
+                expected="non-empty approval_reference or approval_justification",
+                actual=_get(summary, "production_execute.approval_reference", None),
+            )
+    _check_explicit_false_paths(
+        summary,
+        result,
+        (
+            "safety.source_icloud_mutation",
+            "safety.app_storage_repair_or_mutation",
+            "safety.destructive_cleanup",
+            "safety.provider_pixiv_sourceconcept_entity_work",
+            "scope.s3b_started",
+            "scope.pixiv_provider_sourceconcept_entity_started",
+        ),
+        code="s3a_m2_r_operator_forbidden_scope_or_mutation",
+        message="PR-R2 must not enable S3B, start provider/SourceConcept/Entity work, mutate source/iCloud/app storage, or run destructive cleanup.",
+    )
+
+    final_acceptance_complete = all(
+        _as_bool(_get(summary, path, False))
+        for path in (
+            "browser_validation.execute_transition_checked",
+            "local_gui_acceptance.gui_plan_passed",
+            "local_gui_acceptance.gui_execute_passed",
+            "production_plan_only.gui_path_used",
+            "production_plan_only.execute_not_run",
+            "public_redaction.passed",
+        )
+    )
+    non_clean_full_chain_evidence = _s3a_m2_r_non_clean_full_chain_evidence(summary)
+    result.details["s3a_m2_r_non_clean_full_chain_evidence"] = non_clean_full_chain_evidence[:20]
+    full_s3a_m2_r_claimed = _as_bool(_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", False)) or _as_bool(
+        _get(summary, "scope.full_s3a_m2_r_completion_claimed", False)
+    )
+    if non_clean_full_chain_evidence and result.full_chain_complete_claimed:
+        result.fail(
+            "s3a_m2_r_operator_full_chain_overclaimed_with_non_clean_evidence",
+            "PR-R2 must not claim full-chain completion while local GUI evidence still includes failed/deferred downstream work.",
+            path="pipeline_contract.claims.full_chain_complete",
+            expected=False,
+            actual=_get(summary, "pipeline_contract.claims.full_chain_complete", None),
+        )
+    if non_clean_full_chain_evidence and full_s3a_m2_r_claimed:
+        result.fail(
+            "s3a_m2_r_operator_full_s3a_m2_r_overclaimed_with_non_clean_evidence",
+            "PR-R2 operator readiness must not be overloaded as full S3A-M2-R completion when failed/deferred downstream work remains visible.",
+            path="pipeline_contract.claims.full_s3a_m2_r_complete",
+            expected=False,
+            actual=_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", None),
+        )
+    if non_clean_full_chain_evidence and (result.target_met_claimed or result.safe_to_merge_claimed):
+        claim_scope = str(
+            _get(
+                summary,
+                "pipeline_contract.claims.safe_to_merge_scope",
+                _get(summary, "pipeline_contract.claims.target_met_scope", ""),
+            )
+            or ""
+        ).strip()
+        if claim_scope != "operator_ready_visible_non_clean_debt":
+            result.fail(
+                "s3a_m2_r_operator_non_clean_safe_to_merge_scope_missing",
+                "target_met/safe_to_merge with non-clean E2E evidence must explicitly mean operator-ready with visible non-clean debt, not clean full-chain completion.",
+                path="pipeline_contract.claims.safe_to_merge_scope",
+                expected="operator_ready_visible_non_clean_debt",
+                actual=claim_scope or None,
+            )
+    if _as_bool(_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", False)) and not (
+        status == "operator_ready" and final_acceptance_complete
+    ):
+        result.fail(
+            "s3a_m2_r_operator_full_completion_overclaimed",
+            "Full S3A-M2-R completion cannot be claimed until GUI/local/production Plan-only/redaction acceptance is complete.",
+            path="pipeline_contract.claims.full_s3a_m2_r_complete",
+            expected="operator_ready with all final acceptance gates",
+            actual=_get(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", None),
+        )
+
+    public_payloads: list[Any] = [summary]
+    report_path = _get(summary, "public_reports.markdown_report_path", None)
+    if isinstance(report_path, str) and report_path:
+        path = (CONTRACT_ROOT / report_path).resolve()
+        try:
+            path.relative_to(CONTRACT_ROOT)
+            if path.exists():
+                public_payloads.append({"public_markdown_text": path.read_text(encoding="utf-8")})
+        except Exception:
+            result.fail(
+                "s3a_m2_r_operator_public_report_path_invalid",
+                "PR-R2 public markdown report path must stay under the repository root.",
+                path="public_reports.markdown_report_path",
+                expected="repo-relative path",
+                actual=report_path,
+            )
+    findings: list[dict[str, Any]] = []
+    for payload in public_payloads:
+        findings.extend(scan_public_payload(payload))
+    if findings:
+        result.fail(
+            "s3a_m2_r_operator_public_payload_not_safe",
+            "PR-R2 public artifacts must not leak local paths, filenames, source roots, content hashes, URLs, secrets, or private provenance.",
+            path="public_redaction",
+            actual=findings[:5],
+        )
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -7857,6 +8276,7 @@ CUSTOM_CHECKS = {
     "s3a_m1_manual_sync_execute": _check_s3a_m1_manual_sync_execute,
     "s3a_m2_production_delta_e2e": _check_s3a_m2_production_delta_e2e,
     "s3a_m2_r_lifecycle_workitem": _check_s3a_m2_r_lifecycle_workitem,
+    "s3a_m2_r_operator_validation": _check_s3a_m2_r_operator_validation,
     "s3a_pilot1_new_data_directml_chain": _check_s3a_pilot1_new_data_directml_chain,
     "s3a_prod1_operator_incremental_sync": _check_s3a_prod1_operator_incremental_sync,
     "s3a_prod2_s3b_d1_operator_scaleup_disabled_sync": _check_s3a_prod2_s3b_d1_operator_scaleup_disabled_sync,

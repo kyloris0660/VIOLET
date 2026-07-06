@@ -24,6 +24,9 @@ class AdminPanel {
         this.dynamicSyncOperatorReadiness = {};
         this.dynamicSyncManualWarnings = [];
         this.dynamicSyncBackgroundWarnings = [];
+        this.dynamicSyncExecuteRequestStartedAt = null;
+        this.dynamicSyncExecuteRequestTimer = null;
+        this.dynamicSyncPageConfirmationState = 'idle';
         window.adminPanel = this;
         this.init();
     }
@@ -374,9 +377,18 @@ class AdminPanel {
         if (dynamicSyncPlanRoot) {
             dynamicSyncPlanRoot.addEventListener('change', () => {
                 this.dynamicSyncPlan = null;
+                this._hideManualSyncPageConfirmation();
                 this._renderManualSyncOperatorSummary();
                 this._updateManualSyncExecuteButton();
             });
+        }
+        const dynamicSyncPageConfirmExecuteBtn = document.getElementById('dynamic-sync-page-confirm-execute-btn');
+        if (dynamicSyncPageConfirmExecuteBtn) {
+            dynamicSyncPageConfirmExecuteBtn.addEventListener('click', () => this.confirmAndExecuteManualSyncReadyPlan());
+        }
+        const dynamicSyncPageCancelConfirmationBtn = document.getElementById('dynamic-sync-page-cancel-confirmation-btn');
+        if (dynamicSyncPageCancelConfirmationBtn) {
+            dynamicSyncPageCancelConfirmationBtn.addEventListener('click', () => this.cancelManualSyncPageConfirmation());
         }
         const dynamicSyncConfirmExecuteBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
         if (dynamicSyncConfirmExecuteBtn) {
@@ -1907,35 +1919,106 @@ class AdminPanel {
         return translated && translated !== key ? translated : fallback;
     }
 
+    _manualSyncOperatorStatusLabel(status) {
+        const labels = {
+            completed: '已完成：本批次没有剩余操作员动作',
+            completed_with_retryable_failures: '已完成但有可重试源文件债务',
+            completed_with_followup_required: '已完成但需要后续补处理',
+            completed_with_continuation: '已完成当前批次，还有下一批或源文件重试恢复后的导入需要继续计划',
+            completed_with_retryable_failures_plus_continuation: '已完成当前批次，同时有可重试债务和后续批次',
+            failed_systemic: '系统性失败：需要先排查环境或流程问题',
+            blocked_preflight: '预检阻断：尚未进入执行',
+            cancelled: '已取消：已提交结果保留，剩余项目需要重新计划',
+        };
+        return labels[status] || status || '-';
+    }
+
+    _manualSyncWorkItemKindLabel(kind) {
+        const labels = {
+            IMPORT: '导入新媒体',
+            FOLLOWUP: '应用媒体后续补处理',
+            RETRY_SOURCE: '重试源文件读取',
+            BROKEN_STATE: '状态异常诊断',
+            PLACEHOLDER: '云占位/暂缓项目',
+            NOOP_DIAGNOSTIC: '无需执行的诊断项',
+        };
+        return labels[kind] || kind || '-';
+    }
+
+    _manualSyncLifecycleKindLabel(kind) {
+        const labels = {
+            APP_MEDIA_FOLLOWUP: '应用内媒体需要补处理',
+            IMPORT_CANDIDATE: '可导入候选',
+            RETRYABLE_SOURCE_FAILURE: '源文件读取可重试失败',
+            PLACEHOLDER_DEFERRED: '云占位暂缓',
+            STABLE_NOOP: '稳定无操作',
+            HISTORICAL_DIAGNOSTIC: '历史诊断记录',
+            CONTINUATION: '批次续跑',
+            BROKEN_STATE: '状态异常',
+            FATAL_BLOCKER: '致命阻断',
+        };
+        return labels[kind] || kind || '-';
+    }
+
+    _manualSyncStageLabel(stage) {
+        const labels = {
+            plan: '计划',
+            candidate_discovery: '候选发现',
+            import: '导入/重试',
+            classification: '分类',
+            ai_tagging: 'AI 标签',
+            localization: '本地化',
+            summary: '摘要/报告',
+        };
+        return labels[stage] || stage || '-';
+    }
+
+    _manualSyncStageStatusLabel(status) {
+        const labels = {
+            queued: '等待中',
+            pending: '等待中',
+            running: '进行中',
+            cancelling: '取消中',
+            completed: '已完成',
+            failed: '失败',
+            cancelled: '已取消',
+            blocked: '已阻断',
+            skipped: '已跳过/已停止',
+        };
+        return labels[status] || status || '-';
+    }
+
     _renderManualSyncStageStrip(stageStatus = {}) {
         const strip = document.getElementById('dynamic-sync-stage-strip');
         if (!strip) return;
         const stages = [
-            ['plan', 'Plan'],
-            ['import', 'Import'],
-            ['classification', 'Classification'],
-            ['ai_tagging', 'AI tagging'],
-            ['localization', 'Localization'],
-            ['summary', 'Complete'],
+            ['plan', '计划'],
+            ['import', '导入/重试'],
+            ['classification', '分类'],
+            ['ai_tagging', 'AI 标签'],
+            ['localization', '本地化'],
+            ['summary', '摘要/报告'],
         ];
         strip.innerHTML = stages.map(([key, label]) => {
             const status = stageStatus[key] || 'queued';
             const style = status === 'completed'
                 ? 'border-green-500 text-green-400'
-                : (status === 'running' ? 'border-warning text-warning' : (status === 'failed' ? 'border-red-500 text-red-400' : 'border text-secondary'));
-            return `<div class="p-2 border ${style}"><div class="font-bold">${this.escapeHtml(label)}</div><div class="text-[10px]">${this.escapeHtml(status)}</div></div>`;
+                : (status === 'running' ? 'border-warning text-warning' : (status === 'failed' ? 'border-red-500 text-red-400' : (status === 'skipped' ? 'border-secondary text-secondary' : 'border text-secondary')));
+            return `<div class="p-2 border ${style}"><div class="font-bold">${this.escapeHtml(label)}</div><div class="text-[10px]">${this.escapeHtml(this._manualSyncStageStatusLabel(status))}</div></div>`;
         }).join('');
     }
 
-    _manualSyncSetProgress({ visible = true, label = '', detail = '', inFlight = false, stageStatus = null } = {}) {
+    _manualSyncSetProgress({ visible = true, label = '', detail = '', inFlight = false, stageStatus = null, pending = false } = {}) {
         const progress = document.getElementById('dynamic-sync-progress');
         const labelEl = document.getElementById('dynamic-sync-progress-label');
         const detailEl = document.getElementById('dynamic-sync-progress-detail');
         const elapsedEl = document.getElementById('dynamic-sync-progress-elapsed');
+        const pendingEl = document.getElementById('dynamic-sync-progress-pending');
         if (progress) progress.classList.toggle('hidden', !visible);
         if (labelEl && label) labelEl.textContent = label;
         if (detailEl && detail) detailEl.textContent = detail;
         if (stageStatus) this._renderManualSyncStageStrip(stageStatus);
+        if (pendingEl) pendingEl.classList.toggle('hidden', !pending);
 
         if (inFlight && !this.dynamicSyncProgressStartedAt) {
             this.dynamicSyncProgressStartedAt = Date.now();
@@ -1991,9 +2074,9 @@ class AdminPanel {
             inFlight: ['running', 'cancelling'].includes(status),
             stageStatus: { plan: status === 'completed' ? 'completed' : (status === 'failed' ? 'failed' : 'running') },
         });
-        if (labelEl) labelEl.textContent = `Plan ${status}: ${phase}`;
+        if (labelEl) labelEl.textContent = `计划${this._manualSyncStageStatusLabel(status)}：${phase}`;
         if (detailEl) {
-            detailEl.textContent = `current=${item}, index=${index}, updated=${progressPayload.updated_at || progressPayload.last_progress_at || '-'}`;
+            detailEl.textContent = `当前项目=${item}，序号=${index}，最后更新=${progressPayload.updated_at || progressPayload.last_progress_at || '-'}`;
         }
         if (elapsedEl) elapsedEl.textContent = `${Math.max(0, Math.round(progressPayload.elapsed_seconds || 0))}s`;
         if (requestEl) requestEl.textContent = progressPayload.plan_request_id ? `request=${progressPayload.plan_request_id}` : '';
@@ -2007,13 +2090,13 @@ class AdminPanel {
         }
         if (countsEl) {
             const fields = [
-                ['metadata seen', counts.metadata_entries_seen || counts.seen || 0],
-                ['ledger follow-up', counts.db_followup_candidates || 0],
-                ['mtime-new', counts.mtime_new_candidates || 0],
-                ['safety-window', counts.safety_window_candidates || 0],
-                ['selected', counts.batch_candidates || counts.planned || 0],
-                ['plan reads/hash/decode/hydrate', `${counts.content_reads || 0}/${counts.hashes || 0}/${counts.decodes || 0}/${counts.hydrations || 0}`],
-                ['failed', counts.failed || 0],
+                ['元数据已看见', counts.metadata_entries_seen || counts.seen || 0],
+                ['应用媒体补处理', counts.db_followup_candidates || 0],
+                ['mtime 新候选', counts.mtime_new_candidates || 0],
+                ['安全窗口候选', counts.safety_window_candidates || 0],
+                ['已选批次', counts.batch_candidates || counts.planned || 0],
+                ['读取/哈希/解码/水合', `${counts.content_reads || 0}/${counts.hashes || 0}/${counts.decodes || 0}/${counts.hydrations || 0}`],
+                ['失败', counts.failed || 0],
             ];
             countsEl.innerHTML = fields.map(([key, value]) => (
                 `<div class="bg p-2 border"><span class="text-secondary">${this.escapeHtml(key)}</span><br><span class="font-bold">${value}</span></div>`
@@ -2028,7 +2111,7 @@ class AdminPanel {
         if (cancelBtn) {
             cancelBtn.classList.toggle('hidden', !['running', 'cancelling'].includes(status));
             cancelBtn.disabled = status === 'cancelling';
-            cancelBtn.textContent = status === 'cancelling' ? 'Cancelling plan...' : 'Cancel plan';
+            cancelBtn.textContent = status === 'cancelling' ? '正在取消计划...' : '取消计划';
         }
     }
 
@@ -2081,6 +2164,8 @@ class AdminPanel {
             'dynamic-sync-start-btn',
             'dynamic-sync-dry-run-btn',
             'dynamic-sync-check-btn',
+            'dynamic-sync-page-confirm-execute-btn',
+            'dynamic-sync-page-cancel-confirmation-btn',
             'dynamic-sync-confirm-execute-btn',
             'dynamic-sync-copy-confirmation-btn',
             'dynamic-sync-execute-btn',
@@ -2322,6 +2407,192 @@ class AdminPanel {
         return session;
     }
 
+    _manualSyncPlanExecutionState(plan) {
+        const counts = (plan || {}).counts || {};
+        const limits = (plan || {}).limits || {};
+        const workItemCounts = counts.work_item_counts || {};
+        const integrity = (plan || {}).integrity || {};
+        const importCount = Number(counts.estimated_import_count || workItemCounts.IMPORT || 0);
+        const followupCount = Number(counts.estimated_downstream_followup_count || workItemCounts.FOLLOWUP || 0);
+        const retrySourceCount = Number(counts.estimated_retry_source_count || workItemCounts.RETRY_SOURCE || 0);
+        const brokenStateCount = Number(workItemCounts.BROKEN_STATE || 0);
+        const placeholderCount = Number(workItemCounts.PLACEHOLDER || 0);
+        const noopDiagnosticCount = Number(workItemCounts.NOOP_DIAGNOSTIC || 0);
+        const diagnosticCount = brokenStateCount + placeholderCount + noopDiagnosticCount;
+        const actionableCount = importCount + followupCount + retrySourceCount;
+        const batchExecutable = !!(counts.batch_executable || limits.batch_executable);
+        const complete = !!(plan && (!counts.partial_scan || batchExecutable));
+        const advancedRetryBlocked = !!(counts.advanced_full_rescan_retry_source_execution_not_validated || limits.advanced_full_rescan_retry_source_execution_not_validated);
+        const active = this._manualSyncActiveJobRunning();
+        const expiresAt = integrity.expires_at || '';
+        const expiresAtMs = expiresAt ? Date.parse(expiresAt) : NaN;
+        const expired = Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
+        const planItems = Number(counts.plan_items || counts.total_seen || 0);
+        const planHash = integrity.plan_hash || '';
+        const root = this._selectedDynamicSyncRoot();
+        const rootHash = root && root.root_path_hash ? String(root.root_path_hash).slice(0, 12) : '';
+        const rootMarker = root
+            ? `root#${root.id}${rootHash ? ` (${rootHash})` : ''}`
+            : 'root unavailable';
+        const canExecute = !!(
+            this.dynamicSyncExecuteEnabled
+            && plan
+            && complete
+            && batchExecutable
+            && actionableCount > 0
+            && !advancedRetryBlocked
+            && !expired
+            && !active
+            && !this.dynamicSyncActionInFlight
+        );
+        return {
+            importCount,
+            followupCount,
+            retrySourceCount,
+            brokenStateCount,
+            placeholderCount,
+            noopDiagnosticCount,
+            diagnosticCount,
+            actionableCount,
+            batchExecutable,
+            complete,
+            advancedRetryBlocked,
+            active,
+            expired,
+            expiresAt,
+            planItems,
+            planHash,
+            planHashPrefix: String(planHash).slice(0, 16),
+            rootMarker,
+            canExecute,
+        };
+    }
+
+    _hideManualSyncPageConfirmation() {
+        const panel = document.getElementById('dynamic-sync-page-confirmation');
+        const summary = document.getElementById('dynamic-sync-page-confirmation-summary');
+        const executeBtn = document.getElementById('dynamic-sync-page-confirm-execute-btn');
+        const cancelBtn = document.getElementById('dynamic-sync-page-cancel-confirmation-btn');
+        this.dynamicSyncPageConfirmationState = 'idle';
+        if (panel) panel.classList.add('hidden');
+        if (summary) summary.innerHTML = '';
+        if (executeBtn) executeBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = false;
+    }
+
+    _renderManualSyncPageConfirmation(plan, { state = 'awaiting' } = {}) {
+        const panel = document.getElementById('dynamic-sync-page-confirmation');
+        const summary = document.getElementById('dynamic-sync-page-confirmation-summary');
+        const executeBtn = document.getElementById('dynamic-sync-page-confirm-execute-btn');
+        const cancelBtn = document.getElementById('dynamic-sync-page-cancel-confirmation-btn');
+        if (!panel || !summary) return;
+        if (!plan) {
+            this._hideManualSyncPageConfirmation();
+            return;
+        }
+        const executionState = this._manualSyncPlanExecutionState(plan);
+        const operatorStatement = this._manualSyncExpectedOperatorStatement(plan);
+        const expired = executionState.expired || state === 'expired';
+        const executing = state === 'executing';
+        const blocked = executionState.advancedRetryBlocked || !executionState.batchExecutable || executionState.actionableCount <= 0;
+        const canExecute = executionState.canExecute && !expired && !blocked && !executing;
+        this.dynamicSyncPageConfirmationState = expired ? 'expired' : state;
+        panel.classList.remove('hidden');
+        panel.dataset.state = this.dynamicSyncPageConfirmationState;
+        const productionWarning = this.dynamicSyncProductionMode
+            ? '生产警告：点击确认会执行写入，包含导入、分类、AI 标签、本地化和汇总报告。'
+            : '测试/本地警告：点击确认会在当前隔离环境执行手动同步写入。';
+        const stateMessage = expired
+            ? '当前 Plan 已过期；Execute 已禁用，请重新生成 Plan。'
+            : executing
+                ? 'Execute 请求已提交；正在等待后端创建运行并产生首个真实心跳。'
+                : state === 'cancelled'
+                    ? '已暂不执行；当前 Plan 仍保留，可在过期前确认执行，或重新生成 Plan。'
+                    : blocked
+                        ? 'Plan 已完成，但当前批次不可执行；请查看阻塞/诊断说明。'
+                        : 'Plan 已就绪，等待操作员在页面内确认；Execute 尚未启动。';
+        summary.innerHTML = `
+            <div class="font-bold text-warning">${this.escapeHtml(stateMessage)}</div>
+            <div>${this.escapeHtml(productionWarning)}</div>
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                <div><span class="text-secondary">Plan hash</span><br><span class="font-mono">${this.escapeHtml(executionState.planHashPrefix || '-')}</span></div>
+                <div><span class="text-secondary">Root marker</span><br><span class="font-mono">${this.escapeHtml(executionState.rootMarker)}</span></div>
+                <div><span class="text-secondary">Plan items</span><br><span class="font-bold">${executionState.planItems}</span></div>
+                <div><span class="text-secondary">Expires</span><br><span class="font-mono">${this.escapeHtml(executionState.expiresAt || '-')}</span></div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                <div><span class="text-secondary">IMPORT</span><br><span class="font-bold">${executionState.importCount}</span></div>
+                <div><span class="text-secondary">FOLLOWUP</span><br><span class="font-bold">${executionState.followupCount}</span></div>
+                <div><span class="text-secondary">RETRY_SOURCE</span><br><span class="font-bold">${executionState.retrySourceCount}</span></div>
+                <div><span class="text-secondary">BROKEN_STATE</span><br><span class="font-bold">${executionState.brokenStateCount}</span></div>
+                <div><span class="text-secondary">PLACEHOLDER</span><br><span class="font-bold">${executionState.placeholderCount}</span></div>
+                <div><span class="text-secondary">NOOP_DIAGNOSTIC</span><br><span class="font-bold">${executionState.noopDiagnosticCount}</span></div>
+            </div>
+            <div><span class="text-secondary">Non-executable diagnostics:</span> ${executionState.diagnosticCount}</div>
+            <div><span class="text-secondary">Operator confirmation statement:</span></div>
+            <code class="block mt-1 break-all select-all font-mono">${this.escapeHtml(operatorStatement || '-')}</code>
+        `;
+        if (executeBtn) {
+            executeBtn.disabled = !canExecute;
+            executeBtn.textContent = executing ? '正在提交 Execute...' : (expired ? 'Plan 已过期，请重新 Plan' : '确认并执行当前 Plan');
+        }
+        if (cancelBtn) {
+            cancelBtn.disabled = executing || this.dynamicSyncActionInFlight;
+        }
+    }
+
+    _enterManualSyncAwaitingConfirmation(plan) {
+        if (!plan) return false;
+        this._renderManualSyncPageConfirmation(plan, { state: 'awaiting' });
+        const panel = document.getElementById('dynamic-sync-page-confirmation');
+        if (panel) {
+            panel.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+        }
+        const executionState = this._manualSyncPlanExecutionState(plan);
+        this._manualSyncSetProgress({
+            visible: true,
+            inFlight: false,
+            pending: false,
+            label: 'Plan ready; awaiting page confirmation',
+            detail: `plan_items=${executionState.planItems}, import=${executionState.importCount}, followup=${executionState.followupCount}, retry_source=${executionState.retrySourceCount}. Execute has not started.`,
+            stageStatus: { plan: 'completed' },
+        });
+        app.showNotification('Plan ready. Confirm from the page-level Execute panel when you are ready.', 'success');
+        this._updateManualSyncExecuteButton();
+        return true;
+    }
+
+    cancelManualSyncPageConfirmation() {
+        if (!this.dynamicSyncPlan) return;
+        this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'cancelled' });
+        this._manualSyncSetProgress({
+            visible: true,
+            inFlight: false,
+            pending: false,
+            label: 'Plan ready; execution not started',
+            detail: 'The operator chose not to execute yet. The current Plan remains visible and can still be executed before it expires.',
+            stageStatus: { plan: 'completed' },
+        });
+        app.showNotification('Manual sync Execute was not started. The current Plan is still available on the page.', 'warning');
+    }
+
+    async confirmAndExecuteManualSyncReadyPlan() {
+        if (!this.dynamicSyncPlan || this.dynamicSyncActionInFlight) return;
+        const executionState = this._manualSyncPlanExecutionState(this.dynamicSyncPlan);
+        if (executionState.expired) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'expired' });
+            app.showNotification('This manual sync Plan has expired. Generate a new Plan before Execute.', 'error');
+            return;
+        }
+        if (!executionState.canExecute) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'awaiting' });
+            app.showNotification('This manual sync Plan is not executable in the current state.', 'error');
+            return;
+        }
+        this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'executing' });
+        await this.executeManualSyncPlan({ operatorConfirmedFullChain: true, allowDuringPlanFlow: true });
+    }
+
     _renderManualSyncPlan(plan) {
         const resultEl = document.getElementById('dynamic-sync-plan-result');
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
@@ -2331,6 +2602,8 @@ class AdminPanel {
         if (!resultEl) return;
         const counts = plan.counts || {};
         const states = counts.state_counts || {};
+        const workItemCounts = counts.work_item_counts || {};
+        const lifecycleCounts = counts.lifecycle_counts || {};
         const integrity = plan.integrity || {};
         const limits = plan.limits || {};
         const confirmationPhrase = this._manualSyncExpectedConfirmationPhrase(plan);
@@ -2344,17 +2617,21 @@ class AdminPanel {
         const skippedExistingBeforeCap = limits.skipped_existing_before_cap || 0;
         const skippedDuplicateBeforeCap = limits.skipped_duplicate_before_cap || 0;
         const downstreamFollowup = counts.estimated_downstream_followup_count || limits.downstream_followup_count || 0;
-        const actionableCount = (counts.estimated_import_count || 0) + downstreamFollowup;
+        const retrySource = counts.estimated_retry_source_count || workItemCounts.RETRY_SOURCE || 0;
+        const actionableCount = (counts.estimated_import_count || 0) + downstreamFollowup + retrySource;
+        const advancedRetryBlocked = !!(counts.advanced_full_rescan_retry_source_execution_not_validated || limits.advanced_full_rescan_retry_source_execution_not_validated);
         const batchExecutable = !!(counts.batch_executable || limits.batch_executable);
         const capLimitedBatch = !!(counts.cap_limited_batch || limits.cap_limited_batch);
         const unsafePartial = !!(counts.unsafe_partial_scan || limits.unsafe_partial_scan);
         const showAdvancedExecute = this.dynamicSyncLastPlanSource === 'advanced' || limits.plan_mode === 'advanced_full_rescan';
         const complete = !counts.partial_scan || batchExecutable;
         const actionable = actionableCount > 0;
-        const canExecute = batchExecutable && actionable && this.dynamicSyncExecuteEnabled;
+        const canExecute = batchExecutable && actionable && this.dynamicSyncExecuteEnabled && !advancedRetryBlocked;
         const requiresConfirmation = canExecute;
         let planMessage = '执行会保持禁用，直到计划安全完成、存在可写入项目，并且手动 E2E 就绪。';
-        if (canExecute) {
+        if (advancedRetryBlocked) {
+            planMessage = '高级 full-rescan 发现了重试源文件债务；PR-R2 未验证此模式执行，当前仅作为可见诊断，不允许 Execute。';
+        } else if (canExecute) {
             planMessage = capLimitedBatch
                 ? '这个安全的有界批次已可执行。本批次完成后仍有后续工作，请再次点击“开始手动同步”继续下一批。'
                 : '计划已就绪。普通流程会在你确认浏览器弹窗后自动执行完整链路。';
@@ -2365,6 +2642,27 @@ class AdminPanel {
         } else if (counts.partial_scan) {
             planMessage = '这个计划仍是部分扫描。需要先形成明确安全的批次边界，再执行。';
         }
+        if (canExecute) {
+            planMessage = capLimitedBatch
+                ? '这个安全的有界批次已可执行。本批次完成后仍可能有后续工作；确认页面内 Execute 控件后才会开始写入。'
+                : '计划已就绪。请在页面内确认面板中确认后执行完整链路；不会依赖浏览器原生确认弹窗。';
+        }
+        const workItemSummaryHtml = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE', 'BROKEN_STATE', 'PLACEHOLDER', 'NOOP_DIAGNOSTIC']
+            .map(kind => {
+                const value = Number(workItemCounts[kind] || 0);
+                const retrySourceBlockedInAdvancedMode = kind === 'RETRY_SOURCE' && advancedRetryBlocked;
+                const executable = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE'].includes(kind) && !retrySourceBlockedInAdvancedMode;
+                return `<div class="bg p-2 border">
+                    <span class="text-secondary">${this.escapeHtml(this._manualSyncWorkItemKindLabel(kind))}</span><br>
+                    <span class="font-bold">${value}</span>
+                    ${retrySourceBlockedInAdvancedMode ? '<span class="text-[10px] text-warning">当前高级模式不可执行</span>' : ''}
+                    <span class="text-[10px] ${executable ? 'text-green-400' : 'text-secondary'}">${executable ? '可执行工作' : '诊断/不可执行'}</span>
+                </div>`;
+            }).join('');
+        const lifecycleSummary = Object.entries(lifecycleCounts)
+            .filter(([, value]) => value)
+            .map(([kind, value]) => `${this.escapeHtml(this._manualSyncLifecycleKindLabel(kind))}=${value}`)
+            .join('，') || '-';
         resultEl.classList.remove('hidden');
         resultEl.innerHTML = `
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
@@ -2376,9 +2674,11 @@ class AdminPanel {
             <div class="mb-2"><span class="text-secondary">Plan source:</span> ${this.escapeHtml(planSource)} | <span class="text-secondary">Actionable cap:</span> ${limits.max_files || '-'} | <span class="text-secondary">Cap means:</span> ${this.escapeHtml(limits.cap_semantics || 'unique importable/downstream candidates')} | <span class="text-secondary">Hydration:</span> ${this.escapeHtml(limits.hydration_policy || (limits.hydrated_only ? 'local_readable_only' : 'cloud_aware_non_destructive_read'))} | <span class="text-secondary">Partial scan:</span> ${counts.partial_scan ? 'yes' : 'no'}</div>
             <div class="mb-2"><span class="text-secondary">Batch:</span> ${batchExecutable ? 'executable bounded batch' : 'not executable'} | <span class="text-secondary">Partial reason:</span> ${this.escapeHtml(counts.partial_scan_reason || limits.partial_scan_reason || '-')} | <span class="text-secondary">More batches:</span> ${continuation.more_batches_remain ? 'yes' : 'no'}</div>
             <div class="mb-2"><span class="text-secondary">Workset:</span> ${this.escapeHtml(workset.scan_order || '-')} | <span class="text-secondary">Priority items:</span> ${workset.priority_workset_processed || 0}/${workset.priority_workset_files || 0} | <span class="text-secondary">Filesystem fallback:</span> ${workset.filesystem_walk_after_priority_workset ? 'ran' : (workset.starts_from_filesystem_root_when_no_priority_workset ? 'root walk' : 'not reached')} | <span class="text-secondary">Filesystem complete:</span> ${workset.filesystem_walk_completed ? 'yes' : 'no'}</div>
-            <div class="mb-2"><span class="text-secondary">Incremental ledger:</span> ${workset.incremental_source_ledger_used ? 'source item ledger' : 'ad-hoc root scan'} | <span class="text-secondary">Fast skip identity:</span> ${this.escapeHtml((workset.fast_skip_identity || []).join('+') || '-')} | <span class="text-secondary">Actionable:</span> ${actionableCount} (${counts.estimated_import_count || 0} import, ${downstreamFollowup} follow-up)</div>
+            <div class="mb-2"><span class="text-secondary">Incremental ledger:</span> ${workset.incremental_source_ledger_used ? 'source item ledger' : 'ad-hoc root scan'} | <span class="text-secondary">Fast skip identity:</span> ${this.escapeHtml((workset.fast_skip_identity || []).join('+') || '-')} | <span class="text-secondary">Actionable:</span> ${actionableCount} (${counts.estimated_import_count || 0} import, ${downstreamFollowup} follow-up, ${retrySource} retry-source)</div>
             <div class="mb-2"><span class="text-secondary">Scan model:</span> ${this.escapeHtml(rootScan.model || '-')} | <span class="text-secondary">Start basis:</span> ${this.escapeHtml(rootScan.current_scan_start_basis || '-')} | <span class="text-secondary">Root last checked:</span> ${this.escapeHtml(rootScan.root_last_checked_at || '-')} | <span class="text-secondary">Last run:</span> ${rootScan.last_successful_or_terminal_run_id || '-'}</div>
             <div class="mb-2"><span class="text-secondary">Fast-skipped:</span> ${limits.fast_skipped_from_ledger || 0} | <span class="text-secondary">Stat checked:</span> ${limits.stat_required_count || 0} | <span class="text-secondary">Hash checked:</span> ${limits.hash_required_count || 0} | <span class="text-secondary">Existing skipped before cap:</span> ${skippedExistingBeforeCap} | <span class="text-secondary">Duplicates skipped before cap:</span> ${skippedDuplicateBeforeCap}</div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">${workItemSummaryHtml}</div>
+            <div class="mb-2 text-secondary"><span class="text-secondary">Lifecycle:</span> ${lifecycleSummary}</div>
             <div class="mb-2 text-secondary"><span class="text-secondary">Expires:</span> <span class="font-mono">${this.escapeHtml(integrity.expires_at || '-')}</span></div>
             <div class="mb-2 ${canExecute ? 'text-green-400' : 'text-warning'}">${this.escapeHtml(planMessage)}</div>
             <div class="mb-2"><span class="text-secondary">States:</span> ${Object.entries(states).filter(([, value]) => value).map(([key, value]) => `${this.escapeHtml(key)}=${value}`).join(', ') || '-'}</div>
@@ -2423,16 +2723,38 @@ class AdminPanel {
         const counts = (this.dynamicSyncPlan || {}).counts || {};
         const limits = (this.dynamicSyncPlan || {}).limits || {};
         const complete = this.dynamicSyncPlan && (!counts.partial_scan || counts.batch_executable || limits.batch_executable);
-        const actionable = ((counts.estimated_import_count || 0) + (counts.estimated_downstream_followup_count || 0)) > 0;
+        const retrySource = counts.estimated_retry_source_count || (counts.work_item_counts || {}).RETRY_SOURCE || 0;
+        const actionable = ((counts.estimated_import_count || 0) + (counts.estimated_downstream_followup_count || 0) + retrySource) > 0;
+        const advancedRetryBlocked = !!(counts.advanced_full_rescan_retry_source_execution_not_validated || limits.advanced_full_rescan_retry_source_execution_not_validated);
         const active = this._manualSyncActiveJobRunning();
-        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches) || active || this.dynamicSyncActionInFlight;
+        btn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches && !advancedRetryBlocked) || active || this.dynamicSyncActionInFlight;
         const confirmBtn = document.getElementById('dynamic-sync-confirm-execute-btn');
         if (confirmBtn) {
-            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches) || active || this.dynamicSyncActionInFlight;
+            confirmBtn.disabled = !(this.dynamicSyncExecuteEnabled && this.dynamicSyncPlan && complete && actionable && matches && !advancedRetryBlocked) || active || this.dynamicSyncActionInFlight;
         }
         const copyBtn = document.getElementById('dynamic-sync-copy-confirmation-btn');
         if (copyBtn) {
             copyBtn.disabled = !expected || this.dynamicSyncActionInFlight;
+        }
+        const pageConfirmBtn = document.getElementById('dynamic-sync-page-confirm-execute-btn');
+        const pageCancelBtn = document.getElementById('dynamic-sync-page-cancel-confirmation-btn');
+        if (pageConfirmBtn || pageCancelBtn) {
+            const executionState = this._manualSyncPlanExecutionState(this.dynamicSyncPlan);
+            const pageConfirmationActive = ['awaiting', 'cancelled'].includes(this.dynamicSyncPageConfirmationState);
+            if (pageConfirmBtn) {
+                pageConfirmBtn.disabled = !(pageConfirmationActive && executionState.canExecute);
+                if (executionState.expired && this.dynamicSyncPlan) {
+                    pageConfirmBtn.textContent = 'Plan 已过期，请重新 Plan';
+                    pageConfirmBtn.disabled = true;
+                } else if (this.dynamicSyncActionInFlight) {
+                    pageConfirmBtn.textContent = '正在处理...';
+                } else {
+                    pageConfirmBtn.textContent = '确认并执行当前 Plan';
+                }
+            }
+            if (pageCancelBtn) {
+                pageCancelBtn.disabled = this.dynamicSyncActionInFlight || active;
+            }
         }
         const startBtn = document.getElementById('dynamic-sync-start-btn');
         if (startBtn) {
@@ -2455,26 +2777,45 @@ class AdminPanel {
     async _confirmAndExecuteManualSyncPlan() {
         const plan = this.dynamicSyncPlan;
         if (!plan) return false;
-        const counts = plan.counts || {};
-        const limits = plan.limits || {};
-        const statement = this._manualSyncExpectedOperatorStatement(plan);
-        const importCount = counts.estimated_import_count || 0;
-        const followupCount = counts.estimated_downstream_followup_count || 0;
-        const confirmationText = [
-            '确认开始完整手动同步流程？',
-            `本批次将处理 ${importCount} 个导入项目和 ${followupCount} 个后续补处理项目。`,
-            `批次上限：${limits.max_files || 'server default'}`,
-            `计划哈希：${((plan.integrity || {}).plan_hash || '').slice(0, 12)}`,
-            '阶段：导入 -> 分类 -> AI 标签 -> 本地化 -> 报告。',
-            '自动/计划/启动/系统服务同步保持关闭。',
-            statement ? `操作员确认声明：${statement}` : '',
-        ].filter(Boolean).join('\n');
-        if (!window.confirm(confirmationText)) {
-            app.showNotification('手动同步计划未执行。', 'warning');
-            return false;
+        return this._enterManualSyncAwaitingConfirmation(plan);
+    }
+
+    _manualSyncStartExecutePendingTicker({ requestId = '' } = {}) {
+        this._manualSyncStopExecutePendingTicker();
+        this.dynamicSyncExecuteRequestStartedAt = Date.now();
+        const render = () => {
+            const seconds = Math.max(0, Math.round((Date.now() - this.dynamicSyncExecuteRequestStartedAt) / 1000));
+            this._manualSyncSetProgress({
+                visible: true,
+                inFlight: true,
+                pending: true,
+                label: '执行请求已提交',
+                detail: [
+                    '正在验证计划和操作员确认，创建 execute run，并等待首个后端进度心跳。',
+                    `elapsed=${seconds}s`,
+                    requestId ? `request=${requestId}` : null,
+                ].filter(Boolean).join(' '),
+                stageStatus: { plan: 'completed', import: 'queued' },
+            });
+        };
+        render();
+        this.dynamicSyncExecuteRequestTimer = window.setInterval(render, 1000);
+    }
+
+    _manualSyncStopExecutePendingTicker() {
+        if (this.dynamicSyncExecuteRequestTimer) {
+            window.clearInterval(this.dynamicSyncExecuteRequestTimer);
+            this.dynamicSyncExecuteRequestTimer = null;
         }
-        await this.executeManualSyncPlan({ operatorConfirmedFullChain: true, allowDuringPlanFlow: true });
-        return true;
+        this.dynamicSyncExecuteRequestStartedAt = null;
+        const pendingEl = document.getElementById('dynamic-sync-progress-pending');
+        if (pendingEl) pendingEl.classList.add('hidden');
+    }
+
+    _manualSyncYieldForPaint() {
+        return new Promise(resolve => {
+            window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+        });
     }
 
     async runManualSyncDryRunPlan({ source = 'operator', autoExecute = false } = {}) {
@@ -2498,6 +2839,7 @@ class AdminPanel {
             resultEl.classList.remove('hidden');
             resultEl.innerHTML = `<div class="text-warning">Planning current source delta... request=${this.escapeHtml(planRequestId)}. Healthy progress may continue beyond 600s; no-progress watchdog=${Math.round(noProgressTimeoutMs / 1000)}s.</div>`;
         }
+        this._hideManualSyncPageConfirmation();
         this._manualSyncSetControlsBusy(true);
         if (dryRunBtn) dryRunBtn.disabled = true;
         if (startBtn) startBtn.disabled = true;
@@ -2585,16 +2927,21 @@ class AdminPanel {
                 detail: `metadata seen=${finalScanned}, plan items=${finalPlanItems}, import=${(plan.counts || {}).estimated_import_count || 0}`,
                 stageStatus: { plan: 'completed' },
             });
+            const retrySource = (plan.counts || {}).estimated_retry_source_count || ((plan.counts || {}).work_item_counts || {}).RETRY_SOURCE || 0;
             const actionable = ((plan.counts || {}).estimated_import_count || 0)
-                + ((plan.counts || {}).estimated_downstream_followup_count || 0);
-            const executable = !!((plan.counts || {}).batch_executable || (plan.limits || {}).batch_executable);
+                + ((plan.counts || {}).estimated_downstream_followup_count || 0)
+                + retrySource;
+            const advancedRetryBlocked = !!((plan.counts || {}).advanced_full_rescan_retry_source_execution_not_validated || (plan.limits || {}).advanced_full_rescan_retry_source_execution_not_validated);
+            const executable = !!((plan.counts || {}).batch_executable || (plan.limits || {}).batch_executable) && !advancedRetryBlocked;
             if (autoExecute && actionable > 0 && executable) {
                 await this._confirmAndExecuteManualSyncPlan();
             } else {
+                this._hideManualSyncPageConfirmation();
                 app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.plan_ready', 'Dry-run plan ready.'), 'success');
             }
         } catch (e) {
             this.dynamicSyncPlan = null;
+            this._hideManualSyncPageConfirmation();
             this._updateManualSyncExecuteButton();
             if (e.name === 'AbortError' && !noProgressCancelRequested) {
                 await this.cancelManualSyncPlan({ silent: true });
@@ -2624,6 +2971,17 @@ class AdminPanel {
 
     async executeManualSyncPlan({ operatorConfirmedFullChain = false, allowDuringPlanFlow = false } = {}) {
         if (!this.dynamicSyncPlan || (!allowDuringPlanFlow && this.dynamicSyncActionInFlight) || this._manualSyncActiveJobRunning()) return;
+        const executionState = this._manualSyncPlanExecutionState(this.dynamicSyncPlan);
+        if (executionState.expired) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'expired' });
+            app.showNotification('This manual sync Plan has expired. Generate a new Plan before Execute.', 'error');
+            return;
+        }
+        if (!executionState.canExecute) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'awaiting' });
+            app.showNotification('This manual sync Plan is not executable in the current state.', 'error');
+            return;
+        }
         const body = this._manualSyncRequestBody();
         const confirmationEl = document.getElementById('dynamic-sync-confirmation');
         const integrity = this.dynamicSyncPlan.integrity || {};
@@ -2653,15 +3011,21 @@ class AdminPanel {
             app.showNotification('GUI validation session is missing. Re-run Start manual sync before Execute.', 'error');
             return;
         }
+        if (operatorConfirmedFullChain) {
+            this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'executing' });
+        }
         this._manualSyncSetControlsBusy(true);
+        this._manualSyncStartExecutePendingTicker({ requestId: body.plan_request_id || '' });
         this._manualSyncSetProgress({
             visible: true,
             inFlight: true,
-            label: 'Starting full manual sync',
-            detail: 'POST /api/admin/dynamic-library-sync/manual-sync/execute',
-            stageStatus: { plan: 'completed', import: 'running' },
+            pending: true,
+            label: '执行请求已提交',
+            detail: '正在验证计划和操作员确认，创建 execute run，并等待首个后端进度心跳。',
+            stageStatus: { plan: 'completed', import: 'queued' },
         });
         try {
+            await this._manualSyncYieldForPaint();
             const job = await app.apiCall('/api/admin/dynamic-library-sync/manual-sync/execute', {
                 method: 'POST',
                 headers: {
@@ -2672,20 +3036,27 @@ class AdminPanel {
             });
             this.dynamicSyncJobId = job.id;
             this.dynamicSyncLatestJob = job;
+            this._manualSyncStopExecutePendingTicker();
+            this._hideManualSyncPageConfirmation();
             this._renderManualSyncJob(job);
             this._startManualSyncPolling(job.id);
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: true,
-                label: `Running job #${job.id}`,
-                detail: 'Waiting for import, classification, AI tagging, localization, and report stages.',
-                stageStatus: { plan: 'completed', import: 'running' },
+                pending: !((job.manual_sync_execute || {}).last_heartbeat_at),
+                label: `执行任务 #${job.id} 已创建`,
+                detail: '等待导入、分类、AI 标签、本地化和摘要阶段的真实进度。',
+                stageStatus: { plan: 'completed', import: 'queued' },
             });
             app.showNotification(this._dynamicSyncT('admin.dynamic_library_sync.execute_started', 'Manual sync execute started.'), 'success');
         } catch (e) {
             const message = `Manual sync execute blocked: ${e.message || e}`;
-            this._manualSyncSetProgress({ visible: true, inFlight: false, label: 'Execute not started', detail: message, stageStatus: { plan: 'completed', import: 'failed' } });
+            this._manualSyncStopExecutePendingTicker();
+            this._manualSyncSetProgress({ visible: true, inFlight: false, pending: false, label: '执行未启动', detail: message, stageStatus: { plan: 'completed', import: 'failed' } });
             app.showNotification(message, 'error');
+            if (operatorConfirmedFullChain && this.dynamicSyncPlan) {
+                this._renderManualSyncPageConfirmation(this.dynamicSyncPlan, { state: 'awaiting' });
+            }
             this._manualSyncSetControlsBusy(false);
             this._updateManualSyncExecuteButton();
         }
@@ -2728,6 +3099,15 @@ class AdminPanel {
         const outcomes = execute.outcome_counts || {};
         const active = ['pending', 'running', 'cancelling'].includes(job.status);
         const currentStage = execute.current_stage || 'import';
+        const stageRows = Array.isArray(execute.stage_rows) ? execute.stage_rows : [];
+        const operatorStatus = execute.operator_status || job.status || '-';
+        const operatorStatusLabel = execute.operator_status_label_zh || this._manualSyncOperatorStatusLabel(operatorStatus);
+        const planCounts = ((execute.plan || {}).counts || {});
+        const workItemCounts = planCounts.work_item_counts || {};
+        const heartbeat = execute.last_heartbeat_at || (active ? 'waiting_for_first_backend_progress_heartbeat' : (job.finished_at || job.started_at || '-'));
+        const currentItem = execute.current_item_label || '-';
+        const retryReadyForImport = Number(outcomes.retry_source_ready_for_import || 0);
+        const nextImportReadyCount = Number(execute.next_import_ready_count || 0) || ((Number(execute.unprocessed_import_planned_count || 0)) + retryReadyForImport);
         const stableSkipped = [
             'skipped_existing_media',
             'skipped_duplicate',
@@ -2748,6 +3128,10 @@ class AdminPanel {
             classified: '已分类',
             ai_tagged: 'AI 标签',
             localized: '已本地化',
+            retry_source_ready_for_import: '源文件重试成功，待下一次导入',
+            retry_source_not_deferred: '未执行的源文件重试债务',
+            deferred_unprocessed: '续跑待处理',
+            diagnostic_not_deferred: '诊断项',
             failed: '失败',
         };
         const visibleOutcomes = Object.entries(outcomes)
@@ -2756,7 +3140,28 @@ class AdminPanel {
             .join('，') || '-';
         const stageOrder = ['plan', 'import', 'classification', 'ai_tagging', 'localization', 'summary'];
         const stageStatus = {};
-        if (job.status === 'completed' || job.status === 'completed_with_failures' || job.status === 'completed_with_followup_required') {
+        const stageRowsByName = Object.fromEntries(stageRows.map(row => [row.name, row]));
+        const terminalCompletedStageStatuses = [
+            'completed',
+            'completed_existing_coverage',
+            'completed_with_failures',
+            'completed_with_retryable_failures',
+            'completed_with_followup_required',
+            'completed_with_continuation',
+            'completed_with_retryable_failures_plus_continuation',
+            'completed_with_localization_failures',
+            'completed_with_localization_continuation_failures',
+        ];
+        if (stageRows.length) {
+            stageStatus.plan = 'completed';
+            ['import', 'classification', 'ai_tagging', 'localization', 'summary'].forEach(stage => {
+                const rowStatus = String((stageRowsByName[stage] || {}).status || '').toLowerCase();
+                const skippedTerminalRunStatus = rowStatus.startsWith('skipped_') && rowStatus.endsWith('_run');
+                stageStatus[stage] = (terminalCompletedStageStatuses.includes(rowStatus) || rowStatus.startsWith('completed_with_'))
+                    ? 'completed'
+                    : (skippedTerminalRunStatus ? 'skipped' : (rowStatus === 'running' ? 'running' : (['failed', 'cancelled'].includes(rowStatus) || rowStatus.startsWith('stopped_by') || rowStatus.startsWith('blocked_') ? 'failed' : 'queued')));
+            });
+        } else if (job.status === 'completed' || job.status === 'completed_with_failures' || job.status === 'completed_with_followup_required') {
             stageOrder.forEach((stage) => { stageStatus[stage] = 'completed'; });
         } else if (job.status === 'failed' || job.status === 'cancelled') {
             const failedIndex = Math.max(1, stageOrder.indexOf(currentStage));
@@ -2770,18 +3175,26 @@ class AdminPanel {
             });
         }
         this._renderManualSyncStageStrip(stageStatus);
+        const workItemSummary = ['IMPORT', 'FOLLOWUP', 'RETRY_SOURCE', 'BROKEN_STATE', 'PLACEHOLDER', 'NOOP_DIAGNOSTIC']
+            .map(kind => `${this.escapeHtml(this._manualSyncWorkItemKindLabel(kind))}=${Number(workItemCounts[kind] || 0)}`)
+            .join('，');
+        const errorText = job.error_message || execute.error_code || execute.error_message || '';
         statusEl.innerHTML = `
-            <div>最新手动同步任务 #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | 当前阶段=${this.escapeHtml(execute.current_stage || '-')}</div>
-            <div>计划项=${job.total_seen || 0}，导入=${job.new_items || 0}，稳定跳过/不适用=${stableSkipped}，失败=${job.failed_items || 0}</div>
+            <div>最新手动同步任务 #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | 操作员状态=${this.escapeHtml(operatorStatusLabel)}</div>
+            <div>当前阶段=${this.escapeHtml(this._manualSyncStageLabel(currentStage))} | 阶段状态=${this.escapeHtml(this._manualSyncStageStatusLabel(execute.current_stage_status || stageStatus[currentStage] || '-'))} | 当前项目=${this.escapeHtml(currentItem)} | 心跳=${this.escapeHtml(heartbeat)}</div>
+            <div>计划项=${job.total_seen || 0}，导入=${job.new_items || 0}，稳定跳过/不适用=${stableSkipped}，失败=${job.failed_items || 0}，待下一次导入=${nextImportReadyCount}</div>
+            <div class="text-secondary">WorkItem：${workItemSummary}</div>
             <div class="text-secondary">结果拆解：${visibleOutcomes}</div>
+            ${errorText ? `<div class="text-red-400">错误：${this.escapeHtml(errorText)}</div>` : ''}
         `;
         if (cancelBtn) cancelBtn.disabled = !active;
         if (active) {
             this._manualSyncSetProgress({
                 visible: true,
                 inFlight: true,
-                label: `Running job #${job.id}`,
-                detail: `stage=${execute.current_stage || '-'}, seen=${job.total_seen || 0}, imported=${job.new_items || 0}`,
+                pending: active && !execute.last_heartbeat_at,
+                label: `执行任务 #${job.id}：${this._manualSyncStageLabel(currentStage)}`,
+                detail: `status=${this._manualSyncStageStatusLabel(execute.current_stage_status || 'running')}，current=${currentItem}，heartbeat=${heartbeat}，seen=${job.total_seen || 0}，imported=${job.new_items || 0}`,
                 stageStatus,
             });
         }
@@ -2804,7 +3217,8 @@ class AdminPanel {
                     this._manualSyncSetProgress({
                         visible: true,
                         inFlight: false,
-                        label: `Job finished: ${job.status || '-'}`,
+                        pending: false,
+                        label: `任务结束：${this._manualSyncOperatorStatusLabel((job.manual_sync_execute || {}).operator_status || job.status || '-')}`,
                         detail: `Job #${job.id}: seen=${job.total_seen || 0}, imported=${job.new_items || 0}, failed=${job.failed_items || 0}`,
                     });
                     this.loadDynamicSyncDashboard();

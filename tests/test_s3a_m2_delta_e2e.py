@@ -433,6 +433,76 @@ def test_s3a_m2_gui_validator_scopes_remaining_inventory_to_validated_root() -> 
         engine.dispose()
 
 
+def test_s3a_m2_gui_validator_does_not_waive_unrelated_pending_imports() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    try:
+        root = DynamicSourceRoot(label="gui", root_path="/safe/gui", root_path_hash="hash-gui", is_active=True)
+        db.add(root)
+        db.flush()
+        run = DynamicSyncRun(id=10, run_type="manual_sync_execute", mode="production_acceptance", status="completed")
+        db.add(run)
+        db.flush()
+        retry_ready_item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="retry-ready.png",
+            relative_path_hash="rel-retry-ready",
+            source_status="available",
+            sync_state="new",
+            import_status="pending",
+            failure_reason=None,
+        )
+        unrelated_pending_item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="unrelated-pending.png",
+            relative_path_hash="rel-unrelated-pending",
+            source_status="available",
+            sync_state="new",
+            import_status="pending",
+        )
+        db.add_all([retry_ready_item, unrelated_pending_item])
+        db.flush()
+        db.add(
+            DynamicSyncRunItem(
+                sync_run_id=run.id,
+                source_item_id=retry_ready_item.id,
+                item_state="retry_source_ready_for_import",
+                action="retry_source",
+                reason="retry_source_ready_for_import",
+                eligible_for_db_import=False,
+            )
+        )
+        db.commit()
+
+        summary = gui_validator.run_items_summary(db, 10, root_id=root.id)
+
+        assert summary["remaining_importable_db_pending_count"] == 2
+        assert summary["retry_created_pending_import_count"] == 1
+        assert summary["unrelated_remaining_importable_db_pending_count"] == 1
+        assert gui_validator.retry_created_pending_import_visible(
+            {"retry_source_ready_for_import": 1},
+            summary,
+        ) is True
+        assert gui_validator.unrelated_pending_import_blocks_acceptance(summary) is True
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
 def test_s3a_m2_gui_validator_applies_manual_e2e_profile_flags(tmp_path: Path, monkeypatch) -> None:
     profile_path = tmp_path / "production-profile.json"
     profile_path.write_text(
@@ -730,6 +800,192 @@ def test_s3a_m2_gui_validator_fails_if_gui_run_imports_without_ai_tagging(tmp_pa
         db.close()
         Base.metadata.drop_all(engine)
         engine.dispose()
+
+
+def _build_followup_only_gui_validation(tmp_path: Path, monkeypatch, *, localization_ok: bool) -> dict:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False)
+    db = Session()
+    profile_path = tmp_path / "production-profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "profile_id": "production-default",
+                "repo_root": str(tmp_path),
+                "python": sys.executable,
+                "app_port": 8012,
+                "storage_root": str(tmp_path / "storage"),
+                "require_auth": True,
+                "manual_sync_enabled": True,
+                "manual_sync_execute_enabled": True,
+                "manual_sync_execute_max_files": 1000,
+                "db": {"host": "localhost", "port": 5432, "name": "blombooru", "user": "postgres", "password": ""},
+                "tag_translation_llm": {
+                    "api_key": "test-key",
+                    "model": "test-model",
+                    "base_url": "http://127.0.0.1:1/v1",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        root = DynamicSourceRoot(
+            label="gui",
+            root_path=str(tmp_path / "source"),
+            root_path_hash="guiroot",
+            is_active=True,
+        )
+        media = Media(
+            filename="followup.png",
+            path="media/original/followup.png",
+            hash="followup-hash",
+            file_type=FileTypeEnum.image,
+            content_class="anime",
+        )
+        tag = Tag(name="blue_hair", category=TagCategoryEnum.general, post_count=1)
+        db.add_all([root, media, tag])
+        db.flush()
+        db.execute(
+            blombooru_media_tags.insert().values(
+                media_id=media.id,
+                tag_id=tag.id,
+                source="ai_wd",
+                confidence=0.99,
+                is_suggestion=False,
+                is_locked=False,
+            )
+        )
+        outcome_counts = {"downstream_followup_planned": 1}
+        localization_payload = {
+            "status": "completed",
+            "failed": 0,
+            "tags_requiring_localization_after_runner": 0,
+            "blocked_reason": None,
+        }
+        if not localization_ok:
+            outcome_counts.update({"localization_failed": 1, "localization_deferred": 1})
+            localization_payload.update(
+                {
+                    "status": "completed_with_failures",
+                    "failed": 1,
+                    "tags_requiring_localization_after_runner": 1,
+                    "blocked_reason": "localization_failed",
+                }
+            )
+        run = DynamicSyncRun(
+            id=9,
+            run_type="manual_sync_execute",
+            mode="production_acceptance",
+            status="completed" if localization_ok else "completed_with_followup_required",
+            dry_run=False,
+            total_seen=1,
+            new_items=0,
+            summary_json={
+                "manual_sync_execute": {
+                    "request": {
+                        "request_source": "web_admin_gui",
+                        "gui_validation_session_id": "gui-test-session",
+                        "gui_validation_session_signature_valid": True,
+                        "gui_plan_hash_bound": True,
+                        "gui_plan_flow_verified": True,
+                        "gui_plan_request_id": "gui-plan-test",
+                        "runtime_git_head": "test-head",
+                        "runtime_git_branch": "test-branch",
+                        "client_route": "/admin?tab=content#dynamic-library-sync-section",
+                    },
+                    "outcome_counts": outcome_counts,
+                    "work_item_counts": {"FOLLOWUP": 1},
+                    "downstream_targets": [media.id],
+                    "localization": localization_payload,
+                }
+            },
+        )
+        db.add(run)
+        db.flush()
+        item = DynamicSourceItem(
+            source_root_id=root.id,
+            relative_path="followup.png",
+            relative_path_hash="followup-relhash",
+            media_id=media.id,
+            source_status="available",
+            sync_state="imported",
+            import_status="imported",
+            classification_status="classified",
+            ai_tagging_status="ai_tagged",
+            localization_status="localized" if localization_ok else "deferred",
+            last_sync_run_id=run.id,
+        )
+        db.add(item)
+        db.flush()
+        db.add(
+            DynamicSyncRunItem(
+                sync_run_id=run.id,
+                source_item_id=item.id,
+                item_state="downstream_followup_planned",
+                action="downstream_followup",
+                eligible_for_db_import=False,
+                media_id=media.id,
+            )
+        )
+        db.commit()
+        monkeypatch.setattr(gui_validator, "open_db_session", lambda: Session())
+        monkeypatch.setattr(
+            gui_validator,
+            "git_value",
+            lambda *args: "test-head" if args == ("rev-parse", "HEAD") else "test-branch",
+        )
+        monkeypatch.setattr(
+            s3a_m2_runner,
+            "scan_public_output",
+            lambda *_args, **_kwargs: {"passed": True, "finding_count": 0, "findings": []},
+        )
+        args = SimpleNamespace(
+            profile_json=profile_path,
+            min_run_id=8,
+            run_id=None,
+            gui_validation_session_id=None,
+            allow_zero_import=False,
+            allow_older_head=False,
+        )
+
+        public, _private = gui_validator.build_validation(args)
+        return public
+    finally:
+        db.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_s3a_m2_gui_validator_fails_followup_only_localization_deferred(tmp_path: Path, monkeypatch) -> None:
+    public = _build_followup_only_gui_validation(tmp_path, monkeypatch, localization_ok=False)
+
+    assert public["validated"] is False
+    assert public["downstream_validation"]["expected_workload"] == 1
+    assert "gui_run_imported_zero" not in public["blockers"]
+    assert "localization_incomplete_or_unaccepted_for_downstream_workload" in public["blockers"]
+
+
+def test_s3a_m2_gui_validator_accepts_followup_only_completed_downstream(tmp_path: Path, monkeypatch) -> None:
+    public = _build_followup_only_gui_validation(tmp_path, monkeypatch, localization_ok=True)
+
+    assert public["validated"] is True
+    assert public["blockers"] == []
+    assert public["imported"] == 0
+    assert public["downstream_validation"]["expected_workload"] == 1
+    assert public["downstream_validation"]["localization_passed"] is True
 
 
 def test_s3a_m2_gui_validator_accepts_completed_with_retryable_source_failures(

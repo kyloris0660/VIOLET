@@ -2305,6 +2305,256 @@ def test_s3a_m2_r_lifecycle_workitem_contract_validates_placeholder_boundary() -
     )
 
 
+def _s3a_m2_r_operator_validation_summary(**overrides: object) -> dict:
+    summary = {
+        "phase": "S3A-M2-R PR-R2",
+        "pipeline_contract": {
+            "contract_id": "s3a_m2_r_operator_validation_contract_v1",
+            "status": "operator_ready",
+            "phase_identity": "S3A-M2-R PR-R2",
+            "claims": {
+                "operator_ready": True,
+                "full_s3a_m2_r_complete": False,
+                "target_met": True,
+                "safe_to_merge": True,
+                "full_chain_complete": False,
+                "target_met_scope": "operator_ready_visible_non_clean_debt",
+                "safe_to_merge_scope": "operator_ready_visible_non_clean_debt",
+            },
+        },
+        "ui_progress": {
+            "plan_progress_visible": True,
+            "execute_transition_visible_before_run_id": True,
+            "execute_duplicate_submit_disabled": True,
+            "stage_heartbeat_visible": True,
+            "error_state_visible": True,
+        },
+        "operator_labels": {
+            "operator_statuses": {
+                "completed": "已完成",
+                "completed_with_retryable_failures": "已完成但有可重试债务",
+                "completed_with_followup_required": "已完成但需后续补处理",
+                "completed_with_continuation": "已完成当前批次，仍需续跑",
+                "completed_with_retryable_failures_plus_continuation": "已完成当前批次，同时有重试债务和续跑",
+                "failed_systemic": "系统性失败",
+                "blocked_preflight": "预检阻断",
+                "cancelled": "已取消",
+            },
+            "work_item_kinds": {
+                "IMPORT": "导入新媒体",
+                "FOLLOWUP": "应用媒体后续补处理",
+                "RETRY_SOURCE": "重试源文件读取",
+                "BROKEN_STATE": "状态异常诊断",
+                "PLACEHOLDER": "云占位/暂缓项目",
+                "NOOP_DIAGNOSTIC": "无需执行的诊断项",
+            },
+            "lifecycle_kinds": {
+                "APP_MEDIA_FOLLOWUP": "应用内媒体需要补处理",
+                "IMPORT_CANDIDATE": "可导入候选",
+                "RETRYABLE_SOURCE_FAILURE": "源文件读取可重试失败",
+                "PLACEHOLDER_DEFERRED": "云占位暂缓",
+                "STABLE_NOOP": "稳定无操作",
+                "HISTORICAL_DIAGNOSTIC": "历史诊断记录",
+                "CONTINUATION": "批次续跑",
+                "BROKEN_STATE": "状态异常",
+                "FATAL_BLOCKER": "致命阻断",
+            },
+        },
+        "work_item_kind_first": {
+            "import_counts_from_work_item_kind": True,
+            "retry_counts_from_work_item_kind": True,
+            "legacy_state_does_not_override_work_item_kind": True,
+            "noop_and_placeholder_non_executable": True,
+            "broken_diagnostics_visible_non_actionable": True,
+            "successful_retry_creates_visible_pending_import": True,
+            "source_missing_retry_debt_visible": True,
+            "missing_media_or_app_file_visible": True,
+        },
+        "browser_validation": {"status": "passed", "execute_transition_checked": True},
+        "local_gui_acceptance": {"status": "passed", "gui_plan_passed": True, "gui_execute_passed": True},
+        "production_plan_only": {
+            "status": "passed",
+            "gui_path_used": True,
+            "execute_not_run": True,
+            "no_unsafe_execute_implied": True,
+            "selected_plan_items": 343,
+            "plan_items": 343,
+            "work_item_counts": {"FOLLOWUP": 20, "IMPORT": 312, "RETRY_SOURCE": 11},
+            "lifecycle_counts": {
+                "APP_MEDIA_FOLLOWUP": 20,
+                "CONTINUATION": 179,
+                "IMPORT_CANDIDATE": 133,
+                "RETRYABLE_SOURCE_FAILURE": 11,
+            },
+            "state_counts": {
+                "skipped_unsupported": 10,
+                "downstream_followup_planned": 20,
+                "import_planned": 312,
+                "retry_source_planned": 11,
+                "failed": 4,
+            },
+            "state_counts_total": 357,
+            "state_counts_scope": "broader planner state rows including skipped/failed diagnostics outside selected plan items",
+        },
+        "advanced_full_rescan_policy": {"retry_source_not_executable_until_validated": True},
+        "public_redaction": {"passed": True, "finding_count": 0},
+        "s3b_disabled": {"enabled": False},
+        "production_execute": {"ran": False, "owner_approved": False, "approval_reference": None},
+        "safety": {
+            "no_production_execute_without_owner_approval": True,
+            "production_execute_ran": False,
+            "no_source_icloud_mutation": True,
+            "source_icloud_mutation": False,
+            "no_app_storage_repair_or_mutation": True,
+            "app_storage_repair_or_mutation": False,
+            "no_destructive_cleanup": True,
+            "destructive_cleanup": False,
+            "no_provider_pixiv_sourceconcept_entity_work": True,
+            "provider_pixiv_sourceconcept_entity_work": False,
+        },
+        "scope": {
+            "s3b_started": False,
+            "pixiv_provider_sourceconcept_entity_started": False,
+        },
+        "artifact_lifecycle": {
+            "artifacts": [
+                {
+                    "path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
+                    "classification": "Public report / handoff / roadmap update",
+                    "redacted": True,
+                    "committed": True,
+                },
+                {
+                    "path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json",
+                    "classification": "Public report / handoff / roadmap update",
+                    "redacted": True,
+                    "committed": True,
+                },
+            ],
+        },
+        "public_reports": {
+            "markdown_report_path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
+            "summary_json_path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json",
+        },
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
+def test_s3a_m2_r_operator_validation_contract_accepts_operator_ready_summary() -> None:
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", _s3a_m2_r_operator_validation_summary())
+
+    assert result.passed is True
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_production_execute_flag_mismatch() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "production_execute.ran", True)
+    _set_nested(summary, "safety.production_execute_ran", False)
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_production_execute_flags_disagree" in codes
+    assert "s3a_m2_r_production_execute_without_owner_approval" in codes
+    assert "s3a_m2_r_production_execute_approval_reference_missing" in codes
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_production_plan_count_mismatch() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "production_plan_only.work_item_counts.IMPORT", 311)
+    _set_nested(summary, "production_plan_only.state_counts_scope", "")
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_production_plan_only_work_item_count_mismatch" in codes
+    assert "s3a_m2_r_production_plan_only_state_count_scope_missing" in codes
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_non_clean_full_chain_claims() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "pipeline_contract.claims.full_chain_complete", True)
+    _set_nested(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", True)
+    _set_nested(
+        summary,
+        "work_item_kind_first.local_final_db_truth",
+        {
+            "import_status": {"imported": 2, "failed": 1},
+            "localization_status": {"localized": 2, "deferred": 1},
+        },
+    )
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_operator_full_chain_overclaimed_with_non_clean_evidence" in codes
+    assert "s3a_m2_r_operator_full_s3a_m2_r_overclaimed_with_non_clean_evidence" in codes
+
+
+def test_s3a_m2_r_operator_validation_contract_allows_operator_ready_with_visible_non_clean_debt() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(
+        summary,
+        "work_item_kind_first.local_final_db_truth",
+        {
+            "import_status": {"imported": 2, "failed": 1},
+            "localization_status": {"localized": 2, "deferred": 1},
+        },
+    )
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_placeholder_chinese_label() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "operator_labels.operator_statuses.completed_with_continuation", "????????")
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_operator_status_labels_missing_placeholder_or_empty" in codes
+
+
+def test_public_redaction_contract_rejects_production_source_root_label_leak() -> None:
+    result = check_phase_contract(
+        "public_redaction_contract_v1",
+        {"selected_root_label_public": "2: icloud-photos-production (153684ac)"},
+    )
+    codes = _error_codes(result)
+
+    assert "public_redaction_private_provenance_value_unredacted" in codes
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_missing_gui_and_plan_only_gates() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "local_gui_acceptance.gui_execute_passed", False)
+    _set_nested(summary, "production_plan_only.status", "blocked")
+    _set_nested(summary, "pipeline_contract.claims.full_s3a_m2_r_complete", True)
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_operator_required_proof_missing" in codes
+    assert "s3a_m2_r_production_plan_only_not_passed" in codes
+    assert "s3a_m2_r_operator_full_completion_overclaimed" in codes
+
+
+def test_s3a_m2_r_operator_validation_contract_rejects_s3b_and_provider_scope() -> None:
+    summary = _s3a_m2_r_operator_validation_summary()
+    _set_nested(summary, "s3b_disabled.enabled", True)
+    _set_nested(summary, "safety.provider_pixiv_sourceconcept_entity_work", True)
+
+    result = check_phase_contract("s3a_m2_r_operator_validation_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "s3a_m2_r_s3b_enabled" in codes
+    assert "s3a_m2_r_operator_forbidden_scope_or_mutation" in codes
+
+
 def test_phase47_s2_contract_accepts_gate1_blocked_summary_without_completion_claim() -> None:
     result = check_phase_contract("phase47_s2_baseline_contract_v1", _phase47_s2_summary())
 
