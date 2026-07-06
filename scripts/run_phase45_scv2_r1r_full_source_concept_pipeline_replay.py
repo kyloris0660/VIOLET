@@ -44,8 +44,9 @@ CONTRACT_ID = "r1r_full_source_concept_pipeline_contract_v1"
 PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / f"{PHASE_SLUG}.md"
 PUBLIC_REPORT_JSON = ROOT / "docs" / "reports" / f"{PHASE_SLUG}-summary.json"
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG
-LLM_CONFIRMATION = "I APPROVE R1R LLM ADJUDICATION"
-EXECUTE_CONFIRMATION = "EXECUTE_PHASE45_SCV2_R1R_SOURCE_CONCEPT_REPLAY"
+LLM_CONFIRMATION = "I APPROVE R1R BOUNDED OPENAI LLM ADJUDICATION"
+EXECUTE_CONFIRMATION = "I APPROVE R1R DEV TEST SOURCECONCEPT EXECUTE"
+R1R_RUN_LABEL = "phase_4_5_scv2_r1r_full_source_concept_pipeline_replay"
 
 PRODUCTION_DB_NAMES = {"blombooru", "production", "main", "postgres"}
 DEV_DB_MARKERS = ("test", "dev", "r1r", "snapshot", "restored", "clone")
@@ -133,6 +134,13 @@ def git_value(args: Sequence[str]) -> str:
 
 def truthy_env(name: str) -> bool:
     return str(os.getenv(name, "")).strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def sanitize_provider_error(exc: Exception) -> dict[str, Any]:
+    return {
+        "type": type(exc).__name__,
+        "message_redacted": True,
+    }
 
 
 def db_name_from_env() -> str:
@@ -574,15 +582,36 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
     proof = summary.get("sc1_full_chain_proof") if isinstance(summary.get("sc1_full_chain_proof"), Mapping) else {}
     llm_plan = summary.get("llm_adjudication_plan") if isinstance(summary.get("llm_adjudication_plan"), Mapping) else {}
     llm_ready = summary.get("llm_readiness") if isinstance(summary.get("llm_readiness"), Mapping) else {}
+    llm_provider = (
+        summary.get("llm_provider_execution")
+        if isinstance(summary.get("llm_provider_execution"), Mapping)
+        else {}
+    )
+    llm_judgments = (
+        summary.get("llm_judgment_summary")
+        if isinstance(summary.get("llm_judgment_summary"), Mapping)
+        else {}
+    )
     env = summary.get("environment_isolation") if isinstance(summary.get("environment_isolation"), Mapping) else {}
     mutation = summary.get("mutation_proof") if isinstance(summary.get("mutation_proof"), Mapping) else {}
     review_pack = summary.get("review_pack") if isinstance(summary.get("review_pack"), Mapping) else {}
+    continuation = (
+        summary.get("operator_continuation")
+        if isinstance(summary.get("operator_continuation"), Mapping)
+        else {}
+    )
     return {
         "phase": summary.get("phase"),
         "phase_slug": summary.get("phase_slug"),
         "status": (summary.get("pipeline_contract") or {}).get("status")
         if isinstance(summary.get("pipeline_contract"), Mapping)
         else None,
+        "operator_continuation": {
+            "previous_status": continuation.get("previous_status"),
+            "llm_approval_phrase_used": continuation.get("llm_approval_phrase_used"),
+            "execute_confirmation_used": continuation.get("execute_confirmation_used"),
+            "provider_policy": continuation.get("provider_policy"),
+        },
         "environment": {
             "violet_env": env.get("violet_env"),
             "db_label": env.get("db_name"),
@@ -616,6 +645,13 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
             "provider_available": llm_ready.get("provider_available"),
             "cache_ready": llm_ready.get("cache_ready"),
             "budget_ready": llm_ready.get("budget_ready"),
+            "provider_mode": llm_provider.get("provider_mode"),
+            "model_name": llm_provider.get("model_name"),
+            "uses_fallback_provider": llm_provider.get("uses_fallback_provider"),
+            "cache_hits": llm_judgments.get("cache_hits"),
+            "cache_misses": llm_judgments.get("cache_misses"),
+            "error_count": llm_judgments.get("error_count"),
+            "estimated_cost_usd": llm_judgments.get("estimated_cost_usd"),
         },
         "mutation": {
             "passed": mutation.get("passed"),
@@ -645,6 +681,9 @@ def public_redaction_check(summary: Mapping[str, Any], markdown: str) -> dict[st
 def public_report_markdown(summary: Mapping[str, Any]) -> str:
     proof = summary["sc1_full_chain_proof"]
     llm = summary["llm_adjudication_plan"]
+    provider = summary.get("llm_provider_execution") if isinstance(summary.get("llm_provider_execution"), Mapping) else {}
+    judgments = summary.get("llm_judgment_summary") if isinstance(summary.get("llm_judgment_summary"), Mapping) else {}
+    continuation = summary.get("operator_continuation") if isinstance(summary.get("operator_continuation"), Mapping) else {}
     route = summary["route_authorization"]
     lines = [
         "# Phase 4.5-SCV2-R1R Full SourceConcept Pipeline Replay",
@@ -652,6 +691,10 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "## Status",
         "",
         f"- Contract status: `{summary['pipeline_contract']['status']}`.",
+        f"- Previous continuation status: `{continuation.get('previous_status')}`.",
+        f"- Operator LLM approval used: `{continuation.get('llm_approval_phrase_used')}`.",
+        f"- Dev/test execute confirmation used: `{continuation.get('execute_confirmation_used')}`.",
+        f"- Provider policy: `{continuation.get('provider_policy')}`.",
         f"- Complete SC1 pipeline executed: `{proof['complete_sc1_pipeline_executed']}`.",
         f"- Deterministic pipeline executed: `{proof['deterministic_pipeline_executed']}`.",
         f"- LLM adjudication requested/executed: `{proof['llm_pair_adjudication_requested']}` / `{proof['llm_pair_adjudication_executed']}`.",
@@ -669,10 +712,14 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         f"- Operator approved: `{summary['llm_readiness']['operator_approved']}`.",
         f"- Provider available: `{summary['llm_readiness']['provider_available']}`.",
+        f"- Provider/model used: `{provider.get('provider_mode')}` / `{provider.get('model_name')}`.",
+        f"- Fallback provider used: `{provider.get('uses_fallback_provider')}`.",
         f"- Cache ready: `{summary['llm_readiness']['cache_ready']}`.",
         f"- Budget ready: `{summary['llm_readiness']['budget_ready']}`.",
         f"- Eligible pairs: `{llm['eligible_pair_count']}`.",
         f"- Selected pairs: `{llm['selected_pair_count']}`.",
+        f"- Judgment/error/cache counts: `{judgments.get('judgment_count')}` / `{judgments.get('error_count')}` / `{judgments.get('cache_hits')}` hits, `{judgments.get('cache_misses')}` misses.",
+        f"- Estimated actual cost USD: `{judgments.get('estimated_cost_usd')}`; exact provider cost available: `{judgments.get('actual_cost_usd_available')}`.",
         f"- Max calls / budget USD: `{llm['max_calls']}` / `{llm['budget_usd']}`.",
         "",
         "## Stage Manifest",
@@ -865,12 +912,30 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit(f"--execute requires --confirm-execution {EXECUTE_CONFIRMATION!r}")
     llm_approved = bool(args.approve_llm_adjudication and args.llm_confirmation == LLM_CONFIRMATION)
     cache_dir = output_dir / "llm-cache"
+    provider = None
+    provider_summary: dict[str, Any] = {
+        "provider_mode": "primary_openai",
+        "llm_provider_label": "primary_openai",
+        "llm_access_configured": False,
+        "uses_fallback_provider": False,
+        "readiness_checked": False,
+        "model_name": None,
+    }
+    if args.check_llm_provider_readiness or llm_approved:
+        provider, provider_summary = primary_openai_provider_from_settings()
+        provider_summary = {
+            **provider_summary,
+            "readiness_checked": True,
+            "model_name": getattr(provider, "model", None) if provider is not None else None,
+            "provider_name": provider.get_provider_name() if provider is not None else None,
+        }
+    provider_model_label = str(provider_summary.get("model_name") or "primary_openai")
     llm_config = LLMAdjudicationConfig(
         enabled=True,
         max_calls=int(args.max_llm_calls),
         max_budget_usd=float(args.max_llm_budget_usd),
         max_block_size=int(args.max_llm_block_size),
-        model_label="primary_openai",
+        model_label=provider_model_label,
         cache_dir=str(cache_dir),
         fail_if_unavailable=bool(args.fail_if_llm_unavailable),
     )
@@ -884,45 +949,88 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     db = SessionLocal()
     judgments: list[dict[str, Any]] = []
     llm_execution_summary: dict[str, Any] = {}
+    provider_error: dict[str, Any] | None = None
+    persistence = {
+        "apply": False,
+        "allowed_tables": list(SOURCE_CONCEPT_ALLOWED_WRITE_TABLES),
+        "forbidden_truth_table_write_count": 0,
+    }
     try:
         inventory = source_signal_inventory(db)
         signals = build_source_concept_signals(db, run_id=args.run_id)
         deterministic_result = resolve_source_concepts(signals, run_id=args.run_id, llm_config=llm_config, llm_judgments=())
         plan = plan_llm_adjudication(deterministic_result.edge_candidates, signals=signals, config=llm_config)
         selected_edges = select_llm_adjudication_edges(deterministic_result.edge_candidates, signals=signals, config=llm_config)
-        provider = None
-        provider_summary = {
-            "provider_mode": "primary_openai",
-            "llm_access_configured": False,
-            "uses_fallback_provider": False,
-            "readiness_checked": False,
-        }
-        if args.check_llm_provider_readiness or llm_approved:
-            provider, provider_summary = primary_openai_provider_from_settings()
-            provider_summary = {**provider_summary, "readiness_checked": True}
         budget_ready = plan.status != "blocked"
         cache_stats = cache_stats_for_selected_pairs(cache_dir, len(selected_edges))
         if llm_approved:
-            judgments, llm_execution_summary = run_bounded_llm_adjudication(
-                deterministic_result.edge_candidates,
-                signals=signals,
-                config=llm_config,
-            )
-            if provider is None and provider_summary.get("llm_access_configured"):
-                provider, provider_summary = primary_openai_provider_from_settings()
-        if judgments:
-            replay_result = resolve_source_concepts(signals, run_id=args.run_id, llm_config=llm_config, llm_judgments=judgments)
+            if provider is None:
+                llm_execution_summary = {
+                    "used": False,
+                    "provider": provider_summary,
+                    "reason": provider_summary.get("unavailable_reason") or "provider_unavailable",
+                    "selected_pair_count": len(selected_edges),
+                    "judgment_count": 0,
+                    "error_count": 0,
+                    "cache_hits": 0,
+                    "cache_misses": len(selected_edges),
+                }
+            else:
+                try:
+                    judgments, llm_execution_summary = run_bounded_llm_adjudication(
+                        deterministic_result.edge_candidates,
+                        signals=signals,
+                        config=llm_config,
+                    )
+                    provider_summary = {
+                        **provider_summary,
+                        **(llm_execution_summary.get("provider") or {}),
+                        "readiness_checked": True,
+                    }
+                    if "cache_hits" in llm_execution_summary or "cache_misses" in llm_execution_summary:
+                        cache_stats = {
+                            **cache_stats,
+                            "cache_hits": int(llm_execution_summary.get("cache_hits", 0) or 0),
+                            "cache_misses": int(llm_execution_summary.get("cache_misses", 0) or 0),
+                            "cached_decision_count": int(llm_execution_summary.get("cache_hits", 0) or 0),
+                        }
+                except Exception as exc:  # pragma: no cover - provider/network dependent
+                    provider_error = sanitize_provider_error(exc)
+                    llm_execution_summary = {
+                        "used": False,
+                        "provider": provider_summary,
+                        "reason": "provider_error",
+                        "selected_pair_count": len(selected_edges),
+                        "judgment_count": 0,
+                        "error_count": 1,
+                        "cache_hits": 0,
+                        "cache_misses": len(selected_edges),
+                        "error": provider_error,
+                    }
+        valid_judgments = [row for row in judgments if not row.get("error_type")]
+        llm_error_count = int(llm_execution_summary.get("error_count", 0) or 0) + sum(
+            1 for row in judgments if row.get("error_type")
+        )
+        if valid_judgments:
+            replay_result = resolve_source_concepts(signals, run_id=args.run_id, llm_config=llm_config, llm_judgments=valid_judgments)
         else:
             replay_result = deterministic_result
-        persistence = {
-            "apply": False,
-            "allowed_tables": list(SOURCE_CONCEPT_ALLOWED_WRITE_TABLES),
-            "forbidden_truth_table_write_count": 0,
-        }
-        if args.execute:
-            if not judgments and len(selected_edges) > 0:
-                raise SystemExit("R1R execute requires completed LLM adjudication or zero eligible selected pairs.")
-            persistence = persist_source_concept_resolution(db, replay_result, apply=True, inventory=inventory)
+        execute_allowed = bool(
+            args.execute
+            and llm_approved
+            and budget_ready
+            and provider is not None
+            and llm_error_count == 0
+            and (len(selected_edges) == 0 or len(valid_judgments) >= len(selected_edges))
+        )
+        if execute_allowed:
+            persistence = persist_source_concept_resolution(
+                db,
+                replay_result,
+                apply=True,
+                inventory=inventory,
+                run_label=R1R_RUN_LABEL,
+            )
             db.commit()
     finally:
         db.close()
@@ -938,16 +1046,20 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     adapter_counts = public_signal_inventory(inventory).get("adapter_counts", {})
     eligible_pair_count = int(plan.projected_calls)
     selected_pair_count = len(selected_edges)
-    judgment_count = len(judgments)
+    valid_judgments = [row for row in judgments if not row.get("error_type")]
+    judgment_count = len(valid_judgments)
+    ledger_row_count = len(judgments)
+    llm_error_count = int(llm_execution_summary.get("error_count", 0) or 0) + sum(1 for row in judgments if row.get("error_type"))
     provider_available = bool(provider_summary.get("llm_access_configured")) if (args.check_llm_provider_readiness or llm_approved) else False
-    llm_readiness_passed = bool(llm_approved and provider_available and budget_ready and cache_stats["cache_enabled"])
-    if args.execute and judgment_count > 0:
+    llm_readiness_passed = bool(llm_approved and provider_available and budget_ready and cache_stats["cache_enabled"] and llm_error_count == 0)
+    persistence_applied = bool(persistence.get("apply"))
+    if args.execute and persistence_applied and judgment_count > 0:
         status = "target_met_full_chain" if mutation_delta["passed"] else "blocked_contract"
     elif not llm_approved and eligible_pair_count > 0:
         status = "blocked_llm_approval_required"
     elif llm_approved and not budget_ready:
         status = "blocked_budget"
-    elif llm_approved and not provider_available:
+    elif llm_approved and (not provider_available or llm_error_count > 0):
         status = "blocked_provider"
     else:
         status = "dry_run_complete_execute_not_requested"
@@ -960,9 +1072,9 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         llm_plan_ready=True,
         llm_selected=selected_pair_count,
         llm_judgments=judgment_count,
-        persistence_verified=bool(args.execute and persistence.get("apply")),
+        persistence_verified=persistence_applied,
         mutation_verified=bool(mutation_delta["passed"]),
-        post_commit_verified=bool(args.execute and mutation_delta["passed"]),
+        post_commit_verified=bool(persistence_applied and mutation_delta["passed"]),
         review_pack_generated=True,
         redaction_passed=True,
         adapter_counts=adapter_counts if isinstance(adapter_counts, Mapping) else {},
@@ -970,7 +1082,16 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         edge_count=len(deterministic_result.edge_candidates),
         concept_count=len(replay_result.concepts),
     )
-    outcomes = llm_outcome_counts(judgments)
+    outcomes = llm_outcome_counts(valid_judgments)
+    skipped_required_stages = [
+        row["stage_name"]
+        for row in stage_manifest
+        if row["required"] and row["skipped"] and row["status"] != "skipped_not_applicable"
+    ]
+    actual_cost_estimate = 0.0
+    if selected_pair_count:
+        actual_calls = max(0, int(cache_stats.get("cache_misses", 0) or 0))
+        actual_cost_estimate = round(float(plan.projected_cost_usd) * (actual_calls / selected_pair_count), 6)
     summary = {
         "phase": PHASE,
         "phase_slug": PHASE_SLUG,
@@ -987,6 +1108,13 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 "full_chain_complete": full_chain_complete,
                 "safe_to_merge": False,
             },
+        },
+        "operator_continuation": {
+            "previous_status": "blocked_llm_approval_required",
+            "llm_approval_phrase_used": llm_approved,
+            "execute_confirmation_used": bool(args.execute and args.confirm_execution == EXECUTE_CONFIRMATION),
+            "operator_budget_approved": bool(llm_approved),
+            "provider_policy": "primary_openai_compatible_only_no_fallback",
         },
         "environment_isolation": {
             **environment,
@@ -1005,7 +1133,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "complete_sc1_pipeline_executed": full_chain_complete,
             "deterministic_pipeline_executed": True,
             "llm_pair_adjudication_requested": True,
-            "llm_pair_adjudication_executed": judgment_count > 0,
+            "llm_pair_adjudication_executed": judgment_count > 0 and llm_error_count == 0,
             "llm_eligible_pair_count": eligible_pair_count,
             "llm_selected_pair_count": selected_pair_count,
             "llm_judgment_count": judgment_count,
@@ -1016,7 +1144,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 for row in stage_manifest
                 if row["required"] and row["status"] not in {"verified", "executed", "skipped_not_applicable"}
             ],
-            "skipped_required_stages": [row["stage_name"] for row in stage_manifest if row["required"] and row["skipped"]],
+            "skipped_required_stages": skipped_required_stages,
             "stage_manifest_artifact": "r1r-private-stage-manifest",
             "review_pack_includes_stage_manifest": True,
             "deterministic_only_output_used_as_full_chain_route_approval_evidence": False,
@@ -1036,23 +1164,44 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "projected_input_tokens": int(plan.projected_input_tokens),
             "projected_output_tokens": int(plan.projected_output_tokens),
             "skipped_pair_count": max(0, int(plan.skipped_block_count)),
+            "operator_budget_approved": bool(llm_approved),
+            "budget_cap_adjusted_or_superseded": False,
         },
         "llm_readiness": {
             "passed": llm_readiness_passed,
             "operator_approved": llm_approved,
             "provider_available": provider_available,
             "provider_mode": provider_summary.get("provider_mode"),
+            "provider_model": provider_summary.get("model_name"),
             "provider_readiness_checked": bool(provider_summary.get("readiness_checked")),
             "uses_fallback_provider": False,
             "cache_ready": bool(cache_stats["cache_enabled"]),
             "budget_ready": budget_ready,
             "cache_summary": cache_stats,
             "no_secret_leakage": True,
+            "provider_error": provider_error,
+        },
+        "llm_provider_execution": {
+            "provider_mode": provider_summary.get("provider_mode"),
+            "provider_label": provider_summary.get("llm_provider_label"),
+            "provider_name": provider_summary.get("provider_name"),
+            "model_name": provider_summary.get("model_name"),
+            "uses_fallback_provider": False,
+            "fallback_provider_used": False,
+            "primary_openai_compatible_used": bool(judgment_count > 0 and llm_error_count == 0),
+            "actual_cost_usd_available": False,
+            "actual_cost_usd_estimate": actual_cost_estimate,
+            "provider_error": provider_error,
         },
         "llm_judgment_summary": {
             "judgment_count": judgment_count,
-            "error_count": int(llm_execution_summary.get("error_count", 0) or 0),
+            "ledger_row_count": ledger_row_count,
+            "error_count": llm_error_count,
             "selected_pair_count": selected_pair_count,
+            "cache_hits": int(cache_stats.get("cache_hits", 0) or 0),
+            "cache_misses": int(cache_stats.get("cache_misses", 0) or 0),
+            "estimated_cost_usd": actual_cost_estimate,
+            "actual_cost_usd_available": False,
             **outcomes,
         },
         "source_concept_before": source_before,
@@ -1060,10 +1209,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "source_concept_delta": count_delta,
         "mutation_proof": mutation_delta,
         "post_commit_verification": {
-            "passed": bool(args.execute and mutation_delta["passed"]),
+            "passed": bool(persistence_applied and mutation_delta["passed"]),
             "execute_requested": bool(args.execute),
             "fresh_connection_checked": True,
-            "reason": None if args.execute else "dry_run_no_db_write",
+            "reason": None if persistence_applied else ("execute_blocked_before_write" if args.execute else "dry_run_no_db_write"),
         },
         "review_pack": {"generated": True, "includes_stage_manifest": True, "label": "r1r-private-review-pack"},
         "public_redaction": {"passed": True, "finding_count": 0, "findings": []},

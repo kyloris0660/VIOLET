@@ -62,7 +62,9 @@ contract. It requires development/test/restored-snapshot isolation, a
 stage-level SC1 required-stage manifest, LLM pair planning/selection/judgment
 truthfulness, SourceConcept-owned write scope, mutation proof, review-pack
 manifest inclusion, public redaction, and explicit downstream route
-non-authorization. It allows truthful blocked statuses, but only
+non-authorization. `target_met_full_chain` also requires primary
+OpenAI-compatible provider/model identity, no fallback provider use, and zero
+provider/judgment errors. It allows truthful blocked statuses, but only
 `target_met_full_chain` may claim full-chain completion.
 
 ## Route Gate

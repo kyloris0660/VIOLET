@@ -72,7 +72,7 @@
   },
   "environment_isolation": {
     "blockers": [],
-    "checked_at": "2026-07-06T15:14:52.852397+00:00",
+    "checked_at": "2026-07-06T15:44:44.099639+00:00",
     "db_identity_after": {
       "db_name": "blombooru_test",
       "db_user_redacted": true,
@@ -110,12 +110,14 @@
     "source_icloud_app_storage": false,
     "source_metadata": false
   },
-  "generated_at": "2026-07-06T15:14:53.425727+00:00",
-  "head_sha": "dfa78d67404ceb8edef48f9b2d60f5a0a565bdfc",
+  "generated_at": "2026-07-06T15:44:47.282412+00:00",
+  "head_sha": "40e383446f5c953a5f62a899d3206a3a4fb31b00",
   "llm_adjudication_plan": {
+    "budget_cap_adjusted_or_superseded": false,
     "budget_usd": 50.0,
     "eligible_pair_count": 35,
     "max_calls": 300,
+    "operator_budget_approved": true,
     "projected_budget_usd": 0.011604,
     "projected_input_tokens": 3002,
     "projected_output_tokens": 2800,
@@ -126,12 +128,32 @@
     "status": "ready"
   },
   "llm_judgment_summary": {
-    "error_count": 0,
+    "actual_cost_usd_available": false,
+    "cache_hits": 0,
+    "cache_misses": 33,
+    "error_count": 1,
+    "estimated_cost_usd": 0.011604,
     "judgment_count": 0,
+    "ledger_row_count": 0,
     "llm_cannot_count": 0,
     "llm_same_count": 0,
     "llm_uncertain_count": 0,
     "selected_pair_count": 33
+  },
+  "llm_provider_execution": {
+    "actual_cost_usd_available": false,
+    "actual_cost_usd_estimate": 0.011604,
+    "fallback_provider_used": false,
+    "model_name": "gpt-4.1-mini",
+    "primary_openai_compatible_used": false,
+    "provider_error": {
+      "message_redacted": true,
+      "type": "LLMHTTPStatusError"
+    },
+    "provider_label": "primary_openai",
+    "provider_mode": "primary_openai",
+    "provider_name": "openai_compatible(primary_openai)",
+    "uses_fallback_provider": false
   },
   "llm_readiness": {
     "budget_ready": true,
@@ -145,11 +167,16 @@
       "cached_decision_count": 0
     },
     "no_secret_leakage": true,
-    "operator_approved": false,
+    "operator_approved": true,
     "passed": false,
-    "provider_available": false,
+    "provider_available": true,
+    "provider_error": {
+      "message_redacted": true,
+      "type": "LLMHTTPStatusError"
+    },
     "provider_mode": "primary_openai",
-    "provider_readiness_checked": false,
+    "provider_model": "gpt-4.1-mini",
+    "provider_readiness_checked": true,
     "uses_fallback_provider": false
   },
   "local_artifacts": {
@@ -164,10 +191,17 @@
   },
   "old_r1_contamination_handling": {
     "dev_test_restored_snapshot_scope_only": true,
-    "new_r1r_run_label": "r1r-20260706T151452Z",
+    "new_r1r_run_label": "r1r-20260706T154444Z",
     "old_r1_a1_remain_invalid_for_route_approval_until_a1r": true,
     "old_r1_used_as_baseline_only": true,
     "production_source_concept_tables_overwritten": false
+  },
+  "operator_continuation": {
+    "execute_confirmation_used": true,
+    "llm_approval_phrase_used": true,
+    "operator_budget_approved": true,
+    "previous_status": "blocked_llm_approval_required",
+    "provider_policy": "primary_openai_compatible_only_no_fallback"
   },
   "phase": "4.5-SCV2-R1R",
   "phase_slug": "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay",
@@ -178,13 +212,13 @@
       "target_met": false
     },
     "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
-    "status": "blocked_llm_approval_required"
+    "status": "blocked_provider"
   },
   "post_commit_verification": {
-    "execute_requested": false,
+    "execute_requested": true,
     "fresh_connection_checked": true,
     "passed": false,
-    "reason": "dry_run_no_db_write"
+    "reason": "execute_blocked_before_write"
   },
   "public_json_payload": {
     "environment": {
@@ -196,9 +230,16 @@
     },
     "llm_gate": {
       "budget_ready": true,
+      "cache_hits": 0,
+      "cache_misses": 33,
       "cache_ready": true,
-      "operator_approved": false,
-      "provider_available": false
+      "error_count": 1,
+      "estimated_cost_usd": 0.011604,
+      "model_name": "gpt-4.1-mini",
+      "operator_approved": true,
+      "provider_available": true,
+      "provider_mode": "primary_openai",
+      "uses_fallback_provider": false
     },
     "llm_plan": {
       "budget_usd": 50.0,
@@ -213,6 +254,12 @@
       "forbidden_changed_table_count": 0,
       "passed": true,
       "unexpected_changed_table_count": 0
+    },
+    "operator_continuation": {
+      "execute_confirmation_used": true,
+      "llm_approval_phrase_used": true,
+      "previous_status": "blocked_llm_approval_required",
+      "provider_policy": "primary_openai_compatible_only_no_fallback"
     },
     "phase": "4.5-SCV2-R1R",
     "phase_slug": "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay",
@@ -238,7 +285,7 @@
       "selected_pairs": 33,
       "uncertain": 0
     },
-    "status": "blocked_llm_approval_required"
+    "status": "blocked_provider"
   },
   "public_redaction": {
     "finding_count": 0,
@@ -304,7 +351,7 @@
     "scale_up_authorized": false,
     "source_concept_truth_promotion_authorized": false
   },
-  "run_id": "r1r-20260706T151452Z",
+  "run_id": "r1r-20260706T154444Z",
   "sc1_full_chain_proof": {
     "all_required_stage_statuses_verified": false,
     "complete_sc1_pipeline_executed": false,
@@ -327,9 +374,7 @@
       "post_commit_verification"
     ],
     "review_pack_includes_stage_manifest": true,
-    "skipped_required_stages": [
-      "provider_cache_adapter_or_zero_eligible_proof"
-    ],
+    "skipped_required_stages": [],
     "stage_manifest_artifact": "r1r-private-stage-manifest"
   },
   "sc1_r1_r1r_fidelity_table": [
@@ -752,7 +797,7 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "blocked_llm_approval_required",
+      "skip_reason": "blocked_provider",
       "skipped": false,
       "stage_name": "bounded_llm_provider_cache_budget_readiness",
       "status": "blocked"
@@ -792,7 +837,7 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "blocked_llm_approval_required",
+      "skip_reason": "blocked_provider",
       "skipped": false,
       "stage_name": "bounded_llm_judgment_execution",
       "status": "blocked"
@@ -812,7 +857,7 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "blocked_llm_approval_required",
+      "skip_reason": "blocked_provider",
       "skipped": false,
       "stage_name": "llm_decision_recording",
       "status": "blocked"
@@ -832,7 +877,7 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "blocked_llm_approval_required",
+      "skip_reason": "blocked_provider",
       "skipped": false,
       "stage_name": "llm_decision_effects_applied_or_recorded",
       "status": "blocked"

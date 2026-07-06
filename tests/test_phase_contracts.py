@@ -182,8 +182,28 @@ def _r1r_summary(**overrides: object) -> dict:
             "passed": True,
             "operator_approved": True,
             "provider_available": True,
+            "provider_mode": "primary_openai",
+            "provider_model": "gpt-test",
+            "uses_fallback_provider": False,
             "cache_ready": True,
             "budget_ready": True,
+        },
+        "llm_provider_execution": {
+            "provider_mode": "primary_openai",
+            "provider_label": "primary_openai",
+            "provider_name": "openai_compatible(primary_openai)",
+            "model_name": "gpt-test",
+            "uses_fallback_provider": False,
+            "fallback_provider_used": False,
+            "primary_openai_compatible_used": True,
+        },
+        "llm_judgment_summary": {
+            "judgment_count": 12,
+            "ledger_row_count": 12,
+            "error_count": 0,
+            "selected_pair_count": 12,
+            "cache_hits": 0,
+            "cache_misses": 12,
         },
         "mutation_proof": {"passed": True, "forbidden_changed_tables": [], "unexpected_changed_tables": []},
         "post_commit_verification": {"passed": True},
@@ -5330,6 +5350,24 @@ def test_r1r_contract_rejects_target_met_with_llm_disabled_or_zero_judgments() -
 
     assert "r1r_llm_used_false_with_target_met_full_chain" in _error_codes(disabled_result)
     assert "r1r_llm_judgment_count_zero_for_eligible_pairs" in _error_codes(zero_result)
+
+
+def test_r1r_contract_rejects_target_met_with_provider_errors_or_fallback() -> None:
+    provider_error = _r1r_summary()
+    provider_error["llm_judgment_summary"]["error_count"] = 1
+    fallback = _r1r_summary()
+    fallback["llm_provider_execution"]["uses_fallback_provider"] = True
+    fallback["llm_provider_execution"]["fallback_provider_used"] = True
+    missing_model = _r1r_summary()
+    missing_model["llm_provider_execution"]["model_name"] = ""
+
+    provider_error_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", provider_error)
+    fallback_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", fallback)
+    missing_model_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", missing_model)
+
+    assert "r1r_llm_error_count_nonzero_for_target" in _error_codes(provider_error_result)
+    assert "r1r_fallback_provider_used" in _error_codes(fallback_result)
+    assert "r1r_llm_model_identity_missing" in _error_codes(missing_model_result)
 
 
 def test_r1r_contract_rejects_missing_stage_manifest_or_executed_stage_without_label() -> None:

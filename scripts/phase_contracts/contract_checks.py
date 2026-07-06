@@ -949,15 +949,20 @@ def _check_r1r_llm_truthfulness(
     proof = _get(summary, "sc1_full_chain_proof", {})
     plan = _get(summary, "llm_adjudication_plan", {})
     readiness = _get(summary, "llm_readiness", {})
+    provider_execution = _get(summary, "llm_provider_execution", {})
+    judgment_summary = _get(summary, "llm_judgment_summary", {})
     proof_mapping = proof if isinstance(proof, Mapping) else {}
     plan_mapping = plan if isinstance(plan, Mapping) else {}
     readiness_mapping = readiness if isinstance(readiness, Mapping) else {}
+    provider_mapping = provider_execution if isinstance(provider_execution, Mapping) else {}
+    judgment_mapping = judgment_summary if isinstance(judgment_summary, Mapping) else {}
 
     eligible = _as_int(
         proof_mapping.get("llm_eligible_pair_count", plan_mapping.get("eligible_pair_count", plan_mapping.get("projected_calls", 0)))
     )
     selected = _as_int(proof_mapping.get("llm_selected_pair_count", plan_mapping.get("selected_pair_count", plan_mapping.get("selected_block_count", 0))))
     judgments = _as_int(proof_mapping.get("llm_judgment_count", _get(summary, "llm_judgment_count", 0)))
+    error_count = _as_int(judgment_mapping.get("error_count", _get(summary, "llm_error_count", 0)))
     llm_requested = _as_bool(proof_mapping.get("llm_pair_adjudication_requested", plan_mapping.get("required")))
     llm_executed = _as_bool(proof_mapping.get("llm_pair_adjudication_executed", _get(summary, "llm_adjudication_used", False)))
     operator_approved = _as_bool(readiness_mapping.get("operator_approved"))
@@ -965,6 +970,12 @@ def _check_r1r_llm_truthfulness(
     cache_ready = _as_bool(readiness_mapping.get("cache_ready"))
     budget_ready = _as_bool(readiness_mapping.get("budget_ready"))
     readiness_passed = _as_bool(readiness_mapping.get("passed"))
+    fallback_used = (
+        _as_bool(readiness_mapping.get("uses_fallback_provider"))
+        or _as_bool(provider_mapping.get("uses_fallback_provider"))
+        or _as_bool(provider_mapping.get("fallback_provider_used"))
+    )
+    provider_mode = str(provider_mapping.get("provider_mode") or readiness_mapping.get("provider_mode") or "")
 
     if eligible > 0 and not operator_approved and status not in {"blocked_llm_approval_required", "blocked_environment_isolation"}:
         result.fail(
@@ -989,6 +1000,14 @@ def _check_r1r_llm_truthfulness(
             path="llm_readiness.budget_ready",
             expected=True,
             actual=readiness_mapping.get("budget_ready"),
+        )
+    if fallback_used:
+        result.fail(
+            "r1r_fallback_provider_used",
+            "R1R bounded LLM adjudication must use the primary OpenAI-compatible provider only.",
+            path="llm_provider_execution.uses_fallback_provider",
+            expected=False,
+            actual=True,
         )
     if target_met_full_chain:
         required_true = {
@@ -1015,6 +1034,30 @@ def _check_r1r_llm_truthfulness(
                 path="llm_readiness",
                 expected={"passed": True, "provider_available": True, "cache_ready": True, "budget_ready": True},
                 actual=readiness_mapping,
+            )
+        if provider_mode != "primary_openai":
+            result.fail(
+                "r1r_primary_provider_identity_missing",
+                "target_met_full_chain requires primary OpenAI-compatible provider identity.",
+                path="llm_provider_execution.provider_mode",
+                expected="primary_openai",
+                actual=provider_mode,
+            )
+        if not provider_mapping.get("model_name"):
+            result.fail(
+                "r1r_llm_model_identity_missing",
+                "target_met_full_chain requires the actual configured model name used for R1R adjudication.",
+                path="llm_provider_execution.model_name",
+                expected="configured model name",
+                actual=provider_mapping.get("model_name"),
+            )
+        if error_count > 0:
+            result.fail(
+                "r1r_llm_error_count_nonzero_for_target",
+                "target_met_full_chain cannot include provider or judgment errors.",
+                path="llm_judgment_summary.error_count",
+                expected=0,
+                actual=error_count,
             )
         if eligible > 0 and selected <= 0:
             result.fail(

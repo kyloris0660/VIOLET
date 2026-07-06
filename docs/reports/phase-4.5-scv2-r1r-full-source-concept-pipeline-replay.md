@@ -2,7 +2,11 @@
 
 ## Status
 
-- Contract status: `blocked_llm_approval_required`.
+- Contract status: `blocked_provider`.
+- Previous continuation status: `blocked_llm_approval_required`.
+- Operator LLM approval used: `True`.
+- Dev/test execute confirmation used: `True`.
+- Provider policy: `primary_openai_compatible_only_no_fallback`.
 - Complete SC1 pipeline executed: `False`.
 - Deterministic pipeline executed: `True`.
 - LLM adjudication requested/executed: `True` / `False`.
@@ -18,12 +22,16 @@
 
 ## LLM Readiness
 
-- Operator approved: `False`.
-- Provider available: `False`.
+- Operator approved: `True`.
+- Provider available: `True`.
+- Provider/model used: `primary_openai` / `gpt-4.1-mini`.
+- Fallback provider used: `False`.
 - Cache ready: `True`.
 - Budget ready: `True`.
 - Eligible pairs: `35`.
 - Selected pairs: `33`.
+- Judgment/error/cache counts: `0` / `1` / `0` hits, `33` misses.
+- Estimated actual cost USD: `0.011604`; exact provider cost available: `False`.
 - Max calls / budget USD: `300` / `50.0`.
 
 ## Stage Manifest

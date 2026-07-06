@@ -2667,11 +2667,19 @@ def run_bounded_llm_adjudication(
     context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
     judgments: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    for edge in selected_edges:
+    cache_hits = 0
+    cache_misses = 0
+    provider_identity = {
+        **provider_summary,
+        "provider_name": provider.get_provider_name() if hasattr(provider, "get_provider_name") else "primary_openai",
+        "model_name": getattr(provider, "model", None),
+    }
+    for pair_index, edge in enumerate(selected_edges, start=1):
         left = signal_by_key.get(edge.left_signal_key)
         right = signal_by_key.get(edge.right_signal_key)
         if left is None or right is None:
             continue
+        selected_pair_id = f"r1r-llm-pair-{pair_index:04d}"
         block_payload = {
             "edge": asdict(edge),
             "left": _llm_signal_payload(left, context_by_scope=context_by_scope, context_alias_by_key=context_alias_by_key),
@@ -2684,9 +2692,18 @@ def run_bounded_llm_adjudication(
         )
         cache_path = cache_dir / f"{fingerprint}.json"
         if cache_path.exists():
+            cache_hits += 1
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            cached.setdefault("selected_pair_id", selected_pair_id)
+            cached.setdefault("input_signal_summary", {"left": block_payload["left"], "right": block_payload["right"]})
+            cached.setdefault("provider_label", provider_summary.get("llm_provider_label"))
+            cached.setdefault("provider_mode", provider_summary.get("provider_mode"))
+            cached.setdefault("provider_model", getattr(provider, "model", None))
+            cached.setdefault("cache_status", "hit")
+            cached.setdefault("error_state", None)
             judgments.append(cached)
             continue
+        cache_misses += 1
         messages = [
             {
                 "role": "system",
@@ -2721,27 +2738,40 @@ def run_bounded_llm_adjudication(
                 decision = "needs_review"
             judgment = {
                 "judgment_id": fingerprint,
+                "selected_pair_id": selected_pair_id,
                 "left_signal_key": left.signal_key,
                 "right_signal_key": right.signal_key,
+                "input_signal_summary": {"left": block_payload["left"], "right": block_payload["right"]},
                 "decision": decision,
                 "confidence": source_confidence_score(response.get("confidence"), 0.5),
                 "reason_code": response.get("reason_code"),
                 "source_layer_only": True,
                 "provider_label": provider_summary.get("llm_provider_label"),
+                "provider_mode": provider_summary.get("provider_mode"),
+                "provider_model": getattr(provider, "model", None),
                 "model_label": config.model_label,
                 "cache_fingerprint": fingerprint,
+                "cache_status": "miss",
+                "error_state": None,
             }
             cache_path.write_text(json.dumps(judgment, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
             judgments.append(judgment)
         except Exception as exc:  # pragma: no cover - provider failures are environment dependent
             error = {
                 "judgment_id": fingerprint,
+                "selected_pair_id": selected_pair_id,
                 "left_signal_key": left.signal_key,
                 "right_signal_key": right.signal_key,
+                "input_signal_summary": {"left": block_payload["left"], "right": block_payload["right"]},
                 "decision": "needs_review",
                 "confidence": 0.0,
                 "source_layer_only": True,
+                "provider_label": provider_summary.get("llm_provider_label"),
+                "provider_mode": provider_summary.get("provider_mode"),
+                "provider_model": getattr(provider, "model", None),
+                "cache_status": "miss_error",
                 "error_type": type(exc).__name__,
+                "error_state": {"type": type(exc).__name__},
             }
             errors.append(error)
             judgments.append(error)
@@ -2750,10 +2780,12 @@ def run_bounded_llm_adjudication(
     return judgments, {
         "used": bool(judgments),
         "plan": asdict(plan),
-        "provider": provider_summary,
+        "provider": provider_identity,
         "selected_pair_count": len(selected_edges),
         "judgment_count": len(judgments),
         "error_count": len(errors),
+        "cache_hits": cache_hits,
+        "cache_misses": cache_misses,
         "cache_dir": str(cache_dir),
     }
 
@@ -3601,6 +3633,7 @@ def persist_source_concept_resolution(
     apply: bool,
     inventory: Mapping[str, Any] | None = None,
     input_scope: Mapping[str, Any] | None = None,
+    run_label: str = "phase_4_5_sc1_source_concept_resolver_core",
 ) -> dict[str, Any]:
     before_allowed = table_counts(db, SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
     before_forbidden = table_counts(db, FORBIDDEN_TRUTH_TABLES)
@@ -3618,7 +3651,7 @@ def persist_source_concept_resolution(
     if run_row is None:
         run_row = SourceConceptResolutionRun(
             run_id=result.run_id,
-            run_label="phase_4_5_sc1_source_concept_resolver_core",
+            run_label=run_label,
             scope="source_concept_core",
             resolver_version=RESOLVER_VERSION,
             mode="apply_db",
@@ -3627,6 +3660,8 @@ def persist_source_concept_resolution(
         )
         db.add(run_row)
         db.flush()
+    else:
+        run_row.run_label = run_label
 
     signal_rows: dict[str, SourceConceptSignal] = {}
     current_signal_rows: list[SourceConceptSignal] = []
