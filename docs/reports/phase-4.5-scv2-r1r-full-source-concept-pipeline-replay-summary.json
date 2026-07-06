@@ -72,7 +72,7 @@
   },
   "environment_isolation": {
     "blockers": [],
-    "checked_at": "2026-07-06T15:44:44.099639+00:00",
+    "checked_at": "2026-07-06T16:37:19.972143+00:00",
     "db_identity_after": {
       "db_name": "blombooru_test",
       "db_user_redacted": true,
@@ -110,8 +110,8 @@
     "source_icloud_app_storage": false,
     "source_metadata": false
   },
-  "generated_at": "2026-07-06T15:44:47.282412+00:00",
-  "head_sha": "40e383446f5c953a5f62a899d3206a3a4fb31b00",
+  "generated_at": "2026-07-06T16:38:46.335541+00:00",
+  "head_sha": "d0de5c6fa5f5c635f1ca540c3d91278317371a52",
   "llm_adjudication_plan": {
     "budget_cap_adjusted_or_superseded": false,
     "budget_usd": 50.0,
@@ -131,13 +131,13 @@
     "actual_cost_usd_available": false,
     "cache_hits": 0,
     "cache_misses": 33,
-    "error_count": 1,
+    "error_count": 0,
     "estimated_cost_usd": 0.011604,
-    "judgment_count": 0,
-    "ledger_row_count": 0,
-    "llm_cannot_count": 0,
+    "judgment_count": 33,
+    "ledger_row_count": 33,
+    "llm_cannot_count": 31,
     "llm_same_count": 0,
-    "llm_uncertain_count": 0,
+    "llm_uncertain_count": 2,
     "selected_pair_count": 33
   },
   "llm_provider_execution": {
@@ -145,11 +145,8 @@
     "actual_cost_usd_estimate": 0.011604,
     "fallback_provider_used": false,
     "model_name": "gpt-4.1-mini",
-    "primary_openai_compatible_used": false,
-    "provider_error": {
-      "message_redacted": true,
-      "type": "LLMHTTPStatusError"
-    },
+    "primary_openai_compatible_used": true,
+    "provider_error": null,
     "provider_label": "primary_openai",
     "provider_mode": "primary_openai",
     "provider_name": "openai_compatible(primary_openai)",
@@ -168,12 +165,9 @@
     },
     "no_secret_leakage": true,
     "operator_approved": true,
-    "passed": false,
+    "passed": true,
     "provider_available": true,
-    "provider_error": {
-      "message_redacted": true,
-      "type": "LLMHTTPStatusError"
-    },
+    "provider_error": null,
     "provider_mode": "primary_openai",
     "provider_model": "gpt-4.1-mini",
     "provider_readiness_checked": true,
@@ -183,15 +177,143 @@
     "private_artifact_root_label": "r1r-private-artifacts"
   },
   "mutation_proof": {
-    "allowed_changed_tables": [],
-    "changed_tables": [],
+    "allowed_changed_tables": [
+      {
+        "after_count": 60,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 55,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_aliases"
+      },
+      {
+        "after_count": 104,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 99,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_evidence"
+      },
+      {
+        "after_count": 1,
+        "allowed": true,
+        "before_count": 0,
+        "changed": true,
+        "delta": 1,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_resolution_runs"
+      },
+      {
+        "after_count": 60,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 55,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_search_index"
+      },
+      {
+        "after_count": 104,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 99,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_signal_links"
+      },
+      {
+        "after_count": 104,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 99,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_signals"
+      },
+      {
+        "after_count": 58,
+        "allowed": true,
+        "before_count": 4,
+        "changed": true,
+        "delta": 54,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concepts"
+      }
+    ],
+    "changed_tables": [
+      {
+        "after_count": 60,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 55,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_aliases"
+      },
+      {
+        "after_count": 104,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 99,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_evidence"
+      },
+      {
+        "after_count": 1,
+        "allowed": true,
+        "before_count": 0,
+        "changed": true,
+        "delta": 1,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_resolution_runs"
+      },
+      {
+        "after_count": 60,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 55,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_search_index"
+      },
+      {
+        "after_count": 104,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 99,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_signal_links"
+      },
+      {
+        "after_count": 104,
+        "allowed": true,
+        "before_count": 5,
+        "changed": true,
+        "delta": 99,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_signals"
+      },
+      {
+        "after_count": 58,
+        "allowed": true,
+        "before_count": 4,
+        "changed": true,
+        "delta": 54,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concepts"
+      }
+    ],
     "forbidden_changed_tables": [],
     "passed": true,
     "unexpected_changed_tables": []
   },
   "old_r1_contamination_handling": {
     "dev_test_restored_snapshot_scope_only": true,
-    "new_r1r_run_label": "r1r-20260706T154444Z",
+    "new_r1r_run_label": "r1r-20260706T163719Z",
     "old_r1_a1_remain_invalid_for_route_approval_until_a1r": true,
     "old_r1_used_as_baseline_only": true,
     "production_source_concept_tables_overwritten": false
@@ -200,25 +322,26 @@
     "execute_confirmation_used": true,
     "llm_approval_phrase_used": true,
     "operator_budget_approved": true,
-    "previous_status": "blocked_llm_approval_required",
+    "previous_status": "blocked_provider",
+    "provider_retry_result": "resolved_after_operator_balance_recharge",
     "provider_policy": "primary_openai_compatible_only_no_fallback"
   },
   "phase": "4.5-SCV2-R1R",
   "phase_slug": "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay",
   "pipeline_contract": {
     "claims": {
-      "full_chain_complete": false,
+      "full_chain_complete": true,
       "safe_to_merge": false,
-      "target_met": false
+      "target_met": true
     },
     "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
-    "status": "blocked_provider"
+    "status": "target_met_full_chain"
   },
   "post_commit_verification": {
     "execute_requested": true,
     "fresh_connection_checked": true,
-    "passed": false,
-    "reason": "execute_blocked_before_write"
+    "passed": true,
+    "reason": null
   },
   "public_json_payload": {
     "environment": {
@@ -233,7 +356,7 @@
       "cache_hits": 0,
       "cache_misses": 33,
       "cache_ready": true,
-      "error_count": 1,
+      "error_count": 0,
       "estimated_cost_usd": 0.011604,
       "model_name": "gpt-4.1-mini",
       "operator_approved": true,
@@ -250,7 +373,7 @@
       "status": "ready"
     },
     "mutation": {
-      "changed_table_count": 0,
+      "changed_table_count": 7,
       "forbidden_changed_table_count": 0,
       "passed": true,
       "unexpected_changed_table_count": 0
@@ -258,7 +381,8 @@
     "operator_continuation": {
       "execute_confirmation_used": true,
       "llm_approval_phrase_used": true,
-      "previous_status": "blocked_llm_approval_required",
+      "previous_status": "blocked_provider",
+      "provider_retry_result": "resolved_after_operator_balance_recharge",
       "provider_policy": "primary_openai_compatible_only_no_fallback"
     },
     "phase": "4.5-SCV2-R1R",
@@ -273,19 +397,19 @@
       "downstream_routes_blocked": true
     },
     "sc1_full_chain": {
-      "all_stages_verified": false,
-      "cannot": 0,
-      "complete": false,
+      "all_stages_verified": true,
+      "cannot": 31,
+      "complete": true,
       "deterministic_complete": true,
       "eligible_pairs": 35,
-      "judgments": 0,
-      "llm_executed": false,
+      "judgments": 33,
+      "llm_executed": true,
       "llm_requested": true,
       "same": 0,
       "selected_pairs": 33,
-      "uncertain": 0
+      "uncertain": 2
     },
-    "status": "blocked_provider"
+    "status": "target_met_full_chain"
   },
   "public_redaction": {
     "finding_count": 0,
@@ -299,15 +423,17 @@
       "active": 2,
       "needs_review": 52
     },
-    "edge_count": 170,
+    "edge_count": 203,
     "edge_counts_by_status": {
       "active": 2,
-      "needs_review": 121,
-      "rejected": 12,
+      "needs_review": 123,
+      "rejected": 43,
       "weak": 35
     },
     "edge_counts_by_type": {
       "cooccurrence_context": 35,
+      "llm_needs_review": 2,
+      "llm_negative_guard": 31,
       "negative_guard": 12,
       "stable_identity_anchor": 123
     },
@@ -330,7 +456,10 @@
     },
     "evidence_count": 99,
     "link_count": 99,
-    "llm_edge_counts_by_type": {},
+    "llm_edge_counts_by_type": {
+      "llm_needs_review": 2,
+      "llm_negative_guard": 31
+    },
     "resolver_version": "source_concept_resolver_core_v2_graph",
     "search_index_preview_count": 55,
     "signal_count": 99
@@ -351,28 +480,21 @@
     "scale_up_authorized": false,
     "source_concept_truth_promotion_authorized": false
   },
-  "run_id": "r1r-20260706T154444Z",
+  "run_id": "r1r-20260706T163719Z",
   "sc1_full_chain_proof": {
-    "all_required_stage_statuses_verified": false,
-    "complete_sc1_pipeline_executed": false,
+    "all_required_stage_statuses_verified": true,
+    "complete_sc1_pipeline_executed": true,
     "deterministic_only_output_used_as_full_chain_route_approval_evidence": false,
     "deterministic_pipeline_executed": true,
-    "llm_cannot_count": 0,
+    "llm_cannot_count": 31,
     "llm_eligible_pair_count": 35,
-    "llm_judgment_count": 0,
-    "llm_pair_adjudication_executed": false,
+    "llm_judgment_count": 33,
+    "llm_pair_adjudication_executed": true,
     "llm_pair_adjudication_requested": true,
     "llm_same_count": 0,
     "llm_selected_pair_count": 33,
-    "llm_uncertain_count": 0,
-    "missing_required_stages": [
-      "bounded_llm_provider_cache_budget_readiness",
-      "bounded_llm_judgment_execution",
-      "llm_decision_recording",
-      "llm_decision_effects_applied_or_recorded",
-      "source_concept_owned_persistence",
-      "post_commit_verification"
-    ],
+    "llm_uncertain_count": 2,
+    "missing_required_stages": [],
     "review_pack_includes_stage_manifest": true,
     "skipped_required_stages": [],
     "stage_manifest_artifact": "r1r-private-stage-manifest"
@@ -453,8 +575,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 0 judgments",
       "pipeline_step": "bounded LLM pair adjudication",
-      "r1r_actual_evidence": "R1R judgments 0",
-      "r1r_status": "blocked",
+      "r1r_actual_evidence": "R1R judgments 33",
+      "r1r_status": "verified",
       "sc1_actual_evidence": "SC1 300 judgments",
       "sc1_expected": "required for full chain"
     },
@@ -463,8 +585,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 none",
       "pipeline_step": "LLM decision effects",
-      "r1r_actual_evidence": "R1R blocked until LLM approval",
-      "r1r_status": "blocked",
+      "r1r_actual_evidence": "R1R recorded decisions",
+      "r1r_status": "verified",
       "sc1_actual_evidence": "SC1 LLM edges",
       "sc1_expected": "record/apply source-layer only"
     },
@@ -473,8 +595,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 SourceConcept tables",
       "pipeline_step": "SourceConcept persistence",
-      "r1r_actual_evidence": "R1R dry-run no writes",
-      "r1r_status": "blocked",
+      "r1r_actual_evidence": "R1R ready for execute gate",
+      "r1r_status": "verified",
       "sc1_actual_evidence": "SC1 allowed tables",
       "sc1_expected": "SourceConcept-owned only"
     },
@@ -785,10 +907,10 @@
     {
       "configured": true,
       "contract_check_name": "bounded_llm_provider_cache_budget_readiness",
-      "evidence_artifact_label": "",
-      "executed": false,
+      "evidence_artifact_label": "r1r-private-bounded_llm_provider_cache_budget_readiness",
+      "executed": true,
       "input_count": 33,
-      "output_count": 0,
+      "output_count": 1,
       "private_artifact_label": "r1r-private-bounded_llm_provider_cache_budget_readiness",
       "public_safe_summary_fields": [
         "input_count",
@@ -797,10 +919,10 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "blocked_provider",
+      "skip_reason": null,
       "skipped": false,
       "stage_name": "bounded_llm_provider_cache_budget_readiness",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
@@ -825,10 +947,10 @@
     {
       "configured": true,
       "contract_check_name": "bounded_llm_judgment_execution",
-      "evidence_artifact_label": "",
-      "executed": false,
+      "evidence_artifact_label": "r1r-private-bounded_llm_judgment_execution",
+      "executed": true,
       "input_count": 33,
-      "output_count": 0,
+      "output_count": 33,
       "private_artifact_label": "r1r-private-bounded_llm_judgment_execution",
       "public_safe_summary_fields": [
         "input_count",
@@ -837,18 +959,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "blocked_provider",
+      "skip_reason": null,
       "skipped": false,
       "stage_name": "bounded_llm_judgment_execution",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
       "contract_check_name": "llm_decision_recording",
-      "evidence_artifact_label": "",
-      "executed": false,
-      "input_count": 0,
-      "output_count": 0,
+      "evidence_artifact_label": "r1r-private-llm_decision_recording",
+      "executed": true,
+      "input_count": 33,
+      "output_count": 33,
       "private_artifact_label": "r1r-private-llm_decision_recording",
       "public_safe_summary_fields": [
         "input_count",
@@ -857,18 +979,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "blocked_provider",
+      "skip_reason": null,
       "skipped": false,
       "stage_name": "llm_decision_recording",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
       "contract_check_name": "llm_decision_effects_applied_or_recorded",
-      "evidence_artifact_label": "",
-      "executed": false,
-      "input_count": 0,
-      "output_count": 0,
+      "evidence_artifact_label": "r1r-private-llm_decision_effects_applied_or_recorded",
+      "executed": true,
+      "input_count": 33,
+      "output_count": 33,
       "private_artifact_label": "r1r-private-llm_decision_effects_applied_or_recorded",
       "public_safe_summary_fields": [
         "input_count",
@@ -877,18 +999,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "blocked_provider",
+      "skip_reason": null,
       "skipped": false,
       "stage_name": "llm_decision_effects_applied_or_recorded",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
       "contract_check_name": "source_concept_owned_persistence",
-      "evidence_artifact_label": "",
-      "executed": false,
+      "evidence_artifact_label": "r1r-private-source_concept_owned_persistence",
+      "executed": true,
       "input_count": 54,
-      "output_count": 0,
+      "output_count": 54,
       "private_artifact_label": "r1r-private-source_concept_owned_persistence",
       "public_safe_summary_fields": [
         "input_count",
@@ -900,7 +1022,7 @@
       "skip_reason": null,
       "skipped": false,
       "stage_name": "source_concept_owned_persistence",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
@@ -925,10 +1047,10 @@
     {
       "configured": true,
       "contract_check_name": "post_commit_verification",
-      "evidence_artifact_label": "",
-      "executed": false,
+      "evidence_artifact_label": "r1r-private-post_commit_verification",
+      "executed": true,
       "input_count": 54,
-      "output_count": 0,
+      "output_count": 1,
       "private_artifact_label": "r1r-private-post_commit_verification",
       "public_safe_summary_fields": [
         "input_count",
@@ -940,7 +1062,7 @@
       "skip_reason": null,
       "skipped": false,
       "stage_name": "post_commit_verification",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
@@ -984,22 +1106,22 @@
     }
   ],
   "source_concept_after": {
-    "active": 3,
+    "active": 5,
     "concept_status_counts": {
-      "active": 3,
-      "needs_review": 1
+      "active": 5,
+      "needs_review": 53
     },
-    "concept_total": 4,
-    "needs_review": 1,
+    "concept_total": 58,
+    "needs_review": 53,
     "superseded": 0,
     "table_counts": {
-      "blombooru_source_concept_aliases": 5,
-      "blombooru_source_concept_evidence": 5,
-      "blombooru_source_concept_resolution_runs": 0,
-      "blombooru_source_concept_search_index": 5,
-      "blombooru_source_concept_signal_links": 5,
-      "blombooru_source_concept_signals": 5,
-      "blombooru_source_concepts": 4
+      "blombooru_source_concept_aliases": 60,
+      "blombooru_source_concept_evidence": 104,
+      "blombooru_source_concept_resolution_runs": 1,
+      "blombooru_source_concept_search_index": 60,
+      "blombooru_source_concept_signal_links": 104,
+      "blombooru_source_concept_signals": 104,
+      "blombooru_source_concepts": 58
     }
   },
   "source_concept_before": {
@@ -1022,7 +1144,7 @@
     }
   },
   "source_concept_delta": {
-    "active_delta": 0,
+    "active_delta": 2,
     "gap_symmetry_needs_review_deltas": {
       "ai_only_weak_evidence_guard_delta": 0,
       "cjk_romaji_parenthetical_alias_gap_delta": 0,
@@ -1034,17 +1156,17 @@
       "search_seed_symmetry_delta": 0,
       "source_assertion_tag_name_unlinked_delta": 0
     },
-    "needs_review_delta": 0,
-    "source_concept_total_delta": 0,
+    "needs_review_delta": 52,
+    "source_concept_total_delta": 54,
     "superseded_delta": 0,
     "table_count_deltas": {
-      "blombooru_source_concept_aliases": 0,
-      "blombooru_source_concept_evidence": 0,
-      "blombooru_source_concept_resolution_runs": 0,
-      "blombooru_source_concept_search_index": 0,
-      "blombooru_source_concept_signal_links": 0,
-      "blombooru_source_concept_signals": 0,
-      "blombooru_source_concepts": 0
+      "blombooru_source_concept_aliases": 55,
+      "blombooru_source_concept_evidence": 99,
+      "blombooru_source_concept_resolution_runs": 1,
+      "blombooru_source_concept_search_index": 55,
+      "blombooru_source_concept_signal_links": 99,
+      "blombooru_source_concept_signals": 99,
+      "blombooru_source_concepts": 54
     }
   },
   "source_concept_write_scope": {
@@ -1057,7 +1179,15 @@
       "blombooru_source_concept_signal_links",
       "blombooru_source_concept_search_index"
     ],
-    "changed_tables": []
+    "changed_tables": [
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_search_index",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts"
+    ]
   },
   "source_signal_inventory": {
     "adapter_counts": {

@@ -2,15 +2,16 @@
 
 ## Status
 
-- Contract status: `blocked_provider`.
-- Previous continuation status: `blocked_llm_approval_required`.
+- Contract status: `target_met_full_chain`.
+- Previous continuation status: `blocked_provider`.
+- Provider retry result: `resolved_after_operator_balance_recharge`.
 - Operator LLM approval used: `True`.
 - Dev/test execute confirmation used: `True`.
 - Provider policy: `primary_openai_compatible_only_no_fallback`.
-- Complete SC1 pipeline executed: `False`.
+- Complete SC1 pipeline executed: `True`.
 - Deterministic pipeline executed: `True`.
-- LLM adjudication requested/executed: `True` / `False`.
-- LLM selected pairs / judgments: `33` / `0`.
+- LLM adjudication requested/executed: `True` / `True`.
+- LLM selected pairs / judgments: `33` / `33`.
 - A1R still required: `True`.
 
 ## Isolation
@@ -30,7 +31,7 @@
 - Budget ready: `True`.
 - Eligible pairs: `35`.
 - Selected pairs: `33`.
-- Judgment/error/cache counts: `0` / `1` / `0` hits, `33` misses.
+- Judgment/error/cache counts: `33` / `0` / `0` hits, `33` misses.
 - Estimated actual cost USD: `0.011604`; exact provider cost available: `False`.
 - Max calls / budget USD: `300` / `50.0`.
 
@@ -52,14 +53,14 @@
 | `alias_context_equivalence` | `verified` | `170` | `170` | `r1r-private-alias_context_equivalence` |
 | `union_component_resolution` | `verified` | `170` | `54` | `r1r-private-union_component_resolution` |
 | `bounded_llm_pair_planning` | `verified` | `170` | `33` | `r1r-private-bounded_llm_pair_planning` |
-| `bounded_llm_provider_cache_budget_readiness` | `blocked` | `33` | `0` | `[blocked]` |
+| `bounded_llm_provider_cache_budget_readiness` | `verified` | `33` | `1` | `r1r-private-bounded_llm_provider_cache_budget_readiness` |
 | `bounded_llm_pair_selection` | `verified` | `170` | `33` | `r1r-private-bounded_llm_pair_selection` |
-| `bounded_llm_judgment_execution` | `blocked` | `33` | `0` | `[blocked]` |
-| `llm_decision_recording` | `blocked` | `0` | `0` | `[blocked]` |
-| `llm_decision_effects_applied_or_recorded` | `blocked` | `0` | `0` | `[blocked]` |
-| `source_concept_owned_persistence` | `blocked` | `54` | `0` | `[blocked]` |
+| `bounded_llm_judgment_execution` | `verified` | `33` | `33` | `r1r-private-bounded_llm_judgment_execution` |
+| `llm_decision_recording` | `verified` | `33` | `33` | `r1r-private-llm_decision_recording` |
+| `llm_decision_effects_applied_or_recorded` | `verified` | `33` | `33` | `r1r-private-llm_decision_effects_applied_or_recorded` |
+| `source_concept_owned_persistence` | `verified` | `54` | `54` | `r1r-private-source_concept_owned_persistence` |
 | `mutation_proof` | `verified` | `29` | `1` | `r1r-private-mutation_proof` |
-| `post_commit_verification` | `blocked` | `54` | `0` | `[blocked]` |
+| `post_commit_verification` | `verified` | `54` | `1` | `r1r-private-post_commit_verification` |
 | `validation_pack_review_pack_generation` | `verified` | `24` | `1` | `r1r-private-validation_pack_review_pack_generation` |
 | `public_redaction` | `verified` | `2` | `1` | `r1r-private-public_redaction` |
 
@@ -74,9 +75,9 @@
 | alias/context equivalence | required | SC1 alias/context tests | R1 shared service | R1R shared service | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | union/component resolution | required | SC1 concept/link counts | R1 persisted concepts | R1R deterministic concepts | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | bounded LLM pair planning | required after blocking | SC1 selected 300 | old R1 disabled | R1R selected 33 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| bounded LLM pair adjudication | required for full chain | SC1 300 judgments | old R1 0 judgments | R1R judgments 0 | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| LLM decision effects | record/apply source-layer only | SC1 LLM edges | old R1 none | R1R blocked until LLM approval | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| SourceConcept persistence | SourceConcept-owned only | SC1 allowed tables | old R1 SourceConcept tables | R1R dry-run no writes | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| bounded LLM pair adjudication | required for full chain | SC1 300 judgments | old R1 0 judgments | R1R judgments 33 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| LLM decision effects | record/apply source-layer only | SC1 LLM edges | old R1 none | R1R recorded decisions | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| SourceConcept persistence | SourceConcept-owned only | SC1 allowed tables | old R1 SourceConcept tables | R1R persisted dev/test SourceConcept-owned tables | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | mutation proof | required | SC1 mutation proof | R1 mutation proof | R1R mutation proof | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | review pack | required | SC1 validation pack | R1 validation pack | R1R review pack | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 
@@ -89,4 +90,4 @@
 
 ## Result
 
-R1R did not produce full-chain route approval evidence; A1R must not start as a route approval rerun yet.
+R1R produced full-chain SourceConcept replay evidence and may feed A1R.
