@@ -3,7 +3,7 @@
   "repository": "kyloris0660/VIOLET",
   "pr": 129,
   "branch": "codex/s3a-m2-r-ui-operator-validation-r2",
-  "head": "8844f0eeee31bdb6e686a25c07f40c7491279d97",
+  "head": "cabb0b019153e5660f084ef6010b323f31301ba6",
   "pipeline_contract": {
     "contract_id": "s3a_m2_r_operator_validation_contract_v1",
     "status": "operator_ready",
@@ -40,7 +40,8 @@
       "normal_start_native_window_confirm_not_sole_confirmation_path": true,
       "normal_start_plan_ready_recoverable_after_cancel": true,
       "normal_start_execute_current_plan_without_replanning": true,
-      "delayed_plan_first_attempt_page_confirmation_browser_tested": true
+      "delayed_plan_first_attempt_page_confirmation_browser_tested": true,
+      "confirmation_panel_appears_near_top_after_plan": true
     },
     "normal_actionable_work_item_kinds": [
       "IMPORT",
@@ -71,6 +72,14 @@
       "cancel_does_not_create_execute_and_keeps_plan_recoverable": true,
       "expired_plan_disables_execute_and_requires_replan": true,
       "duplicate_execute_disabled_while_request_in_flight": true
+    },
+    "post_human_acceptance_status": "passed",
+    "confirmation_panel_placement_polish": {
+      "status": "passed",
+      "issue": "Page-level confirmation appeared below the long Plan result/progress details, requiring manual scroll.",
+      "fix": "Move the page-level confirmation panel before the detailed Plan result and scroll it into view when normal Start enters awaiting confirmation.",
+      "panel_dom_order": "progress strip -> page-level confirmation -> detailed Plan result",
+      "behavior_changed": false
     }
   },
   "ui_progress": {
@@ -230,7 +239,10 @@
       "duplicate_submit_disabled_while_execute_request_in_flight": true,
       "execute_current_plan_without_replanning": true,
       "execute_post_occurs_only_after_page_level_confirm_click": true
-    }
+    },
+    "confirmation_panel_top_placement_checked": true,
+    "confirmation_panel_visible_without_manual_scroll": true,
+    "confirmation_panel_dom_order": "progress strip before panel before detailed Plan result"
   },
   "local_gui_acceptance": {
     "status": "passed",
@@ -960,13 +972,17 @@
     "service_sync_enabled": false
   },
   "production_execute": {
-    "ran": false,
-    "owner_approved": false,
-    "approval_reference": null
+    "ran": true,
+    "owner_approved": true,
+    "approval_reference": "Owner final production GUI acceptance after PR-R2 page-level confirmation fix; production Execute was performed by the owner, not by Codex.",
+    "actor": "owner",
+    "codex_ran": false,
+    "codex_ran_during_closeout": false,
+    "non_clean_debt_visible_not_full_chain_claim": true
   },
   "safety": {
     "no_production_execute_without_owner_approval": true,
-    "production_execute_ran": false,
+    "production_execute_ran": true,
     "no_source_icloud_mutation": true,
     "source_icloud_mutation": false,
     "no_app_storage_repair_or_mutation": true,
@@ -979,7 +995,14 @@
     "no_production_classification": true,
     "no_production_ai_tagging": true,
     "no_production_localization": true,
-    "no_production_execute": true
+    "no_production_execute": false,
+    "production_execute_actor": "owner",
+    "codex_production_execute_ran_during_closeout": false,
+    "codex_no_production_execute_during_closeout": true,
+    "no_production_import_by_codex": true,
+    "no_production_classification_by_codex": true,
+    "no_production_ai_tagging_by_codex": true,
+    "no_production_localization_by_codex": true
   },
   "scope": {
     "s3b_started": false,
@@ -1001,20 +1024,22 @@
     "py_compile_changed_python_files": "passed: tests/test_admin_dynamic_sync_ui.py",
     "node_check_admin_js": "passed",
     "focused_pytest": {
-      "tests/test_admin_dynamic_sync_ui.py -q": "13 passed in 0.08s",
+      "tests/test_admin_dynamic_sync_ui.py -q": "13 passed in 0.11s",
       "tests/test_phase_contracts.py -q": "293 passed in 4.06s",
       "tests/test_s3a_m1_manual_sync_execute.py -q": "93 passed in 89.19s"
     },
     "summary_json_parse": "passed",
-    "s3a_m2_r_operator_validation_contract_v1": "passed: operator_ready; full_chain_complete_claimed=false with non-clean evidence visible",
+    "s3a_m2_r_operator_validation_contract_v1": "passed: operator_ready; production Execute recorded as owner-approved human acceptance; full_chain_complete_claimed=false with non-clean evidence visible",
     "public_redaction_contract_v1": "passed",
     "public_safe_fragment_scan": "passed: no local absolute paths, raw source filenames, content hashes, production source-root labels, credentials, API keys, provider secrets, or unredacted URLs in committed public artifacts",
     "browser_validation": "passed: full isolated 12-round Microsoft Edge Playwright matrix; includes delayed normal Start page confirmation, cancel/recover, execute current Plan without re-planning, duplicate submit disabled, and native dialog absence",
     "local_incremental_gui_e2e": "passed: 12 rounds, status passed, artifact marker ignored-local-pr129-incremental-gui-e2e-20260706-012552",
     "production_plan_only": "passed: launcher-managed Web Admin normal Start Plan-only, page-level confirmation visible, no native dialog, no Execute POST, latest execute id unchanged 19 -> 19",
-    "server_port_audit_after_validation": "passed: Codex-started test server and fake LLM stopped; existing launcher-managed production server remained running and was not touched",
-    "git_diff_check": "passed: final run after report update",
-    "git_diff_cached_check": "pending final staging; final delivery report records result"
+    "server_port_audit_after_validation": "passed: no active listeners on 8000/8012-8024 after Codex-started local/test layout validation server was stopped",
+    "git_diff_check": "passed: final run after placement polish and report update",
+    "git_diff_cached_check": "passed: final staged diff check after placement polish",
+    "confirmation_panel_position_browser_check": "passed: Microsoft Edge Playwright local/test normal Start Plan-only layout check; panel visible without manual scroll; Confirm/Cancel visible; cancel recoverable; no Execute POST; no native dialog",
+    "post_human_acceptance": "passed: owner production GUI acceptance executed current Plan through page-level confirmation and sampled import/classification/AI/localization; non-clean debt remained visible"
   },
   "artifact_lifecycle": {
     "artifacts": [
@@ -1041,8 +1066,8 @@
     "markdown_report_path": "docs/reports/s3a-m2-r-ui-operator-validation-closeout.md",
     "summary_json_path": "docs/reports/s3a-m2-r-ui-operator-validation-summary.json"
   },
-  "validation_base_head": "8844f0eeee31bdb6e686a25c07f40c7491279d97",
-  "report_note": "Final pushed head is recorded in the PR body/final delivery after commit; committed reports cannot self-reference their own future Git SHA.",
+  "validation_base_head": "cabb0b019153e5660f084ef6010b323f31301ba6",
+  "report_note": "Post-human-acceptance UI placement polish is validated from base head cabb0b019153e5660f084ef6010b323f31301ba6; final pushed commit head is recorded in the PR body/final delivery because committed reports cannot self-reference their own future Git SHA.",
   "resume_after_sleep": {
     "status": "resumed_cleanly_after_state_audit",
     "tracked_changes_found": [
@@ -1056,5 +1081,41 @@
     "partial_local_artifact_from_resume": "ignored-local-pr129-incremental-gui-e2e-20260706-012302",
     "partial_local_artifact_reason": "first resumed E2E attempt used test env without DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED/EXECUTE_ENABLED, so the UI correctly kept Start disabled",
     "cleanup_performed": "stopped only Codex-started 8013 test server and 8025 fake LLM PIDs from the failed resumed attempt; no tracked or production cleanup"
+  },
+  "post_human_acceptance": {
+    "status": "passed",
+    "performed_by": "owner",
+    "production_gui_path": true,
+    "normal_start_manual_sync_works": true,
+    "plan_completed": true,
+    "page_level_confirmation_visible": true,
+    "native_browser_confirm_not_required": true,
+    "page_level_confirmation_executed_current_plan": true,
+    "execute_completed_normally": true,
+    "owner_sampled_imported_media_classification_ai_tags_localization": true,
+    "non_clean_debt_states_visible_not_overclaimed": true,
+    "owner_screenshot_followup_plan_execute_confirmation_worked_again": true,
+    "codex_production_execute_during_closeout": false,
+    "production_execute_actor": "owner"
+  },
+  "confirmation_panel_placement_polish": {
+    "status": "passed",
+    "browser": "Microsoft Edge via Playwright",
+    "environment": "isolated local/test server",
+    "normal_start_plan_clicked_in_ui": true,
+    "execute_clicked": false,
+    "execute_post_seen": false,
+    "native_dialog_seen": false,
+    "dom_order_progress_before_panel": true,
+    "dom_order_panel_before_plan_result": true,
+    "panel_visible_without_manual_scroll": true,
+    "panel_rect_top": 212,
+    "panel_rect_bottom": 556,
+    "viewport_height": 768,
+    "confirm_button_visible": true,
+    "confirm_button_enabled": true,
+    "cancel_button_visible": true,
+    "cancel_kept_plan_recoverable": true,
+    "artifact_marker": "ignored-local-pr129-confirmation-panel-position-20260706-133554"
   }
 }

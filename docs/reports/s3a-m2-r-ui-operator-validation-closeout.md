@@ -4,9 +4,15 @@
 
 - PR: #129
 - 分支: `codex/s3a-m2-r-ui-operator-validation-r2`
-- 本轮修复/验证基准 head: `8844f0eeee31bdb6e686a25c07f40c7491279d97`
+- 本轮 post-human-acceptance UI polish 基准 head: `cabb0b019153e5660f084ef6010b323f31301ba6`
 - 最终 pushed head: 提交后记录在 PR body 和交付报告中；提交文件无法自引用自身生成后的 Git SHA。
-- 状态: final PR-R2 normal Start confirmation handoff blocker fix；不合并，不开新 PR。
+- 状态: final PR-R2 post-human-acceptance confirmation panel placement polish；不合并，不开新 PR。
+
+## 最终人工验收结果
+
+owner 在页面级确认修复后完成了生产 GUI 人工验收。验收结果通过: normal `Start manual sync` 可以完成 Plan，页面级确认出现且不再依赖 browser-native confirm，页面级确认可以执行当前 Plan，Execute 正常完成；owner 抽查 imported media、classification、AI tags 和 localization 行为，结果看起来正确。非干净/debt 状态仍然可见，并且没有被声明为 clean full-chain completion。
+
+owner 后续为了截图又跑了一次 Plan/Execute，页面级确认再次正常工作。本次 Codex closeout 没有运行生产 Execute；生产 Execute 仅由 owner 在人工验收中执行。
 
 ## 睡眠中断恢复
 
@@ -26,12 +32,15 @@ owner 在生产 launcher/Web Admin 正常 `Start manual sync` 路径上看到 Pl
 - 取消/关闭确认只表示暂不 Execute，不创建 Execute，当前 Plan 仍可见且可继续确认或重跑。
 - 过期 Plan 禁用 Execute 并要求重新 Plan。
 - 正常 Start 不再只依赖 `window.confirm`；advanced exact-phrase Execute 控制保留。
+- post-human-acceptance 小修复: 页面级确认面板从长 Plan detail/result block 下方移动到其上方，并在进入 awaiting confirmation 时自动滚动到面板位置，避免操作员必须向下找确认按钮。
 
 ## UI 进度、心跳与确认
 
 Web Admin Plan/Execute 仍显示 phase、status、elapsed、last heartbeat/update、当前安全标签、粗粒度计数、终态和错误信息。Execute 确认后立即进入非空 pending/executing 过渡态并禁用重复提交；run id 一旦后端返回即显示；真实 worker heartbeat 到达前显示 starting/waiting 状态，不伪造 import/classification/AI/localization 细粒度进度。
 
 Round 1 最新证据: delayed Plan first attempt=true，page confirmation visible before execute=true，native dialog seen=false，cancel kept plan visible=true，page confirm button still available=true，Execute first response 有 `run_created_at` 且无真实 `last_heartbeat_at`，pending placeholder visible=true，duplicate submit disabled=true。
+
+post-human-acceptance 轻量浏览器证据: Microsoft Edge via Playwright 在 isolated local/test server 上点击 normal Start 并完成 Plan；页面级确认 DOM 顺序为 progress/stage strip -> page-level confirmation -> detailed Plan result；确认面板在 1366x768 viewport 中无需手动滚动即可可见，rect top=212、bottom=556；Confirm Execute 与 Cancel 按钮均可见，Cancel 后 Plan 保持 recoverable；未出现 native dialog，未发送 Execute POST。
 
 ## Operator Readiness 与 Full Chain
 
@@ -91,7 +100,7 @@ operator status、WorkItemKind 和 lifecycle/debt 的中文标签可读且不是
 
 ## 安全与范围
 
-未运行生产 Execute；未做生产 import/classification/AI/localization；未做 source/iCloud mutation；未做 app-storage repair/mutation；未做 cleanup/reset/drop/truncate；未启动 S3B；未启动 Pixiv/provider/gallery-dl/SauceNAO/Google；未启动 SourceConcept/Entity/media_tags truth 工作。
+Codex 本次 closeout 未运行生产 Execute，未运行生产 import/classification/AI/localization，未做 source/iCloud mutation，未做 app-storage repair/mutation，未做 cleanup/reset/drop/truncate。生产 Execute 仅由 owner 在 final human GUI acceptance 中执行。Codex 未启动 S3B，未启动 Pixiv/provider/gallery-dl/SauceNAO/Google，未启动 SourceConcept/Entity/media_tags truth 工作。
 
 ## 验证
 
@@ -102,8 +111,9 @@ operator status、WorkItemKind 和 lifecycle/debt 的中文标签可读且不是
 - `pytest tests/test_phase_contracts.py -q`: 293 passed。
 - `pytest tests/test_s3a_m1_manual_sync_execute.py -q`: 93 passed。
 - isolated incremental GUI E2E: passed，12 rounds，Microsoft Edge via Playwright，包含延迟 Plan 后首次页面级确认、取消恢复、确认当前 Plan 执行、禁用重复提交、无 native dialog 依赖。
+- post-human-acceptance confirmation panel placement browser check: passed，Microsoft Edge via Playwright，isolated local/test normal Start Plan-only 布局检查；面板无需手动滚动即可可见，Confirm/Cancel 可见，Cancel 可恢复，未发送 Execute POST，未出现 native dialog。
 - production GUI Plan-only: passed，launcher-managed Web Admin normal Start path，latest execute id `19 -> 19`，页面级确认出现，未运行 Execute。
-- post-validation server/port audit: passed；Codex 启动的 test server 与 fake LLM 已停止；既有 launcher-managed production server 未触碰。
+- post-validation server/port audit: passed；本轮 Codex 启动的 8013 local/test server 已停止；最终审计显示 8000/8012-8024 无活跃 listener。
 - summary JSON parse: passed。
 - `s3a_m2_r_operator_validation_contract_v1`: passed；状态为 `operator_ready`，且 full-chain completion 未被 overclaim。
 - `public_redaction_contract_v1`: passed。
@@ -112,7 +122,7 @@ operator status、WorkItemKind 和 lifecycle/debt 的中文标签可读且不是
 
 ## 状态判断
 
-PR-R2 已恢复到可再次进行 final human GUI acceptance 的 operator-ready 状态: 正常 Start 不再依赖不可持久的 browser-native confirm；Plan 完成会留下可恢复、可确认、可取消、可过期保护的页面级确认状态；只有 operator 点击页面级确认后才会 Execute。
+PR-R2 已通过 final human GUI acceptance，并完成最后的确认面板位置微调。当前状态为 operator-ready 且可进入 merge decision: 正常 Start 不再依赖不可持久的 browser-native confirm；Plan 完成会在靠近结果区域顶部留下可恢复、可确认、可取消、可过期保护的页面级确认状态；只有 operator 点击页面级确认后才会 Execute。
 
 PR-R2 没有证明 clean full-chain completion；`full_chain_complete=false` 与 `full_s3a_m2_r_complete=false` 是有意的 truthfulness 边界。剩余 out-of-scope 风险均非当前 PR 阻塞项: advanced full-rescan retry-source execution 仍明确不可执行，生产 Execute 仍需 owner 另行审批，S3B 与 provider/SourceConcept/Entity/media_tags truth 工作未启动。
 
@@ -122,4 +132,4 @@ Artifact lifecycle: 前端修复属于 durable production code；测试/contract
 
 阶段边界合适: 本轮只修 PR-R2 manual sync operator confirmation handoff，没有改 lifecycle classifier 或 WorkItem core。根因是正常生产 Start 把长耗时 Plan 之后的关键写入确认交给了 transient native dialog；安全层 fail-closed，但 operator UX 不可恢复。修复把确认状态变成页面内持久、可检查、可取消、可继续的显式状态。
 
-PR-R2 ready for another final human GUI acceptance: 是，按 operator-ready-with-visible-debt 语义；不是 clean full-chain completion。
+PR-R2 ready to merge: 是，按 operator-ready-with-visible-debt 语义；不是 clean full-chain completion。

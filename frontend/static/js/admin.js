@@ -2544,6 +2544,10 @@ class AdminPanel {
     _enterManualSyncAwaitingConfirmation(plan) {
         if (!plan) return false;
         this._renderManualSyncPageConfirmation(plan, { state: 'awaiting' });
+        const panel = document.getElementById('dynamic-sync-page-confirmation');
+        if (panel) {
+            panel.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+        }
         const executionState = this._manualSyncPlanExecutionState(plan);
         this._manualSyncSetProgress({
             visible: true,

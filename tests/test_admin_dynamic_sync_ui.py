@@ -128,11 +128,14 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     script = _text(ADMIN_JS)
 
     operator_index = template.index('id="dynamic-sync-operator-card"')
+    progress_index = template.index('id="dynamic-sync-progress"')
     page_confirmation_index = template.index('id="dynamic-sync-page-confirmation"')
+    plan_result_index = template.index('id="dynamic-sync-plan-result"')
     confirmation_index = template.index('id="dynamic-sync-confirmation"')
     advanced_index = template.index('id="dynamic-sync-advanced-controls"')
 
     assert operator_index < page_confirmation_index < confirmation_index < advanced_index
+    assert progress_index < page_confirmation_index < plan_result_index
     assert "useExpectedConfirmation" not in script
     assert "confirmationEl.value = expected" not in script
     assert "_confirmAndExecuteManualSyncPlan" in script
@@ -141,6 +144,7 @@ def test_dynamic_sync_ui_requires_operator_entered_confirmation() -> None:
     assert "window.confirm(confirmationText)" not in handoff_block
     assert "_renderManualSyncPageConfirmation" in script
     assert "_manualSyncPlanExecutionState" in script
+    assert "panel.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });" in script
     assert "Plan ready; awaiting page confirmation" in script
     assert "Plan ready; execution not started" in script
     assert "Operator confirmation statement:" in script
