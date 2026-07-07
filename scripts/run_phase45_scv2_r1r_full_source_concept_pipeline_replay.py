@@ -45,6 +45,7 @@ CONTRACT_ID = "r1r_full_source_concept_pipeline_contract_v1"
 PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / f"{PHASE_SLUG}.md"
 PUBLIC_REPORT_JSON = ROOT / "docs" / "reports" / f"{PHASE_SLUG}-summary.json"
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG
+DURABLE_LLM_CACHE_ROOT = ROOT / ".local_manifests" / "source_concept_llm_adjudication_cache"
 LLM_CONFIRMATION = "I APPROVE R1R BOUNDED OPENAI LLM ADJUDICATION"
 EXECUTE_CONFIRMATION = "I APPROVE R1R DEV TEST SOURCECONCEPT EXECUTE"
 R1R_RUN_LABEL = "phase_4_5_scv2_r1r_full_source_concept_pipeline_replay"
@@ -73,8 +74,8 @@ OLD_R1_INPUT_SCOPE_BASELINE = {
     "source_concept_active": 1078,
     "source_concept_needs_review": 1809,
     "source_concept_superseded": 3207,
-    "llm_eligible_pair_count": 300,
-    "llm_selected_pair_count": 300,
+    "llm_eligible_pair_count": 6429,
+    "llm_selected_pair_count": 6429,
 }
 OLD_R1_INPUT_SCOPE_SOURCES = {
     "total_media": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
@@ -247,11 +248,46 @@ def split_env_paths(value: str) -> list[str]:
     if not value.strip():
         return []
     parts: list[str] = []
-    for chunk in value.replace("\n", ";").split(";"):
+    for chunk in value.replace("\n", ";").replace("|", ";").split(";"):
         chunk = chunk.strip().strip('"')
         if chunk:
             parts.append(chunk)
     return parts
+
+
+PRE_SETTINGS_DOTENV_KEYS = {
+    "VIOLET_STORAGE_ROOT",
+    "VIOLET_PRODUCTION_STORAGE_ROOT",
+    "VIOLET_SOURCE_ROOT",
+    "VIOLET_SOURCE_ROOTS",
+    "VIOLET_ICLOUD_ROOT",
+    "ICLOUD_ROOT",
+    "LOCAL_LIBRARY_PATHS",
+    "VIOLET_PRODUCTION_PROFILE_ACTIVE",
+    "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP",
+}
+
+
+def read_dotenv_values_side_effect_free(keys: set[str] = PRE_SETTINGS_DOTENV_KEYS) -> dict[str, str]:
+    dotenv_path = ROOT / ".env"
+    if not dotenv_path.exists():
+        return {}
+    values: dict[str, str] = {}
+    for raw_line in dotenv_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key not in keys:
+            continue
+        value = value.strip().strip('"').strip("'")
+        values[key] = value
+    return values
+
+
+def setting_value_before_import(name: str, dotenv_values: Mapping[str, str]) -> str:
+    return os.getenv(name, "").strip() or str(dotenv_values.get(name) or "").strip()
 
 
 def resolve_untrusted_path(value: str) -> Path | None:
@@ -277,7 +313,8 @@ def paths_overlap(left: Path, right: Path) -> bool:
 
 
 def storage_root_pre_settings_import_gate() -> dict[str, Any]:
-    raw_root = os.getenv("VIOLET_STORAGE_ROOT", "").strip()
+    dotenv_values = read_dotenv_values_side_effect_free()
+    raw_root = setting_value_before_import("VIOLET_STORAGE_ROOT", dotenv_values)
     root = resolve_untrusted_path(raw_root)
     protected_roots: dict[str, Path] = {
         "repo_data": (ROOT / "data").resolve(strict=False),
@@ -292,7 +329,7 @@ def storage_root_pre_settings_import_gate() -> dict[str, Any]:
         "ICLOUD_ROOT",
         "LOCAL_LIBRARY_PATHS",
     ):
-        for index, value in enumerate(split_env_paths(os.getenv(env_name, ""))):
+        for index, value in enumerate(split_env_paths(setting_value_before_import(env_name, dotenv_values))):
             resolved = resolve_untrusted_path(value)
             if resolved is not None:
                 protected_roots[f"{env_name.lower()}_{index}"] = resolved
@@ -308,6 +345,8 @@ def storage_root_pre_settings_import_gate() -> dict[str, Any]:
                 blockers.append({"reason": "storage_root_overlaps_protected_root", "protected_root_label": label})
     return {
         "checked_before_settings_import": True,
+        "dotenv_checked_before_settings_import": True,
+        "dotenv_keys_checked_redacted": sorted(PRE_SETTINGS_DOTENV_KEYS),
         "passed": not blockers,
         "storage_root_explicit": bool(raw_root),
         "storage_root_label": "dedicated_test_storage" if raw_root else "",
@@ -339,15 +378,23 @@ def inspect_environment() -> dict[str, Any]:
     violet_env = os.getenv("VIOLET_ENV", "development").strip().lower() or "development"
     db_name = db_name_from_env()
     db_name_folded = db_name.casefold()
+    dotenv_values = read_dotenv_values_side_effect_free()
     storage_gate = storage_root_pre_settings_import_gate()
-    storage_root_set = bool(os.getenv("VIOLET_STORAGE_ROOT", "").strip())
-    production_storage = truthy_env("VIOLET_PRODUCTION_PROFILE_ACTIVE") or bool(
-        os.getenv("VIOLET_PRODUCTION_STORAGE_ROOT", "").strip()
-        and os.getenv("VIOLET_STORAGE_ROOT", "").strip()
-        == os.getenv("VIOLET_PRODUCTION_STORAGE_ROOT", "").strip()
+    storage_root_value = setting_value_before_import("VIOLET_STORAGE_ROOT", dotenv_values)
+    production_storage_value = setting_value_before_import("VIOLET_PRODUCTION_STORAGE_ROOT", dotenv_values)
+    storage_root_set = bool(storage_root_value)
+    production_profile_env = str(setting_value_before_import("VIOLET_PRODUCTION_PROFILE_ACTIVE", dotenv_values)).casefold()
+    production_launcher_env = str(setting_value_before_import("VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP", dotenv_values)).casefold()
+    production_storage = production_profile_env in {"1", "true", "yes", "on"} or bool(
+        production_storage_value
+        and storage_root_value
+        and storage_root_value == production_storage_value
     )
-    production_profile_active = truthy_env("VIOLET_PRODUCTION_PROFILE_ACTIVE") or truthy_env(
-        "VIOLET_PRODUCTION_LAUNCHER_SAFE_STARTUP"
+    production_profile_active = production_profile_env in {"1", "true", "yes", "on"} or production_launcher_env in (
+        "1",
+        "true",
+        "yes",
+        "on",
     )
     db_target_is_production = db_name_folded in PRODUCTION_DB_NAMES or "production" in db_name_folded
     dev_test_restored = (
@@ -1013,10 +1060,6 @@ def build_snapshot_recovery(
         "source_name_observations",
         "source_searchable_name_assertions",
         "source_metadata_evidence",
-        "source_concept_total",
-        "source_concept_active",
-        "source_concept_needs_review",
-        "source_concept_superseded",
     }
     source_scope_passed = all(
         int(active_counts.get(metric) or 0) >= expected
@@ -1424,6 +1467,11 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(summary.get("llm_judgment_summary"), Mapping)
         else {}
     )
+    llm_cache_policy = (
+        summary.get("llm_cache_policy")
+        if isinstance(summary.get("llm_cache_policy"), Mapping)
+        else {}
+    )
     env = summary.get("environment_isolation") if isinstance(summary.get("environment_isolation"), Mapping) else {}
     mutation = summary.get("mutation_proof") if isinstance(summary.get("mutation_proof"), Mapping) else {}
     review_pack = summary.get("review_pack") if isinstance(summary.get("review_pack"), Mapping) else {}
@@ -1446,6 +1494,9 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
             "llm_approval_phrase_used": continuation.get("llm_approval_phrase_used"),
             "execute_confirmation_used": continuation.get("execute_confirmation_used"),
             "provider_policy": continuation.get("provider_policy"),
+            "llm_selection_policy": continuation.get("llm_selection_policy"),
+            "budget_cap_usd": continuation.get("budget_cap_usd"),
+            "fixed_300_call_cap_removed": continuation.get("fixed_300_call_cap_removed"),
         },
         "environment": {
             "violet_env": env.get("violet_env"),
@@ -1491,6 +1542,9 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
             "eligible_pairs": proof.get("llm_eligible_pair_count"),
             "selected_pairs": proof.get("llm_selected_pair_count"),
             "judgments": proof.get("llm_judgment_count"),
+            "all_eligible_pairs_adjudicated": proof.get("all_eligible_llm_pairs_adjudicated"),
+            "budget_cap_usd": proof.get("budget_cap_usd"),
+            "projected_full_eligible_cost_usd": proof.get("projected_full_eligible_cost_usd"),
             "same": proof.get("llm_same_count"),
             "cannot": proof.get("llm_cannot_count"),
             "uncertain": proof.get("llm_uncertain_count"),
@@ -1500,9 +1554,29 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
             "status": llm_plan.get("status"),
             "eligible_pairs": llm_plan.get("eligible_pair_count"),
             "selected_pairs": llm_plan.get("selected_pair_count"),
-            "max_calls": llm_plan.get("max_calls"),
-            "budget_usd": llm_plan.get("budget_usd"),
+            "selection_policy": llm_plan.get("selection_policy"),
+            "budget_limit_is_primary": llm_plan.get("budget_limit_is_primary"),
+            "fixed_call_cap_primary_limiter": llm_plan.get("fixed_call_cap_primary_limiter"),
+            "all_eligible_pairs_selected": llm_plan.get("all_eligible_pairs_selected"),
+            "all_eligible_pairs_adjudicated": llm_plan.get("all_eligible_pairs_adjudicated"),
+            "emergency_call_ceiling": llm_plan.get("emergency_call_ceiling", llm_plan.get("max_calls")),
+            "budget_cap_usd": llm_plan.get("budget_cap_usd", llm_plan.get("budget_usd")),
             "projected_budget_usd": llm_plan.get("projected_budget_usd"),
+            "projected_full_eligible_cost_usd": llm_plan.get("projected_full_eligible_cost_usd"),
+            "projected_new_call_cost_usd": llm_plan.get("projected_new_call_cost_usd"),
+        },
+        "llm_cache_policy": {
+            "policy_version": llm_cache_policy.get("policy_version"),
+            "durable_cache_root_label": llm_cache_policy.get("durable_cache_root_label"),
+            "cache_writes_atomic": llm_cache_policy.get("cache_writes_atomic"),
+            "compatible_cache_hit_count": llm_cache_policy.get("compatible_cache_hit_count"),
+            "imported_previous_judgment_count": llm_cache_policy.get("imported_previous_judgment_count"),
+            "new_provider_call_count": llm_cache_policy.get("new_provider_call_count"),
+            "failed_provider_call_count": llm_cache_policy.get("failed_provider_call_count"),
+            "remaining_missing_pair_count": llm_cache_policy.get("remaining_missing_pair_count"),
+            "cost_spent_this_run_usd": llm_cache_policy.get("cost_spent_this_run_usd"),
+            "cost_avoided_by_cache_reuse_usd": llm_cache_policy.get("cost_avoided_by_cache_reuse_usd"),
+            "semantic_prior_judgment_count": llm_cache_policy.get("semantic_prior_judgment_count"),
         },
         "llm_gate": {
             "operator_approved": llm_ready.get("operator_approved"),
@@ -1615,6 +1689,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     llm = summary["llm_adjudication_plan"]
     provider = summary.get("llm_provider_execution") if isinstance(summary.get("llm_provider_execution"), Mapping) else {}
     judgments = summary.get("llm_judgment_summary") if isinstance(summary.get("llm_judgment_summary"), Mapping) else {}
+    cache_policy = summary.get("llm_cache_policy") if isinstance(summary.get("llm_cache_policy"), Mapping) else {}
     continuation = summary.get("operator_continuation") if isinstance(summary.get("operator_continuation"), Mapping) else {}
     input_scope = summary.get("input_scope_fidelity") if isinstance(summary.get("input_scope_fidelity"), Mapping) else {}
     recovery = (
@@ -1648,6 +1723,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Deterministic pipeline executed: `{proof['deterministic_pipeline_executed']}`.",
         f"- LLM adjudication requested/executed: `{proof['llm_pair_adjudication_requested']}` / `{proof['llm_pair_adjudication_executed']}`.",
         f"- LLM selected pairs / judgments: `{proof['llm_selected_pair_count']}` / `{proof['llm_judgment_count']}`.",
+        f"- All eligible LLM pairs adjudicated: `{proof.get('all_eligible_llm_pairs_adjudicated')}`.",
         f"- Input-scope fidelity gate: `{input_scope.get('status')}`.",
         f"- Current run classification: `{input_scope.get('current_run_classification')}`.",
         f"- A1R still required: `{route['a1r_still_required']}`.",
@@ -1817,9 +1893,25 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Budget ready: `{summary['llm_readiness']['budget_ready']}`.",
         f"- Eligible pairs: `{llm['eligible_pair_count']}`.",
         f"- Selected pairs: `{llm['selected_pair_count']}`.",
+        f"- Selection policy: `{llm.get('selection_policy')}`.",
+        f"- All eligible pairs selected/adjudicated: `{llm.get('all_eligible_pairs_selected')}` / `{llm.get('all_eligible_pairs_adjudicated')}`.",
         f"- Judgment/error/cache counts: `{judgments.get('judgment_count')}` / `{judgments.get('error_count')}` / `{judgments.get('cache_hits')}` hits, `{judgments.get('cache_misses')}` misses.",
         f"- Estimated actual cost USD: `{judgments.get('estimated_cost_usd')}`; exact provider cost available: `{judgments.get('actual_cost_usd_available')}`.",
-        f"- Max calls / budget USD: `{llm['max_calls']}` / `{llm['budget_usd']}`.",
+        f"- Projected full eligible cost USD / budget cap USD: `{llm.get('projected_full_eligible_cost_usd', llm.get('projected_budget_usd'))}` / `{llm.get('budget_cap_usd', llm.get('budget_usd'))}`.",
+        f"- Projected new-call cost after cache USD: `{llm.get('projected_new_call_cost_usd')}`.",
+        f"- Emergency call ceiling: `{llm.get('emergency_call_ceiling', llm.get('max_calls'))}`.",
+        f"- Fixed call cap is primary limiter: `{llm.get('fixed_call_cap_primary_limiter')}`.",
+        "",
+        "## Durable LLM Cache",
+        "",
+        f"- Cache policy version: `{cache_policy.get('policy_version')}`.",
+        f"- Durable cache root label: `{cache_policy.get('durable_cache_root_label')}`.",
+        f"- Atomic cache writes: `{cache_policy.get('cache_writes_atomic')}`.",
+        f"- Exact-compatible cache hits: `{cache_policy.get('compatible_cache_hit_count')}`.",
+        f"- Imported previous judgments: `{cache_policy.get('imported_previous_judgment_count')}`.",
+        f"- New provider calls / failures / remaining: `{cache_policy.get('new_provider_call_count')}` / `{cache_policy.get('failed_provider_call_count')}` / `{cache_policy.get('remaining_missing_pair_count')}`.",
+        f"- Cost spent this run / avoided by cache USD: `{cache_policy.get('cost_spent_this_run_usd')}` / `{cache_policy.get('cost_avoided_by_cache_reuse_usd')}`.",
+        f"- Semantic/prior judgments counted as full-chain proof: `{cache_policy.get('semantic_prior_reuse_counts_as_valid_judgment')}`.",
         "",
         "## Stage Manifest",
         "",
@@ -1976,11 +2068,20 @@ def build_blocked_summary(environment: Mapping[str, Any], output_dir: Path) -> d
         "sc1_r1_r1r_fidelity_table": fidelity_table(selected_count=0, judgment_count=0, deterministic_metrics={}),
         "llm_adjudication_plan": {
             "required": True,
+            "selection_policy": "budget_driven_all_eligible",
             "eligible_pair_count": 0,
             "selected_pair_count": 0,
-            "max_calls": 300,
-            "budget_usd": 50.0,
+            "all_eligible_pair_count": 0,
+            "all_eligible_pairs_selected": True,
+            "all_eligible_pairs_adjudicated": False,
+            "budget_limit_is_primary": True,
+            "fixed_call_cap_primary_limiter": False,
+            "emergency_call_ceiling": 20000,
+            "max_calls": 20000,
+            "budget_usd": 15.0,
+            "budget_cap_usd": 15.0,
             "projected_budget_usd": 0.0,
+            "projected_full_eligible_cost_usd": 0.0,
         },
         "llm_readiness": {
             "passed": False,
@@ -2070,6 +2171,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     from app.services.source_concept_resolver_service import (  # noqa: WPS433
         LLMAdjudicationConfig,
         build_source_concept_signals,
+        inspect_llm_adjudication_cache_coverage,
         plan_llm_adjudication,
         resolve_source_concepts,
         run_bounded_llm_adjudication,
@@ -2109,6 +2211,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         model_label=provider_model_label,
         cache_dir=str(cache_dir),
         fail_if_unavailable=bool(args.fail_if_llm_unavailable),
+        selection_policy=str(args.llm_selection_policy),
+        durable_cache_dir=str(DURABLE_LLM_CACHE_ROOT),
+        legacy_cache_dirs=(str(cache_dir),),
+        run_id=str(args.run_id),
     )
     engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
     SessionLocal = sessionmaker(bind=engine)
@@ -2157,8 +2263,35 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         plan = plan_llm_adjudication(deterministic_result.edge_candidates, signals=signals, config=llm_config)
         selected_edges = select_llm_adjudication_edges(deterministic_result.edge_candidates, signals=signals, config=llm_config)
         deterministic_metrics = edge_metrics(deterministic_result)
-        budget_ready = plan.status != "blocked"
-        cache_stats = cache_stats_for_selected_pairs(cache_dir, len(selected_edges))
+        llm_cache_coverage = inspect_llm_adjudication_cache_coverage(
+            deterministic_result.edge_candidates,
+            signals=signals,
+            config=llm_config,
+        )
+        selected_for_cost = max(1, len(selected_edges))
+        projected_new_call_cost_usd = round(
+            float(plan.projected_cost_usd)
+            * (int(llm_cache_coverage.get("missing_pair_count", 0) or 0) / selected_for_cost),
+            6,
+        )
+        emergency_ceiling_blocked = "llm_emergency_call_ceiling_exceeded" in str(plan.reason or "")
+        budget_ready = bool(not emergency_ceiling_blocked and projected_new_call_cost_usd <= float(args.max_llm_budget_usd))
+        cache_stats = {
+            **cache_stats_for_selected_pairs(DURABLE_LLM_CACHE_ROOT / "records", len(selected_edges)),
+            "cache_artifact_label": "source-concept-llm-adjudication-cache",
+            "durable_cache_root_label": "source-concept-llm-adjudication-cache",
+            "cache_policy_version": "source_concept_llm_adjudication_cache_v1",
+            "compatible_cache_hit_count": int(llm_cache_coverage.get("compatible_cache_hit_count", 0) or 0),
+            "exact_compatible_cache_hit_count": int(llm_cache_coverage.get("exact_compatible_cache_hit_count", 0) or 0),
+            "legacy_compatible_cache_hit_count": int(llm_cache_coverage.get("legacy_compatible_cache_hit_count", 0) or 0),
+            "semantic_prior_judgment_count": int(llm_cache_coverage.get("semantic_prior_judgment_count", 0) or 0),
+            "cache_hits": int(llm_cache_coverage.get("compatible_cache_hit_count", 0) or 0),
+            "cache_misses": int(llm_cache_coverage.get("missing_pair_count", 0) or 0),
+            "cached_decision_count": int(llm_cache_coverage.get("compatible_cache_hit_count", 0) or 0),
+            "projected_new_call_cost_usd": projected_new_call_cost_usd,
+            "cache_writes_atomic": True,
+            "raw_private_paths_redacted": True,
+        }
         planned_eligible_pair_count = int(plan.projected_calls) + int(plan.skipped_block_count or 0)
         with engine.connect() as conn:
             input_scope_actuals = current_input_scope_actuals(
@@ -2207,6 +2340,49 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                             "cache_hits": int(llm_execution_summary.get("cache_hits", 0) or 0),
                             "cache_misses": int(llm_execution_summary.get("cache_misses", 0) or 0),
                             "cached_decision_count": int(llm_execution_summary.get("cache_hits", 0) or 0),
+                            "compatible_cache_hit_count": int(llm_execution_summary.get("cache_hits", 0) or 0),
+                            "exact_compatible_cache_hit_count": int(
+                                llm_execution_summary.get("exact_compatible_cache_hit_count", 0) or 0
+                            ),
+                            "legacy_compatible_cache_import_count": int(
+                                llm_execution_summary.get("legacy_compatible_cache_import_count", 0) or 0
+                            ),
+                            "new_provider_call_count": int(llm_execution_summary.get("new_provider_call_count", 0) or 0),
+                            "new_provider_success_count": int(
+                                llm_execution_summary.get("new_provider_success_count", 0) or 0
+                            ),
+                            "failed_provider_call_count": int(
+                                llm_execution_summary.get("failed_provider_call_count", 0) or 0
+                            ),
+                            "remaining_missing_pair_count": int(
+                                llm_execution_summary.get("remaining_missing_pair_count", 0) or 0
+                            ),
+                            "semantic_prior_judgment_count": int(
+                                llm_execution_summary.get("semantic_prior_judgment_count", 0) or 0
+                            ),
+                            "durable_cache_write_success_count": int(
+                                llm_execution_summary.get("durable_cache_write_success_count", 0) or 0
+                            ),
+                            "projected_new_call_cost_usd": float(
+                                llm_execution_summary.get("projected_new_call_cost_usd", projected_new_call_cost_usd)
+                                or 0.0
+                            ),
+                            "estimated_cost_this_run_usd": float(
+                                llm_execution_summary.get("estimated_cost_this_run_usd", 0.0) or 0.0
+                            ),
+                            "cost_avoided_by_cache_reuse_usd": float(
+                                llm_execution_summary.get("cost_avoided_by_cache_reuse_usd", 0.0) or 0.0
+                            ),
+                            "cache_policy_version": str(
+                                llm_execution_summary.get("cache_policy_version")
+                                or cache_stats.get("cache_policy_version")
+                                or "source_concept_llm_adjudication_cache_v1"
+                            ),
+                            "durable_cache_root_label": "source-concept-llm-adjudication-cache",
+                            "cache_writes_atomic": bool(llm_execution_summary.get("cache_writes_atomic", True)),
+                            "raw_private_paths_redacted": bool(
+                                llm_execution_summary.get("raw_private_paths_redacted", True)
+                            ),
                         }
                 except Exception as exc:  # pragma: no cover - provider/network dependent
                     provider_error = sanitize_provider_error(exc)
@@ -2239,9 +2415,12 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         execute_allowed = bool(
             args.execute
             and llm_approved
+            and input_scope_fidelity["passed"]
+            and not args.snapshot_recovery_only
             and budget_ready
             and provider is not None
             and llm_error_count == 0
+            and (planned_eligible_pair_count == 0 or len(selected_edges) == planned_eligible_pair_count)
             and (len(selected_edges) == 0 or len(valid_judgments) >= len(selected_edges))
             and not old_r1_isolation_blocked
         )
@@ -2277,7 +2456,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     adapter_counts = public_signal_inventory(inventory).get("adapter_counts", {})
     selected_pair_count = len(selected_edges)
     plan_skipped_pair_count = int(plan.skipped_block_count or 0)
-    eligible_pair_count = selected_pair_count + plan_skipped_pair_count
+    eligible_pair_count = int(plan.projected_calls) + plan_skipped_pair_count
     valid_judgments = [row for row in judgments if not row.get("error_type")]
     judgment_count = len(valid_judgments)
     ledger_row_count = len(judgments)
@@ -2304,8 +2483,17 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     llm_readiness_passed = bool(llm_approved and provider_available and budget_ready and cache_stats["cache_enabled"] and llm_error_count == 0)
     persistence_applied = bool(persistence.get("apply"))
     zero_eligible_pair_proof = eligible_pair_count == 0 and selected_pair_count == 0
+    all_eligible_pairs_selected = selected_pair_count == eligible_pair_count
+    all_eligible_pairs_adjudicated = bool(
+        zero_eligible_pair_proof
+        or (
+            all_eligible_pairs_selected
+            and judgment_count == selected_pair_count
+            and selected_pair_accounting["all_selected_pairs_successfully_accounted"]
+        )
+    )
     llm_success_for_target = (
-        (selected_pair_count > 0 and selected_pair_accounting["all_selected_pairs_successfully_accounted"])
+        (selected_pair_count > 0 and all_eligible_pairs_adjudicated)
         or zero_eligible_pair_proof
     )
     if not input_scope_fidelity["passed"]:
@@ -2322,6 +2510,15 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         status = "blocked_budget"
     elif llm_approved and (not provider_available or llm_error_count > 0):
         status = "blocked_provider"
+    elif (
+        args.execute
+        and llm_approved
+        and budget_ready
+        and provider_available
+        and eligible_pair_count > 0
+        and (not all_eligible_pairs_selected or not all_eligible_pairs_adjudicated)
+    ):
+        status = "blocked_contract"
     else:
         status = "dry_run_complete_execute_not_requested"
 
@@ -2351,7 +2548,9 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         if row["required"] and row["skipped"] and row["status"] != "skipped_not_applicable"
     ]
     actual_cost_estimate = 0.0
-    if judgment_count > 0 and selected_pair_count:
+    if cache_stats.get("estimated_cost_this_run_usd") is not None:
+        actual_cost_estimate = round(float(cache_stats.get("estimated_cost_this_run_usd") or 0.0), 6)
+    elif judgment_count > 0 and selected_pair_count:
         actual_calls = max(0, int(cache_stats.get("cache_misses", 0) or 0))
         actual_cost_estimate = round(float(plan.projected_cost_usd) * (actual_calls / selected_pair_count), 6)
     summary = {
@@ -2377,6 +2576,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "execute_confirmation_used": bool(args.execute and args.confirm_execution == EXECUTE_CONFIRMATION),
             "operator_budget_approved": bool(llm_approved),
             "provider_policy": "primary_openai_compatible_only_no_fallback",
+            "llm_selection_policy": str(args.llm_selection_policy),
+            "budget_cap_usd": float(args.max_llm_budget_usd),
+            "fixed_300_call_cap_removed": int(args.max_llm_calls) != 300
+            or str(args.llm_selection_policy) in {"budget_driven_all_eligible", "all_eligible"},
         },
         "environment_isolation": {
             **environment,
@@ -2428,6 +2631,9 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "llm_eligible_pair_count": eligible_pair_count,
             "llm_selected_pair_count": selected_pair_count,
             "llm_judgment_count": judgment_count,
+            "all_eligible_llm_pairs_adjudicated": all_eligible_pairs_adjudicated,
+            "budget_cap_usd": float(args.max_llm_budget_usd),
+            "projected_full_eligible_cost_usd": float(plan.projected_cost_usd),
             **outcomes,
             "all_required_stage_statuses_verified": full_chain_complete,
             "missing_required_stages": [
@@ -2449,9 +2655,19 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "reason": plan.reason,
             "eligible_pair_count": eligible_pair_count,
             "selected_pair_count": selected_pair_count,
+            "selection_policy": str(args.llm_selection_policy),
+            "budget_limit_is_primary": str(args.llm_selection_policy) in {"budget_driven_all_eligible", "all_eligible"},
+            "fixed_call_cap_primary_limiter": False,
+            "all_eligible_pair_count": eligible_pair_count,
+            "all_eligible_pairs_selected": all_eligible_pairs_selected,
+            "all_eligible_pairs_adjudicated": all_eligible_pairs_adjudicated,
+            "emergency_call_ceiling": int(args.max_llm_calls),
             "max_calls": int(args.max_llm_calls),
             "budget_usd": float(args.max_llm_budget_usd),
+            "budget_cap_usd": float(args.max_llm_budget_usd),
             "projected_budget_usd": float(plan.projected_cost_usd),
+            "projected_full_eligible_cost_usd": float(plan.projected_cost_usd),
+            "projected_new_call_cost_usd": float(cache_stats.get("projected_new_call_cost_usd", projected_new_call_cost_usd) or 0.0),
             "projected_input_tokens": int(plan.projected_input_tokens),
             "projected_output_tokens": int(plan.projected_output_tokens),
             "skipped_pair_count": max(0, plan_skipped_pair_count),
@@ -2460,6 +2676,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "unselected_pair_reason": "bounded_selection_policy_after_deterministic_blocking"
             if eligible_unselected_pair_count
             else None,
+            "already_cached_compatible_judgments": int(cache_stats.get("compatible_cache_hit_count", 0) or 0),
+            "new_provider_call_count": int(cache_stats.get("new_provider_call_count", cache_stats.get("cache_misses", 0)) or 0),
+            "failed_provider_call_count": int(cache_stats.get("failed_provider_call_count", 0) or 0),
+            "remaining_missing_pair_count": int(cache_stats.get("remaining_missing_pair_count", 0) or 0),
             "operator_budget_approved": bool(llm_approved),
             "budget_cap_adjusted_or_superseded": False,
         },
@@ -2476,6 +2696,36 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "cache_summary": cache_stats,
             "no_secret_leakage": True,
             "provider_error": provider_error,
+        },
+        "llm_cache_policy": {
+            "policy_version": str(cache_stats.get("cache_policy_version") or "source_concept_llm_adjudication_cache_v1"),
+            "decision_schema_version": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy_version": "source_concept_budget_driven_adjudication_v1",
+            "durable_cache_root_label": "source-concept-llm-adjudication-cache",
+            "private_ignored_cache_root": True,
+            "cache_writes_atomic": bool(cache_stats.get("cache_writes_atomic", True)),
+            "raw_private_paths_redacted": bool(cache_stats.get("raw_private_paths_redacted", True)),
+            "exact_compatible_reuse_counts_as_valid_judgment": True,
+            "semantic_prior_reuse_counts_as_valid_judgment": False,
+            "compatible_cache_hit_count": int(cache_stats.get("compatible_cache_hit_count", cache_stats.get("cache_hits", 0)) or 0),
+            "exact_compatible_cache_hit_count": int(cache_stats.get("exact_compatible_cache_hit_count", 0) or 0),
+            "imported_previous_judgment_count": int(
+                cache_stats.get("legacy_compatible_cache_import_count", 0) or 0
+            ),
+            "semantic_prior_judgment_count": int(cache_stats.get("semantic_prior_judgment_count", 0) or 0),
+            "new_provider_call_count": int(cache_stats.get("new_provider_call_count", cache_stats.get("cache_misses", 0)) or 0),
+            "new_provider_success_count": int(cache_stats.get("new_provider_success_count", resolved_provider_judgment_count) or 0),
+            "failed_provider_call_count": int(cache_stats.get("failed_provider_call_count", llm_error_count) or 0),
+            "remaining_missing_pair_count": int(cache_stats.get("remaining_missing_pair_count", 0) or 0),
+            "cost_spent_this_run_usd": actual_cost_estimate,
+            "cost_avoided_by_cache_reuse_usd": round(float(cache_stats.get("cost_avoided_by_cache_reuse_usd", 0.0) or 0.0), 6),
+            "projected_new_call_cost_usd": round(
+                float(cache_stats.get("projected_new_call_cost_usd", projected_new_call_cost_usd) or 0.0),
+                6,
+            ),
+            "projected_full_eligible_cost_usd": float(plan.projected_cost_usd),
+            "budget_cap_usd": float(args.max_llm_budget_usd),
+            "future_full_library_runs_resume_without_repeating_successful_calls": True,
         },
         "llm_provider_execution": {
             "provider_mode": provider_summary.get("provider_mode"),
@@ -2496,7 +2746,15 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "selected_pair_count": selected_pair_count,
             "cache_hits": int(cache_stats.get("cache_hits", 0) or 0),
             "cache_misses": int(cache_stats.get("cache_misses", 0) or 0),
+            "compatible_cache_hit_count": int(cache_stats.get("compatible_cache_hit_count", cache_stats.get("cache_hits", 0)) or 0),
+            "exact_compatible_cache_hit_count": int(cache_stats.get("exact_compatible_cache_hit_count", 0) or 0),
+            "imported_previous_judgment_count": int(cache_stats.get("legacy_compatible_cache_import_count", 0) or 0),
+            "new_provider_call_count": int(cache_stats.get("new_provider_call_count", cache_stats.get("cache_misses", 0)) or 0),
+            "new_provider_success_count": int(cache_stats.get("new_provider_success_count", resolved_provider_judgment_count) or 0),
+            "failed_provider_call_count": int(cache_stats.get("failed_provider_call_count", llm_error_count) or 0),
+            "remaining_missing_pair_count": int(cache_stats.get("remaining_missing_pair_count", 0) or 0),
             "estimated_cost_usd": actual_cost_estimate,
+            "cost_avoided_by_cache_reuse_usd": round(float(cache_stats.get("cost_avoided_by_cache_reuse_usd", 0.0) or 0.0), 6),
             "actual_cost_usd_available": False,
             "selected_pair_accounting": selected_pair_accounting,
             **outcomes,
@@ -2553,6 +2811,22 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "selected-llm-pairs.json": selected_pair_rows(selected_edges),
         "judgment-ledger.json": judgments,
         "cache-stats.json": cache_stats,
+        "cache-index-summary.json": summary["llm_cache_policy"],
+        "cache-compatibility-summary.json": {
+            "coverage": llm_cache_coverage,
+            "policy": summary["llm_cache_policy"],
+        },
+        "cache-hit-miss-ledger.json": {
+            "selected_pair_count": selected_pair_count,
+            "compatible_cache_hit_count": summary["llm_cache_policy"]["compatible_cache_hit_count"],
+            "new_provider_call_count": summary["llm_cache_policy"]["new_provider_call_count"],
+            "failed_provider_call_count": summary["llm_cache_policy"]["failed_provider_call_count"],
+            "remaining_missing_pair_count": summary["llm_cache_policy"]["remaining_missing_pair_count"],
+        },
+        "failure-ledger-summary.json": {
+            "failed_provider_call_count": summary["llm_cache_policy"]["failed_provider_call_count"],
+            "failure_records_are_private": True,
+        },
         "mutation-proof.json": mutation_delta,
         "before-after-snapshots.json": {"before": source_before, "after": source_after, "delta": count_delta},
         "fidelity-table.json": summary["sc1_r1_r1r_fidelity_table"],
@@ -2655,6 +2929,10 @@ def finalize_outputs(summary: dict[str, Any], output_dir: Path) -> dict[str, Any
         "selected-llm-pairs.json",
         "judgment-ledger.json",
         "cache-stats.json",
+        "cache-index-summary.json",
+        "cache-compatibility-summary.json",
+        "cache-hit-miss-ledger.json",
+        "failure-ledger-summary.json",
         "mutation-proof.json",
         "before-after-snapshots.json",
         "fidelity-table.json",
@@ -2683,8 +2961,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-llm-provider-readiness", action="store_true")
     parser.add_argument("--approve-llm-adjudication", action="store_true")
     parser.add_argument("--llm-confirmation", default="")
-    parser.add_argument("--max-llm-calls", type=int, default=300)
-    parser.add_argument("--max-llm-budget-usd", type=float, default=50.0)
+    parser.add_argument("--max-llm-calls", type=int, default=20000)
+    parser.add_argument("--max-llm-budget-usd", type=float, default=15.0)
+    parser.add_argument(
+        "--llm-selection-policy",
+        choices=("budget_driven_all_eligible", "all_eligible", "ranked"),
+        default="budget_driven_all_eligible",
+    )
     parser.add_argument("--max-llm-block-size", type=int, default=12)
     parser.add_argument("--fail-if-llm-unavailable", action="store_true")
     parser.add_argument("--snapshot-recovery-only", action="store_true")

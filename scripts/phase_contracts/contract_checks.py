@@ -427,6 +427,7 @@ def _safe_public_artifact_label(raw_path: str, value: Any) -> bool:
         "evidence_artifact_label",
         "stage_manifest_artifact",
         "private_artifact_root_label",
+        "durable_cache_root_label",
         "label",
         "artifact_label",
     }:
@@ -436,7 +437,11 @@ def _safe_public_artifact_label(raw_path: str, value: Any) -> bool:
         return True
     if WINDOWS_PATH_RE.search(text) or UNC_PATH_RE.search(text) or FILE_URI_RE.search(text) or POSIX_PRIVATE_PATH_RE.search(text):
         return False
-    return text.startswith("r1r-private-") or text in {"[private]", "[blocked]"}
+    return text.startswith("r1r-private-") or text in {
+        "[private]",
+        "[blocked]",
+        "source-concept-llm-adjudication-cache",
+    }
 
 
 def _safe_public_context_value(raw_path: str, value: Any) -> bool:
@@ -1213,11 +1218,13 @@ def _check_r1r_llm_truthfulness(
     readiness = _get(summary, "llm_readiness", {})
     provider_execution = _get(summary, "llm_provider_execution", {})
     judgment_summary = _get(summary, "llm_judgment_summary", {})
+    cache_policy = _get(summary, "llm_cache_policy", MISSING)
     proof_mapping = proof if isinstance(proof, Mapping) else {}
     plan_mapping = plan if isinstance(plan, Mapping) else {}
     readiness_mapping = readiness if isinstance(readiness, Mapping) else {}
     provider_mapping = provider_execution if isinstance(provider_execution, Mapping) else {}
     judgment_mapping = judgment_summary if isinstance(judgment_summary, Mapping) else {}
+    cache_mapping = cache_policy if isinstance(cache_policy, Mapping) else {}
 
     eligible = _as_int(
         proof_mapping.get("llm_eligible_pair_count", plan_mapping.get("eligible_pair_count", plan_mapping.get("projected_calls", 0)))
@@ -1239,11 +1246,22 @@ def _check_r1r_llm_truthfulness(
     successful_accounted = _as_int(
         accounting.get("successful_accounted_pair_count", resolved_provider + cached + explicit_skipped)
     )
+    cache_hit_count = _as_int(cache_mapping.get("compatible_cache_hit_count", judgment_mapping.get("compatible_cache_hit_count", cached)))
+    cache_new_provider_success = _as_int(cache_mapping.get("new_provider_success_count", judgment_mapping.get("new_provider_success_count", resolved_provider)))
+    cache_new_provider_calls = _as_int(cache_mapping.get("new_provider_call_count", judgment_mapping.get("new_provider_call_count", 0)))
+    cache_failed_provider_calls = _as_int(cache_mapping.get("failed_provider_call_count", judgment_mapping.get("failed_provider_call_count", error_count)))
+    cache_remaining_missing = _as_int(cache_mapping.get("remaining_missing_pair_count", judgment_mapping.get("remaining_missing_pair_count", 0)))
     skipped_pairs = _as_int(plan_mapping.get("skipped_pair_count", explicit_skipped))
     unselected_pairs = _as_int(plan_mapping.get("unselected_pair_count", 0))
     eligible_accounting_total = _as_int(
         plan_mapping.get("eligible_pair_accounting_total", selected + skipped_pairs + unselected_pairs)
     )
+    selection_policy = str(plan_mapping.get("selection_policy") or "").strip().casefold()
+    all_eligible_pairs_selected = _as_bool(plan_mapping.get("all_eligible_pairs_selected"))
+    all_eligible_pairs_adjudicated = _as_bool(
+        proof_mapping.get("all_eligible_llm_pairs_adjudicated", plan_mapping.get("all_eligible_pairs_adjudicated"))
+    )
+    fixed_call_cap_primary_limiter = _as_bool(plan_mapping.get("fixed_call_cap_primary_limiter"))
     llm_requested = _as_bool(proof_mapping.get("llm_pair_adjudication_requested", plan_mapping.get("required")))
     llm_executed = _as_bool(proof_mapping.get("llm_pair_adjudication_executed", _get(summary, "llm_adjudication_used", False)))
     operator_approved = _as_bool(readiness_mapping.get("operator_approved"))
@@ -1336,6 +1354,101 @@ def _check_r1r_llm_truthfulness(
                 expected={"passed": True, "provider_available": True, "cache_ready": True, "budget_ready": True},
                 actual=readiness_mapping,
             )
+        if not isinstance(cache_policy, Mapping):
+            result.fail(
+                "r1r_llm_cache_policy_missing",
+                "target_met_full_chain requires durable LLM adjudication cache policy proof.",
+                path="llm_cache_policy",
+            )
+        else:
+            required_cache_fields = {
+                "policy_version": cache_mapping.get("policy_version"),
+                "durable_cache_root_label": cache_mapping.get("durable_cache_root_label"),
+                "cost_spent_this_run_usd": cache_mapping.get("cost_spent_this_run_usd"),
+                "cost_avoided_by_cache_reuse_usd": cache_mapping.get("cost_avoided_by_cache_reuse_usd"),
+                "projected_full_eligible_cost_usd": cache_mapping.get("projected_full_eligible_cost_usd"),
+                "budget_cap_usd": cache_mapping.get("budget_cap_usd"),
+            }
+            missing_cache_fields = [key for key, value in required_cache_fields.items() if value in (None, "")]
+            if missing_cache_fields:
+                result.fail(
+                    "r1r_llm_cache_policy_field_missing",
+                    "Durable cache policy proof must include cache version, root label, and cost fields.",
+                    path="llm_cache_policy",
+                    actual=missing_cache_fields,
+                )
+            if not _as_bool(cache_mapping.get("cache_writes_atomic")):
+                result.fail(
+                    "r1r_llm_cache_atomic_write_proof_missing",
+                    "Successful LLM judgments must be written atomically to durable cache.",
+                    path="llm_cache_policy.cache_writes_atomic",
+                    expected=True,
+                    actual=cache_mapping.get("cache_writes_atomic"),
+                )
+            if not _as_bool(cache_mapping.get("raw_private_paths_redacted")):
+                result.fail(
+                    "r1r_llm_cache_public_redaction_missing",
+                    "Public cache proof must use labels/aggregates and redact private paths/payloads.",
+                    path="llm_cache_policy.raw_private_paths_redacted",
+                    expected=True,
+                    actual=cache_mapping.get("raw_private_paths_redacted"),
+                )
+            root_label = str(cache_mapping.get("durable_cache_root_label") or "")
+            if ":\\" in root_label or "/" in root_label or "\\" in root_label:
+                result.fail(
+                    "r1r_llm_cache_root_label_leaks_path",
+                    "Public cache root must be a label, not a raw local path.",
+                    path="llm_cache_policy.durable_cache_root_label",
+                    actual=root_label,
+                )
+            if cache_hit_count != cached:
+                result.fail(
+                    "r1r_llm_cache_hit_count_mismatch",
+                    "Compatible cache hit count must match valid_cached_judgment_count.",
+                    path="llm_cache_policy.compatible_cache_hit_count",
+                    expected=cached,
+                    actual=cache_hit_count,
+                )
+            if cache_new_provider_success != resolved_provider:
+                result.fail(
+                    "r1r_llm_cache_new_success_count_mismatch",
+                    "New provider success count must match resolved_provider_judgment_count.",
+                    path="llm_cache_policy.new_provider_success_count",
+                    expected=resolved_provider,
+                    actual=cache_new_provider_success,
+                )
+            if cache_failed_provider_calls != provider_error_pairs:
+                result.fail(
+                    "r1r_llm_cache_failure_count_mismatch",
+                    "Provider failures recorded in cache policy must match provider error pair accounting.",
+                    path="llm_cache_policy.failed_provider_call_count",
+                    expected=provider_error_pairs,
+                    actual=cache_failed_provider_calls,
+                )
+            if cache_remaining_missing != 0:
+                result.fail(
+                    "r1r_llm_cache_remaining_pairs_for_target",
+                    "target_met_full_chain requires no remaining missing selected/eligible LLM pairs.",
+                    path="llm_cache_policy.remaining_missing_pair_count",
+                    expected=0,
+                    actual=cache_remaining_missing,
+                )
+            if cache_hit_count + cache_new_provider_success + explicit_skipped != selected:
+                result.fail(
+                    "r1r_llm_cache_accounting_does_not_cover_selected",
+                    "Compatible cache hits plus new provider successes plus explicit skips must cover selected pairs.",
+                    path="llm_cache_policy",
+                    expected=selected,
+                    actual=cache_hit_count + cache_new_provider_success + explicit_skipped,
+                )
+            if cache_new_provider_calls < cache_new_provider_success + cache_failed_provider_calls:
+                result.fail(
+                    "r1r_llm_cache_provider_call_count_inconsistent",
+                    "New provider call count must cover provider successes and provider failures.",
+                    path="llm_cache_policy.new_provider_call_count",
+                    expected=f">= {cache_new_provider_success + cache_failed_provider_calls}",
+                    actual=cache_new_provider_calls,
+                )
         if not zero_eligible_pair_proof and provider_mode != "primary_openai":
             result.fail(
                 "r1r_primary_provider_identity_missing",
@@ -1387,6 +1500,58 @@ def _check_r1r_llm_truthfulness(
                 path="llm_adjudication_plan.eligible_pair_accounting_total",
                 expected=eligible,
                 actual=eligible_accounting_total,
+            )
+        if not zero_eligible_pair_proof and selected != eligible:
+            result.fail(
+                "r1r_target_requires_all_eligible_llm_pairs_selected",
+                "target_met_full_chain requires all eligible R1R LLM pairs to be selected unless zero-eligible proof is present.",
+                path="llm_adjudication_plan.selected_pair_count",
+                expected=eligible,
+                actual=selected,
+            )
+        if not zero_eligible_pair_proof and judgments != eligible:
+            result.fail(
+                "r1r_target_requires_all_eligible_llm_pairs_judged",
+                "target_met_full_chain requires all eligible R1R LLM pairs to be judged/accounted within budget.",
+                path="sc1_full_chain_proof.llm_judgment_count",
+                expected=eligible,
+                actual=judgments,
+            )
+        if not zero_eligible_pair_proof and not all_eligible_pairs_selected:
+            result.fail(
+                "r1r_all_eligible_llm_pairs_selected_missing",
+                "target_met_full_chain requires an explicit all_eligible_pairs_selected proof.",
+                path="llm_adjudication_plan.all_eligible_pairs_selected",
+                expected=True,
+                actual=plan_mapping.get("all_eligible_pairs_selected"),
+            )
+        if not zero_eligible_pair_proof and not all_eligible_pairs_adjudicated:
+            result.fail(
+                "r1r_all_eligible_llm_pairs_adjudicated_missing",
+                "target_met_full_chain requires an explicit all_eligible_llm_pairs_adjudicated proof.",
+                path="sc1_full_chain_proof.all_eligible_llm_pairs_adjudicated",
+                expected=True,
+                actual=proof_mapping.get("all_eligible_llm_pairs_adjudicated"),
+            )
+        if not zero_eligible_pair_proof and selection_policy not in {
+            "budget_driven_all_eligible",
+            "all_eligible",
+            "zero_eligible",
+        }:
+            result.fail(
+                "r1r_target_requires_budget_driven_llm_selection_policy",
+                "target_met_full_chain requires budget-driven all-eligible LLM selection or explicit zero-eligible proof.",
+                path="llm_adjudication_plan.selection_policy",
+                expected="budget_driven_all_eligible",
+                actual=selection_policy,
+            )
+        if not zero_eligible_pair_proof and fixed_call_cap_primary_limiter:
+            result.fail(
+                "r1r_fixed_call_cap_cannot_be_primary_target_limiter",
+                "A fixed call cap cannot be the primary R1R route-evidence LLM limiter for target_met_full_chain.",
+                path="llm_adjudication_plan.fixed_call_cap_primary_limiter",
+                expected=False,
+                actual=True,
             )
         if eligible > 0 and selected <= 0:
             result.fail(

@@ -244,6 +244,9 @@ def _r1r_summary(**overrides: object) -> dict:
             "llm_eligible_pair_count": 12,
             "llm_selected_pair_count": 12,
             "llm_judgment_count": 12,
+            "all_eligible_llm_pairs_adjudicated": True,
+            "budget_cap_usd": 15.0,
+            "projected_full_eligible_cost_usd": 0.2,
             "llm_same_count": 3,
             "llm_cannot_count": 2,
             "llm_uncertain_count": 7,
@@ -270,9 +273,18 @@ def _r1r_summary(**overrides: object) -> dict:
             "required": True,
             "eligible_pair_count": 12,
             "selected_pair_count": 12,
-            "max_calls": 300,
-            "budget_usd": 50.0,
+            "selection_policy": "budget_driven_all_eligible",
+            "all_eligible_pair_count": 12,
+            "all_eligible_pairs_selected": True,
+            "all_eligible_pairs_adjudicated": True,
+            "budget_limit_is_primary": True,
+            "fixed_call_cap_primary_limiter": False,
+            "emergency_call_ceiling": 20000,
+            "max_calls": 20000,
+            "budget_usd": 15.0,
+            "budget_cap_usd": 15.0,
             "projected_budget_usd": 0.2,
+            "projected_full_eligible_cost_usd": 0.2,
             "skipped_pair_count": 0,
             "unselected_pair_count": 0,
             "eligible_pair_accounting_total": 12,
@@ -303,6 +315,14 @@ def _r1r_summary(**overrides: object) -> dict:
             "selected_pair_count": 12,
             "cache_hits": 0,
             "cache_misses": 12,
+            "compatible_cache_hit_count": 0,
+            "exact_compatible_cache_hit_count": 0,
+            "imported_previous_judgment_count": 0,
+            "new_provider_call_count": 12,
+            "new_provider_success_count": 12,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_avoided_by_cache_reuse_usd": 0.0,
             "selected_pair_accounting": {
                 "selected_pair_count": 12,
                 "resolved_provider_judgment_count": 12,
@@ -315,6 +335,30 @@ def _r1r_summary(**overrides: object) -> dict:
             "llm_same_count": 3,
             "llm_cannot_count": 2,
             "llm_uncertain_count": 7,
+        },
+        "llm_cache_policy": {
+            "policy_version": "source_concept_llm_adjudication_cache_v1",
+            "decision_schema_version": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy_version": "source_concept_budget_driven_adjudication_v1",
+            "durable_cache_root_label": "source-concept-llm-adjudication-cache",
+            "private_ignored_cache_root": True,
+            "cache_writes_atomic": True,
+            "raw_private_paths_redacted": True,
+            "exact_compatible_reuse_counts_as_valid_judgment": True,
+            "semantic_prior_reuse_counts_as_valid_judgment": False,
+            "compatible_cache_hit_count": 0,
+            "exact_compatible_cache_hit_count": 0,
+            "imported_previous_judgment_count": 0,
+            "semantic_prior_judgment_count": 0,
+            "new_provider_call_count": 12,
+            "new_provider_success_count": 12,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_spent_this_run_usd": 0.2,
+            "cost_avoided_by_cache_reuse_usd": 0.0,
+            "projected_new_call_cost_usd": 0.2,
+            "projected_full_eligible_cost_usd": 0.2,
+            "budget_cap_usd": 15.0,
         },
         "mutation_proof": {"passed": True, "forbidden_changed_tables": [], "unexpected_changed_tables": []},
         "post_commit_verification": {"passed": True},
@@ -5712,6 +5756,150 @@ def test_r1r_contract_rejects_eligible_pair_accounting_gap() -> None:
     assert "r1r_eligible_pair_accounting_mismatch" in _error_codes(result)
 
 
+def test_r1r_contract_rejects_fixed_cap_subset_as_target_met() -> None:
+    summary = _r1r_summary()
+    summary["llm_adjudication_plan"].update(
+        {
+            "selection_policy": "ranked",
+            "eligible_pair_count": 6429,
+            "selected_pair_count": 300,
+            "all_eligible_pair_count": 6429,
+            "all_eligible_pairs_selected": False,
+            "all_eligible_pairs_adjudicated": False,
+            "fixed_call_cap_primary_limiter": True,
+            "max_calls": 300,
+            "emergency_call_ceiling": 300,
+            "skipped_pair_count": 6129,
+            "unselected_pair_count": 0,
+            "eligible_pair_accounting_total": 6429,
+            "projected_full_eligible_cost_usd": 2.1,
+            "budget_cap_usd": 15.0,
+        }
+    )
+    summary["sc1_full_chain_proof"].update(
+        {
+            "llm_eligible_pair_count": 6429,
+            "llm_selected_pair_count": 300,
+            "llm_judgment_count": 300,
+            "all_eligible_llm_pairs_adjudicated": False,
+        }
+    )
+    summary["llm_judgment_summary"].update(
+        {
+            "judgment_count": 300,
+            "ledger_row_count": 300,
+            "selected_pair_count": 300,
+        }
+    )
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 300,
+        "resolved_provider_judgment_count": 300,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 300,
+        "all_selected_pairs_successfully_accounted": True,
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_target_requires_all_eligible_llm_pairs_selected" in codes
+    assert "r1r_target_requires_all_eligible_llm_pairs_judged" in codes
+    assert "r1r_all_eligible_llm_pairs_adjudicated_missing" in codes
+    assert "r1r_target_requires_budget_driven_llm_selection_policy" in codes
+    assert "r1r_fixed_call_cap_cannot_be_primary_target_limiter" in codes
+
+
+def test_r1r_contract_rejects_missing_llm_cache_policy_for_target() -> None:
+    summary = _r1r_summary()
+    summary.pop("llm_cache_policy")
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_llm_cache_policy_missing" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_raw_cache_path_in_public_policy() -> None:
+    summary = _r1r_summary()
+    summary["llm_cache_policy"]["durable_cache_root_label"] = r"C:\Users\kyloris\private-cache"
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_llm_cache_root_label_leaks_path" in _error_codes(result)
+
+
+def test_r1r_contract_accepts_blocked_budget_without_target_claim() -> None:
+    summary = _r1r_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+        "status": "blocked_budget",
+        "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
+    }
+    summary["sc1_full_chain_proof"].update(
+        {
+            "complete_sc1_pipeline_executed": False,
+            "llm_pair_adjudication_executed": False,
+            "llm_eligible_pair_count": 6429,
+            "llm_selected_pair_count": 0,
+            "llm_judgment_count": 0,
+            "all_required_stage_statuses_verified": False,
+            "all_eligible_llm_pairs_adjudicated": False,
+        }
+    )
+    summary["llm_adjudication_plan"].update(
+        {
+            "selection_policy": "budget_driven_all_eligible",
+            "eligible_pair_count": 6429,
+            "selected_pair_count": 0,
+            "all_eligible_pair_count": 6429,
+            "all_eligible_pairs_selected": False,
+            "all_eligible_pairs_adjudicated": False,
+            "skipped_pair_count": 6429,
+            "unselected_pair_count": 0,
+            "eligible_pair_accounting_total": 6429,
+            "projected_full_eligible_cost_usd": 20.0,
+            "budget_cap_usd": 15.0,
+        }
+    )
+    summary["llm_readiness"]["budget_ready"] = False
+    summary["llm_readiness"]["passed"] = False
+    summary["llm_judgment_summary"].update(
+        {
+            "judgment_count": 0,
+            "ledger_row_count": 0,
+            "selected_pair_count": 0,
+        }
+    )
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 0,
+        "resolved_provider_judgment_count": 0,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 0,
+        "all_selected_pairs_successfully_accounted": True,
+    }
+    summary["llm_cache_policy"].update(
+        {
+            "compatible_cache_hit_count": 0,
+            "exact_compatible_cache_hit_count": 0,
+            "new_provider_call_count": 0,
+            "new_provider_success_count": 0,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_spent_this_run_usd": 0.0,
+            "cost_avoided_by_cache_reuse_usd": 0.0,
+            "projected_new_call_cost_usd": 0.0,
+            "projected_full_eligible_cost_usd": 0.0,
+        }
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed is True
+
+
 def test_r1r_contract_rejects_target_met_with_provider_errors_or_fallback() -> None:
     provider_error = _r1r_summary()
     provider_error["llm_judgment_summary"]["error_count"] = 1
@@ -5969,6 +6157,20 @@ def test_r1r_contract_accepts_zero_eligible_full_chain_with_explicit_proof() -> 
         "successful_accounted_pair_count": 0,
         "all_selected_pairs_successfully_accounted": True,
     }
+    summary["llm_cache_policy"].update(
+        {
+            "compatible_cache_hit_count": 0,
+            "exact_compatible_cache_hit_count": 0,
+            "new_provider_call_count": 0,
+            "new_provider_success_count": 0,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_spent_this_run_usd": 0.0,
+            "cost_avoided_by_cache_reuse_usd": 0.0,
+            "projected_new_call_cost_usd": 0.0,
+            "projected_full_eligible_cost_usd": 0.0,
+        }
+    )
 
     result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
 

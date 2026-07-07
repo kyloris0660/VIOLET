@@ -45,6 +45,9 @@ R1R must:
 - run as a separately planned and approved implementation phase;
 - use `source_concept_full_chain_contract_v1` before any full-chain completion
   claim;
+- use the durable SourceConcept LLM adjudication cache standard: cache-first,
+  checkpoint successful pair judgments immediately, reuse exact-compatible
+  judgments on rerun, and keep public reporting aggregate/redacted;
 - keep SourceConcept output source-layer only;
 - avoid confirmed Entity assignments, Entity truth writes, and `media_tags`
   truth writes;
@@ -84,6 +87,8 @@ A1R produce valid route evidence.
 - Full project roadmap: `docs/project-roadmap.md`.
 - Post-S2 production roadmap: `docs/roadmap/post-s2-production-roadmap.md`.
 - Phase contracts: `docs/phase-contracts.md`.
+- SourceConcept LLM adjudication cache standard:
+  `docs/source-concept-llm-adjudication-cache.md`.
 - INC1 fidelity incident:
   `docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md`.
 - Blocked A1 route decision:

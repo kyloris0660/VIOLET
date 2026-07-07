@@ -54,7 +54,11 @@ turning the current handoff into a historical ledger.
    technical phase. R1R is required because INC1 found old R1 was
    deterministic-only and did not prove bounded LLM pair adjudication from the
    full SC1 resolver chain. R1R must use dev/test/restored-snapshot DB only and
-   must not use production DB/storage/source roots.
+   must not use production DB/storage/source roots. R1R and future full-library
+   SourceConcept replays must use budget-driven, cache-first LLM adjudication:
+   exact-compatible cached judgments are reused, successful new judgments are
+   checkpointed immediately, and fixed small caps such as 300 pairs cannot stand
+   in for all eligible pairs when the approved budget covers the full set.
 
 6. `A1R: Route Audit Rerun After R1R` - required before R2, PX1-B, Provider-2,
    scale-up, Entity bridge, or SourceConcept truth promotion can be considered.
@@ -101,6 +105,8 @@ turning the current handoff into a historical ledger.
   where applicable, redacted public artifacts, and local ignored private ledgers.
 - Public reports stay aggregate-only and path-redacted.
 - Private ledgers remain local ignored artifacts.
+- SourceConcept LLM pair adjudication cache records remain private ignored
+  artifacts; public reports may cite only aggregate cache counts and labels.
 
 ## Choosing The Next Work
 

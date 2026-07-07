@@ -10,7 +10,8 @@
 - Complete SC1 pipeline executed: `True`.
 - Deterministic pipeline executed: `True`.
 - LLM adjudication requested/executed: `True` / `True`.
-- LLM selected pairs / judgments: `300` / `300`.
+- LLM selected pairs / judgments: `6429` / `6429`.
+- All eligible LLM pairs adjudicated: `True`.
 - Input-scope fidelity gate: `matched_old_r1_scope`.
 - Current run classification: `route_evidence_candidate`.
 - A1R still required: `True`.
@@ -73,7 +74,7 @@
 | DB label | read_only | media | eligible | source metadata | PX1 records | SourceConcept | old-R1 scale likely |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | `blombooru` | `on` | `35545` | `35314` | `671` | `471` | `6094` | `True` |
-| `blombooru_r1r_restored_test_20260618` | `on` | `3750` | `3687` | `671` | `471` | `6094` | `True` |
+| `blombooru_r1r_restored_test_20260618` | `on` | `3750` | `3687` | `671` | `471` | `2827` | `True` |
 | `blombooru_test` | `on` | `307` | `206` | `1` | `0` | `58` | `False` |
 | `blombooru_test_medium` | `on` | `522` | `508` | `None` | `None` | `None` | `False` |
 | `blombooru_test_pilot` | `on` | `265` | `229` | `None` | `None` | `None` | `False` |
@@ -123,12 +124,12 @@
 | `source_concept_replay_total` | `current_r1r_replay_output_scale` | `True` | `2887` | `2861` | `0.991` | `matched` |
 | `source_concept_replay_active` | `current_r1r_replay_output_scale` | `True` | `1078` | `1078` | `1.0` | `matched` |
 | `source_concept_replay_needs_review` | `current_r1r_replay_output_scale` | `True` | `1809` | `1783` | `0.9856` | `matched` |
-| `source_concept_total` | `old_r1_persisted_baseline_scale` | `False` | `6094` | `6094` | `1.0` | `matched` |
-| `source_concept_active` | `old_r1_persisted_baseline_scale` | `False` | `1078` | `1078` | `1.0` | `matched` |
-| `source_concept_needs_review` | `old_r1_persisted_baseline_scale` | `False` | `1809` | `1809` | `1.0` | `matched` |
-| `source_concept_superseded` | `old_r1_persisted_baseline_scale` | `False` | `3207` | `3207` | `1.0` | `matched` |
-| `llm_eligible_pair_count` | `llm_selected_accounting` | `True` | `300` | `6429` | `21.43` | `matched` |
-| `llm_selected_pair_count` | `llm_selected_accounting` | `True` | `300` | `300` | `1.0` | `matched` |
+| `source_concept_total` | `old_r1_persisted_baseline_scale` | `False` | `6094` | `2827` | `0.4639` | `baseline_only_insufficient` |
+| `source_concept_active` | `old_r1_persisted_baseline_scale` | `False` | `1078` | `1067` | `0.9898` | `matched` |
+| `source_concept_needs_review` | `old_r1_persisted_baseline_scale` | `False` | `1809` | `1760` | `0.9729` | `matched` |
+| `source_concept_superseded` | `old_r1_persisted_baseline_scale` | `False` | `3207` | `0` | `0.0` | `baseline_only_insufficient` |
+| `llm_eligible_pair_count` | `llm_selected_accounting` | `True` | `6429` | `6429` | `1.0` | `matched` |
+| `llm_selected_pair_count` | `llm_selected_accounting` | `True` | `6429` | `6429` | `1.0` | `matched` |
 
 ## Preserved Smoke Run
 
@@ -144,7 +145,7 @@
 - SourceConcept-owned tables cleared/rebuilt in dev/test: `True`.
 - Old R1 isolated before R1R persistence: `True`.
 - Contamination handling method: `dev_test_sourceconcept_owned_delete_rebuild`.
-- Baseline SourceConcept total/active/needs_review/superseded: `6094` / `1078` / `1809` / `3207`.
+- Baseline SourceConcept total/active/needs_review/superseded: `2827` / `1067` / `1760` / `0`.
 
 ## LLM Readiness
 
@@ -156,10 +157,26 @@
 - Cache ready: `True`.
 - Budget ready: `True`.
 - Eligible pairs: `6429`.
-- Selected pairs: `300`.
-- Judgment/error/cache counts: `300` / `0` / `0` hits, `300` misses.
-- Estimated actual cost USD: `0.097466`; exact provider cost available: `False`.
-- Max calls / budget USD: `300` / `50.0`.
+- Selected pairs: `6429`.
+- Selection policy: `budget_driven_all_eligible`.
+- All eligible pairs selected/adjudicated: `True` / `True`.
+- Judgment/error/cache counts: `6429` / `0` / `5589` hits, `840` misses.
+- Estimated actual cost USD: `0.268975`; exact provider cost available: `False`.
+- Projected full eligible cost USD / budget cap USD: `2.058618` / `15.0`.
+- Projected new-call cost after cache USD: `0.268975`.
+- Emergency call ceiling: `20000`.
+- Fixed call cap is primary limiter: `False`.
+
+## Durable LLM Cache
+
+- Cache policy version: `source_concept_llm_adjudication_cache_v1`.
+- Durable cache root label: `source-concept-llm-adjudication-cache`.
+- Atomic cache writes: `True`.
+- Exact-compatible cache hits: `5589`.
+- Imported previous judgments: `32`.
+- New provider calls / failures / remaining: `840` / `0` / `0`.
+- Cost spent this run / avoided by cache USD: `0.268975` / `1.789643`.
+- Semantic/prior judgments counted as full-chain proof: `False`.
 
 ## Stage Manifest
 
@@ -177,16 +194,16 @@
 | `deterministic_edge_graph_generation` | `verified` | `12249` | `42751` | `r1r-private-deterministic_edge_graph_generation` |
 | `context_compatibility_guards` | `verified` | `42751` | `42751` | `r1r-private-context_compatibility_guards` |
 | `alias_context_equivalence` | `verified` | `42751` | `42751` | `r1r-private-alias_context_equivalence` |
-| `union_component_resolution` | `verified` | `42751` | `2827` | `r1r-private-union_component_resolution` |
-| `bounded_llm_pair_planning` | `verified` | `42751` | `300` | `r1r-private-bounded_llm_pair_planning` |
-| `bounded_llm_provider_cache_budget_readiness` | `verified` | `300` | `1` | `r1r-private-bounded_llm_provider_cache_budget_readiness` |
-| `bounded_llm_pair_selection` | `verified` | `42751` | `300` | `r1r-private-bounded_llm_pair_selection` |
-| `bounded_llm_judgment_execution` | `verified` | `300` | `300` | `r1r-private-bounded_llm_judgment_execution` |
-| `llm_decision_recording` | `verified` | `300` | `300` | `r1r-private-llm_decision_recording` |
-| `llm_decision_effects_applied_or_recorded` | `verified` | `300` | `300` | `r1r-private-llm_decision_effects_applied_or_recorded` |
-| `source_concept_owned_persistence` | `verified` | `2827` | `2827` | `r1r-private-source_concept_owned_persistence` |
+| `union_component_resolution` | `verified` | `42751` | `2767` | `r1r-private-union_component_resolution` |
+| `bounded_llm_pair_planning` | `verified` | `42751` | `6429` | `r1r-private-bounded_llm_pair_planning` |
+| `bounded_llm_provider_cache_budget_readiness` | `verified` | `6429` | `1` | `r1r-private-bounded_llm_provider_cache_budget_readiness` |
+| `bounded_llm_pair_selection` | `verified` | `42751` | `6429` | `r1r-private-bounded_llm_pair_selection` |
+| `bounded_llm_judgment_execution` | `verified` | `6429` | `6429` | `r1r-private-bounded_llm_judgment_execution` |
+| `llm_decision_recording` | `verified` | `6429` | `6429` | `r1r-private-llm_decision_recording` |
+| `llm_decision_effects_applied_or_recorded` | `verified` | `6429` | `6429` | `r1r-private-llm_decision_effects_applied_or_recorded` |
+| `source_concept_owned_persistence` | `verified` | `2767` | `2767` | `r1r-private-source_concept_owned_persistence` |
 | `mutation_proof` | `verified` | `29` | `1` | `r1r-private-mutation_proof` |
-| `post_commit_verification` | `verified` | `2827` | `1` | `r1r-private-post_commit_verification` |
+| `post_commit_verification` | `verified` | `2767` | `1` | `r1r-private-post_commit_verification` |
 | `validation_pack_review_pack_generation` | `verified` | `24` | `1` | `r1r-private-validation_pack_review_pack_generation` |
 | `public_redaction` | `verified` | `2` | `1` | `r1r-private-public_redaction` |
 
@@ -200,8 +217,8 @@
 | context compatibility | required | SC1 shared service guards | R1 shared service | R1R shared service | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | alias/context equivalence | required | SC1 alias/context tests | R1 shared service | R1R shared service | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | union/component resolution | required | SC1 concept/link counts | R1 persisted concepts | R1R deterministic concepts | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| bounded LLM pair planning | required after blocking | SC1 selected 300 | old R1 disabled | R1R selected 300 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| bounded LLM pair adjudication | required for full chain | SC1 300 judgments | old R1 0 judgments | R1R judgments 300 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| bounded LLM pair planning | required after blocking | SC1 selected 300 | old R1 disabled | R1R selected 6429 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| bounded LLM pair adjudication | required for full chain | SC1 300 judgments | old R1 0 judgments | R1R judgments 6429 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | LLM decision effects | record/apply source-layer only | SC1 LLM edges | old R1 none | R1R recorded decisions | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | SourceConcept persistence | SourceConcept-owned only | SC1 allowed tables | old R1 SourceConcept tables | R1R ready for execute gate | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | mutation proof | required | SC1 mutation proof | R1 mutation proof | R1R mutation proof | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |

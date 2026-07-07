@@ -64,8 +64,18 @@ truthfulness, SourceConcept-owned write scope, mutation proof, review-pack
 manifest inclusion, public redaction, and explicit downstream route
 non-authorization. `target_met_full_chain` also requires primary
 OpenAI-compatible provider/model identity, no fallback provider use, and zero
-provider/judgment errors. It allows truthful blocked statuses, but only
-`target_met_full_chain` may claim full-chain completion.
+provider/judgment errors. It also requires the standard SourceConcept LLM
+adjudication cache policy: a private ignored durable cache root label, atomic
+cache-write proof, exact-compatible cache accounting, provider-failure
+exclusion, projected/actual cost fields, and redacted public aggregate cache
+reporting. A fixed call cap such as 300 pairs is not sufficient route evidence
+when all eligible pairs fit within the approved budget. It allows truthful
+blocked statuses, but only `target_met_full_chain` may claim full-chain
+completion.
+
+See `docs/source-concept-llm-adjudication-cache.md` for the durable cache and
+checkpoint/reuse standard shared by R1R and future full-library SourceConcept
+phases.
 
 ## Route Gate
 

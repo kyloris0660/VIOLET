@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -19,6 +20,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.database import Base, migrate_add_source_concept_resolver_core  # noqa: E402
 from app.enums import FileTypeEnum, TagCategoryEnum  # noqa: E402
+from app.services import source_concept_resolver_service as sc_resolver_service  # noqa: E402
 from app.models import (  # noqa: E402
     Media,
     ProviderCache,
@@ -40,6 +42,7 @@ from app.models import (  # noqa: E402
 )
 from app.services.source_concept_resolver_service import (  # noqa: E402
     LLMAdjudicationConfig,
+    SourceConceptEdgeDraft,
     SourceConceptSignalDraft,
     build_artifact_consistency_check,
     canonical_key,
@@ -51,6 +54,7 @@ from app.services.source_concept_resolver_service import (  # noqa: E402
     resolve_source_concepts,
     run_bounded_llm_adjudication,
     run_source_concept_resolution,
+    select_llm_adjudication_edges,
     persist_source_concept_resolution,
 )
 from scripts.run_phase45_sc1_source_concept_resolver import (
@@ -1810,8 +1814,246 @@ def test_llm_budget_block_returns_before_provider_initialization():
 
     assert judgments == []
     assert summary["used"] is False
-    assert summary["reason"] == "llm_budget_or_call_cap_exceeded"
+    assert summary["reason"] == "llm_budget_exceeded"
     assert summary["provider"]["provider_mode"] == "not_initialized_budget_blocked"
+
+
+def test_budget_driven_all_eligible_llm_policy_selects_every_eligible_edge():
+    signals = [
+        _signal("s1", "Kamisato Ayaka", trust="weak", status="needs_review", media_id=1, source_record_id=1),
+        _signal("s2", "\u795e\u91cc\u7dbe\u83ef", trust="weak", status="needs_review", media_id=1, source_record_id=1),
+        _signal("s3", "Ayaka", trust="weak", status="needs_review", media_id=1, source_record_id=1),
+        _signal("s4", "Shirasagi Himegimi", trust="weak", status="needs_review", media_id=1, source_record_id=1),
+    ]
+    edges = [
+        SourceConceptEdgeDraft(
+            edge_key=f"edge:{index}",
+            left_signal_key=left,
+            right_signal_key=right,
+            edge_type="cooccurrence_context",
+            weight=1.0,
+            evidence_source="fixture",
+            status="weak",
+            resolution_reason_code="fixture_eligible_pair",
+            negative_reason_code=None,
+            union_allowed=False,
+            payload={},
+        )
+        for index, (left, right) in enumerate((("s1", "s2"), ("s1", "s3"), ("s2", "s4")), start=1)
+    ]
+    config = LLMAdjudicationConfig(
+        enabled=True,
+        max_calls=100,
+        max_budget_usd=15.0,
+        selection_policy="budget_driven_all_eligible",
+    )
+
+    plan = plan_llm_adjudication(edges, signals=signals, config=config)
+    selected = select_llm_adjudication_edges(edges, signals=signals, config=config)
+
+    assert plan.status == "ready"
+    assert plan.selection_policy == "budget_driven_all_eligible"
+    assert plan.projected_calls == 3
+    assert plan.skipped_block_count == 0
+    assert len(selected) == 3
+    assert [edge.edge_key for edge in selected] == ["edge:1", "edge:2", "edge:3"]
+
+
+class _FakeLLMProvider:
+    def __init__(self, *, fail_on_call: int | None = None, decision: str = "must_link") -> None:
+        self.model = "gpt-test"
+        self.calls = 0
+        self.fail_on_call = fail_on_call
+        self.decision = decision
+
+    def get_provider_name(self) -> str:
+        return "fake-primary-openai"
+
+    async def complete_json(self, _messages, *, temperature: float = 0.0, max_tokens: int = 256):
+        self.calls += 1
+        if self.fail_on_call is not None and self.calls == self.fail_on_call:
+            raise RuntimeError("fixture_provider_failure")
+        return {"decision": self.decision, "confidence": 0.8, "reason_code": "fixture_reason"}
+
+
+def _eligible_llm_edges(count: int) -> tuple[list[SourceConceptSignalDraft], list[SourceConceptEdgeDraft]]:
+    signals = [
+        _signal(f"s{index}", f"Name {index}", trust="weak", status="needs_review", media_id=1, source_record_id=1)
+        for index in range(count + 1)
+    ]
+    edges = [
+        SourceConceptEdgeDraft(
+            edge_key=f"edge:{index}",
+            left_signal_key="s0",
+            right_signal_key=f"s{index}",
+            edge_type="cooccurrence_context",
+            weight=1.0,
+            evidence_source="fixture",
+            status="weak",
+            resolution_reason_code="fixture_eligible_pair",
+            negative_reason_code=None,
+            union_allowed=False,
+            payload={"fixture_index": index},
+        )
+        for index in range(1, count + 1)
+    ]
+    return signals, edges
+
+
+def _cache_config(tmp_path: Path, **overrides) -> LLMAdjudicationConfig:
+    values = {
+        "enabled": True,
+        "max_calls": 100,
+        "max_budget_usd": 15.0,
+        "selection_policy": "budget_driven_all_eligible",
+        "durable_cache_dir": str(tmp_path / "durable-cache"),
+        "run_id": "cache-test-run",
+    }
+    values.update(overrides)
+    return LLMAdjudicationConfig(**values)
+
+
+def test_successful_llm_judgment_is_cached_and_reused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    signals, edges = _eligible_llm_edges(1)
+    first_provider = _FakeLLMProvider()
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            first_provider,
+            {"provider_mode": "primary_openai", "llm_provider_label": "primary_openai", "uses_fallback_provider": False},
+        ),
+    )
+
+    first_judgments, first_summary = run_bounded_llm_adjudication(edges, signals=signals, config=_cache_config(tmp_path))
+
+    assert first_provider.calls == 1
+    assert first_summary["new_provider_call_count"] == 1
+    assert first_summary["durable_cache_write_success_count"] == 1
+    assert first_judgments[0]["cache_status"] == "miss"
+
+    second_provider = _FakeLLMProvider(decision="cannot_link")
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            second_provider,
+            {"provider_mode": "primary_openai", "llm_provider_label": "primary_openai", "uses_fallback_provider": False},
+        ),
+    )
+    second_judgments, second_summary = run_bounded_llm_adjudication(edges, signals=signals, config=_cache_config(tmp_path))
+
+    assert second_provider.calls == 0
+    assert second_summary["cache_hits"] == 1
+    assert second_summary["new_provider_call_count"] == 0
+    assert second_judgments[0]["cache_status"] == "hit"
+    assert second_judgments[0]["cache_reuse_level"] == "exact_compatible"
+    assert second_judgments[0]["decision"] == "must_link"
+
+
+def test_provider_failure_after_partial_success_preserves_successful_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    signals, edges = _eligible_llm_edges(2)
+    provider = _FakeLLMProvider(fail_on_call=2)
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            provider,
+            {"provider_mode": "primary_openai", "llm_provider_label": "primary_openai", "uses_fallback_provider": False},
+        ),
+    )
+
+    judgments, summary = run_bounded_llm_adjudication(edges, signals=signals, config=_cache_config(tmp_path))
+
+    assert provider.calls == 2
+    assert summary["new_provider_success_count"] == 1
+    assert summary["failed_provider_call_count"] == 1
+    assert summary["remaining_missing_pair_count"] == 1
+    assert len(list((tmp_path / "durable-cache" / "records").glob("*.json"))) == 1
+    assert len(list((tmp_path / "durable-cache" / "failures").glob("*.json"))) == 1
+    assert sum(1 for row in judgments if not row.get("error_type")) == 1
+
+
+def test_stale_prompt_version_is_semantic_prior_not_exact_cache_hit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    signals, edges = _eligible_llm_edges(1)
+    first_provider = _FakeLLMProvider()
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            first_provider,
+            {"provider_mode": "primary_openai", "llm_provider_label": "primary_openai", "uses_fallback_provider": False},
+        ),
+    )
+    run_bounded_llm_adjudication(
+        edges,
+        signals=signals,
+        config=_cache_config(tmp_path, prompt_version="prompt-v1"),
+    )
+
+    second_provider = _FakeLLMProvider(decision="cannot_link")
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            second_provider,
+            {"provider_mode": "primary_openai", "llm_provider_label": "primary_openai", "uses_fallback_provider": False},
+        ),
+    )
+    judgments, summary = run_bounded_llm_adjudication(
+        edges,
+        signals=signals,
+        config=_cache_config(tmp_path, prompt_version="prompt-v2"),
+    )
+
+    assert second_provider.calls == 1
+    assert summary["cache_hits"] == 0
+    assert summary["semantic_prior_judgment_count"] == 1
+    assert judgments[0]["decision"] == "cannot_link"
+
+
+def test_provider_error_rows_do_not_count_as_valid_cached_judgments(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    signals, edges = _eligible_llm_edges(1)
+    failing_provider = _FakeLLMProvider(fail_on_call=1)
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            failing_provider,
+            {"provider_mode": "primary_openai", "llm_provider_label": "primary_openai", "uses_fallback_provider": False},
+        ),
+    )
+    first_judgments, first_summary = run_bounded_llm_adjudication(edges, signals=signals, config=_cache_config(tmp_path))
+
+    assert first_summary["failed_provider_call_count"] == 1
+    assert first_summary["cache_hits"] == 0
+    assert first_judgments[0]["error_type"] == "RuntimeError"
+    assert len(list((tmp_path / "durable-cache" / "records").glob("*.json"))) == 0
+
+    succeeding_provider = _FakeLLMProvider()
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            succeeding_provider,
+            {"provider_mode": "primary_openai", "llm_provider_label": "primary_openai", "uses_fallback_provider": False},
+        ),
+    )
+    second_judgments, second_summary = run_bounded_llm_adjudication(edges, signals=signals, config=_cache_config(tmp_path))
+
+    assert succeeding_provider.calls == 1
+    assert second_summary["cache_hits"] == 0
+    assert second_summary["new_provider_success_count"] == 1
+    assert second_judgments[0]["error_state"] is None
 
 
 def test_long_identity_anchor_concept_key_is_bounded():
