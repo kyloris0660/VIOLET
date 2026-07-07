@@ -52,6 +52,9 @@ R1R_RUN_LABEL = "phase_4_5_scv2_r1r_full_source_concept_pipeline_replay"
 PRODUCTION_DB_NAMES = {"blombooru", "production", "main", "postgres"}
 DEV_DB_MARKERS = ("test", "dev", "r1r", "snapshot", "restored", "clone")
 INPUT_SCOPE_MIN_RATIO = 0.8
+POST_PX1_PRE_R1_SNAPSHOT_FOUND = False
+RESTORED_R1R_DB_NAME = "blombooru_r1r_restored_test_20260618"
+PX1_RUN_LABEL = "phase-4.5-px1-pixiv-metadata-dedup-dry-run"
 OLD_R1_INPUT_SCOPE_BASELINE = {
     "total_media": 3750,
     "eligible_media": 3687,
@@ -538,7 +541,8 @@ def current_input_scope_actuals(
         "source_metadata_records_total": scalar_count(conn, "SELECT COUNT(*) FROM blombooru_source_metadata_records"),
         "px1_source_metadata_records": scalar_count(
             conn,
-            "SELECT COUNT(*) FROM blombooru_source_metadata_records WHERE provider = 'pixiv'",
+            "SELECT COUNT(*) FROM blombooru_source_metadata_records "
+            f"WHERE run_label = '{PX1_RUN_LABEL}' OR provider_run_id = '{PX1_RUN_LABEL}'",
         ),
         "source_tag_observations": int(
             (sources.get("source_tag_observation") or {}).get("count", 0)
@@ -607,6 +611,327 @@ def build_input_scope_fidelity(actuals: Mapping[str, int]) -> dict[str, Any]:
             "In the dev/test clone only, clear/rebuild SourceConcept-owned output tables or run R1R in a fresh run namespace so old deterministic R1 output is baseline-only.",
             "Set VIOLET_ENV to test/development and VIOLET_STORAGE_ROOT to a dedicated non-production local test storage root before rerunning R1R.",
         ],
+    }
+
+
+def phase_artifact_candidate(*, artifact_label: str, relative_label: str, artifact_type: str, likely_scope: str) -> dict[str, Any]:
+    path = ROOT / relative_label
+    exists = path.exists()
+    stat = path.stat() if exists else None
+    return {
+        "artifact_label": artifact_label,
+        "exists": exists,
+        "artifact_type": artifact_type,
+        "local_artifact_label": artifact_label,
+        "location_redacted": True,
+        "mtime": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat() if stat else None,
+        "size_bytes": int(stat.st_size) if stat and path.is_file() else None,
+        "likely_scope": likely_scope,
+    }
+
+
+def snapshot_artifact_discovery() -> dict[str, Any]:
+    candidates = [
+        {
+            **phase_artifact_candidate(
+                artifact_label="r1r-private-existing-dump-20260618-blombooru",
+                relative_label=".local_manifests/phase-4.7-s2-baseline-full-import-ai-localization/20260618T044151Z-blombooru.dump",
+                artifact_type="pg_dump_custom",
+                likely_scope="current-production-derived-old-r1-scale",
+            ),
+            "contains_source_metadata_record": True,
+            "contains_px1_inputs": True,
+            "contains_source_concept_tables": True,
+            "safe_to_restore_to_new_dev_test_db": True,
+            "post_px1_pre_r1_snapshot": False,
+            "old_r1_equivalent_or_larger": True,
+            "contamination_note": "contains post-R1 deterministic SourceConcept outputs; use as baseline only until dev/test SourceConcept output isolation is applied",
+        },
+        {
+            **phase_artifact_candidate(
+                artifact_label="r1r-private-pre-px1-dump-20260610",
+                relative_label=".local_manifests/phase-4.5-scv2-e1-medium-import-ai-tag-completion/db-backup-before-execute-20260610T144355.dump",
+                artifact_type="pg_dump_custom",
+                likely_scope="pre-px1-too-early",
+            ),
+            "contains_source_metadata_record": True,
+            "contains_px1_inputs": False,
+            "contains_source_concept_tables": True,
+            "safe_to_restore_to_new_dev_test_db": True,
+            "post_px1_pre_r1_snapshot": False,
+            "old_r1_equivalent_or_larger": False,
+            "contamination_note": "too early for PX1/R1 input-scope parity",
+        },
+        {
+            **phase_artifact_candidate(
+                artifact_label="r1r-private-r1-artifact-pack",
+                relative_label=".local_manifests/phase-4.5-scv2-r1-post-px1-source-concept-triage.zip",
+                artifact_type="review_artifact_zip",
+                likely_scope="old-r1-report-artifacts-not-db-dump",
+            ),
+            "contains_source_metadata_record": False,
+            "contains_px1_inputs": True,
+            "contains_source_concept_tables": False,
+            "safe_to_restore_to_new_dev_test_db": False,
+            "post_px1_pre_r1_snapshot": False,
+            "old_r1_equivalent_or_larger": False,
+            "contamination_note": "useful evidence pack only; not a database snapshot",
+        },
+        {
+            **phase_artifact_candidate(
+                artifact_label="r1r-private-a1-chatgpt-review-pack",
+                relative_label=".local_manifests/phase-4.5-scv2-a1-post-expansion-audit-route-decision/chatgpt-review-pack.zip",
+                artifact_type="chatgpt_review_pack_zip",
+                likely_scope="post-r1-audit-artifacts-not-db-dump",
+            ),
+            "contains_source_metadata_record": False,
+            "contains_px1_inputs": True,
+            "contains_source_concept_tables": False,
+            "safe_to_restore_to_new_dev_test_db": False,
+            "post_px1_pre_r1_snapshot": False,
+            "old_r1_equivalent_or_larger": False,
+            "contamination_note": "useful audit pack only; not a database snapshot",
+        },
+    ]
+    return {
+        "searched_locations": [
+            "local-manifests-root-label",
+            "r1-post-px1-private-artifact-label",
+            "px1-private-artifact-label",
+            "a1-post-expansion-private-artifact-label",
+            "chatgpt-review-pack-labels",
+            "repo-local-backup-dump-snapshot-restore-labels",
+            "repo-data-backups-label",
+            "postgres-database-list-label",
+        ],
+        "candidate_artifacts": candidates,
+        "post_px1_pre_r1_snapshot_found": POST_PX1_PRE_R1_SNAPSHOT_FOUND,
+        "existing_current_production_derived_dump_found": any(
+            row["exists"] and row["artifact_label"] == "r1r-private-existing-dump-20260618-blombooru"
+            for row in candidates
+        ),
+        "data_backups_present": (ROOT / "data" / "backups").exists(),
+    }
+
+
+def _readonly_raw_query(url: Any, fn: Any) -> tuple[str | None, Any, dict[str, Any] | None]:
+    engine = create_engine(url, pool_pre_ping=True)
+    raw = engine.raw_connection()
+    try:
+        cursor = raw.cursor()
+        cursor.execute("BEGIN READ ONLY")
+        cursor.execute("SHOW transaction_read_only")
+        transaction_read_only = str(cursor.fetchone()[0])
+        output = fn(cursor)
+        cursor.execute("ROLLBACK")
+        return transaction_read_only, output, None
+    except Exception as exc:
+        try:
+            raw.rollback()
+        except Exception:
+            pass
+        return None, None, {"type": type(exc).__name__, "message_redacted": True}
+    finally:
+        raw.close()
+        engine.dispose()
+
+
+def _table_count_cursor(cursor: Any, table: str) -> int | None:
+    cursor.execute("SELECT to_regclass(%s)", (table,))
+    if cursor.fetchone()[0] is None:
+        return None
+    cursor.execute(f"SELECT COUNT(*) FROM {qident(table)}")
+    return int(cursor.fetchone()[0])
+
+
+def db_scope_counts_from_cursor(cursor: Any) -> dict[str, Any]:
+    counts = {
+        "total_media": _table_count_cursor(cursor, "blombooru_media"),
+        "media_tags": _table_count_cursor(cursor, "blombooru_media_tags"),
+        "source_metadata_records_total": _table_count_cursor(cursor, "blombooru_source_metadata_records"),
+        "source_tag_observations": _table_count_cursor(cursor, "blombooru_source_tag_observations"),
+        "source_name_observations": _table_count_cursor(cursor, "blombooru_source_name_observations"),
+        "source_searchable_name_assertions": _table_count_cursor(cursor, "blombooru_source_searchable_name_assertions"),
+        "source_metadata_evidence": _table_count_cursor(cursor, "blombooru_source_metadata_evidence"),
+        "source_concept_total": _table_count_cursor(cursor, "blombooru_source_concepts"),
+        "source_concept_signals": _table_count_cursor(cursor, "blombooru_source_concept_signals"),
+        "source_concept_aliases": _table_count_cursor(cursor, "blombooru_source_concept_aliases"),
+        "source_concept_evidence": _table_count_cursor(cursor, "blombooru_source_concept_evidence"),
+        "source_concept_signal_links": _table_count_cursor(cursor, "blombooru_source_concept_signal_links"),
+        "source_concept_search_index": _table_count_cursor(cursor, "blombooru_source_concept_search_index"),
+        "source_concept_resolution_runs": _table_count_cursor(cursor, "blombooru_source_concept_resolution_runs"),
+    }
+    if counts["total_media"] is not None:
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='blombooru_media'")
+        media_columns = {str(row[0]) for row in cursor.fetchall()}
+        if "content_class" in media_columns:
+            cursor.execute(
+                "SELECT COUNT(*) FROM blombooru_media "
+                "WHERE COALESCE(content_class, 'unknown') IN ('anime', 'unknown')"
+            )
+            counts["eligible_media"] = int(cursor.fetchone()[0])
+        else:
+            counts["eligible_media"] = counts["total_media"]
+    if counts["source_concept_total"] is not None:
+        cursor.execute("SELECT status, COUNT(*) FROM blombooru_source_concepts GROUP BY status ORDER BY status")
+        status_counts = {str(status): int(count) for status, count in cursor.fetchall()}
+        counts["source_concept_active"] = status_counts.get("active", 0)
+        counts["source_concept_needs_review"] = status_counts.get("needs_review", 0)
+        counts["source_concept_superseded"] = status_counts.get("superseded", 0)
+    if counts["source_metadata_records_total"] is not None:
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name='blombooru_source_metadata_records'"
+        )
+        metadata_columns = {str(row[0]) for row in cursor.fetchall()}
+        clauses: list[str] = []
+        params: list[str] = []
+        if "run_label" in metadata_columns:
+            clauses.append("run_label=%s")
+            params.append(PX1_RUN_LABEL)
+        if "provider_run_id" in metadata_columns:
+            clauses.append("provider_run_id=%s")
+            params.append(PX1_RUN_LABEL)
+        if clauses:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM blombooru_source_metadata_records WHERE {' OR '.join(clauses)}",
+                params,
+            )
+            counts["px1_source_metadata_records"] = int(cursor.fetchone()[0])
+    return counts
+
+
+def database_discovery(settings_database_url: Any, active_db_name: str) -> dict[str, Any]:
+    base_url = (
+        settings_database_url
+        if hasattr(settings_database_url, "set") and hasattr(settings_database_url, "database")
+        else make_url(str(settings_database_url))
+    )
+    maintenance_url = base_url.set(database="postgres")
+
+    def list_databases(cursor: Any) -> list[str]:
+        cursor.execute("SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname")
+        return [str(row[0]) for row in cursor.fetchall()]
+
+    transaction_read_only, db_names, error = _readonly_raw_query(maintenance_url, list_databases)
+    if error:
+        return {
+            "maintenance_transaction_read_only": transaction_read_only,
+            "database_list_error": error,
+            "candidate_databases": [],
+        }
+    candidate_names = [
+        name
+        for name in db_names
+        if any(marker in name.casefold() for marker in ("blombooru", "r1", "r1r", "px1", "scv2", "snapshot", "restore", "test", "dev", "clone"))
+    ]
+    candidate_rows: list[dict[str, Any]] = []
+    for name in candidate_names:
+        candidate_url = base_url.set(database=name)
+        read_only, counts, scope_error = _readonly_raw_query(candidate_url, db_scope_counts_from_cursor)
+        candidate_rows.append(
+            {
+                "database_label": name,
+                "is_active_recovered_db": name == active_db_name,
+                "is_live_production_db": name.casefold() == "blombooru",
+                "transaction_read_only": read_only,
+                "scope_error": scope_error,
+                "counts": counts or {},
+            }
+        )
+    production = next((row for row in candidate_rows if row["is_live_production_db"]), None)
+    return {
+        "maintenance_transaction_read_only": transaction_read_only,
+        "candidate_databases": candidate_rows,
+        "live_production_read_only_inspected": production is not None,
+        "current_production_contains_old_r1_equivalent_inputs": bool(
+            production
+            and int((production.get("counts") or {}).get("total_media") or 0) >= OLD_R1_INPUT_SCOPE_BASELINE["total_media"]
+            and int((production.get("counts") or {}).get("source_metadata_records_total") or 0)
+            >= OLD_R1_INPUT_SCOPE_BASELINE["source_metadata_records_total"]
+        ),
+    }
+
+
+def build_snapshot_recovery(
+    *,
+    settings_database_url: Any,
+    active_db_name: str,
+    input_scope_fidelity: Mapping[str, Any],
+    restored_db_created_this_run: bool,
+    source_artifact_label: str,
+) -> dict[str, Any]:
+    artifacts = snapshot_artifact_discovery()
+    databases = database_discovery(settings_database_url, active_db_name)
+    active_candidate = next(
+        (row for row in databases.get("candidate_databases", []) if row.get("database_label") == active_db_name),
+        None,
+    )
+    active_counts = active_candidate.get("counts", {}) if isinstance(active_candidate, Mapping) else {}
+    source_scope_metrics = {
+        "total_media",
+        "eligible_media",
+        "source_metadata_records_total",
+        "px1_source_metadata_records",
+        "source_tag_observations",
+        "source_name_observations",
+        "source_searchable_name_assertions",
+        "source_metadata_evidence",
+        "source_concept_total",
+        "source_concept_active",
+        "source_concept_needs_review",
+        "source_concept_superseded",
+    }
+    source_scope_passed = all(
+        int(active_counts.get(metric) or 0) >= expected
+        for metric, expected in OLD_R1_INPUT_SCOPE_BASELINE.items()
+        if metric in source_scope_metrics
+    )
+    can_continue = bool(input_scope_fidelity.get("passed"))
+    return {
+        "status": "ready_for_old_r1_scope_rerun" if can_continue else "blocked_insufficient_input_scope",
+        "searched": artifacts["searched_locations"],
+        "artifact_discovery": artifacts,
+        "database_discovery": databases,
+        "old_post_px1_pre_r1_snapshot_found": artifacts["post_px1_pre_r1_snapshot_found"],
+        "existing_dump_restored": active_db_name == RESTORED_R1R_DB_NAME,
+        "restored_db_created_this_run": restored_db_created_this_run,
+        "restored_db_label": active_db_name,
+        "source_artifact_label": source_artifact_label or "r1r-private-existing-dump-20260618-blombooru",
+        "dev_test_clone_created_from_live_production": False,
+        "live_production_clone_needed": False,
+        "operator_approval_needed_for_live_clone": False,
+        "operator_approval_needed_for_restore": False,
+        "current_production_contains_old_r1_equivalent_inputs": databases.get(
+            "current_production_contains_old_r1_equivalent_inputs", False
+        ),
+        "restored_source_scope_passed": source_scope_passed,
+        "deterministic_rerun_scope_passed": bool(input_scope_fidelity.get("passed")),
+        "r1r_can_continue": can_continue,
+        "why_blombooru_test_was_tiny": {
+            "blombooru_test_is_toy_fixture": True,
+            "runner_chose_blombooru_test_because": "VIOLET_ENV=test with POSTGRES_DB=blombooru_test was the configured isolation target for the previous R1R run.",
+            "prompt_or_runner_failed_to_locate_old_r1_scale_data": True,
+            "existing_local_snapshot_was_ignored": True,
+            "post_px1_pre_r1_snapshot_ever_found": False,
+            "safest_construction_now": "Use the existing production-derived 2026-06-18 dump restored into a new dev/test DB; avoid live production TEMPLATE clone.",
+        },
+        "old_r1_contamination_handling_plan": {
+            "restored_db_contains_old_r1_sourceconcept_outputs": True,
+            "old_r1_used_as_baseline_only": True,
+            "required_before_target_met": [
+                "preserve media/media_tags/source metadata/PX1 input tables",
+                "run R1R with a new run label",
+                "do not treat restored SourceConcept rows as fresh R1R proof",
+                "in dev/test only, either clear/rebuild SourceConcept-owned output tables or use an isolated R1R run namespace before execute",
+            ],
+            "allowed_dev_test_rebuild_tables": list(SOURCE_CONCEPT_ALLOWED_WRITE_TABLES),
+            "production_sourceconcept_mutation_allowed": False,
+        },
+        "next_action": (
+            "Run the old-R1-scope R1R replay against the restored dev/test DB with SourceConcept output isolation; no A1R yet."
+            if can_continue
+            else "Provide or restore an old-R1-equivalent snapshot before rerunning R1R."
+        ),
     }
 
 
@@ -1095,6 +1420,11 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     judgments = summary.get("llm_judgment_summary") if isinstance(summary.get("llm_judgment_summary"), Mapping) else {}
     continuation = summary.get("operator_continuation") if isinstance(summary.get("operator_continuation"), Mapping) else {}
     input_scope = summary.get("input_scope_fidelity") if isinstance(summary.get("input_scope_fidelity"), Mapping) else {}
+    recovery = (
+        summary.get("snapshot_input_scope_recovery")
+        if isinstance(summary.get("snapshot_input_scope_recovery"), Mapping)
+        else {}
+    )
     smoke = summary.get("preserved_smoke_run") if isinstance(summary.get("preserved_smoke_run"), Mapping) else {}
     route = summary["route_authorization"]
     lines = [
@@ -1124,11 +1454,110 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Actual DB identity checked from write connection: `{(summary['environment_isolation'].get('exact_db_identity_from_actual_connection') or {}).get('checked_from_actual_connection')}`.",
         f"- Storage root checked before settings import: `{(summary['environment_isolation'].get('storage_root_pre_settings_import') or {}).get('passed')}`.",
         "",
-        "## Input Scope Fidelity",
+        "## R1R Snapshot / Input Scope Recovery",
         "",
-        "| Metric | Old R1 expected | Current R1R actual | Ratio | Status |",
-        "|---|---:|---:|---:|---|",
+        f"- Recovery status: `{recovery.get('status')}`.",
+        f"- Post-PX1/pre-R1 snapshot found: `{recovery.get('old_post_px1_pre_r1_snapshot_found')}`.",
+        f"- Existing dump restored: `{recovery.get('existing_dump_restored')}`.",
+        f"- Restored DB label: `{recovery.get('restored_db_label')}`.",
+        f"- Source artifact label: `{recovery.get('source_artifact_label')}`.",
+        f"- Live production clone created: `{recovery.get('dev_test_clone_created_from_live_production')}`.",
+        f"- Operator approval needed for live clone: `{recovery.get('operator_approval_needed_for_live_clone')}`.",
+        f"- Operator approval needed for restore: `{recovery.get('operator_approval_needed_for_restore')}`.",
+        f"- Current production still has old-R1-equivalent inputs: `{recovery.get('current_production_contains_old_r1_equivalent_inputs')}`.",
+        f"- R1R can continue from recovered DB: `{recovery.get('r1r_can_continue')}`.",
+        "",
+        "### Recovery Search",
+        "",
+        "| Searched label |",
+        "|---|",
     ]
+    for label in recovery.get("searched") or []:
+        lines.append(f"| `{label}` |")
+    tiny_reason = recovery.get("why_blombooru_test_was_tiny")
+    if isinstance(tiny_reason, Mapping):
+        lines.extend(
+            [
+                "",
+                "### Why blombooru_test Was Insufficient",
+                "",
+                f"- blombooru_test was a toy/unit/dev fixture: `{tiny_reason.get('blombooru_test_is_toy_fixture')}`.",
+                f"- Previous runner chose blombooru_test because: `{tiny_reason.get('runner_chose_blombooru_test_because')}`.",
+                f"- Prompt/runner failed to locate old-R1-scale data: `{tiny_reason.get('prompt_or_runner_failed_to_locate_old_r1_scale_data')}`.",
+                f"- Existing local snapshot/dump was ignored by the smoke run: `{tiny_reason.get('existing_local_snapshot_was_ignored')}`.",
+                f"- Post-PX1/pre-R1 DB snapshot found: `{tiny_reason.get('post_px1_pre_r1_snapshot_ever_found')}`.",
+                f"- Safest construction now: `{tiny_reason.get('safest_construction_now')}`.",
+            ]
+        )
+    artifact_discovery = recovery.get("artifact_discovery") if isinstance(recovery.get("artifact_discovery"), Mapping) else {}
+    artifact_rows = artifact_discovery.get("candidate_artifacts") if isinstance(artifact_discovery, Mapping) else []
+    lines.extend(
+        [
+            "",
+            "### Snapshot / Artifact Candidates",
+            "",
+            "| Artifact label | Type | Scope | Exists | Safe to restore/use | old-R1 equivalent |",
+            "|---|---|---|---:|---:|---:|",
+        ]
+    )
+    for row in artifact_rows or []:
+        if not isinstance(row, Mapping):
+            continue
+        lines.append(
+            f"| `{row.get('artifact_label')}` | `{row.get('artifact_type')}` | `{row.get('likely_scope')}` | "
+            f"`{row.get('exists')}` | `{row.get('safe_to_restore_to_new_dev_test_db')}` | "
+            f"`{row.get('old_r1_equivalent_or_larger')}` |"
+        )
+    database_discovery = recovery.get("database_discovery") if isinstance(recovery.get("database_discovery"), Mapping) else {}
+    candidate_dbs = database_discovery.get("candidate_databases") if isinstance(database_discovery, Mapping) else []
+    lines.extend(
+        [
+            "",
+            "### Database Candidates",
+            "",
+            "| DB label | read_only | media | eligible | source metadata | PX1 records | SourceConcept | old-R1 scale likely |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in candidate_dbs or []:
+        if not isinstance(row, Mapping):
+            continue
+        counts = row.get("counts") if isinstance(row.get("counts"), Mapping) else {}
+        old_r1_likely = bool(
+            int(counts.get("total_media") or 0) >= OLD_R1_INPUT_SCOPE_BASELINE["total_media"]
+            and int(counts.get("source_metadata_records_total") or 0)
+            >= OLD_R1_INPUT_SCOPE_BASELINE["source_metadata_records_total"]
+        )
+        lines.append(
+            f"| `{row.get('database_label')}` | `{row.get('transaction_read_only')}` | "
+            f"`{counts.get('total_media')}` | `{counts.get('eligible_media')}` | "
+            f"`{counts.get('source_metadata_records_total')}` | `{counts.get('px1_source_metadata_records')}` | "
+            f"`{counts.get('source_concept_total')}` | `{old_r1_likely}` |"
+        )
+    contamination = recovery.get("old_r1_contamination_handling_plan")
+    if isinstance(contamination, Mapping):
+        lines.extend(
+            [
+                "",
+                "### Old R1 Contamination Handling",
+                "",
+                f"- Restored DB contains old R1 SourceConcept outputs: `{contamination.get('restored_db_contains_old_r1_sourceconcept_outputs')}`.",
+                f"- Old R1 used as baseline only: `{contamination.get('old_r1_used_as_baseline_only')}`.",
+                f"- Production SourceConcept mutation allowed: `{contamination.get('production_sourceconcept_mutation_allowed')}`.",
+                "- Required before target_met_full_chain:",
+            ]
+        )
+        for item in contamination.get("required_before_target_met") or []:
+            lines.append(f"  - `{item}`")
+    lines.extend(
+        [
+            "",
+            "## Input Scope Fidelity",
+            "",
+            "| Metric | Old R1 expected | Current R1R actual | Ratio | Status |",
+            "|---|---:|---:|---:|---|",
+        ]
+    )
     for row in input_scope.get("comparison_table") or []:
         lines.append(
             f"| `{row['metric']}` | `{row['old_r1_expected']}` | `{row['current_r1r_actual']}` | `{row['ratio']}` | `{row['status']}` |"
@@ -1279,6 +1708,22 @@ def build_blocked_summary(environment: Mapping[str, Any], output_dir: Path) -> d
                 "Load an isolated dev/test/restored-snapshot DB with old-R1-equivalent post-PX1 inputs.",
                 "Set VIOLET_STORAGE_ROOT to a dedicated non-production local test storage root.",
             ],
+        },
+        "snapshot_input_scope_recovery": {
+            "status": "blocked_environment_isolation",
+            "searched": [],
+            "old_post_px1_pre_r1_snapshot_found": False,
+            "existing_dump_restored": False,
+            "restored_db_created_this_run": False,
+            "restored_db_label": None,
+            "source_artifact_label": None,
+            "dev_test_clone_created_from_live_production": False,
+            "live_production_clone_needed": False,
+            "operator_approval_needed_for_live_clone": False,
+            "operator_approval_needed_for_restore": False,
+            "current_production_contains_old_r1_equivalent_inputs": None,
+            "r1r_can_continue": False,
+            "next_action": "Fix environment isolation before snapshot discovery.",
         },
         "sc1_required_stage_manifest": stage_manifest,
         "sc1_full_chain_proof": {
@@ -1467,17 +1912,25 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         deterministic_metrics = edge_metrics(deterministic_result)
         budget_ready = plan.status != "blocked"
         cache_stats = cache_stats_for_selected_pairs(cache_dir, len(selected_edges))
+        planned_eligible_pair_count = int(plan.projected_calls) + int(plan.skipped_block_count or 0)
         with engine.connect() as conn:
             input_scope_actuals = current_input_scope_actuals(
                 conn,
                 inventory=inventory,
                 deterministic_metrics=deterministic_metrics,
                 source_counts=source_before,
-                eligible_pair_count=int(plan.projected_calls),
+                eligible_pair_count=planned_eligible_pair_count,
                 selected_pair_count=len(selected_edges),
             )
         input_scope_fidelity = build_input_scope_fidelity(input_scope_actuals)
-        if llm_approved and input_scope_fidelity["passed"]:
+        snapshot_recovery = build_snapshot_recovery(
+            settings_database_url=settings.DATABASE_URL,
+            active_db_name=str(identity_before.get("db_name") or ""),
+            input_scope_fidelity=input_scope_fidelity,
+            restored_db_created_this_run=bool(args.restored_db_created_this_run),
+            source_artifact_label=str(args.snapshot_source_artifact_label or ""),
+        )
+        if llm_approved and input_scope_fidelity["passed"] and not args.snapshot_recovery_only:
             if provider is None:
                 llm_execution_summary = {
                     "used": False,
@@ -1558,8 +2011,9 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     count_delta = compare_counts(source_before, source_after)
     replay_metrics = edge_metrics(replay_result)
     adapter_counts = public_signal_inventory(inventory).get("adapter_counts", {})
-    eligible_pair_count = int(plan.projected_calls)
     selected_pair_count = len(selected_edges)
+    plan_skipped_pair_count = int(plan.skipped_block_count or 0)
+    eligible_pair_count = selected_pair_count + plan_skipped_pair_count
     valid_judgments = [row for row in judgments if not row.get("error_type")]
     judgment_count = len(valid_judgments)
     ledger_row_count = len(judgments)
@@ -1571,7 +2025,6 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     successful_accounted_pair_count = (
         resolved_provider_judgment_count + valid_cached_judgment_count + explicit_skipped_pair_count
     )
-    plan_skipped_pair_count = int(plan.skipped_block_count or 0)
     eligible_unselected_pair_count = max(0, eligible_pair_count - selected_pair_count - plan_skipped_pair_count)
     selected_pair_accounting = {
         "selected_pair_count": selected_pair_count,
@@ -1593,6 +2046,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     )
     if not input_scope_fidelity["passed"]:
         status = "smoke_only_not_route_evidence"
+    elif args.snapshot_recovery_only:
+        status = "ready_for_old_r1_scope_rerun"
     elif args.execute and persistence_applied and llm_success_for_target:
         status = "target_met_full_chain" if mutation_delta["passed"] else "blocked_contract"
     elif not llm_approved and eligible_pair_count > 0:
@@ -1663,8 +2118,11 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "db_identity_after": identity_after,
         },
         "input_scope_fidelity": input_scope_fidelity,
+        "snapshot_input_scope_recovery": snapshot_recovery,
         "snapshot_availability": {
-            "status": "available" if input_scope_fidelity["passed"] else "blocked_environment_or_snapshot_unavailable",
+            "status": snapshot_recovery.get("status")
+            if isinstance(snapshot_recovery, Mapping)
+            else ("available" if input_scope_fidelity["passed"] else "blocked_environment_or_snapshot_unavailable"),
             "current_db_label": identity_before.get("db_name"),
             "old_r1_equivalent_input_scope_available": bool(input_scope_fidelity["passed"]),
             "reason": None
@@ -1678,7 +2136,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "old_r1_used_as_baseline_only": True,
             "production_source_concept_tables_overwritten": False,
             "dev_test_restored_snapshot_scope_only": True,
-            "contamination_handling_method": "new_run_label_only_no_sourceconcept_rebuild_current_smoke_scope",
+            "contamination_handling_method": "restored_post_r1_snapshot_requires_dev_test_sourceconcept_output_isolation_before_target_met",
             "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": False,
             "old_r1_a1_remain_invalid_for_route_approval_until_a1r": True,
         },
@@ -1919,6 +2377,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-llm-budget-usd", type=float, default=50.0)
     parser.add_argument("--max-llm-block-size", type=int, default=12)
     parser.add_argument("--fail-if-llm-unavailable", action="store_true")
+    parser.add_argument("--snapshot-recovery-only", action="store_true")
+    parser.add_argument("--snapshot-source-artifact-label", default="")
+    parser.add_argument("--restored-db-created-this-run", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--confirm-execution", default="")
     return parser

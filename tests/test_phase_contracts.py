@@ -178,6 +178,23 @@ def _r1r_summary(**overrides: object) -> dict:
                 },
             ],
         },
+        "snapshot_input_scope_recovery": {
+            "status": "old_r1_scope_available",
+            "searched": ["postgres-database-list-label", "repo-local-backup-dump-snapshot-restore-labels"],
+            "old_post_px1_pre_r1_snapshot_found": False,
+            "existing_dump_restored": True,
+            "restored_db_created_this_run": True,
+            "restored_db_label": "blombooru_r1r_restored_test_20260618",
+            "source_artifact_label": "r1r-private-existing-dump-20260618-blombooru",
+            "dev_test_clone_created_from_live_production": False,
+            "live_production_clone_needed": False,
+            "operator_approval_needed_for_live_clone": False,
+            "operator_approval_needed_for_restore": False,
+            "current_production_contains_old_r1_equivalent_inputs": True,
+            "restored_source_scope_passed": True,
+            "deterministic_rerun_scope_passed": True,
+            "r1r_can_continue": True,
+        },
         "sc1_required_stage_manifest": _r1r_stage_manifest(),
         "sc1_full_chain_proof": {
             "complete_sc1_pipeline_executed": True,
@@ -5477,6 +5494,36 @@ def test_r1r_contract_accepts_smoke_only_insufficient_input_scope_without_comple
     result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
 
     assert result.passed is True
+
+
+def test_r1r_contract_accepts_ready_for_old_r1_scope_rerun_without_llm_claims() -> None:
+    summary = _r1r_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+        "status": "ready_for_old_r1_scope_rerun",
+        "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
+    }
+    summary["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    summary["sc1_full_chain_proof"]["llm_pair_adjudication_executed"] = False
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 0
+    summary["sc1_full_chain_proof"]["all_required_stage_statuses_verified"] = False
+    summary["llm_readiness"]["operator_approved"] = False
+    summary["llm_readiness"]["provider_available"] = False
+    summary["llm_readiness"]["budget_ready"] = False
+    summary["snapshot_input_scope_recovery"]["status"] = "ready_for_old_r1_scope_rerun"
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_r1r_contract_rejects_missing_snapshot_input_scope_recovery() -> None:
+    summary = _r1r_summary()
+    summary.pop("snapshot_input_scope_recovery")
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "missing_required_summary_field" in _error_codes(result)
 
 
 def test_r1r_contract_rejects_target_met_with_llm_disabled_or_zero_judgments() -> None:

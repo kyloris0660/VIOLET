@@ -77,6 +77,10 @@ R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES: tuple[str, ...] = (
     "blocked_public_redaction_failed",
     "blocked_insufficient_input_scope",
     "blocked_environment_or_snapshot_unavailable",
+    "blocked_snapshot_unavailable",
+    "blocked_snapshot_restore_required",
+    "blocked_operator_clone_approval_required",
+    "ready_for_old_r1_scope_rerun",
     "smoke_only_not_route_evidence",
     "dry_run_complete_execute_not_requested",
 )
@@ -2044,6 +2048,7 @@ CONTRACTS: dict[str, PhaseContract] = {
             "pipeline_contract.status",
             "environment_isolation",
             "input_scope_fidelity",
+            "snapshot_input_scope_recovery",
             "sc1_required_stage_manifest",
             "sc1_full_chain_proof",
             "sc1_r1_r1r_fidelity_table",

@@ -1025,6 +1025,9 @@ def _check_r1r_input_scope_fidelity(
         "smoke_only_not_route_evidence",
         "blocked_insufficient_input_scope",
         "blocked_environment_or_snapshot_unavailable",
+        "blocked_snapshot_unavailable",
+        "blocked_snapshot_restore_required",
+        "blocked_operator_clone_approval_required",
         "blocked_environment_isolation",
         "blocked_contract",
     }:
@@ -1183,7 +1186,11 @@ def _check_r1r_llm_truthfulness(
     provider_mode = str(provider_mapping.get("provider_mode") or readiness_mapping.get("provider_mode") or "")
     input_scope_passed = _as_bool(_get(summary, "input_scope_fidelity.passed", True))
 
-    if input_scope_passed and eligible > 0 and not operator_approved and status not in {"blocked_llm_approval_required", "blocked_environment_isolation"}:
+    if input_scope_passed and eligible > 0 and not operator_approved and status not in {
+        "blocked_llm_approval_required",
+        "blocked_environment_isolation",
+        "ready_for_old_r1_scope_rerun",
+    }:
         result.fail(
             "r1r_llm_approval_required_status_missing",
             "Eligible LLM pairs without operator approval must use blocked_llm_approval_required.",
@@ -1191,7 +1198,12 @@ def _check_r1r_llm_truthfulness(
             expected="blocked_llm_approval_required",
             actual=status,
         )
-    if input_scope_passed and operator_approved and not provider_available and status not in {"blocked_provider", "blocked_llm_readiness", "blocked_environment_isolation"}:
+    if input_scope_passed and operator_approved and not provider_available and status not in {
+        "blocked_provider",
+        "blocked_llm_readiness",
+        "blocked_environment_isolation",
+        "ready_for_old_r1_scope_rerun",
+    }:
         result.fail(
             "r1r_provider_unavailable_not_blocked",
             "Approved R1R LLM adjudication with unavailable provider must block as blocked_provider or blocked_llm_readiness.",
@@ -1199,7 +1211,12 @@ def _check_r1r_llm_truthfulness(
             expected=True,
             actual=readiness_mapping.get("provider_available"),
         )
-    if input_scope_passed and operator_approved and not budget_ready and status not in {"blocked_budget", "blocked_llm_readiness", "blocked_environment_isolation"}:
+    if input_scope_passed and operator_approved and not budget_ready and status not in {
+        "blocked_budget",
+        "blocked_llm_readiness",
+        "blocked_environment_isolation",
+        "ready_for_old_r1_scope_rerun",
+    }:
         result.fail(
             "r1r_budget_unready_not_blocked",
             "Approved R1R LLM adjudication with missing/exceeded budget must block as blocked_budget or blocked_llm_readiness.",
