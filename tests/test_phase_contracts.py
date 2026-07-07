@@ -119,6 +119,61 @@ def _r1r_stage_manifest(*, omit: set[str] | None = None, executed_without_label:
     return rows
 
 
+def _r1r_input_scope_rows(overrides: dict[str, int] | None = None) -> list[dict]:
+    expected_values = {
+        "total_media": 3750,
+        "eligible_media": 3687,
+        "source_metadata_records_total": 671,
+        "px1_source_metadata_records": 471,
+        "source_tag_observations": 3727,
+        "source_name_observations": 918,
+        "source_searchable_name_assertions": 918,
+        "source_metadata_evidence": 3727,
+        "resolver_input_signals": 12249,
+        "deterministic_edge_count": 42751,
+        "source_concept_replay_total": 2887,
+        "source_concept_replay_active": 1078,
+        "source_concept_replay_needs_review": 1809,
+        "source_concept_total": 6094,
+        "source_concept_active": 1078,
+        "source_concept_needs_review": 1809,
+        "source_concept_superseded": 3207,
+        "llm_eligible_pair_count": 12,
+        "llm_selected_pair_count": 12,
+    }
+    actual_values = dict(expected_values)
+    if overrides:
+        actual_values.update(overrides)
+    baseline_only = {
+        "source_concept_total",
+        "source_concept_active",
+        "source_concept_needs_review",
+        "source_concept_superseded",
+    }
+    rows = []
+    for metric, expected in expected_values.items():
+        actual = int(actual_values[metric])
+        ratio = round(actual / expected, 4) if expected else None
+        rows.append(
+            {
+                "metric": metric,
+                "category": "old_r1_persisted_baseline_scale"
+                if metric in baseline_only
+                else (
+                    "current_r1r_replay_output_scale"
+                    if metric.startswith("source_concept_replay_")
+                    else ("llm_selected_accounting" if metric.startswith("llm_") else "input_data_scale")
+                ),
+                "required_for_route_evidence": metric not in baseline_only,
+                "old_r1_expected": expected,
+                "current_r1r_actual": actual,
+                "ratio": ratio,
+                "status": "matched" if ratio is not None and ratio >= 0.8 else "insufficient",
+            }
+        )
+    return rows
+
+
 def _r1r_summary(**overrides: object) -> dict:
     summary = {
         "pipeline_contract": {
@@ -161,22 +216,7 @@ def _r1r_summary(**overrides: object) -> dict:
             "failed_metrics": [],
             "route_evidence_allowed": True,
             "current_run_classification": "route_evidence_candidate",
-            "comparison_table": [
-                {
-                    "metric": "resolver_input_signals",
-                    "old_r1_expected": 12249,
-                    "current_r1r_actual": 12249,
-                    "ratio": 1.0,
-                    "status": "matched",
-                },
-                {
-                    "metric": "deterministic_edge_count",
-                    "old_r1_expected": 42751,
-                    "current_r1r_actual": 42751,
-                    "ratio": 1.0,
-                    "status": "matched",
-                },
-            ],
+            "comparison_table": _r1r_input_scope_rows(),
         },
         "snapshot_input_scope_recovery": {
             "status": "old_r1_scope_available",
@@ -278,6 +318,16 @@ def _r1r_summary(**overrides: object) -> dict:
         },
         "mutation_proof": {"passed": True, "forbidden_changed_tables": [], "unexpected_changed_tables": []},
         "post_commit_verification": {"passed": True},
+        "old_r1_contamination_handling": {
+            "baseline_snapshot_recorded": True,
+            "baseline_artifact_label": "old-r1-sourceconcept-baseline",
+            "old_r1_used_as_baseline_only": True,
+            "old_r1_isolated_before_r1r_persistence": True,
+            "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": True,
+            "production_source_concept_tables_overwritten": False,
+            "dev_test_restored_snapshot_scope_only": True,
+            "contamination_handling_method": "dev_test_sourceconcept_owned_delete_rebuild",
+        },
         "review_pack": {"generated": True, "includes_stage_manifest": True},
         "public_redaction": {
             "passed": True,
@@ -5474,6 +5524,43 @@ def test_r1r_contract_rejects_target_met_with_insufficient_input_scope() -> None
     assert "r1r_input_scope_failure_not_blocked" in codes
 
 
+def test_r1r_contract_recomputes_input_scope_from_rows_not_booleans() -> None:
+    summary = _r1r_summary()
+    summary["input_scope_fidelity"]["passed"] = True
+    summary["input_scope_fidelity"]["route_evidence_allowed"] = True
+    summary["input_scope_fidelity"]["failed_metrics"] = []
+    summary["input_scope_fidelity"]["comparison_table"] = _r1r_input_scope_rows(
+        {"resolver_input_signals": 99, "deterministic_edge_count": 170}
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_input_scope_claim_not_supported_by_rows" in codes
+    assert "r1r_target_met_with_insufficient_input_scope" in codes
+
+
+def test_r1r_contract_rejects_stale_sourceconcept_rows_without_current_replay_output() -> None:
+    summary = _r1r_summary()
+    summary["input_scope_fidelity"]["comparison_table"] = _r1r_input_scope_rows(
+        {
+            "source_concept_replay_total": 58,
+            "source_concept_replay_active": 20,
+            "source_concept_replay_needs_review": 10,
+            "source_concept_total": 6094,
+            "source_concept_active": 1078,
+            "source_concept_needs_review": 1809,
+            "source_concept_superseded": 3207,
+        }
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_input_scope_claim_not_supported_by_rows" in codes
+    assert "r1r_target_met_with_insufficient_input_scope" in codes
+
+
 def test_r1r_contract_accepts_smoke_only_insufficient_input_scope_without_completion_claims() -> None:
     summary = _r1r_summary()
     summary["pipeline_contract"] = {
@@ -5562,6 +5649,28 @@ def test_r1r_contract_rejects_partial_selected_llm_pair_accounting() -> None:
     result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
 
     assert "r1r_selected_llm_pairs_not_fully_accounted" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_disconnected_llm_proof_and_ledger_counts() -> None:
+    summary = _r1r_summary()
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 12
+    summary["llm_judgment_summary"]["judgment_count"] = 0
+    summary["llm_judgment_summary"]["ledger_row_count"] = 0
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 12,
+        "resolved_provider_judgment_count": 0,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 0,
+        "all_selected_pairs_successfully_accounted": False,
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_llm_judgment_count_mismatch" in codes
+    assert "r1r_selected_llm_pairs_not_fully_accounted" in codes
 
 
 def test_r1r_contract_rejects_provider_error_rows_as_successful_judgments() -> None:
@@ -5720,6 +5829,18 @@ def test_r1r_contract_rejects_same_row_count_forbidden_content_change() -> None:
     assert "r1r_forbidden_table_changed" in _error_codes(result)
 
 
+def test_r1r_contract_rejects_target_without_old_r1_output_isolation() -> None:
+    summary = _r1r_summary()
+    summary["old_r1_contamination_handling"]["old_r1_isolated_before_r1r_persistence"] = False
+    summary["old_r1_contamination_handling"]["source_concept_owned_tables_cleared_or_rebuilt_in_dev_test"] = False
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_old_r1_output_not_isolated" in codes
+    assert "r1r_old_r1_sourceconcept_rebuild_missing" in codes
+
+
 def test_r1r_contract_uses_fixed_write_allowlist_not_summary_supplied_allowlist() -> None:
     summary = _r1r_summary()
     summary["source_concept_write_scope"]["allowed_tables"] = ["blombooru_media_tags"]
@@ -5730,7 +5851,21 @@ def test_r1r_contract_uses_fixed_write_allowlist_not_summary_supplied_allowlist(
 
     result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
 
-    assert "r1r_source_concept_write_outside_allowlist" in _error_codes(result)
+    codes = _error_codes(result)
+    assert "r1r_source_concept_write_outside_allowlist" in codes
+    assert "r1r_mutation_changed_table_outside_fixed_allowlist" in codes
+
+
+def test_r1r_contract_requires_source_concept_write_scope_for_persistence_claim() -> None:
+    summary = _r1r_summary()
+    summary.pop("source_concept_write_scope")
+    summary["mutation_proof"]["changed_tables"] = [
+        {"table": "blombooru_source_concepts", "changed": True, "allowed": True}
+    ]
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_source_concept_write_scope_missing" in _error_codes(result)
 
 
 def test_r1r_contract_rejects_llm_readiness_status_mismatches() -> None:
@@ -5803,7 +5938,27 @@ def test_r1r_contract_accepts_zero_eligible_full_chain_with_explicit_proof() -> 
     summary["llm_adjudication_plan"]["eligible_pair_count"] = 0
     summary["llm_adjudication_plan"]["selected_pair_count"] = 0
     summary["llm_adjudication_plan"]["eligible_pair_accounting_total"] = 0
+    summary["llm_readiness"] = {
+        "passed": False,
+        "operator_approved": False,
+        "provider_available": False,
+        "provider_mode": None,
+        "provider_model": None,
+        "uses_fallback_provider": False,
+        "cache_ready": False,
+        "budget_ready": False,
+    }
+    summary["llm_provider_execution"] = {
+        "provider_mode": None,
+        "provider_label": None,
+        "provider_name": None,
+        "model_name": None,
+        "uses_fallback_provider": False,
+        "fallback_provider_used": False,
+        "primary_openai_compatible_used": False,
+    }
     summary["llm_judgment_summary"]["judgment_count"] = 0
+    summary["llm_judgment_summary"]["ledger_row_count"] = 0
     summary["llm_judgment_summary"]["selected_pair_count"] = 0
     summary["llm_judgment_summary"]["selected_pair_accounting"] = {
         "selected_pair_count": 0,

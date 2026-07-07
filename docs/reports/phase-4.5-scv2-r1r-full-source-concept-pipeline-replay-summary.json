@@ -80,7 +80,7 @@
   },
   "environment_isolation": {
     "blockers": [],
-    "checked_at": "2026-07-07T07:58:48.478597+00:00",
+    "checked_at": "2026-07-07T08:22:52.564805+00:00",
     "db_identity_after": {
       "db_name": "blombooru_r1r_restored_test_20260618",
       "db_user_redacted": true,
@@ -106,6 +106,14 @@
       "db_target_is_production": false,
       "dev_test_restored_snapshot_db_used": true,
       "passed": true
+    },
+    "output_dir_safety": {
+      "blocked_reasons": [],
+      "checked_before_mkdir": true,
+      "no_directories_created_before_gate": true,
+      "output_dir_label": "r1r-private-artifact-output",
+      "passed": true,
+      "repo_local_ignored_artifact_root": true
     },
     "passed": true,
     "production_db_storage_source_roots_private_ledgers_used_as_fixtures": false,
@@ -136,153 +144,218 @@
     "source_icloud_app_storage": false,
     "source_metadata": false
   },
-  "generated_at": "2026-07-07T07:59:04.483099+00:00",
-  "head_sha": "44facc290bc7bb54ca2dea854beaebd8f1a1048e",
+  "generated_at": "2026-07-07T08:33:21.207299+00:00",
+  "head_sha": "723281e1a1aade6d4658b04d331d6c4d767e17cb",
   "input_scope_fidelity": {
     "blocked_status_if_failed": "smoke_only_not_route_evidence",
     "comparison_table": [
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "input_data_scale",
         "current_r1r_actual": 3750,
         "metric": "total_media",
         "minimum_ratio": 0.8,
         "old_r1_expected": 3750,
         "ratio": 1.0,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "input_data_scale",
         "current_r1r_actual": 3687,
         "metric": "eligible_media",
         "minimum_ratio": 0.8,
         "old_r1_expected": 3687,
         "ratio": 1.0,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json",
+        "category": "input_data_scale",
         "current_r1r_actual": 671,
         "metric": "source_metadata_records_total",
         "minimum_ratio": 0.8,
         "old_r1_expected": 671,
         "ratio": 1.0,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json",
+        "category": "input_data_scale",
         "current_r1r_actual": 471,
         "metric": "px1_source_metadata_records",
         "minimum_ratio": 0.8,
         "old_r1_expected": 471,
         "ratio": 1.0,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "input_data_scale",
         "current_r1r_actual": 4437,
         "metric": "source_tag_observations",
         "minimum_ratio": 0.8,
         "old_r1_expected": 3727,
         "ratio": 1.1905,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "input_data_scale",
         "current_r1r_actual": 1377,
         "metric": "source_name_observations",
         "minimum_ratio": 0.8,
         "old_r1_expected": 918,
         "ratio": 1.5,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "input_data_scale",
         "current_r1r_actual": 1218,
         "metric": "source_searchable_name_assertions",
         "minimum_ratio": 0.8,
         "old_r1_expected": 918,
         "ratio": 1.3268,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "input_data_scale",
         "current_r1r_actual": 4386,
         "metric": "source_metadata_evidence",
         "minimum_ratio": 0.8,
         "old_r1_expected": 3727,
         "ratio": 1.1768,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "input_data_scale",
         "current_r1r_actual": 12249,
         "metric": "resolver_input_signals",
         "minimum_ratio": 0.8,
         "old_r1_expected": 12249,
         "ratio": 1.0,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity-summary.json",
+        "category": "input_data_scale",
         "current_r1r_actual": 42751,
         "metric": "deterministic_edge_count",
         "minimum_ratio": 0.8,
         "old_r1_expected": 42751,
         "ratio": 1.0,
+        "required_for_route_evidence": true,
+        "status": "matched"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md active+needs_review",
+        "category": "current_r1r_replay_output_scale",
+        "current_r1r_actual": 2861,
+        "metric": "source_concept_replay_total",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 2887,
+        "ratio": 0.991,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "current_r1r_replay_output_scale",
+        "current_r1r_actual": 1078,
+        "metric": "source_concept_replay_active",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 1078,
+        "ratio": 1.0,
+        "required_for_route_evidence": true,
+        "status": "matched"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "current_r1r_replay_output_scale",
+        "current_r1r_actual": 1783,
+        "metric": "source_concept_replay_needs_review",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 1809,
+        "ratio": 0.9856,
+        "required_for_route_evidence": true,
+        "status": "matched"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "old_r1_persisted_baseline_scale",
         "current_r1r_actual": 6094,
         "metric": "source_concept_total",
         "minimum_ratio": 0.8,
         "old_r1_expected": 6094,
         "ratio": 1.0,
+        "required_for_route_evidence": false,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "old_r1_persisted_baseline_scale",
         "current_r1r_actual": 1078,
         "metric": "source_concept_active",
         "minimum_ratio": 0.8,
         "old_r1_expected": 1078,
         "ratio": 1.0,
+        "required_for_route_evidence": false,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "old_r1_persisted_baseline_scale",
         "current_r1r_actual": 1809,
         "metric": "source_concept_needs_review",
         "minimum_ratio": 0.8,
         "old_r1_expected": 1809,
         "ratio": 1.0,
+        "required_for_route_evidence": false,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "category": "old_r1_persisted_baseline_scale",
         "current_r1r_actual": 3207,
         "metric": "source_concept_superseded",
         "minimum_ratio": 0.8,
         "old_r1_expected": 3207,
         "ratio": 1.0,
+        "required_for_route_evidence": false,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md",
+        "category": "llm_selected_accounting",
         "current_r1r_actual": 6429,
         "metric": "llm_eligible_pair_count",
         "minimum_ratio": 0.8,
         "old_r1_expected": 300,
         "ratio": 21.43,
+        "required_for_route_evidence": true,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md",
+        "category": "llm_selected_accounting",
         "current_r1r_actual": 300,
         "metric": "llm_selected_pair_count",
         "minimum_ratio": 0.8,
         "old_r1_expected": 300,
         "ratio": 1.0,
+        "required_for_route_evidence": true,
         "status": "matched"
       }
     ],
@@ -306,7 +379,7 @@
     "eligible_pair_accounting_total": 6429,
     "eligible_pair_count": 6429,
     "max_calls": 300,
-    "operator_budget_approved": false,
+    "operator_budget_approved": true,
     "projected_budget_usd": 0.097466,
     "projected_input_tokens": 24733,
     "projected_output_tokens": 24000,
@@ -324,18 +397,18 @@
     "cache_misses": 300,
     "error_count": 0,
     "estimated_cost_usd": 0.097466,
-    "judgment_count": 0,
-    "ledger_row_count": 0,
-    "llm_cannot_count": 0,
-    "llm_same_count": 0,
-    "llm_uncertain_count": 0,
+    "judgment_count": 300,
+    "ledger_row_count": 300,
+    "llm_cannot_count": 70,
+    "llm_same_count": 209,
+    "llm_uncertain_count": 21,
     "selected_pair_accounting": {
-      "all_selected_pairs_successfully_accounted": false,
+      "all_selected_pairs_successfully_accounted": true,
       "explicit_skipped_pair_count": 0,
       "provider_error_pair_count": 0,
-      "resolved_provider_judgment_count": 0,
+      "resolved_provider_judgment_count": 300,
       "selected_pair_count": 300,
-      "successful_accounted_pair_count": 0,
+      "successful_accounted_pair_count": 300,
       "valid_cached_judgment_count": 0
     },
     "selected_pair_count": 300
@@ -344,12 +417,12 @@
     "actual_cost_usd_available": false,
     "actual_cost_usd_estimate": 0.097466,
     "fallback_provider_used": false,
-    "model_name": null,
-    "primary_openai_compatible_used": false,
+    "model_name": "gpt-4.1-mini",
+    "primary_openai_compatible_used": true,
     "provider_error": null,
     "provider_label": "primary_openai",
     "provider_mode": "primary_openai",
-    "provider_name": null,
+    "provider_name": "openai_compatible(primary_openai)",
     "uses_fallback_provider": false
   },
   "llm_readiness": {
@@ -364,38 +437,269 @@
       "cached_decision_count": 0
     },
     "no_secret_leakage": true,
-    "operator_approved": false,
-    "passed": false,
-    "provider_available": false,
+    "operator_approved": true,
+    "passed": true,
+    "provider_available": true,
     "provider_error": null,
     "provider_mode": "primary_openai",
-    "provider_model": null,
-    "provider_readiness_checked": false,
+    "provider_model": "gpt-4.1-mini",
+    "provider_readiness_checked": true,
     "uses_fallback_provider": false
   },
   "local_artifacts": {
     "private_artifact_root_label": "r1r-private-artifacts"
   },
   "mutation_proof": {
-    "allowed_changed_tables": [],
-    "changed_tables": [],
+    "allowed_changed_tables": [
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 4407,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 8539,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -4132,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_aliases"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 8097,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 15085,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -6988,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_evidence"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 1,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 12,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -11,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_resolution_runs"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 4407,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 8539,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -4132,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_search_index"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 8097,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 56127,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -48030,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_signal_links"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 12249,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 12635,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -386,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_signals"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 2827,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 6094,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -3267,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concepts"
+      }
+    ],
+    "changed_tables": [
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 4407,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 8539,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -4132,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_aliases"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 8097,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 15085,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -6988,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_evidence"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 1,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 12,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -11,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_resolution_runs"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 4407,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 8539,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -4132,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_search_index"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 8097,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 56127,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -48030,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_signal_links"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 12249,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 12635,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -386,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concept_signals"
+      },
+      {
+        "after_content_signature_redacted": true,
+        "after_count": 2827,
+        "allowed": true,
+        "before_content_signature_redacted": true,
+        "before_count": 6094,
+        "changed": true,
+        "content_signature_changed": true,
+        "delta": -3267,
+        "prompt_forbidden": false,
+        "table": "blombooru_source_concepts"
+      }
+    ],
     "forbidden_changed_tables": [],
     "passed": true,
     "unexpected_changed_tables": []
   },
   "old_r1_contamination_handling": {
-    "contamination_handling_method": "restored_post_r1_snapshot_requires_dev_test_sourceconcept_output_isolation_before_target_met",
+    "baseline_artifact_label": "old-r1-sourceconcept-baseline",
+    "baseline_snapshot_recorded": true,
+    "contamination_handling_method": "dev_test_sourceconcept_owned_delete_rebuild",
     "dev_test_restored_snapshot_scope_only": true,
-    "new_r1r_run_label": "r1r-20260707T075848Z",
+    "isolation_artifact_label": "old-r1-contamination-isolation",
+    "isolation_status": "old_r1_sourceconcept_outputs_isolated",
+    "new_r1r_run_label": "r1r-20260707T082252Z",
     "old_r1_a1_remain_invalid_for_route_approval_until_a1r": true,
+    "old_r1_isolated_before_r1r_persistence": true,
     "old_r1_used_as_baseline_only": true,
     "production_source_concept_tables_overwritten": false,
-    "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": false
+    "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": true
+  },
+  "old_r1_contamination_isolation": {
+    "allowed_tables_only": true,
+    "applied": true,
+    "baseline_artifact_label": "old-r1-sourceconcept-baseline",
+    "blocked_reason": null,
+    "delete_order": [
+      "blombooru_source_concept_search_index",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concepts",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concept_resolution_runs"
+    ],
+    "deleted_row_counts": {
+      "blombooru_source_concept_aliases": 8539,
+      "blombooru_source_concept_evidence": 15085,
+      "blombooru_source_concept_resolution_runs": 12,
+      "blombooru_source_concept_search_index": 8539,
+      "blombooru_source_concept_signal_links": 56127,
+      "blombooru_source_concept_signals": 12635,
+      "blombooru_source_concepts": 6094
+    },
+    "forbidden_tables_touched": false,
+    "method": "dev_test_sourceconcept_owned_delete_rebuild",
+    "production_db_touched": false,
+    "requested": true,
+    "required": true,
+    "status": "old_r1_sourceconcept_outputs_isolated",
+    "truncate_drop_reset_used": false
+  },
+  "old_r1_sourceconcept_baseline": {
+    "artifact_label": "old-r1-sourceconcept-baseline",
+    "captured_before_r1r_isolation": true,
+    "resolution_run_row_count": 12,
+    "source_concept_counts": {
+      "active": 1078,
+      "concept_status_counts": {
+        "active": 1078,
+        "needs_review": 1809,
+        "superseded": 3207
+      },
+      "concept_total": 6094,
+      "needs_review": 1809,
+      "superseded": 3207,
+      "table_counts": {
+        "blombooru_source_concept_aliases": 8539,
+        "blombooru_source_concept_evidence": 15085,
+        "blombooru_source_concept_resolution_runs": 12,
+        "blombooru_source_concept_search_index": 8539,
+        "blombooru_source_concept_signal_links": 56127,
+        "blombooru_source_concept_signals": 12635,
+        "blombooru_source_concepts": 6094
+      }
+    }
   },
   "operator_continuation": {
-    "execute_confirmation_used": false,
-    "llm_approval_phrase_used": false,
-    "operator_budget_approved": false,
+    "execute_confirmation_used": true,
+    "llm_approval_phrase_used": true,
+    "operator_budget_approved": true,
     "previous_status": "target_met_full_chain_reclassified_smoke_only",
     "provider_policy": "primary_openai_compatible_only_no_fallback"
   },
@@ -403,18 +707,18 @@
   "phase_slug": "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay",
   "pipeline_contract": {
     "claims": {
-      "full_chain_complete": false,
+      "full_chain_complete": true,
       "safe_to_merge": false,
-      "target_met": false
+      "target_met": true
     },
     "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
-    "status": "ready_for_old_r1_scope_rerun"
+    "status": "target_met_full_chain"
   },
   "post_commit_verification": {
-    "execute_requested": false,
+    "execute_requested": true,
     "fresh_connection_checked": true,
-    "passed": false,
-    "reason": "dry_run_no_db_write"
+    "passed": true,
+    "reason": null
   },
   "preserved_smoke_run": {
     "cannot_count": 31,
@@ -457,9 +761,9 @@
       "cache_ready": true,
       "error_count": 0,
       "estimated_cost_usd": 0.097466,
-      "model_name": null,
-      "operator_approved": false,
-      "provider_available": false,
+      "model_name": "gpt-4.1-mini",
+      "operator_approved": true,
+      "provider_available": true,
       "provider_mode": "primary_openai",
       "uses_fallback_provider": false
     },
@@ -472,14 +776,14 @@
       "status": "ready"
     },
     "mutation": {
-      "changed_table_count": 0,
+      "changed_table_count": 7,
       "forbidden_changed_table_count": 0,
       "passed": true,
       "unexpected_changed_table_count": 0
     },
     "operator_continuation": {
-      "execute_confirmation_used": false,
-      "llm_approval_phrase_used": false,
+      "execute_confirmation_used": true,
+      "llm_approval_phrase_used": true,
       "previous_status": "target_met_full_chain_reclassified_smoke_only",
       "provider_policy": "primary_openai_compatible_only_no_fallback"
     },
@@ -503,28 +807,29 @@
       "downstream_routes_blocked": true
     },
     "sc1_full_chain": {
-      "all_stages_verified": false,
-      "cannot": 0,
-      "complete": false,
+      "all_stages_verified": true,
+      "cannot": 70,
+      "complete": true,
       "deterministic_complete": true,
       "eligible_pairs": 6429,
-      "judgments": 0,
-      "llm_executed": false,
+      "judgments": 300,
+      "llm_executed": true,
       "llm_requested": true,
-      "same": 0,
+      "same": 209,
       "selected_pairs": 300,
-      "uncertain": 0
+      "uncertain": 21
     },
     "snapshot_availability": {
       "old_r1_equivalent_input_scope_available": true,
       "status": "ready_for_old_r1_scope_rerun"
     },
-    "status": "ready_for_old_r1_scope_rerun"
+    "status": "target_met_full_chain"
   },
   "public_redaction": {
     "clean_before_public_write": true,
     "finding_count": 0,
     "findings": [],
+    "findings_redacted": false,
     "passed": true,
     "scanned_artifacts": {
       "final_json_summary": true,
@@ -533,23 +838,27 @@
     "unsafe_public_report_written": false
   },
   "r1r_replay_stage_summary": {
-    "alias_count": 4414,
-    "concept_count": 2861,
+    "alias_count": 4407,
+    "concept_count": 2827,
     "concept_counts_by_status": {
-      "active": 1078,
-      "needs_review": 1783
+      "active": 1067,
+      "needs_review": 1760
     },
-    "edge_count": 42751,
+    "edge_count": 43051,
     "edge_counts_by_status": {
-      "active": 10400,
-      "needs_review": 23471,
-      "rejected": 1537,
+      "active": 10600,
+      "needs_review": 23500,
+      "rejected": 1608,
       "weak": 7343
     },
     "edge_counts_by_type": {
       "context_only": 1551,
       "cooccurrence_context": 5788,
       "exact_canonical_key": 358,
+      "llm_blocked_guard": 1,
+      "llm_needs_review": 21,
+      "llm_negative_guard": 70,
+      "llm_same_concept": 208,
       "negative_guard": 2842,
       "same_scope_duplicate_review": 381,
       "same_surface_context": 470,
@@ -578,9 +887,14 @@
     },
     "evidence_count": 8097,
     "link_count": 8097,
-    "llm_edge_counts_by_type": {},
+    "llm_edge_counts_by_type": {
+      "llm_blocked_guard": 1,
+      "llm_needs_review": 21,
+      "llm_negative_guard": 70,
+      "llm_same_concept": 208
+    },
     "resolver_version": "source_concept_resolver_core_v2_graph",
-    "search_index_preview_count": 4414,
+    "search_index_preview_count": 4407,
     "signal_count": 12249
   },
   "review_pack": {
@@ -599,27 +913,21 @@
     "scale_up_authorized": false,
     "source_concept_truth_promotion_authorized": false
   },
-  "run_id": "r1r-20260707T075848Z",
+  "run_id": "r1r-20260707T082252Z",
   "sc1_full_chain_proof": {
-    "all_required_stage_statuses_verified": false,
-    "complete_sc1_pipeline_executed": false,
+    "all_required_stage_statuses_verified": true,
+    "complete_sc1_pipeline_executed": true,
     "deterministic_only_output_used_as_full_chain_route_approval_evidence": false,
     "deterministic_pipeline_executed": true,
-    "llm_cannot_count": 0,
+    "llm_cannot_count": 70,
     "llm_eligible_pair_count": 6429,
-    "llm_judgment_count": 0,
-    "llm_pair_adjudication_executed": false,
+    "llm_judgment_count": 300,
+    "llm_pair_adjudication_executed": true,
     "llm_pair_adjudication_requested": true,
-    "llm_same_count": 0,
+    "llm_same_count": 209,
     "llm_selected_pair_count": 300,
-    "llm_uncertain_count": 0,
-    "missing_required_stages": [
-      "bounded_llm_judgment_execution",
-      "llm_decision_recording",
-      "llm_decision_effects_applied_or_recorded",
-      "source_concept_owned_persistence",
-      "post_commit_verification"
-    ],
+    "llm_uncertain_count": 21,
+    "missing_required_stages": [],
     "review_pack_includes_stage_manifest": true,
     "skipped_required_stages": [],
     "stage_manifest_artifact": "r1r-private-stage-manifest"
@@ -700,8 +1008,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 0 judgments",
       "pipeline_step": "bounded LLM pair adjudication",
-      "r1r_actual_evidence": "R1R judgments 0",
-      "r1r_status": "blocked",
+      "r1r_actual_evidence": "R1R judgments 300",
+      "r1r_status": "verified",
       "sc1_actual_evidence": "SC1 300 judgments",
       "sc1_expected": "required for full chain"
     },
@@ -710,8 +1018,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 none",
       "pipeline_step": "LLM decision effects",
-      "r1r_actual_evidence": "R1R blocked by input-scope gate",
-      "r1r_status": "blocked",
+      "r1r_actual_evidence": "R1R recorded decisions",
+      "r1r_status": "verified",
       "sc1_actual_evidence": "SC1 LLM edges",
       "sc1_expected": "record/apply source-layer only"
     },
@@ -720,8 +1028,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 SourceConcept tables",
       "pipeline_step": "SourceConcept persistence",
-      "r1r_actual_evidence": "R1R dry-run no writes",
-      "r1r_status": "blocked",
+      "r1r_actual_evidence": "R1R ready for execute gate",
+      "r1r_status": "verified",
       "sc1_actual_evidence": "SC1 allowed tables",
       "sc1_expected": "SourceConcept-owned only"
     },
@@ -993,7 +1301,7 @@
       "evidence_artifact_label": "r1r-private-union_component_resolution",
       "executed": true,
       "input_count": 42751,
-      "output_count": 2861,
+      "output_count": 2827,
       "private_artifact_label": "r1r-private-union_component_resolution",
       "public_safe_summary_fields": [
         "input_count",
@@ -1070,10 +1378,10 @@
     {
       "configured": true,
       "contract_check_name": "bounded_llm_judgment_execution",
-      "evidence_artifact_label": "",
-      "executed": false,
+      "evidence_artifact_label": "r1r-private-bounded_llm_judgment_execution",
+      "executed": true,
       "input_count": 300,
-      "output_count": 0,
+      "output_count": 300,
       "private_artifact_label": "r1r-private-bounded_llm_judgment_execution",
       "public_safe_summary_fields": [
         "input_count",
@@ -1082,18 +1390,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "ready_for_old_r1_scope_rerun",
+      "skip_reason": null,
       "skipped": false,
       "stage_name": "bounded_llm_judgment_execution",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
       "contract_check_name": "llm_decision_recording",
-      "evidence_artifact_label": "",
-      "executed": false,
-      "input_count": 0,
-      "output_count": 0,
+      "evidence_artifact_label": "r1r-private-llm_decision_recording",
+      "executed": true,
+      "input_count": 300,
+      "output_count": 300,
       "private_artifact_label": "r1r-private-llm_decision_recording",
       "public_safe_summary_fields": [
         "input_count",
@@ -1102,18 +1410,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "ready_for_old_r1_scope_rerun",
+      "skip_reason": null,
       "skipped": false,
       "stage_name": "llm_decision_recording",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
       "contract_check_name": "llm_decision_effects_applied_or_recorded",
-      "evidence_artifact_label": "",
-      "executed": false,
-      "input_count": 0,
-      "output_count": 0,
+      "evidence_artifact_label": "r1r-private-llm_decision_effects_applied_or_recorded",
+      "executed": true,
+      "input_count": 300,
+      "output_count": 300,
       "private_artifact_label": "r1r-private-llm_decision_effects_applied_or_recorded",
       "public_safe_summary_fields": [
         "input_count",
@@ -1122,18 +1430,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": "ready_for_old_r1_scope_rerun",
+      "skip_reason": null,
       "skipped": false,
       "stage_name": "llm_decision_effects_applied_or_recorded",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
       "contract_check_name": "source_concept_owned_persistence",
-      "evidence_artifact_label": "",
-      "executed": false,
-      "input_count": 2861,
-      "output_count": 0,
+      "evidence_artifact_label": "r1r-private-source_concept_owned_persistence",
+      "executed": true,
+      "input_count": 2827,
+      "output_count": 2827,
       "private_artifact_label": "r1r-private-source_concept_owned_persistence",
       "public_safe_summary_fields": [
         "input_count",
@@ -1145,7 +1453,7 @@
       "skip_reason": null,
       "skipped": false,
       "stage_name": "source_concept_owned_persistence",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
@@ -1170,10 +1478,10 @@
     {
       "configured": true,
       "contract_check_name": "post_commit_verification",
-      "evidence_artifact_label": "",
-      "executed": false,
-      "input_count": 2861,
-      "output_count": 0,
+      "evidence_artifact_label": "r1r-private-post_commit_verification",
+      "executed": true,
+      "input_count": 2827,
+      "output_count": 1,
       "private_artifact_label": "r1r-private-post_commit_verification",
       "public_safe_summary_fields": [
         "input_count",
@@ -1185,7 +1493,7 @@
       "skip_reason": null,
       "skipped": false,
       "stage_name": "post_commit_verification",
-      "status": "blocked"
+      "status": "verified"
     },
     {
       "configured": true,
@@ -1961,7 +2269,7 @@
     "operator_approval_needed_for_live_clone": false,
     "operator_approval_needed_for_restore": false,
     "r1r_can_continue": true,
-    "restored_db_created_this_run": true,
+    "restored_db_created_this_run": false,
     "restored_db_label": "blombooru_r1r_restored_test_20260618",
     "restored_source_scope_passed": true,
     "searched": [
@@ -1986,23 +2294,22 @@
     }
   },
   "source_concept_after": {
-    "active": 1078,
+    "active": 1067,
     "concept_status_counts": {
-      "active": 1078,
-      "needs_review": 1809,
-      "superseded": 3207
+      "active": 1067,
+      "needs_review": 1760
     },
-    "concept_total": 6094,
-    "needs_review": 1809,
-    "superseded": 3207,
+    "concept_total": 2827,
+    "needs_review": 1760,
+    "superseded": 0,
     "table_counts": {
-      "blombooru_source_concept_aliases": 8539,
-      "blombooru_source_concept_evidence": 15085,
-      "blombooru_source_concept_resolution_runs": 12,
-      "blombooru_source_concept_search_index": 8539,
-      "blombooru_source_concept_signal_links": 56127,
-      "blombooru_source_concept_signals": 12635,
-      "blombooru_source_concepts": 6094
+      "blombooru_source_concept_aliases": 4407,
+      "blombooru_source_concept_evidence": 8097,
+      "blombooru_source_concept_resolution_runs": 1,
+      "blombooru_source_concept_search_index": 4407,
+      "blombooru_source_concept_signal_links": 8097,
+      "blombooru_source_concept_signals": 12249,
+      "blombooru_source_concepts": 2827
     }
   },
   "source_concept_before": {
@@ -2026,7 +2333,7 @@
     }
   },
   "source_concept_delta": {
-    "active_delta": 0,
+    "active_delta": -11,
     "gap_symmetry_needs_review_deltas": {
       "ai_only_weak_evidence_guard_delta": 0,
       "cjk_romaji_parenthetical_alias_gap_delta": 0,
@@ -2038,17 +2345,17 @@
       "search_seed_symmetry_delta": 0,
       "source_assertion_tag_name_unlinked_delta": 0
     },
-    "needs_review_delta": 0,
-    "source_concept_total_delta": 0,
-    "superseded_delta": 0,
+    "needs_review_delta": -49,
+    "source_concept_total_delta": -3267,
+    "superseded_delta": -3207,
     "table_count_deltas": {
-      "blombooru_source_concept_aliases": 0,
-      "blombooru_source_concept_evidence": 0,
-      "blombooru_source_concept_resolution_runs": 0,
-      "blombooru_source_concept_search_index": 0,
-      "blombooru_source_concept_signal_links": 0,
-      "blombooru_source_concept_signals": 0,
-      "blombooru_source_concepts": 0
+      "blombooru_source_concept_aliases": -4132,
+      "blombooru_source_concept_evidence": -6988,
+      "blombooru_source_concept_resolution_runs": -11,
+      "blombooru_source_concept_search_index": -4132,
+      "blombooru_source_concept_signal_links": -48030,
+      "blombooru_source_concept_signals": -386,
+      "blombooru_source_concepts": -3267
     }
   },
   "source_concept_write_scope": {
@@ -2061,7 +2368,15 @@
       "blombooru_source_concept_signal_links",
       "blombooru_source_concept_search_index"
     ],
-    "changed_tables": []
+    "changed_tables": [
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_search_index",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts"
+    ]
   },
   "source_signal_inventory": {
     "adapter_counts": {

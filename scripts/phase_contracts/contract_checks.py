@@ -52,6 +52,30 @@ R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = {
     "blombooru_source_concept_signal_links",
     "blombooru_source_concept_search_index",
 }
+R1R_INPUT_SCOPE_MIN_RATIO = 0.8
+R1R_BASELINE_ONLY_INPUT_SCOPE_METRICS = {
+    "source_concept_total",
+    "source_concept_active",
+    "source_concept_needs_review",
+    "source_concept_superseded",
+}
+R1R_REQUIRED_INPUT_SCOPE_METRICS = (
+    "total_media",
+    "eligible_media",
+    "source_metadata_records_total",
+    "px1_source_metadata_records",
+    "source_tag_observations",
+    "source_name_observations",
+    "source_searchable_name_assertions",
+    "source_metadata_evidence",
+    "resolver_input_signals",
+    "deterministic_edge_count",
+    "source_concept_replay_total",
+    "source_concept_replay_active",
+    "source_concept_replay_needs_review",
+    "llm_eligible_pair_count",
+    "llm_selected_pair_count",
+)
 REQUIRED_NON_EMPTY_PROOF_FIELDS = {
     "request_ledger",
     "failure_ledger",
@@ -979,6 +1003,7 @@ def _check_r1r_input_scope_fidelity(
         result.fail("r1r_input_scope_fidelity_missing", "R1R requires input_scope_fidelity proof.", path="input_scope_fidelity")
         return
     table = scope.get("comparison_table")
+    rows_by_metric: dict[str, Mapping[str, Any]] = {}
     if not isinstance(table, list) or not table:
         result.fail(
             "r1r_input_scope_comparison_missing",
@@ -990,6 +1015,9 @@ def _check_r1r_input_scope_fidelity(
             if not isinstance(row, Mapping):
                 result.fail("r1r_input_scope_row_not_object", "Input-scope rows must be objects.", path=f"input_scope_fidelity.comparison_table[{index}]")
                 continue
+            metric = str(row.get("metric") or "")
+            if metric:
+                rows_by_metric[metric] = row
             missing = [
                 key
                 for key in ("metric", "old_r1_expected", "current_r1r_actual", "ratio", "status")
@@ -1002,18 +1030,61 @@ def _check_r1r_input_scope_fidelity(
                     path=f"input_scope_fidelity.comparison_table[{index}]",
                     actual=missing,
                 )
-    passed = _as_bool(scope.get("passed"))
-    route_allowed = _as_bool(scope.get("route_evidence_allowed"))
-    failed_metrics = scope.get("failed_metrics") if isinstance(scope.get("failed_metrics"), list) else []
-    if target_met_full_chain and (not passed or not route_allowed or failed_metrics):
+        missing_required_rows = [metric for metric in R1R_REQUIRED_INPUT_SCOPE_METRICS if metric not in rows_by_metric]
+        for metric in missing_required_rows:
+            result.fail(
+                "r1r_input_scope_required_metric_missing",
+                "R1R input-scope fidelity rows must include every required old-R1 comparison metric.",
+                path="input_scope_fidelity.comparison_table",
+                expected=metric,
+            )
+    derived_failed_metrics: list[str] = []
+    for metric in R1R_REQUIRED_INPUT_SCOPE_METRICS:
+        row = rows_by_metric.get(metric)
+        if not isinstance(row, Mapping):
+            derived_failed_metrics.append(metric)
+            continue
+        expected = _as_float(row.get("old_r1_expected"), default=0.0)
+        actual = _as_float(row.get("current_r1r_actual"), default=0.0)
+        row_ratio = row.get("ratio")
+        ratio = _as_float(row_ratio, default=(actual / expected if expected > 0 else 0.0))
+        if expected <= 0 or ratio < R1R_INPUT_SCOPE_MIN_RATIO or actual < expected * R1R_INPUT_SCOPE_MIN_RATIO:
+            derived_failed_metrics.append(metric)
+    derived_pass = not derived_failed_metrics
+    passed_claim = _as_bool(scope.get("passed"))
+    route_allowed_claim = _as_bool(scope.get("route_evidence_allowed"))
+    failed_metrics_claim = scope.get("failed_metrics") if isinstance(scope.get("failed_metrics"), list) else []
+    result.details["r1r_input_scope_derived_failed_metrics"] = derived_failed_metrics
+    if (passed_claim or route_allowed_claim) and not derived_pass:
+        result.fail(
+            "r1r_input_scope_claim_not_supported_by_rows",
+            "R1R input-scope pass/route evidence claims must be recomputed from required comparison rows.",
+            path="input_scope_fidelity.comparison_table",
+            expected="all required metric ratios >= 0.8",
+            actual=derived_failed_metrics,
+        )
+    if derived_pass and failed_metrics_claim:
+        result.fail(
+            "r1r_input_scope_failed_metrics_claim_mismatch",
+            "R1R input-scope failed_metrics must match contract-derived comparison row status.",
+            path="input_scope_fidelity.failed_metrics",
+            expected=[],
+            actual=failed_metrics_claim,
+        )
+    if target_met_full_chain and (not derived_pass or not passed_claim or not route_allowed_claim or failed_metrics_claim):
         result.fail(
             "r1r_target_met_with_insufficient_input_scope",
             "target_met_full_chain requires old-R1-equivalent source-layer input scope, not a tiny fixture.",
             path="input_scope_fidelity",
             expected={"passed": True, "route_evidence_allowed": True, "failed_metrics": []},
-            actual={"passed": passed, "route_evidence_allowed": route_allowed, "failed_metrics": failed_metrics},
+            actual={
+                "passed": passed_claim,
+                "route_evidence_allowed": route_allowed_claim,
+                "failed_metrics": failed_metrics_claim,
+                "derived_failed_metrics": derived_failed_metrics,
+            },
         )
-    if not passed and status == "target_met_full_chain":
+    if not derived_pass and status == "target_met_full_chain":
         result.fail(
             "r1r_input_scope_failure_not_blocked",
             "Insufficient input scope must use smoke_only_not_route_evidence or blocked_insufficient_input_scope, not target_met_full_chain.",
@@ -1021,7 +1092,7 @@ def _check_r1r_input_scope_fidelity(
             expected="smoke_only_not_route_evidence",
             actual=status,
         )
-    if not passed and status not in {
+    if not derived_pass and status not in {
         "smoke_only_not_route_evidence",
         "blocked_insufficient_input_scope",
         "blocked_environment_or_snapshot_unavailable",
@@ -1153,6 +1224,8 @@ def _check_r1r_llm_truthfulness(
     )
     selected = _as_int(proof_mapping.get("llm_selected_pair_count", plan_mapping.get("selected_pair_count", plan_mapping.get("selected_block_count", 0))))
     judgments = _as_int(proof_mapping.get("llm_judgment_count", _get(summary, "llm_judgment_count", 0)))
+    judgment_summary_count = _as_int(judgment_mapping.get("judgment_count", judgments))
+    ledger_row_count = _as_int(judgment_mapping.get("ledger_row_count", judgment_summary_count))
     error_count = _as_int(judgment_mapping.get("error_count", _get(summary, "llm_error_count", 0)))
     accounting = (
         judgment_mapping.get("selected_pair_accounting")
@@ -1253,7 +1326,9 @@ def _check_r1r_llm_truthfulness(
                     expected=True,
                     actual=value,
                 )
-        if not readiness_passed or not provider_available or not cache_ready or not budget_ready:
+        if not zero_eligible_pair_proof and (
+            not readiness_passed or not provider_available or not cache_ready or not budget_ready
+        ):
             result.fail(
                 "r1r_llm_readiness_missing_for_target",
                 "target_met_full_chain requires provider/cache/budget readiness proof.",
@@ -1261,7 +1336,7 @@ def _check_r1r_llm_truthfulness(
                 expected={"passed": True, "provider_available": True, "cache_ready": True, "budget_ready": True},
                 actual=readiness_mapping,
             )
-        if provider_mode != "primary_openai":
+        if not zero_eligible_pair_proof and provider_mode != "primary_openai":
             result.fail(
                 "r1r_primary_provider_identity_missing",
                 "target_met_full_chain requires primary OpenAI-compatible provider identity.",
@@ -1269,7 +1344,7 @@ def _check_r1r_llm_truthfulness(
                 expected="primary_openai",
                 actual=provider_mode,
             )
-        if not provider_mapping.get("model_name"):
+        if not zero_eligible_pair_proof and not provider_mapping.get("model_name"):
             result.fail(
                 "r1r_llm_model_identity_missing",
                 "target_met_full_chain requires the actual configured model name used for R1R adjudication.",
@@ -1292,6 +1367,18 @@ def _check_r1r_llm_truthfulness(
                 path="llm_judgment_summary.selected_pair_accounting.provider_error_pair_count",
                 expected=0,
                 actual=provider_error_pairs,
+            )
+        if judgments != judgment_summary_count or judgment_summary_count != ledger_row_count:
+            result.fail(
+                "r1r_llm_judgment_count_mismatch",
+                "R1R LLM judgment proof count must match llm_judgment_summary.judgment_count and ledger_row_count.",
+                path="llm_judgment_summary",
+                expected={"proof_judgment_count": judgments},
+                actual={
+                    "proof_judgment_count": judgments,
+                    "summary_judgment_count": judgment_summary_count,
+                    "ledger_row_count": ledger_row_count,
+                },
             )
         if eligible_accounting_total != eligible:
             result.fail(
@@ -1364,9 +1451,22 @@ def _check_r1r_write_scope(
     target_met_full_chain: bool,
 ) -> None:
     mutation = _get(summary, "mutation_proof", {})
+    mutation_changed_tables: list[str] = []
     if not isinstance(mutation, Mapping):
         result.fail("r1r_mutation_proof_not_object", "R1R requires mutation_proof object.", path="mutation_proof")
     else:
+        delta = mutation.get("delta") if isinstance(mutation.get("delta"), Mapping) else mutation
+        mutation_changed_tables = _table_names(delta.get("changed_tables", []))
+        outside_contract_allowlist = sorted(
+            table for table in mutation_changed_tables if table not in R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES
+        )
+        if outside_contract_allowlist:
+            result.fail(
+                "r1r_mutation_changed_table_outside_fixed_allowlist",
+                "R1R contract compares mutation_proof.changed_tables against its fixed SourceConcept-owned allowlist.",
+                path="mutation_proof.changed_tables",
+                actual=outside_contract_allowlist,
+            )
         forbidden_names, unexpected_names = _mutation_table_violations(mutation)
         if forbidden_names:
             result.fail(
@@ -1403,7 +1503,16 @@ def _check_r1r_write_scope(
                     actual=value,
                 )
 
-    scope = _get(summary, "source_concept_write_scope", {})
+    scope = _get(summary, "source_concept_write_scope", MISSING)
+    source_scope_required = target_met_full_chain or bool(mutation_changed_tables) or _as_bool(
+        _get(summary, "post_commit_verification.execute_requested", False)
+    )
+    if source_scope_required and not isinstance(scope, Mapping):
+        result.fail(
+            "r1r_source_concept_write_scope_missing",
+            "R1R requires source_concept_write_scope proof when SourceConcept persistence is claimed or changes are observed.",
+            path="source_concept_write_scope",
+        )
     if isinstance(scope, Mapping):
         changed_tables = _table_names(scope.get("changed_tables", []))
         outside_allowed = sorted(table for table in changed_tables if table not in R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
@@ -1414,6 +1523,40 @@ def _check_r1r_write_scope(
                 path="source_concept_write_scope.changed_tables",
                 actual=outside_allowed,
             )
+
+    contamination = _get(summary, "old_r1_contamination_handling", {})
+    if target_met_full_chain:
+        if not isinstance(contamination, Mapping):
+            result.fail(
+                "r1r_old_r1_contamination_handling_missing",
+                "target_met_full_chain requires proof that old deterministic R1 SourceConcept output was isolated.",
+                path="old_r1_contamination_handling",
+            )
+        else:
+            if not _as_bool(contamination.get("baseline_snapshot_recorded")):
+                result.fail(
+                    "r1r_old_r1_baseline_snapshot_missing",
+                    "target_met_full_chain requires an old R1 SourceConcept baseline snapshot before isolation.",
+                    path="old_r1_contamination_handling.baseline_snapshot_recorded",
+                    expected=True,
+                    actual=contamination.get("baseline_snapshot_recorded"),
+                )
+            if not _as_bool(contamination.get("old_r1_isolated_before_r1r_persistence")):
+                result.fail(
+                    "r1r_old_r1_output_not_isolated",
+                    "target_met_full_chain cannot reuse old deterministic R1 SourceConcept rows as fresh R1R evidence.",
+                    path="old_r1_contamination_handling.old_r1_isolated_before_r1r_persistence",
+                    expected=True,
+                    actual=contamination.get("old_r1_isolated_before_r1r_persistence"),
+                )
+            if not _as_bool(contamination.get("source_concept_owned_tables_cleared_or_rebuilt_in_dev_test")):
+                result.fail(
+                    "r1r_old_r1_sourceconcept_rebuild_missing",
+                    "target_met_full_chain requires SourceConcept-owned output isolation in dev/test/restored-snapshot DB.",
+                    path="old_r1_contamination_handling.source_concept_owned_tables_cleared_or_rebuilt_in_dev_test",
+                    expected=True,
+                    actual=contamination.get("source_concept_owned_tables_cleared_or_rebuilt_in_dev_test"),
+                )
 
     post_commit = _get(summary, "post_commit_verification", {})
     if target_met_full_chain and not _as_bool(_get(summary, "post_commit_verification.passed", False)):

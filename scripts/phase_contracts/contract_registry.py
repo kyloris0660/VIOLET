@@ -80,6 +80,7 @@ R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES: tuple[str, ...] = (
     "blocked_snapshot_unavailable",
     "blocked_snapshot_restore_required",
     "blocked_operator_clone_approval_required",
+    "blocked_old_r1_contamination_isolation",
     "ready_for_old_r1_scope_rerun",
     "smoke_only_not_route_evidence",
     "dry_run_complete_execute_not_requested",

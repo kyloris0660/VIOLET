@@ -2,15 +2,15 @@
 
 ## Status
 
-- Contract status: `ready_for_old_r1_scope_rerun`.
+- Contract status: `target_met_full_chain`.
 - Previous continuation status: `target_met_full_chain_reclassified_smoke_only`.
-- Operator LLM approval used: `False`.
-- Dev/test execute confirmation used: `False`.
+- Operator LLM approval used: `True`.
+- Dev/test execute confirmation used: `True`.
 - Provider policy: `primary_openai_compatible_only_no_fallback`.
-- Complete SC1 pipeline executed: `False`.
+- Complete SC1 pipeline executed: `True`.
 - Deterministic pipeline executed: `True`.
-- LLM adjudication requested/executed: `True` / `False`.
-- LLM selected pairs / judgments: `300` / `0`.
+- LLM adjudication requested/executed: `True` / `True`.
+- LLM selected pairs / judgments: `300` / `300`.
 - Input-scope fidelity gate: `matched_old_r1_scope`.
 - Current run classification: `route_evidence_candidate`.
 - A1R still required: `True`.
@@ -108,24 +108,27 @@
 
 ## Input Scope Fidelity
 
-| Metric | Old R1 expected | Current R1R actual | Ratio | Status |
-|---|---:|---:|---:|---|
-| `total_media` | `3750` | `3750` | `1.0` | `matched` |
-| `eligible_media` | `3687` | `3687` | `1.0` | `matched` |
-| `source_metadata_records_total` | `671` | `671` | `1.0` | `matched` |
-| `px1_source_metadata_records` | `471` | `471` | `1.0` | `matched` |
-| `source_tag_observations` | `3727` | `4437` | `1.1905` | `matched` |
-| `source_name_observations` | `918` | `1377` | `1.5` | `matched` |
-| `source_searchable_name_assertions` | `918` | `1218` | `1.3268` | `matched` |
-| `source_metadata_evidence` | `3727` | `4386` | `1.1768` | `matched` |
-| `resolver_input_signals` | `12249` | `12249` | `1.0` | `matched` |
-| `deterministic_edge_count` | `42751` | `42751` | `1.0` | `matched` |
-| `source_concept_total` | `6094` | `6094` | `1.0` | `matched` |
-| `source_concept_active` | `1078` | `1078` | `1.0` | `matched` |
-| `source_concept_needs_review` | `1809` | `1809` | `1.0` | `matched` |
-| `source_concept_superseded` | `3207` | `3207` | `1.0` | `matched` |
-| `llm_eligible_pair_count` | `300` | `6429` | `21.43` | `matched` |
-| `llm_selected_pair_count` | `300` | `300` | `1.0` | `matched` |
+| Metric | Category | Required | Old R1 expected | Current R1R actual | Ratio | Status |
+|---|---|---:|---:|---:|---:|---|
+| `total_media` | `input_data_scale` | `True` | `3750` | `3750` | `1.0` | `matched` |
+| `eligible_media` | `input_data_scale` | `True` | `3687` | `3687` | `1.0` | `matched` |
+| `source_metadata_records_total` | `input_data_scale` | `True` | `671` | `671` | `1.0` | `matched` |
+| `px1_source_metadata_records` | `input_data_scale` | `True` | `471` | `471` | `1.0` | `matched` |
+| `source_tag_observations` | `input_data_scale` | `True` | `3727` | `4437` | `1.1905` | `matched` |
+| `source_name_observations` | `input_data_scale` | `True` | `918` | `1377` | `1.5` | `matched` |
+| `source_searchable_name_assertions` | `input_data_scale` | `True` | `918` | `1218` | `1.3268` | `matched` |
+| `source_metadata_evidence` | `input_data_scale` | `True` | `3727` | `4386` | `1.1768` | `matched` |
+| `resolver_input_signals` | `input_data_scale` | `True` | `12249` | `12249` | `1.0` | `matched` |
+| `deterministic_edge_count` | `input_data_scale` | `True` | `42751` | `42751` | `1.0` | `matched` |
+| `source_concept_replay_total` | `current_r1r_replay_output_scale` | `True` | `2887` | `2861` | `0.991` | `matched` |
+| `source_concept_replay_active` | `current_r1r_replay_output_scale` | `True` | `1078` | `1078` | `1.0` | `matched` |
+| `source_concept_replay_needs_review` | `current_r1r_replay_output_scale` | `True` | `1809` | `1783` | `0.9856` | `matched` |
+| `source_concept_total` | `old_r1_persisted_baseline_scale` | `False` | `6094` | `6094` | `1.0` | `matched` |
+| `source_concept_active` | `old_r1_persisted_baseline_scale` | `False` | `1078` | `1078` | `1.0` | `matched` |
+| `source_concept_needs_review` | `old_r1_persisted_baseline_scale` | `False` | `1809` | `1809` | `1.0` | `matched` |
+| `source_concept_superseded` | `old_r1_persisted_baseline_scale` | `False` | `3207` | `3207` | `1.0` | `matched` |
+| `llm_eligible_pair_count` | `llm_selected_accounting` | `True` | `300` | `6429` | `21.43` | `matched` |
+| `llm_selected_pair_count` | `llm_selected_accounting` | `True` | `300` | `300` | `1.0` | `matched` |
 
 ## Preserved Smoke Run
 
@@ -134,18 +137,27 @@
 - Signal / edge count: `99` / `170`.
 - Selected pairs / judgments: `33` / `33`.
 
+## Old R1 Baseline Isolation
+
+- Baseline artifact label: `old-r1-sourceconcept-baseline`.
+- Isolation artifact label: `old-r1-contamination-isolation`.
+- SourceConcept-owned tables cleared/rebuilt in dev/test: `True`.
+- Old R1 isolated before R1R persistence: `True`.
+- Contamination handling method: `dev_test_sourceconcept_owned_delete_rebuild`.
+- Baseline SourceConcept total/active/needs_review/superseded: `6094` / `1078` / `1809` / `3207`.
+
 ## LLM Readiness
 
-- Operator approved: `False`.
-- Provider available: `False`.
-- Provider/model configured: `primary_openai` / `None`.
-- Primary OpenAI-compatible adjudication calls made: `False`.
+- Operator approved: `True`.
+- Provider available: `True`.
+- Provider/model configured: `primary_openai` / `gpt-4.1-mini`.
+- Primary OpenAI-compatible adjudication calls made: `True`.
 - Fallback provider used: `False`.
 - Cache ready: `True`.
 - Budget ready: `True`.
 - Eligible pairs: `6429`.
 - Selected pairs: `300`.
-- Judgment/error/cache counts: `0` / `0` / `0` hits, `300` misses.
+- Judgment/error/cache counts: `300` / `0` / `0` hits, `300` misses.
 - Estimated actual cost USD: `0.097466`; exact provider cost available: `False`.
 - Max calls / budget USD: `300` / `50.0`.
 
@@ -165,16 +177,16 @@
 | `deterministic_edge_graph_generation` | `verified` | `12249` | `42751` | `r1r-private-deterministic_edge_graph_generation` |
 | `context_compatibility_guards` | `verified` | `42751` | `42751` | `r1r-private-context_compatibility_guards` |
 | `alias_context_equivalence` | `verified` | `42751` | `42751` | `r1r-private-alias_context_equivalence` |
-| `union_component_resolution` | `verified` | `42751` | `2861` | `r1r-private-union_component_resolution` |
+| `union_component_resolution` | `verified` | `42751` | `2827` | `r1r-private-union_component_resolution` |
 | `bounded_llm_pair_planning` | `verified` | `42751` | `300` | `r1r-private-bounded_llm_pair_planning` |
 | `bounded_llm_provider_cache_budget_readiness` | `verified` | `300` | `1` | `r1r-private-bounded_llm_provider_cache_budget_readiness` |
 | `bounded_llm_pair_selection` | `verified` | `42751` | `300` | `r1r-private-bounded_llm_pair_selection` |
-| `bounded_llm_judgment_execution` | `blocked` | `300` | `0` | `[blocked]` |
-| `llm_decision_recording` | `blocked` | `0` | `0` | `[blocked]` |
-| `llm_decision_effects_applied_or_recorded` | `blocked` | `0` | `0` | `[blocked]` |
-| `source_concept_owned_persistence` | `blocked` | `2861` | `0` | `[blocked]` |
+| `bounded_llm_judgment_execution` | `verified` | `300` | `300` | `r1r-private-bounded_llm_judgment_execution` |
+| `llm_decision_recording` | `verified` | `300` | `300` | `r1r-private-llm_decision_recording` |
+| `llm_decision_effects_applied_or_recorded` | `verified` | `300` | `300` | `r1r-private-llm_decision_effects_applied_or_recorded` |
+| `source_concept_owned_persistence` | `verified` | `2827` | `2827` | `r1r-private-source_concept_owned_persistence` |
 | `mutation_proof` | `verified` | `29` | `1` | `r1r-private-mutation_proof` |
-| `post_commit_verification` | `blocked` | `2861` | `0` | `[blocked]` |
+| `post_commit_verification` | `verified` | `2827` | `1` | `r1r-private-post_commit_verification` |
 | `validation_pack_review_pack_generation` | `verified` | `24` | `1` | `r1r-private-validation_pack_review_pack_generation` |
 | `public_redaction` | `verified` | `2` | `1` | `r1r-private-public_redaction` |
 
@@ -189,9 +201,9 @@
 | alias/context equivalence | required | SC1 alias/context tests | R1 shared service | R1R shared service | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | union/component resolution | required | SC1 concept/link counts | R1 persisted concepts | R1R deterministic concepts | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | bounded LLM pair planning | required after blocking | SC1 selected 300 | old R1 disabled | R1R selected 300 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| bounded LLM pair adjudication | required for full chain | SC1 300 judgments | old R1 0 judgments | R1R judgments 0 | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| LLM decision effects | record/apply source-layer only | SC1 LLM edges | old R1 none | R1R blocked by input-scope gate | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| SourceConcept persistence | SourceConcept-owned only | SC1 allowed tables | old R1 SourceConcept tables | R1R dry-run no writes | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| bounded LLM pair adjudication | required for full chain | SC1 300 judgments | old R1 0 judgments | R1R judgments 300 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| LLM decision effects | record/apply source-layer only | SC1 LLM edges | old R1 none | R1R recorded decisions | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| SourceConcept persistence | SourceConcept-owned only | SC1 allowed tables | old R1 SourceConcept tables | R1R ready for execute gate | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | mutation proof | required | SC1 mutation proof | R1 mutation proof | R1R mutation proof | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | review pack | required | SC1 validation pack | R1 validation pack | R1R review pack | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 
@@ -204,4 +216,4 @@
 
 ## Result
 
-R1R did not produce route-evidence-grade full-chain replay evidence; A1R must not start as a route approval rerun yet.
+R1R produced full-chain SourceConcept replay evidence and may feed A1R.

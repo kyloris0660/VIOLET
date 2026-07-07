@@ -66,6 +66,9 @@ OLD_R1_INPUT_SCOPE_BASELINE = {
     "source_metadata_evidence": 3727,
     "resolver_input_signals": 12249,
     "deterministic_edge_count": 42751,
+    "source_concept_replay_total": 2887,
+    "source_concept_replay_active": 1078,
+    "source_concept_replay_needs_review": 1809,
     "source_concept_total": 6094,
     "source_concept_active": 1078,
     "source_concept_needs_review": 1809,
@@ -84,6 +87,9 @@ OLD_R1_INPUT_SCOPE_SOURCES = {
     "source_metadata_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
     "resolver_input_signals": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
     "deterministic_edge_count": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity-summary.json",
+    "source_concept_replay_total": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md active+needs_review",
+    "source_concept_replay_active": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "source_concept_replay_needs_review": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
     "source_concept_total": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
     "source_concept_active": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
     "source_concept_needs_review": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
@@ -91,6 +97,19 @@ OLD_R1_INPUT_SCOPE_SOURCES = {
     "llm_eligible_pair_count": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md",
     "llm_selected_pair_count": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md",
 }
+INPUT_SCOPE_BASELINE_ONLY_METRICS = {
+    "source_concept_total",
+    "source_concept_active",
+    "source_concept_needs_review",
+    "source_concept_superseded",
+}
+OUTPUT_DIR_ALLOWED_ROOTS = (DEFAULT_OUTPUT_DIR.parent,)
+PROTECTED_OUTPUT_ROOTS = (
+    ROOT / "data",
+    ROOT / "media",
+    ROOT / "backend",
+    ROOT / "frontend",
+)
 SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = (
     "blombooru_source_concept_resolution_runs",
     "blombooru_source_concept_signals",
@@ -99,6 +118,15 @@ SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = (
     "blombooru_source_concept_evidence",
     "blombooru_source_concept_signal_links",
     "blombooru_source_concept_search_index",
+)
+SOURCE_CONCEPT_REBUILD_DELETE_ORDER = (
+    "blombooru_source_concept_search_index",
+    "blombooru_source_concept_signal_links",
+    "blombooru_source_concept_evidence",
+    "blombooru_source_concept_aliases",
+    "blombooru_source_concepts",
+    "blombooru_source_concept_signals",
+    "blombooru_source_concept_resolution_runs",
 )
 FORBIDDEN_WRITE_TABLES = (
     "blombooru_media",
@@ -141,6 +169,44 @@ def write_json(path: Path, value: Any) -> None:
 
 def write_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> None:
     write_text(path, "\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True, default=str) for row in rows) + "\n")
+
+
+def is_relative_to_path(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_output_dir_safety(output_dir: Path) -> dict[str, Any]:
+    resolved = output_dir.resolve(strict=False)
+    allowed_roots = [root.resolve(strict=False) for root in OUTPUT_DIR_ALLOWED_ROOTS]
+    protected_roots = [root.resolve(strict=False) for root in PROTECTED_OUTPUT_ROOTS]
+    folded = str(resolved).casefold()
+    blocked_reasons: list[str] = []
+    allowed = any(is_relative_to_path(resolved, root) for root in allowed_roots)
+    if not allowed:
+        blocked_reasons.append("output_dir_not_under_repo_local_ignored_artifact_root")
+    if any(is_relative_to_path(resolved, root) for root in protected_roots):
+        blocked_reasons.append("output_dir_overlaps_repo_data_media_or_app_source")
+    if any(marker in folded for marker in ("icloud", "onedrive", "pictures", "photos library", "source root")):
+        blocked_reasons.append("output_dir_looks_like_source_icloud_or_app_managed_storage")
+    return {
+        "checked_before_mkdir": True,
+        "passed": not blocked_reasons,
+        "blocked_reasons": blocked_reasons,
+        "output_dir_label": "r1r-private-artifact-output",
+        "repo_local_ignored_artifact_root": allowed,
+        "no_directories_created_before_gate": True,
+    }
+
+
+def require_safe_output_dir(output_dir: Path) -> dict[str, Any]:
+    gate = validate_output_dir_safety(output_dir)
+    if not gate["passed"]:
+        raise SystemExit(f"blocked_output_dir_safety: {', '.join(gate['blocked_reasons'])}")
+    return gate
 
 
 def sha256_file(path: Path) -> str:
@@ -514,6 +580,56 @@ def source_concept_counts(conn: Any) -> dict[str, Any]:
     }
 
 
+def source_concept_baseline_snapshot(conn: Any) -> dict[str, Any]:
+    run_rows: list[dict[str, Any]] = []
+    try:
+        for row in conn.execute(
+            text(
+                "SELECT run_id, run_label, resolver_version, mode, status, started_at, finished_at "
+                "FROM blombooru_source_concept_resolution_runs ORDER BY id"
+            )
+        ).mappings():
+            run_rows.append(
+                {
+                    "run_id_label": str(row.get("run_id") or ""),
+                    "run_label": str(row.get("run_label") or ""),
+                    "resolver_version": str(row.get("resolver_version") or ""),
+                    "mode": str(row.get("mode") or ""),
+                    "status": str(row.get("status") or ""),
+                    "started_at": str(row.get("started_at") or ""),
+                    "finished_at": str(row.get("finished_at") or ""),
+                }
+            )
+    except Exception as exc:
+        run_rows.append({"snapshot_error": type(exc).__name__})
+    return {
+        "snapshot_label": "old-r1-sourceconcept-baseline",
+        "captured_before_r1r_isolation": True,
+        "source_concept_counts": source_concept_counts(conn),
+        "resolution_run_rows": run_rows,
+        "resolution_run_row_count": len(run_rows),
+        "private_safe": True,
+        "public_safe_summary_fields": ["source_concept_counts", "resolution_run_row_count"],
+    }
+
+
+def clear_source_concept_owned_tables(db: Any) -> dict[str, Any]:
+    deleted: dict[str, int | None] = {}
+    for table in SOURCE_CONCEPT_REBUILD_DELETE_ORDER:
+        result = db.execute(text(f"DELETE FROM {qident(table)}"))
+        deleted[table] = result.rowcount if result.rowcount is not None else None
+    return {
+        "method": "dev_test_sourceconcept_owned_delete_rebuild",
+        "allowed_tables_only": True,
+        "delete_order": list(SOURCE_CONCEPT_REBUILD_DELETE_ORDER),
+        "deleted_row_counts": deleted,
+        "production_db_touched": False,
+        "forbidden_tables_touched": False,
+        "truncate_drop_reset_used": False,
+        "status": "old_r1_sourceconcept_outputs_isolated",
+    }
+
+
 def scalar_count(conn: Any, sql: str) -> int:
     try:
         return int(conn.execute(text(sql)).scalar() or 0)
@@ -532,6 +648,11 @@ def current_input_scope_actuals(
 ) -> dict[str, int]:
     sources = inventory.get("sources") if isinstance(inventory.get("sources"), Mapping) else {}
     metadata = sources.get("provider_structured_fields") if isinstance(sources.get("provider_structured_fields"), Mapping) else {}
+    replay_status_counts = (
+        deterministic_metrics.get("concept_counts_by_status")
+        if isinstance(deterministic_metrics.get("concept_counts_by_status"), Mapping)
+        else {}
+    )
     return {
         "total_media": scalar_count(conn, "SELECT COUNT(*) FROM blombooru_media"),
         "eligible_media": scalar_count(
@@ -562,6 +683,9 @@ def current_input_scope_actuals(
         "source_metadata_evidence": scalar_count(conn, "SELECT COUNT(*) FROM blombooru_source_metadata_evidence"),
         "resolver_input_signals": int(deterministic_metrics.get("signal_count") or 0),
         "deterministic_edge_count": int(deterministic_metrics.get("edge_count") or 0),
+        "source_concept_replay_total": int(deterministic_metrics.get("concept_count") or 0),
+        "source_concept_replay_active": int(replay_status_counts.get("active") or 0),
+        "source_concept_replay_needs_review": int(replay_status_counts.get("needs_review") or 0),
         "source_concept_total": int(source_counts.get("concept_total") or 0),
         "source_concept_active": int(source_counts.get("active") or 0),
         "source_concept_needs_review": int(source_counts.get("needs_review") or 0),
@@ -580,12 +704,25 @@ def build_input_scope_fidelity(actuals: Mapping[str, int]) -> dict[str, Any]:
     for metric, expected in OLD_R1_INPUT_SCOPE_BASELINE.items():
         actual = int(actuals.get(metric, 0) or 0)
         ratio = None if expected <= 0 else round(actual / expected, 4)
+        baseline_only = metric in INPUT_SCOPE_BASELINE_ONLY_METRICS
+        if metric.startswith("source_concept_replay_"):
+            category = "current_r1r_replay_output_scale"
+        elif metric.startswith("llm_"):
+            category = "llm_selected_accounting"
+        elif baseline_only:
+            category = "old_r1_persisted_baseline_scale"
+        else:
+            category = "input_data_scale"
         status = "matched" if ratio is not None and ratio >= INPUT_SCOPE_MIN_RATIO else "insufficient"
-        if status != "matched":
+        if baseline_only and status != "matched":
+            status = "baseline_only_insufficient"
+        if (not baseline_only) and status != "matched":
             failed.append(metric)
         rows.append(
             {
                 "metric": metric,
+                "category": category,
+                "required_for_route_evidence": not baseline_only,
                 "old_r1_expected": expected,
                 "current_r1r_actual": actual,
                 "ratio": ratio,
@@ -1403,7 +1540,8 @@ def public_redaction_check(summary: Mapping[str, Any], markdown: str) -> dict[st
     return {
         "passed": not findings,
         "finding_count": len(findings),
-        "findings": findings[:10],
+        "findings": [],
+        "findings_redacted": bool(findings),
         "scanned_artifacts": {
             "final_json_summary": True,
             "final_markdown_report": True,
@@ -1411,6 +1549,65 @@ def public_redaction_check(summary: Mapping[str, Any], markdown: str) -> dict[st
         "clean_before_public_write": not findings,
         "unsafe_public_report_written": False,
     }
+
+
+def redaction_failure_summary(summary: Mapping[str, Any], redaction: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "phase": summary.get("phase", PHASE),
+        "phase_slug": summary.get("phase_slug", PHASE_SLUG),
+        "generated_at": utc_now_iso(),
+        "branch": git_value(["rev-parse", "--abbrev-ref", "HEAD"]),
+        "head_sha": git_value(["rev-parse", "HEAD"]),
+        "baseline_main_sha": git_value(["rev-parse", "origin/main"]),
+        "pipeline_contract": {
+            "contract_id": CONTRACT_ID,
+            "status": "blocked_public_redaction_failed",
+            "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
+        },
+        "public_redaction": {
+            "passed": False,
+            "finding_count": int(redaction.get("finding_count") or 0),
+            "findings": [],
+            "findings_redacted": True,
+            "scanned_artifacts": {
+                "final_json_summary": True,
+                "final_markdown_report": True,
+            },
+            "clean_before_public_write": False,
+            "unsafe_public_report_written": False,
+            "unsafe_original_payload_published": False,
+        },
+        "redaction_failure": {
+            "unsafe_payload_not_published": True,
+            "original_status_redacted": str((summary.get("pipeline_contract") or {}).get("status") or "unknown"),
+            "finding_count": int(redaction.get("finding_count") or 0),
+        },
+        "route_authorization": route_authorization(),
+        "public_json_payload": {
+            "status": "blocked_public_redaction_failed",
+            "redaction_failure": True,
+            "finding_count": int(redaction.get("finding_count") or 0),
+        },
+        "local_artifacts": {"private_artifact_root_label": "r1r-private-artifacts"},
+    }
+
+
+def redaction_failure_report(summary: Mapping[str, Any]) -> str:
+    redaction = summary.get("public_redaction") if isinstance(summary.get("public_redaction"), Mapping) else {}
+    return "\n".join(
+        [
+            "# Phase 4.5-SCV2-R1R Full SourceConcept Pipeline Replay",
+            "",
+            "## Status",
+            "",
+            "- Contract status: `blocked_public_redaction_failed`.",
+            "- Unsafe original public payload was not published.",
+            f"- Redaction finding count: `{redaction.get('finding_count')}`.",
+            "- R1R target evidence claim: `false`.",
+            "- A1R still required: `true`.",
+            "",
+        ]
+    )
 
 
 def public_report_markdown(summary: Mapping[str, Any]) -> str:
@@ -1423,6 +1620,16 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     recovery = (
         summary.get("snapshot_input_scope_recovery")
         if isinstance(summary.get("snapshot_input_scope_recovery"), Mapping)
+        else {}
+    )
+    old_r1_handling = (
+        summary.get("old_r1_contamination_handling")
+        if isinstance(summary.get("old_r1_contamination_handling"), Mapping)
+        else {}
+    )
+    old_r1_baseline = (
+        summary.get("old_r1_sourceconcept_baseline")
+        if isinstance(summary.get("old_r1_sourceconcept_baseline"), Mapping)
         else {}
     )
     smoke = summary.get("preserved_smoke_run") if isinstance(summary.get("preserved_smoke_run"), Mapping) else {}
@@ -1554,13 +1761,14 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             "",
             "## Input Scope Fidelity",
             "",
-            "| Metric | Old R1 expected | Current R1R actual | Ratio | Status |",
-            "|---|---:|---:|---:|---|",
+            "| Metric | Category | Required | Old R1 expected | Current R1R actual | Ratio | Status |",
+            "|---|---|---:|---:|---:|---:|---|",
         ]
     )
     for row in input_scope.get("comparison_table") or []:
         lines.append(
-            f"| `{row['metric']}` | `{row['old_r1_expected']}` | `{row['current_r1r_actual']}` | `{row['ratio']}` | `{row['status']}` |"
+            f"| `{row['metric']}` | `{row.get('category')}` | `{row.get('required_for_route_evidence')}` | "
+            f"`{row['old_r1_expected']}` | `{row['current_r1r_actual']}` | `{row['ratio']}` | `{row['status']}` |"
         )
     if smoke:
         lines.extend(
@@ -1572,6 +1780,27 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
                 f"- Run id: `{smoke.get('run_id')}`.",
                 f"- Signal / edge count: `{smoke.get('signal_count')}` / `{smoke.get('edge_count')}`.",
                 f"- Selected pairs / judgments: `{smoke.get('selected_pair_count')}` / `{smoke.get('judgment_count')}`.",
+            ]
+        )
+    if old_r1_handling:
+        baseline_counts = (
+            old_r1_baseline.get("source_concept_counts")
+            if isinstance(old_r1_baseline.get("source_concept_counts"), Mapping)
+            else {}
+        )
+        lines.extend(
+            [
+                "",
+                "## Old R1 Baseline Isolation",
+                "",
+                f"- Baseline artifact label: `{old_r1_handling.get('baseline_artifact_label')}`.",
+                f"- Isolation artifact label: `{old_r1_handling.get('isolation_artifact_label')}`.",
+                f"- SourceConcept-owned tables cleared/rebuilt in dev/test: `{old_r1_handling.get('source_concept_owned_tables_cleared_or_rebuilt_in_dev_test')}`.",
+                f"- Old R1 isolated before R1R persistence: `{old_r1_handling.get('old_r1_isolated_before_r1r_persistence')}`.",
+                f"- Contamination handling method: `{old_r1_handling.get('contamination_handling_method')}`.",
+                f"- Baseline SourceConcept total/active/needs_review/superseded: "
+                f"`{baseline_counts.get('concept_total')}` / `{baseline_counts.get('active')}` / "
+                f"`{baseline_counts.get('needs_review')}` / `{baseline_counts.get('superseded')}`.",
             ]
         )
     lines.extend(
@@ -1828,10 +2057,12 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     output_dir = Path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR
     if not output_dir.is_absolute():
         output_dir = ROOT / output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir_gate = require_safe_output_dir(output_dir)
 
     environment = inspect_environment()
+    environment["output_dir_safety"] = output_dir_gate
     if not environment["passed"]:
+        output_dir.mkdir(parents=True, exist_ok=True)
         summary = build_blocked_summary(environment, output_dir)
         return finalize_outputs(summary, output_dir)
 
@@ -1884,15 +2115,23 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     with engine.connect() as conn:
         identity_before = db_identity(conn)
         exact_db_gate = classify_db_identity(identity_before)
+        if args.execute and str(identity_before.get("db_name") or "") != RESTORED_R1R_DB_NAME:
+            exact_db_gate = {
+                **exact_db_gate,
+                "passed": False,
+                "blockers": list(exact_db_gate.get("blockers", [])) + ["execute_requires_restored_old_r1_scope_db"],
+            }
         environment["exact_db_identity_from_actual_connection"] = exact_db_gate
         environment["db_identity_before"] = identity_before
         if not exact_db_gate["passed"]:
             environment["passed"] = False
             environment["blockers"] = list(environment.get("blockers", [])) + list(exact_db_gate["blockers"])
+            output_dir.mkdir(parents=True, exist_ok=True)
             summary = build_blocked_summary(environment, output_dir)
             return finalize_outputs(summary, output_dir)
         before_table_counts = table_snapshots(conn, (*SOURCE_CONCEPT_ALLOWED_WRITE_TABLES, *FORBIDDEN_WRITE_TABLES))
         source_before = source_concept_counts(conn)
+        old_r1_baseline_snapshot = source_concept_baseline_snapshot(conn)
 
     db = SessionLocal()
     judgments: list[dict[str, Any]] = []
@@ -1902,6 +2141,14 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "apply": False,
         "allowed_tables": list(SOURCE_CONCEPT_ALLOWED_WRITE_TABLES),
         "forbidden_truth_table_write_count": 0,
+    }
+    old_r1_isolation = {
+        "required": bool(args.execute),
+        "requested": bool(args.isolate_old_r1_sourceconcept),
+        "applied": False,
+        "status": "not_requested",
+        "method": None,
+        "blocked_reason": None,
     }
     try:
         inventory = source_signal_inventory(db)
@@ -1982,6 +2229,13 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             replay_result = resolve_source_concepts(signals, run_id=args.run_id, llm_config=llm_config, llm_judgments=valid_judgments)
         else:
             replay_result = deterministic_result
+        old_r1_isolation_blocked = bool(args.execute and input_scope_fidelity["passed"] and not args.isolate_old_r1_sourceconcept)
+        if old_r1_isolation_blocked:
+            old_r1_isolation = {
+                **old_r1_isolation,
+                "status": "blocked_old_r1_contamination_isolation",
+                "blocked_reason": "execute_requested_without_old_r1_sourceconcept_output_isolation",
+            }
         execute_allowed = bool(
             args.execute
             and llm_approved
@@ -1989,8 +2243,18 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             and provider is not None
             and llm_error_count == 0
             and (len(selected_edges) == 0 or len(valid_judgments) >= len(selected_edges))
+            and not old_r1_isolation_blocked
         )
         if execute_allowed:
+            old_r1_isolation = {
+                **old_r1_isolation,
+                **clear_source_concept_owned_tables(db),
+                "required": True,
+                "requested": True,
+                "applied": True,
+                "baseline_artifact_label": "old-r1-sourceconcept-baseline",
+                "production_db_touched": False,
+            }
             persistence = persist_source_concept_resolution(
                 db,
                 replay_result,
@@ -2048,6 +2312,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         status = "smoke_only_not_route_evidence"
     elif args.snapshot_recovery_only:
         status = "ready_for_old_r1_scope_rerun"
+    elif args.execute and not args.isolate_old_r1_sourceconcept:
+        status = "blocked_old_r1_contamination_isolation"
     elif args.execute and persistence_applied and llm_success_for_target:
         status = "target_met_full_chain" if mutation_delta["passed"] else "blocked_contract"
     elif not llm_approved and eligible_pair_count > 0:
@@ -2085,7 +2351,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         if row["required"] and row["skipped"] and row["status"] != "skipped_not_applicable"
     ]
     actual_cost_estimate = 0.0
-    if selected_pair_count:
+    if judgment_count > 0 and selected_pair_count:
         actual_calls = max(0, int(cache_stats.get("cache_misses", 0) or 0))
         actual_cost_estimate = round(float(plan.projected_cost_usd) * (actual_calls / selected_pair_count), 6)
     summary = {
@@ -2136,10 +2402,23 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "old_r1_used_as_baseline_only": True,
             "production_source_concept_tables_overwritten": False,
             "dev_test_restored_snapshot_scope_only": True,
-            "contamination_handling_method": "restored_post_r1_snapshot_requires_dev_test_sourceconcept_output_isolation_before_target_met",
-            "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": False,
+            "baseline_snapshot_recorded": True,
+            "baseline_artifact_label": "old-r1-sourceconcept-baseline",
+            "contamination_handling_method": old_r1_isolation.get("method")
+            or "restored_post_r1_snapshot_requires_dev_test_sourceconcept_output_isolation_before_target_met",
+            "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": bool(old_r1_isolation.get("applied")),
+            "old_r1_isolated_before_r1r_persistence": bool(old_r1_isolation.get("applied")),
+            "isolation_status": old_r1_isolation.get("status"),
+            "isolation_artifact_label": "old-r1-contamination-isolation",
             "old_r1_a1_remain_invalid_for_route_approval_until_a1r": True,
         },
+        "old_r1_sourceconcept_baseline": {
+            "artifact_label": "old-r1-sourceconcept-baseline",
+            "captured_before_r1r_isolation": True,
+            "source_concept_counts": old_r1_baseline_snapshot.get("source_concept_counts"),
+            "resolution_run_row_count": old_r1_baseline_snapshot.get("resolution_run_row_count"),
+        },
+        "old_r1_contamination_isolation": old_r1_isolation,
         "sc1_required_stage_manifest": stage_manifest,
         "sc1_full_chain_proof": {
             "complete_sc1_pipeline_executed": full_chain_complete,
@@ -2277,7 +2556,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "mutation-proof.json": mutation_delta,
         "before-after-snapshots.json": {"before": source_before, "after": source_after, "delta": count_delta},
         "fidelity-table.json": summary["sc1_r1_r1r_fidelity_table"],
+        "old-r1-sourceconcept-baseline.json": old_r1_baseline_snapshot,
+        "old-r1-contamination-isolation.json": old_r1_isolation,
     }
+    output_dir.mkdir(parents=True, exist_ok=True)
     for name, payload in private_payloads.items():
         write_json(output_dir / name, payload)
     write_jsonl(output_dir / "selected-llm-pairs.jsonl", selected_pair_rows(selected_edges))
@@ -2295,6 +2577,7 @@ def finalize_outputs(summary: dict[str, Any], output_dir: Path) -> dict[str, Any
     }
     contract_result: dict[str, Any] | None = None
     report = ""
+    redaction_failed = False
     for _ in range(2):
         summary["public_json_payload"] = build_public_json_payload(summary)
         report = public_report_markdown(summary)
@@ -2306,6 +2589,18 @@ def finalize_outputs(summary: dict[str, Any], output_dir: Path) -> dict[str, Any
             "error_count": contract_result["error_count"],
             "warning_count": contract_result["warning_count"],
         }
+        if not summary["public_redaction"]["passed"]:
+            finding_count = int(summary["public_redaction"].get("finding_count") or 0)
+            summary = redaction_failure_summary(summary, summary["public_redaction"])
+            summary["contract_result"] = {
+                "contract_id": CONTRACT_ID,
+                "passed": False,
+                "error_count": max(1, int(contract_result.get("error_count") or 0), finding_count),
+                "warning_count": int(contract_result.get("warning_count") or 0),
+            }
+            report = redaction_failure_report(summary)
+            redaction_failed = True
+            break
         if contract_result["passed"] and summary["public_redaction"]["passed"]:
             break
         if summary.get("pipeline_contract", {}).get("status") == "target_met_full_chain":
@@ -2327,13 +2622,26 @@ def finalize_outputs(summary: dict[str, Any], output_dir: Path) -> dict[str, Any
         break
 
     summary["public_json_payload"] = build_public_json_payload(summary)
-    report = public_report_markdown(summary)
+    report = redaction_failure_report(summary) if redaction_failed else public_report_markdown(summary)
     write_text(PUBLIC_REPORT_MD, report)
     write_json(PUBLIC_REPORT_JSON, summary)
 
     write_json(output_dir / "contract-result.json", contract_result or {})
     write_json(output_dir / "public-summary-copy.json", summary)
     write_text(output_dir / "public-report-copy.md", report)
+    if redaction_failed:
+        zip_path = output_dir / "review-pack.zip"
+        zip_files(
+            zip_path,
+            {
+                "public-summary-copy.json": output_dir / "public-summary-copy.json",
+                "public-report-copy.md": output_dir / "public-report-copy.md",
+                "contract-result.json": output_dir / "contract-result.json",
+            },
+        )
+        write_json(output_dir / "review-pack-integrity-private.json", {"sha256": sha256_file(zip_path)})
+        return summary
+
     write_json(output_dir / "sc1-required-stage-manifest.json", summary["sc1_required_stage_manifest"])
     review_pack_files = {
         "public-summary-copy.json": output_dir / "public-summary-copy.json",
@@ -2350,6 +2658,8 @@ def finalize_outputs(summary: dict[str, Any], output_dir: Path) -> dict[str, Any
         "mutation-proof.json",
         "before-after-snapshots.json",
         "fidelity-table.json",
+        "old-r1-sourceconcept-baseline.json",
+        "old-r1-contamination-isolation.json",
     ):
         path = output_dir / name
         if path.exists():
@@ -2382,6 +2692,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--restored-db-created-this-run", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--confirm-execution", default="")
+    parser.add_argument("--isolate-old-r1-sourceconcept", action="store_true")
     return parser
 
 
