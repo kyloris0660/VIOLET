@@ -72,7 +72,7 @@
   },
   "environment_isolation": {
     "blockers": [],
-    "checked_at": "2026-07-06T16:37:19.972143+00:00",
+    "checked_at": "2026-07-07T07:24:36.391841+00:00",
     "db_identity_after": {
       "db_name": "blombooru_test",
       "db_user_redacted": true,
@@ -91,6 +91,14 @@
     "db_target_is_production": false,
     "dev_test_restored_snapshot_db_used": true,
     "dynamic_production_launcher_used": false,
+    "exact_db_identity_from_actual_connection": {
+      "blockers": [],
+      "checked_from_actual_connection": true,
+      "db_name": "blombooru_test",
+      "db_target_is_production": false,
+      "dev_test_restored_snapshot_db_used": true,
+      "passed": true
+    },
     "passed": true,
     "production_db_storage_source_roots_private_ledgers_used_as_fixtures": false,
     "production_profile_active": false,
@@ -98,6 +106,16 @@
     "source_icloud_app_storage_write_target": false,
     "storage_root_explicit": true,
     "storage_root_is_production": false,
+    "storage_root_pre_settings_import": {
+      "blocked_count": 0,
+      "blockers": [],
+      "checked_before_settings_import": true,
+      "no_directories_created_before_gate": true,
+      "passed": true,
+      "protected_root_count": 3,
+      "storage_root_explicit": true,
+      "storage_root_label": "dedicated_test_storage"
+    },
     "violet_env": "test",
     "violet_env_is_production": false
   },
@@ -110,11 +128,191 @@
     "source_icloud_app_storage": false,
     "source_metadata": false
   },
-  "generated_at": "2026-07-06T16:38:46.335541+00:00",
-  "head_sha": "d0de5c6fa5f5c635f1ca540c3d91278317371a52",
+  "generated_at": "2026-07-07T07:24:37.250520+00:00",
+  "head_sha": "d4a2a010e4685ac23d5eaf7b753d6a8e8611f25f",
+  "input_scope_fidelity": {
+    "blocked_status_if_failed": "smoke_only_not_route_evidence",
+    "comparison_table": [
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 307,
+        "metric": "total_media",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 3750,
+        "ratio": 0.0819,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 206,
+        "metric": "eligible_media",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 3687,
+        "ratio": 0.0559,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json",
+        "current_r1r_actual": 1,
+        "metric": "source_metadata_records_total",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 671,
+        "ratio": 0.0015,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json",
+        "current_r1r_actual": 0,
+        "metric": "px1_source_metadata_records",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 471,
+        "ratio": 0.0,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 1,
+        "metric": "source_tag_observations",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 3727,
+        "ratio": 0.0003,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 0,
+        "metric": "source_name_observations",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 918,
+        "ratio": 0.0,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 2,
+        "metric": "source_searchable_name_assertions",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 918,
+        "ratio": 0.0022,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 0,
+        "metric": "source_metadata_evidence",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 3727,
+        "ratio": 0.0,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 99,
+        "metric": "resolver_input_signals",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 12249,
+        "ratio": 0.0081,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity-summary.json",
+        "current_r1r_actual": 170,
+        "metric": "deterministic_edge_count",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 42751,
+        "ratio": 0.004,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 58,
+        "metric": "source_concept_total",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 6094,
+        "ratio": 0.0095,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 5,
+        "metric": "source_concept_active",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 1078,
+        "ratio": 0.0046,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 53,
+        "metric": "source_concept_needs_review",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 1809,
+        "ratio": 0.0293,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+        "current_r1r_actual": 0,
+        "metric": "source_concept_superseded",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 3207,
+        "ratio": 0.0,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md",
+        "current_r1r_actual": 35,
+        "metric": "llm_eligible_pair_count",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 300,
+        "ratio": 0.1167,
+        "status": "insufficient"
+      },
+      {
+        "baseline_evidence": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md",
+        "current_r1r_actual": 33,
+        "metric": "llm_selected_pair_count",
+        "minimum_ratio": 0.8,
+        "old_r1_expected": 300,
+        "ratio": 0.11,
+        "status": "insufficient"
+      }
+    ],
+    "current_run_classification": "smoke_only_not_route_evidence",
+    "failed_metrics": [
+      "total_media",
+      "eligible_media",
+      "source_metadata_records_total",
+      "px1_source_metadata_records",
+      "source_tag_observations",
+      "source_name_observations",
+      "source_searchable_name_assertions",
+      "source_metadata_evidence",
+      "resolver_input_signals",
+      "deterministic_edge_count",
+      "source_concept_total",
+      "source_concept_active",
+      "source_concept_needs_review",
+      "source_concept_superseded",
+      "llm_eligible_pair_count",
+      "llm_selected_pair_count"
+    ],
+    "minimum_ratio": 0.8,
+    "passed": false,
+    "required_for_route_evidence": true,
+    "route_evidence_allowed": false,
+    "setup_instructions_if_failed": [
+      "Restore a post-PX1/pre-R1 snapshot into a dev/test/restored-snapshot database, or create a dev/test clone of production.",
+      "Preserve source-layer input tables: media, media_tags, SourceMetadataRecord, SourceTagObservation, SourceNameObservation, SourceSearchableNameAssertion, SourceMetadataEvidence, PX1 metadata, and resolver inputs.",
+      "In the dev/test clone only, clear/rebuild SourceConcept-owned output tables or run R1R in a fresh run namespace so old deterministic R1 output is baseline-only.",
+      "Set VIOLET_ENV to test/development and VIOLET_STORAGE_ROOT to a dedicated non-production local test storage root before rerunning R1R."
+    ],
+    "status": "insufficient_input_scope"
+  },
   "llm_adjudication_plan": {
     "budget_cap_adjusted_or_superseded": false,
     "budget_usd": 50.0,
+    "eligible_pair_accounting_total": 35,
     "eligible_pair_count": 35,
     "max_calls": 300,
     "operator_budget_approved": true,
@@ -125,7 +323,9 @@
     "required": true,
     "selected_pair_count": 33,
     "skipped_pair_count": 0,
-    "status": "ready"
+    "status": "ready",
+    "unselected_pair_count": 2,
+    "unselected_pair_reason": "bounded_selection_policy_after_deterministic_blocking"
   },
   "llm_judgment_summary": {
     "actual_cost_usd_available": false,
@@ -133,11 +333,20 @@
     "cache_misses": 33,
     "error_count": 0,
     "estimated_cost_usd": 0.011604,
-    "judgment_count": 33,
-    "ledger_row_count": 33,
-    "llm_cannot_count": 31,
+    "judgment_count": 0,
+    "ledger_row_count": 0,
+    "llm_cannot_count": 0,
     "llm_same_count": 0,
-    "llm_uncertain_count": 2,
+    "llm_uncertain_count": 0,
+    "selected_pair_accounting": {
+      "all_selected_pairs_successfully_accounted": false,
+      "explicit_skipped_pair_count": 0,
+      "provider_error_pair_count": 0,
+      "resolved_provider_judgment_count": 0,
+      "selected_pair_count": 33,
+      "successful_accounted_pair_count": 0,
+      "valid_cached_judgment_count": 0
+    },
     "selected_pair_count": 33
   },
   "llm_provider_execution": {
@@ -145,7 +354,7 @@
     "actual_cost_usd_estimate": 0.011604,
     "fallback_provider_used": false,
     "model_name": "gpt-4.1-mini",
-    "primary_openai_compatible_used": true,
+    "primary_openai_compatible_used": false,
     "provider_error": null,
     "provider_label": "primary_openai",
     "provider_mode": "primary_openai",
@@ -177,179 +386,95 @@
     "private_artifact_root_label": "r1r-private-artifacts"
   },
   "mutation_proof": {
-    "allowed_changed_tables": [
-      {
-        "after_count": 60,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 55,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_aliases"
-      },
-      {
-        "after_count": 104,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 99,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_evidence"
-      },
-      {
-        "after_count": 1,
-        "allowed": true,
-        "before_count": 0,
-        "changed": true,
-        "delta": 1,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_resolution_runs"
-      },
-      {
-        "after_count": 60,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 55,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_search_index"
-      },
-      {
-        "after_count": 104,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 99,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_signal_links"
-      },
-      {
-        "after_count": 104,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 99,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_signals"
-      },
-      {
-        "after_count": 58,
-        "allowed": true,
-        "before_count": 4,
-        "changed": true,
-        "delta": 54,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concepts"
-      }
-    ],
-    "changed_tables": [
-      {
-        "after_count": 60,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 55,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_aliases"
-      },
-      {
-        "after_count": 104,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 99,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_evidence"
-      },
-      {
-        "after_count": 1,
-        "allowed": true,
-        "before_count": 0,
-        "changed": true,
-        "delta": 1,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_resolution_runs"
-      },
-      {
-        "after_count": 60,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 55,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_search_index"
-      },
-      {
-        "after_count": 104,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 99,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_signal_links"
-      },
-      {
-        "after_count": 104,
-        "allowed": true,
-        "before_count": 5,
-        "changed": true,
-        "delta": 99,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concept_signals"
-      },
-      {
-        "after_count": 58,
-        "allowed": true,
-        "before_count": 4,
-        "changed": true,
-        "delta": 54,
-        "prompt_forbidden": false,
-        "table": "blombooru_source_concepts"
-      }
-    ],
+    "allowed_changed_tables": [],
+    "changed_tables": [],
     "forbidden_changed_tables": [],
     "passed": true,
     "unexpected_changed_tables": []
   },
   "old_r1_contamination_handling": {
+    "contamination_handling_method": "new_run_label_only_no_sourceconcept_rebuild_current_smoke_scope",
     "dev_test_restored_snapshot_scope_only": true,
-    "new_r1r_run_label": "r1r-20260706T163719Z",
+    "new_r1r_run_label": "r1r-20260707T072436Z",
     "old_r1_a1_remain_invalid_for_route_approval_until_a1r": true,
     "old_r1_used_as_baseline_only": true,
-    "production_source_concept_tables_overwritten": false
+    "production_source_concept_tables_overwritten": false,
+    "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": false
   },
   "operator_continuation": {
-    "execute_confirmation_used": true,
+    "execute_confirmation_used": false,
     "llm_approval_phrase_used": true,
     "operator_budget_approved": true,
-    "previous_status": "blocked_provider",
-    "provider_retry_result": "resolved_after_operator_balance_recharge",
+    "previous_status": "target_met_full_chain_reclassified_smoke_only",
     "provider_policy": "primary_openai_compatible_only_no_fallback"
   },
   "phase": "4.5-SCV2-R1R",
   "phase_slug": "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay",
   "pipeline_contract": {
     "claims": {
-      "full_chain_complete": true,
+      "full_chain_complete": false,
       "safe_to_merge": false,
-      "target_met": true
+      "target_met": false
     },
     "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
-    "status": "target_met_full_chain"
+    "status": "smoke_only_not_route_evidence"
   },
   "post_commit_verification": {
-    "execute_requested": true,
+    "execute_requested": false,
     "fresh_connection_checked": true,
-    "passed": true,
-    "reason": null
+    "passed": false,
+    "reason": "dry_run_no_db_write"
+  },
+  "preserved_smoke_run": {
+    "cannot_count": 31,
+    "classification": "smoke_only_not_route_evidence",
+    "edge_count": 170,
+    "eligible_pair_count": 35,
+    "judgment_count": 33,
+    "preserved": true,
+    "run_id": "r1r-20260706T163719Z",
+    "same_count": 0,
+    "selected_pair_count": 33,
+    "signal_count": 99,
+    "source_artifact_label": "r1r-private-preserved-smoke-summary",
+    "source_concept_after_total": 58,
+    "source_concept_before_total": 4,
+    "source_head_sha": "d0de5c6fa5f5c635f1ca540c3d91278317371a52",
+    "uncertain_count": 2
   },
   "public_json_payload": {
     "environment": {
+      "actual_connection_db_label": "blombooru_test",
       "db_label": "blombooru_test",
       "isolation_passed": true,
       "production_profile_active": false,
       "production_write_attempted": false,
+      "storage_root_pre_settings_import_passed": true,
       "violet_env": "test"
+    },
+    "input_scope_fidelity": {
+      "current_run_classification": "smoke_only_not_route_evidence",
+      "failed_metrics": [
+        "total_media",
+        "eligible_media",
+        "source_metadata_records_total",
+        "px1_source_metadata_records",
+        "source_tag_observations",
+        "source_name_observations",
+        "source_searchable_name_assertions",
+        "source_metadata_evidence",
+        "resolver_input_signals",
+        "deterministic_edge_count",
+        "source_concept_total",
+        "source_concept_active",
+        "source_concept_needs_review",
+        "source_concept_superseded",
+        "llm_eligible_pair_count",
+        "llm_selected_pair_count"
+      ],
+      "passed": false,
+      "route_evidence_allowed": false,
+      "status": "insufficient_input_scope"
     },
     "llm_gate": {
       "budget_ready": true,
@@ -373,20 +498,27 @@
       "status": "ready"
     },
     "mutation": {
-      "changed_table_count": 7,
+      "changed_table_count": 0,
       "forbidden_changed_table_count": 0,
       "passed": true,
       "unexpected_changed_table_count": 0
     },
     "operator_continuation": {
-      "execute_confirmation_used": true,
+      "execute_confirmation_used": false,
       "llm_approval_phrase_used": true,
-      "previous_status": "blocked_provider",
-      "provider_retry_result": "resolved_after_operator_balance_recharge",
+      "previous_status": "target_met_full_chain_reclassified_smoke_only",
       "provider_policy": "primary_openai_compatible_only_no_fallback"
     },
     "phase": "4.5-SCV2-R1R",
     "phase_slug": "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay",
+    "preserved_smoke_run": {
+      "classification": "smoke_only_not_route_evidence",
+      "edge_count": 170,
+      "judgment_count": 33,
+      "run_id": "r1r-20260706T163719Z",
+      "selected_pair_count": 33,
+      "signal_count": 99
+    },
     "review_pack": {
       "generated": true,
       "includes_stage_manifest": true,
@@ -397,24 +529,34 @@
       "downstream_routes_blocked": true
     },
     "sc1_full_chain": {
-      "all_stages_verified": true,
-      "cannot": 31,
-      "complete": true,
+      "all_stages_verified": false,
+      "cannot": 0,
+      "complete": false,
       "deterministic_complete": true,
       "eligible_pairs": 35,
-      "judgments": 33,
-      "llm_executed": true,
+      "judgments": 0,
+      "llm_executed": false,
       "llm_requested": true,
       "same": 0,
       "selected_pairs": 33,
-      "uncertain": 2
+      "uncertain": 0
     },
-    "status": "target_met_full_chain"
+    "snapshot_availability": {
+      "old_r1_equivalent_input_scope_available": false,
+      "status": "blocked_environment_or_snapshot_unavailable"
+    },
+    "status": "smoke_only_not_route_evidence"
   },
   "public_redaction": {
+    "clean_before_public_write": true,
     "finding_count": 0,
     "findings": [],
-    "passed": true
+    "passed": true,
+    "scanned_artifacts": {
+      "final_json_summary": true,
+      "final_markdown_report": true
+    },
+    "unsafe_public_report_written": false
   },
   "r1r_replay_stage_summary": {
     "alias_count": 55,
@@ -423,17 +565,15 @@
       "active": 2,
       "needs_review": 52
     },
-    "edge_count": 203,
+    "edge_count": 170,
     "edge_counts_by_status": {
       "active": 2,
-      "needs_review": 123,
-      "rejected": 43,
+      "needs_review": 121,
+      "rejected": 12,
       "weak": 35
     },
     "edge_counts_by_type": {
       "cooccurrence_context": 35,
-      "llm_needs_review": 2,
-      "llm_negative_guard": 31,
       "negative_guard": 12,
       "stable_identity_anchor": 123
     },
@@ -456,10 +596,7 @@
     },
     "evidence_count": 99,
     "link_count": 99,
-    "llm_edge_counts_by_type": {
-      "llm_needs_review": 2,
-      "llm_negative_guard": 31
-    },
+    "llm_edge_counts_by_type": {},
     "resolver_version": "source_concept_resolver_core_v2_graph",
     "search_index_preview_count": 55,
     "signal_count": 99
@@ -480,21 +617,28 @@
     "scale_up_authorized": false,
     "source_concept_truth_promotion_authorized": false
   },
-  "run_id": "r1r-20260706T163719Z",
+  "run_id": "r1r-20260707T072436Z",
   "sc1_full_chain_proof": {
-    "all_required_stage_statuses_verified": true,
-    "complete_sc1_pipeline_executed": true,
+    "all_required_stage_statuses_verified": false,
+    "complete_sc1_pipeline_executed": false,
     "deterministic_only_output_used_as_full_chain_route_approval_evidence": false,
     "deterministic_pipeline_executed": true,
-    "llm_cannot_count": 31,
+    "llm_cannot_count": 0,
     "llm_eligible_pair_count": 35,
-    "llm_judgment_count": 33,
-    "llm_pair_adjudication_executed": true,
+    "llm_judgment_count": 0,
+    "llm_pair_adjudication_executed": false,
     "llm_pair_adjudication_requested": true,
     "llm_same_count": 0,
     "llm_selected_pair_count": 33,
-    "llm_uncertain_count": 2,
-    "missing_required_stages": [],
+    "llm_uncertain_count": 0,
+    "missing_required_stages": [
+      "bounded_llm_provider_cache_budget_readiness",
+      "bounded_llm_judgment_execution",
+      "llm_decision_recording",
+      "llm_decision_effects_applied_or_recorded",
+      "source_concept_owned_persistence",
+      "post_commit_verification"
+    ],
     "review_pack_includes_stage_manifest": true,
     "skipped_required_stages": [],
     "stage_manifest_artifact": "r1r-private-stage-manifest"
@@ -575,8 +719,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 0 judgments",
       "pipeline_step": "bounded LLM pair adjudication",
-      "r1r_actual_evidence": "R1R judgments 33",
-      "r1r_status": "verified",
+      "r1r_actual_evidence": "R1R judgments 0",
+      "r1r_status": "blocked",
       "sc1_actual_evidence": "SC1 300 judgments",
       "sc1_expected": "required for full chain"
     },
@@ -585,8 +729,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 none",
       "pipeline_step": "LLM decision effects",
-      "r1r_actual_evidence": "R1R recorded decisions",
-      "r1r_status": "verified",
+      "r1r_actual_evidence": "R1R blocked by input-scope gate",
+      "r1r_status": "blocked",
       "sc1_actual_evidence": "SC1 LLM edges",
       "sc1_expected": "record/apply source-layer only"
     },
@@ -595,8 +739,8 @@
       "impact_if_missing": "route approval remains blocked",
       "old_r1_actual_evidence": "old R1 SourceConcept tables",
       "pipeline_step": "SourceConcept persistence",
-      "r1r_actual_evidence": "R1R ready for execute gate",
-      "r1r_status": "verified",
+      "r1r_actual_evidence": "R1R dry-run no writes",
+      "r1r_status": "blocked",
       "sc1_actual_evidence": "SC1 allowed tables",
       "sc1_expected": "SourceConcept-owned only"
     },
@@ -907,10 +1051,10 @@
     {
       "configured": true,
       "contract_check_name": "bounded_llm_provider_cache_budget_readiness",
-      "evidence_artifact_label": "r1r-private-bounded_llm_provider_cache_budget_readiness",
-      "executed": true,
+      "evidence_artifact_label": "",
+      "executed": false,
       "input_count": 33,
-      "output_count": 1,
+      "output_count": 0,
       "private_artifact_label": "r1r-private-bounded_llm_provider_cache_budget_readiness",
       "public_safe_summary_fields": [
         "input_count",
@@ -919,10 +1063,10 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": null,
+      "skip_reason": "smoke_only_not_route_evidence",
       "skipped": false,
       "stage_name": "bounded_llm_provider_cache_budget_readiness",
-      "status": "verified"
+      "status": "blocked"
     },
     {
       "configured": true,
@@ -947,10 +1091,10 @@
     {
       "configured": true,
       "contract_check_name": "bounded_llm_judgment_execution",
-      "evidence_artifact_label": "r1r-private-bounded_llm_judgment_execution",
-      "executed": true,
+      "evidence_artifact_label": "",
+      "executed": false,
       "input_count": 33,
-      "output_count": 33,
+      "output_count": 0,
       "private_artifact_label": "r1r-private-bounded_llm_judgment_execution",
       "public_safe_summary_fields": [
         "input_count",
@@ -959,18 +1103,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": null,
+      "skip_reason": "smoke_only_not_route_evidence",
       "skipped": false,
       "stage_name": "bounded_llm_judgment_execution",
-      "status": "verified"
+      "status": "blocked"
     },
     {
       "configured": true,
       "contract_check_name": "llm_decision_recording",
-      "evidence_artifact_label": "r1r-private-llm_decision_recording",
-      "executed": true,
-      "input_count": 33,
-      "output_count": 33,
+      "evidence_artifact_label": "",
+      "executed": false,
+      "input_count": 0,
+      "output_count": 0,
       "private_artifact_label": "r1r-private-llm_decision_recording",
       "public_safe_summary_fields": [
         "input_count",
@@ -979,18 +1123,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": null,
+      "skip_reason": "smoke_only_not_route_evidence",
       "skipped": false,
       "stage_name": "llm_decision_recording",
-      "status": "verified"
+      "status": "blocked"
     },
     {
       "configured": true,
       "contract_check_name": "llm_decision_effects_applied_or_recorded",
-      "evidence_artifact_label": "r1r-private-llm_decision_effects_applied_or_recorded",
-      "executed": true,
-      "input_count": 33,
-      "output_count": 33,
+      "evidence_artifact_label": "",
+      "executed": false,
+      "input_count": 0,
+      "output_count": 0,
       "private_artifact_label": "r1r-private-llm_decision_effects_applied_or_recorded",
       "public_safe_summary_fields": [
         "input_count",
@@ -999,18 +1143,18 @@
       ],
       "requested": true,
       "required": true,
-      "skip_reason": null,
+      "skip_reason": "smoke_only_not_route_evidence",
       "skipped": false,
       "stage_name": "llm_decision_effects_applied_or_recorded",
-      "status": "verified"
+      "status": "blocked"
     },
     {
       "configured": true,
       "contract_check_name": "source_concept_owned_persistence",
-      "evidence_artifact_label": "r1r-private-source_concept_owned_persistence",
-      "executed": true,
+      "evidence_artifact_label": "",
+      "executed": false,
       "input_count": 54,
-      "output_count": 54,
+      "output_count": 0,
       "private_artifact_label": "r1r-private-source_concept_owned_persistence",
       "public_safe_summary_fields": [
         "input_count",
@@ -1022,7 +1166,7 @@
       "skip_reason": null,
       "skipped": false,
       "stage_name": "source_concept_owned_persistence",
-      "status": "verified"
+      "status": "blocked"
     },
     {
       "configured": true,
@@ -1047,10 +1191,10 @@
     {
       "configured": true,
       "contract_check_name": "post_commit_verification",
-      "evidence_artifact_label": "r1r-private-post_commit_verification",
-      "executed": true,
+      "evidence_artifact_label": "",
+      "executed": false,
       "input_count": 54,
-      "output_count": 1,
+      "output_count": 0,
       "private_artifact_label": "r1r-private-post_commit_verification",
       "public_safe_summary_fields": [
         "input_count",
@@ -1062,7 +1206,7 @@
       "skip_reason": null,
       "skipped": false,
       "stage_name": "post_commit_verification",
-      "status": "verified"
+      "status": "blocked"
     },
     {
       "configured": true,
@@ -1105,6 +1249,18 @@
       "status": "verified"
     }
   ],
+  "snapshot_availability": {
+    "current_db_label": "blombooru_test",
+    "old_r1_equivalent_input_scope_available": false,
+    "reason": "current dev/test DB input scope is below old-R1-equivalent source-layer scale",
+    "setup_instructions": [
+      "Restore a post-PX1/pre-R1 snapshot into a dev/test/restored-snapshot database, or create a dev/test clone of production.",
+      "Preserve source-layer input tables: media, media_tags, SourceMetadataRecord, SourceTagObservation, SourceNameObservation, SourceSearchableNameAssertion, SourceMetadataEvidence, PX1 metadata, and resolver inputs.",
+      "In the dev/test clone only, clear/rebuild SourceConcept-owned output tables or run R1R in a fresh run namespace so old deterministic R1 output is baseline-only.",
+      "Set VIOLET_ENV to test/development and VIOLET_STORAGE_ROOT to a dedicated non-production local test storage root before rerunning R1R."
+    ],
+    "status": "blocked_environment_or_snapshot_unavailable"
+  },
   "source_concept_after": {
     "active": 5,
     "concept_status_counts": {
@@ -1125,26 +1281,26 @@
     }
   },
   "source_concept_before": {
-    "active": 3,
+    "active": 5,
     "concept_status_counts": {
-      "active": 3,
-      "needs_review": 1
+      "active": 5,
+      "needs_review": 53
     },
-    "concept_total": 4,
-    "needs_review": 1,
+    "concept_total": 58,
+    "needs_review": 53,
     "superseded": 0,
     "table_counts": {
-      "blombooru_source_concept_aliases": 5,
-      "blombooru_source_concept_evidence": 5,
-      "blombooru_source_concept_resolution_runs": 0,
-      "blombooru_source_concept_search_index": 5,
-      "blombooru_source_concept_signal_links": 5,
-      "blombooru_source_concept_signals": 5,
-      "blombooru_source_concepts": 4
+      "blombooru_source_concept_aliases": 60,
+      "blombooru_source_concept_evidence": 104,
+      "blombooru_source_concept_resolution_runs": 1,
+      "blombooru_source_concept_search_index": 60,
+      "blombooru_source_concept_signal_links": 104,
+      "blombooru_source_concept_signals": 104,
+      "blombooru_source_concepts": 58
     }
   },
   "source_concept_delta": {
-    "active_delta": 2,
+    "active_delta": 0,
     "gap_symmetry_needs_review_deltas": {
       "ai_only_weak_evidence_guard_delta": 0,
       "cjk_romaji_parenthetical_alias_gap_delta": 0,
@@ -1156,17 +1312,17 @@
       "search_seed_symmetry_delta": 0,
       "source_assertion_tag_name_unlinked_delta": 0
     },
-    "needs_review_delta": 52,
-    "source_concept_total_delta": 54,
+    "needs_review_delta": 0,
+    "source_concept_total_delta": 0,
     "superseded_delta": 0,
     "table_count_deltas": {
-      "blombooru_source_concept_aliases": 55,
-      "blombooru_source_concept_evidence": 99,
-      "blombooru_source_concept_resolution_runs": 1,
-      "blombooru_source_concept_search_index": 55,
-      "blombooru_source_concept_signal_links": 99,
-      "blombooru_source_concept_signals": 99,
-      "blombooru_source_concepts": 54
+      "blombooru_source_concept_aliases": 0,
+      "blombooru_source_concept_evidence": 0,
+      "blombooru_source_concept_resolution_runs": 0,
+      "blombooru_source_concept_search_index": 0,
+      "blombooru_source_concept_signal_links": 0,
+      "blombooru_source_concept_signals": 0,
+      "blombooru_source_concepts": 0
     }
   },
   "source_concept_write_scope": {
@@ -1179,15 +1335,7 @@
       "blombooru_source_concept_signal_links",
       "blombooru_source_concept_search_index"
     ],
-    "changed_tables": [
-      "blombooru_source_concept_aliases",
-      "blombooru_source_concept_evidence",
-      "blombooru_source_concept_resolution_runs",
-      "blombooru_source_concept_search_index",
-      "blombooru_source_concept_signal_links",
-      "blombooru_source_concept_signals",
-      "blombooru_source_concepts"
-    ]
+    "changed_tables": []
   },
   "source_signal_inventory": {
     "adapter_counts": {

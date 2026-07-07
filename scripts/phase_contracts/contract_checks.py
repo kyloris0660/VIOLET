@@ -43,6 +43,15 @@ FILENAME_VALUE_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|j
 
 POSITIVE_STAGE_STATUSES = {"passed", "pass", "complete", "completed", "executed", "success", "succeeded"}
 NEGATIVE_STAGE_STATUSES = {"blocked", "blocked_before_write", "inconclusive", "skipped", "missing", "failed", "fail", "not_run"}
+R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = {
+    "blombooru_source_concept_resolution_runs",
+    "blombooru_source_concept_signals",
+    "blombooru_source_concepts",
+    "blombooru_source_concept_aliases",
+    "blombooru_source_concept_evidence",
+    "blombooru_source_concept_signal_links",
+    "blombooru_source_concept_search_index",
+}
 REQUIRED_NON_EMPTY_PROOF_FIELDS = {
     "request_ledger",
     "failure_ledger",
@@ -387,6 +396,54 @@ def _safe_public_provenance_marker(raw_path: str, value: Any) -> bool:
     return key_name == "source_root_public_marker" and str(value).strip() == "audited-root"
 
 
+def _safe_public_artifact_label(raw_path: str, value: Any) -> bool:
+    key_name = raw_path.rsplit(".", 1)[-1]
+    if key_name not in {
+        "private_artifact_label",
+        "evidence_artifact_label",
+        "stage_manifest_artifact",
+        "private_artifact_root_label",
+        "label",
+        "artifact_label",
+    }:
+        return False
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if WINDOWS_PATH_RE.search(text) or UNC_PATH_RE.search(text) or FILE_URI_RE.search(text) or POSIX_PRIVATE_PATH_RE.search(text):
+        return False
+    return text.startswith("r1r-private-") or text in {"[private]", "[blocked]"}
+
+
+def _safe_public_context_value(raw_path: str, value: Any) -> bool:
+    key_name = raw_path.rsplit(".", 1)[-1]
+    text = str(value or "").strip()
+    if text and _redaction_findings_for_text(text, raw_path, kind="value"):
+        return False
+    if isinstance(value, bool) and (
+        key_name.endswith("_authorized")
+        or key_name in {
+            "a1r_still_required",
+            "no_secret_leakage",
+            "production_db_storage_source_roots_private_ledgers_used_as_fixtures",
+        }
+    ):
+        return True
+    if isinstance(value, (int, float)) and key_name in {
+        "projected_input_tokens",
+        "projected_output_tokens",
+    }:
+        return True
+    if key_name == "storage_root_label" and text in {
+        "dedicated_test_storage",
+        "development_storage",
+        "restored_snapshot_storage",
+        "test_storage",
+    }:
+        return True
+    return False
+
+
 def _format_json_path(parent: str, segment: str | int) -> str:
     if isinstance(segment, int):
         return f"{parent}[{segment}]"
@@ -489,11 +546,17 @@ def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
         secret_context = kind in {"value", "empty_container"} and _path_has_secret_context(raw_path)
         provenance_context = kind in {"value", "empty_container"} and _path_has_private_provenance_context(raw_path)
         content_hash_context = kind in {"value", "empty_container"} and _path_has_private_content_hash_context(raw_path)
-        if secret_context and not _safe_redacted(value):
+        if secret_context and not _safe_redacted(value) and not _safe_public_context_value(raw_path, value):
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("secret_key_name_with_unredacted_value", key_name))
             findings.append(finding)
-        if provenance_context and not _safe_redacted(value) and not _safe_public_provenance_marker(raw_path, value):
+        if (
+            provenance_context
+            and not _safe_redacted(value)
+            and not _safe_public_provenance_marker(raw_path, value)
+            and not _safe_public_artifact_label(raw_path, value)
+            and not _safe_public_context_value(raw_path, value)
+        ):
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("private_provenance_value_unredacted", key_name))
             findings.append(finding)
@@ -807,6 +870,7 @@ def _check_r1r_full_source_concept_pipeline(
         )
 
     _check_r1r_environment_isolation(summary, result)
+    _check_r1r_input_scope_fidelity(summary, result, status=status, target_met_full_chain=target_met_full_chain)
     _check_r1r_stage_manifest(contract, summary, result, target_met_full_chain=target_met_full_chain)
     _check_r1r_llm_truthfulness(summary, result, status=status, target_met_full_chain=target_met_full_chain)
     _check_r1r_write_scope(summary, result, target_met_full_chain=target_met_full_chain)
@@ -855,6 +919,122 @@ def _check_r1r_environment_isolation(summary: Mapping[str, Any], result: Contrac
             expected="dev/test/restored-snapshot DB name",
             actual=env.get("db_name"),
         )
+    actual = env.get("exact_db_identity_from_actual_connection")
+    if isinstance(actual, Mapping):
+        if not _as_bool(actual.get("checked_from_actual_connection")):
+            result.fail(
+                "r1r_actual_db_identity_not_checked",
+                "R1R must validate the exact DB connection used for inventory and writes.",
+                path="environment_isolation.exact_db_identity_from_actual_connection.checked_from_actual_connection",
+            )
+        actual_db = str(actual.get("db_name") or "").strip().casefold()
+        if actual_db in {"blombooru", "production", "main", "postgres"} or "production" in actual_db:
+            result.fail(
+                "r1r_actual_connection_production_db_rejected",
+                "The exact DB connection used by R1R points at a production-like DB.",
+                path="environment_isolation.exact_db_identity_from_actual_connection.db_name",
+                expected="dev/test/restored-snapshot DB name",
+                actual=actual.get("db_name"),
+            )
+        if not _as_bool(actual.get("dev_test_restored_snapshot_db_used")):
+            result.fail(
+                "r1r_actual_connection_dev_test_snapshot_required",
+                "The exact DB connection used by R1R must be dev/test/restored-snapshot.",
+                path="environment_isolation.exact_db_identity_from_actual_connection.dev_test_restored_snapshot_db_used",
+                expected=True,
+                actual=actual.get("dev_test_restored_snapshot_db_used"),
+            )
+    elif _as_bool(env.get("passed")):
+        result.fail(
+            "r1r_actual_db_identity_missing",
+            "R1R must record exact DB identity from the connection used for reads/writes.",
+            path="environment_isolation.exact_db_identity_from_actual_connection",
+        )
+    storage_gate = env.get("storage_root_pre_settings_import")
+    if not isinstance(storage_gate, Mapping) or not _as_bool(storage_gate.get("checked_before_settings_import")):
+        result.fail(
+            "r1r_storage_pre_settings_gate_missing",
+            "R1R must classify VIOLET_STORAGE_ROOT before importing app settings.",
+            path="environment_isolation.storage_root_pre_settings_import",
+        )
+    elif not _as_bool(storage_gate.get("passed")):
+        result.fail(
+            "r1r_storage_pre_settings_gate_failed",
+            "R1R storage root must not overlap production, source/iCloud, app-managed, or protected roots.",
+            path="environment_isolation.storage_root_pre_settings_import.passed",
+            expected=True,
+            actual=storage_gate.get("passed"),
+        )
+
+
+def _check_r1r_input_scope_fidelity(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    status: str,
+    target_met_full_chain: bool,
+) -> None:
+    scope = _get(summary, "input_scope_fidelity", {})
+    if not isinstance(scope, Mapping):
+        result.fail("r1r_input_scope_fidelity_missing", "R1R requires input_scope_fidelity proof.", path="input_scope_fidelity")
+        return
+    table = scope.get("comparison_table")
+    if not isinstance(table, list) or not table:
+        result.fail(
+            "r1r_input_scope_comparison_missing",
+            "R1R input-scope fidelity requires old R1 expected/current R1R actual/ratio/status rows.",
+            path="input_scope_fidelity.comparison_table",
+        )
+    else:
+        for index, row in enumerate(table):
+            if not isinstance(row, Mapping):
+                result.fail("r1r_input_scope_row_not_object", "Input-scope rows must be objects.", path=f"input_scope_fidelity.comparison_table[{index}]")
+                continue
+            missing = [
+                key
+                for key in ("metric", "old_r1_expected", "current_r1r_actual", "ratio", "status")
+                if row.get(key) is None
+            ]
+            if missing:
+                result.fail(
+                    "r1r_input_scope_row_missing_field",
+                    "Input-scope rows require metric, expected, actual, ratio, and status.",
+                    path=f"input_scope_fidelity.comparison_table[{index}]",
+                    actual=missing,
+                )
+    passed = _as_bool(scope.get("passed"))
+    route_allowed = _as_bool(scope.get("route_evidence_allowed"))
+    failed_metrics = scope.get("failed_metrics") if isinstance(scope.get("failed_metrics"), list) else []
+    if target_met_full_chain and (not passed or not route_allowed or failed_metrics):
+        result.fail(
+            "r1r_target_met_with_insufficient_input_scope",
+            "target_met_full_chain requires old-R1-equivalent source-layer input scope, not a tiny fixture.",
+            path="input_scope_fidelity",
+            expected={"passed": True, "route_evidence_allowed": True, "failed_metrics": []},
+            actual={"passed": passed, "route_evidence_allowed": route_allowed, "failed_metrics": failed_metrics},
+        )
+    if not passed and status == "target_met_full_chain":
+        result.fail(
+            "r1r_input_scope_failure_not_blocked",
+            "Insufficient input scope must use smoke_only_not_route_evidence or blocked_insufficient_input_scope, not target_met_full_chain.",
+            path="pipeline_contract.status",
+            expected="smoke_only_not_route_evidence",
+            actual=status,
+        )
+    if not passed and status not in {
+        "smoke_only_not_route_evidence",
+        "blocked_insufficient_input_scope",
+        "blocked_environment_or_snapshot_unavailable",
+        "blocked_environment_isolation",
+        "blocked_contract",
+    }:
+        result.fail(
+            "r1r_input_scope_failure_wrong_status",
+            "Insufficient old-R1 scope must block or be classified as smoke-only.",
+            path="pipeline_contract.status",
+            expected="smoke_only_not_route_evidence",
+            actual=status,
+        )
 
 
 def _check_r1r_stage_manifest(
@@ -873,6 +1053,7 @@ def _check_r1r_stage_manifest(
         )
         return
     rows: dict[str, Mapping[str, Any]] = {}
+    required_stage_names = set(contract.required_stages)
     for index, row in enumerate(manifest):
         if not isinstance(row, Mapping):
             result.fail("r1r_stage_manifest_row_not_object", "Every stage manifest row must be an object.", path=f"sc1_required_stage_manifest[{index}]")
@@ -885,8 +1066,16 @@ def _check_r1r_stage_manifest(
         status = str(row.get("status") or "").strip()
         executed = _as_bool(row.get("executed"))
         skipped = _as_bool(row.get("skipped"))
-        required = _as_bool(row.get("required"))
+        required = stage_name in required_stage_names
         evidence_label = str(row.get("evidence_artifact_label") or "").strip()
+        if stage_name in required_stage_names and row.get("required") is False:
+            result.fail(
+                "r1r_required_stage_row_cannot_opt_out",
+                "Required R1R stages are defined by the contract, not by manifest row required=false.",
+                path=f"sc1_required_stage_manifest[{index}].required",
+                expected=True,
+                actual=row.get("required"),
+            )
         if required and skipped and not str(row.get("skip_reason") or "").strip():
             result.fail(
                 "r1r_stage_skipped_without_reason",
@@ -933,10 +1122,9 @@ def _check_r1r_stage_manifest(
 def _r1r_stage_skip_allowed(stage_name: str, row: Mapping[str, Any]) -> bool:
     if stage_name != "provider_cache_adapter_or_zero_eligible_proof":
         return False
-    reason = str(row.get("skip_reason") or "").casefold()
     explicit = _as_bool(row.get("zero_eligible_proof")) or _as_bool(row.get("not_in_input_scope_proof"))
     input_count = _as_int(row.get("input_count"), default=-1)
-    return explicit or input_count == 0 or "zero" in reason or "not_in_input_scope" in reason
+    return explicit and input_count == 0
 
 
 def _check_r1r_llm_truthfulness(
@@ -963,6 +1151,23 @@ def _check_r1r_llm_truthfulness(
     selected = _as_int(proof_mapping.get("llm_selected_pair_count", plan_mapping.get("selected_pair_count", plan_mapping.get("selected_block_count", 0))))
     judgments = _as_int(proof_mapping.get("llm_judgment_count", _get(summary, "llm_judgment_count", 0)))
     error_count = _as_int(judgment_mapping.get("error_count", _get(summary, "llm_error_count", 0)))
+    accounting = (
+        judgment_mapping.get("selected_pair_accounting")
+        if isinstance(judgment_mapping.get("selected_pair_accounting"), Mapping)
+        else {}
+    )
+    resolved_provider = _as_int(accounting.get("resolved_provider_judgment_count", judgments))
+    cached = _as_int(accounting.get("valid_cached_judgment_count", 0))
+    explicit_skipped = _as_int(accounting.get("explicit_skipped_pair_count", 0))
+    provider_error_pairs = _as_int(accounting.get("provider_error_pair_count", error_count))
+    successful_accounted = _as_int(
+        accounting.get("successful_accounted_pair_count", resolved_provider + cached + explicit_skipped)
+    )
+    skipped_pairs = _as_int(plan_mapping.get("skipped_pair_count", explicit_skipped))
+    unselected_pairs = _as_int(plan_mapping.get("unselected_pair_count", 0))
+    eligible_accounting_total = _as_int(
+        plan_mapping.get("eligible_pair_accounting_total", selected + skipped_pairs + unselected_pairs)
+    )
     llm_requested = _as_bool(proof_mapping.get("llm_pair_adjudication_requested", plan_mapping.get("required")))
     llm_executed = _as_bool(proof_mapping.get("llm_pair_adjudication_executed", _get(summary, "llm_adjudication_used", False)))
     operator_approved = _as_bool(readiness_mapping.get("operator_approved"))
@@ -976,8 +1181,9 @@ def _check_r1r_llm_truthfulness(
         or _as_bool(provider_mapping.get("fallback_provider_used"))
     )
     provider_mode = str(provider_mapping.get("provider_mode") or readiness_mapping.get("provider_mode") or "")
+    input_scope_passed = _as_bool(_get(summary, "input_scope_fidelity.passed", True))
 
-    if eligible > 0 and not operator_approved and status not in {"blocked_llm_approval_required", "blocked_environment_isolation"}:
+    if input_scope_passed and eligible > 0 and not operator_approved and status not in {"blocked_llm_approval_required", "blocked_environment_isolation"}:
         result.fail(
             "r1r_llm_approval_required_status_missing",
             "Eligible LLM pairs without operator approval must use blocked_llm_approval_required.",
@@ -985,7 +1191,7 @@ def _check_r1r_llm_truthfulness(
             expected="blocked_llm_approval_required",
             actual=status,
         )
-    if operator_approved and not provider_available and status not in {"blocked_provider", "blocked_llm_readiness", "blocked_environment_isolation"}:
+    if input_scope_passed and operator_approved and not provider_available and status not in {"blocked_provider", "blocked_llm_readiness", "blocked_environment_isolation"}:
         result.fail(
             "r1r_provider_unavailable_not_blocked",
             "Approved R1R LLM adjudication with unavailable provider must block as blocked_provider or blocked_llm_readiness.",
@@ -993,7 +1199,7 @@ def _check_r1r_llm_truthfulness(
             expected=True,
             actual=readiness_mapping.get("provider_available"),
         )
-    if operator_approved and not budget_ready and status not in {"blocked_budget", "blocked_llm_readiness", "blocked_environment_isolation"}:
+    if input_scope_passed and operator_approved and not budget_ready and status not in {"blocked_budget", "blocked_llm_readiness", "blocked_environment_isolation"}:
         result.fail(
             "r1r_budget_unready_not_blocked",
             "Approved R1R LLM adjudication with missing/exceeded budget must block as blocked_budget or blocked_llm_readiness.",
@@ -1010,11 +1216,14 @@ def _check_r1r_llm_truthfulness(
             actual=True,
         )
     if target_met_full_chain:
+        zero_eligible_pair_proof = eligible == 0 and selected == 0 and _as_bool(
+            proof_mapping.get("zero_eligible_pair_proof", False)
+        )
         required_true = {
             "complete_sc1_pipeline_executed": proof_mapping.get("complete_sc1_pipeline_executed"),
             "deterministic_pipeline_executed": proof_mapping.get("deterministic_pipeline_executed"),
             "llm_pair_adjudication_requested": llm_requested,
-            "llm_pair_adjudication_executed": llm_executed,
+            "llm_pair_adjudication_executed": llm_executed or zero_eligible_pair_proof,
             "all_required_stage_statuses_verified": proof_mapping.get("all_required_stage_statuses_verified"),
             "review_pack_includes_stage_manifest": proof_mapping.get("review_pack_includes_stage_manifest"),
         }
@@ -1059,6 +1268,22 @@ def _check_r1r_llm_truthfulness(
                 expected=0,
                 actual=error_count,
             )
+        if provider_error_pairs > 0:
+            result.fail(
+                "r1r_provider_error_pairs_not_successful_judgments",
+                "Provider error rows cannot count as successful R1R LLM judgments.",
+                path="llm_judgment_summary.selected_pair_accounting.provider_error_pair_count",
+                expected=0,
+                actual=provider_error_pairs,
+            )
+        if eligible_accounting_total != eligible:
+            result.fail(
+                "r1r_eligible_pair_accounting_mismatch",
+                "Eligible LLM pairs must be accounted for as selected, skipped, or explicitly unselected.",
+                path="llm_adjudication_plan.eligible_pair_accounting_total",
+                expected=eligible,
+                actual=eligible_accounting_total,
+            )
         if eligible > 0 and selected <= 0:
             result.fail(
                 "r1r_llm_selection_missing_for_eligible_pairs",
@@ -1080,6 +1305,14 @@ def _check_r1r_llm_truthfulness(
                 "r1r_selected_pairs_without_judgments",
                 "Selected R1R LLM pairs must be judged, cached, or explicitly skipped before full-chain target_met.",
                 path="sc1_full_chain_proof.llm_judgment_count",
+            )
+        if selected > 0 and successful_accounted != selected:
+            result.fail(
+                "r1r_selected_llm_pairs_not_fully_accounted",
+                "Every selected LLM pair must resolve through a provider judgment, valid cache hit, or explicit skip.",
+                path="llm_judgment_summary.selected_pair_accounting.successful_accounted_pair_count",
+                expected=selected,
+                actual=successful_accounted,
             )
         outcome_keys = ("llm_same_count", "llm_cannot_count", "llm_uncertain_count")
         missing_outcomes = [key for key in outcome_keys if key not in proof_mapping]
@@ -1155,13 +1388,12 @@ def _check_r1r_write_scope(
 
     scope = _get(summary, "source_concept_write_scope", {})
     if isinstance(scope, Mapping):
-        allowed_tables = {str(table) for table in scope.get("allowed_tables", []) if table}
         changed_tables = _table_names(scope.get("changed_tables", []))
-        outside_allowed = sorted(table for table in changed_tables if table not in allowed_tables)
+        outside_allowed = sorted(table for table in changed_tables if table not in R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
         if outside_allowed:
             result.fail(
                 "r1r_source_concept_write_outside_allowlist",
-                "R1R writes must stay inside SourceConcept-owned tables.",
+                "R1R writes must stay inside the contract-owned SourceConcept table allowlist.",
                 path="source_concept_write_scope.changed_tables",
                 actual=outside_allowed,
             )
@@ -1213,6 +1445,33 @@ def _check_r1r_review_redaction(
                 expected=True,
                 actual=redaction.get("passed"),
             )
+        scanned = redaction.get("scanned_artifacts") if isinstance(redaction.get("scanned_artifacts"), Mapping) else {}
+        if target_met_full_chain or _as_bool(redaction.get("passed")):
+            for key in ("final_json_summary", "final_markdown_report"):
+                if not _as_bool(scanned.get(key)):
+                    result.fail(
+                        "r1r_public_redaction_final_artifact_scan_missing",
+                        "R1R public redaction must scan the exact final committed JSON summary and Markdown report.",
+                        path=f"public_redaction.scanned_artifacts.{key}",
+                        expected=True,
+                        actual=scanned.get(key),
+                    )
+            if not _as_bool(redaction.get("clean_before_public_write")):
+                result.fail(
+                    "r1r_public_redaction_not_clean_before_write",
+                    "R1R must prove redaction passed before writing final target claims.",
+                    path="public_redaction.clean_before_public_write",
+                    expected=True,
+                    actual=redaction.get("clean_before_public_write"),
+                )
+            if _as_bool(redaction.get("unsafe_public_report_written")):
+                result.fail(
+                    "r1r_unsafe_public_report_written",
+                    "R1R must not publish target claims after a redaction failure.",
+                    path="public_redaction.unsafe_public_report_written",
+                    expected=False,
+                    actual=redaction.get("unsafe_public_report_written"),
+                )
     else:
         result.fail("r1r_public_redaction_not_object", "R1R requires public_redaction object.", path="public_redaction")
 
@@ -1451,7 +1710,9 @@ def _check_route_approved_source_concept_upstream(upstream: Mapping[str, Any], r
 
 def _check_public_redaction(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     payloads: list[Any] = []
-    if _has(summary, "public_json_payload"):
+    if str(_get(summary, "phase_slug", "") or "") == "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay":
+        payloads.append(summary)
+    elif _has(summary, "public_json_payload"):
         payloads.append(_get(summary, "public_json_payload"))
     else:
         payloads.append(summary)

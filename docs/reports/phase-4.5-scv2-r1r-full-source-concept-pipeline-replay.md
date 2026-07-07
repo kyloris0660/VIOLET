@@ -2,16 +2,17 @@
 
 ## Status
 
-- Contract status: `target_met_full_chain`.
-- Previous continuation status: `blocked_provider`.
-- Provider retry result: `resolved_after_operator_balance_recharge`.
+- Contract status: `smoke_only_not_route_evidence`.
+- Previous continuation status: `target_met_full_chain_reclassified_smoke_only`.
 - Operator LLM approval used: `True`.
-- Dev/test execute confirmation used: `True`.
+- Dev/test execute confirmation used: `False`.
 - Provider policy: `primary_openai_compatible_only_no_fallback`.
-- Complete SC1 pipeline executed: `True`.
+- Complete SC1 pipeline executed: `False`.
 - Deterministic pipeline executed: `True`.
-- LLM adjudication requested/executed: `True` / `True`.
-- LLM selected pairs / judgments: `33` / `33`.
+- LLM adjudication requested/executed: `True` / `False`.
+- LLM selected pairs / judgments: `33` / `0`.
+- Input-scope fidelity gate: `insufficient_input_scope`.
+- Current run classification: `smoke_only_not_route_evidence`.
 - A1R still required: `True`.
 
 ## Isolation
@@ -20,18 +21,49 @@
 - DB target label: `blombooru_test`.
 - Production profile active: `False`.
 - Production DB/storage/source mutation: `False`.
+- Actual DB identity checked from write connection: `True`.
+- Storage root checked before settings import: `True`.
+
+## Input Scope Fidelity
+
+| Metric | Old R1 expected | Current R1R actual | Ratio | Status |
+|---|---:|---:|---:|---|
+| `total_media` | `3750` | `307` | `0.0819` | `insufficient` |
+| `eligible_media` | `3687` | `206` | `0.0559` | `insufficient` |
+| `source_metadata_records_total` | `671` | `1` | `0.0015` | `insufficient` |
+| `px1_source_metadata_records` | `471` | `0` | `0.0` | `insufficient` |
+| `source_tag_observations` | `3727` | `1` | `0.0003` | `insufficient` |
+| `source_name_observations` | `918` | `0` | `0.0` | `insufficient` |
+| `source_searchable_name_assertions` | `918` | `2` | `0.0022` | `insufficient` |
+| `source_metadata_evidence` | `3727` | `0` | `0.0` | `insufficient` |
+| `resolver_input_signals` | `12249` | `99` | `0.0081` | `insufficient` |
+| `deterministic_edge_count` | `42751` | `170` | `0.004` | `insufficient` |
+| `source_concept_total` | `6094` | `58` | `0.0095` | `insufficient` |
+| `source_concept_active` | `1078` | `5` | `0.0046` | `insufficient` |
+| `source_concept_needs_review` | `1809` | `53` | `0.0293` | `insufficient` |
+| `source_concept_superseded` | `3207` | `0` | `0.0` | `insufficient` |
+| `llm_eligible_pair_count` | `300` | `35` | `0.1167` | `insufficient` |
+| `llm_selected_pair_count` | `300` | `33` | `0.11` | `insufficient` |
+
+## Preserved Smoke Run
+
+- Classification: `smoke_only_not_route_evidence`.
+- Run id: `r1r-20260706T163719Z`.
+- Signal / edge count: `99` / `170`.
+- Selected pairs / judgments: `33` / `33`.
 
 ## LLM Readiness
 
 - Operator approved: `True`.
 - Provider available: `True`.
-- Provider/model used: `primary_openai` / `gpt-4.1-mini`.
+- Provider/model configured: `primary_openai` / `gpt-4.1-mini`.
+- Primary OpenAI-compatible adjudication calls made: `False`.
 - Fallback provider used: `False`.
 - Cache ready: `True`.
 - Budget ready: `True`.
 - Eligible pairs: `35`.
 - Selected pairs: `33`.
-- Judgment/error/cache counts: `33` / `0` / `0` hits, `33` misses.
+- Judgment/error/cache counts: `0` / `0` / `0` hits, `33` misses.
 - Estimated actual cost USD: `0.011604`; exact provider cost available: `False`.
 - Max calls / budget USD: `300` / `50.0`.
 
@@ -53,14 +85,14 @@
 | `alias_context_equivalence` | `verified` | `170` | `170` | `r1r-private-alias_context_equivalence` |
 | `union_component_resolution` | `verified` | `170` | `54` | `r1r-private-union_component_resolution` |
 | `bounded_llm_pair_planning` | `verified` | `170` | `33` | `r1r-private-bounded_llm_pair_planning` |
-| `bounded_llm_provider_cache_budget_readiness` | `verified` | `33` | `1` | `r1r-private-bounded_llm_provider_cache_budget_readiness` |
+| `bounded_llm_provider_cache_budget_readiness` | `blocked` | `33` | `0` | `[blocked]` |
 | `bounded_llm_pair_selection` | `verified` | `170` | `33` | `r1r-private-bounded_llm_pair_selection` |
-| `bounded_llm_judgment_execution` | `verified` | `33` | `33` | `r1r-private-bounded_llm_judgment_execution` |
-| `llm_decision_recording` | `verified` | `33` | `33` | `r1r-private-llm_decision_recording` |
-| `llm_decision_effects_applied_or_recorded` | `verified` | `33` | `33` | `r1r-private-llm_decision_effects_applied_or_recorded` |
-| `source_concept_owned_persistence` | `verified` | `54` | `54` | `r1r-private-source_concept_owned_persistence` |
+| `bounded_llm_judgment_execution` | `blocked` | `33` | `0` | `[blocked]` |
+| `llm_decision_recording` | `blocked` | `0` | `0` | `[blocked]` |
+| `llm_decision_effects_applied_or_recorded` | `blocked` | `0` | `0` | `[blocked]` |
+| `source_concept_owned_persistence` | `blocked` | `54` | `0` | `[blocked]` |
 | `mutation_proof` | `verified` | `29` | `1` | `r1r-private-mutation_proof` |
-| `post_commit_verification` | `verified` | `54` | `1` | `r1r-private-post_commit_verification` |
+| `post_commit_verification` | `blocked` | `54` | `0` | `[blocked]` |
 | `validation_pack_review_pack_generation` | `verified` | `24` | `1` | `r1r-private-validation_pack_review_pack_generation` |
 | `public_redaction` | `verified` | `2` | `1` | `r1r-private-public_redaction` |
 
@@ -75,9 +107,9 @@
 | alias/context equivalence | required | SC1 alias/context tests | R1 shared service | R1R shared service | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | union/component resolution | required | SC1 concept/link counts | R1 persisted concepts | R1R deterministic concepts | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | bounded LLM pair planning | required after blocking | SC1 selected 300 | old R1 disabled | R1R selected 33 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| bounded LLM pair adjudication | required for full chain | SC1 300 judgments | old R1 0 judgments | R1R judgments 33 | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| LLM decision effects | record/apply source-layer only | SC1 LLM edges | old R1 none | R1R recorded decisions | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
-| SourceConcept persistence | SourceConcept-owned only | SC1 allowed tables | old R1 SourceConcept tables | R1R persisted dev/test SourceConcept-owned tables | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| bounded LLM pair adjudication | required for full chain | SC1 300 judgments | old R1 0 judgments | R1R judgments 0 | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| LLM decision effects | record/apply source-layer only | SC1 LLM edges | old R1 none | R1R blocked by input-scope gate | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
+| SourceConcept persistence | SourceConcept-owned only | SC1 allowed tables | old R1 SourceConcept tables | R1R dry-run no writes | blocked | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | mutation proof | required | SC1 mutation proof | R1 mutation proof | R1R mutation proof | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 | review pack | required | SC1 validation pack | R1 validation pack | R1R review pack | verified | route approval remains blocked | r1r_full_source_concept_pipeline_contract_v1 |
 
@@ -90,4 +122,4 @@
 
 ## Result
 
-R1R produced full-chain SourceConcept replay evidence and may feed A1R.
+R1R did not produce route-evidence-grade full-chain replay evidence; A1R must not start as a route approval rerun yet.

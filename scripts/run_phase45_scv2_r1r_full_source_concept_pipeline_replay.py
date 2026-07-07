@@ -22,6 +22,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+from urllib.parse import unquote
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
@@ -50,6 +51,43 @@ R1R_RUN_LABEL = "phase_4_5_scv2_r1r_full_source_concept_pipeline_replay"
 
 PRODUCTION_DB_NAMES = {"blombooru", "production", "main", "postgres"}
 DEV_DB_MARKERS = ("test", "dev", "r1r", "snapshot", "restored", "clone")
+INPUT_SCOPE_MIN_RATIO = 0.8
+OLD_R1_INPUT_SCOPE_BASELINE = {
+    "total_media": 3750,
+    "eligible_media": 3687,
+    "source_metadata_records_total": 671,
+    "px1_source_metadata_records": 471,
+    "source_tag_observations": 3727,
+    "source_name_observations": 918,
+    "source_searchable_name_assertions": 918,
+    "source_metadata_evidence": 3727,
+    "resolver_input_signals": 12249,
+    "deterministic_edge_count": 42751,
+    "source_concept_total": 6094,
+    "source_concept_active": 1078,
+    "source_concept_needs_review": 1809,
+    "source_concept_superseded": 3207,
+    "llm_eligible_pair_count": 300,
+    "llm_selected_pair_count": 300,
+}
+OLD_R1_INPUT_SCOPE_SOURCES = {
+    "total_media": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "eligible_media": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "source_metadata_records_total": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json",
+    "px1_source_metadata_records": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage-summary.json",
+    "source_tag_observations": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "source_name_observations": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "source_searchable_name_assertions": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "source_metadata_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "resolver_input_signals": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "deterministic_edge_count": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity-summary.json",
+    "source_concept_total": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "source_concept_active": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "source_concept_needs_review": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "source_concept_superseded": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
+    "llm_eligible_pair_count": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md",
+    "llm_selected_pair_count": "docs/reports/phase-4.5-scv2-inc1-source-concept-pipeline-fidelity.md",
+}
 SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = (
     "blombooru_source_concept_resolution_runs",
     "blombooru_source_concept_signals",
@@ -136,6 +174,81 @@ def truthy_env(name: str) -> bool:
     return str(os.getenv(name, "")).strip().casefold() in {"1", "true", "yes", "on"}
 
 
+def split_env_paths(value: str) -> list[str]:
+    if not value.strip():
+        return []
+    parts: list[str] = []
+    for chunk in value.replace("\n", ";").split(";"):
+        chunk = chunk.strip().strip('"')
+        if chunk:
+            parts.append(chunk)
+    return parts
+
+
+def resolve_untrusted_path(value: str) -> Path | None:
+    if not value.strip():
+        return None
+    try:
+        return Path(unquote(value.strip().strip('"'))).expanduser().resolve(strict=False)
+    except Exception:
+        return None
+
+
+def paths_overlap(left: Path, right: Path) -> bool:
+    try:
+        left.relative_to(right)
+        return True
+    except ValueError:
+        pass
+    try:
+        right.relative_to(left)
+        return True
+    except ValueError:
+        return False
+
+
+def storage_root_pre_settings_import_gate() -> dict[str, Any]:
+    raw_root = os.getenv("VIOLET_STORAGE_ROOT", "").strip()
+    root = resolve_untrusted_path(raw_root)
+    protected_roots: dict[str, Path] = {
+        "repo_data": (ROOT / "data").resolve(strict=False),
+        "repo_media": (ROOT / "media").resolve(strict=False),
+        "private_manifests": (ROOT / ".local_manifests").resolve(strict=False),
+    }
+    for env_name in (
+        "VIOLET_PRODUCTION_STORAGE_ROOT",
+        "VIOLET_SOURCE_ROOT",
+        "VIOLET_SOURCE_ROOTS",
+        "VIOLET_ICLOUD_ROOT",
+        "ICLOUD_ROOT",
+        "LOCAL_LIBRARY_PATHS",
+    ):
+        for index, value in enumerate(split_env_paths(os.getenv(env_name, ""))):
+            resolved = resolve_untrusted_path(value)
+            if resolved is not None:
+                protected_roots[f"{env_name.lower()}_{index}"] = resolved
+    blockers: list[dict[str, str]] = []
+    if root is None:
+        blockers.append({"reason": "storage_root_not_explicit_or_unresolvable", "protected_root_label": ""})
+    else:
+        folded = str(root).casefold()
+        if any(marker in folded for marker in ("icloud", "mobile documents", "photos library")):
+            blockers.append({"reason": "storage_root_looks_like_icloud_or_cloud_source", "protected_root_label": "icloud"})
+        for label, protected in protected_roots.items():
+            if paths_overlap(root, protected):
+                blockers.append({"reason": "storage_root_overlaps_protected_root", "protected_root_label": label})
+    return {
+        "checked_before_settings_import": True,
+        "passed": not blockers,
+        "storage_root_explicit": bool(raw_root),
+        "storage_root_label": "dedicated_test_storage" if raw_root else "",
+        "protected_root_count": len(protected_roots),
+        "blocked_count": len(blockers),
+        "blockers": blockers,
+        "no_directories_created_before_gate": True,
+    }
+
+
 def sanitize_provider_error(exc: Exception) -> dict[str, Any]:
     return {
         "type": type(exc).__name__,
@@ -157,6 +270,7 @@ def inspect_environment() -> dict[str, Any]:
     violet_env = os.getenv("VIOLET_ENV", "development").strip().lower() or "development"
     db_name = db_name_from_env()
     db_name_folded = db_name.casefold()
+    storage_gate = storage_root_pre_settings_import_gate()
     storage_root_set = bool(os.getenv("VIOLET_STORAGE_ROOT", "").strip())
     production_storage = truthy_env("VIOLET_PRODUCTION_PROFILE_ACTIVE") or bool(
         os.getenv("VIOLET_PRODUCTION_STORAGE_ROOT", "").strip()
@@ -185,6 +299,8 @@ def inspect_environment() -> dict[str, Any]:
         blockers.append("dedicated_storage_root_not_explicit")
     if production_storage:
         blockers.append("production_storage_root_active")
+    if not storage_gate["passed"]:
+        blockers.append("protected_storage_root")
     passed = not blockers
     return {
         "checked_at": utc_now_iso(),
@@ -198,10 +314,31 @@ def inspect_environment() -> dict[str, Any]:
         "dev_test_restored_snapshot_db_used": dev_test_restored,
         "storage_root_explicit": storage_root_set,
         "storage_root_is_production": production_storage,
-        "source_icloud_app_storage_write_target": False,
+        "storage_root_pre_settings_import": storage_gate,
+        "source_icloud_app_storage_write_target": not storage_gate["passed"],
         "dynamic_production_launcher_used": production_profile_active,
         "production_db_storage_source_roots_private_ledgers_used_as_fixtures": False,
         "production_write_attempted": False,
+    }
+
+
+def classify_db_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
+    db_name = str(identity.get("db_name") or "").strip()
+    folded = db_name.casefold()
+    production_like = folded in PRODUCTION_DB_NAMES or "production" in folded
+    dev_test_restored = (not production_like) and any(marker in folded for marker in DEV_DB_MARKERS)
+    blockers: list[str] = []
+    if production_like:
+        blockers.append("actual_connection_production_like_db")
+    if not dev_test_restored:
+        blockers.append("actual_connection_not_dev_test_restored_snapshot")
+    return {
+        "checked_from_actual_connection": True,
+        "db_name": db_name,
+        "db_target_is_production": production_like,
+        "dev_test_restored_snapshot_db_used": dev_test_restored,
+        "passed": not blockers,
+        "blockers": blockers,
     }
 
 
@@ -219,20 +356,63 @@ def table_counts(conn: Any, tables: Sequence[str]) -> dict[str, int | None]:
     return counts
 
 
-def table_delta(before: Mapping[str, int | None], after: Mapping[str, int | None]) -> dict[str, Any]:
+def table_snapshots(conn: Any, tables: Sequence[str]) -> dict[str, dict[str, Any]]:
+    snapshots: dict[str, dict[str, Any]] = {}
+    for table in tables:
+        try:
+            count = int(conn.execute(text(f"SELECT COUNT(*) FROM {qident(table)}")).scalar() or 0)
+            signature = conn.execute(
+                text(
+                    "SELECT md5(COALESCE(string_agg(row_hash, '' ORDER BY row_hash), '')) "
+                    f"FROM (SELECT md5(t::text) AS row_hash FROM {qident(table)} AS t) AS rows"
+                )
+            ).scalar()
+            snapshots[table] = {"count": count, "content_signature": str(signature or "")}
+        except Exception as exc:
+            snapshots[table] = {"count": None, "content_signature": None, "snapshot_error": type(exc).__name__}
+    return snapshots
+
+
+def _snapshot_count(snapshot: Any) -> int | None:
+    if isinstance(snapshot, Mapping):
+        value = snapshot.get("count")
+    else:
+        value = snapshot
+    return None if value is None else int(value)
+
+
+def _snapshot_signature(snapshot: Any) -> str | None:
+    if isinstance(snapshot, Mapping):
+        value = snapshot.get("content_signature")
+        return None if value is None else str(value)
+    return None
+
+
+def table_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
     rows = []
     forbidden_changed = []
     unexpected_changed = []
     for table in sorted(set(before) | set(after)):
-        before_count = before.get(table)
-        after_count = after.get(table)
-        changed = before_count != after_count
+        before_snapshot = before.get(table)
+        after_snapshot = after.get(table)
+        before_count = _snapshot_count(before_snapshot)
+        after_count = _snapshot_count(after_snapshot)
+        before_signature = _snapshot_signature(before_snapshot)
+        after_signature = _snapshot_signature(after_snapshot)
+        changed = before_count != after_count or (
+            before_signature is not None and after_signature is not None and before_signature != after_signature
+        )
         row = {
             "table": table,
             "before_count": before_count,
             "after_count": after_count,
             "delta": None if before_count is None or after_count is None else after_count - before_count,
             "changed": changed,
+            "before_content_signature_redacted": bool(before_signature),
+            "after_content_signature_redacted": bool(after_signature),
+            "content_signature_changed": before_signature != after_signature
+            if before_signature is not None and after_signature is not None
+            else None,
             "allowed": table in SOURCE_CONCEPT_ALLOWED_WRITE_TABLES,
             "prompt_forbidden": table in FORBIDDEN_WRITE_TABLES,
         }
@@ -331,11 +511,184 @@ def source_concept_counts(conn: Any) -> dict[str, Any]:
     }
 
 
+def scalar_count(conn: Any, sql: str) -> int:
+    try:
+        return int(conn.execute(text(sql)).scalar() or 0)
+    except Exception:
+        return 0
+
+
+def current_input_scope_actuals(
+    conn: Any,
+    *,
+    inventory: Mapping[str, Any],
+    deterministic_metrics: Mapping[str, Any],
+    source_counts: Mapping[str, Any],
+    eligible_pair_count: int,
+    selected_pair_count: int,
+) -> dict[str, int]:
+    sources = inventory.get("sources") if isinstance(inventory.get("sources"), Mapping) else {}
+    metadata = sources.get("provider_structured_fields") if isinstance(sources.get("provider_structured_fields"), Mapping) else {}
+    return {
+        "total_media": scalar_count(conn, "SELECT COUNT(*) FROM blombooru_media"),
+        "eligible_media": scalar_count(
+            conn,
+            "SELECT COUNT(*) FROM blombooru_media WHERE COALESCE(content_class, 'unknown') IN ('anime', 'unknown')",
+        ),
+        "source_metadata_records_total": scalar_count(conn, "SELECT COUNT(*) FROM blombooru_source_metadata_records"),
+        "px1_source_metadata_records": scalar_count(
+            conn,
+            "SELECT COUNT(*) FROM blombooru_source_metadata_records WHERE provider = 'pixiv'",
+        ),
+        "source_tag_observations": int(
+            (sources.get("source_tag_observation") or {}).get("count", 0)
+            if isinstance(sources.get("source_tag_observation"), Mapping)
+            else 0
+        ),
+        "source_name_observations": int(
+            (sources.get("source_name_observation") or {}).get("count", 0)
+            if isinstance(sources.get("source_name_observation"), Mapping)
+            else 0
+        ),
+        "source_searchable_name_assertions": int(
+            (sources.get("source_searchable_name_assertion") or {}).get("count", 0)
+            if isinstance(sources.get("source_searchable_name_assertion"), Mapping)
+            else 0
+        ),
+        "source_metadata_evidence": scalar_count(conn, "SELECT COUNT(*) FROM blombooru_source_metadata_evidence"),
+        "resolver_input_signals": int(deterministic_metrics.get("signal_count") or 0),
+        "deterministic_edge_count": int(deterministic_metrics.get("edge_count") or 0),
+        "source_concept_total": int(source_counts.get("concept_total") or 0),
+        "source_concept_active": int(source_counts.get("active") or 0),
+        "source_concept_needs_review": int(source_counts.get("needs_review") or 0),
+        "source_concept_superseded": int(source_counts.get("superseded") or 0),
+        "llm_eligible_pair_count": int(eligible_pair_count),
+        "llm_selected_pair_count": int(selected_pair_count),
+        "structured_source_metadata_records": int(metadata.get("structured_record_count") or 0)
+        if isinstance(metadata, Mapping)
+        else 0,
+    }
+
+
+def build_input_scope_fidelity(actuals: Mapping[str, int]) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    failed: list[str] = []
+    for metric, expected in OLD_R1_INPUT_SCOPE_BASELINE.items():
+        actual = int(actuals.get(metric, 0) or 0)
+        ratio = None if expected <= 0 else round(actual / expected, 4)
+        status = "matched" if ratio is not None and ratio >= INPUT_SCOPE_MIN_RATIO else "insufficient"
+        if status != "matched":
+            failed.append(metric)
+        rows.append(
+            {
+                "metric": metric,
+                "old_r1_expected": expected,
+                "current_r1r_actual": actual,
+                "ratio": ratio,
+                "minimum_ratio": INPUT_SCOPE_MIN_RATIO,
+                "status": status,
+                "baseline_evidence": OLD_R1_INPUT_SCOPE_SOURCES.get(metric),
+            }
+        )
+    passed = not failed
+    return {
+        "required_for_route_evidence": True,
+        "passed": passed,
+        "status": "matched_old_r1_scope" if passed else "insufficient_input_scope",
+        "minimum_ratio": INPUT_SCOPE_MIN_RATIO,
+        "failed_metrics": failed,
+        "comparison_table": rows,
+        "route_evidence_allowed": passed,
+        "current_run_classification": "route_evidence_candidate" if passed else "smoke_only_not_route_evidence",
+        "blocked_status_if_failed": "smoke_only_not_route_evidence",
+        "setup_instructions_if_failed": [
+            "Restore a post-PX1/pre-R1 snapshot into a dev/test/restored-snapshot database, or create a dev/test clone of production.",
+            "Preserve source-layer input tables: media, media_tags, SourceMetadataRecord, SourceTagObservation, SourceNameObservation, SourceSearchableNameAssertion, SourceMetadataEvidence, PX1 metadata, and resolver inputs.",
+            "In the dev/test clone only, clear/rebuild SourceConcept-owned output tables or run R1R in a fresh run namespace so old deterministic R1 output is baseline-only.",
+            "Set VIOLET_ENV to test/development and VIOLET_STORAGE_ROOT to a dedicated non-production local test storage root before rerunning R1R.",
+        ],
+    }
+
+
+def _preserved_smoke_from_summary(previous: Mapping[str, Any]) -> dict[str, Any] | None:
+    try:
+        proof = previous.get("sc1_full_chain_proof") if isinstance(previous.get("sc1_full_chain_proof"), Mapping) else {}
+        plan = previous.get("llm_adjudication_plan") if isinstance(previous.get("llm_adjudication_plan"), Mapping) else {}
+        judgments = previous.get("llm_judgment_summary") if isinstance(previous.get("llm_judgment_summary"), Mapping) else {}
+    except AttributeError:
+        return None
+    if not proof and not judgments:
+        return None
+    return {
+        "classification": "smoke_only_not_route_evidence",
+        "preserved": True,
+        "source_artifact_label": "r1r-private-preserved-smoke-summary",
+        "source_head_sha": previous.get("head_sha"),
+        "run_id": previous.get("run_id"),
+        "source_concept_before_total": (previous.get("source_concept_before") or {}).get("concept_total")
+        if isinstance(previous.get("source_concept_before"), Mapping)
+        else None,
+        "source_concept_after_total": (previous.get("source_concept_after") or {}).get("concept_total")
+        if isinstance(previous.get("source_concept_after"), Mapping)
+        else None,
+        "signal_count": (previous.get("deterministic_stage_summary") or {}).get("signal_count")
+        if isinstance(previous.get("deterministic_stage_summary"), Mapping)
+        else None,
+        "edge_count": (previous.get("deterministic_stage_summary") or {}).get("edge_count")
+        if isinstance(previous.get("deterministic_stage_summary"), Mapping)
+        else None,
+        "eligible_pair_count": plan.get("eligible_pair_count"),
+        "selected_pair_count": plan.get("selected_pair_count"),
+        "judgment_count": judgments.get("judgment_count", proof.get("llm_judgment_count")),
+        "same_count": judgments.get("llm_same_count", proof.get("llm_same_count")),
+        "cannot_count": judgments.get("llm_cannot_count", proof.get("llm_cannot_count")),
+        "uncertain_count": judgments.get("llm_uncertain_count", proof.get("llm_uncertain_count")),
+    }
+
+
+def load_preserved_smoke_run() -> dict[str, Any] | None:
+    candidates: list[dict[str, Any]] = []
+    candidate_paths = [PUBLIC_REPORT_JSON, DEFAULT_OUTPUT_DIR / "public-summary-copy.json"]
+    if DEFAULT_OUTPUT_DIR.exists():
+        candidate_paths.extend(sorted(DEFAULT_OUTPUT_DIR.glob("*/public-summary-copy.json")))
+    seen: set[Path] = set()
+    for path in candidate_paths:
+        resolved = path.resolve()
+        if resolved in seen or not path.exists():
+            continue
+        seen.add(resolved)
+        try:
+            summary = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        candidate = _preserved_smoke_from_summary(summary)
+        if candidate is None:
+            continue
+        candidate["_rank_judgments"] = int(candidate.get("judgment_count") or 0)
+        candidate["_rank_selected"] = int(candidate.get("selected_pair_count") or 0)
+        candidate["_rank_signals"] = int(candidate.get("signal_count") or 0)
+        candidates.append(candidate)
+    if not candidates:
+        return None
+    best = max(
+        candidates,
+        key=lambda row: (
+            int(row.get("_rank_judgments") or 0),
+            int(row.get("_rank_selected") or 0),
+            int(row.get("_rank_signals") or 0),
+        ),
+    )
+    for key in ("_rank_judgments", "_rank_selected", "_rank_signals"):
+        best.pop(key, None)
+    return best
+
+
 def make_stage_manifest(
     *,
     status: str,
     env_ok: bool,
     deterministic_executed: bool,
+    llm_eligible: int,
     llm_plan_ready: bool,
     llm_selected: int,
     llm_judgments: int,
@@ -357,6 +710,8 @@ def make_stage_manifest(
         "source_name_observation_adapter": deterministic_executed,
         "source_searchable_name_assertion_adapter": deterministic_executed,
         "source_name_candidate_f7a_adapter": deterministic_executed,
+        "provider_cache_adapter_or_zero_eligible_proof": deterministic_executed
+        and int(adapter_counts.get("provider_cache", 0) or 0) > 0,
         "deterministic_blocking_key_generation": deterministic_executed,
         "deterministic_edge_graph_generation": deterministic_executed,
         "context_compatibility_guards": deterministic_executed,
@@ -365,11 +720,19 @@ def make_stage_manifest(
         "bounded_llm_pair_planning": llm_plan_ready,
         "bounded_llm_provider_cache_budget_readiness": llm_plan_ready
         and status
-        not in {"blocked_llm_approval_required", "blocked_provider", "blocked_budget", "blocked_llm_readiness"},
-        "bounded_llm_pair_selection": llm_selected > 0,
-        "bounded_llm_judgment_execution": llm_judgments > 0,
-        "llm_decision_recording": llm_judgments > 0,
-        "llm_decision_effects_applied_or_recorded": llm_judgments > 0,
+        not in {
+            "blocked_llm_approval_required",
+            "blocked_provider",
+            "blocked_budget",
+            "blocked_llm_readiness",
+            "smoke_only_not_route_evidence",
+            "blocked_insufficient_input_scope",
+            "blocked_environment_or_snapshot_unavailable",
+        },
+        "bounded_llm_pair_selection": llm_selected > 0 or (llm_plan_ready and llm_eligible == 0),
+        "bounded_llm_judgment_execution": llm_judgments > 0 or (llm_plan_ready and llm_eligible == 0),
+        "llm_decision_recording": llm_judgments > 0 or (llm_plan_ready and llm_eligible == 0),
+        "llm_decision_effects_applied_or_recorded": llm_judgments > 0 or (llm_plan_ready and llm_eligible == 0),
         "source_concept_owned_persistence": persistence_verified,
         "mutation_proof": mutation_verified,
         "post_commit_verification": post_commit_verified,
@@ -411,7 +774,7 @@ def make_stage_manifest(
         "source_name_observation_adapter": int(adapter_counts.get("source_name_observation", 0) or 0),
         "source_searchable_name_assertion_adapter": int(adapter_counts.get("source_searchable_name_assertion", 0) or 0),
         "source_name_candidate_f7a_adapter": int(adapter_counts.get("f7a_source_name_candidate", 0) or 0),
-        "provider_cache_adapter_or_zero_eligible_proof": 0,
+        "provider_cache_adapter_or_zero_eligible_proof": int(adapter_counts.get("provider_cache", 0) or 0),
         "deterministic_blocking_key_generation": edge_count,
         "deterministic_edge_graph_generation": edge_count,
         "context_compatibility_guards": edge_count,
@@ -465,6 +828,13 @@ def make_stage_manifest(
         if stage_name == "provider_cache_adapter_or_zero_eligible_proof" and input_count == 0:
             row["zero_eligible_proof"] = True
             row["not_in_input_scope_proof"] = True
+        if stage_name in {
+            "bounded_llm_pair_selection",
+            "bounded_llm_judgment_execution",
+            "llm_decision_recording",
+            "llm_decision_effects_applied_or_recorded",
+        } and llm_eligible == 0:
+            row["zero_eligible_pair_proof"] = True
         rows.append(row)
     return rows
 
@@ -520,7 +890,7 @@ def fidelity_table(*, selected_count: int, judgment_count: int, deterministic_me
         ("union/component resolution", "required", "SC1 concept/link counts", "R1 persisted concepts", "R1R deterministic concepts"),
         ("bounded LLM pair planning", "required after blocking", "SC1 selected 300", "old R1 disabled", f"R1R selected {selected_count}"),
         ("bounded LLM pair adjudication", "required for full chain", "SC1 300 judgments", "old R1 0 judgments", f"R1R judgments {judgment_count}"),
-        ("LLM decision effects", "record/apply source-layer only", "SC1 LLM edges", "old R1 none", "R1R blocked until LLM approval" if judgment_count == 0 else "R1R recorded decisions"),
+        ("LLM decision effects", "record/apply source-layer only", "SC1 LLM edges", "old R1 none", "R1R blocked by input-scope gate" if judgment_count == 0 else "R1R recorded decisions"),
         ("SourceConcept persistence", "SourceConcept-owned only", "SC1 allowed tables", "old R1 SourceConcept tables", "R1R dry-run no writes" if judgment_count == 0 else "R1R ready for execute gate"),
         ("mutation proof", "required", "SC1 mutation proof", "R1 mutation proof", "R1R mutation proof"),
         ("review pack", "required", "SC1 validation pack", "R1 validation pack", "R1R review pack"),
@@ -595,6 +965,9 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
     env = summary.get("environment_isolation") if isinstance(summary.get("environment_isolation"), Mapping) else {}
     mutation = summary.get("mutation_proof") if isinstance(summary.get("mutation_proof"), Mapping) else {}
     review_pack = summary.get("review_pack") if isinstance(summary.get("review_pack"), Mapping) else {}
+    input_scope = summary.get("input_scope_fidelity") if isinstance(summary.get("input_scope_fidelity"), Mapping) else {}
+    snapshot = summary.get("snapshot_availability") if isinstance(summary.get("snapshot_availability"), Mapping) else {}
+    smoke = summary.get("preserved_smoke_run") if isinstance(summary.get("preserved_smoke_run"), Mapping) else {}
     continuation = (
         summary.get("operator_continuation")
         if isinstance(summary.get("operator_continuation"), Mapping)
@@ -618,7 +991,36 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
             "isolation_passed": env.get("passed"),
             "production_profile_active": env.get("production_profile_active"),
             "production_write_attempted": env.get("production_write_attempted"),
+            "actual_connection_db_label": (env.get("exact_db_identity_from_actual_connection") or {}).get("db_name")
+            if isinstance(env.get("exact_db_identity_from_actual_connection"), Mapping)
+            else None,
+            "storage_root_pre_settings_import_passed": (
+                env.get("storage_root_pre_settings_import") or {}
+            ).get("passed")
+            if isinstance(env.get("storage_root_pre_settings_import"), Mapping)
+            else None,
         },
+        "input_scope_fidelity": {
+            "passed": input_scope.get("passed"),
+            "status": input_scope.get("status"),
+            "current_run_classification": input_scope.get("current_run_classification"),
+            "route_evidence_allowed": input_scope.get("route_evidence_allowed"),
+            "failed_metrics": input_scope.get("failed_metrics"),
+        },
+        "snapshot_availability": {
+            "status": snapshot.get("status"),
+            "old_r1_equivalent_input_scope_available": snapshot.get("old_r1_equivalent_input_scope_available"),
+        },
+        "preserved_smoke_run": {
+            "classification": smoke.get("classification"),
+            "run_id": smoke.get("run_id"),
+            "signal_count": smoke.get("signal_count"),
+            "edge_count": smoke.get("edge_count"),
+            "selected_pair_count": smoke.get("selected_pair_count"),
+            "judgment_count": smoke.get("judgment_count"),
+        }
+        if smoke
+        else None,
         "sc1_full_chain": {
             "complete": proof.get("complete_sc1_pipeline_executed"),
             "deterministic_complete": proof.get("deterministic_pipeline_executed"),
@@ -672,10 +1074,18 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def public_redaction_check(summary: Mapping[str, Any], markdown: str) -> dict[str, Any]:
-    public_json_payload = summary.get("public_json_payload") if isinstance(summary, Mapping) else None
-    payload = public_json_payload if public_json_payload is not None else summary
-    findings = scan_public_payload({"public_json_payload": payload}) + scan_public_payload({"public_markdown_text": markdown})
-    return {"passed": not findings, "finding_count": len(findings), "findings": findings[:10]}
+    findings = scan_public_payload(summary) + scan_public_payload({"public_markdown_text": markdown})
+    return {
+        "passed": not findings,
+        "finding_count": len(findings),
+        "findings": findings[:10],
+        "scanned_artifacts": {
+            "final_json_summary": True,
+            "final_markdown_report": True,
+        },
+        "clean_before_public_write": not findings,
+        "unsafe_public_report_written": False,
+    }
 
 
 def public_report_markdown(summary: Mapping[str, Any]) -> str:
@@ -684,6 +1094,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     provider = summary.get("llm_provider_execution") if isinstance(summary.get("llm_provider_execution"), Mapping) else {}
     judgments = summary.get("llm_judgment_summary") if isinstance(summary.get("llm_judgment_summary"), Mapping) else {}
     continuation = summary.get("operator_continuation") if isinstance(summary.get("operator_continuation"), Mapping) else {}
+    input_scope = summary.get("input_scope_fidelity") if isinstance(summary.get("input_scope_fidelity"), Mapping) else {}
+    smoke = summary.get("preserved_smoke_run") if isinstance(summary.get("preserved_smoke_run"), Mapping) else {}
     route = summary["route_authorization"]
     lines = [
         "# Phase 4.5-SCV2-R1R Full SourceConcept Pipeline Replay",
@@ -699,6 +1111,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Deterministic pipeline executed: `{proof['deterministic_pipeline_executed']}`.",
         f"- LLM adjudication requested/executed: `{proof['llm_pair_adjudication_requested']}` / `{proof['llm_pair_adjudication_executed']}`.",
         f"- LLM selected pairs / judgments: `{proof['llm_selected_pair_count']}` / `{proof['llm_judgment_count']}`.",
+        f"- Input-scope fidelity gate: `{input_scope.get('status')}`.",
+        f"- Current run classification: `{input_scope.get('current_run_classification')}`.",
         f"- A1R still required: `{route['a1r_still_required']}`.",
         "",
         "## Isolation",
@@ -707,12 +1121,39 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- DB target label: `{summary['environment_isolation']['db_name']}`.",
         f"- Production profile active: `{summary['environment_isolation']['production_profile_active']}`.",
         f"- Production DB/storage/source mutation: `{summary['environment_isolation']['production_write_attempted']}`.",
+        f"- Actual DB identity checked from write connection: `{(summary['environment_isolation'].get('exact_db_identity_from_actual_connection') or {}).get('checked_from_actual_connection')}`.",
+        f"- Storage root checked before settings import: `{(summary['environment_isolation'].get('storage_root_pre_settings_import') or {}).get('passed')}`.",
+        "",
+        "## Input Scope Fidelity",
+        "",
+        "| Metric | Old R1 expected | Current R1R actual | Ratio | Status |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for row in input_scope.get("comparison_table") or []:
+        lines.append(
+            f"| `{row['metric']}` | `{row['old_r1_expected']}` | `{row['current_r1r_actual']}` | `{row['ratio']}` | `{row['status']}` |"
+        )
+    if smoke:
+        lines.extend(
+            [
+                "",
+                "## Preserved Smoke Run",
+                "",
+                f"- Classification: `{smoke.get('classification')}`.",
+                f"- Run id: `{smoke.get('run_id')}`.",
+                f"- Signal / edge count: `{smoke.get('signal_count')}` / `{smoke.get('edge_count')}`.",
+                f"- Selected pairs / judgments: `{smoke.get('selected_pair_count')}` / `{smoke.get('judgment_count')}`.",
+            ]
+        )
+    lines.extend(
+        [
         "",
         "## LLM Readiness",
         "",
         f"- Operator approved: `{summary['llm_readiness']['operator_approved']}`.",
         f"- Provider available: `{summary['llm_readiness']['provider_available']}`.",
-        f"- Provider/model used: `{provider.get('provider_mode')}` / `{provider.get('model_name')}`.",
+        f"- Provider/model configured: `{provider.get('provider_mode')}` / `{provider.get('model_name')}`.",
+        f"- Primary OpenAI-compatible adjudication calls made: `{provider.get('primary_openai_compatible_used')}`.",
         f"- Fallback provider used: `{provider.get('uses_fallback_provider')}`.",
         f"- Cache ready: `{summary['llm_readiness']['cache_ready']}`.",
         f"- Budget ready: `{summary['llm_readiness']['budget_ready']}`.",
@@ -726,7 +1167,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         "| Stage | Status | Input | Output | Evidence |",
         "|---|---:|---:|---:|---|",
-    ]
+        ]
+    )
     for row in summary["sc1_required_stage_manifest"]:
         lines.append(
             f"| `{row['stage_name']}` | `{row['status']}` | `{row['input_count']}` | `{row['output_count']}` | `{row['evidence_artifact_label'] or '[blocked]'}` |"
@@ -773,7 +1215,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             (
                 "R1R produced full-chain SourceConcept replay evidence and may feed A1R."
                 if proof["complete_sc1_pipeline_executed"]
-                else "R1R did not produce full-chain route approval evidence; A1R must not start as a route approval rerun yet."
+                else "R1R did not produce route-evidence-grade full-chain replay evidence; A1R must not start as a route approval rerun yet."
             ),
         ]
     )
@@ -785,6 +1227,7 @@ def build_blocked_summary(environment: Mapping[str, Any], output_dir: Path) -> d
         status="blocked_environment_isolation",
         env_ok=False,
         deterministic_executed=False,
+        llm_eligible=0,
         llm_plan_ready=False,
         llm_selected=0,
         llm_judgments=0,
@@ -807,6 +1250,36 @@ def build_blocked_summary(environment: Mapping[str, Any], output_dir: Path) -> d
             "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
         },
         "environment_isolation": dict(environment),
+        "input_scope_fidelity": {
+            "required_for_route_evidence": True,
+            "passed": False,
+            "status": "not_checked_environment_blocked",
+            "minimum_ratio": INPUT_SCOPE_MIN_RATIO,
+            "failed_metrics": list(OLD_R1_INPUT_SCOPE_BASELINE),
+            "comparison_table": [
+                {
+                    "metric": key,
+                    "old_r1_expected": value,
+                    "current_r1r_actual": 0,
+                    "ratio": 0.0,
+                    "minimum_ratio": INPUT_SCOPE_MIN_RATIO,
+                    "status": "blocked",
+                    "baseline_evidence": OLD_R1_INPUT_SCOPE_SOURCES.get(key),
+                }
+                for key, value in OLD_R1_INPUT_SCOPE_BASELINE.items()
+            ],
+            "route_evidence_allowed": False,
+            "current_run_classification": "blocked_environment_isolation",
+        },
+        "snapshot_availability": {
+            "status": "blocked_environment_or_snapshot_unavailable",
+            "old_r1_equivalent_input_scope_available": False,
+            "reason": "environment isolation blocked before input-scope inventory",
+            "setup_instructions": [
+                "Load an isolated dev/test/restored-snapshot DB with old-R1-equivalent post-PX1 inputs.",
+                "Set VIOLET_STORAGE_ROOT to a dedicated non-production local test storage root.",
+            ],
+        },
         "sc1_required_stage_manifest": stage_manifest,
         "sc1_full_chain_proof": {
             "complete_sc1_pipeline_executed": False,
@@ -841,6 +1314,28 @@ def build_blocked_summary(environment: Mapping[str, Any], output_dir: Path) -> d
             "provider_available": False,
             "cache_ready": False,
             "budget_ready": False,
+        },
+        "llm_judgment_summary": {
+            "judgment_count": 0,
+            "ledger_row_count": 0,
+            "error_count": 0,
+            "selected_pair_count": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "estimated_cost_usd": 0.0,
+            "actual_cost_usd_available": False,
+            "selected_pair_accounting": {
+                "selected_pair_count": 0,
+                "resolved_provider_judgment_count": 0,
+                "valid_cached_judgment_count": 0,
+                "explicit_skipped_pair_count": 0,
+                "provider_error_pair_count": 0,
+                "successful_accounted_pair_count": 0,
+                "all_selected_pairs_successfully_accounted": True,
+            },
+            "llm_same_count": 0,
+            "llm_cannot_count": 0,
+            "llm_uncertain_count": 0,
         },
         "mutation_proof": {"passed": True, "forbidden_changed_tables": [], "unexpected_changed_tables": [], "changed_tables": []},
         "post_commit_verification": {"passed": False, "reason": "blocked_environment_isolation"},
@@ -943,7 +1438,15 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     SessionLocal = sessionmaker(bind=engine)
     with engine.connect() as conn:
         identity_before = db_identity(conn)
-        before_table_counts = table_counts(conn, (*SOURCE_CONCEPT_ALLOWED_WRITE_TABLES, *FORBIDDEN_WRITE_TABLES))
+        exact_db_gate = classify_db_identity(identity_before)
+        environment["exact_db_identity_from_actual_connection"] = exact_db_gate
+        environment["db_identity_before"] = identity_before
+        if not exact_db_gate["passed"]:
+            environment["passed"] = False
+            environment["blockers"] = list(environment.get("blockers", [])) + list(exact_db_gate["blockers"])
+            summary = build_blocked_summary(environment, output_dir)
+            return finalize_outputs(summary, output_dir)
+        before_table_counts = table_snapshots(conn, (*SOURCE_CONCEPT_ALLOWED_WRITE_TABLES, *FORBIDDEN_WRITE_TABLES))
         source_before = source_concept_counts(conn)
 
     db = SessionLocal()
@@ -961,9 +1464,20 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         deterministic_result = resolve_source_concepts(signals, run_id=args.run_id, llm_config=llm_config, llm_judgments=())
         plan = plan_llm_adjudication(deterministic_result.edge_candidates, signals=signals, config=llm_config)
         selected_edges = select_llm_adjudication_edges(deterministic_result.edge_candidates, signals=signals, config=llm_config)
+        deterministic_metrics = edge_metrics(deterministic_result)
         budget_ready = plan.status != "blocked"
         cache_stats = cache_stats_for_selected_pairs(cache_dir, len(selected_edges))
-        if llm_approved:
+        with engine.connect() as conn:
+            input_scope_actuals = current_input_scope_actuals(
+                conn,
+                inventory=inventory,
+                deterministic_metrics=deterministic_metrics,
+                source_counts=source_before,
+                eligible_pair_count=int(plan.projected_calls),
+                selected_pair_count=len(selected_edges),
+            )
+        input_scope_fidelity = build_input_scope_fidelity(input_scope_actuals)
+        if llm_approved and input_scope_fidelity["passed"]:
             if provider is None:
                 llm_execution_summary = {
                     "used": False,
@@ -1037,11 +1551,11 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
 
     with engine.connect() as conn:
         identity_after = db_identity(conn)
-        after_table_counts = table_counts(conn, (*SOURCE_CONCEPT_ALLOWED_WRITE_TABLES, *FORBIDDEN_WRITE_TABLES))
+        environment["db_identity_after"] = identity_after
+        after_table_counts = table_snapshots(conn, (*SOURCE_CONCEPT_ALLOWED_WRITE_TABLES, *FORBIDDEN_WRITE_TABLES))
         source_after = source_concept_counts(conn)
     mutation_delta = table_delta(before_table_counts, after_table_counts)
     count_delta = compare_counts(source_before, source_after)
-    deterministic_metrics = edge_metrics(deterministic_result)
     replay_metrics = edge_metrics(replay_result)
     adapter_counts = public_signal_inventory(inventory).get("adapter_counts", {})
     eligible_pair_count = int(plan.projected_calls)
@@ -1050,10 +1564,36 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     judgment_count = len(valid_judgments)
     ledger_row_count = len(judgments)
     llm_error_count = int(llm_execution_summary.get("error_count", 0) or 0) + sum(1 for row in judgments if row.get("error_type"))
-    provider_available = bool(provider_summary.get("llm_access_configured")) if (args.check_llm_provider_readiness or llm_approved) else False
+    valid_cached_judgment_count = sum(1 for row in valid_judgments if str(row.get("cache_status") or "") == "hit")
+    resolved_provider_judgment_count = max(0, judgment_count - valid_cached_judgment_count)
+    explicit_skipped_pair_count = int(llm_execution_summary.get("skipped_pair_count", 0) or 0)
+    provider_error_pair_count = sum(1 for row in judgments if row.get("error_type"))
+    successful_accounted_pair_count = (
+        resolved_provider_judgment_count + valid_cached_judgment_count + explicit_skipped_pair_count
+    )
+    plan_skipped_pair_count = int(plan.skipped_block_count or 0)
+    eligible_unselected_pair_count = max(0, eligible_pair_count - selected_pair_count - plan_skipped_pair_count)
+    selected_pair_accounting = {
+        "selected_pair_count": selected_pair_count,
+        "resolved_provider_judgment_count": resolved_provider_judgment_count,
+        "valid_cached_judgment_count": valid_cached_judgment_count,
+        "explicit_skipped_pair_count": explicit_skipped_pair_count,
+        "provider_error_pair_count": provider_error_pair_count,
+        "successful_accounted_pair_count": successful_accounted_pair_count,
+        "all_selected_pairs_successfully_accounted": successful_accounted_pair_count == selected_pair_count
+        and provider_error_pair_count == 0,
+    }
+    provider_available = bool(provider is not None) if (args.check_llm_provider_readiness or llm_approved) else False
     llm_readiness_passed = bool(llm_approved and provider_available and budget_ready and cache_stats["cache_enabled"] and llm_error_count == 0)
     persistence_applied = bool(persistence.get("apply"))
-    if args.execute and persistence_applied and judgment_count > 0:
+    zero_eligible_pair_proof = eligible_pair_count == 0 and selected_pair_count == 0
+    llm_success_for_target = (
+        (selected_pair_count > 0 and selected_pair_accounting["all_selected_pairs_successfully_accounted"])
+        or zero_eligible_pair_proof
+    )
+    if not input_scope_fidelity["passed"]:
+        status = "smoke_only_not_route_evidence"
+    elif args.execute and persistence_applied and llm_success_for_target:
         status = "target_met_full_chain" if mutation_delta["passed"] else "blocked_contract"
     elif not llm_approved and eligible_pair_count > 0:
         status = "blocked_llm_approval_required"
@@ -1069,6 +1609,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         status=status,
         env_ok=True,
         deterministic_executed=True,
+        llm_eligible=eligible_pair_count,
         llm_plan_ready=True,
         llm_selected=selected_pair_count,
         llm_judgments=judgment_count,
@@ -1110,7 +1651,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             },
         },
         "operator_continuation": {
-            "previous_status": "blocked_llm_approval_required",
+            "previous_status": "target_met_full_chain_reclassified_smoke_only",
             "llm_approval_phrase_used": llm_approved,
             "execute_confirmation_used": bool(args.execute and args.confirm_execution == EXECUTE_CONFIRMATION),
             "operator_budget_approved": bool(llm_approved),
@@ -1121,11 +1662,24 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "db_identity_before": identity_before,
             "db_identity_after": identity_after,
         },
+        "input_scope_fidelity": input_scope_fidelity,
+        "snapshot_availability": {
+            "status": "available" if input_scope_fidelity["passed"] else "blocked_environment_or_snapshot_unavailable",
+            "current_db_label": identity_before.get("db_name"),
+            "old_r1_equivalent_input_scope_available": bool(input_scope_fidelity["passed"]),
+            "reason": None
+            if input_scope_fidelity["passed"]
+            else "current dev/test DB input scope is below old-R1-equivalent source-layer scale",
+            "setup_instructions": input_scope_fidelity.get("setup_instructions_if_failed", []),
+        },
+        "preserved_smoke_run": load_preserved_smoke_run(),
         "old_r1_contamination_handling": {
             "new_r1r_run_label": args.run_id,
             "old_r1_used_as_baseline_only": True,
             "production_source_concept_tables_overwritten": False,
             "dev_test_restored_snapshot_scope_only": True,
+            "contamination_handling_method": "new_run_label_only_no_sourceconcept_rebuild_current_smoke_scope",
+            "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": False,
             "old_r1_a1_remain_invalid_for_route_approval_until_a1r": True,
         },
         "sc1_required_stage_manifest": stage_manifest,
@@ -1163,7 +1717,12 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "projected_budget_usd": float(plan.projected_cost_usd),
             "projected_input_tokens": int(plan.projected_input_tokens),
             "projected_output_tokens": int(plan.projected_output_tokens),
-            "skipped_pair_count": max(0, int(plan.skipped_block_count)),
+            "skipped_pair_count": max(0, plan_skipped_pair_count),
+            "unselected_pair_count": eligible_unselected_pair_count,
+            "eligible_pair_accounting_total": selected_pair_count + max(0, plan_skipped_pair_count) + eligible_unselected_pair_count,
+            "unselected_pair_reason": "bounded_selection_policy_after_deterministic_blocking"
+            if eligible_unselected_pair_count
+            else None,
             "operator_budget_approved": bool(llm_approved),
             "budget_cap_adjusted_or_superseded": False,
         },
@@ -1202,6 +1761,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "cache_misses": int(cache_stats.get("cache_misses", 0) or 0),
             "estimated_cost_usd": actual_cost_estimate,
             "actual_cost_usd_available": False,
+            "selected_pair_accounting": selected_pair_accounting,
             **outcomes,
         },
         "source_concept_before": source_before,
@@ -1268,16 +1828,52 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def finalize_outputs(summary: dict[str, Any], output_dir: Path) -> dict[str, Any]:
+    summary["review_pack"] = {
+        **(summary.get("review_pack") if isinstance(summary.get("review_pack"), Mapping) else {}),
+        "generated": True,
+        "includes_stage_manifest": True,
+        "label": "r1r-private-review-pack",
+        "integrity_recorded": True,
+    }
+    contract_result: dict[str, Any] | None = None
+    report = ""
+    for _ in range(2):
+        summary["public_json_payload"] = build_public_json_payload(summary)
+        report = public_report_markdown(summary)
+        summary["public_redaction"] = public_redaction_check(summary, report)
+        contract_result = check_phase_contract(CONTRACT_ID, summary).to_dict()
+        summary["contract_result"] = {
+            "contract_id": CONTRACT_ID,
+            "passed": contract_result["passed"],
+            "error_count": contract_result["error_count"],
+            "warning_count": contract_result["warning_count"],
+        }
+        if contract_result["passed"] and summary["public_redaction"]["passed"]:
+            break
+        if summary.get("pipeline_contract", {}).get("status") == "target_met_full_chain":
+            summary["pipeline_contract"]["status"] = (
+                "blocked_public_redaction_failed" if not summary["public_redaction"]["passed"] else "blocked_contract"
+            )
+            summary["pipeline_contract"]["claims"] = {
+                "target_met": False,
+                "full_chain_complete": False,
+                "safe_to_merge": False,
+            }
+            if isinstance(summary.get("sc1_full_chain_proof"), Mapping):
+                summary["sc1_full_chain_proof"] = {
+                    **summary["sc1_full_chain_proof"],
+                    "complete_sc1_pipeline_executed": False,
+                    "all_required_stage_statuses_verified": False,
+                }
+            continue
+        break
+
     summary["public_json_payload"] = build_public_json_payload(summary)
-    report = public_report_markdown(summary)
-    redaction = public_redaction_check(summary, report)
-    summary["public_redaction"] = redaction
     report = public_report_markdown(summary)
     write_text(PUBLIC_REPORT_MD, report)
     write_json(PUBLIC_REPORT_JSON, summary)
 
-    contract_result = check_phase_contract(CONTRACT_ID, summary).to_dict()
-    write_json(output_dir / "contract-result.json", contract_result)
+    write_json(output_dir / "contract-result.json", contract_result or {})
     write_json(output_dir / "public-summary-copy.json", summary)
     write_text(output_dir / "public-report-copy.md", report)
     write_json(output_dir / "sc1-required-stage-manifest.json", summary["sc1_required_stage_manifest"])
@@ -1302,21 +1898,7 @@ def finalize_outputs(summary: dict[str, Any], output_dir: Path) -> dict[str, Any
             review_pack_files[name] = path
     zip_path = output_dir / "review-pack.zip"
     zip_files(zip_path, review_pack_files)
-    summary["review_pack"] = {
-        **summary["review_pack"],
-        "generated": True,
-        "includes_stage_manifest": True,
-        "label": "r1r-private-review-pack",
-        "integrity_recorded": True,
-    }
-    summary["public_json_payload"] = build_public_json_payload(summary)
     write_json(output_dir / "review-pack-integrity-private.json", {"sha256": sha256_file(zip_path)})
-    summary["contract_result"] = {
-        "contract_id": CONTRACT_ID,
-        "passed": contract_result["passed"],
-        "error_count": contract_result["error_count"],
-        "warning_count": contract_result["warning_count"],
-    }
     write_json(PUBLIC_REPORT_JSON, summary)
     write_json(output_dir / "public-summary-copy.json", summary)
     return summary
@@ -1346,7 +1928,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     summary = run_pipeline(args)
     print(json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True, default=str))
-    return 0
+    contract = summary.get("contract_result") if isinstance(summary.get("contract_result"), Mapping) else {}
+    return 0 if contract.get("passed") is not False else 1
 
 
 if __name__ == "__main__":
