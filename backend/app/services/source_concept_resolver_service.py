@@ -3122,7 +3122,9 @@ def run_bounded_llm_adjudication(
     provider_identity = {
         **provider_summary,
         "provider_name": provider.get_provider_name() if provider is not None and hasattr(provider, "get_provider_name") else "cache_only",
-        "model_name": getattr(provider, "model", None) if provider is not None else provider_summary.get("model_name"),
+        "model_name": getattr(provider, "model", None)
+        if provider is not None
+        else provider_summary.get("model_name") or config.model_label,
     }
     for pair_index, edge in enumerate(selected_edges, start=1):
         left = signal_by_key.get(edge.left_signal_key)

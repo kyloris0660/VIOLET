@@ -1978,6 +1978,7 @@ def test_all_pairs_cached_does_not_require_provider_availability(
     assert len(judgments) == 1
     assert judgments[0]["cache_status"] == "hit"
     assert summary["provider"]["provider_name"] == "cache_only"
+    assert summary["provider"]["model_name"] == config.model_label
     assert summary["cache_hits"] == 1
     assert summary["new_provider_call_count"] == 0
     assert summary["remaining_missing_pair_count"] == 0
