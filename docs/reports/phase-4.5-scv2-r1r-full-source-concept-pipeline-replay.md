@@ -14,6 +14,10 @@
 - All eligible LLM pairs adjudicated: `True`.
 - Input-scope fidelity gate: `matched_old_r1_scope`.
 - Current run classification: `route_evidence_candidate`.
+- Evidence code SHA: `67eb8576e186463ebb4720060c632b6a5e925dbd`.
+- Report commit parent SHA: `67eb8576e186463ebb4720060c632b6a5e925dbd`.
+- Worktree state at evidence generation: `tracked_clean_untracked_local_artifacts_ignored`.
+- Code changed after evidence generation: `False`.
 - A1R still required: `True`.
 
 ## Isolation
@@ -74,7 +78,7 @@
 | DB label | read_only | media | eligible | source metadata | PX1 records | SourceConcept | old-R1 scale likely |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | `blombooru` | `on` | `35545` | `35314` | `671` | `471` | `6094` | `True` |
-| `blombooru_r1r_restored_test_20260618` | `on` | `3750` | `3687` | `671` | `471` | `2827` | `True` |
+| `blombooru_r1r_restored_test_20260618` | `on` | `3750` | `3687` | `671` | `471` | `2767` | `True` |
 | `blombooru_test` | `on` | `307` | `206` | `1` | `0` | `58` | `False` |
 | `blombooru_test_medium` | `on` | `522` | `508` | `None` | `None` | `None` | `False` |
 | `blombooru_test_pilot` | `on` | `265` | `229` | `None` | `None` | `None` | `False` |
@@ -124,9 +128,9 @@
 | `source_concept_replay_total` | `current_r1r_replay_output_scale` | `True` | `2887` | `2861` | `0.991` | `matched` |
 | `source_concept_replay_active` | `current_r1r_replay_output_scale` | `True` | `1078` | `1078` | `1.0` | `matched` |
 | `source_concept_replay_needs_review` | `current_r1r_replay_output_scale` | `True` | `1809` | `1783` | `0.9856` | `matched` |
-| `source_concept_total` | `old_r1_persisted_baseline_scale` | `False` | `6094` | `2827` | `0.4639` | `baseline_only_insufficient` |
-| `source_concept_active` | `old_r1_persisted_baseline_scale` | `False` | `1078` | `1067` | `0.9898` | `matched` |
-| `source_concept_needs_review` | `old_r1_persisted_baseline_scale` | `False` | `1809` | `1760` | `0.9729` | `matched` |
+| `source_concept_total` | `old_r1_persisted_baseline_scale` | `False` | `6094` | `2767` | `0.4541` | `baseline_only_insufficient` |
+| `source_concept_active` | `old_r1_persisted_baseline_scale` | `False` | `1078` | `1064` | `0.987` | `matched` |
+| `source_concept_needs_review` | `old_r1_persisted_baseline_scale` | `False` | `1809` | `1703` | `0.9414` | `matched` |
 | `source_concept_superseded` | `old_r1_persisted_baseline_scale` | `False` | `3207` | `0` | `0.0` | `baseline_only_insufficient` |
 | `llm_eligible_pair_count` | `llm_selected_accounting` | `True` | `6429` | `6429` | `1.0` | `matched` |
 | `llm_selected_pair_count` | `llm_selected_accounting` | `True` | `6429` | `6429` | `1.0` | `matched` |
@@ -145,14 +149,14 @@
 - SourceConcept-owned tables cleared/rebuilt in dev/test: `True`.
 - Old R1 isolated before R1R persistence: `True`.
 - Contamination handling method: `dev_test_sourceconcept_owned_delete_rebuild`.
-- Baseline SourceConcept total/active/needs_review/superseded: `2827` / `1067` / `1760` / `0`.
+- Baseline SourceConcept total/active/needs_review/superseded: `2767` / `1064` / `1703` / `0`.
 
 ## LLM Readiness
 
 - Operator approved: `True`.
 - Provider available: `True`.
 - Provider/model configured: `primary_openai` / `gpt-4.1-mini`.
-- Primary OpenAI-compatible adjudication calls made: `True`.
+- Primary OpenAI-compatible adjudication calls made: `False`.
 - Fallback provider used: `False`.
 - Cache ready: `True`.
 - Budget ready: `True`.
@@ -160,22 +164,25 @@
 - Selected pairs: `6429`.
 - Selection policy: `budget_driven_all_eligible`.
 - All eligible pairs selected/adjudicated: `True` / `True`.
-- Judgment/error/cache counts: `6429` / `0` / `5589` hits, `840` misses.
-- Estimated actual cost USD: `0.268975`; exact provider cost available: `False`.
+- Judgment/error/cache counts: `6429` / `0` / `6429` hits, `0` misses.
+- Estimated actual cost USD: `0.0`; exact provider cost available: `False`.
 - Projected full eligible cost USD / budget cap USD: `2.058618` / `15.0`.
-- Projected new-call cost after cache USD: `0.268975`.
+- Projected new-call cost after cache USD: `0.0`.
 - Emergency call ceiling: `20000`.
 - Fixed call cap is primary limiter: `False`.
+- Provider required for cache-missing pairs: `False`.
+- Provider not required for fully cached pairs: `True`.
 
 ## Durable LLM Cache
 
 - Cache policy version: `source_concept_llm_adjudication_cache_v1`.
 - Durable cache root label: `source-concept-llm-adjudication-cache`.
 - Atomic cache writes: `True`.
-- Exact-compatible cache hits: `5589`.
-- Imported previous judgments: `32`.
-- New provider calls / failures / remaining: `840` / `0` / `0`.
-- Cost spent this run / avoided by cache USD: `0.268975` / `1.789643`.
+- Compatible cache hits: `6429`.
+- Exact-compatible cache hits: `6429`.
+- Imported previous judgments: `0`.
+- New provider calls / failures / remaining: `0` / `0` / `0`.
+- Cost spent this run / avoided by cache USD: `0.0` / `2.058618`.
 - Semantic/prior judgments counted as full-chain proof: `False`.
 
 ## Stage Manifest

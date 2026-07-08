@@ -80,7 +80,7 @@
   },
   "environment_isolation": {
     "blockers": [],
-    "checked_at": "2026-07-07T15:51:06.757418+00:00",
+    "checked_at": "2026-07-08T04:57:18.484570+00:00",
     "db_identity_after": {
       "db_name": "blombooru_r1r_restored_test_20260618",
       "db_user_redacted": true,
@@ -147,6 +147,8 @@
     "violet_env": "test",
     "violet_env_is_production": false
   },
+  "evidence_code_sha": "67eb8576e186463ebb4720060c632b6a5e925dbd",
+  "evidence_tree_sha": "e88ef4a287e6de8074272502475dfcb14fd66b61",
   "forbidden_writes": {
     "confirmed_assignments": false,
     "entity_alias_truth": false,
@@ -156,8 +158,8 @@
     "source_icloud_app_storage": false,
     "source_metadata": false
   },
-  "generated_at": "2026-07-07T16:20:41.451104+00:00",
-  "head_sha": "0e6d19031cb215c7e537757e5f300a0a09359019",
+  "generated_at": "2026-07-08T04:58:37.199319+00:00",
+  "head_sha": "67eb8576e186463ebb4720060c632b6a5e925dbd",
   "input_scope_fidelity": {
     "blocked_status_if_failed": "smoke_only_not_route_evidence",
     "comparison_table": [
@@ -307,33 +309,33 @@
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
         "category": "old_r1_persisted_baseline_scale",
-        "current_r1r_actual": 2827,
+        "current_r1r_actual": 2767,
         "metric": "source_concept_total",
         "minimum_ratio": 0.8,
         "old_r1_expected": 6094,
-        "ratio": 0.4639,
+        "ratio": 0.4541,
         "required_for_route_evidence": false,
         "status": "baseline_only_insufficient"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
         "category": "old_r1_persisted_baseline_scale",
-        "current_r1r_actual": 1067,
+        "current_r1r_actual": 1064,
         "metric": "source_concept_active",
         "minimum_ratio": 0.8,
         "old_r1_expected": 1078,
-        "ratio": 0.9898,
+        "ratio": 0.987,
         "required_for_route_evidence": false,
         "status": "matched"
       },
       {
         "baseline_evidence": "docs/reports/phase-4.5-scv2-r1-post-px1-source-concept-triage.md",
         "category": "old_r1_persisted_baseline_scale",
-        "current_r1r_actual": 1760,
+        "current_r1r_actual": 1703,
         "metric": "source_concept_needs_review",
         "minimum_ratio": 0.8,
         "old_r1_expected": 1809,
-        "ratio": 0.9729,
+        "ratio": 0.9414,
         "required_for_route_evidence": false,
         "status": "matched"
       },
@@ -389,7 +391,7 @@
     "all_eligible_pair_count": 6429,
     "all_eligible_pairs_adjudicated": true,
     "all_eligible_pairs_selected": true,
-    "already_cached_compatible_judgments": 5589,
+    "already_cached_compatible_judgments": 6429,
     "budget_cap_adjusted_or_superseded": false,
     "budget_cap_usd": 15.0,
     "budget_limit_is_primary": true,
@@ -400,13 +402,15 @@
     "failed_provider_call_count": 0,
     "fixed_call_cap_primary_limiter": false,
     "max_calls": 20000,
-    "new_provider_call_count": 840,
+    "new_provider_call_count": 0,
     "operator_budget_approved": true,
     "projected_budget_usd": 2.058618,
     "projected_full_eligible_cost_usd": 2.058618,
     "projected_input_tokens": 514989,
-    "projected_new_call_cost_usd": 0.268975,
+    "projected_new_call_cost_usd": 0.0,
     "projected_output_tokens": 514320,
+    "provider_not_required_for_fully_cached_pairs": true,
+    "provider_required_for_missing_pairs": false,
     "reason": null,
     "remaining_missing_pair_count": 0,
     "required": true,
@@ -421,22 +425,24 @@
     "adjudication_policy_version": "source_concept_budget_driven_adjudication_v1",
     "budget_cap_usd": 15.0,
     "cache_writes_atomic": true,
-    "compatible_cache_hit_count": 5589,
-    "cost_avoided_by_cache_reuse_usd": 1.789643,
-    "cost_spent_this_run_usd": 0.268975,
+    "compatible_cache_hit_count": 6429,
+    "cost_avoided_by_cache_reuse_usd": 2.058618,
+    "cost_spent_this_run_usd": 0.0,
     "decision_schema_version": "source_concept_pair_decision_schema_v1",
     "durable_cache_root_label": "source-concept-llm-adjudication-cache",
-    "exact_compatible_cache_hit_count": 5557,
+    "exact_compatible_cache_hit_count": 6429,
     "exact_compatible_reuse_counts_as_valid_judgment": true,
     "failed_provider_call_count": 0,
     "future_full_library_runs_resume_without_repeating_successful_calls": true,
-    "imported_previous_judgment_count": 32,
-    "new_provider_call_count": 840,
-    "new_provider_success_count": 840,
+    "imported_previous_judgment_count": 0,
+    "new_provider_call_count": 0,
+    "new_provider_success_count": 0,
     "policy_version": "source_concept_llm_adjudication_cache_v1",
     "private_ignored_cache_root": true,
     "projected_full_eligible_cost_usd": 2.058618,
-    "projected_new_call_cost_usd": 0.268975,
+    "projected_new_call_cost_usd": 0.0,
+    "provider_not_required_for_fully_cached_pairs": true,
+    "provider_required_for_missing_pairs": false,
     "raw_private_paths_redacted": true,
     "remaining_missing_pair_count": 0,
     "semantic_prior_judgment_count": 0,
@@ -444,44 +450,46 @@
   },
   "llm_judgment_summary": {
     "actual_cost_usd_available": false,
-    "cache_hits": 5589,
-    "cache_misses": 840,
-    "compatible_cache_hit_count": 5589,
-    "cost_avoided_by_cache_reuse_usd": 1.789643,
+    "cache_hits": 6429,
+    "cache_misses": 0,
+    "compatible_cache_hit_count": 6429,
+    "cost_avoided_by_cache_reuse_usd": 2.058618,
     "error_count": 0,
-    "estimated_cost_usd": 0.268975,
-    "exact_compatible_cache_hit_count": 5557,
+    "estimated_cost_usd": 0.0,
+    "exact_compatible_cache_hit_count": 6429,
     "failed_provider_call_count": 0,
-    "imported_previous_judgment_count": 32,
+    "imported_previous_judgment_count": 0,
     "judgment_count": 6429,
     "ledger_row_count": 6429,
     "llm_cannot_count": 3815,
     "llm_same_count": 2072,
     "llm_uncertain_count": 542,
-    "new_provider_call_count": 840,
-    "new_provider_success_count": 840,
+    "new_provider_call_count": 0,
+    "new_provider_success_count": 0,
     "remaining_missing_pair_count": 0,
     "selected_pair_accounting": {
       "all_selected_pairs_successfully_accounted": true,
       "explicit_skipped_pair_count": 0,
       "provider_error_pair_count": 0,
-      "resolved_provider_judgment_count": 840,
+      "resolved_provider_judgment_count": 0,
       "selected_pair_count": 6429,
       "successful_accounted_pair_count": 6429,
-      "valid_cached_judgment_count": 5589
+      "valid_cached_judgment_count": 6429
     },
     "selected_pair_count": 6429
   },
   "llm_provider_execution": {
     "actual_cost_usd_available": false,
-    "actual_cost_usd_estimate": 0.268975,
+    "actual_cost_usd_estimate": 0.0,
     "fallback_provider_used": false,
     "model_name": "gpt-4.1-mini",
-    "primary_openai_compatible_used": true,
+    "primary_openai_compatible_policy_used_for_cache_compatibility": true,
+    "primary_openai_compatible_used": false,
     "provider_error": null,
     "provider_label": "primary_openai",
     "provider_mode": "primary_openai",
-    "provider_name": "openai_compatible(primary_openai)",
+    "provider_name": "cache_only",
+    "provider_not_required_for_fully_cached_pairs": true,
     "uses_fallback_provider": false
   },
   "llm_readiness": {
@@ -491,23 +499,23 @@
       "cache_artifact_label": "source-concept-llm-adjudication-cache",
       "cache_dir_public": "[private]",
       "cache_enabled": true,
-      "cache_hits": 5589,
-      "cache_misses": 840,
+      "cache_hits": 6429,
+      "cache_misses": 0,
       "cache_policy_version": "source_concept_llm_adjudication_cache_v1",
       "cache_writes_atomic": true,
-      "cached_decision_count": 5589,
-      "compatible_cache_hit_count": 5589,
-      "cost_avoided_by_cache_reuse_usd": 1.789643,
+      "cached_decision_count": 6429,
+      "compatible_cache_hit_count": 6429,
+      "cost_avoided_by_cache_reuse_usd": 2.058618,
       "durable_cache_root_label": "source-concept-llm-adjudication-cache",
-      "durable_cache_write_success_count": 872,
-      "estimated_cost_this_run_usd": 0.268975,
-      "exact_compatible_cache_hit_count": 5557,
+      "durable_cache_write_success_count": 0,
+      "estimated_cost_this_run_usd": 0.0,
+      "exact_compatible_cache_hit_count": 6429,
       "failed_provider_call_count": 0,
-      "legacy_compatible_cache_hit_count": 32,
-      "legacy_compatible_cache_import_count": 32,
-      "new_provider_call_count": 840,
-      "new_provider_success_count": 840,
-      "projected_new_call_cost_usd": 0.268975,
+      "legacy_compatible_cache_hit_count": 0,
+      "legacy_compatible_cache_import_count": 0,
+      "new_provider_call_count": 0,
+      "new_provider_success_count": 0,
+      "projected_new_call_cost_usd": 0.0,
       "raw_private_paths_redacted": true,
       "remaining_missing_pair_count": 0,
       "semantic_prior_judgment_count": 0
@@ -519,7 +527,9 @@
     "provider_error": null,
     "provider_mode": "primary_openai",
     "provider_model": "gpt-4.1-mini",
-    "provider_readiness_checked": true,
+    "provider_not_required_for_fully_cached_pairs": true,
+    "provider_readiness_checked": false,
+    "provider_required_for_missing_pairs": false,
     "uses_fallback_provider": false
   },
   "local_artifacts": {
@@ -532,10 +542,10 @@
         "after_count": 4400,
         "allowed": true,
         "before_content_signature_redacted": true,
-        "before_count": 4407,
+        "before_count": 4400,
         "changed": true,
         "content_signature_changed": true,
-        "delta": -7,
+        "delta": 0,
         "prompt_forbidden": false,
         "table": "blombooru_source_concept_aliases"
       },
@@ -568,10 +578,10 @@
         "after_count": 4400,
         "allowed": true,
         "before_content_signature_redacted": true,
-        "before_count": 4407,
+        "before_count": 4400,
         "changed": true,
         "content_signature_changed": true,
-        "delta": -7,
+        "delta": 0,
         "prompt_forbidden": false,
         "table": "blombooru_source_concept_search_index"
       },
@@ -604,10 +614,10 @@
         "after_count": 2767,
         "allowed": true,
         "before_content_signature_redacted": true,
-        "before_count": 2827,
+        "before_count": 2767,
         "changed": true,
         "content_signature_changed": true,
-        "delta": -60,
+        "delta": 0,
         "prompt_forbidden": false,
         "table": "blombooru_source_concepts"
       }
@@ -618,10 +628,10 @@
         "after_count": 4400,
         "allowed": true,
         "before_content_signature_redacted": true,
-        "before_count": 4407,
+        "before_count": 4400,
         "changed": true,
         "content_signature_changed": true,
-        "delta": -7,
+        "delta": 0,
         "prompt_forbidden": false,
         "table": "blombooru_source_concept_aliases"
       },
@@ -654,10 +664,10 @@
         "after_count": 4400,
         "allowed": true,
         "before_content_signature_redacted": true,
-        "before_count": 4407,
+        "before_count": 4400,
         "changed": true,
         "content_signature_changed": true,
-        "delta": -7,
+        "delta": 0,
         "prompt_forbidden": false,
         "table": "blombooru_source_concept_search_index"
       },
@@ -690,10 +700,10 @@
         "after_count": 2767,
         "allowed": true,
         "before_content_signature_redacted": true,
-        "before_count": 2827,
+        "before_count": 2767,
         "changed": true,
         "content_signature_changed": true,
-        "delta": -60,
+        "delta": 0,
         "prompt_forbidden": false,
         "table": "blombooru_source_concepts"
       }
@@ -709,7 +719,7 @@
     "dev_test_restored_snapshot_scope_only": true,
     "isolation_artifact_label": "old-r1-contamination-isolation",
     "isolation_status": "old_r1_sourceconcept_outputs_isolated",
-    "new_r1r_run_label": "r1r-20260707T155106Z",
+    "new_r1r_run_label": "r1r-20260708-cache-only-regeneration",
     "old_r1_a1_remain_invalid_for_route_approval_until_a1r": true,
     "old_r1_isolated_before_r1r_persistence": true,
     "old_r1_used_as_baseline_only": true,
@@ -731,13 +741,13 @@
       "blombooru_source_concept_resolution_runs"
     ],
     "deleted_row_counts": {
-      "blombooru_source_concept_aliases": 4407,
+      "blombooru_source_concept_aliases": 4400,
       "blombooru_source_concept_evidence": 8097,
       "blombooru_source_concept_resolution_runs": 1,
-      "blombooru_source_concept_search_index": 4407,
+      "blombooru_source_concept_search_index": 4400,
       "blombooru_source_concept_signal_links": 8097,
       "blombooru_source_concept_signals": 12249,
-      "blombooru_source_concepts": 2827
+      "blombooru_source_concepts": 2767
     },
     "forbidden_tables_touched": false,
     "method": "dev_test_sourceconcept_owned_delete_rebuild",
@@ -752,22 +762,22 @@
     "captured_before_r1r_isolation": true,
     "resolution_run_row_count": 1,
     "source_concept_counts": {
-      "active": 1067,
+      "active": 1064,
       "concept_status_counts": {
-        "active": 1067,
-        "needs_review": 1760
+        "active": 1064,
+        "needs_review": 1703
       },
-      "concept_total": 2827,
-      "needs_review": 1760,
+      "concept_total": 2767,
+      "needs_review": 1703,
       "superseded": 0,
       "table_counts": {
-        "blombooru_source_concept_aliases": 4407,
+        "blombooru_source_concept_aliases": 4400,
         "blombooru_source_concept_evidence": 8097,
         "blombooru_source_concept_resolution_runs": 1,
-        "blombooru_source_concept_search_index": 4407,
+        "blombooru_source_concept_search_index": 4400,
         "blombooru_source_concept_signal_links": 8097,
         "blombooru_source_concept_signals": 12249,
-        "blombooru_source_concepts": 2827
+        "blombooru_source_concepts": 2767
       }
     }
   },
@@ -798,6 +808,7 @@
     "passed": true,
     "reason": null
   },
+  "post_evidence_code_changed": false,
   "preserved_smoke_run": {
     "cannot_count": 31,
     "classification": "smoke_only_not_route_evidence",
@@ -812,7 +823,9 @@
     "source_artifact_label": "r1r-private-preserved-smoke-summary",
     "source_concept_after_total": 58,
     "source_concept_before_total": 4,
-    "source_head_sha": "d0de5c6fa5f5c635f1ca540c3d91278317371a52",
+    "source_head_sha": "previous-non-target-artifact-sha-redacted",
+    "source_head_sha_is_current_target_evidence": false,
+    "source_head_sha_redacted": true,
     "uncertain_count": 2
   },
   "public_json_payload": {
@@ -825,6 +838,7 @@
       "storage_root_pre_settings_import_passed": true,
       "violet_env": "test"
     },
+    "evidence_code_sha": "67eb8576e186463ebb4720060c632b6a5e925dbd",
     "input_scope_fidelity": {
       "current_run_classification": "route_evidence_candidate",
       "failed_metrics": [],
@@ -834,28 +848,32 @@
     },
     "llm_cache_policy": {
       "cache_writes_atomic": true,
-      "compatible_cache_hit_count": 5589,
-      "cost_avoided_by_cache_reuse_usd": 1.789643,
-      "cost_spent_this_run_usd": 0.268975,
+      "compatible_cache_hit_count": 6429,
+      "cost_avoided_by_cache_reuse_usd": 2.058618,
+      "cost_spent_this_run_usd": 0.0,
       "durable_cache_root_label": "source-concept-llm-adjudication-cache",
       "failed_provider_call_count": 0,
-      "imported_previous_judgment_count": 32,
-      "new_provider_call_count": 840,
+      "imported_previous_judgment_count": 0,
+      "new_provider_call_count": 0,
       "policy_version": "source_concept_llm_adjudication_cache_v1",
+      "provider_not_required_for_fully_cached_pairs": true,
+      "provider_required_for_missing_pairs": false,
       "remaining_missing_pair_count": 0,
       "semantic_prior_judgment_count": 0
     },
     "llm_gate": {
       "budget_ready": true,
-      "cache_hits": 5589,
-      "cache_misses": 840,
+      "cache_hits": 6429,
+      "cache_misses": 0,
       "cache_ready": true,
       "error_count": 0,
-      "estimated_cost_usd": 0.268975,
+      "estimated_cost_usd": 0.0,
       "model_name": "gpt-4.1-mini",
       "operator_approved": true,
       "provider_available": true,
       "provider_mode": "primary_openai",
+      "provider_not_required_for_fully_cached_pairs": true,
+      "provider_required_for_missing_pairs": false,
       "uses_fallback_provider": false
     },
     "llm_plan": {
@@ -868,7 +886,9 @@
       "fixed_call_cap_primary_limiter": false,
       "projected_budget_usd": 2.058618,
       "projected_full_eligible_cost_usd": 2.058618,
-      "projected_new_call_cost_usd": 0.268975,
+      "projected_new_call_cost_usd": 0.0,
+      "provider_not_required_for_fully_cached_pairs": true,
+      "provider_required_for_missing_pairs": false,
       "selected_pairs": 6429,
       "selection_policy": "budget_driven_all_eligible",
       "status": "ready"
@@ -890,6 +910,7 @@
     },
     "phase": "4.5-SCV2-R1R",
     "phase_slug": "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay",
+    "post_evidence_code_changed": false,
     "preserved_smoke_run": {
       "classification": "smoke_only_not_route_evidence",
       "edge_count": 170,
@@ -898,6 +919,8 @@
       "selected_pair_count": 33,
       "signal_count": 99
     },
+    "report_commit_parent_sha": "67eb8576e186463ebb4720060c632b6a5e925dbd",
+    "report_generated_from_worktree_clean_or_expected_dirty_state": "tracked_clean_untracked_local_artifacts_ignored",
     "review_pack": {
       "generated": true,
       "includes_stage_manifest": true,
@@ -1001,6 +1024,8 @@
     "search_index_preview_count": 4400,
     "signal_count": 12249
   },
+  "report_commit_parent_sha": "67eb8576e186463ebb4720060c632b6a5e925dbd",
+  "report_generated_from_worktree_clean_or_expected_dirty_state": "tracked_clean_untracked_local_artifacts_ignored",
   "review_pack": {
     "generated": true,
     "includes_stage_manifest": true,
@@ -1017,7 +1042,7 @@
     "scale_up_authorized": false,
     "source_concept_truth_promotion_authorized": false
   },
-  "run_id": "r1r-20260707T155106Z",
+  "run_id": "r1r-20260708-cache-only-regeneration",
   "sc1_full_chain_proof": {
     "all_eligible_llm_pairs_adjudicated": true,
     "all_required_stage_statuses_verified": true,
@@ -1777,16 +1802,16 @@
             "eligible_media": 3687,
             "media_tags": 196794,
             "px1_source_metadata_records": 471,
-            "source_concept_active": 1067,
-            "source_concept_aliases": 4407,
+            "source_concept_active": 1064,
+            "source_concept_aliases": 4400,
             "source_concept_evidence": 8097,
-            "source_concept_needs_review": 1760,
+            "source_concept_needs_review": 1703,
             "source_concept_resolution_runs": 1,
-            "source_concept_search_index": 4407,
+            "source_concept_search_index": 4400,
             "source_concept_signal_links": 8097,
             "source_concept_signals": 12249,
             "source_concept_superseded": 0,
-            "source_concept_total": 2827,
+            "source_concept_total": 2767,
             "source_metadata_evidence": 4386,
             "source_metadata_records_total": 671,
             "source_name_observations": 1377,
@@ -2420,26 +2445,26 @@
     }
   },
   "source_concept_before": {
-    "active": 1067,
+    "active": 1064,
     "concept_status_counts": {
-      "active": 1067,
-      "needs_review": 1760
+      "active": 1064,
+      "needs_review": 1703
     },
-    "concept_total": 2827,
-    "needs_review": 1760,
+    "concept_total": 2767,
+    "needs_review": 1703,
     "superseded": 0,
     "table_counts": {
-      "blombooru_source_concept_aliases": 4407,
+      "blombooru_source_concept_aliases": 4400,
       "blombooru_source_concept_evidence": 8097,
       "blombooru_source_concept_resolution_runs": 1,
-      "blombooru_source_concept_search_index": 4407,
+      "blombooru_source_concept_search_index": 4400,
       "blombooru_source_concept_signal_links": 8097,
       "blombooru_source_concept_signals": 12249,
-      "blombooru_source_concepts": 2827
+      "blombooru_source_concepts": 2767
     }
   },
   "source_concept_delta": {
-    "active_delta": -3,
+    "active_delta": 0,
     "gap_symmetry_needs_review_deltas": {
       "ai_only_weak_evidence_guard_delta": 0,
       "cjk_romaji_parenthetical_alias_gap_delta": 0,
@@ -2451,17 +2476,17 @@
       "search_seed_symmetry_delta": 0,
       "source_assertion_tag_name_unlinked_delta": 0
     },
-    "needs_review_delta": -57,
-    "source_concept_total_delta": -60,
+    "needs_review_delta": 0,
+    "source_concept_total_delta": 0,
     "superseded_delta": 0,
     "table_count_deltas": {
-      "blombooru_source_concept_aliases": -7,
+      "blombooru_source_concept_aliases": 0,
       "blombooru_source_concept_evidence": 0,
       "blombooru_source_concept_resolution_runs": 0,
-      "blombooru_source_concept_search_index": -7,
+      "blombooru_source_concept_search_index": 0,
       "blombooru_source_concept_signal_links": 0,
       "blombooru_source_concept_signals": 0,
-      "blombooru_source_concepts": -60
+      "blombooru_source_concepts": 0
     }
   },
   "source_concept_write_scope": {
@@ -2497,5 +2522,6 @@
     },
     "source_run_scope_present": false,
     "total_signal_rows": 205447
-  }
+  },
+  "tracked_dirty_entry_count_before_public_artifact_write": 0
 }
