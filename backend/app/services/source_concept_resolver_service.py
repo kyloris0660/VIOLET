@@ -58,6 +58,11 @@ from ..utils.cache import invalidate_source_concept_search_cache
 
 RESOLVER_VERSION = "source_concept_resolver_core_v2_graph"
 SOURCE_CONCEPT_SCHEMA_VERSION = "source_concept_schema_v1"
+LLM_CACHE_POLICY_VERSION = "source_concept_llm_adjudication_cache_v1"
+LLM_DECISION_SCHEMA_VERSION = "source_concept_pair_decision_schema_v1"
+LLM_ADJUDICATION_POLICY_VERSION = "source_concept_budget_driven_adjudication_v1"
+LLM_PROVIDER_POLICY_VERSION = "primary_openai_compatible_no_fallback_v1"
+DEFAULT_SOURCE_CONCEPT_LLM_CACHE_ROOT = Path(".local_manifests") / "source_concept_llm_adjudication_cache"
 
 SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = (
     "blombooru_source_concept_resolution_runs",
@@ -242,6 +247,13 @@ class LLMAdjudicationConfig:
     model_label: str = "primary_openai"
     cache_dir: str | None = None
     fail_if_unavailable: bool = False
+    selection_policy: str = "ranked"
+    durable_cache_dir: str | None = None
+    legacy_cache_dirs: tuple[str, ...] = ()
+    run_id: str = ""
+    cache_policy_version: str = LLM_CACHE_POLICY_VERSION
+    decision_schema_version: str = LLM_DECISION_SCHEMA_VERSION
+    adjudication_policy_version: str = LLM_ADJUDICATION_POLICY_VERSION
 
 
 @dataclass(frozen=True)
@@ -253,6 +265,7 @@ class LLMAdjudicationPlan:
     projected_cost_usd: float
     max_calls: int
     max_budget_usd: float
+    selection_policy: str
     selected_block_count: int
     skipped_block_count: int
     status: str
@@ -2196,12 +2209,413 @@ def llm_cache_fingerprint(
     )
 
 
+def llm_public_decision(decision: str | None) -> str:
+    value = str(decision or "needs_review").strip().casefold()
+    if value in {"must_link", "same"}:
+        return "same"
+    if value in {"cannot_link", "cannot"}:
+        return "cannot"
+    return "uncertain"
+
+
+def llm_resolver_decision(decision: str | None) -> str:
+    value = str(decision or "uncertain").strip().casefold()
+    if value in {"same", "must_link"}:
+        return "must_link"
+    if value in {"cannot", "cannot_link"}:
+        return "cannot_link"
+    return "needs_review"
+
+
+def _cache_root(config: LLMAdjudicationConfig) -> Path:
+    if config.durable_cache_dir:
+        return Path(config.durable_cache_dir)
+    if config.cache_dir:
+        return Path(config.cache_dir)
+    return DEFAULT_SOURCE_CONCEPT_LLM_CACHE_ROOT
+
+
+def _legacy_cache_dirs(config: LLMAdjudicationConfig, durable_root: Path) -> list[Path]:
+    dirs: list[Path] = []
+    for raw in config.legacy_cache_dirs:
+        if raw:
+            dirs.append(Path(raw))
+    if config.cache_dir:
+        cache_dir = Path(config.cache_dir)
+        if cache_dir.resolve(strict=False) != durable_root.resolve(strict=False):
+            dirs.append(cache_dir)
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for path in dirs:
+        key = str(path.resolve(strict=False)).casefold()
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{time.time_ns()}.tmp")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _llm_cache_pair_payload(block_payload: Mapping[str, Any]) -> dict[str, Any]:
+    left = block_payload.get("left") if isinstance(block_payload.get("left"), Mapping) else {}
+    right = block_payload.get("right") if isinstance(block_payload.get("right"), Mapping) else {}
+    ordered_signals = sorted(
+        [dict(left), dict(right)],
+        key=lambda row: (
+            str(row.get("signal_key") or ""),
+            str(row.get("canonical_key") or ""),
+            value_hash(row, 16),
+        ),
+    )
+    edge = dict(block_payload.get("edge") or {})
+    edge_payload = edge.get("payload") if isinstance(edge.get("payload"), Mapping) else {}
+    return {
+        "ordered_signals": ordered_signals,
+        "edge_context": {
+            "edge_type": edge.get("edge_type"),
+            "status": edge.get("status"),
+            "evidence_source": edge.get("evidence_source"),
+            "resolution_reason_code": edge.get("resolution_reason_code"),
+            "negative_reason_code": edge.get("negative_reason_code"),
+            "union_allowed": edge.get("union_allowed"),
+            "payload_hash": value_hash(edge_payload, 40),
+        },
+    }
+
+
+def llm_cache_metadata(
+    block_payload: Mapping[str, Any],
+    *,
+    config: LLMAdjudicationConfig,
+) -> dict[str, Any]:
+    pair_payload = _llm_cache_pair_payload(block_payload)
+    pair_payload_hash = value_hash(pair_payload, 40)
+    signal_keys = [
+        str(row.get("signal_key") or "")
+        for row in pair_payload["ordered_signals"]
+        if isinstance(row, Mapping)
+    ]
+    pair_identity = value_hash(
+        {
+            "normalized_signal_keys": signal_keys,
+            "canonical_keys": [str(row.get("canonical_key") or "") for row in pair_payload["ordered_signals"]],
+            "work_context_keys": [str(row.get("work_context_key") or "") for row in pair_payload["ordered_signals"]],
+        },
+        40,
+    )
+    cache_key = value_hash(
+        {
+            "pair_identity": pair_identity,
+            "pair_payload_hash": pair_payload_hash,
+            "resolver_version": RESOLVER_VERSION,
+            "adjudication_policy_version": config.adjudication_policy_version,
+            "prompt_template_version": config.prompt_version,
+            "decision_schema_version": config.decision_schema_version,
+            "cache_policy_version": config.cache_policy_version,
+            "provider_policy_version": LLM_PROVIDER_POLICY_VERSION,
+            "model_label": config.model_label,
+        },
+        48,
+    )
+    return {
+        "cache_key": cache_key,
+        "pair_identity": pair_identity,
+        "pair_payload_hash": pair_payload_hash,
+        "pair_payload": pair_payload,
+        "normalized_signal_keys": signal_keys,
+    }
+
+
+def _cache_record_paths(root: Path, cache_key: str, pair_identity: str) -> dict[str, Path]:
+    return {
+        "record": root / "records" / f"{cache_key}.json",
+        "pair_index": root / "pair-index" / pair_identity / f"{cache_key}.json",
+        "failure": root / "failures" / f"{cache_key}.{time.time_ns()}.json",
+    }
+
+
+def _cache_record_is_exact_compatible(
+    record: Mapping[str, Any],
+    *,
+    metadata: Mapping[str, Any],
+    config: LLMAdjudicationConfig,
+) -> bool:
+    if not bool(record.get("compatible_for_exact_reuse")):
+        return False
+    if record.get("error_state"):
+        return False
+    if record.get("cache_key") != metadata.get("cache_key"):
+        return False
+    if record.get("pair_payload_hash") != metadata.get("pair_payload_hash"):
+        return False
+    expected = {
+        "resolver_version": RESOLVER_VERSION,
+        "adjudication_policy_version": config.adjudication_policy_version,
+        "prompt_template_version": config.prompt_version,
+        "decision_schema_version": config.decision_schema_version,
+        "cache_policy_version": config.cache_policy_version,
+        "provider_policy_version": LLM_PROVIDER_POLICY_VERSION,
+    }
+    return all(record.get(key) == value for key, value in expected.items())
+
+
+def _judgment_from_cache_record(
+    record: Mapping[str, Any],
+    *,
+    block_payload: Mapping[str, Any],
+    selected_pair_id: str,
+    cache_status: str,
+    reuse_level: str,
+) -> dict[str, Any]:
+    left = block_payload["left"]
+    right = block_payload["right"]
+    return {
+        "judgment_id": record.get("cache_key") or record.get("judgment_id"),
+        "selected_pair_id": selected_pair_id,
+        "left_signal_key": left["signal_key"],
+        "right_signal_key": right["signal_key"],
+        "input_signal_summary": {"left": left, "right": right},
+        "decision": llm_resolver_decision(str(record.get("resolver_decision") or record.get("decision") or "uncertain")),
+        "confidence": source_confidence_score(record.get("confidence"), 0.5),
+        "reason_code": record.get("reason_code"),
+        "source_layer_only": True,
+        "provider_label": record.get("provider_label"),
+        "provider_mode": record.get("provider_mode", "primary_openai"),
+        "provider_model": record.get("provider_model"),
+        "model_label": record.get("model_label"),
+        "cache_key": record.get("cache_key"),
+        "pair_payload_hash": record.get("pair_payload_hash"),
+        "pair_identity": record.get("pair_identity"),
+        "cache_policy_version": record.get("cache_policy_version"),
+        "cache_status": cache_status,
+        "cache_reuse_level": reuse_level,
+        "compatible_for_exact_reuse": True,
+        "error_state": None,
+    }
+
+
+def _durable_cache_record_from_judgment(
+    judgment: Mapping[str, Any],
+    *,
+    metadata: Mapping[str, Any],
+    block_payload: Mapping[str, Any],
+    config: LLMAdjudicationConfig,
+    provider_summary: Mapping[str, Any],
+    provider_model: str | None,
+) -> dict[str, Any]:
+    public_decision = llm_public_decision(str(judgment.get("decision") or "needs_review"))
+    return {
+        "cache_key": metadata["cache_key"],
+        "pair_identity": metadata["pair_identity"],
+        "pair_payload_hash": metadata["pair_payload_hash"],
+        "resolver_version": RESOLVER_VERSION,
+        "adjudication_policy_version": config.adjudication_policy_version,
+        "prompt_template_version": config.prompt_version,
+        "decision_schema_version": config.decision_schema_version,
+        "cache_policy_version": config.cache_policy_version,
+        "provider_policy_version": LLM_PROVIDER_POLICY_VERSION,
+        "provider_label": judgment.get("provider_label") or provider_summary.get("llm_provider_label"),
+        "provider_mode": judgment.get("provider_mode") or provider_summary.get("provider_mode"),
+        "provider_model": judgment.get("provider_model") or provider_model,
+        "model_label": config.model_label,
+        "decision": public_decision,
+        "resolver_decision": llm_resolver_decision(str(judgment.get("decision") or public_decision)),
+        "confidence": source_confidence_score(judgment.get("confidence"), 0.5),
+        "reason_code": judgment.get("reason_code"),
+        "source_layer_only": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "run_id": config.run_id,
+        "compatible_for_exact_reuse": True,
+        "raw_private_payload_label": "source-concept-llm-cache-private-record",
+        "redacted_public_summary": {
+            "decision": public_decision,
+            "provider_label": judgment.get("provider_label") or provider_summary.get("llm_provider_label"),
+            "provider_model": judgment.get("provider_model") or provider_model,
+            "source_layer_only": True,
+        },
+        "left_signal_key": block_payload["left"]["signal_key"],
+        "right_signal_key": block_payload["right"]["signal_key"],
+        "input_signal_summary": {"left": block_payload["left"], "right": block_payload["right"]},
+        "error_state": None,
+    }
+
+
+def _write_durable_cache_record(root: Path, record: Mapping[str, Any]) -> None:
+    paths = _cache_record_paths(root, str(record["cache_key"]), str(record["pair_identity"]))
+    _atomic_write_json(paths["record"], record)
+    _atomic_write_json(
+        paths["pair_index"],
+        {
+            "cache_key": record["cache_key"],
+            "pair_identity": record["pair_identity"],
+            "pair_payload_hash": record["pair_payload_hash"],
+            "resolver_version": record["resolver_version"],
+            "adjudication_policy_version": record["adjudication_policy_version"],
+            "prompt_template_version": record["prompt_template_version"],
+            "decision_schema_version": record["decision_schema_version"],
+            "cache_policy_version": record["cache_policy_version"],
+            "compatible_for_exact_reuse": record["compatible_for_exact_reuse"],
+            "raw_private_payload_label": "source-concept-llm-cache-private-index",
+        },
+    )
+
+
+def _write_failure_cache_record(
+    root: Path,
+    *,
+    metadata: Mapping[str, Any],
+    block_payload: Mapping[str, Any],
+    config: LLMAdjudicationConfig,
+    provider_summary: Mapping[str, Any],
+    error_type: str,
+) -> None:
+    paths = _cache_record_paths(root, str(metadata["cache_key"]), str(metadata["pair_identity"]))
+    _atomic_write_json(
+        paths["failure"],
+        {
+            "cache_key": metadata["cache_key"],
+            "pair_identity": metadata["pair_identity"],
+            "pair_payload_hash": metadata["pair_payload_hash"],
+            "resolver_version": RESOLVER_VERSION,
+            "adjudication_policy_version": config.adjudication_policy_version,
+            "prompt_template_version": config.prompt_version,
+            "decision_schema_version": config.decision_schema_version,
+            "cache_policy_version": config.cache_policy_version,
+            "provider_policy_version": LLM_PROVIDER_POLICY_VERSION,
+            "provider_label": provider_summary.get("llm_provider_label"),
+            "provider_mode": provider_summary.get("provider_mode"),
+            "provider_model": provider_summary.get("model_name"),
+            "source_layer_only": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "run_id": config.run_id,
+            "compatible_for_exact_reuse": False,
+            "error_state": {"type": error_type},
+            "raw_private_payload_label": "source-concept-llm-cache-private-failure",
+            "redacted_public_summary": {"error_type": error_type, "source_layer_only": True},
+            "left_signal_key": block_payload["left"]["signal_key"],
+            "right_signal_key": block_payload["right"]["signal_key"],
+        },
+    )
+
+
+def _load_exact_cache_record(
+    root: Path,
+    *,
+    metadata: Mapping[str, Any],
+    config: LLMAdjudicationConfig,
+) -> Mapping[str, Any] | None:
+    path = _cache_record_paths(root, str(metadata["cache_key"]), str(metadata["pair_identity"]))["record"]
+    if not path.exists():
+        return None
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if isinstance(record, Mapping) and _cache_record_is_exact_compatible(record, metadata=metadata, config=config):
+        return record
+    return None
+
+
+def _semantic_prior_count(root: Path, *, pair_identity: str, exact_cache_key: str) -> int:
+    index_dir = root / "pair-index" / pair_identity
+    if not index_dir.exists():
+        return 0
+    return sum(1 for path in index_dir.glob("*.json") if path.stem != exact_cache_key)
+
+
+def _legacy_cache_record(
+    *,
+    legacy_dirs: Sequence[Path],
+    legacy_fingerprint: str,
+) -> Mapping[str, Any] | None:
+    for directory in legacy_dirs:
+        path = directory / f"{legacy_fingerprint}.json"
+        if not path.exists():
+            continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(record, Mapping) or record.get("error_type") or record.get("error_state"):
+            continue
+        if llm_resolver_decision(str(record.get("decision") or "")) not in {"must_link", "cannot_link", "needs_review"}:
+            continue
+        return record
+    return None
+
+
+def inspect_llm_adjudication_cache_coverage(
+    edges: Sequence[SourceConceptEdgeDraft],
+    *,
+    signals: Sequence[SourceConceptSignalDraft],
+    config: LLMAdjudicationConfig,
+) -> dict[str, Any]:
+    selected_edges = select_llm_adjudication_edges(edges, signals=signals, config=config)
+    signal_by_key = {signal.signal_key: signal for signal in signals}
+    context_alias_by_key = _context_equivalence_lookup(signals)
+    context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
+    root = _cache_root(config)
+    legacy_dirs = _legacy_cache_dirs(config, root)
+    exact_hits = 0
+    legacy_hits = 0
+    semantic_prior = 0
+    missing = 0
+    for edge in selected_edges:
+        left = signal_by_key.get(edge.left_signal_key)
+        right = signal_by_key.get(edge.right_signal_key)
+        if left is None or right is None:
+            missing += 1
+            continue
+        block_payload = {
+            "edge": asdict(edge),
+            "left": _llm_signal_payload(left, context_by_scope=context_by_scope, context_alias_by_key=context_alias_by_key),
+            "right": _llm_signal_payload(right, context_by_scope=context_by_scope, context_alias_by_key=context_alias_by_key),
+        }
+        metadata = llm_cache_metadata(block_payload, config=config)
+        if _load_exact_cache_record(root, metadata=metadata, config=config):
+            exact_hits += 1
+            continue
+        legacy_fingerprint = llm_cache_fingerprint(
+            prompt_version=config.prompt_version,
+            model_label=config.model_label,
+            block_payload=block_payload,
+        )
+        if _legacy_cache_record(legacy_dirs=legacy_dirs, legacy_fingerprint=legacy_fingerprint):
+            legacy_hits += 1
+            continue
+        semantic_prior += _semantic_prior_count(
+            root,
+            pair_identity=str(metadata["pair_identity"]),
+            exact_cache_key=str(metadata["cache_key"]),
+        )
+        missing += 1
+    return {
+        "cache_policy_version": config.cache_policy_version,
+        "durable_cache_root_label": "source-concept-llm-adjudication-cache",
+        "cache_writes_atomic": True,
+        "raw_private_paths_redacted": True,
+        "selected_pair_count": len(selected_edges),
+        "exact_compatible_cache_hit_count": exact_hits,
+        "legacy_compatible_cache_hit_count": legacy_hits,
+        "compatible_cache_hit_count": exact_hits + legacy_hits,
+        "semantic_prior_judgment_count": semantic_prior,
+        "missing_pair_count": missing,
+    }
+
+
 def plan_llm_adjudication(
     edges: Sequence[SourceConceptEdgeDraft],
     *,
     signals: Sequence[SourceConceptSignalDraft],
     config: LLMAdjudicationConfig,
 ) -> LLMAdjudicationPlan:
+    selection_policy = (config.selection_policy or "ranked").strip().casefold()
+    all_eligible_policy = selection_policy in {"all_eligible", "budget_driven_all_eligible"}
     if not config.enabled:
         return LLMAdjudicationPlan(
             enabled=False,
@@ -2211,20 +2625,23 @@ def plan_llm_adjudication(
             projected_cost_usd=0.0,
             max_calls=config.max_calls,
             max_budget_usd=config.max_budget_usd,
+            selection_policy=selection_policy,
             selected_block_count=0,
             skipped_block_count=0,
             status="disabled",
             reason="llm_adjudication_not_requested",
         )
-    weak_edges = [
+    eligible_edges = [
         edge for edge in edges
         if edge.status in {"weak", "needs_review"}
         and edge.edge_type in {"cooccurrence_context", "alias_candidate_edge", "same_surface_context", "exact_canonical_key"}
     ]
-    candidate_pairs = min(len(weak_edges), max(config.max_calls, 0))
+    eligible_pair_count = len(eligible_edges)
+    max_calls = max(config.max_calls, 0)
+    candidate_pairs = eligible_pair_count if all_eligible_policy else min(eligible_pair_count, max_calls)
     signal_lookup = {signal.signal_key: signal for signal in signals}
     estimated_chars = 0
-    for edge in weak_edges[:candidate_pairs]:
+    for edge in eligible_edges[:candidate_pairs]:
         left = signal_lookup.get(edge.left_signal_key)
         right = signal_lookup.get(edge.right_signal_key)
         if left and right:
@@ -2232,8 +2649,13 @@ def plan_llm_adjudication(
     projected_input_tokens = max(0, estimated_chars // 4)
     projected_output_tokens = candidate_pairs * 80
     projected_cost_usd = round(((projected_input_tokens + projected_output_tokens) / 1000.0) * 0.002, 6)
-    over_call_cap = candidate_pairs > config.max_calls
+    over_call_cap = eligible_pair_count > max_calls
     over_budget = projected_cost_usd > config.max_budget_usd
+    blocked_reasons: list[str] = []
+    if over_call_cap:
+        blocked_reasons.append("llm_emergency_call_ceiling_exceeded")
+    if over_budget:
+        blocked_reasons.append("llm_budget_exceeded")
     return LLMAdjudicationPlan(
         enabled=True,
         projected_calls=candidate_pairs,
@@ -2242,10 +2664,11 @@ def plan_llm_adjudication(
         projected_cost_usd=projected_cost_usd,
         max_calls=config.max_calls,
         max_budget_usd=config.max_budget_usd,
+        selection_policy=selection_policy,
         selected_block_count=candidate_pairs,
-        skipped_block_count=max(0, len(weak_edges) - candidate_pairs),
+        skipped_block_count=0 if all_eligible_policy else max(0, eligible_pair_count - candidate_pairs),
         status="blocked" if over_call_cap or over_budget else "ready",
-        reason="llm_budget_or_call_cap_exceeded" if over_call_cap or over_budget else None,
+        reason=";".join(blocked_reasons) if blocked_reasons else None,
     )
 
 
@@ -2538,15 +2961,18 @@ def select_llm_adjudication_edges(
 ) -> list[SourceConceptEdgeDraft]:
     if not config.enabled or config.max_calls <= 0:
         return []
+    eligible_edges = [
+        edge for edge in edges
+        if edge.status in {"weak", "needs_review"}
+        and edge.edge_type in {"cooccurrence_context", "alias_candidate_edge", "same_surface_context", "exact_canonical_key"}
+    ]
+    if (config.selection_policy or "").strip().casefold() in {"all_eligible", "budget_driven_all_eligible"}:
+        return eligible_edges[: config.max_calls]
     signal_by_key = {signal.signal_key: signal for signal in signals}
     context_alias_by_key = _context_equivalence_lookup(signals)
     context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
     scored: list[tuple[float, SourceConceptEdgeDraft]] = []
-    for edge in edges:
-        if edge.status not in {"weak", "needs_review"}:
-            continue
-        if edge.edge_type not in {"cooccurrence_context", "alias_candidate_edge", "same_surface_context", "exact_canonical_key"}:
-            continue
+    for edge in eligible_edges:
         score = _llm_pair_score(
             edge,
             signal_by_key=signal_by_key,
@@ -2637,7 +3063,16 @@ def run_bounded_llm_adjudication(
     plan = plan_llm_adjudication(edges, signals=signals, config=config)
     if not config.enabled:
         return [], {"used": False, "plan": asdict(plan), "reason": "disabled"}
-    if plan.status == "blocked":
+    selected_edges = select_llm_adjudication_edges(edges, signals=signals, config=config)
+    coverage = inspect_llm_adjudication_cache_coverage(edges, signals=signals, config=config)
+    selected_count = max(1, len(selected_edges))
+    projected_new_call_cost_usd = round(
+        float(plan.projected_cost_usd) * (int(coverage.get("missing_pair_count", 0) or 0) / selected_count),
+        6,
+    )
+    emergency_ceiling_blocked = "llm_emergency_call_ceiling_exceeded" in str(plan.reason or "")
+    budget_blocked_after_cache = projected_new_call_cost_usd > config.max_budget_usd
+    if plan.status == "blocked" and (emergency_ceiling_blocked or budget_blocked_after_cache):
         return [], {
             "used": False,
             "plan": asdict(plan),
@@ -2650,28 +3085,53 @@ def run_bounded_llm_adjudication(
             "error_count": 0,
             "judgment_count": 0,
             "selected_pair_count": 0,
+            "cache_coverage": coverage,
+            "projected_new_call_cost_usd": projected_new_call_cost_usd,
         }
-    selected_edges = select_llm_adjudication_edges(edges, signals=signals, config=config)
     if not selected_edges:
         return [], {"used": False, "plan": asdict(plan), "reason": "no_eligible_pairs"}
-    provider, provider_summary = primary_openai_provider_from_settings()
-    if provider is None:
-        if config.fail_if_unavailable:
-            raise RuntimeError(f"llm_provider_unavailable:{provider_summary.get('unavailable_reason')}")
-        return [], {"used": False, "plan": asdict(plan), "provider": provider_summary, "reason": "provider_unavailable"}
+    provider = None
+    provider_summary: dict[str, Any] = {
+        "provider_mode": "primary_openai",
+        "llm_provider_label": "primary_openai",
+        "uses_fallback_provider": False,
+        "model_name": None,
+    }
+    if int(coverage.get("missing_pair_count", 0) or 0) > 0:
+        provider, provider_summary = primary_openai_provider_from_settings()
+        if provider is None:
+            if config.fail_if_unavailable:
+                raise RuntimeError(f"llm_provider_unavailable:{provider_summary.get('unavailable_reason')}")
+            return [], {"used": False, "plan": asdict(plan), "provider": provider_summary, "reason": "provider_unavailable"}
 
-    cache_dir = Path(config.cache_dir) if config.cache_dir else Path(".local_manifests") / "phase-4.5-sc1-llm-adjudication-cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    durable_cache_root = _cache_root(config)
+    durable_cache_root.mkdir(parents=True, exist_ok=True)
+    legacy_dirs = _legacy_cache_dirs(config, durable_cache_root)
     signal_by_key = {signal.signal_key: signal for signal in signals}
     context_alias_by_key = _context_equivalence_lookup(signals)
     context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
     judgments: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    for edge in selected_edges:
+    cache_hits = 0
+    exact_cache_hits = 0
+    legacy_cache_imports = 0
+    cache_misses = 0
+    provider_successes = 0
+    durable_cache_write_successes = 0
+    semantic_prior_count = int(coverage.get("semantic_prior_judgment_count", 0) or 0)
+    provider_identity = {
+        **provider_summary,
+        "provider_name": provider.get_provider_name() if provider is not None and hasattr(provider, "get_provider_name") else "cache_only",
+        "model_name": getattr(provider, "model", None)
+        if provider is not None
+        else provider_summary.get("model_name") or config.model_label,
+    }
+    for pair_index, edge in enumerate(selected_edges, start=1):
         left = signal_by_key.get(edge.left_signal_key)
         right = signal_by_key.get(edge.right_signal_key)
         if left is None or right is None:
             continue
+        selected_pair_id = f"r1r-llm-pair-{pair_index:04d}"
         block_payload = {
             "edge": asdict(edge),
             "left": _llm_signal_payload(left, context_by_scope=context_by_scope, context_alias_by_key=context_alias_by_key),
@@ -2682,11 +3142,45 @@ def run_bounded_llm_adjudication(
             model_label=config.model_label,
             block_payload=block_payload,
         )
-        cache_path = cache_dir / f"{fingerprint}.json"
-        if cache_path.exists():
-            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        metadata = llm_cache_metadata(block_payload, config=config)
+        exact_record = _load_exact_cache_record(durable_cache_root, metadata=metadata, config=config)
+        if exact_record is not None:
+            cache_hits += 1
+            exact_cache_hits += 1
+            cached = _judgment_from_cache_record(
+                exact_record,
+                block_payload=block_payload,
+                selected_pair_id=selected_pair_id,
+                cache_status="hit",
+                reuse_level="exact_compatible",
+            )
             judgments.append(cached)
             continue
+        legacy_record = _legacy_cache_record(legacy_dirs=legacy_dirs, legacy_fingerprint=fingerprint)
+        if legacy_record is not None:
+            migrated = _durable_cache_record_from_judgment(
+                legacy_record,
+                metadata=metadata,
+                block_payload=block_payload,
+                config=config,
+                provider_summary=provider_summary,
+                provider_model=str(legacy_record.get("provider_model") or provider_summary.get("model_name") or config.model_label),
+            )
+            _write_durable_cache_record(durable_cache_root, migrated)
+            cache_hits += 1
+            legacy_cache_imports += 1
+            durable_cache_write_successes += 1
+            cached = _judgment_from_cache_record(
+                migrated,
+                block_payload=block_payload,
+                selected_pair_id=selected_pair_id,
+                cache_status="hit",
+                reuse_level="exact_compatible_legacy_migrated",
+            )
+            cached["legacy_cache_imported"] = True
+            judgments.append(cached)
+            continue
+        cache_misses += 1
         messages = [
             {
                 "role": "system",
@@ -2711,6 +3205,10 @@ def run_bounded_llm_adjudication(
             },
         ]
         try:
+            if provider is None:
+                provider, provider_summary = primary_openai_provider_from_settings()
+                if provider is None:
+                    raise RuntimeError(f"llm_provider_unavailable:{provider_summary.get('unavailable_reason')}")
             response = _run_async_json(provider, messages)
             if isinstance(response, list):
                 response = response[0] if response else {}
@@ -2720,28 +3218,70 @@ def run_bounded_llm_adjudication(
             if decision not in {"must_link", "cannot_link", "needs_review"}:
                 decision = "needs_review"
             judgment = {
-                "judgment_id": fingerprint,
+                "judgment_id": metadata["cache_key"],
+                "selected_pair_id": selected_pair_id,
                 "left_signal_key": left.signal_key,
                 "right_signal_key": right.signal_key,
+                "input_signal_summary": {"left": block_payload["left"], "right": block_payload["right"]},
                 "decision": decision,
                 "confidence": source_confidence_score(response.get("confidence"), 0.5),
                 "reason_code": response.get("reason_code"),
                 "source_layer_only": True,
                 "provider_label": provider_summary.get("llm_provider_label"),
+                "provider_mode": provider_summary.get("provider_mode"),
+                "provider_model": getattr(provider, "model", None),
                 "model_label": config.model_label,
+                "cache_key": metadata["cache_key"],
+                "pair_identity": metadata["pair_identity"],
+                "pair_payload_hash": metadata["pair_payload_hash"],
+                "cache_policy_version": config.cache_policy_version,
                 "cache_fingerprint": fingerprint,
+                "cache_status": "miss",
+                "cache_reuse_level": "new_provider_judgment",
+                "compatible_for_exact_reuse": True,
+                "error_state": None,
             }
-            cache_path.write_text(json.dumps(judgment, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+            durable_record = _durable_cache_record_from_judgment(
+                judgment,
+                metadata=metadata,
+                block_payload=block_payload,
+                config=config,
+                provider_summary=provider_summary,
+                provider_model=getattr(provider, "model", None),
+            )
+            _write_durable_cache_record(durable_cache_root, durable_record)
+            provider_successes += 1
+            durable_cache_write_successes += 1
             judgments.append(judgment)
         except Exception as exc:  # pragma: no cover - provider failures are environment dependent
+            _write_failure_cache_record(
+                durable_cache_root,
+                metadata=metadata,
+                block_payload=block_payload,
+                config=config,
+                provider_summary=provider_summary,
+                error_type=type(exc).__name__,
+            )
             error = {
-                "judgment_id": fingerprint,
+                "judgment_id": metadata["cache_key"],
+                "selected_pair_id": selected_pair_id,
                 "left_signal_key": left.signal_key,
                 "right_signal_key": right.signal_key,
+                "input_signal_summary": {"left": block_payload["left"], "right": block_payload["right"]},
                 "decision": "needs_review",
                 "confidence": 0.0,
                 "source_layer_only": True,
+                "provider_label": provider_summary.get("llm_provider_label"),
+                "provider_mode": provider_summary.get("provider_mode"),
+                "provider_model": getattr(provider, "model", None) if provider is not None else None,
+                "cache_key": metadata["cache_key"],
+                "pair_identity": metadata["pair_identity"],
+                "pair_payload_hash": metadata["pair_payload_hash"],
+                "cache_policy_version": config.cache_policy_version,
+                "cache_status": "miss_error",
+                "cache_reuse_level": "provider_error_not_cached",
                 "error_type": type(exc).__name__,
+                "error_state": {"type": type(exc).__name__},
             }
             errors.append(error)
             judgments.append(error)
@@ -2750,11 +3290,31 @@ def run_bounded_llm_adjudication(
     return judgments, {
         "used": bool(judgments),
         "plan": asdict(plan),
-        "provider": provider_summary,
+        "provider": provider_identity,
         "selected_pair_count": len(selected_edges),
         "judgment_count": len(judgments),
         "error_count": len(errors),
-        "cache_dir": str(cache_dir),
+        "cache_hits": cache_hits,
+        "cache_misses": cache_misses,
+        "exact_compatible_cache_hit_count": exact_cache_hits,
+        "legacy_compatible_cache_import_count": legacy_cache_imports,
+        "new_provider_call_count": cache_misses,
+        "new_provider_success_count": provider_successes,
+        "failed_provider_call_count": len(errors),
+        "remaining_missing_pair_count": max(0, len(selected_edges) - cache_hits - provider_successes),
+        "semantic_prior_judgment_count": semantic_prior_count,
+        "durable_cache_write_success_count": durable_cache_write_successes,
+        "cache_policy_version": config.cache_policy_version,
+        "decision_schema_version": config.decision_schema_version,
+        "adjudication_policy_version": config.adjudication_policy_version,
+        "durable_cache_root_label": "source-concept-llm-adjudication-cache",
+        "cache_writes_atomic": True,
+        "raw_private_paths_redacted": True,
+        "cache_coverage": coverage,
+        "projected_new_call_cost_usd": projected_new_call_cost_usd,
+        "cost_avoided_by_cache_reuse_usd": round(float(plan.projected_cost_usd) * (cache_hits / selected_count), 6),
+        "estimated_cost_this_run_usd": round(float(plan.projected_cost_usd) * (cache_misses / selected_count), 6),
+        "cache_dir_public": "[private]",
     }
 
 
@@ -3601,6 +4161,7 @@ def persist_source_concept_resolution(
     apply: bool,
     inventory: Mapping[str, Any] | None = None,
     input_scope: Mapping[str, Any] | None = None,
+    run_label: str = "phase_4_5_sc1_source_concept_resolver_core",
 ) -> dict[str, Any]:
     before_allowed = table_counts(db, SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
     before_forbidden = table_counts(db, FORBIDDEN_TRUTH_TABLES)
@@ -3618,7 +4179,7 @@ def persist_source_concept_resolution(
     if run_row is None:
         run_row = SourceConceptResolutionRun(
             run_id=result.run_id,
-            run_label="phase_4_5_sc1_source_concept_resolver_core",
+            run_label=run_label,
             scope="source_concept_core",
             resolver_version=RESOLVER_VERSION,
             mode="apply_db",
@@ -3627,6 +4188,8 @@ def persist_source_concept_resolution(
         )
         db.add(run_row)
         db.flush()
+    else:
+        run_row.run_label = run_label
 
     signal_rows: dict[str, SourceConceptSignal] = {}
     current_signal_rows: list[SourceConceptSignal] = []

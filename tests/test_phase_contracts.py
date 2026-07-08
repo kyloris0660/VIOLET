@@ -16,7 +16,10 @@ if str(ROOT) not in sys.path:
 
 from scripts.phase_contracts import REQUIRED_CONTRACT_IDS, check_phase_contract, list_contracts, load_summary_file  # noqa: E402
 from scripts.phase_contracts import contract_checks as contract_checks_module  # noqa: E402
-from scripts.phase_contracts.contract_registry import SOURCE_CONCEPT_FULL_CHAIN_STAGES  # noqa: E402
+from scripts.phase_contracts.contract_registry import (  # noqa: E402
+    R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
+    SOURCE_CONCEPT_FULL_CHAIN_STAGES,
+)
 
 
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "phase_contracts"
@@ -74,6 +77,354 @@ def _source_concept_summary(**overrides: object) -> dict:
         "validation_pack": {"generated": True},
         "review_pack": {"generated": True},
         "conclusion": "full_chain_completed",
+    }
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
+def _r1r_stage_manifest(*, omit: set[str] | None = None, executed_without_label: str | None = None) -> list[dict]:
+    omitted = omit or set()
+    rows = []
+    for stage in R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES:
+        if stage in omitted:
+            continue
+        row = {
+            "stage_name": stage,
+            "required": True,
+            "requested": True,
+            "configured": True,
+            "executed": True,
+            "skipped": False,
+            "skip_reason": None,
+            "input_count": 1,
+            "output_count": 1,
+            "evidence_artifact_label": f"r1r-private-{stage}",
+            "public_safe_summary_fields": ["count"],
+            "private_artifact_label": f"r1r-private-{stage}",
+            "contract_check_name": stage,
+            "status": "verified",
+        }
+        if stage == "provider_cache_adapter_or_zero_eligible_proof":
+            row["input_count"] = 0
+            row["output_count"] = 0
+            row["zero_eligible_proof"] = True
+            row["status"] = "skipped_not_applicable"
+            row["executed"] = False
+            row["skipped"] = True
+            row["skip_reason"] = "not_in_input_scope_zero_eligible"
+        if stage == executed_without_label:
+            row["evidence_artifact_label"] = ""
+        rows.append(row)
+    return rows
+
+
+def _r1r_input_scope_rows(overrides: dict[str, int] | None = None) -> list[dict]:
+    expected_values = {
+        "total_media": 3750,
+        "eligible_media": 3687,
+        "source_metadata_records_total": 671,
+        "px1_source_metadata_records": 471,
+        "source_tag_observations": 3727,
+        "source_name_observations": 918,
+        "source_searchable_name_assertions": 918,
+        "source_metadata_evidence": 3727,
+        "resolver_input_signals": 12249,
+        "deterministic_edge_count": 42751,
+        "source_concept_replay_total": 2887,
+        "source_concept_replay_active": 1078,
+        "source_concept_replay_needs_review": 1809,
+        "source_concept_total": 6094,
+        "source_concept_active": 1078,
+        "source_concept_needs_review": 1809,
+        "source_concept_superseded": 3207,
+        "llm_eligible_pair_count": 12,
+        "llm_selected_pair_count": 12,
+    }
+    actual_values = dict(expected_values)
+    if overrides:
+        actual_values.update(overrides)
+    baseline_only = {
+        "source_concept_total",
+        "source_concept_active",
+        "source_concept_needs_review",
+        "source_concept_superseded",
+    }
+    rows = []
+    for metric, expected in expected_values.items():
+        actual = int(actual_values[metric])
+        ratio = round(actual / expected, 4) if expected else None
+        rows.append(
+            {
+                "metric": metric,
+                "category": "old_r1_persisted_baseline_scale"
+                if metric in baseline_only
+                else (
+                    "current_r1r_replay_output_scale"
+                    if metric.startswith("source_concept_replay_")
+                    else ("llm_selected_accounting" if metric.startswith("llm_") else "input_data_scale")
+                ),
+                "required_for_route_evidence": metric not in baseline_only,
+                "old_r1_expected": expected,
+                "current_r1r_actual": actual,
+                "ratio": ratio,
+                "status": "matched" if ratio is not None and ratio >= 0.8 else "insufficient",
+            }
+        )
+    return rows
+
+
+def _r1r_summary(**overrides: object) -> dict:
+    summary = {
+        "pipeline_contract": {
+            "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+            "status": "target_met_full_chain",
+            "claims": {"target_met": True, "full_chain_complete": True, "safe_to_merge": False},
+        },
+        "environment_isolation": {
+            "passed": True,
+            "blockers": [],
+            "violet_env": "test",
+            "violet_env_is_production": False,
+            "production_profile_active": False,
+            "db_name": "blombooru_test",
+            "db_target_is_production": False,
+            "dev_test_restored_snapshot_db_used": True,
+            "storage_root_is_production": False,
+            "storage_root_pre_settings_import": {
+                "checked_before_settings_import": True,
+                "passed": True,
+                "blocked_count": 0,
+                "no_directories_created_before_gate": True,
+            },
+            "output_dir_safety": {
+                "checked_before_mkdir": True,
+                "passed": True,
+                "blocked_reasons": [],
+                "repo_local_ignored_artifact_root": True,
+            },
+            "exact_db_identity_from_actual_connection": {
+                "checked_from_actual_connection": True,
+                "db_name": "blombooru_test",
+                "db_target_is_production": False,
+                "dev_test_restored_snapshot_db_used": True,
+                "passed": True,
+                "blockers": [],
+            },
+            "source_icloud_app_storage_write_target": False,
+            "dynamic_production_launcher_used": False,
+            "production_db_storage_source_roots_private_ledgers_used_as_fixtures": False,
+            "production_write_attempted": False,
+        },
+        "input_scope_fidelity": {
+            "required_for_route_evidence": True,
+            "passed": True,
+            "status": "matched_old_r1_scope",
+            "minimum_ratio": 0.8,
+            "failed_metrics": [],
+            "route_evidence_allowed": True,
+            "current_run_classification": "route_evidence_candidate",
+            "comparison_table": _r1r_input_scope_rows(),
+        },
+        "snapshot_input_scope_recovery": {
+            "status": "old_r1_scope_available",
+            "searched": ["postgres-database-list-label", "repo-local-backup-dump-snapshot-restore-labels"],
+            "old_post_px1_pre_r1_snapshot_found": False,
+            "existing_dump_restored": True,
+            "restored_db_created_this_run": True,
+            "restored_db_label": "blombooru_r1r_restored_test_20260618",
+            "source_artifact_label": "r1r-private-existing-dump-20260618-blombooru",
+            "dev_test_clone_created_from_live_production": False,
+            "live_production_clone_needed": False,
+            "operator_approval_needed_for_live_clone": False,
+            "operator_approval_needed_for_restore": False,
+            "current_production_contains_old_r1_equivalent_inputs": True,
+            "restored_source_scope_passed": True,
+            "deterministic_rerun_scope_passed": True,
+            "r1r_can_continue": True,
+        },
+        "sc1_required_stage_manifest": _r1r_stage_manifest(),
+        "sc1_full_chain_proof": {
+            "complete_sc1_pipeline_executed": True,
+            "deterministic_pipeline_executed": True,
+            "llm_pair_adjudication_requested": True,
+            "llm_pair_adjudication_executed": True,
+            "llm_eligible_pair_count": 12,
+            "llm_selected_pair_count": 12,
+            "llm_judgment_count": 12,
+            "all_eligible_llm_pairs_adjudicated": True,
+            "budget_cap_usd": 15.0,
+            "projected_full_eligible_cost_usd": 0.2,
+            "llm_same_count": 3,
+            "llm_cannot_count": 2,
+            "llm_uncertain_count": 7,
+            "all_required_stage_statuses_verified": True,
+            "missing_required_stages": [],
+            "skipped_required_stages": ["provider_cache_adapter_or_zero_eligible_proof"],
+            "stage_manifest_artifact": "r1r-private-stage-manifest",
+            "review_pack_includes_stage_manifest": True,
+            "deterministic_only_output_used_as_full_chain_route_approval_evidence": False,
+        },
+        "sc1_r1_r1r_fidelity_table": [
+            {
+                "pipeline_step": "bounded_llm_pair_adjudication",
+                "sc1_expected": "required",
+                "sc1_actual_evidence": "300 judgments",
+                "old_r1_actual_evidence": "disabled",
+                "r1r_actual_evidence": "12 judgments",
+                "r1r_status": "verified",
+                "impact_if_missing": "route blocked",
+                "contract_guard": "r1r_full_source_concept_pipeline_contract_v1",
+            }
+        ],
+        "llm_adjudication_plan": {
+            "required": True,
+            "eligible_pair_count": 12,
+            "selected_pair_count": 12,
+            "selection_policy": "budget_driven_all_eligible",
+            "all_eligible_pair_count": 12,
+            "all_eligible_pairs_selected": True,
+            "all_eligible_pairs_adjudicated": True,
+            "budget_limit_is_primary": True,
+            "fixed_call_cap_primary_limiter": False,
+            "emergency_call_ceiling": 20000,
+            "max_calls": 20000,
+            "budget_usd": 15.0,
+            "budget_cap_usd": 15.0,
+            "projected_budget_usd": 0.2,
+            "projected_full_eligible_cost_usd": 0.2,
+            "skipped_pair_count": 0,
+            "unselected_pair_count": 0,
+            "eligible_pair_accounting_total": 12,
+            "provider_required_for_missing_pairs": True,
+            "provider_not_required_for_fully_cached_pairs": False,
+        },
+        "llm_readiness": {
+            "passed": True,
+            "operator_approved": True,
+            "provider_available": True,
+            "provider_required_for_missing_pairs": True,
+            "provider_not_required_for_fully_cached_pairs": False,
+            "provider_mode": "primary_openai",
+            "provider_model": "gpt-test",
+            "uses_fallback_provider": False,
+            "cache_ready": True,
+            "budget_ready": True,
+        },
+        "llm_provider_execution": {
+            "provider_mode": "primary_openai",
+            "provider_label": "primary_openai",
+            "provider_name": "openai_compatible(primary_openai)",
+            "model_name": "gpt-test",
+            "uses_fallback_provider": False,
+            "fallback_provider_used": False,
+            "primary_openai_compatible_used": True,
+        },
+        "llm_judgment_summary": {
+            "judgment_count": 12,
+            "ledger_row_count": 12,
+            "error_count": 0,
+            "selected_pair_count": 12,
+            "cache_hits": 0,
+            "cache_misses": 12,
+            "compatible_cache_hit_count": 0,
+            "exact_compatible_cache_hit_count": 0,
+            "imported_previous_judgment_count": 0,
+            "new_provider_call_count": 12,
+            "new_provider_success_count": 12,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_avoided_by_cache_reuse_usd": 0.0,
+            "selected_pair_accounting": {
+                "selected_pair_count": 12,
+                "resolved_provider_judgment_count": 12,
+                "valid_cached_judgment_count": 0,
+                "explicit_skipped_pair_count": 0,
+                "provider_error_pair_count": 0,
+                "successful_accounted_pair_count": 12,
+                "all_selected_pairs_successfully_accounted": True,
+            },
+            "llm_same_count": 3,
+            "llm_cannot_count": 2,
+            "llm_uncertain_count": 7,
+        },
+        "llm_cache_policy": {
+            "policy_version": "source_concept_llm_adjudication_cache_v1",
+            "decision_schema_version": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy_version": "source_concept_budget_driven_adjudication_v1",
+            "durable_cache_root_label": "source-concept-llm-adjudication-cache",
+            "private_ignored_cache_root": True,
+            "cache_writes_atomic": True,
+            "raw_private_paths_redacted": True,
+            "exact_compatible_reuse_counts_as_valid_judgment": True,
+            "semantic_prior_reuse_counts_as_valid_judgment": False,
+            "compatible_cache_hit_count": 0,
+            "exact_compatible_cache_hit_count": 0,
+            "imported_previous_judgment_count": 0,
+            "semantic_prior_judgment_count": 0,
+            "new_provider_call_count": 12,
+            "new_provider_success_count": 12,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "provider_required_for_missing_pairs": True,
+            "provider_not_required_for_fully_cached_pairs": False,
+            "cost_spent_this_run_usd": 0.2,
+            "cost_avoided_by_cache_reuse_usd": 0.0,
+            "projected_new_call_cost_usd": 0.2,
+            "projected_full_eligible_cost_usd": 0.2,
+            "budget_cap_usd": 15.0,
+        },
+        "mutation_proof": {"passed": True, "forbidden_changed_tables": [], "unexpected_changed_tables": []},
+        "post_commit_verification": {"passed": True},
+        "old_r1_contamination_handling": {
+            "baseline_snapshot_recorded": True,
+            "baseline_artifact_label": "old-r1-sourceconcept-baseline",
+            "old_r1_used_as_baseline_only": True,
+            "old_r1_isolated_before_r1r_persistence": True,
+            "source_concept_owned_tables_cleared_or_rebuilt_in_dev_test": True,
+            "production_source_concept_tables_overwritten": False,
+            "dev_test_restored_snapshot_scope_only": True,
+            "contamination_handling_method": "dev_test_sourceconcept_owned_delete_rebuild",
+        },
+        "review_pack": {"generated": True, "includes_stage_manifest": True},
+        "public_redaction": {
+            "passed": True,
+            "finding_count": 0,
+            "scanned_artifacts": {"final_json_summary": True, "final_markdown_report": True},
+            "clean_before_public_write": True,
+            "unsafe_public_report_written": False,
+        },
+        "route_authorization": {
+            "r2_authorized": False,
+            "px1_b_authorized": False,
+            "provider_2_authorized": False,
+            "scale_up_authorized": False,
+            "entity_bridge_authorized": False,
+            "source_concept_truth_promotion_authorized": False,
+            "route_approval_authorized": False,
+            "a1r_still_required": True,
+        },
+        "forbidden_writes": {
+            "entity_truth": False,
+            "entity_alias_truth": False,
+            "confirmed_assignments": False,
+            "media_tags": False,
+            "source_metadata": False,
+            "provider_cache": False,
+            "source_icloud_app_storage": False,
+        },
+        "source_concept_write_scope": {
+            "allowed_tables": [
+                "blombooru_source_concept_resolution_runs",
+                "blombooru_source_concept_signals",
+                "blombooru_source_concepts",
+                "blombooru_source_concept_aliases",
+                "blombooru_source_concept_evidence",
+                "blombooru_source_concept_signal_links",
+                "blombooru_source_concept_search_index",
+            ],
+            "changed_tables": ["blombooru_source_concept_signals"],
+        },
     }
     for key, value in overrides.items():
         summary[key] = value
@@ -5120,6 +5471,890 @@ def test_source_concept_blocked_status_with_blocked_stage_cannot_claim_safe_to_m
 
     assert result.passed is False
     assert "blocked_status_claimed_completion" in _error_codes(result)
+
+
+def test_r1r_contract_accepts_target_met_full_chain_with_stage_manifest() -> None:
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", _r1r_summary())
+
+    assert result.passed is True
+
+
+def test_r1r_contract_accepts_truthful_no_llm_approval_block() -> None:
+    summary = _r1r_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+        "status": "blocked_llm_approval_required",
+        "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
+    }
+    summary["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    summary["sc1_full_chain_proof"]["llm_pair_adjudication_executed"] = False
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 0
+    summary["llm_readiness"]["operator_approved"] = False
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+@pytest.mark.parametrize(
+    ("path", "code"),
+    [
+        ("environment_isolation.production_profile_active", "r1r_environment_isolation_failed"),
+        ("environment_isolation.violet_env_is_production", "r1r_environment_isolation_failed"),
+        ("environment_isolation.db_target_is_production", "r1r_environment_isolation_failed"),
+        ("environment_isolation.production_write_attempted", "r1r_environment_isolation_failed"),
+    ],
+)
+def test_r1r_contract_rejects_production_isolation_failures(path: str, code: str) -> None:
+    summary = _r1r_summary()
+    _set_nested(summary, path, True)
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert code in _error_codes(result)
+
+
+def test_r1r_contract_rejects_production_db_name() -> None:
+    summary = _r1r_summary()
+    summary["environment_isolation"]["db_name"] = "blombooru"
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_production_db_name_rejected" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_actual_connection_production_db_even_when_env_label_is_safe() -> None:
+    summary = _r1r_summary()
+    summary["environment_isolation"]["db_name"] = "blombooru_test"
+    summary["environment_isolation"]["exact_db_identity_from_actual_connection"] = {
+        "checked_from_actual_connection": True,
+        "db_name": "blombooru",
+        "db_target_is_production": True,
+        "dev_test_restored_snapshot_db_used": False,
+        "passed": False,
+        "blockers": ["actual_connection_production_like_db"],
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_actual_connection_production_db_rejected" in codes
+    assert "r1r_actual_connection_dev_test_snapshot_required" in codes
+
+
+def test_r1r_contract_rejects_protected_storage_pre_settings_gate_failure() -> None:
+    summary = _r1r_summary()
+    summary["environment_isolation"]["storage_root_pre_settings_import"] = {
+        "checked_before_settings_import": True,
+        "passed": False,
+        "blocked_count": 1,
+        "blockers": [{"reason": "storage_root_overlaps_protected_root"}],
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_storage_pre_settings_gate_failed" in _error_codes(result)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_code"),
+    [
+        ("environment_isolation.passed", "r1r_environment_isolation_aggregate_failed_for_target"),
+        ("environment_isolation.storage_root_pre_settings_import.passed", "r1r_storage_pre_settings_gate_required_for_target"),
+        ("environment_isolation.output_dir_safety.passed", "r1r_output_dir_safety_gate_required_for_target"),
+        ("environment_isolation.exact_db_identity_from_actual_connection.passed", "r1r_actual_db_identity_gate_failed_for_target"),
+    ],
+)
+def test_r1r_contract_rejects_target_when_environment_aggregate_or_subgate_fails(
+    path: str,
+    expected_code: str,
+) -> None:
+    summary = _r1r_summary()
+    _set_nested(summary, path, False)
+    if path == "environment_isolation.passed":
+        summary["environment_isolation"]["blockers"] = ["fixture_blocker"]
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert expected_code in codes
+    if path == "environment_isolation.passed":
+        assert "r1r_environment_isolation_blockers_present_for_target" in codes
+
+
+def test_r1r_contract_rejects_target_met_with_insufficient_input_scope() -> None:
+    summary = _r1r_summary()
+    summary["input_scope_fidelity"] = {
+        "required_for_route_evidence": True,
+        "passed": False,
+        "status": "insufficient_input_scope",
+        "route_evidence_allowed": False,
+        "failed_metrics": ["resolver_input_signals", "deterministic_edge_count"],
+        "comparison_table": [
+            {
+                "metric": "resolver_input_signals",
+                "old_r1_expected": 12249,
+                "current_r1r_actual": 99,
+                "ratio": 0.0081,
+                "status": "insufficient",
+            }
+        ],
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_target_met_with_insufficient_input_scope" in codes
+    assert "r1r_input_scope_failure_not_blocked" in codes
+
+
+def test_r1r_contract_recomputes_input_scope_from_rows_not_booleans() -> None:
+    summary = _r1r_summary()
+    summary["input_scope_fidelity"]["passed"] = True
+    summary["input_scope_fidelity"]["route_evidence_allowed"] = True
+    summary["input_scope_fidelity"]["failed_metrics"] = []
+    summary["input_scope_fidelity"]["comparison_table"] = _r1r_input_scope_rows(
+        {"resolver_input_signals": 99, "deterministic_edge_count": 170}
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_input_scope_claim_not_supported_by_rows" in codes
+    assert "r1r_target_met_with_insufficient_input_scope" in codes
+
+
+def test_r1r_contract_rejects_stale_sourceconcept_rows_without_current_replay_output() -> None:
+    summary = _r1r_summary()
+    summary["input_scope_fidelity"]["comparison_table"] = _r1r_input_scope_rows(
+        {
+            "source_concept_replay_total": 58,
+            "source_concept_replay_active": 20,
+            "source_concept_replay_needs_review": 10,
+            "source_concept_total": 6094,
+            "source_concept_active": 1078,
+            "source_concept_needs_review": 1809,
+            "source_concept_superseded": 3207,
+        }
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_input_scope_claim_not_supported_by_rows" in codes
+    assert "r1r_target_met_with_insufficient_input_scope" in codes
+
+
+def test_r1r_contract_accepts_smoke_only_insufficient_input_scope_without_completion_claims() -> None:
+    summary = _r1r_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+        "status": "smoke_only_not_route_evidence",
+        "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
+    }
+    summary["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    summary["sc1_full_chain_proof"]["all_required_stage_statuses_verified"] = False
+    summary["input_scope_fidelity"]["passed"] = False
+    summary["input_scope_fidelity"]["status"] = "insufficient_input_scope"
+    summary["input_scope_fidelity"]["route_evidence_allowed"] = False
+    summary["input_scope_fidelity"]["failed_metrics"] = ["resolver_input_signals"]
+    summary["input_scope_fidelity"]["comparison_table"][0]["current_r1r_actual"] = 99
+    summary["input_scope_fidelity"]["comparison_table"][0]["ratio"] = 0.0081
+    summary["input_scope_fidelity"]["comparison_table"][0]["status"] = "insufficient"
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_r1r_contract_accepts_ready_for_old_r1_scope_rerun_without_llm_claims() -> None:
+    summary = _r1r_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+        "status": "ready_for_old_r1_scope_rerun",
+        "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
+    }
+    summary["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    summary["sc1_full_chain_proof"]["llm_pair_adjudication_executed"] = False
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 0
+    summary["sc1_full_chain_proof"]["all_required_stage_statuses_verified"] = False
+    summary["llm_readiness"]["operator_approved"] = False
+    summary["llm_readiness"]["provider_available"] = False
+    summary["llm_readiness"]["budget_ready"] = False
+    summary["snapshot_input_scope_recovery"]["status"] = "ready_for_old_r1_scope_rerun"
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_r1r_contract_rejects_missing_snapshot_input_scope_recovery() -> None:
+    summary = _r1r_summary()
+    summary.pop("snapshot_input_scope_recovery")
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "missing_required_summary_field" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_target_met_with_llm_disabled_or_zero_judgments() -> None:
+    disabled = _r1r_summary()
+    disabled["sc1_full_chain_proof"]["llm_pair_adjudication_executed"] = False
+    disabled["llm_readiness"]["operator_approved"] = False
+    zero = _r1r_summary()
+    zero["sc1_full_chain_proof"]["llm_judgment_count"] = 0
+
+    disabled_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", disabled)
+    zero_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", zero)
+
+    assert "r1r_llm_used_false_with_target_met_full_chain" in _error_codes(disabled_result)
+    assert "r1r_llm_judgment_count_zero_for_eligible_pairs" in _error_codes(zero_result)
+
+
+def test_r1r_contract_rejects_partial_selected_llm_pair_accounting() -> None:
+    summary = _r1r_summary()
+    summary["sc1_full_chain_proof"]["llm_selected_pair_count"] = 33
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 1
+    summary["llm_adjudication_plan"]["eligible_pair_count"] = 33
+    summary["llm_adjudication_plan"]["selected_pair_count"] = 33
+    summary["llm_adjudication_plan"]["eligible_pair_accounting_total"] = 33
+    summary["llm_judgment_summary"]["selected_pair_count"] = 33
+    summary["llm_judgment_summary"]["judgment_count"] = 1
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 33,
+        "resolved_provider_judgment_count": 1,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 1,
+        "all_selected_pairs_successfully_accounted": False,
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_selected_llm_pairs_not_fully_accounted" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_disconnected_llm_proof_and_ledger_counts() -> None:
+    summary = _r1r_summary()
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 12
+    summary["llm_judgment_summary"]["judgment_count"] = 0
+    summary["llm_judgment_summary"]["ledger_row_count"] = 0
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 12,
+        "resolved_provider_judgment_count": 0,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 0,
+        "all_selected_pairs_successfully_accounted": False,
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_llm_judgment_count_mismatch" in codes
+    assert "r1r_selected_llm_pairs_not_fully_accounted" in codes
+
+
+def test_r1r_contract_rejects_provider_error_rows_as_successful_judgments() -> None:
+    summary = _r1r_summary()
+    summary["llm_judgment_summary"]["error_count"] = 1
+    summary["llm_judgment_summary"]["selected_pair_accounting"]["provider_error_pair_count"] = 1
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_llm_error_count_nonzero_for_target" in codes
+    assert "r1r_provider_error_pairs_not_successful_judgments" in codes
+
+
+def test_r1r_contract_rejects_eligible_pair_accounting_gap() -> None:
+    summary = _r1r_summary()
+    summary["llm_adjudication_plan"]["eligible_pair_count"] = 35
+    summary["llm_adjudication_plan"]["selected_pair_count"] = 33
+    summary["llm_adjudication_plan"]["skipped_pair_count"] = 0
+    summary["llm_adjudication_plan"]["unselected_pair_count"] = 0
+    summary["llm_adjudication_plan"]["eligible_pair_accounting_total"] = 33
+    summary["sc1_full_chain_proof"]["llm_eligible_pair_count"] = 35
+    summary["sc1_full_chain_proof"]["llm_selected_pair_count"] = 33
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 33
+    summary["llm_judgment_summary"]["selected_pair_count"] = 33
+    summary["llm_judgment_summary"]["judgment_count"] = 33
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 33,
+        "resolved_provider_judgment_count": 33,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 33,
+        "all_selected_pairs_successfully_accounted": True,
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_eligible_pair_accounting_mismatch" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_fixed_cap_subset_as_target_met() -> None:
+    summary = _r1r_summary()
+    summary["llm_adjudication_plan"].update(
+        {
+            "selection_policy": "ranked",
+            "eligible_pair_count": 6429,
+            "selected_pair_count": 300,
+            "all_eligible_pair_count": 6429,
+            "all_eligible_pairs_selected": False,
+            "all_eligible_pairs_adjudicated": False,
+            "fixed_call_cap_primary_limiter": True,
+            "max_calls": 300,
+            "emergency_call_ceiling": 300,
+            "skipped_pair_count": 6129,
+            "unselected_pair_count": 0,
+            "eligible_pair_accounting_total": 6429,
+            "projected_full_eligible_cost_usd": 2.1,
+            "budget_cap_usd": 15.0,
+        }
+    )
+    summary["sc1_full_chain_proof"].update(
+        {
+            "llm_eligible_pair_count": 6429,
+            "llm_selected_pair_count": 300,
+            "llm_judgment_count": 300,
+            "all_eligible_llm_pairs_adjudicated": False,
+        }
+    )
+    summary["llm_judgment_summary"].update(
+        {
+            "judgment_count": 300,
+            "ledger_row_count": 300,
+            "selected_pair_count": 300,
+        }
+    )
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 300,
+        "resolved_provider_judgment_count": 300,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 300,
+        "all_selected_pairs_successfully_accounted": True,
+    }
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_target_requires_all_eligible_llm_pairs_selected" in codes
+    assert "r1r_target_requires_all_eligible_llm_pairs_judged" in codes
+    assert "r1r_all_eligible_llm_pairs_adjudicated_missing" in codes
+    assert "r1r_target_requires_budget_driven_llm_selection_policy" in codes
+    assert "r1r_fixed_call_cap_cannot_be_primary_target_limiter" in codes
+
+
+def test_r1r_contract_rejects_missing_llm_cache_policy_for_target() -> None:
+    summary = _r1r_summary()
+    summary.pop("llm_cache_policy")
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_llm_cache_policy_missing" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_raw_cache_path_in_public_policy() -> None:
+    summary = _r1r_summary()
+    summary["llm_cache_policy"]["durable_cache_root_label"] = r"C:\Users\kyloris\private-cache"
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_llm_cache_root_label_leaks_path" in _error_codes(result)
+
+
+def test_r1r_contract_accepts_blocked_budget_without_target_claim() -> None:
+    summary = _r1r_summary()
+    summary["pipeline_contract"] = {
+        "contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+        "status": "blocked_budget",
+        "claims": {"target_met": False, "full_chain_complete": False, "safe_to_merge": False},
+    }
+    summary["sc1_full_chain_proof"].update(
+        {
+            "complete_sc1_pipeline_executed": False,
+            "llm_pair_adjudication_executed": False,
+            "llm_eligible_pair_count": 6429,
+            "llm_selected_pair_count": 0,
+            "llm_judgment_count": 0,
+            "all_required_stage_statuses_verified": False,
+            "all_eligible_llm_pairs_adjudicated": False,
+        }
+    )
+    summary["llm_adjudication_plan"].update(
+        {
+            "selection_policy": "budget_driven_all_eligible",
+            "eligible_pair_count": 6429,
+            "selected_pair_count": 0,
+            "all_eligible_pair_count": 6429,
+            "all_eligible_pairs_selected": False,
+            "all_eligible_pairs_adjudicated": False,
+            "skipped_pair_count": 6429,
+            "unselected_pair_count": 0,
+            "eligible_pair_accounting_total": 6429,
+            "projected_full_eligible_cost_usd": 20.0,
+            "budget_cap_usd": 15.0,
+        }
+    )
+    summary["llm_readiness"]["budget_ready"] = False
+    summary["llm_readiness"]["passed"] = False
+    summary["llm_judgment_summary"].update(
+        {
+            "judgment_count": 0,
+            "ledger_row_count": 0,
+            "selected_pair_count": 0,
+        }
+    )
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 0,
+        "resolved_provider_judgment_count": 0,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 0,
+        "all_selected_pairs_successfully_accounted": True,
+    }
+    summary["llm_cache_policy"].update(
+        {
+            "compatible_cache_hit_count": 0,
+            "exact_compatible_cache_hit_count": 0,
+            "new_provider_call_count": 0,
+            "new_provider_success_count": 0,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_spent_this_run_usd": 0.0,
+            "cost_avoided_by_cache_reuse_usd": 0.0,
+            "projected_new_call_cost_usd": 0.0,
+            "projected_full_eligible_cost_usd": 0.0,
+        }
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+def test_r1r_contract_rejects_target_met_with_provider_errors_or_fallback() -> None:
+    provider_error = _r1r_summary()
+    provider_error["llm_judgment_summary"]["error_count"] = 1
+    fallback = _r1r_summary()
+    fallback["llm_provider_execution"]["uses_fallback_provider"] = True
+    fallback["llm_provider_execution"]["fallback_provider_used"] = True
+    missing_model = _r1r_summary()
+    missing_model["llm_provider_execution"]["model_name"] = ""
+
+    provider_error_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", provider_error)
+    fallback_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", fallback)
+    missing_model_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", missing_model)
+
+    assert "r1r_llm_error_count_nonzero_for_target" in _error_codes(provider_error_result)
+    assert "r1r_fallback_provider_used" in _error_codes(fallback_result)
+    assert "r1r_llm_model_identity_missing" in _error_codes(missing_model_result)
+
+
+def test_r1r_contract_rejects_missing_stage_manifest_or_executed_stage_without_label() -> None:
+    missing = _r1r_summary(sc1_required_stage_manifest=_r1r_stage_manifest(omit={"bounded_llm_judgment_execution"}))
+    unlabeled = _r1r_summary(
+        sc1_required_stage_manifest=_r1r_stage_manifest(executed_without_label="bounded_llm_judgment_execution")
+    )
+
+    missing_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", missing)
+    unlabeled_result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", unlabeled)
+
+    assert "r1r_required_stage_manifest_row_missing" in _error_codes(missing_result)
+    assert "r1r_stage_executed_without_evidence_label" in _error_codes(unlabeled_result)
+
+
+def test_r1r_contract_rejects_required_stage_manifest_row_opt_out() -> None:
+    manifest = _r1r_stage_manifest()
+    for row in manifest:
+        if row["stage_name"] == "bounded_llm_judgment_execution":
+            row["required"] = False
+            row["status"] = "blocked"
+            row["executed"] = False
+            row["evidence_artifact_label"] = ""
+
+    result = check_phase_contract(
+        "r1r_full_source_concept_pipeline_contract_v1",
+        _r1r_summary(sc1_required_stage_manifest=manifest),
+    )
+    codes = _error_codes(result)
+
+    assert "r1r_required_stage_row_cannot_opt_out" in codes
+    assert "r1r_required_stage_not_verified_for_target" in codes
+
+
+def test_r1r_contract_rejects_provider_cache_skip_without_proof() -> None:
+    manifest = _r1r_stage_manifest()
+    for row in manifest:
+        if row["stage_name"] == "provider_cache_adapter_or_zero_eligible_proof":
+            row["zero_eligible_proof"] = False
+            row["not_in_input_scope_proof"] = False
+            row["input_count"] = 5
+            row["skip_reason"] = "not checked"
+    result = check_phase_contract(
+        "r1r_full_source_concept_pipeline_contract_v1",
+        _r1r_summary(sc1_required_stage_manifest=manifest),
+    )
+
+    assert "r1r_provider_cache_adapter_skip_without_zero_scope_proof" in _error_codes(result)
+
+
+@pytest.mark.parametrize(
+    "write_key",
+    [
+        "entity_truth",
+        "media_tags",
+        "source_metadata",
+        "source_icloud_app_storage",
+    ],
+)
+def test_r1r_contract_rejects_forbidden_write_claims(write_key: str) -> None:
+    summary = _r1r_summary()
+    summary["forbidden_writes"][write_key] = True
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_forbidden_write_claimed" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_mutation_outside_source_concept_tables() -> None:
+    summary = _r1r_summary()
+    summary["source_concept_write_scope"]["changed_tables"] = ["blombooru_media_tags"]
+    summary["mutation_proof"]["forbidden_changed_tables"] = ["blombooru_media_tags"]
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_forbidden_table_changed" in codes
+    assert "r1r_source_concept_write_outside_allowlist" in codes
+
+
+def test_r1r_contract_rejects_same_row_count_forbidden_content_change() -> None:
+    summary = _r1r_summary()
+    summary["mutation_proof"]["changed_tables"] = [
+        {
+            "table": "blombooru_media_tags",
+            "before_count": 10,
+            "after_count": 10,
+            "delta": 0,
+            "changed": True,
+            "content_signature_changed": True,
+            "allowed": False,
+            "prompt_forbidden": True,
+        }
+    ]
+    summary["mutation_proof"]["forbidden_changed_tables"] = []
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_forbidden_table_changed" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_target_without_old_r1_output_isolation() -> None:
+    summary = _r1r_summary()
+    summary["old_r1_contamination_handling"]["old_r1_isolated_before_r1r_persistence"] = False
+    summary["old_r1_contamination_handling"]["source_concept_owned_tables_cleared_or_rebuilt_in_dev_test"] = False
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_old_r1_output_not_isolated" in codes
+    assert "r1r_old_r1_sourceconcept_rebuild_missing" in codes
+
+
+def test_r1r_contract_uses_fixed_write_allowlist_not_summary_supplied_allowlist() -> None:
+    summary = _r1r_summary()
+    summary["source_concept_write_scope"]["allowed_tables"] = ["blombooru_media_tags"]
+    summary["source_concept_write_scope"]["changed_tables"] = ["blombooru_media_tags"]
+    summary["mutation_proof"]["changed_tables"] = [
+        {"table": "blombooru_media_tags", "changed": True, "allowed": True, "prompt_forbidden": False}
+    ]
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    codes = _error_codes(result)
+    assert "r1r_source_concept_write_outside_allowlist" in codes
+    assert "r1r_mutation_changed_table_outside_fixed_allowlist" in codes
+
+
+def test_r1r_contract_requires_source_concept_write_scope_for_persistence_claim() -> None:
+    summary = _r1r_summary()
+    summary.pop("source_concept_write_scope")
+    summary["mutation_proof"]["changed_tables"] = [
+        {"table": "blombooru_source_concepts", "changed": True, "allowed": True}
+    ]
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_source_concept_write_scope_missing" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_llm_readiness_status_mismatches() -> None:
+    no_approval = _r1r_summary()
+    no_approval["pipeline_contract"]["status"] = "dry_run_complete_execute_not_requested"
+    no_approval["pipeline_contract"]["claims"] = {"target_met": False, "full_chain_complete": False}
+    no_approval["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    no_approval["llm_readiness"]["operator_approved"] = False
+    provider = _r1r_summary()
+    provider["pipeline_contract"]["status"] = "dry_run_complete_execute_not_requested"
+    provider["pipeline_contract"]["claims"] = {"target_met": False, "full_chain_complete": False}
+    provider["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    provider["llm_readiness"]["provider_available"] = False
+    budget = _r1r_summary()
+    budget["pipeline_contract"]["status"] = "dry_run_complete_execute_not_requested"
+    budget["pipeline_contract"]["claims"] = {"target_met": False, "full_chain_complete": False}
+    budget["sc1_full_chain_proof"]["complete_sc1_pipeline_executed"] = False
+    budget["llm_readiness"]["budget_ready"] = False
+
+    assert "r1r_llm_approval_required_status_missing" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", no_approval)
+    )
+    assert "r1r_provider_unavailable_not_blocked" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", provider)
+    )
+    assert "r1r_budget_unready_not_blocked" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", budget)
+    )
+
+
+def test_r1r_contract_accepts_cache_only_target_when_provider_unavailable() -> None:
+    summary = _r1r_summary()
+    summary["llm_readiness"].update(
+        {
+            "passed": True,
+            "provider_available": False,
+            "provider_required_for_missing_pairs": False,
+            "provider_not_required_for_fully_cached_pairs": True,
+        }
+    )
+    summary["llm_provider_execution"].update(
+        {
+            "provider_name": "cache_only",
+            "primary_openai_compatible_used": False,
+            "primary_openai_compatible_policy_used_for_cache_compatibility": True,
+            "provider_not_required_for_fully_cached_pairs": True,
+        }
+    )
+    summary["llm_adjudication_plan"].update(
+        {
+            "already_cached_compatible_judgments": 12,
+            "new_provider_call_count": 0,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "provider_required_for_missing_pairs": False,
+            "provider_not_required_for_fully_cached_pairs": True,
+        }
+    )
+    summary["llm_judgment_summary"].update(
+        {
+            "cache_hits": 12,
+            "cache_misses": 0,
+            "compatible_cache_hit_count": 12,
+            "exact_compatible_cache_hit_count": 12,
+            "new_provider_call_count": 0,
+            "new_provider_success_count": 0,
+            "estimated_cost_usd": 0.0,
+            "selected_pair_accounting": {
+                "selected_pair_count": 12,
+                "resolved_provider_judgment_count": 0,
+                "valid_cached_judgment_count": 12,
+                "explicit_skipped_pair_count": 0,
+                "provider_error_pair_count": 0,
+                "successful_accounted_pair_count": 12,
+                "all_selected_pairs_successfully_accounted": True,
+            },
+        }
+    )
+    summary["llm_cache_policy"].update(
+        {
+            "compatible_cache_hit_count": 12,
+            "exact_compatible_cache_hit_count": 12,
+            "new_provider_call_count": 0,
+            "new_provider_success_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_spent_this_run_usd": 0.0,
+            "cost_avoided_by_cache_reuse_usd": 0.2,
+            "projected_new_call_cost_usd": 0.0,
+            "provider_required_for_missing_pairs": False,
+            "provider_not_required_for_fully_cached_pairs": True,
+        }
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed, _error_codes(result)
+
+
+def test_r1r_contract_rejects_provider_unavailable_when_cache_misses_remain() -> None:
+    summary = _r1r_summary()
+    summary["llm_readiness"]["provider_available"] = False
+    summary["llm_cache_policy"]["remaining_missing_pair_count"] = 1
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_provider_unavailable_not_blocked" in codes
+    assert "r1r_llm_readiness_missing_for_target" in codes
+
+
+def test_r1r_contract_rejects_review_pack_without_manifest_and_redaction_failure() -> None:
+    review = _r1r_summary()
+    review["review_pack"]["includes_stage_manifest"] = False
+    redaction = _r1r_summary()
+    redaction["public_redaction"] = {"passed": False, "finding_count": 1}
+
+    assert "r1r_review_pack_omits_stage_manifest" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", review)
+    )
+    assert "r1r_public_redaction_missing_or_failed" in _error_codes(
+        check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", redaction)
+    )
+
+
+def test_r1r_contract_rejects_redaction_without_final_artifact_scans() -> None:
+    summary = _r1r_summary()
+    summary["public_redaction"] = {"passed": True, "finding_count": 0}
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_public_redaction_final_artifact_scan_missing" in _error_codes(result)
+
+
+def test_r1r_contract_rejects_missing_llm_judgment_summary() -> None:
+    summary = _r1r_summary()
+    summary.pop("llm_judgment_summary")
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "missing_required_summary_field" in _error_codes(result)
+
+
+def test_r1r_contract_accepts_zero_eligible_full_chain_with_explicit_proof() -> None:
+    summary = _r1r_summary()
+    summary["sc1_full_chain_proof"]["llm_eligible_pair_count"] = 0
+    summary["sc1_full_chain_proof"]["llm_selected_pair_count"] = 0
+    summary["sc1_full_chain_proof"]["llm_judgment_count"] = 0
+    summary["sc1_full_chain_proof"]["llm_pair_adjudication_executed"] = False
+    summary["sc1_full_chain_proof"]["zero_eligible_pair_proof"] = True
+    summary["llm_adjudication_plan"]["eligible_pair_count"] = 0
+    summary["llm_adjudication_plan"]["selected_pair_count"] = 0
+    summary["llm_adjudication_plan"]["eligible_pair_accounting_total"] = 0
+    summary["llm_readiness"] = {
+        "passed": False,
+        "operator_approved": False,
+        "provider_available": False,
+        "provider_mode": None,
+        "provider_model": None,
+        "uses_fallback_provider": False,
+        "cache_ready": False,
+        "budget_ready": False,
+    }
+    summary["llm_provider_execution"] = {
+        "provider_mode": None,
+        "provider_label": None,
+        "provider_name": None,
+        "model_name": None,
+        "uses_fallback_provider": False,
+        "fallback_provider_used": False,
+        "primary_openai_compatible_used": False,
+    }
+    summary["llm_judgment_summary"]["judgment_count"] = 0
+    summary["llm_judgment_summary"]["ledger_row_count"] = 0
+    summary["llm_judgment_summary"]["selected_pair_count"] = 0
+    summary["llm_judgment_summary"]["selected_pair_accounting"] = {
+        "selected_pair_count": 0,
+        "resolved_provider_judgment_count": 0,
+        "valid_cached_judgment_count": 0,
+        "explicit_skipped_pair_count": 0,
+        "provider_error_pair_count": 0,
+        "successful_accounted_pair_count": 0,
+        "all_selected_pairs_successfully_accounted": True,
+    }
+    summary["llm_cache_policy"].update(
+        {
+            "compatible_cache_hit_count": 0,
+            "exact_compatible_cache_hit_count": 0,
+            "new_provider_call_count": 0,
+            "new_provider_success_count": 0,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_spent_this_run_usd": 0.0,
+            "cost_avoided_by_cache_reuse_usd": 0.0,
+            "projected_new_call_cost_usd": 0.0,
+            "projected_full_eligible_cost_usd": 0.0,
+        }
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed is True
+
+
+@pytest.mark.parametrize(
+    "route_key",
+    [
+        "r2_authorized",
+        "px1_b_authorized",
+        "provider_2_authorized",
+        "scale_up_authorized",
+        "entity_bridge_authorized",
+        "source_concept_truth_promotion_authorized",
+        "route_approval_authorized",
+    ],
+)
+def test_r1r_contract_rejects_downstream_route_authorization(route_key: str) -> None:
+    summary = _r1r_summary()
+    summary["route_authorization"][route_key] = True
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_forbidden_route_authorization" in _error_codes(result)
+
+
+@pytest.mark.parametrize(
+    "claim_path",
+    [
+        "pipeline_contract.claims.route_approved",
+        "pipeline_contract.claims.safe_to_merge",
+        "pipeline_contract.claims.r2_authorized",
+        "pipeline_contract.claims.px1_b_authorized",
+        "pipeline_contract.claims.provider_2_authorized",
+        "pipeline_contract.claims.scale_up_authorized",
+        "pipeline_contract.claims.entity_bridge_authorized",
+        "claims.route_approved",
+        "claims.safe_to_merge",
+        "route_approved",
+        "safe_to_merge",
+    ],
+)
+def test_r1r_contract_rejects_route_approval_claims_outside_route_authorization(claim_path: str) -> None:
+    summary = _r1r_summary()
+    if claim_path.startswith("claims."):
+        summary.setdefault("claims", {})[claim_path.split(".", 1)[1]] = True
+    elif "." in claim_path:
+        _set_nested(summary, claim_path, True)
+    else:
+        summary[claim_path] = True
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_forbidden_route_claim" in _error_codes(result)
+
+
+def test_r1r_contract_requires_a1r_after_r1r() -> None:
+    summary = _r1r_summary()
+    summary["route_authorization"]["a1r_still_required"] = False
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_a1r_still_required_missing" in _error_codes(result)
 
 
 def test_forbidden_stage_executed_true_fails_even_with_negative_status() -> None:

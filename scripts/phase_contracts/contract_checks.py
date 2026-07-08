@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .contract_registry import (
+    R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES,
+    R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
     SOURCE_CONCEPT_ALLOWED_STATUSES,
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
     get_contract,
@@ -41,6 +43,39 @@ FILENAME_VALUE_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|j
 
 POSITIVE_STAGE_STATUSES = {"passed", "pass", "complete", "completed", "executed", "success", "succeeded"}
 NEGATIVE_STAGE_STATUSES = {"blocked", "blocked_before_write", "inconclusive", "skipped", "missing", "failed", "fail", "not_run"}
+R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = {
+    "blombooru_source_concept_resolution_runs",
+    "blombooru_source_concept_signals",
+    "blombooru_source_concepts",
+    "blombooru_source_concept_aliases",
+    "blombooru_source_concept_evidence",
+    "blombooru_source_concept_signal_links",
+    "blombooru_source_concept_search_index",
+}
+R1R_INPUT_SCOPE_MIN_RATIO = 0.8
+R1R_BASELINE_ONLY_INPUT_SCOPE_METRICS = {
+    "source_concept_total",
+    "source_concept_active",
+    "source_concept_needs_review",
+    "source_concept_superseded",
+}
+R1R_REQUIRED_INPUT_SCOPE_METRICS = (
+    "total_media",
+    "eligible_media",
+    "source_metadata_records_total",
+    "px1_source_metadata_records",
+    "source_tag_observations",
+    "source_name_observations",
+    "source_searchable_name_assertions",
+    "source_metadata_evidence",
+    "resolver_input_signals",
+    "deterministic_edge_count",
+    "source_concept_replay_total",
+    "source_concept_replay_active",
+    "source_concept_replay_needs_review",
+    "llm_eligible_pair_count",
+    "llm_selected_pair_count",
+)
 REQUIRED_NON_EMPTY_PROOF_FIELDS = {
     "request_ledger",
     "failure_ledger",
@@ -385,6 +420,59 @@ def _safe_public_provenance_marker(raw_path: str, value: Any) -> bool:
     return key_name == "source_root_public_marker" and str(value).strip() == "audited-root"
 
 
+def _safe_public_artifact_label(raw_path: str, value: Any) -> bool:
+    key_name = raw_path.rsplit(".", 1)[-1]
+    if key_name not in {
+        "private_artifact_label",
+        "evidence_artifact_label",
+        "stage_manifest_artifact",
+        "private_artifact_root_label",
+        "durable_cache_root_label",
+        "label",
+        "artifact_label",
+    }:
+        return False
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if WINDOWS_PATH_RE.search(text) or UNC_PATH_RE.search(text) or FILE_URI_RE.search(text) or POSIX_PRIVATE_PATH_RE.search(text):
+        return False
+    return text.startswith("r1r-private-") or text in {
+        "[private]",
+        "[blocked]",
+        "source-concept-llm-adjudication-cache",
+    }
+
+
+def _safe_public_context_value(raw_path: str, value: Any) -> bool:
+    key_name = raw_path.rsplit(".", 1)[-1]
+    text = str(value or "").strip()
+    if text and _redaction_findings_for_text(text, raw_path, kind="value"):
+        return False
+    if isinstance(value, bool) and (
+        key_name.endswith("_authorized")
+        or key_name in {
+            "a1r_still_required",
+            "no_secret_leakage",
+            "production_db_storage_source_roots_private_ledgers_used_as_fixtures",
+        }
+    ):
+        return True
+    if isinstance(value, (int, float)) and key_name in {
+        "projected_input_tokens",
+        "projected_output_tokens",
+    }:
+        return True
+    if key_name == "storage_root_label" and text in {
+        "dedicated_test_storage",
+        "development_storage",
+        "restored_snapshot_storage",
+        "test_storage",
+    }:
+        return True
+    return False
+
+
 def _format_json_path(parent: str, segment: str | int) -> str:
     if isinstance(segment, int):
         return f"{parent}[{segment}]"
@@ -487,11 +575,17 @@ def scan_public_payload(payload: Any) -> list[dict[str, Any]]:
         secret_context = kind in {"value", "empty_container"} and _path_has_secret_context(raw_path)
         provenance_context = kind in {"value", "empty_container"} and _path_has_private_provenance_context(raw_path)
         content_hash_context = kind in {"value", "empty_container"} and _path_has_private_content_hash_context(raw_path)
-        if secret_context and not _safe_redacted(value):
+        if secret_context and not _safe_redacted(value) and not _safe_public_context_value(raw_path, value):
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("secret_key_name_with_unredacted_value", key_name))
             findings.append(finding)
-        if provenance_context and not _safe_redacted(value) and not _safe_public_provenance_marker(raw_path, value):
+        if (
+            provenance_context
+            and not _safe_redacted(value)
+            and not _safe_public_provenance_marker(raw_path, value)
+            and not _safe_public_artifact_label(raw_path, value)
+            and not _safe_public_context_value(raw_path, value)
+        ):
             finding = {"path": display_path, "kind": kind}
             finding.update(_redacted_match_payload("private_provenance_value_unredacted", key_name))
             findings.append(finding)
@@ -775,6 +869,1085 @@ def _check_source_concept_full_chain(contract: PhaseContract, summary: Mapping[s
         )
 
 
+def _check_r1r_full_source_concept_pipeline(
+    contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult
+) -> None:
+    status = result.status or "unknown"
+    result.details["r1r_allowed_statuses"] = list(R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES)
+    if status not in R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES:
+        result.fail(
+            "r1r_unknown_status",
+            "R1R full SourceConcept replay status is not one of the allowed executable statuses.",
+            path="pipeline_contract.status",
+            expected=list(R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES),
+            actual=status,
+        )
+
+    target_met_full_chain = (
+        status == "target_met_full_chain"
+        or result.target_met_claimed
+        or result.full_chain_complete_claimed
+        or _as_bool(_get(summary, "sc1_full_chain_proof.complete_sc1_pipeline_executed", False))
+    )
+    if status != "target_met_full_chain" and _completion_or_approval_claimed(result):
+        result.fail(
+            "r1r_non_target_status_claimed_completion",
+            "Only target_met_full_chain may claim target_met, full_chain_complete, route approval, or safe_to_merge.",
+            path="pipeline_contract.status",
+            expected="target_met_full_chain",
+            actual=status,
+        )
+
+    _check_r1r_environment_isolation(summary, result, target_met_full_chain=target_met_full_chain)
+    _check_r1r_input_scope_fidelity(summary, result, status=status, target_met_full_chain=target_met_full_chain)
+    _check_r1r_stage_manifest(contract, summary, result, target_met_full_chain=target_met_full_chain)
+    _check_r1r_llm_truthfulness(summary, result, status=status, target_met_full_chain=target_met_full_chain)
+    _check_r1r_write_scope(summary, result, target_met_full_chain=target_met_full_chain)
+    _check_r1r_review_redaction(summary, result, target_met_full_chain=target_met_full_chain)
+    _check_r1r_route_gate(summary, result, target_met_full_chain=target_met_full_chain)
+
+
+def _check_r1r_environment_isolation(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    target_met_full_chain: bool,
+) -> None:
+    env = _get(summary, "environment_isolation", {})
+    if not isinstance(env, Mapping):
+        result.fail("r1r_environment_isolation_not_object", "R1R requires environment_isolation proof.", path="environment_isolation")
+        return
+    blockers = env.get("blockers") if isinstance(env.get("blockers"), list) else []
+    if target_met_full_chain:
+        if not _as_bool(env.get("passed")):
+            result.fail(
+                "r1r_environment_isolation_aggregate_failed_for_target",
+                "target_met_full_chain requires environment_isolation.passed=true.",
+                path="environment_isolation.passed",
+                expected=True,
+                actual=env.get("passed"),
+            )
+        if blockers:
+            result.fail(
+                "r1r_environment_isolation_blockers_present_for_target",
+                "target_met_full_chain requires environment_isolation.blockers to be empty.",
+                path="environment_isolation.blockers",
+                expected=[],
+                actual=blockers,
+            )
+    required_false = (
+        "production_profile_active",
+        "violet_env_is_production",
+        "db_target_is_production",
+        "storage_root_is_production",
+        "source_icloud_app_storage_write_target",
+        "dynamic_production_launcher_used",
+        "production_db_storage_source_roots_private_ledgers_used_as_fixtures",
+        "production_write_attempted",
+    )
+    for key in required_false:
+        if _as_bool(env.get(key)):
+            result.fail(
+                "r1r_environment_isolation_failed",
+                f"R1R environment isolation requires {key}=false.",
+                path=f"environment_isolation.{key}",
+                expected=False,
+                actual=env.get(key),
+            )
+    if not _as_bool(env.get("dev_test_restored_snapshot_db_used")):
+        result.fail(
+            "r1r_dev_test_restored_snapshot_db_required",
+            "R1R execution must use a dev/test/restored-snapshot DB.",
+            path="environment_isolation.dev_test_restored_snapshot_db_used",
+            expected=True,
+            actual=env.get("dev_test_restored_snapshot_db_used"),
+        )
+    db_name = str(env.get("db_name") or "").strip().casefold()
+    if db_name in {"blombooru", "production", "main", "postgres"}:
+        result.fail(
+            "r1r_production_db_name_rejected",
+            "R1R must not target production-like database names.",
+            path="environment_isolation.db_name",
+            expected="dev/test/restored-snapshot DB name",
+            actual=env.get("db_name"),
+        )
+    actual = env.get("exact_db_identity_from_actual_connection")
+    if isinstance(actual, Mapping):
+        if target_met_full_chain and not _as_bool(actual.get("passed")):
+            result.fail(
+                "r1r_actual_db_identity_gate_failed_for_target",
+                "target_met_full_chain requires exact_db_identity_from_actual_connection.passed=true.",
+                path="environment_isolation.exact_db_identity_from_actual_connection.passed",
+                expected=True,
+                actual=actual.get("passed"),
+            )
+        if not _as_bool(actual.get("checked_from_actual_connection")):
+            result.fail(
+                "r1r_actual_db_identity_not_checked",
+                "R1R must validate the exact DB connection used for inventory and writes.",
+                path="environment_isolation.exact_db_identity_from_actual_connection.checked_from_actual_connection",
+            )
+        actual_db = str(actual.get("db_name") or "").strip().casefold()
+        if actual_db in {"blombooru", "production", "main", "postgres"} or "production" in actual_db:
+            result.fail(
+                "r1r_actual_connection_production_db_rejected",
+                "The exact DB connection used by R1R points at a production-like DB.",
+                path="environment_isolation.exact_db_identity_from_actual_connection.db_name",
+                expected="dev/test/restored-snapshot DB name",
+                actual=actual.get("db_name"),
+            )
+        if not _as_bool(actual.get("dev_test_restored_snapshot_db_used")):
+            result.fail(
+                "r1r_actual_connection_dev_test_snapshot_required",
+                "The exact DB connection used by R1R must be dev/test/restored-snapshot.",
+                path="environment_isolation.exact_db_identity_from_actual_connection.dev_test_restored_snapshot_db_used",
+                expected=True,
+                actual=actual.get("dev_test_restored_snapshot_db_used"),
+            )
+    elif _as_bool(env.get("passed")):
+        result.fail(
+            "r1r_actual_db_identity_missing",
+            "R1R must record exact DB identity from the connection used for reads/writes.",
+            path="environment_isolation.exact_db_identity_from_actual_connection",
+        )
+    storage_gate = env.get("storage_root_pre_settings_import")
+    if not isinstance(storage_gate, Mapping) or not _as_bool(storage_gate.get("checked_before_settings_import")):
+        result.fail(
+            "r1r_storage_pre_settings_gate_missing",
+            "R1R must classify VIOLET_STORAGE_ROOT before importing app settings.",
+            path="environment_isolation.storage_root_pre_settings_import",
+        )
+    elif not _as_bool(storage_gate.get("passed")):
+        result.fail(
+            "r1r_storage_pre_settings_gate_failed",
+            "R1R storage root must not overlap production, source/iCloud, app-managed, or protected roots.",
+            path="environment_isolation.storage_root_pre_settings_import.passed",
+            expected=True,
+            actual=storage_gate.get("passed"),
+        )
+    output_gate = env.get("output_dir_safety")
+    if target_met_full_chain:
+        if not isinstance(storage_gate, Mapping) or not _as_bool(storage_gate.get("passed")):
+            result.fail(
+                "r1r_storage_pre_settings_gate_required_for_target",
+                "target_met_full_chain requires storage_root_pre_settings_import.passed=true.",
+                path="environment_isolation.storage_root_pre_settings_import.passed",
+                expected=True,
+                actual=storage_gate.get("passed") if isinstance(storage_gate, Mapping) else None,
+            )
+        if not isinstance(output_gate, Mapping) or not _as_bool(output_gate.get("passed")):
+            result.fail(
+                "r1r_output_dir_safety_gate_required_for_target",
+                "target_met_full_chain requires output_dir_safety.passed=true.",
+                path="environment_isolation.output_dir_safety.passed",
+                expected=True,
+                actual=output_gate.get("passed") if isinstance(output_gate, Mapping) else None,
+            )
+
+
+def _check_r1r_input_scope_fidelity(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    status: str,
+    target_met_full_chain: bool,
+) -> None:
+    scope = _get(summary, "input_scope_fidelity", {})
+    if not isinstance(scope, Mapping):
+        result.fail("r1r_input_scope_fidelity_missing", "R1R requires input_scope_fidelity proof.", path="input_scope_fidelity")
+        return
+    table = scope.get("comparison_table")
+    rows_by_metric: dict[str, Mapping[str, Any]] = {}
+    if not isinstance(table, list) or not table:
+        result.fail(
+            "r1r_input_scope_comparison_missing",
+            "R1R input-scope fidelity requires old R1 expected/current R1R actual/ratio/status rows.",
+            path="input_scope_fidelity.comparison_table",
+        )
+    else:
+        for index, row in enumerate(table):
+            if not isinstance(row, Mapping):
+                result.fail("r1r_input_scope_row_not_object", "Input-scope rows must be objects.", path=f"input_scope_fidelity.comparison_table[{index}]")
+                continue
+            metric = str(row.get("metric") or "")
+            if metric:
+                rows_by_metric[metric] = row
+            missing = [
+                key
+                for key in ("metric", "old_r1_expected", "current_r1r_actual", "ratio", "status")
+                if row.get(key) is None
+            ]
+            if missing:
+                result.fail(
+                    "r1r_input_scope_row_missing_field",
+                    "Input-scope rows require metric, expected, actual, ratio, and status.",
+                    path=f"input_scope_fidelity.comparison_table[{index}]",
+                    actual=missing,
+                )
+        missing_required_rows = [metric for metric in R1R_REQUIRED_INPUT_SCOPE_METRICS if metric not in rows_by_metric]
+        for metric in missing_required_rows:
+            result.fail(
+                "r1r_input_scope_required_metric_missing",
+                "R1R input-scope fidelity rows must include every required old-R1 comparison metric.",
+                path="input_scope_fidelity.comparison_table",
+                expected=metric,
+            )
+    derived_failed_metrics: list[str] = []
+    for metric in R1R_REQUIRED_INPUT_SCOPE_METRICS:
+        row = rows_by_metric.get(metric)
+        if not isinstance(row, Mapping):
+            derived_failed_metrics.append(metric)
+            continue
+        expected = _as_float(row.get("old_r1_expected"), default=0.0)
+        actual = _as_float(row.get("current_r1r_actual"), default=0.0)
+        row_ratio = row.get("ratio")
+        ratio = _as_float(row_ratio, default=(actual / expected if expected > 0 else 0.0))
+        if expected <= 0 or ratio < R1R_INPUT_SCOPE_MIN_RATIO or actual < expected * R1R_INPUT_SCOPE_MIN_RATIO:
+            derived_failed_metrics.append(metric)
+    derived_pass = not derived_failed_metrics
+    passed_claim = _as_bool(scope.get("passed"))
+    route_allowed_claim = _as_bool(scope.get("route_evidence_allowed"))
+    failed_metrics_claim = scope.get("failed_metrics") if isinstance(scope.get("failed_metrics"), list) else []
+    result.details["r1r_input_scope_derived_failed_metrics"] = derived_failed_metrics
+    if (passed_claim or route_allowed_claim) and not derived_pass:
+        result.fail(
+            "r1r_input_scope_claim_not_supported_by_rows",
+            "R1R input-scope pass/route evidence claims must be recomputed from required comparison rows.",
+            path="input_scope_fidelity.comparison_table",
+            expected="all required metric ratios >= 0.8",
+            actual=derived_failed_metrics,
+        )
+    if derived_pass and failed_metrics_claim:
+        result.fail(
+            "r1r_input_scope_failed_metrics_claim_mismatch",
+            "R1R input-scope failed_metrics must match contract-derived comparison row status.",
+            path="input_scope_fidelity.failed_metrics",
+            expected=[],
+            actual=failed_metrics_claim,
+        )
+    if target_met_full_chain and (not derived_pass or not passed_claim or not route_allowed_claim or failed_metrics_claim):
+        result.fail(
+            "r1r_target_met_with_insufficient_input_scope",
+            "target_met_full_chain requires old-R1-equivalent source-layer input scope, not a tiny fixture.",
+            path="input_scope_fidelity",
+            expected={"passed": True, "route_evidence_allowed": True, "failed_metrics": []},
+            actual={
+                "passed": passed_claim,
+                "route_evidence_allowed": route_allowed_claim,
+                "failed_metrics": failed_metrics_claim,
+                "derived_failed_metrics": derived_failed_metrics,
+            },
+        )
+    if not derived_pass and status == "target_met_full_chain":
+        result.fail(
+            "r1r_input_scope_failure_not_blocked",
+            "Insufficient input scope must use smoke_only_not_route_evidence or blocked_insufficient_input_scope, not target_met_full_chain.",
+            path="pipeline_contract.status",
+            expected="smoke_only_not_route_evidence",
+            actual=status,
+        )
+    if not derived_pass and status not in {
+        "smoke_only_not_route_evidence",
+        "blocked_insufficient_input_scope",
+        "blocked_environment_or_snapshot_unavailable",
+        "blocked_snapshot_unavailable",
+        "blocked_snapshot_restore_required",
+        "blocked_operator_clone_approval_required",
+        "blocked_environment_isolation",
+        "blocked_contract",
+    }:
+        result.fail(
+            "r1r_input_scope_failure_wrong_status",
+            "Insufficient old-R1 scope must block or be classified as smoke-only.",
+            path="pipeline_contract.status",
+            expected="smoke_only_not_route_evidence",
+            actual=status,
+        )
+
+
+def _check_r1r_stage_manifest(
+    contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    target_met_full_chain: bool,
+) -> None:
+    manifest = _get(summary, "sc1_required_stage_manifest", MISSING)
+    if not isinstance(manifest, list) or not manifest:
+        result.fail(
+            "r1r_stage_manifest_missing",
+            "R1R requires a non-empty SC1 required-stage manifest.",
+            path="sc1_required_stage_manifest",
+        )
+        return
+    rows: dict[str, Mapping[str, Any]] = {}
+    required_stage_names = set(contract.required_stages)
+    for index, row in enumerate(manifest):
+        if not isinstance(row, Mapping):
+            result.fail("r1r_stage_manifest_row_not_object", "Every stage manifest row must be an object.", path=f"sc1_required_stage_manifest[{index}]")
+            continue
+        stage_name = str(row.get("stage_name") or "")
+        if not stage_name:
+            result.fail("r1r_stage_manifest_row_missing_name", "Every stage manifest row needs stage_name.", path=f"sc1_required_stage_manifest[{index}].stage_name")
+            continue
+        rows[stage_name] = row
+        status = str(row.get("status") or "").strip()
+        executed = _as_bool(row.get("executed"))
+        skipped = _as_bool(row.get("skipped"))
+        required = stage_name in required_stage_names
+        evidence_label = str(row.get("evidence_artifact_label") or "").strip()
+        if stage_name in required_stage_names and row.get("required") is False:
+            result.fail(
+                "r1r_required_stage_row_cannot_opt_out",
+                "Required R1R stages are defined by the contract, not by manifest row required=false.",
+                path=f"sc1_required_stage_manifest[{index}].required",
+                expected=True,
+                actual=row.get("required"),
+            )
+        if required and skipped and not str(row.get("skip_reason") or "").strip():
+            result.fail(
+                "r1r_stage_skipped_without_reason",
+                "Skipped required stages must include skip_reason.",
+                path=f"sc1_required_stage_manifest[{index}].skip_reason",
+            )
+        if required and (executed or status in {"executed", "verified"}) and not evidence_label:
+            result.fail(
+                "r1r_stage_executed_without_evidence_label",
+                "Executed/verified required stages need evidence_artifact_label.",
+                path=f"sc1_required_stage_manifest[{index}].evidence_artifact_label",
+            )
+        if target_met_full_chain and required:
+            allowed = status in {"executed", "verified"}
+            if status == "skipped_not_applicable":
+                allowed = _r1r_stage_skip_allowed(stage_name, row)
+            if not allowed:
+                result.fail(
+                    "r1r_required_stage_not_verified_for_target",
+                    "target_met_full_chain requires each required stage to execute/verify or carry explicit allowed not-applicable proof.",
+                    path=f"sc1_required_stage_manifest[{index}].status",
+                    expected="executed/verified",
+                    actual=status,
+                )
+    missing = [stage for stage in contract.required_stages if stage not in rows]
+    result.details["r1r_missing_stage_manifest_rows"] = missing
+    for stage in missing:
+        result.fail(
+            "r1r_required_stage_manifest_row_missing",
+            f"R1R stage manifest is missing required SC1 stage {stage!r}.",
+            path="sc1_required_stage_manifest",
+            expected=stage,
+        )
+    provider_cache = rows.get("provider_cache_adapter_or_zero_eligible_proof")
+    if provider_cache and str(provider_cache.get("status") or "") == "skipped_not_applicable":
+        if not _r1r_stage_skip_allowed("provider_cache_adapter_or_zero_eligible_proof", provider_cache):
+            result.fail(
+                "r1r_provider_cache_adapter_skip_without_zero_scope_proof",
+                "ProviderCache adapter may be skipped only with zero-eligible or not-in-input-scope proof.",
+                path="sc1_required_stage_manifest.provider_cache_adapter_or_zero_eligible_proof",
+            )
+
+
+def _r1r_stage_skip_allowed(stage_name: str, row: Mapping[str, Any]) -> bool:
+    if stage_name != "provider_cache_adapter_or_zero_eligible_proof":
+        return False
+    explicit = _as_bool(row.get("zero_eligible_proof")) or _as_bool(row.get("not_in_input_scope_proof"))
+    input_count = _as_int(row.get("input_count"), default=-1)
+    return explicit and input_count == 0
+
+
+def _check_r1r_llm_truthfulness(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    status: str,
+    target_met_full_chain: bool,
+) -> None:
+    proof = _get(summary, "sc1_full_chain_proof", {})
+    plan = _get(summary, "llm_adjudication_plan", {})
+    readiness = _get(summary, "llm_readiness", {})
+    provider_execution = _get(summary, "llm_provider_execution", {})
+    judgment_summary = _get(summary, "llm_judgment_summary", {})
+    cache_policy = _get(summary, "llm_cache_policy", MISSING)
+    proof_mapping = proof if isinstance(proof, Mapping) else {}
+    plan_mapping = plan if isinstance(plan, Mapping) else {}
+    readiness_mapping = readiness if isinstance(readiness, Mapping) else {}
+    provider_mapping = provider_execution if isinstance(provider_execution, Mapping) else {}
+    judgment_mapping = judgment_summary if isinstance(judgment_summary, Mapping) else {}
+    cache_mapping = cache_policy if isinstance(cache_policy, Mapping) else {}
+
+    eligible = _as_int(
+        proof_mapping.get("llm_eligible_pair_count", plan_mapping.get("eligible_pair_count", plan_mapping.get("projected_calls", 0)))
+    )
+    selected = _as_int(proof_mapping.get("llm_selected_pair_count", plan_mapping.get("selected_pair_count", plan_mapping.get("selected_block_count", 0))))
+    judgments = _as_int(proof_mapping.get("llm_judgment_count", _get(summary, "llm_judgment_count", 0)))
+    judgment_summary_count = _as_int(judgment_mapping.get("judgment_count", judgments))
+    ledger_row_count = _as_int(judgment_mapping.get("ledger_row_count", judgment_summary_count))
+    error_count = _as_int(judgment_mapping.get("error_count", _get(summary, "llm_error_count", 0)))
+    accounting = (
+        judgment_mapping.get("selected_pair_accounting")
+        if isinstance(judgment_mapping.get("selected_pair_accounting"), Mapping)
+        else {}
+    )
+    resolved_provider = _as_int(accounting.get("resolved_provider_judgment_count", judgments))
+    cached = _as_int(accounting.get("valid_cached_judgment_count", 0))
+    explicit_skipped = _as_int(accounting.get("explicit_skipped_pair_count", 0))
+    provider_error_pairs = _as_int(accounting.get("provider_error_pair_count", error_count))
+    successful_accounted = _as_int(
+        accounting.get("successful_accounted_pair_count", resolved_provider + cached + explicit_skipped)
+    )
+    cache_hit_count = _as_int(cache_mapping.get("compatible_cache_hit_count", judgment_mapping.get("compatible_cache_hit_count", cached)))
+    cache_new_provider_success = _as_int(cache_mapping.get("new_provider_success_count", judgment_mapping.get("new_provider_success_count", resolved_provider)))
+    cache_new_provider_calls = _as_int(cache_mapping.get("new_provider_call_count", judgment_mapping.get("new_provider_call_count", 0)))
+    cache_failed_provider_calls = _as_int(cache_mapping.get("failed_provider_call_count", judgment_mapping.get("failed_provider_call_count", error_count)))
+    cache_remaining_missing = _as_int(cache_mapping.get("remaining_missing_pair_count", judgment_mapping.get("remaining_missing_pair_count", 0)))
+    exact_cache_hit_count = _as_int(cache_mapping.get("exact_compatible_cache_hit_count", judgment_mapping.get("exact_compatible_cache_hit_count", 0)))
+    skipped_pairs = _as_int(plan_mapping.get("skipped_pair_count", explicit_skipped))
+    unselected_pairs = _as_int(plan_mapping.get("unselected_pair_count", 0))
+    eligible_accounting_total = _as_int(
+        plan_mapping.get("eligible_pair_accounting_total", selected + skipped_pairs + unselected_pairs)
+    )
+    selection_policy = str(plan_mapping.get("selection_policy") or "").strip().casefold()
+    all_eligible_pairs_selected = _as_bool(plan_mapping.get("all_eligible_pairs_selected"))
+    all_eligible_pairs_adjudicated = _as_bool(
+        proof_mapping.get("all_eligible_llm_pairs_adjudicated", plan_mapping.get("all_eligible_pairs_adjudicated"))
+    )
+    fixed_call_cap_primary_limiter = _as_bool(plan_mapping.get("fixed_call_cap_primary_limiter"))
+    llm_requested = _as_bool(proof_mapping.get("llm_pair_adjudication_requested", plan_mapping.get("required")))
+    llm_executed = _as_bool(proof_mapping.get("llm_pair_adjudication_executed", _get(summary, "llm_adjudication_used", False)))
+    operator_approved = _as_bool(readiness_mapping.get("operator_approved"))
+    provider_available = _as_bool(readiness_mapping.get("provider_available"))
+    cache_ready = _as_bool(readiness_mapping.get("cache_ready"))
+    budget_ready = _as_bool(readiness_mapping.get("budget_ready"))
+    readiness_passed = _as_bool(readiness_mapping.get("passed"))
+    fallback_used = (
+        _as_bool(readiness_mapping.get("uses_fallback_provider"))
+        or _as_bool(provider_mapping.get("uses_fallback_provider"))
+        or _as_bool(provider_mapping.get("fallback_provider_used"))
+    )
+    provider_mode = str(provider_mapping.get("provider_mode") or readiness_mapping.get("provider_mode") or "")
+    input_scope_passed = _as_bool(_get(summary, "input_scope_fidelity.passed", True))
+    cache_only_exact_covered = bool(
+        selected > 0
+        and exact_cache_hit_count >= selected
+        and cache_hit_count >= selected
+        and cache_new_provider_calls == 0
+        and cache_failed_provider_calls == 0
+        and cache_remaining_missing == 0
+        and provider_error_pairs == 0
+    )
+
+    if input_scope_passed and eligible > 0 and not operator_approved and status not in {
+        "blocked_llm_approval_required",
+        "blocked_environment_isolation",
+        "ready_for_old_r1_scope_rerun",
+    }:
+        result.fail(
+            "r1r_llm_approval_required_status_missing",
+            "Eligible LLM pairs without operator approval must use blocked_llm_approval_required.",
+            path="pipeline_contract.status",
+            expected="blocked_llm_approval_required",
+            actual=status,
+        )
+    if input_scope_passed and operator_approved and not provider_available and not cache_only_exact_covered and status not in {
+        "blocked_provider",
+        "blocked_llm_readiness",
+        "blocked_environment_isolation",
+        "ready_for_old_r1_scope_rerun",
+    }:
+        result.fail(
+            "r1r_provider_unavailable_not_blocked",
+            "Approved R1R LLM adjudication with unavailable provider must block as blocked_provider or blocked_llm_readiness.",
+            path="llm_readiness.provider_available",
+            expected=True,
+            actual=readiness_mapping.get("provider_available"),
+        )
+    if input_scope_passed and operator_approved and not budget_ready and status not in {
+        "blocked_budget",
+        "blocked_llm_readiness",
+        "blocked_environment_isolation",
+        "ready_for_old_r1_scope_rerun",
+    }:
+        result.fail(
+            "r1r_budget_unready_not_blocked",
+            "Approved R1R LLM adjudication with missing/exceeded budget must block as blocked_budget or blocked_llm_readiness.",
+            path="llm_readiness.budget_ready",
+            expected=True,
+            actual=readiness_mapping.get("budget_ready"),
+        )
+    if fallback_used:
+        result.fail(
+            "r1r_fallback_provider_used",
+            "R1R bounded LLM adjudication must use the primary OpenAI-compatible provider only.",
+            path="llm_provider_execution.uses_fallback_provider",
+            expected=False,
+            actual=True,
+        )
+    if target_met_full_chain:
+        zero_eligible_pair_proof = eligible == 0 and selected == 0 and _as_bool(
+            proof_mapping.get("zero_eligible_pair_proof", False)
+        )
+        required_true = {
+            "complete_sc1_pipeline_executed": proof_mapping.get("complete_sc1_pipeline_executed"),
+            "deterministic_pipeline_executed": proof_mapping.get("deterministic_pipeline_executed"),
+            "llm_pair_adjudication_requested": llm_requested,
+            "llm_pair_adjudication_executed": llm_executed or zero_eligible_pair_proof,
+            "all_required_stage_statuses_verified": proof_mapping.get("all_required_stage_statuses_verified"),
+            "review_pack_includes_stage_manifest": proof_mapping.get("review_pack_includes_stage_manifest"),
+        }
+        for key, value in required_true.items():
+            if not _as_bool(value):
+                result.fail(
+                    "r1r_full_chain_proof_field_missing",
+                    f"target_met_full_chain requires sc1_full_chain_proof.{key}=true.",
+                    path=f"sc1_full_chain_proof.{key}",
+                    expected=True,
+                    actual=value,
+                )
+        target_readiness_ok = bool(
+            (readiness_passed or cache_only_exact_covered)
+            and cache_ready
+            and budget_ready
+            and (provider_available or cache_only_exact_covered)
+        )
+        if not zero_eligible_pair_proof and not target_readiness_ok:
+            result.fail(
+                "r1r_llm_readiness_missing_for_target",
+                "target_met_full_chain requires cache/budget readiness and provider readiness unless every selected pair is exact-compatible cached.",
+                path="llm_readiness",
+                expected={
+                    "passed": True,
+                    "provider_available": True,
+                    "cache_ready": True,
+                    "budget_ready": True,
+                    "or_exact_compatible_cache_covers_all_selected_pairs": True,
+                },
+                actual=readiness_mapping,
+            )
+        if not isinstance(cache_policy, Mapping):
+            result.fail(
+                "r1r_llm_cache_policy_missing",
+                "target_met_full_chain requires durable LLM adjudication cache policy proof.",
+                path="llm_cache_policy",
+            )
+        else:
+            required_cache_fields = {
+                "policy_version": cache_mapping.get("policy_version"),
+                "durable_cache_root_label": cache_mapping.get("durable_cache_root_label"),
+                "cost_spent_this_run_usd": cache_mapping.get("cost_spent_this_run_usd"),
+                "cost_avoided_by_cache_reuse_usd": cache_mapping.get("cost_avoided_by_cache_reuse_usd"),
+                "projected_full_eligible_cost_usd": cache_mapping.get("projected_full_eligible_cost_usd"),
+                "budget_cap_usd": cache_mapping.get("budget_cap_usd"),
+            }
+            missing_cache_fields = [key for key, value in required_cache_fields.items() if value in (None, "")]
+            if missing_cache_fields:
+                result.fail(
+                    "r1r_llm_cache_policy_field_missing",
+                    "Durable cache policy proof must include cache version, root label, and cost fields.",
+                    path="llm_cache_policy",
+                    actual=missing_cache_fields,
+                )
+            if not _as_bool(cache_mapping.get("cache_writes_atomic")):
+                result.fail(
+                    "r1r_llm_cache_atomic_write_proof_missing",
+                    "Successful LLM judgments must be written atomically to durable cache.",
+                    path="llm_cache_policy.cache_writes_atomic",
+                    expected=True,
+                    actual=cache_mapping.get("cache_writes_atomic"),
+                )
+            if not _as_bool(cache_mapping.get("raw_private_paths_redacted")):
+                result.fail(
+                    "r1r_llm_cache_public_redaction_missing",
+                    "Public cache proof must use labels/aggregates and redact private paths/payloads.",
+                    path="llm_cache_policy.raw_private_paths_redacted",
+                    expected=True,
+                    actual=cache_mapping.get("raw_private_paths_redacted"),
+                )
+            root_label = str(cache_mapping.get("durable_cache_root_label") or "")
+            if ":\\" in root_label or "/" in root_label or "\\" in root_label:
+                result.fail(
+                    "r1r_llm_cache_root_label_leaks_path",
+                    "Public cache root must be a label, not a raw local path.",
+                    path="llm_cache_policy.durable_cache_root_label",
+                    actual=root_label,
+                )
+            if cache_hit_count != cached:
+                result.fail(
+                    "r1r_llm_cache_hit_count_mismatch",
+                    "Compatible cache hit count must match valid_cached_judgment_count.",
+                    path="llm_cache_policy.compatible_cache_hit_count",
+                    expected=cached,
+                    actual=cache_hit_count,
+                )
+            if cache_new_provider_success != resolved_provider:
+                result.fail(
+                    "r1r_llm_cache_new_success_count_mismatch",
+                    "New provider success count must match resolved_provider_judgment_count.",
+                    path="llm_cache_policy.new_provider_success_count",
+                    expected=resolved_provider,
+                    actual=cache_new_provider_success,
+                )
+            if cache_failed_provider_calls != provider_error_pairs:
+                result.fail(
+                    "r1r_llm_cache_failure_count_mismatch",
+                    "Provider failures recorded in cache policy must match provider error pair accounting.",
+                    path="llm_cache_policy.failed_provider_call_count",
+                    expected=provider_error_pairs,
+                    actual=cache_failed_provider_calls,
+                )
+            if cache_remaining_missing != 0:
+                result.fail(
+                    "r1r_llm_cache_remaining_pairs_for_target",
+                    "target_met_full_chain requires no remaining missing selected/eligible LLM pairs.",
+                    path="llm_cache_policy.remaining_missing_pair_count",
+                    expected=0,
+                    actual=cache_remaining_missing,
+                )
+            if cache_hit_count + cache_new_provider_success + explicit_skipped != selected:
+                result.fail(
+                    "r1r_llm_cache_accounting_does_not_cover_selected",
+                    "Compatible cache hits plus new provider successes plus explicit skips must cover selected pairs.",
+                    path="llm_cache_policy",
+                    expected=selected,
+                    actual=cache_hit_count + cache_new_provider_success + explicit_skipped,
+                )
+            if cache_new_provider_calls < cache_new_provider_success + cache_failed_provider_calls:
+                result.fail(
+                    "r1r_llm_cache_provider_call_count_inconsistent",
+                    "New provider call count must cover provider successes and provider failures.",
+                    path="llm_cache_policy.new_provider_call_count",
+                    expected=f">= {cache_new_provider_success + cache_failed_provider_calls}",
+                    actual=cache_new_provider_calls,
+                )
+        if not zero_eligible_pair_proof and provider_mode != "primary_openai":
+            result.fail(
+                "r1r_primary_provider_identity_missing",
+                "target_met_full_chain requires primary OpenAI-compatible provider identity.",
+                path="llm_provider_execution.provider_mode",
+                expected="primary_openai",
+                actual=provider_mode,
+            )
+        if not zero_eligible_pair_proof and not provider_mapping.get("model_name"):
+            result.fail(
+                "r1r_llm_model_identity_missing",
+                "target_met_full_chain requires the actual configured model name used for R1R adjudication.",
+                path="llm_provider_execution.model_name",
+                expected="configured model name",
+                actual=provider_mapping.get("model_name"),
+            )
+        if error_count > 0:
+            result.fail(
+                "r1r_llm_error_count_nonzero_for_target",
+                "target_met_full_chain cannot include provider or judgment errors.",
+                path="llm_judgment_summary.error_count",
+                expected=0,
+                actual=error_count,
+            )
+        if provider_error_pairs > 0:
+            result.fail(
+                "r1r_provider_error_pairs_not_successful_judgments",
+                "Provider error rows cannot count as successful R1R LLM judgments.",
+                path="llm_judgment_summary.selected_pair_accounting.provider_error_pair_count",
+                expected=0,
+                actual=provider_error_pairs,
+            )
+        if judgments != judgment_summary_count or judgment_summary_count != ledger_row_count:
+            result.fail(
+                "r1r_llm_judgment_count_mismatch",
+                "R1R LLM judgment proof count must match llm_judgment_summary.judgment_count and ledger_row_count.",
+                path="llm_judgment_summary",
+                expected={"proof_judgment_count": judgments},
+                actual={
+                    "proof_judgment_count": judgments,
+                    "summary_judgment_count": judgment_summary_count,
+                    "ledger_row_count": ledger_row_count,
+                },
+            )
+        if eligible_accounting_total != eligible:
+            result.fail(
+                "r1r_eligible_pair_accounting_mismatch",
+                "Eligible LLM pairs must be accounted for as selected, skipped, or explicitly unselected.",
+                path="llm_adjudication_plan.eligible_pair_accounting_total",
+                expected=eligible,
+                actual=eligible_accounting_total,
+            )
+        if not zero_eligible_pair_proof and selected != eligible:
+            result.fail(
+                "r1r_target_requires_all_eligible_llm_pairs_selected",
+                "target_met_full_chain requires all eligible R1R LLM pairs to be selected unless zero-eligible proof is present.",
+                path="llm_adjudication_plan.selected_pair_count",
+                expected=eligible,
+                actual=selected,
+            )
+        if not zero_eligible_pair_proof and judgments != eligible:
+            result.fail(
+                "r1r_target_requires_all_eligible_llm_pairs_judged",
+                "target_met_full_chain requires all eligible R1R LLM pairs to be judged/accounted within budget.",
+                path="sc1_full_chain_proof.llm_judgment_count",
+                expected=eligible,
+                actual=judgments,
+            )
+        if not zero_eligible_pair_proof and not all_eligible_pairs_selected:
+            result.fail(
+                "r1r_all_eligible_llm_pairs_selected_missing",
+                "target_met_full_chain requires an explicit all_eligible_pairs_selected proof.",
+                path="llm_adjudication_plan.all_eligible_pairs_selected",
+                expected=True,
+                actual=plan_mapping.get("all_eligible_pairs_selected"),
+            )
+        if not zero_eligible_pair_proof and not all_eligible_pairs_adjudicated:
+            result.fail(
+                "r1r_all_eligible_llm_pairs_adjudicated_missing",
+                "target_met_full_chain requires an explicit all_eligible_llm_pairs_adjudicated proof.",
+                path="sc1_full_chain_proof.all_eligible_llm_pairs_adjudicated",
+                expected=True,
+                actual=proof_mapping.get("all_eligible_llm_pairs_adjudicated"),
+            )
+        if not zero_eligible_pair_proof and selection_policy not in {
+            "budget_driven_all_eligible",
+            "all_eligible",
+            "zero_eligible",
+        }:
+            result.fail(
+                "r1r_target_requires_budget_driven_llm_selection_policy",
+                "target_met_full_chain requires budget-driven all-eligible LLM selection or explicit zero-eligible proof.",
+                path="llm_adjudication_plan.selection_policy",
+                expected="budget_driven_all_eligible",
+                actual=selection_policy,
+            )
+        if not zero_eligible_pair_proof and fixed_call_cap_primary_limiter:
+            result.fail(
+                "r1r_fixed_call_cap_cannot_be_primary_target_limiter",
+                "A fixed call cap cannot be the primary R1R route-evidence LLM limiter for target_met_full_chain.",
+                path="llm_adjudication_plan.fixed_call_cap_primary_limiter",
+                expected=False,
+                actual=True,
+            )
+        if eligible > 0 and selected <= 0:
+            result.fail(
+                "r1r_llm_selection_missing_for_eligible_pairs",
+                "target_met_full_chain requires selected LLM pairs when eligible pairs exist.",
+                path="sc1_full_chain_proof.llm_selected_pair_count",
+                expected="> 0",
+                actual=selected,
+            )
+        if eligible > 0 and judgments <= 0:
+            result.fail(
+                "r1r_llm_judgment_count_zero_for_eligible_pairs",
+                "target_met_full_chain requires LLM judgments when eligible pairs exist.",
+                path="sc1_full_chain_proof.llm_judgment_count",
+                expected="> 0",
+                actual=judgments,
+            )
+        if selected > 0 and judgments <= 0:
+            result.fail(
+                "r1r_selected_pairs_without_judgments",
+                "Selected R1R LLM pairs must be judged, cached, or explicitly skipped before full-chain target_met.",
+                path="sc1_full_chain_proof.llm_judgment_count",
+            )
+        if selected > 0 and successful_accounted != selected:
+            result.fail(
+                "r1r_selected_llm_pairs_not_fully_accounted",
+                "Every selected LLM pair must resolve through a provider judgment, valid cache hit, or explicit skip.",
+                path="llm_judgment_summary.selected_pair_accounting.successful_accounted_pair_count",
+                expected=selected,
+                actual=successful_accounted,
+            )
+        outcome_keys = ("llm_same_count", "llm_cannot_count", "llm_uncertain_count")
+        missing_outcomes = [key for key in outcome_keys if key not in proof_mapping]
+        if missing_outcomes:
+            result.fail(
+                "r1r_llm_outcomes_not_recorded",
+                "target_met_full_chain requires same/cannot/uncertain LLM outcome counters.",
+                path="sc1_full_chain_proof",
+                expected=list(outcome_keys),
+                actual=missing_outcomes,
+            )
+        if not llm_executed and eligible > 0:
+            result.fail(
+                "r1r_llm_used_false_with_target_met_full_chain",
+                "R1R cannot claim target_met_full_chain with llm_used=false while eligible pairs exist.",
+                path="sc1_full_chain_proof.llm_pair_adjudication_executed",
+                expected=True,
+                actual=llm_executed,
+            )
+        if _as_bool(proof_mapping.get("deterministic_only_output_used_as_full_chain_route_approval_evidence")):
+            result.fail(
+                "r1r_deterministic_only_output_used_as_full_chain_evidence",
+                "Deterministic-only output cannot be used as full-chain route approval evidence.",
+                path="sc1_full_chain_proof.deterministic_only_output_used_as_full_chain_route_approval_evidence",
+            )
+
+
+def _check_r1r_write_scope(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    target_met_full_chain: bool,
+) -> None:
+    mutation = _get(summary, "mutation_proof", {})
+    mutation_changed_tables: list[str] = []
+    if not isinstance(mutation, Mapping):
+        result.fail("r1r_mutation_proof_not_object", "R1R requires mutation_proof object.", path="mutation_proof")
+    else:
+        delta = mutation.get("delta") if isinstance(mutation.get("delta"), Mapping) else mutation
+        mutation_changed_tables = _table_names(delta.get("changed_tables", []))
+        outside_contract_allowlist = sorted(
+            table for table in mutation_changed_tables if table not in R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES
+        )
+        if outside_contract_allowlist:
+            result.fail(
+                "r1r_mutation_changed_table_outside_fixed_allowlist",
+                "R1R contract compares mutation_proof.changed_tables against its fixed SourceConcept-owned allowlist.",
+                path="mutation_proof.changed_tables",
+                actual=outside_contract_allowlist,
+            )
+        forbidden_names, unexpected_names = _mutation_table_violations(mutation)
+        if forbidden_names:
+            result.fail(
+                "r1r_forbidden_table_changed",
+                "R1R detected forbidden table changes.",
+                path="mutation_proof.forbidden_changed_tables",
+                actual=forbidden_names,
+            )
+        if unexpected_names:
+            result.fail(
+                "r1r_unexpected_table_changed",
+                "R1R detected unexpected table changes outside SourceConcept-owned scope.",
+                path="mutation_proof.unexpected_changed_tables",
+                actual=unexpected_names,
+            )
+        if target_met_full_chain and not _as_bool(mutation.get("passed")):
+            result.fail(
+                "r1r_mutation_proof_failed_for_target",
+                "target_met_full_chain requires mutation_proof.passed=true.",
+                path="mutation_proof.passed",
+                expected=True,
+                actual=mutation.get("passed"),
+            )
+
+    forbidden = _get(summary, "forbidden_writes", {})
+    if isinstance(forbidden, Mapping):
+        for key, value in forbidden.items():
+            if _as_bool(value):
+                result.fail(
+                    "r1r_forbidden_write_claimed",
+                    f"R1R forbids {key} writes.",
+                    path=f"forbidden_writes.{key}",
+                    expected=False,
+                    actual=value,
+                )
+
+    scope = _get(summary, "source_concept_write_scope", MISSING)
+    source_scope_required = target_met_full_chain or bool(mutation_changed_tables) or _as_bool(
+        _get(summary, "post_commit_verification.execute_requested", False)
+    )
+    if source_scope_required and not isinstance(scope, Mapping):
+        result.fail(
+            "r1r_source_concept_write_scope_missing",
+            "R1R requires source_concept_write_scope proof when SourceConcept persistence is claimed or changes are observed.",
+            path="source_concept_write_scope",
+        )
+    if isinstance(scope, Mapping):
+        changed_tables = _table_names(scope.get("changed_tables", []))
+        outside_allowed = sorted(table for table in changed_tables if table not in R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
+        if outside_allowed:
+            result.fail(
+                "r1r_source_concept_write_outside_allowlist",
+                "R1R writes must stay inside the contract-owned SourceConcept table allowlist.",
+                path="source_concept_write_scope.changed_tables",
+                actual=outside_allowed,
+            )
+
+    contamination = _get(summary, "old_r1_contamination_handling", {})
+    if target_met_full_chain:
+        if not isinstance(contamination, Mapping):
+            result.fail(
+                "r1r_old_r1_contamination_handling_missing",
+                "target_met_full_chain requires proof that old deterministic R1 SourceConcept output was isolated.",
+                path="old_r1_contamination_handling",
+            )
+        else:
+            if not _as_bool(contamination.get("baseline_snapshot_recorded")):
+                result.fail(
+                    "r1r_old_r1_baseline_snapshot_missing",
+                    "target_met_full_chain requires an old R1 SourceConcept baseline snapshot before isolation.",
+                    path="old_r1_contamination_handling.baseline_snapshot_recorded",
+                    expected=True,
+                    actual=contamination.get("baseline_snapshot_recorded"),
+                )
+            if not _as_bool(contamination.get("old_r1_isolated_before_r1r_persistence")):
+                result.fail(
+                    "r1r_old_r1_output_not_isolated",
+                    "target_met_full_chain cannot reuse old deterministic R1 SourceConcept rows as fresh R1R evidence.",
+                    path="old_r1_contamination_handling.old_r1_isolated_before_r1r_persistence",
+                    expected=True,
+                    actual=contamination.get("old_r1_isolated_before_r1r_persistence"),
+                )
+            if not _as_bool(contamination.get("source_concept_owned_tables_cleared_or_rebuilt_in_dev_test")):
+                result.fail(
+                    "r1r_old_r1_sourceconcept_rebuild_missing",
+                    "target_met_full_chain requires SourceConcept-owned output isolation in dev/test/restored-snapshot DB.",
+                    path="old_r1_contamination_handling.source_concept_owned_tables_cleared_or_rebuilt_in_dev_test",
+                    expected=True,
+                    actual=contamination.get("source_concept_owned_tables_cleared_or_rebuilt_in_dev_test"),
+                )
+
+    post_commit = _get(summary, "post_commit_verification", {})
+    if target_met_full_chain and not _as_bool(_get(summary, "post_commit_verification.passed", False)):
+        result.fail(
+            "r1r_post_commit_verification_missing_for_target",
+            "target_met_full_chain requires post_commit_verification.passed=true.",
+            path="post_commit_verification.passed",
+            actual=post_commit.get("passed") if isinstance(post_commit, Mapping) else post_commit,
+        )
+
+
+def _check_r1r_review_redaction(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    target_met_full_chain: bool,
+) -> None:
+    review_pack = _get(summary, "review_pack", {})
+    if isinstance(review_pack, Mapping):
+        if _as_bool(review_pack.get("generated")) and not _as_bool(review_pack.get("includes_stage_manifest")):
+            result.fail(
+                "r1r_review_pack_omits_stage_manifest",
+                "R1R review pack must include the SC1 required-stage manifest.",
+                path="review_pack.includes_stage_manifest",
+                expected=True,
+                actual=review_pack.get("includes_stage_manifest"),
+            )
+        if target_met_full_chain and not _as_bool(review_pack.get("generated")):
+            result.fail(
+                "r1r_review_pack_missing_for_target",
+                "target_met_full_chain requires a generated review pack.",
+                path="review_pack.generated",
+                expected=True,
+                actual=review_pack.get("generated"),
+            )
+    elif target_met_full_chain:
+        result.fail("r1r_review_pack_not_object", "target_met_full_chain requires review_pack object.", path="review_pack")
+
+    redaction = _get(summary, "public_redaction", {})
+    if isinstance(redaction, Mapping):
+        if not _as_bool(redaction.get("passed")):
+            result.fail(
+                "r1r_public_redaction_missing_or_failed",
+                "R1R public report/summary must pass public redaction.",
+                path="public_redaction.passed",
+                expected=True,
+                actual=redaction.get("passed"),
+            )
+        scanned = redaction.get("scanned_artifacts") if isinstance(redaction.get("scanned_artifacts"), Mapping) else {}
+        if target_met_full_chain or _as_bool(redaction.get("passed")):
+            for key in ("final_json_summary", "final_markdown_report"):
+                if not _as_bool(scanned.get(key)):
+                    result.fail(
+                        "r1r_public_redaction_final_artifact_scan_missing",
+                        "R1R public redaction must scan the exact final committed JSON summary and Markdown report.",
+                        path=f"public_redaction.scanned_artifacts.{key}",
+                        expected=True,
+                        actual=scanned.get(key),
+                    )
+            if not _as_bool(redaction.get("clean_before_public_write")):
+                result.fail(
+                    "r1r_public_redaction_not_clean_before_write",
+                    "R1R must prove redaction passed before writing final target claims.",
+                    path="public_redaction.clean_before_public_write",
+                    expected=True,
+                    actual=redaction.get("clean_before_public_write"),
+                )
+            if _as_bool(redaction.get("unsafe_public_report_written")):
+                result.fail(
+                    "r1r_unsafe_public_report_written",
+                    "R1R must not publish target claims after a redaction failure.",
+                    path="public_redaction.unsafe_public_report_written",
+                    expected=False,
+                    actual=redaction.get("unsafe_public_report_written"),
+                )
+    else:
+        result.fail("r1r_public_redaction_not_object", "R1R requires public_redaction object.", path="public_redaction")
+
+
+def _check_r1r_route_gate(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    target_met_full_chain: bool,
+) -> None:
+    route = _get(summary, "route_authorization", {})
+    if not isinstance(route, Mapping):
+        result.fail("r1r_route_authorization_not_object", "R1R requires route_authorization object.", path="route_authorization")
+        return
+    forbidden_true_paths = (
+        "r2_authorized",
+        "px1_b_authorized",
+        "provider_2_authorized",
+        "scale_up_authorized",
+        "entity_bridge_authorized",
+        "source_concept_truth_promotion_authorized",
+        "route_approval_authorized",
+    )
+    for key in forbidden_true_paths:
+        if _as_bool(route.get(key)):
+            result.fail(
+                "r1r_forbidden_route_authorization",
+                f"R1R cannot authorize {key}; A1R remains required.",
+                path=f"route_authorization.{key}",
+                expected=False,
+                actual=route.get(key),
+            )
+    forbidden_claim_paths = (
+        "pipeline_contract.claims.route_approved",
+        "pipeline_contract.claims.safe_to_merge",
+        "pipeline_contract.claims.r2_authorized",
+        "pipeline_contract.claims.px1_b_authorized",
+        "pipeline_contract.claims.provider_2_authorized",
+        "pipeline_contract.claims.scale_up_authorized",
+        "pipeline_contract.claims.entity_bridge_authorized",
+        "pipeline_contract.route_approved",
+        "pipeline_contract.safe_to_merge",
+        "pipeline_contract.r2_authorized",
+        "pipeline_contract.px1_b_authorized",
+        "pipeline_contract.provider_2_authorized",
+        "pipeline_contract.scale_up_authorized",
+        "pipeline_contract.entity_bridge_authorized",
+        "claims.route_approved",
+        "claims.safe_to_merge",
+        "claims.r2_authorized",
+        "claims.px1_b_authorized",
+        "claims.provider_2_authorized",
+        "claims.scale_up_authorized",
+        "claims.entity_bridge_authorized",
+        "route_approved",
+        "safe_to_merge",
+        "r2_authorized",
+        "px1_b_authorized",
+        "provider_2_authorized",
+        "scale_up_authorized",
+        "entity_bridge_authorized",
+    )
+    for path in forbidden_claim_paths:
+        value = _get(summary, path, False)
+        if _as_bool(value):
+            result.fail(
+                "r1r_forbidden_route_claim",
+                "R1R may prove full-chain SourceConcept replay, but it must not claim route approval or downstream authorization.",
+                path=path,
+                expected=False,
+                actual=value,
+            )
+    if not _as_bool(route.get("a1r_still_required", False)):
+        result.fail(
+            "r1r_a1r_still_required_missing",
+            "R1R must explicitly state A1R remains required before route approval.",
+            path="route_authorization.a1r_still_required",
+            expected=True,
+            actual=route.get("a1r_still_required"),
+        )
+
+
 def _zero_eligible_proof_passed(plan: Mapping[str, Any]) -> bool:
     proof = plan.get("zero_eligible_proof")
     if isinstance(proof, Mapping):
@@ -976,7 +2149,9 @@ def _check_route_approved_source_concept_upstream(upstream: Mapping[str, Any], r
 
 def _check_public_redaction(_contract: PhaseContract, summary: Mapping[str, Any], result: ContractCheckResult) -> None:
     payloads: list[Any] = []
-    if _has(summary, "public_json_payload"):
+    if str(_get(summary, "phase_slug", "") or "") == "phase-4.5-scv2-r1r-full-source-concept-pipeline-replay":
+        payloads.append(summary)
+    elif _has(summary, "public_json_payload"):
         payloads.append(_get(summary, "public_json_payload"))
     else:
         payloads.append(summary)
@@ -8258,6 +9433,7 @@ CUSTOM_CHECKS = {
     "localization": _check_localization,
     "source_metadata": _check_source_metadata,
     "source_concept_full_chain": _check_source_concept_full_chain,
+    "r1r_full_source_concept_pipeline": _check_r1r_full_source_concept_pipeline,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,

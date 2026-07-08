@@ -78,6 +78,11 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(json.dumps({"contract_id": args.contract, "passed": False, "error": str(exc)}, indent=2, sort_keys=True))
         return 2
+    if args.contract == "public_redaction_contract_v1":
+        summary_path = Path(args.summary)
+        markdown_path = summary_path.with_name(summary_path.name.removesuffix("-summary.json") + ".md")
+        if markdown_path.exists():
+            summary = {**summary, "public_markdown_text": markdown_path.read_text(encoding="utf-8")}
 
     result = check_phase_contract(args.contract, summary)
     payload = result.to_dict()

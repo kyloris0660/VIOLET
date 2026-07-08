@@ -31,6 +31,7 @@ extend a contract first.
 - `localization_contract_v1`
 - `source_metadata_contract_v1`
 - `source_concept_full_chain_contract_v1`
+- `r1r_full_source_concept_pipeline_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`
@@ -55,6 +56,26 @@ extend a contract first.
 claim. It distinguishes deterministic-only output from full-chain completion
 and fails if a phase silently skips required bounded LLM pair adjudication while
 claiming full-chain completion.
+
+`r1r_full_source_concept_pipeline_contract_v1` is the focused SCV2-R1R replay
+contract. It requires development/test/restored-snapshot isolation, a
+stage-level SC1 required-stage manifest, LLM pair planning/selection/judgment
+truthfulness, SourceConcept-owned write scope, mutation proof, review-pack
+manifest inclusion, public redaction, and explicit downstream route
+non-authorization. `target_met_full_chain` also requires primary
+OpenAI-compatible provider/model identity, no fallback provider use, and zero
+provider/judgment errors. It also requires the standard SourceConcept LLM
+adjudication cache policy: a private ignored durable cache root label, atomic
+cache-write proof, exact-compatible cache accounting, provider-failure
+exclusion, projected/actual cost fields, and redacted public aggregate cache
+reporting. A fixed call cap such as 300 pairs is not sufficient route evidence
+when all eligible pairs fit within the approved budget. It allows truthful
+blocked statuses, but only `target_met_full_chain` may claim full-chain
+completion.
+
+See `docs/source-concept-llm-adjudication-cache.md` for the durable cache and
+checkpoint/reuse standard shared by R1R and future full-library SourceConcept
+phases.
 
 ## Route Gate
 
