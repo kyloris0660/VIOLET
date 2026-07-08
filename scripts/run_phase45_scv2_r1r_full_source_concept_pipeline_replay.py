@@ -1176,6 +1176,7 @@ def _preserved_smoke_from_summary(previous: Mapping[str, Any]) -> dict[str, Any]
 
 def load_preserved_smoke_run() -> dict[str, Any] | None:
     candidates: list[dict[str, Any]] = []
+    explicit_candidates: list[dict[str, Any]] = []
     candidate_paths = [PUBLIC_REPORT_JSON, DEFAULT_OUTPUT_DIR / "public-summary-copy.json"]
     if DEFAULT_OUTPUT_DIR.exists():
         candidate_paths.extend(sorted(DEFAULT_OUTPUT_DIR.glob("*/public-summary-copy.json")))
@@ -1189,6 +1190,18 @@ def load_preserved_smoke_run() -> dict[str, Any] | None:
             summary = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             continue
+        explicit = summary.get("preserved_smoke_run") if isinstance(summary, Mapping) else None
+        if isinstance(explicit, Mapping) and explicit.get("classification") == "smoke_only_not_route_evidence":
+            preserved = dict(explicit)
+            if preserved.get("source_head_sha"):
+                preserved["source_head_sha"] = "previous-non-target-artifact-sha-redacted"
+                preserved["source_head_sha_redacted"] = True
+                preserved["source_head_sha_is_current_target_evidence"] = False
+            preserved["_rank_judgments"] = int(preserved.get("judgment_count") or 0)
+            preserved["_rank_selected"] = int(preserved.get("selected_pair_count") or 0)
+            preserved["_rank_signals"] = int(preserved.get("signal_count") or 0)
+            explicit_candidates.append(preserved)
+            continue
         candidate = _preserved_smoke_from_summary(summary)
         if candidate is None:
             continue
@@ -1196,14 +1209,15 @@ def load_preserved_smoke_run() -> dict[str, Any] | None:
         candidate["_rank_selected"] = int(candidate.get("selected_pair_count") or 0)
         candidate["_rank_signals"] = int(candidate.get("signal_count") or 0)
         candidates.append(candidate)
+    candidates = explicit_candidates or candidates
     if not candidates:
         return None
-    best = max(
+    best = min(
         candidates,
         key=lambda row: (
-            int(row.get("_rank_judgments") or 0),
-            int(row.get("_rank_selected") or 0),
             int(row.get("_rank_signals") or 0),
+            int(row.get("_rank_selected") or 0),
+            int(row.get("_rank_judgments") or 0),
         ),
     )
     for key in ("_rank_judgments", "_rank_selected", "_rank_signals"):
