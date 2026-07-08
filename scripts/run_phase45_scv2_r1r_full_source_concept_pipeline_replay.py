@@ -1149,7 +1149,9 @@ def _preserved_smoke_from_summary(previous: Mapping[str, Any]) -> dict[str, Any]
         "classification": "smoke_only_not_route_evidence",
         "preserved": True,
         "source_artifact_label": "r1r-private-preserved-smoke-summary",
-        "source_head_sha": previous.get("head_sha"),
+        "source_head_sha": "previous-non-target-artifact-sha-redacted",
+        "source_head_sha_redacted": True,
+        "source_head_sha_is_current_target_evidence": False,
         "run_id": previous.get("run_id"),
         "source_concept_before_total": (previous.get("source_concept_before") or {}).get("concept_total")
         if isinstance(previous.get("source_concept_before"), Mapping)
