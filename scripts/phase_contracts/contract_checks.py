@@ -898,20 +898,43 @@ def _check_r1r_full_source_concept_pipeline(
             actual=status,
         )
 
-    _check_r1r_environment_isolation(summary, result)
+    _check_r1r_environment_isolation(summary, result, target_met_full_chain=target_met_full_chain)
     _check_r1r_input_scope_fidelity(summary, result, status=status, target_met_full_chain=target_met_full_chain)
     _check_r1r_stage_manifest(contract, summary, result, target_met_full_chain=target_met_full_chain)
     _check_r1r_llm_truthfulness(summary, result, status=status, target_met_full_chain=target_met_full_chain)
     _check_r1r_write_scope(summary, result, target_met_full_chain=target_met_full_chain)
     _check_r1r_review_redaction(summary, result, target_met_full_chain=target_met_full_chain)
-    _check_r1r_route_gate(summary, result)
+    _check_r1r_route_gate(summary, result, target_met_full_chain=target_met_full_chain)
 
 
-def _check_r1r_environment_isolation(summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+def _check_r1r_environment_isolation(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    target_met_full_chain: bool,
+) -> None:
     env = _get(summary, "environment_isolation", {})
     if not isinstance(env, Mapping):
         result.fail("r1r_environment_isolation_not_object", "R1R requires environment_isolation proof.", path="environment_isolation")
         return
+    blockers = env.get("blockers") if isinstance(env.get("blockers"), list) else []
+    if target_met_full_chain:
+        if not _as_bool(env.get("passed")):
+            result.fail(
+                "r1r_environment_isolation_aggregate_failed_for_target",
+                "target_met_full_chain requires environment_isolation.passed=true.",
+                path="environment_isolation.passed",
+                expected=True,
+                actual=env.get("passed"),
+            )
+        if blockers:
+            result.fail(
+                "r1r_environment_isolation_blockers_present_for_target",
+                "target_met_full_chain requires environment_isolation.blockers to be empty.",
+                path="environment_isolation.blockers",
+                expected=[],
+                actual=blockers,
+            )
     required_false = (
         "production_profile_active",
         "violet_env_is_production",
@@ -950,6 +973,14 @@ def _check_r1r_environment_isolation(summary: Mapping[str, Any], result: Contrac
         )
     actual = env.get("exact_db_identity_from_actual_connection")
     if isinstance(actual, Mapping):
+        if target_met_full_chain and not _as_bool(actual.get("passed")):
+            result.fail(
+                "r1r_actual_db_identity_gate_failed_for_target",
+                "target_met_full_chain requires exact_db_identity_from_actual_connection.passed=true.",
+                path="environment_isolation.exact_db_identity_from_actual_connection.passed",
+                expected=True,
+                actual=actual.get("passed"),
+            )
         if not _as_bool(actual.get("checked_from_actual_connection")):
             result.fail(
                 "r1r_actual_db_identity_not_checked",
@@ -994,6 +1025,24 @@ def _check_r1r_environment_isolation(summary: Mapping[str, Any], result: Contrac
             expected=True,
             actual=storage_gate.get("passed"),
         )
+    output_gate = env.get("output_dir_safety")
+    if target_met_full_chain:
+        if not isinstance(storage_gate, Mapping) or not _as_bool(storage_gate.get("passed")):
+            result.fail(
+                "r1r_storage_pre_settings_gate_required_for_target",
+                "target_met_full_chain requires storage_root_pre_settings_import.passed=true.",
+                path="environment_isolation.storage_root_pre_settings_import.passed",
+                expected=True,
+                actual=storage_gate.get("passed") if isinstance(storage_gate, Mapping) else None,
+            )
+        if not isinstance(output_gate, Mapping) or not _as_bool(output_gate.get("passed")):
+            result.fail(
+                "r1r_output_dir_safety_gate_required_for_target",
+                "target_met_full_chain requires output_dir_safety.passed=true.",
+                path="environment_isolation.output_dir_safety.passed",
+                expected=True,
+                actual=output_gate.get("passed") if isinstance(output_gate, Mapping) else None,
+            )
 
 
 def _check_r1r_input_scope_fidelity(
@@ -1251,6 +1300,7 @@ def _check_r1r_llm_truthfulness(
     cache_new_provider_calls = _as_int(cache_mapping.get("new_provider_call_count", judgment_mapping.get("new_provider_call_count", 0)))
     cache_failed_provider_calls = _as_int(cache_mapping.get("failed_provider_call_count", judgment_mapping.get("failed_provider_call_count", error_count)))
     cache_remaining_missing = _as_int(cache_mapping.get("remaining_missing_pair_count", judgment_mapping.get("remaining_missing_pair_count", 0)))
+    exact_cache_hit_count = _as_int(cache_mapping.get("exact_compatible_cache_hit_count", judgment_mapping.get("exact_compatible_cache_hit_count", 0)))
     skipped_pairs = _as_int(plan_mapping.get("skipped_pair_count", explicit_skipped))
     unselected_pairs = _as_int(plan_mapping.get("unselected_pair_count", 0))
     eligible_accounting_total = _as_int(
@@ -1276,6 +1326,15 @@ def _check_r1r_llm_truthfulness(
     )
     provider_mode = str(provider_mapping.get("provider_mode") or readiness_mapping.get("provider_mode") or "")
     input_scope_passed = _as_bool(_get(summary, "input_scope_fidelity.passed", True))
+    cache_only_exact_covered = bool(
+        selected > 0
+        and exact_cache_hit_count >= selected
+        and cache_hit_count >= selected
+        and cache_new_provider_calls == 0
+        and cache_failed_provider_calls == 0
+        and cache_remaining_missing == 0
+        and provider_error_pairs == 0
+    )
 
     if input_scope_passed and eligible > 0 and not operator_approved and status not in {
         "blocked_llm_approval_required",
@@ -1289,7 +1348,7 @@ def _check_r1r_llm_truthfulness(
             expected="blocked_llm_approval_required",
             actual=status,
         )
-    if input_scope_passed and operator_approved and not provider_available and status not in {
+    if input_scope_passed and operator_approved and not provider_available and not cache_only_exact_covered and status not in {
         "blocked_provider",
         "blocked_llm_readiness",
         "blocked_environment_isolation",
@@ -1344,14 +1403,24 @@ def _check_r1r_llm_truthfulness(
                     expected=True,
                     actual=value,
                 )
-        if not zero_eligible_pair_proof and (
-            not readiness_passed or not provider_available or not cache_ready or not budget_ready
-        ):
+        target_readiness_ok = bool(
+            (readiness_passed or cache_only_exact_covered)
+            and cache_ready
+            and budget_ready
+            and (provider_available or cache_only_exact_covered)
+        )
+        if not zero_eligible_pair_proof and not target_readiness_ok:
             result.fail(
                 "r1r_llm_readiness_missing_for_target",
-                "target_met_full_chain requires provider/cache/budget readiness proof.",
+                "target_met_full_chain requires cache/budget readiness and provider readiness unless every selected pair is exact-compatible cached.",
                 path="llm_readiness",
-                expected={"passed": True, "provider_available": True, "cache_ready": True, "budget_ready": True},
+                expected={
+                    "passed": True,
+                    "provider_available": True,
+                    "cache_ready": True,
+                    "budget_ready": True,
+                    "or_exact_compatible_cache_covers_all_selected_pairs": True,
+                },
                 actual=readiness_mapping,
             )
         if not isinstance(cache_policy, Mapping):
@@ -1801,7 +1870,12 @@ def _check_r1r_review_redaction(
         result.fail("r1r_public_redaction_not_object", "R1R requires public_redaction object.", path="public_redaction")
 
 
-def _check_r1r_route_gate(summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+def _check_r1r_route_gate(
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+    *,
+    target_met_full_chain: bool,
+) -> None:
     route = _get(summary, "route_authorization", {})
     if not isinstance(route, Mapping):
         result.fail("r1r_route_authorization_not_object", "R1R requires route_authorization object.", path="route_authorization")
@@ -1823,6 +1897,46 @@ def _check_r1r_route_gate(summary: Mapping[str, Any], result: ContractCheckResul
                 path=f"route_authorization.{key}",
                 expected=False,
                 actual=route.get(key),
+            )
+    forbidden_claim_paths = (
+        "pipeline_contract.claims.route_approved",
+        "pipeline_contract.claims.safe_to_merge",
+        "pipeline_contract.claims.r2_authorized",
+        "pipeline_contract.claims.px1_b_authorized",
+        "pipeline_contract.claims.provider_2_authorized",
+        "pipeline_contract.claims.scale_up_authorized",
+        "pipeline_contract.claims.entity_bridge_authorized",
+        "pipeline_contract.route_approved",
+        "pipeline_contract.safe_to_merge",
+        "pipeline_contract.r2_authorized",
+        "pipeline_contract.px1_b_authorized",
+        "pipeline_contract.provider_2_authorized",
+        "pipeline_contract.scale_up_authorized",
+        "pipeline_contract.entity_bridge_authorized",
+        "claims.route_approved",
+        "claims.safe_to_merge",
+        "claims.r2_authorized",
+        "claims.px1_b_authorized",
+        "claims.provider_2_authorized",
+        "claims.scale_up_authorized",
+        "claims.entity_bridge_authorized",
+        "route_approved",
+        "safe_to_merge",
+        "r2_authorized",
+        "px1_b_authorized",
+        "provider_2_authorized",
+        "scale_up_authorized",
+        "entity_bridge_authorized",
+    )
+    for path in forbidden_claim_paths:
+        value = _get(summary, path, False)
+        if _as_bool(value):
+            result.fail(
+                "r1r_forbidden_route_claim",
+                "R1R may prove full-chain SourceConcept replay, but it must not claim route approval or downstream authorization.",
+                path=path,
+                expected=False,
+                actual=value,
             )
     if not _as_bool(route.get("a1r_still_required", False)):
         result.fail(

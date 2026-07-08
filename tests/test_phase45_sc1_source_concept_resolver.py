@@ -1951,6 +1951,64 @@ def test_successful_llm_judgment_is_cached_and_reused(monkeypatch: pytest.Monkey
     assert second_judgments[0]["decision"] == "must_link"
 
 
+def test_all_pairs_cached_does_not_require_provider_availability(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    signals, edges = _eligible_llm_edges(1)
+    first_provider = _FakeLLMProvider()
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            first_provider,
+            {"provider_mode": "primary_openai", "llm_provider_label": "primary_openai", "uses_fallback_provider": False},
+        ),
+    )
+    config = _cache_config(tmp_path)
+    run_bounded_llm_adjudication(edges, signals=signals, config=config)
+    assert first_provider.calls == 1
+
+    def unavailable_provider():
+        raise AssertionError("provider should not be initialized when all selected pairs are exact-cache hits")
+
+    monkeypatch.setattr(sc_resolver_service, "primary_openai_provider_from_settings", unavailable_provider)
+    judgments, summary = run_bounded_llm_adjudication(edges, signals=signals, config=config)
+
+    assert len(judgments) == 1
+    assert judgments[0]["cache_status"] == "hit"
+    assert summary["provider"]["provider_name"] == "cache_only"
+    assert summary["cache_hits"] == 1
+    assert summary["new_provider_call_count"] == 0
+    assert summary["remaining_missing_pair_count"] == 0
+
+
+def test_missing_pairs_require_provider_availability(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    signals, edges = _eligible_llm_edges(1)
+    monkeypatch.setattr(
+        sc_resolver_service,
+        "primary_openai_provider_from_settings",
+        lambda: (
+            None,
+            {
+                "provider_mode": "primary_openai",
+                "llm_provider_label": "primary_openai",
+                "uses_fallback_provider": False,
+                "unavailable_reason": "fixture_provider_unavailable",
+            },
+        ),
+    )
+
+    judgments, summary = run_bounded_llm_adjudication(edges, signals=signals, config=_cache_config(tmp_path))
+
+    assert judgments == []
+    assert summary["used"] is False
+    assert summary["reason"] == "provider_unavailable"
+
+
 def test_provider_failure_after_partial_success_preserves_successful_cache(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

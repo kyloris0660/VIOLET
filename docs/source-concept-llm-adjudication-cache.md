@@ -11,6 +11,13 @@ pipeline, not a one-off R1R artifact.
   local cache using an atomic temp-file then rename/replace write.
 - Failed runs preserve successful judgments. A rerun must reuse exact-compatible
   cached judgments before making provider calls.
+- When every selected/eligible pair is exact-compatible cached, a rerun may
+  regenerate target evidence without provider availability or new provider
+  calls. Provider readiness is required only for cache-missing pairs.
+- When any selected/eligible pair is missing from the exact-compatible cache,
+  provider readiness applies only to those missing pairs. Missing pairs must be
+  judged, budget-blocked, or otherwise explicitly accounted; they must not be
+  hidden behind an old fixed call cap.
 - Provider failure rows and malformed responses are written to a separate
   failure ledger. They are diagnostic only and do not count as valid judgments.
 - Public reports may contain aggregate counts and labels only. Raw local paths,

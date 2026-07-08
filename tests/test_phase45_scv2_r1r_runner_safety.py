@@ -19,29 +19,26 @@ def test_r1r_source_root_splitter_accepts_pipe_separator() -> None:
 
 
 def test_r1r_storage_gate_reads_dotenv_side_effect_free(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    dotenv_path = r1r_runner.ROOT / ".env"
-    original = dotenv_path.read_text(encoding="utf-8") if dotenv_path.exists() else None
+    fake_root = tmp_path / "repo"
+    fake_root.mkdir()
+    monkeypatch.setattr(r1r_runner, "ROOT", fake_root)
+    dotenv_path = fake_root / ".env"
     safe_storage = tmp_path / "r1r-storage"
     source_root = tmp_path / "source-a"
-    try:
-        dotenv_path.write_text(
-            f'VIOLET_STORAGE_ROOT="{safe_storage}"\nLOCAL_LIBRARY_PATHS="{source_root}|{tmp_path / "source-b"}"\n',
-            encoding="utf-8",
-        )
-        monkeypatch.delenv("VIOLET_STORAGE_ROOT", raising=False)
-        monkeypatch.delenv("LOCAL_LIBRARY_PATHS", raising=False)
+    dotenv_path.write_text(
+        f'VIOLET_STORAGE_ROOT="{safe_storage}"\nLOCAL_LIBRARY_PATHS="{source_root}|{tmp_path / "source-b"}"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("VIOLET_STORAGE_ROOT", raising=False)
+    monkeypatch.delenv("LOCAL_LIBRARY_PATHS", raising=False)
 
-        gate = r1r_runner.storage_root_pre_settings_import_gate()
+    gate = r1r_runner.storage_root_pre_settings_import_gate()
 
-        assert gate["dotenv_checked_before_settings_import"] is True
-        assert gate["checked_before_settings_import"] is True
-        assert gate["passed"] is True
-        assert safe_storage.exists() is False
-    finally:
-        if original is None:
-            dotenv_path.unlink(missing_ok=True)
-        else:
-            dotenv_path.write_text(original, encoding="utf-8")
+    assert gate["dotenv_checked_before_settings_import"] is True
+    assert gate["checked_before_settings_import"] is True
+    assert gate["passed"] is True
+    assert safe_storage.exists() is False
+    assert (r1r_runner.ROOT / ".env").read_text(encoding="utf-8")
 
 
 def test_r1r_output_dir_gate_accepts_repo_local_private_artifact_root() -> None:
@@ -53,15 +50,23 @@ def test_r1r_output_dir_gate_accepts_repo_local_private_artifact_root() -> None:
     assert gate["checked_before_mkdir"] is True
 
 
-@pytest.mark.parametrize(
-    "output_dir",
-    [
-        r1r_runner.ROOT / "data" / "r1r-output-dir-test",
-        r1r_runner.ROOT / "media" / "r1r-output-dir-test",
-        Path(r"C:\Users\kyloris\iCloudDrive\r1r-output-dir-test"),
-    ],
-)
-def test_r1r_output_dir_gate_rejects_protected_roots_without_creating(output_dir: Path) -> None:
+@pytest.mark.parametrize("relative_output_dir", ["data/r1r-output-dir-test", "media/r1r-output-dir-test", "iCloudDrive/r1r-output-dir-test"])
+def test_r1r_output_dir_gate_rejects_protected_roots_without_creating(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    relative_output_dir: str,
+) -> None:
+    fake_root = tmp_path / "repo"
+    fake_root.mkdir()
+    monkeypatch.setattr(r1r_runner, "ROOT", fake_root)
+    monkeypatch.setattr(r1r_runner, "OUTPUT_DIR_ALLOWED_ROOTS", (fake_root / ".local_manifests",))
+    monkeypatch.setattr(
+        r1r_runner,
+        "PROTECTED_OUTPUT_ROOTS",
+        (fake_root / "data", fake_root / "media", fake_root / "backend", fake_root / "frontend"),
+    )
+    output_dir = fake_root / relative_output_dir
+
     gate = r1r_runner.validate_output_dir_safety(output_dir)
 
     assert gate["passed"] is False

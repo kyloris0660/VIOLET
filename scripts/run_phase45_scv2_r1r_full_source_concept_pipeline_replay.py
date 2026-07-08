@@ -240,6 +240,27 @@ def git_value(args: Sequence[str]) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def git_lines(args: Sequence[str]) -> list[str]:
+    value = git_value(args)
+    return [line for line in value.splitlines() if line.strip()]
+
+
+def evidence_worktree_state() -> dict[str, Any]:
+    tracked_dirty = git_lines(["status", "--porcelain", "--untracked-files=no"])
+    return {
+        "evidence_code_sha": git_value(["rev-parse", "HEAD"]),
+        "evidence_tree_sha": git_value(["rev-parse", "HEAD^{tree}"]),
+        "report_commit_parent_sha": git_value(["rev-parse", "HEAD"]),
+        "report_generated_from_worktree_clean_or_expected_dirty_state": (
+            "tracked_clean_untracked_local_artifacts_ignored"
+            if not tracked_dirty
+            else "expected_dirty_state_report_regeneration_or_uncommitted_changes"
+        ),
+        "tracked_dirty_entry_count_before_public_artifact_write": len(tracked_dirty),
+        "post_evidence_code_changed": False,
+    }
+
+
 def truthy_env(name: str) -> bool:
     return str(os.getenv(name, "")).strip().casefold() in {"1", "true", "yes", "on"}
 
@@ -1486,6 +1507,12 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "phase": summary.get("phase"),
         "phase_slug": summary.get("phase_slug"),
+        "evidence_code_sha": summary.get("evidence_code_sha"),
+        "report_generated_from_worktree_clean_or_expected_dirty_state": summary.get(
+            "report_generated_from_worktree_clean_or_expected_dirty_state"
+        ),
+        "post_evidence_code_changed": summary.get("post_evidence_code_changed"),
+        "report_commit_parent_sha": summary.get("report_commit_parent_sha"),
         "status": (summary.get("pipeline_contract") or {}).get("status")
         if isinstance(summary.get("pipeline_contract"), Mapping)
         else None,
@@ -1564,6 +1591,10 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
             "projected_budget_usd": llm_plan.get("projected_budget_usd"),
             "projected_full_eligible_cost_usd": llm_plan.get("projected_full_eligible_cost_usd"),
             "projected_new_call_cost_usd": llm_plan.get("projected_new_call_cost_usd"),
+            "provider_required_for_missing_pairs": llm_plan.get("provider_required_for_missing_pairs"),
+            "provider_not_required_for_fully_cached_pairs": llm_plan.get(
+                "provider_not_required_for_fully_cached_pairs"
+            ),
         },
         "llm_cache_policy": {
             "policy_version": llm_cache_policy.get("policy_version"),
@@ -1574,6 +1605,10 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
             "new_provider_call_count": llm_cache_policy.get("new_provider_call_count"),
             "failed_provider_call_count": llm_cache_policy.get("failed_provider_call_count"),
             "remaining_missing_pair_count": llm_cache_policy.get("remaining_missing_pair_count"),
+            "provider_required_for_missing_pairs": llm_cache_policy.get("provider_required_for_missing_pairs"),
+            "provider_not_required_for_fully_cached_pairs": llm_cache_policy.get(
+                "provider_not_required_for_fully_cached_pairs"
+            ),
             "cost_spent_this_run_usd": llm_cache_policy.get("cost_spent_this_run_usd"),
             "cost_avoided_by_cache_reuse_usd": llm_cache_policy.get("cost_avoided_by_cache_reuse_usd"),
             "semantic_prior_judgment_count": llm_cache_policy.get("semantic_prior_judgment_count"),
@@ -1581,6 +1616,10 @@ def build_public_json_payload(summary: Mapping[str, Any]) -> dict[str, Any]:
         "llm_gate": {
             "operator_approved": llm_ready.get("operator_approved"),
             "provider_available": llm_ready.get("provider_available"),
+            "provider_required_for_missing_pairs": llm_ready.get("provider_required_for_missing_pairs"),
+            "provider_not_required_for_fully_cached_pairs": llm_ready.get(
+                "provider_not_required_for_fully_cached_pairs"
+            ),
             "cache_ready": llm_ready.get("cache_ready"),
             "budget_ready": llm_ready.get("budget_ready"),
             "provider_mode": llm_provider.get("provider_mode"),
@@ -1726,6 +1765,10 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- All eligible LLM pairs adjudicated: `{proof.get('all_eligible_llm_pairs_adjudicated')}`.",
         f"- Input-scope fidelity gate: `{input_scope.get('status')}`.",
         f"- Current run classification: `{input_scope.get('current_run_classification')}`.",
+        f"- Evidence code SHA: `{summary.get('evidence_code_sha')}`.",
+        f"- Report commit parent SHA: `{summary.get('report_commit_parent_sha')}`.",
+        f"- Worktree state at evidence generation: `{summary.get('report_generated_from_worktree_clean_or_expected_dirty_state')}`.",
+        f"- Code changed after evidence generation: `{summary.get('post_evidence_code_changed')}`.",
         f"- A1R still required: `{route['a1r_still_required']}`.",
         "",
         "## Isolation",
@@ -1901,13 +1944,16 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Projected new-call cost after cache USD: `{llm.get('projected_new_call_cost_usd')}`.",
         f"- Emergency call ceiling: `{llm.get('emergency_call_ceiling', llm.get('max_calls'))}`.",
         f"- Fixed call cap is primary limiter: `{llm.get('fixed_call_cap_primary_limiter')}`.",
+        f"- Provider required for cache-missing pairs: `{llm.get('provider_required_for_missing_pairs')}`.",
+        f"- Provider not required for fully cached pairs: `{llm.get('provider_not_required_for_fully_cached_pairs')}`.",
         "",
         "## Durable LLM Cache",
         "",
         f"- Cache policy version: `{cache_policy.get('policy_version')}`.",
         f"- Durable cache root label: `{cache_policy.get('durable_cache_root_label')}`.",
         f"- Atomic cache writes: `{cache_policy.get('cache_writes_atomic')}`.",
-        f"- Exact-compatible cache hits: `{cache_policy.get('compatible_cache_hit_count')}`.",
+        f"- Compatible cache hits: `{cache_policy.get('compatible_cache_hit_count')}`.",
+        f"- Exact-compatible cache hits: `{cache_policy.get('exact_compatible_cache_hit_count')}`.",
         f"- Imported previous judgments: `{cache_policy.get('imported_previous_judgment_count')}`.",
         f"- New provider calls / failures / remaining: `{cache_policy.get('new_provider_call_count')}` / `{cache_policy.get('failed_provider_call_count')}` / `{cache_policy.get('remaining_missing_pair_count')}`.",
         f"- Cost spent this run / avoided by cache USD: `{cache_policy.get('cost_spent_this_run_usd')}` / `{cache_policy.get('cost_avoided_by_cache_reuse_usd')}`.",
@@ -2194,15 +2240,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "readiness_checked": False,
         "model_name": None,
     }
-    if args.check_llm_provider_readiness or llm_approved:
-        provider, provider_summary = primary_openai_provider_from_settings()
-        provider_summary = {
-            **provider_summary,
-            "readiness_checked": True,
-            "model_name": getattr(provider, "model", None) if provider is not None else None,
-            "provider_name": provider.get_provider_name() if provider is not None else None,
-        }
-    provider_model_label = str(provider_summary.get("model_name") or "primary_openai")
+    provider_model_label = str(getattr(settings, "TAG_TRANSLATION_LLM_MODEL", "") or "primary_openai")
+    provider_summary["model_name"] = provider_model_label
     llm_config = LLMAdjudicationConfig(
         enabled=True,
         max_calls=int(args.max_llm_calls),
@@ -2311,92 +2350,83 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             source_artifact_label=str(args.snapshot_source_artifact_label or ""),
         )
         if llm_approved and input_scope_fidelity["passed"] and not args.snapshot_recovery_only:
-            if provider is None:
+            try:
+                judgments, llm_execution_summary = run_bounded_llm_adjudication(
+                    deterministic_result.edge_candidates,
+                    signals=signals,
+                    config=llm_config,
+                )
+                provider_summary = {
+                    **provider_summary,
+                    **(llm_execution_summary.get("provider") or {}),
+                    "readiness_checked": bool(
+                        llm_execution_summary.get("new_provider_call_count", 0)
+                        or llm_execution_summary.get("failed_provider_call_count", 0)
+                    ),
+                }
+                if "cache_hits" in llm_execution_summary or "cache_misses" in llm_execution_summary:
+                    cache_stats = {
+                        **cache_stats,
+                        "cache_hits": int(llm_execution_summary.get("cache_hits", 0) or 0),
+                        "cache_misses": int(llm_execution_summary.get("cache_misses", 0) or 0),
+                        "cached_decision_count": int(llm_execution_summary.get("cache_hits", 0) or 0),
+                        "compatible_cache_hit_count": int(llm_execution_summary.get("cache_hits", 0) or 0),
+                        "exact_compatible_cache_hit_count": int(
+                            llm_execution_summary.get("exact_compatible_cache_hit_count", 0) or 0
+                        ),
+                        "legacy_compatible_cache_import_count": int(
+                            llm_execution_summary.get("legacy_compatible_cache_import_count", 0) or 0
+                        ),
+                        "new_provider_call_count": int(llm_execution_summary.get("new_provider_call_count", 0) or 0),
+                        "new_provider_success_count": int(
+                            llm_execution_summary.get("new_provider_success_count", 0) or 0
+                        ),
+                        "failed_provider_call_count": int(
+                            llm_execution_summary.get("failed_provider_call_count", 0) or 0
+                        ),
+                        "remaining_missing_pair_count": int(
+                            llm_execution_summary.get("remaining_missing_pair_count", 0) or 0
+                        ),
+                        "semantic_prior_judgment_count": int(
+                            llm_execution_summary.get("semantic_prior_judgment_count", 0) or 0
+                        ),
+                        "durable_cache_write_success_count": int(
+                            llm_execution_summary.get("durable_cache_write_success_count", 0) or 0
+                        ),
+                        "projected_new_call_cost_usd": float(
+                            llm_execution_summary.get("projected_new_call_cost_usd", projected_new_call_cost_usd)
+                            or 0.0
+                        ),
+                        "estimated_cost_this_run_usd": float(
+                            llm_execution_summary.get("estimated_cost_this_run_usd", 0.0) or 0.0
+                        ),
+                        "cost_avoided_by_cache_reuse_usd": float(
+                            llm_execution_summary.get("cost_avoided_by_cache_reuse_usd", 0.0) or 0.0
+                        ),
+                        "cache_policy_version": str(
+                            llm_execution_summary.get("cache_policy_version")
+                            or cache_stats.get("cache_policy_version")
+                            or "source_concept_llm_adjudication_cache_v1"
+                        ),
+                        "durable_cache_root_label": "source-concept-llm-adjudication-cache",
+                        "cache_writes_atomic": bool(llm_execution_summary.get("cache_writes_atomic", True)),
+                        "raw_private_paths_redacted": bool(
+                            llm_execution_summary.get("raw_private_paths_redacted", True)
+                        ),
+                    }
+            except Exception as exc:  # pragma: no cover - provider/network dependent
+                provider_error = sanitize_provider_error(exc)
                 llm_execution_summary = {
                     "used": False,
                     "provider": provider_summary,
-                    "reason": provider_summary.get("unavailable_reason") or "provider_unavailable",
+                    "reason": "provider_error",
                     "selected_pair_count": len(selected_edges),
                     "judgment_count": 0,
-                    "error_count": 0,
+                    "error_count": 1,
                     "cache_hits": 0,
                     "cache_misses": len(selected_edges),
+                    "error": provider_error,
                 }
-            else:
-                try:
-                    judgments, llm_execution_summary = run_bounded_llm_adjudication(
-                        deterministic_result.edge_candidates,
-                        signals=signals,
-                        config=llm_config,
-                    )
-                    provider_summary = {
-                        **provider_summary,
-                        **(llm_execution_summary.get("provider") or {}),
-                        "readiness_checked": True,
-                    }
-                    if "cache_hits" in llm_execution_summary or "cache_misses" in llm_execution_summary:
-                        cache_stats = {
-                            **cache_stats,
-                            "cache_hits": int(llm_execution_summary.get("cache_hits", 0) or 0),
-                            "cache_misses": int(llm_execution_summary.get("cache_misses", 0) or 0),
-                            "cached_decision_count": int(llm_execution_summary.get("cache_hits", 0) or 0),
-                            "compatible_cache_hit_count": int(llm_execution_summary.get("cache_hits", 0) or 0),
-                            "exact_compatible_cache_hit_count": int(
-                                llm_execution_summary.get("exact_compatible_cache_hit_count", 0) or 0
-                            ),
-                            "legacy_compatible_cache_import_count": int(
-                                llm_execution_summary.get("legacy_compatible_cache_import_count", 0) or 0
-                            ),
-                            "new_provider_call_count": int(llm_execution_summary.get("new_provider_call_count", 0) or 0),
-                            "new_provider_success_count": int(
-                                llm_execution_summary.get("new_provider_success_count", 0) or 0
-                            ),
-                            "failed_provider_call_count": int(
-                                llm_execution_summary.get("failed_provider_call_count", 0) or 0
-                            ),
-                            "remaining_missing_pair_count": int(
-                                llm_execution_summary.get("remaining_missing_pair_count", 0) or 0
-                            ),
-                            "semantic_prior_judgment_count": int(
-                                llm_execution_summary.get("semantic_prior_judgment_count", 0) or 0
-                            ),
-                            "durable_cache_write_success_count": int(
-                                llm_execution_summary.get("durable_cache_write_success_count", 0) or 0
-                            ),
-                            "projected_new_call_cost_usd": float(
-                                llm_execution_summary.get("projected_new_call_cost_usd", projected_new_call_cost_usd)
-                                or 0.0
-                            ),
-                            "estimated_cost_this_run_usd": float(
-                                llm_execution_summary.get("estimated_cost_this_run_usd", 0.0) or 0.0
-                            ),
-                            "cost_avoided_by_cache_reuse_usd": float(
-                                llm_execution_summary.get("cost_avoided_by_cache_reuse_usd", 0.0) or 0.0
-                            ),
-                            "cache_policy_version": str(
-                                llm_execution_summary.get("cache_policy_version")
-                                or cache_stats.get("cache_policy_version")
-                                or "source_concept_llm_adjudication_cache_v1"
-                            ),
-                            "durable_cache_root_label": "source-concept-llm-adjudication-cache",
-                            "cache_writes_atomic": bool(llm_execution_summary.get("cache_writes_atomic", True)),
-                            "raw_private_paths_redacted": bool(
-                                llm_execution_summary.get("raw_private_paths_redacted", True)
-                            ),
-                        }
-                except Exception as exc:  # pragma: no cover - provider/network dependent
-                    provider_error = sanitize_provider_error(exc)
-                    llm_execution_summary = {
-                        "used": False,
-                        "provider": provider_summary,
-                        "reason": "provider_error",
-                        "selected_pair_count": len(selected_edges),
-                        "judgment_count": 0,
-                        "error_count": 1,
-                        "cache_hits": 0,
-                        "cache_misses": len(selected_edges),
-                        "error": provider_error,
-                    }
         valid_judgments = [row for row in judgments if not row.get("error_type")]
         llm_error_count = int(llm_execution_summary.get("error_count", 0) or 0) + sum(
             1 for row in judgments if row.get("error_type")
@@ -2412,13 +2442,25 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 "status": "blocked_old_r1_contamination_isolation",
                 "blocked_reason": "execute_requested_without_old_r1_sourceconcept_output_isolation",
             }
+        provider_required_for_missing_pairs = bool(int(cache_stats.get("cache_misses", 0) or 0) > 0)
+        provider_name = str(provider_summary.get("provider_name") or "")
+        provider_unavailable = str(llm_execution_summary.get("reason") or "") == "provider_unavailable"
+        provider_available_for_execution = bool(
+            not provider_required_for_missing_pairs
+            or (
+                not provider_unavailable
+                and provider_name
+                and provider_name != "cache_only"
+                and int(cache_stats.get("failed_provider_call_count", 0) or 0) == 0
+            )
+        )
         execute_allowed = bool(
             args.execute
             and llm_approved
             and input_scope_fidelity["passed"]
             and not args.snapshot_recovery_only
             and budget_ready
-            and provider is not None
+            and provider_available_for_execution
             and llm_error_count == 0
             and (planned_eligible_pair_count == 0 or len(selected_edges) == planned_eligible_pair_count)
             and (len(selected_edges) == 0 or len(valid_judgments) >= len(selected_edges))
@@ -2479,7 +2521,18 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "all_selected_pairs_successfully_accounted": successful_accounted_pair_count == selected_pair_count
         and provider_error_pair_count == 0,
     }
-    provider_available = bool(provider is not None) if (args.check_llm_provider_readiness or llm_approved) else False
+    provider_required_for_missing_pairs = bool(int(cache_stats.get("cache_misses", 0) or 0) > 0)
+    provider_name = str(provider_summary.get("provider_name") or "")
+    provider_unavailable = str(llm_execution_summary.get("reason") or "") == "provider_unavailable"
+    provider_available = bool(
+        not provider_required_for_missing_pairs
+        or (
+            not provider_unavailable
+            and provider_name
+            and provider_name != "cache_only"
+            and int(cache_stats.get("failed_provider_call_count", 0) or 0) == 0
+        )
+    )
     llm_readiness_passed = bool(llm_approved and provider_available and budget_ready and cache_stats["cache_enabled"] and llm_error_count == 0)
     persistence_applied = bool(persistence.get("apply"))
     zero_eligible_pair_proof = eligible_pair_count == 0 and selected_pair_count == 0
@@ -2553,12 +2606,14 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     elif judgment_count > 0 and selected_pair_count:
         actual_calls = max(0, int(cache_stats.get("cache_misses", 0) or 0))
         actual_cost_estimate = round(float(plan.projected_cost_usd) * (actual_calls / selected_pair_count), 6)
+    evidence_state = evidence_worktree_state()
     summary = {
         "phase": PHASE,
         "phase_slug": PHASE_SLUG,
         "generated_at": utc_now_iso(),
         "branch": git_value(["rev-parse", "--abbrev-ref", "HEAD"]),
-        "head_sha": git_value(["rev-parse", "HEAD"]),
+        "head_sha": evidence_state["evidence_code_sha"],
+        **evidence_state,
         "baseline_main_sha": git_value(["rev-parse", "origin/main"]),
         "run_id": args.run_id,
         "pipeline_contract": {
@@ -2680,6 +2735,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "new_provider_call_count": int(cache_stats.get("new_provider_call_count", cache_stats.get("cache_misses", 0)) or 0),
             "failed_provider_call_count": int(cache_stats.get("failed_provider_call_count", 0) or 0),
             "remaining_missing_pair_count": int(cache_stats.get("remaining_missing_pair_count", 0) or 0),
+            "provider_required_for_missing_pairs": provider_required_for_missing_pairs,
+            "provider_not_required_for_fully_cached_pairs": not provider_required_for_missing_pairs,
             "operator_budget_approved": bool(llm_approved),
             "budget_cap_adjusted_or_superseded": False,
         },
@@ -2687,6 +2744,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "passed": llm_readiness_passed,
             "operator_approved": llm_approved,
             "provider_available": provider_available,
+            "provider_required_for_missing_pairs": provider_required_for_missing_pairs,
+            "provider_not_required_for_fully_cached_pairs": not provider_required_for_missing_pairs,
             "provider_mode": provider_summary.get("provider_mode"),
             "provider_model": provider_summary.get("model_name"),
             "provider_readiness_checked": bool(provider_summary.get("readiness_checked")),
@@ -2717,6 +2776,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "new_provider_success_count": int(cache_stats.get("new_provider_success_count", resolved_provider_judgment_count) or 0),
             "failed_provider_call_count": int(cache_stats.get("failed_provider_call_count", llm_error_count) or 0),
             "remaining_missing_pair_count": int(cache_stats.get("remaining_missing_pair_count", 0) or 0),
+            "provider_required_for_missing_pairs": provider_required_for_missing_pairs,
+            "provider_not_required_for_fully_cached_pairs": not provider_required_for_missing_pairs,
             "cost_spent_this_run_usd": actual_cost_estimate,
             "cost_avoided_by_cache_reuse_usd": round(float(cache_stats.get("cost_avoided_by_cache_reuse_usd", 0.0) or 0.0), 6),
             "projected_new_call_cost_usd": round(
@@ -2734,7 +2795,12 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "model_name": provider_summary.get("model_name"),
             "uses_fallback_provider": False,
             "fallback_provider_used": False,
-            "primary_openai_compatible_used": bool(judgment_count > 0 and llm_error_count == 0),
+            "primary_openai_compatible_used": bool(
+                int(cache_stats.get("new_provider_call_count", cache_stats.get("cache_misses", 0)) or 0) > 0
+                and llm_error_count == 0
+            ),
+            "primary_openai_compatible_policy_used_for_cache_compatibility": True,
+            "provider_not_required_for_fully_cached_pairs": not provider_required_for_missing_pairs,
             "actual_cost_usd_available": False,
             "actual_cost_usd_estimate": actual_cost_estimate,
             "provider_error": provider_error,

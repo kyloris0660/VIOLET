@@ -182,6 +182,8 @@ def _r1r_summary(**overrides: object) -> dict:
             "claims": {"target_met": True, "full_chain_complete": True, "safe_to_merge": False},
         },
         "environment_isolation": {
+            "passed": True,
+            "blockers": [],
             "violet_env": "test",
             "violet_env_is_production": False,
             "production_profile_active": False,
@@ -194,6 +196,12 @@ def _r1r_summary(**overrides: object) -> dict:
                 "passed": True,
                 "blocked_count": 0,
                 "no_directories_created_before_gate": True,
+            },
+            "output_dir_safety": {
+                "checked_before_mkdir": True,
+                "passed": True,
+                "blocked_reasons": [],
+                "repo_local_ignored_artifact_root": True,
             },
             "exact_db_identity_from_actual_connection": {
                 "checked_from_actual_connection": True,
@@ -288,11 +296,15 @@ def _r1r_summary(**overrides: object) -> dict:
             "skipped_pair_count": 0,
             "unselected_pair_count": 0,
             "eligible_pair_accounting_total": 12,
+            "provider_required_for_missing_pairs": True,
+            "provider_not_required_for_fully_cached_pairs": False,
         },
         "llm_readiness": {
             "passed": True,
             "operator_approved": True,
             "provider_available": True,
+            "provider_required_for_missing_pairs": True,
+            "provider_not_required_for_fully_cached_pairs": False,
             "provider_mode": "primary_openai",
             "provider_model": "gpt-test",
             "uses_fallback_provider": False,
@@ -354,6 +366,8 @@ def _r1r_summary(**overrides: object) -> dict:
             "new_provider_success_count": 12,
             "failed_provider_call_count": 0,
             "remaining_missing_pair_count": 0,
+            "provider_required_for_missing_pairs": True,
+            "provider_not_required_for_fully_cached_pairs": False,
             "cost_spent_this_run_usd": 0.2,
             "cost_avoided_by_cache_reuse_usd": 0.0,
             "projected_new_call_cost_usd": 0.2,
@@ -5542,6 +5556,32 @@ def test_r1r_contract_rejects_protected_storage_pre_settings_gate_failure() -> N
     assert "r1r_storage_pre_settings_gate_failed" in _error_codes(result)
 
 
+@pytest.mark.parametrize(
+    ("path", "expected_code"),
+    [
+        ("environment_isolation.passed", "r1r_environment_isolation_aggregate_failed_for_target"),
+        ("environment_isolation.storage_root_pre_settings_import.passed", "r1r_storage_pre_settings_gate_required_for_target"),
+        ("environment_isolation.output_dir_safety.passed", "r1r_output_dir_safety_gate_required_for_target"),
+        ("environment_isolation.exact_db_identity_from_actual_connection.passed", "r1r_actual_db_identity_gate_failed_for_target"),
+    ],
+)
+def test_r1r_contract_rejects_target_when_environment_aggregate_or_subgate_fails(
+    path: str,
+    expected_code: str,
+) -> None:
+    summary = _r1r_summary()
+    _set_nested(summary, path, False)
+    if path == "environment_isolation.passed":
+        summary["environment_isolation"]["blockers"] = ["fixture_blocker"]
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert expected_code in codes
+    if path == "environment_isolation.passed":
+        assert "r1r_environment_isolation_blockers_present_for_target" in codes
+
+
 def test_r1r_contract_rejects_target_met_with_insufficient_input_scope() -> None:
     summary = _r1r_summary()
     summary["input_scope_fidelity"] = {
@@ -6084,6 +6124,86 @@ def test_r1r_contract_rejects_llm_readiness_status_mismatches() -> None:
     )
 
 
+def test_r1r_contract_accepts_cache_only_target_when_provider_unavailable() -> None:
+    summary = _r1r_summary()
+    summary["llm_readiness"].update(
+        {
+            "passed": True,
+            "provider_available": False,
+            "provider_required_for_missing_pairs": False,
+            "provider_not_required_for_fully_cached_pairs": True,
+        }
+    )
+    summary["llm_provider_execution"].update(
+        {
+            "provider_name": "cache_only",
+            "primary_openai_compatible_used": False,
+            "primary_openai_compatible_policy_used_for_cache_compatibility": True,
+            "provider_not_required_for_fully_cached_pairs": True,
+        }
+    )
+    summary["llm_adjudication_plan"].update(
+        {
+            "already_cached_compatible_judgments": 12,
+            "new_provider_call_count": 0,
+            "failed_provider_call_count": 0,
+            "remaining_missing_pair_count": 0,
+            "provider_required_for_missing_pairs": False,
+            "provider_not_required_for_fully_cached_pairs": True,
+        }
+    )
+    summary["llm_judgment_summary"].update(
+        {
+            "cache_hits": 12,
+            "cache_misses": 0,
+            "compatible_cache_hit_count": 12,
+            "exact_compatible_cache_hit_count": 12,
+            "new_provider_call_count": 0,
+            "new_provider_success_count": 0,
+            "estimated_cost_usd": 0.0,
+            "selected_pair_accounting": {
+                "selected_pair_count": 12,
+                "resolved_provider_judgment_count": 0,
+                "valid_cached_judgment_count": 12,
+                "explicit_skipped_pair_count": 0,
+                "provider_error_pair_count": 0,
+                "successful_accounted_pair_count": 12,
+                "all_selected_pairs_successfully_accounted": True,
+            },
+        }
+    )
+    summary["llm_cache_policy"].update(
+        {
+            "compatible_cache_hit_count": 12,
+            "exact_compatible_cache_hit_count": 12,
+            "new_provider_call_count": 0,
+            "new_provider_success_count": 0,
+            "remaining_missing_pair_count": 0,
+            "cost_spent_this_run_usd": 0.0,
+            "cost_avoided_by_cache_reuse_usd": 0.2,
+            "projected_new_call_cost_usd": 0.0,
+            "provider_required_for_missing_pairs": False,
+            "provider_not_required_for_fully_cached_pairs": True,
+        }
+    )
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert result.passed, _error_codes(result)
+
+
+def test_r1r_contract_rejects_provider_unavailable_when_cache_misses_remain() -> None:
+    summary = _r1r_summary()
+    summary["llm_readiness"]["provider_available"] = False
+    summary["llm_cache_policy"]["remaining_missing_pair_count"] = 1
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+    codes = _error_codes(result)
+
+    assert "r1r_provider_unavailable_not_blocked" in codes
+    assert "r1r_llm_readiness_missing_for_target" in codes
+
+
 def test_r1r_contract_rejects_review_pack_without_manifest_and_redaction_failure() -> None:
     review = _r1r_summary()
     review["review_pack"]["includes_stage_manifest"] = False
@@ -6196,6 +6316,36 @@ def test_r1r_contract_rejects_downstream_route_authorization(route_key: str) -> 
     result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
 
     assert "r1r_forbidden_route_authorization" in _error_codes(result)
+
+
+@pytest.mark.parametrize(
+    "claim_path",
+    [
+        "pipeline_contract.claims.route_approved",
+        "pipeline_contract.claims.safe_to_merge",
+        "pipeline_contract.claims.r2_authorized",
+        "pipeline_contract.claims.px1_b_authorized",
+        "pipeline_contract.claims.provider_2_authorized",
+        "pipeline_contract.claims.scale_up_authorized",
+        "pipeline_contract.claims.entity_bridge_authorized",
+        "claims.route_approved",
+        "claims.safe_to_merge",
+        "route_approved",
+        "safe_to_merge",
+    ],
+)
+def test_r1r_contract_rejects_route_approval_claims_outside_route_authorization(claim_path: str) -> None:
+    summary = _r1r_summary()
+    if claim_path.startswith("claims."):
+        summary.setdefault("claims", {})[claim_path.split(".", 1)[1]] = True
+    elif "." in claim_path:
+        _set_nested(summary, claim_path, True)
+    else:
+        summary[claim_path] = True
+
+    result = check_phase_contract("r1r_full_source_concept_pipeline_contract_v1", summary)
+
+    assert "r1r_forbidden_route_claim" in _error_codes(result)
 
 
 def test_r1r_contract_requires_a1r_after_r1r() -> None:
