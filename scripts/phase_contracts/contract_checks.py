@@ -11,6 +11,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from .contract_registry import (
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES,
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
+    R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES,
     SOURCE_CONCEPT_ALLOWED_STATUSES,
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
     get_contract,
@@ -52,6 +53,7 @@ R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = {
     "blombooru_source_concept_signal_links",
     "blombooru_source_concept_search_index",
 }
+R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = set(R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
 R1R_INPUT_SCOPE_MIN_RATIO = 0.8
 R1R_BASELINE_ONLY_INPUT_SCOPE_METRICS = {
     "source_concept_total",
@@ -1955,6 +1957,261 @@ def _check_r1r_route_gate(
             expected=True,
             actual=route.get("a1r_still_required"),
         )
+
+
+def _check_r2_source_concept_graph_remediation(
+    _contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    status = str(_get(summary, "pipeline_contract.status", "") or "")
+    target = status == "target_met_constraint_aware_r2"
+    if status not in R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES:
+        result.fail(
+            "r2_status_invalid",
+            "R2 status must use the focused contract vocabulary.",
+            path="pipeline_contract.status",
+            expected=list(R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES),
+            actual=status,
+        )
+        return
+    if not target and _completion_or_approval_claimed(result):
+        result.fail(
+            "r2_non_target_status_claims_completion",
+            "Only target_met_constraint_aware_r2 may claim completion or downstream approval.",
+            path="pipeline_contract.status",
+            actual=status,
+        )
+
+    isolation = _get(summary, "environment_isolation", {})
+    if not isinstance(isolation, Mapping):
+        result.fail("r2_environment_isolation_not_object", "R2 requires structured isolation proof.", path="environment_isolation")
+        isolation = {}
+    if target:
+        expected_isolation = {
+            "passed": True,
+            "working_db_is_separate_from_r1r_baseline": True,
+            "r1r_baseline_preserved": True,
+            "dev_test_only": True,
+            "production_profile_active": False,
+            "production_write_attempted": False,
+        }
+        for key, expected in expected_isolation.items():
+            if _as_bool(isolation.get(key)) != expected:
+                result.fail(
+                    "r2_environment_isolation_gate_failed",
+                    "R2 target requires a separate dev/test working DB and preserved R1R baseline.",
+                    path=f"environment_isolation.{key}",
+                    expected=expected,
+                    actual=isolation.get(key),
+                )
+
+    manifest = _get(summary, "fixed_input_manifest", {})
+    if not isinstance(manifest, Mapping):
+        result.fail("r2_fixed_input_manifest_not_object", "R2 requires fixed-input manifest proof.", path="fixed_input_manifest")
+        manifest = {}
+    if target:
+        for key in (
+            "present",
+            "private_manifest_generated",
+            "baseline_to_working_clone_match",
+            "before_after_match",
+            "row_counts_match",
+            "content_fingerprints_match",
+            "provenance_unchanged",
+        ):
+            if not _as_bool(manifest.get(key)):
+                result.fail(
+                    "r2_fixed_input_gate_failed",
+                    "R2 target requires unchanged fixed upstream evidence with row-content proof.",
+                    path=f"fixed_input_manifest.{key}",
+                    expected=True,
+                    actual=manifest.get(key),
+                )
+        table_count = _as_int(manifest.get("table_count"))
+        fingerprint_count = _as_int(manifest.get("content_fingerprint_count"))
+        if table_count < 14 or fingerprint_count != table_count:
+            result.fail(
+                "r2_fixed_input_table_coverage_incomplete",
+                "R2 fixed-input proof must cover every required upstream table with a content fingerprint.",
+                path="fixed_input_manifest",
+                expected="at least 14 tables and one fingerprint per table",
+                actual={"table_count": table_count, "content_fingerprint_count": fingerprint_count},
+            )
+        if manifest.get("changed_tables"):
+            result.fail("r2_upstream_evidence_changed", "Fixed upstream evidence changed.", path="fixed_input_manifest.changed_tables", actual=manifest.get("changed_tables"))
+
+    operations = _get(summary, "operation_counts", {})
+    if not isinstance(operations, Mapping):
+        result.fail("r2_operation_counts_not_object", "R2 requires forbidden-operation accounting.", path="operation_counts")
+        operations = {}
+    if target:
+        for key in (
+            "gallery_dl_calls",
+            "provider_pixiv_network_calls",
+            "ai_tagging_calls",
+            "media_imports",
+            "upstream_observation_mutations",
+            "new_llm_provider_calls",
+            "production_writes",
+            "truth_path_writes",
+        ):
+            if _as_int(operations.get(key), default=-1) != 0:
+                result.fail(
+                    "r2_forbidden_operation_nonzero",
+                    "R2 target requires zero acquisition/provider/import/truth/production operations.",
+                    path=f"operation_counts.{key}",
+                    expected=0,
+                    actual=operations.get(key),
+                )
+
+    write_scope = _get(summary, "source_concept_write_scope", {})
+    if not isinstance(write_scope, Mapping):
+        result.fail("r2_write_scope_not_object", "R2 requires SourceConcept write-scope proof.", path="source_concept_write_scope")
+        write_scope = {}
+    if target:
+        allowed = {str(value) for value in (write_scope.get("allowed_tables") or [])}
+        rebuilt = {str(value) for value in (write_scope.get("rebuilt_tables") or [])}
+        changed = set(_table_names(write_scope.get("changed_tables") or []))
+        outside = sorted((allowed | rebuilt | changed) - R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
+        if outside:
+            result.fail("r2_write_outside_sourceconcept_allowlist", "R2 wrote outside the SourceConcept allowlist.", path="source_concept_write_scope", actual=outside)
+        if rebuilt != R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES:
+            result.fail(
+                "r2_sourceconcept_rebuild_incomplete",
+                "R2 target requires the complete SourceConcept-owned output set to be rebuilt.",
+                path="source_concept_write_scope.rebuilt_tables",
+                expected=sorted(R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES),
+                actual=sorted(rebuilt),
+            )
+        if write_scope.get("forbidden_changed_tables") or write_scope.get("unexpected_changed_tables"):
+            result.fail("r2_forbidden_or_unexpected_write", "R2 mutation proof found a forbidden/unexpected table change.", path="source_concept_write_scope")
+
+    graph = _get(summary, "graph_invariants", {})
+    if not isinstance(graph, Mapping):
+        result.fail("r2_graph_invariants_not_object", "R2 requires graph invariant diagnostics.", path="graph_invariants")
+        graph = {}
+    if target:
+        for key in (
+            "review_only_edge_used_in_union_count",
+            "direct_llm_cannot_pair_in_materialized_component_count",
+            "deterministic_hard_conflict_in_materialized_component_count",
+            "transitive_cannot_violation_count",
+        ):
+            if _as_int(graph.get(key), default=-1) != 0:
+                result.fail(
+                    "r2_graph_invariant_failed",
+                    "R2 target requires review-only exclusion and zero component-level cannot violations.",
+                    path=f"graph_invariants.{key}",
+                    expected=0,
+                    actual=graph.get(key),
+                )
+
+    llm = _get(summary, "llm_judgment_accounting", {})
+    if not isinstance(llm, Mapping):
+        result.fail("r2_llm_accounting_not_object", "R2 requires existing-judgment accounting.", path="llm_judgment_accounting")
+        llm = {}
+    if target:
+        existing_total = _as_int(llm.get("existing_r1r_judgment_count"))
+        accounted = sum(
+            _as_int(llm.get(key))
+            for key in (
+                "exact_compatible_reuse_count",
+                "stable_pair_identity_reuse_count",
+                "semantic_prior_count",
+                "invalidated_count",
+            )
+        )
+        if existing_total != 6429 or accounted != existing_total:
+            result.fail(
+                "r2_llm_existing_judgment_accounting_mismatch",
+                "R2 must account for all 6429 existing R1R judgments exactly once.",
+                path="llm_judgment_accounting",
+                expected=6429,
+                actual={"existing_total": existing_total, "accounted": accounted},
+            )
+        if _as_int(llm.get("new_provider_call_count"), default=-1) != 0:
+            result.fail("r2_new_llm_provider_calls_nonzero", "Initial R2 must make zero new LLM provider calls.", path="llm_judgment_accounting.new_provider_call_count", expected=0, actual=llm.get("new_provider_call_count"))
+        new_pair_count = _as_int(llm.get("genuinely_new_or_missing_pair_count"), default=-1)
+        adjudication = _get(summary, "new_pair_adjudication", {})
+        if not isinstance(adjudication, Mapping):
+            result.fail(
+                "r2_new_pair_adjudication_not_object",
+                "R2 requires a structured approval boundary for genuinely new pairs.",
+                path="new_pair_adjudication",
+            )
+        else:
+            expected_status = "blocked_llm_approval_required" if new_pair_count > 0 else "no_new_pairs"
+            if str(adjudication.get("status") or "") != expected_status:
+                result.fail(
+                    "r2_new_pair_adjudication_status_invalid",
+                    "New or incompatible R2 pairs must remain blocked from provider adjudication pending separate approval.",
+                    path="new_pair_adjudication.status",
+                    expected=expected_status,
+                    actual=adjudication.get("status"),
+                )
+            if _as_int(adjudication.get("pair_count"), default=-1) != new_pair_count:
+                result.fail(
+                    "r2_new_pair_adjudication_count_mismatch",
+                    "The new-pair approval boundary must match LLM accounting.",
+                    path="new_pair_adjudication.pair_count",
+                    expected=new_pair_count,
+                    actual=adjudication.get("pair_count"),
+                )
+            if _as_int(adjudication.get("provider_calls_made"), default=-1) != 0 or _as_bool(adjudication.get("provider_initialized")):
+                result.fail(
+                    "r2_new_pair_provider_boundary_violated",
+                    "Initial R2 must not initialize or call a provider for new pairs.",
+                    path="new_pair_adjudication",
+                )
+            if new_pair_count > 0 and not all(
+                _as_bool(adjudication.get(key))
+                for key in (
+                    "execution_scope_excludes_unadjudicated_review_pairs",
+                    "separate_operator_approval_required",
+                )
+            ):
+                result.fail(
+                    "r2_new_pair_approval_boundary_incomplete",
+                    "Unadjudicated new pairs must be excluded from materialization and require separate operator approval.",
+                    path="new_pair_adjudication",
+                )
+
+    quality = _get(summary, "quality_evaluation", {})
+    if not isinstance(quality, Mapping):
+        result.fail("r2_quality_evaluation_not_object", "R2 requires quality evaluation.", path="quality_evaluation")
+        quality = {}
+    if target:
+        for key in (
+            "route_metrics_recomputed",
+            "meaningful_structural_improvement",
+            "known_same_recall_protected",
+            "no_major_quality_regression",
+        ):
+            if not _as_bool(quality.get(key)):
+                result.fail("r2_quality_gate_failed", "R2 target requires structural improvement without known-same regression.", path=f"quality_evaluation.{key}", expected=True, actual=quality.get(key))
+        regressions = _as_int(quality.get("known_same_regression_count"))
+        ledger = _as_int(quality.get("same_pair_reason_ledger_count"))
+        if regressions > ledger:
+            result.fail("r2_same_pair_regression_unaccounted", "Every intentionally split compatible same pair needs a private reason-ledger entry.", path="quality_evaluation", actual={"regressions": regressions, "ledger": ledger})
+
+    if target:
+        if not _as_bool(_get(summary, "public_redaction.passed", False)):
+            result.fail("r2_public_redaction_failed", "R2 public redaction must pass.", path="public_redaction.passed")
+        pack = _get(summary, "review_pack", {})
+        if not isinstance(pack, Mapping) or not all(
+            _as_bool(pack.get(key))
+            for key in ("generated", "manifest_present", "checksums_present", "integrity_passed", "not_committed")
+        ):
+            result.fail("r2_review_pack_incomplete", "R2 target requires a complete private review pack.", path="review_pack")
+
+    route = _get(summary, "route_authorization", {})
+    if not isinstance(route, Mapping):
+        result.fail("r2_route_authorization_not_object", "R2 requires downstream non-authorization proof.", path="route_authorization")
+    else:
+        forbidden_true = sorted(key for key, value in route.items() if _as_bool(value))
+        if forbidden_true:
+            result.fail("r2_forbidden_route_authorization", "R2 cannot authorize downstream/provider/production/truth work.", path="route_authorization", actual=forbidden_true)
 
 
 def _zero_eligible_proof_passed(plan: Mapping[str, Any]) -> bool:
@@ -9626,6 +9883,7 @@ CUSTOM_CHECKS = {
     "source_metadata": _check_source_metadata,
     "source_concept_full_chain": _check_source_concept_full_chain,
     "r1r_full_source_concept_pipeline": _check_r1r_full_source_concept_pipeline,
+    "r2_source_concept_graph_remediation": _check_r2_source_concept_graph_remediation,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,

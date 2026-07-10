@@ -549,12 +549,18 @@ def test_alias_edge_links_multilingual_sources_without_entity_truth():
     concept = next(
         concept
         for concept in result.concepts
-        if {"f7a_candidate", "source_assertion", "normal_media_tag", "source_alias_candidate"}.issubset(
+        if {"f7a_candidate", "source_assertion", "normal_media_tag"}.issubset(
             concept.evidence_summary["origin_counts"].keys()
         )
     )
     assert concept.status == "active"
     assert concept.evidence_summary["work_context_key"] == "genshin_impact"
+    assert all(
+        "source_alias_candidate" not in candidate.evidence_summary["origin_counts"]
+        for candidate in result.concepts
+        if candidate.status == "active"
+    )
+    assert any(edge.edge_type == "unknown_role_review" and not edge.union_allowed for edge in result.edge_candidates)
     assert persistence["forbidden_truth_table_write_count"] == 0
 
 
@@ -1063,7 +1069,7 @@ def test_ai_only_signal_creates_needs_review_not_active_truth():
 
     assert result.concepts[0].status == "needs_review"
     assert result.concepts[0].confidence_score <= 0.59
-    assert result.links[0].negative_reason_code == "ambiguous_short_without_work_context"
+    assert result.links[0].negative_reason_code == "data_aware_ambiguity_without_work_context"
 
 
 def test_short_name_without_work_context_does_not_overmerge_active():
@@ -1097,7 +1103,7 @@ def test_short_name_without_work_context_does_not_overmerge_active():
 
     assert len(result.concepts) == 2
     assert all(concept.status == "needs_review" for concept in result.concepts)
-    assert all(link.negative_reason_code == "ambiguous_short_without_work_context" for link in result.links)
+    assert all(link.negative_reason_code == "data_aware_ambiguity_without_work_context" for link in result.links)
 
 
 def test_source_title_only_signal_remains_needs_review_context():
@@ -1267,7 +1273,7 @@ def test_exact_same_canonical_same_work_context_can_merge():
     assert result.summary["context_conflict_active_merge_count"] == 0
 
 
-def test_exact_same_canonical_partial_context_is_review_not_active():
+def test_exact_same_canonical_partial_context_remains_review_overlay_not_identity_union():
     signals = [
         _signal("left", "alexandria", work_context_key="work_a"),
         _signal("right", "alexandria"),
@@ -1275,11 +1281,12 @@ def test_exact_same_canonical_partial_context_is_review_not_active():
 
     result = resolve_source_concepts(signals, run_id="sc1-test")
 
-    assert len(result.concepts) == 1
-    assert result.concepts[0].status == "needs_review"
+    assert len(result.concepts) == 2
     exact_edges = [edge for edge in result.edge_candidates if edge.edge_type == "exact_canonical_key"]
     assert exact_edges
     assert exact_edges[0].status == "needs_review"
+    assert exact_edges[0].union_allowed is True
+    assert result.summary["review_only_edge_used_in_union_count"] == 0
 
 
 def test_repeated_danbooru_style_tags_materialize_one_context_concept():
@@ -1300,7 +1307,7 @@ def test_repeated_danbooru_style_tags_materialize_one_context_concept():
     assert result.summary["fragmentation_violation_count"] == 0
 
 
-def test_ai_only_same_identity_anchor_groups_as_needs_review_not_active():
+def test_ai_only_same_identity_anchor_stays_review_overlay_not_identity_union():
     signals = [
         _signal(
             f"ai:nilou:{idx}",
@@ -1316,11 +1323,11 @@ def test_ai_only_same_identity_anchor_groups_as_needs_review_not_active():
 
     result = resolve_source_concepts(signals, run_id="sc1-test")
 
-    assert len(result.concepts) == 1
-    assert result.concepts[0].status == "needs_review"
-    assert result.concepts[0].confidence_score <= 0.59
+    assert len(result.concepts) == 2
+    assert all(concept.status == "needs_review" for concept in result.concepts)
+    assert all(concept.confidence_score <= 0.59 for concept in result.concepts)
     assert result.summary["ai_only_active_violation_count"] == 0
-    assert result.summary["fragmentation_violation_count"] == 0
+    assert result.summary["review_only_edge_used_in_union_count"] == 0
 
 
 def test_alias_component_union_links_a_b_and_a_c_in_one_component():
@@ -1471,7 +1478,7 @@ def test_broad_alias_reused_across_works_does_not_overmerge():
     )
 
 
-def test_context_equivalence_uses_record_scope_without_single_record_overmerge():
+def test_context_equivalence_rejects_conflicting_explicit_context_support():
     signals = [
         _signal("work:1", "原神", role="work", media_id=1, source_record_id=10),
         _signal("tag:1", "barbara_(genshin_impact)", trust="weak", status="needs_review", media_id=1, source_record_id=10),
@@ -1483,7 +1490,8 @@ def test_context_equivalence_uses_record_scope_without_single_record_overmerge()
 
     result = resolve_source_concepts(signals, run_id="sc1-test")
 
-    assert result.summary["context_alias_count"] == 2
+    assert result.summary["context_alias_count"] == 0
+    assert result.summary["context_equivalence"]["rejected_pair_count"] >= 1
     contexts = {concept.evidence_summary.get("work_context_key") for concept in result.concepts}
     assert "genshin_impact" in contexts
     kaguya_concepts = [
@@ -1495,7 +1503,7 @@ def test_context_equivalence_uses_record_scope_without_single_record_overmerge()
     assert all(concept.evidence_summary.get("work_context_key") != "genshin_impact" for concept in kaguya_concepts)
 
 
-def test_oversized_context_block_uses_star_edges_without_all_pairs():
+def test_oversized_context_block_partitions_without_review_edge_union():
     signals = [
         _signal(
             f"sig:{idx}",
@@ -1525,7 +1533,10 @@ def test_oversized_context_block_uses_star_edges_without_all_pairs():
         for concept in result.concepts
         if {signal.canonical_key for signal in concept.signals} == {"nilou_(genshin_impact)"}
     ]
-    assert any(len(concept.signals) > 1 for concept in nilou_concepts)
+    assert all(len(concept.signals) == 1 for concept in nilou_concepts)
+    graph = result.summary["edge_graph"]
+    assert graph["oversized_partition_count"] >= 1
+    assert graph["oversized_hub_edges_prevented"] >= 1
 
 
 def test_strict_positive_case_review_requires_same_concept():
@@ -1706,7 +1717,7 @@ def test_guarded_merge_review_uses_surface_key_not_ambiguous_literal():
     assert {"mona", "nicole"}.issubset(surfaces)
 
 
-def test_same_scope_duplicate_short_name_groups_for_review_only():
+def test_same_scope_duplicate_short_name_stays_review_overlay_only():
     result = resolve_source_concepts(
         [
             _signal("mona:1", "Mona", trust="medium", status="needs_review", media_id=1),
@@ -1715,9 +1726,10 @@ def test_same_scope_duplicate_short_name_groups_for_review_only():
         run_id="sc1-test",
     )
 
-    assert len(result.concepts) == 1
-    assert result.concepts[0].status == "needs_review"
+    assert len(result.concepts) == 2
+    assert all(concept.status == "needs_review" for concept in result.concepts)
     assert any(edge.edge_type == "same_scope_duplicate_review" for edge in result.edge_candidates)
+    assert result.summary["review_only_edge_used_in_union_count"] == 0
 
 
 def test_llm_budget_cache_and_judgment_edges_are_source_layer_only():
@@ -1768,7 +1780,7 @@ def test_llm_must_link_blocked_by_short_name_guard_is_not_undermerge():
     assert result.summary["undermerge_violation_count"] == 0
 
 
-def test_llm_same_scope_cross_script_canonical_bridge_groups_for_review():
+def test_llm_same_scope_cross_script_review_relation_does_not_union():
     left = _signal("left", "\u795e\u91cc\u7dbe\u83ef", trust="medium", status="needs_review", media_id=1)
     right = _signal("right", "kamisato_ayaka", trust="medium", status="needs_review", media_id=1)
     judgments = [
@@ -1777,16 +1789,16 @@ def test_llm_same_scope_cross_script_canonical_bridge_groups_for_review():
 
     result = resolve_source_concepts([left, right], run_id="sc1-test", llm_judgments=judgments)
 
-    assert len(result.concepts) == 1
-    assert result.concepts[0].status == "needs_review"
+    assert len(result.concepts) == 2
+    assert all(concept.status == "needs_review" for concept in result.concepts)
     llm_edges = [edge for edge in result.edge_candidates if edge.edge_type == "llm_same_concept"]
     assert llm_edges
     assert llm_edges[0].status == "needs_review"
     assert llm_edges[0].payload["review_reason"] == "same_scope_cross_script_canonical_bridge"
-    assert result.summary["undermerge_violation_count"] == 0
+    assert result.summary["review_only_edge_used_in_union_count"] == 0
 
 
-def test_llm_cannot_link_does_not_fragment_stable_identity_anchor():
+def test_llm_cannot_link_blocks_stable_identity_anchor_union():
     left = _signal("left", "sangonomiya_kokomi", trust="medium", status="needs_review", work_context_key="genshin_impact")
     right = _signal("right", "sangonomiya_kokomi", trust="medium", status="needs_review", work_context_key="genshin_impact")
     judgments = [
@@ -1795,10 +1807,12 @@ def test_llm_cannot_link_does_not_fragment_stable_identity_anchor():
 
     result = resolve_source_concepts([left, right], run_id="sc1-test", llm_judgments=judgments)
 
-    assert len(result.concepts) == 1
+    assert len(result.concepts) == 2
     assert any(edge.negative_reason_code == "llm_cannot_link" for edge in result.edge_candidates)
     assert result.summary["undermerge_violation_count"] == 0
     assert result.summary["overmerge_violation_count"] == 0
+    assert result.summary["direct_llm_cannot_pair_in_materialized_component_count"] == 0
+    assert result.summary["transitive_cannot_violation_count"] == 0
 
 
 def test_llm_budget_block_returns_before_provider_initialization():
