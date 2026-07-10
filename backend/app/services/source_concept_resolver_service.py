@@ -57,7 +57,7 @@ from .source_name_candidate_extraction_service import (
 )
 from ..utils.cache import invalidate_source_concept_search_cache
 
-RESOLVER_VERSION = "source_concept_resolver_core_v3_constraint_aware_r2"
+RESOLVER_VERSION = "source_concept_resolver_core_v4_unknown_role_corroboration"
 SOURCE_CONCEPT_SCHEMA_VERSION = "source_concept_schema_v1"
 LLM_CACHE_POLICY_VERSION = "source_concept_llm_adjudication_cache_v1"
 LLM_DECISION_SCHEMA_VERSION = "source_concept_pair_decision_schema_v1"
@@ -2014,6 +2014,7 @@ def _pair_edge(
     left_ai = signal_is_ai_origin(left)
     right_ai = signal_is_ai_origin(right)
     has_non_ai = not (left_ai and right_ai)
+    unknown_role_payload: dict[str, Any] = {}
 
     if not roles_compatible(left, right):
         return _edge(
@@ -2080,6 +2081,15 @@ def _pair_edge(
         materialize_unknown = manual_confirmed or (
             independent_non_ai and (explicit_compatible_context or strong_cross_script)
         )
+        unknown_role_payload = {
+            "unknown_role_bridge_candidate": True,
+            "unknown_role_candidate_origin": "deterministic",
+            "unknown_role_materialization_authorized": materialize_unknown,
+            "manual_confirmed": manual_confirmed,
+            "independent_non_ai_sources": independent_non_ai,
+            "explicit_compatible_context": explicit_compatible_context,
+            "strong_cross_script": strong_cross_script,
+        }
         if not materialize_unknown:
             return _edge(
                 left,
@@ -2090,14 +2100,7 @@ def _pair_edge(
                 status="needs_review",
                 reason_code="unknown_role_requires_corroboration",
                 union_allowed=False,
-                payload={
-                    "unknown_role_bridge_candidate": True,
-                    "manual_confirmed": manual_confirmed,
-                    "independent_non_ai_sources": independent_non_ai,
-                    "explicit_compatible_context": explicit_compatible_context,
-                    "strong_cross_script": strong_cross_script,
-                    **_context_payload(context),
-                },
+                payload={**unknown_role_payload, **_context_payload(context)},
             )
 
     characterish_pair = left.role_hint in {"character", "person"} and right.role_hint in {"character", "person"}
@@ -2139,6 +2142,7 @@ def _pair_edge(
             payload={
                 "alias_component_key": alias_component,
                 "alias_only": alias_only,
+                **unknown_role_payload,
                 **_context_payload(context),
             },
         )
@@ -2161,7 +2165,7 @@ def _pair_edge(
                 reason_code="work_context_conflict_guard",
                 negative_reason_code="work_context_conflict",
                 union_allowed=False,
-                payload={"surface_key": surface_for_guard, **_context_payload(context)},
+                payload={"surface_key": surface_for_guard, **unknown_role_payload, **_context_payload(context)},
             )
         same_scope = (
             (left.media_id is not None and left.media_id == right.media_id)
@@ -2180,7 +2184,7 @@ def _pair_edge(
                 status="needs_review",
                 reason_code="ambiguous_short_same_scope_review",
                 union_allowed=True,
-                payload={"surface_key": surface_for_guard, **_context_payload(context)},
+                payload={"surface_key": surface_for_guard, **unknown_role_payload, **_context_payload(context)},
             )
         if left_context or right_context:
             return _edge(
@@ -2192,7 +2196,7 @@ def _pair_edge(
                 status="needs_review",
                 reason_code="ambiguous_short_partial_work_context_review",
                 union_allowed=True,
-                payload={"surface_key": surface_for_guard, **_context_payload(context)},
+                payload={"surface_key": surface_for_guard, **unknown_role_payload, **_context_payload(context)},
             )
         return _edge(
             left,
@@ -2204,7 +2208,7 @@ def _pair_edge(
             reason_code="ambiguous_short_guard",
             negative_reason_code="ambiguous_short_without_work_context",
             union_allowed=False,
-            payload={"surface_key": surface_for_guard, **_context_payload(context)},
+            payload={"surface_key": surface_for_guard, **unknown_role_payload, **_context_payload(context)},
         )
 
     left_anchor = signal_identity_anchor(
@@ -2245,6 +2249,7 @@ def _pair_edge(
                 "identity_anchor": left_anchor["identity_anchor"],
                 "canonical_key": left_anchor["canonical_key"],
                 "work_context_key": left_anchor["work_context_key"] or None,
+                **unknown_role_payload,
             },
         )
 
@@ -2271,6 +2276,7 @@ def _pair_edge(
             payload={
                 "surface_key": left_surface,
                 "work_context_key": left_context,
+                **unknown_role_payload,
                 **_context_payload(context),
             },
         )
@@ -2301,7 +2307,11 @@ def _pair_edge(
             status=status,
             reason_code=reason,
             union_allowed=status in {"active", "needs_review"},
-            payload={"canonical_key": left.canonical_key or left.normalized_key, **_context_payload(context)},
+            payload={
+                "canonical_key": left.canonical_key or left.normalized_key,
+                **unknown_role_payload,
+                **_context_payload(context),
+            },
         )
 
     if block_key.startswith("record_context:") or block_key.startswith("media_context:"):
@@ -2319,6 +2329,7 @@ def _pair_edge(
                 "right_surface_key": right_surface,
                 "left_context": left_context,
                 "right_context": right_context,
+                **unknown_role_payload,
             },
         )
     return None
@@ -3034,6 +3045,55 @@ def _llm_must_link_guard(
         same_scope
         and ((left_latin_canonical and right_non_ascii) or (right_latin_canonical and left_non_ascii))
     )
+    if "unknown" in {left.role_hint, right.role_hint}:
+        independent_non_ai = bool(
+            not signal_is_ai_origin(left)
+            and not signal_is_ai_origin(right)
+            and left.provider
+            and right.provider
+            and left.provider != right.provider
+            and (
+                left.source_metadata_record_id != right.source_metadata_record_id
+                or left.media_id != right.media_id
+            )
+        )
+        explicit_context = bool(
+            context.status == "compatible"
+            and context.left_context
+            and context.right_context
+            and context.left_reason in {"explicit_work_context", "parenthetical_context"}
+            and context.right_reason in {"explicit_work_context", "parenthetical_context"}
+        )
+        cross_script = _script_family(left.display_value) != _script_family(right.display_value)
+        same_canonical = bool(
+            (left.canonical_key or left.normalized_key)
+            and (left.canonical_key or left.normalized_key) == (right.canonical_key or right.normalized_key)
+        )
+        strong_cross_script = bool(cross_script and same_canonical and context.status != "incompatible")
+        manual_confirmed = any(
+            bool((signal.evidence_payload or {}).get(key))
+            for signal in (left, right)
+            for key in ("manual_confirmation", "manually_confirmed", "stable_alias_approved")
+        )
+        materialization_authorized = manual_confirmed or (
+            independent_non_ai and (explicit_context or strong_cross_script)
+        )
+        payload.update(
+            {
+                "unknown_role_bridge_candidate": True,
+                "unknown_role_candidate_origin": "llm_must_link",
+                "unknown_role_materialization_authorized": materialization_authorized,
+                "manual_confirmed": manual_confirmed,
+                "independent_non_ai_sources": independent_non_ai,
+                "explicit_compatible_context": explicit_context,
+                "cross_script_observed": cross_script,
+                "strong_cross_script": strong_cross_script,
+            }
+        )
+        if not materialization_authorized:
+            payload["review_only"] = True
+            payload["review_reason"] = "unknown_role_llm_same_requires_independent_corroboration"
+            return True, None, payload
     short_without_context = (
         not (left_context or right_context)
         and (
@@ -3047,24 +3107,6 @@ def _llm_must_link_guard(
             payload["review_reason"] = "same_scope_cross_script_canonical_bridge"
             return True, None, payload
         return False, "ambiguous_short_without_work_context", payload
-    if "unknown" in {left.role_hint, right.role_hint}:
-        independent_non_ai = bool(
-            not signal_is_ai_origin(left)
-            and not signal_is_ai_origin(right)
-            and left.provider
-            and right.provider
-            and left.provider != right.provider
-        )
-        explicit_context = bool(context.status == "compatible" and context.left_context and context.right_context)
-        cross_script = _script_family(left.display_value) != _script_family(right.display_value)
-        manual_confirmed = any(
-            bool((signal.evidence_payload or {}).get(key))
-            for signal in (left, right)
-            for key in ("manual_confirmation", "manually_confirmed", "stable_alias_approved")
-        )
-        if not (manual_confirmed or independent_non_ai or explicit_context or cross_script):
-            payload["review_only"] = True
-            payload["review_reason"] = "unknown_role_llm_same_requires_corroboration"
     return True, None, payload
 
 
@@ -3131,7 +3173,7 @@ def edges_from_llm_judgments(
                     evidence_source="bounded_llm_adjudication",
                     status=status,
                     reason_code="llm_must_link_source_layer_evidence",
-                    union_allowed=True,
+                    union_allowed=status == "active",
                     payload={
                         "source_layer_only": True,
                         "llm_judgment_id": row.get("judgment_id"),
@@ -4073,6 +4115,32 @@ def resolve_source_concepts(
     unknown_bridge_candidates = [
         edge for edge in edge_candidates if bool((edge.payload or {}).get("unknown_role_bridge_candidate"))
     ]
+    deterministic_unknown_candidates = [
+        edge
+        for edge in unknown_bridge_candidates
+        if (edge.payload or {}).get("unknown_role_candidate_origin") == "deterministic"
+    ]
+    llm_unknown_candidates = [
+        edge
+        for edge in unknown_bridge_candidates
+        if (edge.payload or {}).get("unknown_role_candidate_origin") == "llm_must_link"
+    ]
+    materialized_unknown_candidates = [edge for edge in unknown_bridge_candidates if _edge_should_materialize(edge)]
+    unknown_corroboration_distribution = {
+        "manual_confirmed_count": sum(bool((edge.payload or {}).get("manual_confirmed")) for edge in unknown_bridge_candidates),
+        "independent_non_ai_sources_count": sum(
+            bool((edge.payload or {}).get("independent_non_ai_sources")) for edge in unknown_bridge_candidates
+        ),
+        "explicit_compatible_context_count": sum(
+            bool((edge.payload or {}).get("explicit_compatible_context")) for edge in unknown_bridge_candidates
+        ),
+        "cross_script_observed_count": sum(
+            bool((edge.payload or {}).get("cross_script_observed")) for edge in unknown_bridge_candidates
+        ),
+        "strong_cross_script_count": sum(
+            bool((edge.payload or {}).get("strong_cross_script")) for edge in unknown_bridge_candidates
+        ),
+    }
     review_overlay_edges = [edge for edge in edge_candidates if edge.status != "active" or not edge.union_allowed]
     summary = {
         "run_id": run_id,
@@ -4102,7 +4170,15 @@ def resolve_source_concepts(
         "deterministic_hard_conflict_in_materialized_component_count": len(hard_negative_same_component) - len(llm_cannot_same_component),
         "transitive_cannot_violation_count": len(hard_negative_same_component),
         "unknown_role_bridge_candidate_count_before": len(unknown_bridge_candidates),
-        "unknown_role_bridge_materialized_count_after": sum(_edge_should_materialize(edge) for edge in unknown_bridge_candidates),
+        "deterministic_unknown_role_candidate_count": len(deterministic_unknown_candidates),
+        "llm_unknown_role_must_link_candidate_count": len(llm_unknown_candidates),
+        "unknown_role_bridge_materialized_count_after": len(materialized_unknown_candidates),
+        "unknown_role_review_only_count": sum(not _edge_should_materialize(edge) for edge in unknown_bridge_candidates),
+        "unauthorized_unknown_role_materialization_count": sum(
+            not bool((edge.payload or {}).get("unknown_role_materialization_authorized"))
+            for edge in materialized_unknown_candidates
+        ),
+        "unknown_role_corroboration_distribution": unknown_corroboration_distribution,
         "undermerge_violation_count": sum(1 for row in undermerge_review if row.get("violation")),
         "overmerge_violation_count": sum(1 for row in overmerge_review if row.get("violation")),
         "context_conflict_active_merge_count": sum(1 for row in context_conflict_review if row.get("violation")),

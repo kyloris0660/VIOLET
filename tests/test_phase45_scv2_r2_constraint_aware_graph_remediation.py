@@ -35,9 +35,10 @@ def _signal(
     media_id: int | None = None,
     record_id: int | None = None,
     work_context: str | None = None,
+    canonical: str | None = None,
     payload: dict | None = None,
 ) -> SourceConceptSignalDraft:
-    canonical = value.casefold().replace(" ", "_")
+    canonical_key = canonical or value.casefold().replace(" ", "_")
     return SourceConceptSignalDraft(
         signal_key=key,
         origin_type="normal_media_tag",
@@ -49,8 +50,8 @@ def _signal(
         source_record_id=str(record_id) if record_id is not None else None,
         raw_value=value,
         display_value=value,
-        normalized_key=canonical,
-        canonical_key=canonical,
+        normalized_key=canonical_key,
+        canonical_key=canonical_key,
         role_hint=role,
         work_context_key=work_context,
         parenthetical_base=None,
@@ -110,6 +111,164 @@ def test_unknown_role_defaults_to_review_overlay() -> None:
     assert edges and all(not edge.union_allowed for edge in edges)
     assert result.summary["unknown_role_bridge_candidate_count_before"] >= 1
     assert result.summary["unknown_role_bridge_materialized_count_after"] == 0
+
+
+def test_llm_unknown_role_cross_script_alone_stays_review_only_and_is_diagnosed() -> None:
+    signals = [
+        _signal(
+            "unknown",
+            "神里綾華",
+            role="unknown",
+            provider="source_a",
+            record_id=1,
+            canonical="kamisato_ayaka",
+        ),
+        _signal(
+            "known",
+            "Kamisato Ayaka",
+            role="character",
+            provider="source_a",
+            record_id=1,
+            canonical="kamisato_ayaka",
+        ),
+    ]
+    judgments = [
+        {
+            "left_signal_key": "unknown",
+            "right_signal_key": "known",
+            "decision": "must_link",
+            "confidence": 0.99,
+            "judgment_id": "cached-same",
+        }
+    ]
+
+    result = resolve_source_concepts(signals, run_id="r2-test", llm_judgments=judgments)
+
+    llm_edge = next(edge for edge in result.edge_candidates if edge.edge_type == "llm_same_concept")
+    assert llm_edge.status == "needs_review"
+    assert llm_edge.union_allowed is False
+    assert llm_edge.payload["review_reason"] == "unknown_role_llm_same_requires_independent_corroboration"
+    assert llm_edge.payload["cross_script_observed"] is True
+    assert llm_edge.payload["independent_non_ai_sources"] is False
+    assert len(result.concepts) == 2
+    assert result.summary["llm_unknown_role_must_link_candidate_count"] == 1
+    assert result.summary["unknown_role_corroboration_distribution"]["cross_script_observed_count"] >= 1
+    assert result.summary["unauthorized_unknown_role_materialization_count"] == 0
+
+
+def test_llm_unknown_role_may_materialize_with_independent_evidence_and_explicit_context() -> None:
+    signals = [
+        _signal(
+            "unknown",
+            "identity_name",
+            role="unknown",
+            provider="source_a",
+            record_id=1,
+            work_context="work_a",
+        ),
+        _signal(
+            "known",
+            "identity_name",
+            role="character",
+            provider="source_b",
+            record_id=2,
+            work_context="work_a",
+        ),
+    ]
+    judgments = [
+        {
+            "left_signal_key": "unknown",
+            "right_signal_key": "known",
+            "decision": "must_link",
+            "confidence": 0.99,
+            "judgment_id": "cached-same",
+        }
+    ]
+
+    result = resolve_source_concepts(signals, run_id="r2-test", llm_judgments=judgments)
+
+    llm_edge = next(edge for edge in result.edge_candidates if edge.edge_type == "llm_same_concept")
+    assert llm_edge.status == "active"
+    assert llm_edge.union_allowed is True
+    assert llm_edge.payload["independent_non_ai_sources"] is True
+    assert llm_edge.payload["explicit_compatible_context"] is True
+    assert llm_edge.payload["unknown_role_materialization_authorized"] is True
+    assert len(result.concepts) == 1
+    assert result.summary["unauthorized_unknown_role_materialization_count"] == 0
+
+
+def _same_quality_for(
+    signals: list[SourceConceptSignalDraft],
+    judgment: dict,
+) -> tuple[dict, list[dict]]:
+    result = resolve_source_concepts(signals, run_id="r2-test", llm_judgments=[judgment])
+    return runner.same_and_cannot_quality(
+        result,
+        [judgment],
+        [{"reuse_level": "stable_pair_identity", "decision": "must_link"}],
+    )
+
+
+def test_judgment_derived_same_benchmark_keeps_downgraded_must_link() -> None:
+    signals = [
+        _signal("left", "different_identity_left", trust="medium_ai"),
+        _signal("right", "different_identity_right", trust="medium_ai"),
+    ]
+    judgment = {
+        "left_signal_key": "left",
+        "right_signal_key": "right",
+        "decision": "must_link",
+        "confidence": 0.5,
+        "judgment_id": "cached-same",
+    }
+
+    quality, _ledger = _same_quality_for(signals, judgment)
+
+    assert quality["same_benchmark_source"] == "compatible_reused_r1r_judgments"
+    assert quality["compatible_must_link_benchmark_count"] == 1
+    assert quality["retained_same_component_count"] == 0
+    assert quality["unexplained_same_regression_count"] == 1
+
+
+def test_judgment_derived_same_benchmark_classifies_valid_hard_constraint_split() -> None:
+    signals = [
+        _signal("left", "identity_name", role="character"),
+        _signal("right", "identity_name", role="work"),
+    ]
+    judgment = {
+        "left_signal_key": "left",
+        "right_signal_key": "right",
+        "decision": "must_link",
+        "confidence": 0.99,
+        "judgment_id": "cached-same",
+    }
+
+    quality, ledger = _same_quality_for(signals, judgment)
+
+    assert quality["intentionally_split_with_valid_constraint_count"] == 1
+    assert quality["unexplained_same_regression_count"] == 0
+    assert ledger[0]["blocker_classes"] == ["role_conflict"]
+
+
+def test_judgment_derived_same_benchmark_flags_split_without_blocker() -> None:
+    signals = [
+        _signal("left", "different_identity_left", trust="medium_ai"),
+        _signal("right", "different_identity_right", trust="medium_ai"),
+    ]
+    judgment = {
+        "left_signal_key": "left",
+        "right_signal_key": "right",
+        "decision": "must_link",
+        "confidence": 0.99,
+        "judgment_id": "cached-same",
+    }
+
+    quality, ledger = _same_quality_for(signals, judgment)
+
+    assert quality["compatible_must_link_benchmark_count"] == 1
+    assert quality["unexplained_same_regression_count"] == 1
+    assert quality["compatible_same_accounting_complete"] is True
+    assert ledger[0]["classification"] == "unexplained_same_regression"
 
 
 def test_data_aware_ambiguity_distinguishes_common_long_and_contextual_short_names() -> None:
@@ -230,6 +389,12 @@ def _passing_contract_summary() -> dict:
             "invalidated_count": 0,
             "genuinely_new_or_missing_pair_count": 12,
             "new_provider_call_count": 0,
+            "same_decision_counts": {
+                "all_existing_r1r": 3,
+                "compatible_proof_grade": 2,
+                "semantic_prior": 1,
+                "invalidated": 0,
+            },
         },
         "new_pair_adjudication": {
             "status": "blocked_llm_approval_required",
@@ -245,6 +410,7 @@ def _passing_contract_summary() -> dict:
             "direct_llm_cannot_pair_in_materialized_component_count": 0,
             "deterministic_hard_conflict_in_materialized_component_count": 0,
             "transitive_cannot_violation_count": 0,
+            "unauthorized_unknown_role_materialization_count": 0,
         },
         "baseline_metrics": {
             "concept_total": 2767,
@@ -268,6 +434,7 @@ def _passing_contract_summary() -> dict:
             "route_metrics_recomputed": True,
             "meaningful_structural_improvement": True,
             "known_same_recall_protected": True,
+            "compatible_same_accounting_complete": True,
             "constraint_safety_target_met": True,
             "fixed_evidence_preserved": True,
             "known_same_constraint_regression": False,
@@ -285,6 +452,26 @@ def _passing_contract_summary() -> dict:
             ),
             "known_same_regression_count": 0,
             "same_pair_reason_ledger_count": 0,
+            "same_benchmark_source": "compatible_reused_r1r_judgments",
+            "same_benchmark_constructed_from_current_output": False,
+            "same_benchmark_compatibility_policy": "exact_or_stable_pair_identity_only;semantic_prior_excluded",
+            "all_existing_r1r_same_decision_count": 3,
+            "compatible_must_link_benchmark_count": 2,
+            "semantic_prior_same_decision_count": 1,
+            "invalidated_same_decision_count": 0,
+            "retained_same_component_count": 2,
+            "intentionally_split_with_valid_constraint_count": 0,
+            "unexplained_same_regression_count": 0,
+            "missing_signal_or_pair_count": 0,
+            "same_benchmark_accounting_total_count": 2,
+            "intentionally_split_reason_ledger_count": 0,
+            "split_same_reason_ledger_count": 0,
+        },
+        "evidence_version_boundary": {
+            "resolver_evidence_code_sha": "a" * 40,
+            "report_commit_parent_sha": "a" * 40,
+            "post_evidence_resolver_code_changed": False,
+            "report_only_commit": True,
         },
         "public_redaction": {"passed": True},
         "review_pack": {
@@ -454,6 +641,79 @@ def test_r2_narrow_target_does_not_require_broad_route_quality_improvement() -> 
         summary["graph_invariants"],
         summary["quality_evaluation"],
     ) == "target_met_constraint_aware_r2"
+
+
+def test_r2_contract_enforces_judgment_derived_same_accounting_equality() -> None:
+    summary = _passing_contract_summary()
+    summary["quality_evaluation"]["same_benchmark_accounting_total_count"] = 1
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_same_benchmark_accounting_mismatch" in {error.code for error in result.errors}
+
+
+def test_r2_contract_rejects_unexplained_same_regression() -> None:
+    summary = _passing_contract_summary()
+    quality = summary["quality_evaluation"]
+    quality["retained_same_component_count"] = 1
+    quality["unexplained_same_regression_count"] = 1
+    quality["split_same_reason_ledger_count"] = 1
+    quality["same_benchmark_accounting_total_count"] = 2
+    quality["known_same_constraint_regression"] = True
+    quality["known_same_recall_protected"] = False
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_unexplained_same_regression" in {error.code for error in result.errors}
+
+
+def test_r2_contract_rejects_missing_intentional_split_reason_ledger() -> None:
+    summary = _passing_contract_summary()
+    quality = summary["quality_evaluation"]
+    quality["retained_same_component_count"] = 1
+    quality["intentionally_split_with_valid_constraint_count"] = 1
+    quality["intentionally_split_reason_ledger_count"] = 0
+    quality["split_same_reason_ledger_count"] = 0
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_same_split_reason_ledger_incomplete" in {error.code for error in result.errors}
+
+
+def test_r2_contract_rejects_output_derived_same_benchmark() -> None:
+    summary = _passing_contract_summary()
+    summary["quality_evaluation"]["same_benchmark_constructed_from_current_output"] = True
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_same_benchmark_source_invalid" in {error.code for error in result.errors}
+
+
+def test_r2_contract_rejects_unauthorized_unknown_role_materialization() -> None:
+    summary = _passing_contract_summary()
+    summary["graph_invariants"]["unauthorized_unknown_role_materialization_count"] = 1
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_graph_invariant_failed" in {error.code for error in result.errors}
+
+
+def test_r2_contract_requires_non_ambiguous_evidence_version_boundary() -> None:
+    summary = _passing_contract_summary()
+    summary["head_sha"] = "b" * 40
+    summary["evidence_version_boundary"]["report_commit_parent_sha"] = "c" * 40
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    codes = {error.code for error in result.errors}
+    assert result.passed is False
+    assert "r2_evidence_version_sha_invalid" in codes
+    assert "r2_ambiguous_top_level_head_sha_present" in codes
 
 
 def test_r2_contract_fails_closed_on_review_union_cannot_or_upstream_change() -> None:

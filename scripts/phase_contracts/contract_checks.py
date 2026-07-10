@@ -76,6 +76,7 @@ R2_REQUIRED_QUALITY_FLAGS: dict[str, bool] = {
     "route_metrics_recomputed": True,
     "meaningful_structural_improvement": True,
     "known_same_recall_protected": True,
+    "compatible_same_accounting_complete": True,
     "constraint_safety_target_met": True,
     "fixed_evidence_preserved": True,
     "known_same_constraint_regression": False,
@@ -2185,6 +2186,7 @@ def _check_r2_source_concept_graph_remediation(
             "direct_llm_cannot_pair_in_materialized_component_count",
             "deterministic_hard_conflict_in_materialized_component_count",
             "transitive_cannot_violation_count",
+            "unauthorized_unknown_role_materialization_count",
         ):
             if _as_int(graph.get(key), default=-1) != 0:
                 result.fail(
@@ -2294,10 +2296,156 @@ def _check_r2_source_concept_graph_remediation(
                 path="quality_evaluation.quality_interpretation",
                 actual="<missing>" if interpretation is MISSING else interpretation,
             )
-        regressions = _as_int(quality.get("known_same_regression_count"))
-        ledger = _as_int(quality.get("same_pair_reason_ledger_count"))
-        if regressions > ledger:
-            result.fail("r2_same_pair_regression_unaccounted", "Every intentionally split compatible same pair needs a private reason-ledger entry.", path="quality_evaluation", actual={"regressions": regressions, "ledger": ledger})
+        integer_fields = (
+            "all_existing_r1r_same_decision_count",
+            "compatible_must_link_benchmark_count",
+            "semantic_prior_same_decision_count",
+            "invalidated_same_decision_count",
+            "retained_same_component_count",
+            "intentionally_split_with_valid_constraint_count",
+            "unexplained_same_regression_count",
+            "missing_signal_or_pair_count",
+            "same_benchmark_accounting_total_count",
+            "intentionally_split_reason_ledger_count",
+            "split_same_reason_ledger_count",
+        )
+        invalid_integer_fields = [
+            key for key in integer_fields if type(quality.get(key, MISSING)) is not int or quality.get(key, -1) < 0
+        ]
+        if invalid_integer_fields:
+            result.fail(
+                "r2_same_benchmark_field_missing_or_invalid",
+                "R2 same-benchmark counts must be explicit non-negative integers.",
+                path="quality_evaluation",
+                actual=invalid_integer_fields,
+            )
+        benchmark = _as_int(quality.get("compatible_must_link_benchmark_count"), default=-1)
+        retained = _as_int(quality.get("retained_same_component_count"), default=-1)
+        intentional = _as_int(quality.get("intentionally_split_with_valid_constraint_count"), default=-1)
+        unexplained = _as_int(quality.get("unexplained_same_regression_count"), default=-1)
+        accounted = _as_int(quality.get("same_benchmark_accounting_total_count"), default=-1)
+        split_ledger = _as_int(quality.get("split_same_reason_ledger_count"), default=-1)
+        intentional_ledger = _as_int(quality.get("intentionally_split_reason_ledger_count"), default=-1)
+        if benchmark != retained + intentional + unexplained or accounted != benchmark:
+            result.fail(
+                "r2_same_benchmark_accounting_mismatch",
+                "Compatible must-link judgments must balance exactly across retained, intentionally constrained, and unexplained outcomes.",
+                path="quality_evaluation",
+                expected="benchmark = retained + intentional + unexplained",
+                actual={
+                    "benchmark": benchmark,
+                    "retained": retained,
+                    "intentional": intentional,
+                    "unexplained": unexplained,
+                    "accounted": accounted,
+                },
+            )
+        if unexplained != 0:
+            result.fail(
+                "r2_unexplained_same_regression",
+                "R2 target cannot contain an unexplained compatible must-link split.",
+                path="quality_evaluation.unexplained_same_regression_count",
+                expected=0,
+                actual=unexplained,
+            )
+        if intentional_ledger != intentional or split_ledger != intentional + unexplained:
+            result.fail(
+                "r2_same_split_reason_ledger_incomplete",
+                "Every split compatible must-link judgment requires a private reason-ledger entry, including its blocker class.",
+                path="quality_evaluation",
+                actual={
+                    "intentional": intentional,
+                    "unexplained": unexplained,
+                    "intentional_ledger": intentional_ledger,
+                    "split_ledger": split_ledger,
+                },
+            )
+        if str(quality.get("same_benchmark_source") or "") != "compatible_reused_r1r_judgments" or quality.get(
+            "same_benchmark_constructed_from_current_output", MISSING
+        ) is not False:
+            result.fail(
+                "r2_same_benchmark_source_invalid",
+                "R2 must construct its proof-grade same benchmark from compatible reused R1R judgments, never current active output.",
+                path="quality_evaluation",
+            )
+        if str(quality.get("same_benchmark_compatibility_policy") or "") != (
+            "exact_or_stable_pair_identity_only;semantic_prior_excluded"
+        ):
+            result.fail(
+                "r2_same_benchmark_compatibility_policy_invalid",
+                "Semantic-prior-only same judgments must remain outside the proof-grade benchmark.",
+                path="quality_evaluation.same_benchmark_compatibility_policy",
+            )
+        all_same = _as_int(quality.get("all_existing_r1r_same_decision_count"), default=-1)
+        semantic_same = _as_int(quality.get("semantic_prior_same_decision_count"), default=-1)
+        invalidated_same = _as_int(quality.get("invalidated_same_decision_count"), default=-1)
+        if all_same != benchmark + semantic_same + invalidated_same:
+            result.fail(
+                "r2_all_same_decision_accounting_mismatch",
+                "All existing R1R same decisions must be classified as compatible proof-grade, semantic prior, or invalidated.",
+                path="quality_evaluation",
+                actual={
+                    "all": all_same,
+                    "compatible": benchmark,
+                    "semantic_prior": semantic_same,
+                    "invalidated": invalidated_same,
+                },
+            )
+        llm_same_counts = llm.get("same_decision_counts") if isinstance(llm.get("same_decision_counts"), Mapping) else {}
+        expected_same_counts = {
+            "all_existing_r1r": all_same,
+            "compatible_proof_grade": benchmark,
+            "semantic_prior": semantic_same,
+            "invalidated": invalidated_same,
+        }
+        if any(
+            type(llm_same_counts.get(key, MISSING)) is not int or llm_same_counts.get(key) != expected
+            for key, expected in expected_same_counts.items()
+        ):
+            result.fail(
+                "r2_same_benchmark_judgment_source_mismatch",
+                "The quality benchmark must match same-decision counts computed while loading R1R judgments.",
+                path="llm_judgment_accounting.same_decision_counts",
+                expected=expected_same_counts,
+                actual=dict(llm_same_counts),
+            )
+
+        evidence_boundary = _get(summary, "evidence_version_boundary", MISSING)
+        if not isinstance(evidence_boundary, Mapping):
+            result.fail(
+                "r2_evidence_version_boundary_missing",
+                "R2 target requires non-ambiguous resolver and report commit evidence.",
+                path="evidence_version_boundary",
+            )
+        else:
+            resolver_sha = str(evidence_boundary.get("resolver_evidence_code_sha") or "")
+            report_parent_sha = str(evidence_boundary.get("report_commit_parent_sha") or "")
+            if not re.fullmatch(r"[0-9a-f]{40}", resolver_sha) or report_parent_sha != resolver_sha:
+                result.fail(
+                    "r2_evidence_version_sha_invalid",
+                    "The final report parent must be the exact resolver code revision executed for evidence.",
+                    path="evidence_version_boundary",
+                    actual={"resolver_evidence_code_sha": resolver_sha, "report_commit_parent_sha": report_parent_sha},
+                )
+            for key, expected in (
+                ("post_evidence_resolver_code_changed", False),
+                ("report_only_commit", True),
+            ):
+                if type(evidence_boundary.get(key, MISSING)) is not bool or evidence_boundary.get(key) is not expected:
+                    result.fail(
+                        "r2_evidence_version_flag_missing_or_invalid",
+                        "R2 target requires explicit post-evidence code and report-only commit flags.",
+                        path=f"evidence_version_boundary.{key}",
+                        expected=expected,
+                        actual=evidence_boundary.get(key, "<missing>"),
+                    )
+        if _has(summary, "head_sha"):
+            result.fail(
+                "r2_ambiguous_top_level_head_sha_present",
+                "R2 must not retain an ambiguous generic head_sha after resolver evidence regeneration.",
+                path="head_sha",
+                actual=_get(summary, "head_sha", None),
+            )
 
     if target:
         if not _as_bool(_get(summary, "public_redaction.passed", False)):

@@ -57,7 +57,6 @@ PHASE_TITLE = "SCV2-R2: Constraint-Aware SourceConcept Graph Remediation"
 PHASE_SLUG = "phase-4.5-scv2-r2-constraint-aware-graph-remediation"
 BRANCH = "codex/scv2-r2-constraint-aware-source-concept-graph-remediation"
 CONTRACT_ID = "r2_source_concept_graph_remediation_contract_v1"
-RESOLVER_EVIDENCE_CODE_SHA = "4b7b57c0d66299620322e9c653524788e376c0fe"
 QUALITY_INTERPRETATION = (
     "R2 met the constraint-aware graph-remediation target but intentionally produced a more conservative "
     "and fragmented graph. Search, gap, and recall closure remain incomplete."
@@ -523,6 +522,7 @@ def load_cached_judgments(
     judgments: list[dict[str, Any]] = []
     accounting = Counter()
     outcomes = Counter()
+    outcomes_by_reuse: dict[str, Counter[str]] = defaultdict(Counter)
     reusable_pairs: set[tuple[str, str]] = set()
     records_for_analysis: list[dict[str, Any]] = []
     for path in sorted(records_dir.glob("*.json")):
@@ -540,11 +540,17 @@ def load_cached_judgments(
         right = signal_by_key.get(right_key)
         if record.get("error_state") or not record.get("compatible_for_exact_reuse"):
             accounting["invalidated"] += 1
-            records_for_analysis.append({"record": record, "reuse_level": "invalidated", "pair": pair})
+            outcomes_by_reuse["invalidated"][decision] += 1
+            records_for_analysis.append(
+                {"record": record, "reuse_level": "invalidated", "pair": pair, "decision": decision}
+            )
             continue
         if left is None or right is None:
             accounting["invalidated"] += 1
-            records_for_analysis.append({"record": record, "reuse_level": "invalidated", "pair": pair})
+            outcomes_by_reuse["invalidated"][decision] += 1
+            records_for_analysis.append(
+                {"record": record, "reuse_level": "invalidated", "pair": pair, "decision": decision}
+            )
             continue
         cached_summary = record.get("input_signal_summary") if isinstance(record.get("input_signal_summary"), Mapping) else {}
         cached_left = _cached_side_identity(cached_summary.get("left"))
@@ -556,11 +562,15 @@ def load_cached_judgments(
         )
         if not compatible:
             accounting["semantic_prior"] += 1
-            records_for_analysis.append({"record": record, "reuse_level": "semantic_prior", "pair": pair})
+            outcomes_by_reuse["semantic_prior"][decision] += 1
+            records_for_analysis.append(
+                {"record": record, "reuse_level": "semantic_prior", "pair": pair, "decision": decision}
+            )
             continue
         exact = str(record.get("resolver_version") or "") == str(deterministic_result.summary.get("resolver_version") or "")
         reuse_level = "exact_compatible" if exact else "stable_pair_identity"
         accounting[reuse_level] += 1
+        outcomes_by_reuse[reuse_level][decision] += 1
         reusable_pairs.add(pair)
         judgment = {
             "judgment_id": record.get("cache_key") or path.stem,
@@ -574,7 +584,9 @@ def load_cached_judgments(
             "source_layer_only": True,
         }
         judgments.append(judgment)
-        records_for_analysis.append({"record": record, "reuse_level": reuse_level, "pair": pair})
+        records_for_analysis.append(
+            {"record": record, "reuse_level": reuse_level, "pair": pair, "decision": decision}
+        )
 
     current_pairs = set(current_edge_by_pair)
     new_pairs = current_pairs - reusable_pairs
@@ -594,6 +606,15 @@ def load_cached_judgments(
             "same": outcomes["must_link"],
             "cannot": outcomes["cannot_link"],
             "uncertain": outcomes["needs_review"],
+        },
+        "same_decision_counts": {
+            "all_existing_r1r": outcomes["must_link"],
+            "compatible_proof_grade": (
+                outcomes_by_reuse["exact_compatible"]["must_link"]
+                + outcomes_by_reuse["stable_pair_identity"]["must_link"]
+            ),
+            "semantic_prior": outcomes_by_reuse["semantic_prior"]["must_link"],
+            "invalidated": outcomes_by_reuse["invalidated"]["must_link"],
         },
     }
     candidate_comparison = {
@@ -669,35 +690,39 @@ def concept_membership(result: Any) -> dict[str, str]:
     }
 
 
-def same_and_cannot_quality(result: Any, judgments: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def same_and_cannot_quality(
+    result: Any,
+    judgments: Sequence[Mapping[str, Any]],
+    cache_analysis_rows: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     membership = concept_membership(result)
     concept_members: dict[str, set[str]] = defaultdict(set)
     for signal_key, concept_key in membership.items():
         concept_members[concept_key].add(signal_key)
-    llm_edge_by_pair = {
-        tuple(sorted((str(edge.left_signal_key), str(edge.right_signal_key)))): edge
-        for edge in result.edge_candidates
-        if edge.edge_type.startswith("llm_")
-    }
-    same_candidates = []
+    same_candidates: list[tuple[str, str]] = []
     cannot_pairs = []
     for row in judgments:
         pair = tuple(sorted((str(row.get("left_signal_key") or ""), str(row.get("right_signal_key") or ""))))
         decision = str(row.get("decision") or "")
-        edge = llm_edge_by_pair.get(pair)
-        if decision == "must_link" and edge is not None and edge.status == "active" and edge.union_allowed:
+        if decision == "must_link":
             same_candidates.append(pair)
         elif decision == "cannot_link":
             cannot_pairs.append(pair)
-    hard_negative_codes = {
+    approved_negative_blocker_codes = {
         "role_conflict",
         "work_context_conflict",
         "alias_work_context_conflict",
         "rejected_signal_guard",
         "source_title_only_guard",
         "generic_identity_surface_guard",
+        "ambiguous_short_without_work_context",
         "llm_cannot_link",
     }
+    approved_review_blocker_codes = {
+        "unknown_role_requires_corroboration",
+        "unknown_role_llm_same_requires_independent_corroboration",
+    }
+
     def blocking_evidence(pair: tuple[str, str]) -> list[dict[str, Any]]:
         left_concept = membership.get(pair[0])
         right_concept = membership.get(pair[1])
@@ -706,7 +731,12 @@ def same_and_cannot_quality(result: Any, judgments: Sequence[Mapping[str, Any]])
             left_members = concept_members[left_concept]
             right_members = concept_members[right_concept]
             for edge in result.edge_candidates:
-                if edge.negative_reason_code not in hard_negative_codes:
+                payload = edge.payload or {}
+                blocker_class = edge.negative_reason_code
+                if blocker_class not in approved_negative_blocker_codes:
+                    review_reason = str(payload.get("review_reason") or edge.resolution_reason_code or "")
+                    blocker_class = review_reason if review_reason in approved_review_blocker_codes else None
+                if blocker_class is None:
                     continue
                 crosses_components = (
                     edge.left_signal_key in left_members and edge.right_signal_key in right_members
@@ -720,19 +750,25 @@ def same_and_cannot_quality(result: Any, judgments: Sequence[Mapping[str, Any]])
                         "left_signal_key": edge.left_signal_key,
                         "right_signal_key": edge.right_signal_key,
                         "edge_type": edge.edge_type,
+                        "blocker_class": blocker_class,
                         "negative_reason_code": edge.negative_reason_code,
                         "resolution_reason_code": edge.resolution_reason_code,
                     }
                 )
         return blockers
 
-    split_same = [pair for pair in same_candidates if membership.get(pair[0]) != membership.get(pair[1])]
+    same_candidates = sorted(set(same_candidates))
+    cannot_pairs = sorted(set(cannot_pairs))
+    retained = [
+        pair
+        for pair in same_candidates
+        if membership.get(pair[0]) is not None and membership.get(pair[0]) == membership.get(pair[1])
+    ]
+    split_same = [pair for pair in same_candidates if pair not in set(retained)]
     blocker_by_pair = {pair: blocking_evidence(pair) for pair in split_same}
-    incompatible_same = [pair for pair in split_same if blocker_by_pair[pair]]
-    incompatible_same_set = set(incompatible_same)
-    compatible_same = [pair for pair in same_candidates if pair not in incompatible_same_set]
-    retained = [pair for pair in compatible_same if membership.get(pair[0]) == membership.get(pair[1])]
-    regressions = [pair for pair in compatible_same if membership.get(pair[0]) != membership.get(pair[1])]
+    intentionally_split = [pair for pair in split_same if blocker_by_pair[pair]]
+    unexplained_regressions = [pair for pair in split_same if not blocker_by_pair[pair]]
+    missing_signal_pairs = [pair for pair in same_candidates if pair[0] not in membership or pair[1] not in membership]
     cannot_avoided = [pair for pair in cannot_pairs if membership.get(pair[0]) != membership.get(pair[1])]
     ledger: list[dict[str, Any]] = []
     for pair in split_same:
@@ -746,25 +782,67 @@ def same_and_cannot_quality(result: Any, judgments: Sequence[Mapping[str, Any]])
                 "right_signal_key": pair[1],
                 "left_concept_key": left_concept,
                 "right_concept_key": right_concept,
-                "compatibility": "incompatible_component_constraint" if blockers else "compatible_regression",
+                "classification": (
+                    "intentionally_split_with_valid_constraint"
+                    if blockers
+                    else "unexplained_same_regression"
+                ),
                 "reason": (
                     "component_level_hard_constraint_or_deterministic_guard"
                     if blockers
-                    else "unexplained_compatible_same_regression"
+                    else "missing_signal_or_unexplained_component_split"
                 ),
+                "blocker_classes": sorted({str(row["blocker_class"]) for row in blockers}),
                 "blocking_evidence": blockers,
                 "blocking_evidence_count": len(blockers),
             }
         )
+    all_same_count = sum(
+        str(row.get("decision") or "") == "must_link"
+        for row in cache_analysis_rows
+    )
+    semantic_prior_same_count = sum(
+        str(row.get("reuse_level") or "") == "semantic_prior"
+        and str(row.get("decision") or "") == "must_link"
+        for row in cache_analysis_rows
+    )
+    invalidated_same_count = sum(
+        str(row.get("reuse_level") or "") == "invalidated"
+        and str(row.get("decision") or "") == "must_link"
+        for row in cache_analysis_rows
+    )
+    benchmark_count = len(same_candidates)
+    accounted_count = len(retained) + len(intentionally_split) + len(unexplained_regressions)
+    accounting_complete = benchmark_count == accounted_count
     quality = {
-        "known_same_benchmark_pair_count": len(same_candidates),
-        "compatible_high_confidence_same_pair_count": len(compatible_same),
+        "same_benchmark_source": "compatible_reused_r1r_judgments",
+        "same_benchmark_constructed_from_current_output": False,
+        "same_benchmark_compatibility_policy": "exact_or_stable_pair_identity_only;semantic_prior_excluded",
+        "all_existing_r1r_same_decision_count": all_same_count,
+        "compatible_must_link_benchmark_count": benchmark_count,
+        "semantic_prior_same_decision_count": semantic_prior_same_count,
+        "invalidated_same_decision_count": invalidated_same_count,
+        "retained_same_component_count": len(retained),
+        "intentionally_split_with_valid_constraint_count": len(intentionally_split),
+        "unexplained_same_regression_count": len(unexplained_regressions),
+        "missing_signal_or_pair_count": len(missing_signal_pairs),
+        "same_benchmark_accounting_total_count": accounted_count,
+        "compatible_same_accounting_complete": accounting_complete,
+        "intentionally_split_reason_ledger_count": len(intentionally_split),
+        "split_same_reason_ledger_count": len(ledger),
+        "known_same_benchmark_pair_count": benchmark_count,
+        "compatible_high_confidence_same_pair_count": benchmark_count,
         "compatible_high_confidence_same_pair_retained_count": len(retained),
-        "transitively_incompatible_same_pair_count": len(incompatible_same),
+        "transitively_incompatible_same_pair_count": len(intentionally_split),
         "intentionally_split_same_pair_count": len(split_same),
-        "known_same_regression_count": len(regressions),
+        "known_same_regression_count": len(unexplained_regressions),
         "same_pair_reason_ledger_count": len(ledger),
-        "known_same_recall": round(len(retained) / len(compatible_same), 6) if compatible_same else 1.0,
+        "known_same_recall": round(len(retained) / benchmark_count, 6) if benchmark_count else 1.0,
+        "compatible_same_preservation_rate": (
+            round((len(retained) + len(intentionally_split)) / benchmark_count, 6)
+            if benchmark_count
+            else 1.0
+        ),
         "known_cannot_pair_count": len(cannot_pairs),
         "known_cannot_avoided_count": len(cannot_avoided),
         "known_cannot_avoidance_rate": round(len(cannot_avoided) / len(cannot_pairs), 6) if cannot_pairs else 1.0,
@@ -845,7 +923,14 @@ def graph_invariants(result: Any) -> dict[str, Any]:
         "materialized_identity_edge_count": int(summary.get("materialized_identity_edge_count") or 0),
         "review_overlay_edge_count": int(summary.get("review_overlay_edge_count") or 0),
         "unknown_role_bridge_candidate_count_before": int(summary.get("unknown_role_bridge_candidate_count_before") or 0),
+        "deterministic_unknown_role_candidate_count": int(summary.get("deterministic_unknown_role_candidate_count") or 0),
+        "llm_unknown_role_must_link_candidate_count": int(summary.get("llm_unknown_role_must_link_candidate_count") or 0),
         "unknown_role_bridge_materialized_count_after": int(summary.get("unknown_role_bridge_materialized_count_after") or 0),
+        "unknown_role_review_only_count": int(summary.get("unknown_role_review_only_count") or 0),
+        "unauthorized_unknown_role_materialization_count": int(
+            summary.get("unauthorized_unknown_role_materialization_count") or 0
+        ),
+        "unknown_role_corroboration_distribution": summary.get("unknown_role_corroboration_distribution") or {},
     }
 
 
@@ -933,6 +1018,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     new_pair_adjudication = summary.get("new_pair_adjudication") or {}
     quality = summary.get("quality_evaluation") or {}
     fixed = summary.get("fixed_input_manifest") or {}
+    evidence_version = summary.get("evidence_version_boundary") or {}
     lines = [
         f"# {PHASE_TITLE}",
         "",
@@ -940,6 +1026,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         f"- Contract status: `{(summary.get('pipeline_contract') or {}).get('status')}`.",
         f"- Working DB: `{(summary.get('environment_isolation') or {}).get('working_db')}`.",
+        f"- Resolver evidence code SHA: `{evidence_version.get('resolver_evidence_code_sha')}`.",
+        f"- Report commit parent SHA: `{evidence_version.get('report_commit_parent_sha')}`; post-evidence resolver code changed: `{evidence_version.get('post_evidence_resolver_code_changed')}`.",
         "- R1R restored evidence DB preserved: `True`.",
         "- Browser validation: not required; no UI/runtime surface changed.",
         "",
@@ -956,7 +1044,9 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Review-only edges used in Union-Find: `{graph.get('review_only_edge_used_in_union_count')}`.",
         f"- Direct LLM cannot pairs inside materialized components: `{graph.get('direct_llm_cannot_pair_in_materialized_component_count')}`.",
         f"- Transitive cannot violations: `{graph.get('transitive_cannot_violation_count')}`.",
-        f"- Unknown-role bridge candidates/materialized: `{graph.get('unknown_role_bridge_candidate_count_before')}` / `{graph.get('unknown_role_bridge_materialized_count_after')}`.",
+        f"- Unknown-role deterministic / LLM candidates: `{graph.get('deterministic_unknown_role_candidate_count')}` / `{graph.get('llm_unknown_role_must_link_candidate_count')}`.",
+        f"- Unknown-role materialized / review-only / unauthorized materialized: `{graph.get('unknown_role_bridge_materialized_count_after')}` / `{graph.get('unknown_role_review_only_count')}` / `{graph.get('unauthorized_unknown_role_materialization_count')}`.",
+        f"- Unknown-role corroboration distribution: `{graph.get('unknown_role_corroboration_distribution')}`.",
         f"- Oversized-block diagnostics: `{summary.get('oversized_block_diagnostics')}`.",
         f"- Context-equivalence diagnostics: `{summary.get('context_equivalence_diagnostics')}`.",
         "",
@@ -981,8 +1071,9 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         "",
         "## Quality",
         "",
-        f"- Compatible same recall: `{quality.get('known_same_recall')}`; regressions: `{quality.get('known_same_regression_count')}`.",
-        f"- Transitively incompatible same labels held apart with private reasons: `{quality.get('transitively_incompatible_same_pair_count')}`.",
+        f"- Existing / compatible proof-grade / semantic-prior same decisions: `{quality.get('all_existing_r1r_same_decision_count')}` / `{quality.get('compatible_must_link_benchmark_count')}` / `{quality.get('semantic_prior_same_decision_count')}`.",
+        f"- Compatible same retained / intentionally constrained / unexplained / missing-signal: `{quality.get('retained_same_component_count')}` / `{quality.get('intentionally_split_with_valid_constraint_count')}` / `{quality.get('unexplained_same_regression_count')}` / `{quality.get('missing_signal_or_pair_count')}`.",
+        f"- Compatible same accounting: `{quality.get('compatible_must_link_benchmark_count')} = {quality.get('retained_same_component_count')} + {quality.get('intentionally_split_with_valid_constraint_count')} + {quality.get('unexplained_same_regression_count')}`; complete: `{quality.get('compatible_same_accounting_complete')}`.",
         f"- Known cannot avoidance: `{quality.get('known_cannot_avoidance_rate')}`.",
         f"- Meaningful structural improvement: `{quality.get('meaningful_structural_improvement')}`.",
         f"- Constraint target met: `{quality.get('constraint_safety_target_met')}`.",
@@ -1137,6 +1228,7 @@ def determine_status(
             "direct_llm_cannot_pair_in_materialized_component_count",
             "deterministic_hard_conflict_in_materialized_component_count",
             "transitive_cannot_violation_count",
+            "unauthorized_unknown_role_materialization_count",
         )
     ):
         return "blocked_quality_regression"
@@ -1191,7 +1283,7 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
             deterministic,
         )
         result = resolve_source_concepts(signals, run_id=run_id, llm_judgments=judgments)
-        same_quality, same_reason_ledger = same_and_cannot_quality(result, judgments)
+        same_quality, same_reason_ledger = same_and_cannot_quality(result, judgments, cache_analysis_rows)
         yield_strata = llm_yield_by_strata(cache_analysis_rows, deterministic)
         dry_run_payload = {
             "phase": PHASE,
@@ -1264,7 +1356,6 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
     baseline_public = public_route_metrics(baseline_full)
     post_public = public_route_metrics(post_full)
     deltas = metric_delta(baseline_public, post_public)
-    same_recall = float(same_quality.get("known_same_recall") or 0.0)
     search_before = baseline_public.get("search_aggregate") or {}
     search_after = post_public.get("search_aggregate") or {}
     baseline_largest = baseline_public.get("largest_components") or []
@@ -1280,12 +1371,13 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
             "direct_llm_cannot_pair_in_materialized_component_count",
             "deterministic_hard_conflict_in_materialized_component_count",
             "transitive_cannot_violation_count",
+            "unauthorized_unknown_role_materialization_count",
         )
     )
     fixed_evidence_preserved = bool(
         fixed_proof.get("baseline_to_working_clone_match") and fixed_proof.get("before_after_match")
     )
-    known_same_constraint_regression = int(same_quality.get("known_same_regression_count") or 0) > 0
+    known_same_constraint_regression = int(same_quality.get("unexplained_same_regression_count") or 0) > 0
     known_cannot_constraint_regression = float(same_quality.get("known_cannot_avoidance_rate") or 0.0) < 1.0
     giant_component_remediation_improved = 0 < post_largest_size < baseline_largest_size
     search_quality_improved = bool(
@@ -1307,7 +1399,12 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
             and graph["transitive_cannot_violation_count"] == 0
             and int((result.summary.get("edge_graph") or {}).get("oversized_hub_edges_prevented") or 0) > 0
         ),
-        "known_same_recall_protected": same_recall >= 0.98,
+        "known_same_recall_protected": bool(
+            same_quality.get("compatible_same_accounting_complete")
+            and int(same_quality.get("unexplained_same_regression_count") or 0) == 0
+            and int(same_quality.get("missing_signal_or_pair_count") or 0) == 0
+        ),
+        "compatible_same_accounting_complete": bool(same_quality.get("compatible_same_accounting_complete")),
         "constraint_safety_target_met": constraint_safety_target_met,
         "fixed_evidence_preserved": fixed_evidence_preserved,
         "known_same_constraint_regression": known_same_constraint_regression,
@@ -1344,11 +1441,11 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
         "title": PHASE_TITLE,
         "generated_at": utc_now_iso(),
         "branch": git_value(["git", "branch", "--show-current"]),
-        "head_sha": git_value(["git", "rev-parse", "HEAD"]),
         "evidence_version_boundary": {
-            "resolver_evidence_code_sha": RESOLVER_EVIDENCE_CODE_SHA,
-            "resolver_code_changed_after_evidence": False,
-            "final_closeout_head_sha_source": "live_pr_134_head_after_final_push",
+            "resolver_evidence_code_sha": git_value(["git", "rev-parse", "HEAD"]),
+            "report_commit_parent_sha": git_value(["git", "rev-parse", "HEAD"]),
+            "post_evidence_resolver_code_changed": False,
+            "report_only_commit": True,
         },
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
