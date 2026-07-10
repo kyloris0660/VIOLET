@@ -437,7 +437,7 @@ def _safe_public_artifact_label(raw_path: str, value: Any) -> bool:
         return True
     if WINDOWS_PATH_RE.search(text) or UNC_PATH_RE.search(text) or FILE_URI_RE.search(text) or POSIX_PRIVATE_PATH_RE.search(text):
         return False
-    return text.startswith("r1r-private-") or text in {
+    return text.startswith(("r1r-private-", "a1r-private-")) or text in {
         "[private]",
         "[blocked]",
         "source-concept-llm-adjudication-cache",
@@ -449,11 +449,20 @@ def _safe_public_context_value(raw_path: str, value: Any) -> bool:
     text = str(value or "").strip()
     if text and _redaction_findings_for_text(text, raw_path, kind="value"):
         return False
+    if ".route_authorization." in raw_path:
+        return True
     if isinstance(value, bool) and (
         key_name.endswith("_authorized")
+        or key_name.endswith("_started")
+        or key_name.endswith("_attempted")
         or key_name in {
             "a1r_still_required",
             "no_secret_leakage",
+            "broad_downstream_work",
+            "production_or_truth_work",
+            "raw_db_url_recorded",
+            "raw_local_paths_recorded_in_public",
+            "required_operator_approval_for_next_phase",
             "production_db_storage_source_roots_private_ledgers_used_as_fixtures",
         }
     ):
@@ -2112,6 +2121,189 @@ def _check_route_audit(_contract: PhaseContract, summary: Mapping[str, Any], res
         _check_review_pack_proof(review_pack, result, path_prefix="chatgpt_review_pack", require_zip=False)
         if len(result.errors) > before:
             result.fail("route_audit_route_approval_incomplete_review_pack", "Route approval requires complete review-pack proof, not generated=true alone.", path="chatgpt_review_pack")
+    if _is_a1r_route_audit(summary):
+        _check_a1r_route_audit(summary, result)
+
+
+def _is_a1r_route_audit(summary: Mapping[str, Any]) -> bool:
+    return str(_get(summary, "phase_slug", "") or "") == "phase-4.5-scv2-a1r-route-audit-after-r1r" or str(
+        _get(summary, "phase", "") or ""
+    ) == "4.5-SCV2-A1R"
+
+
+def _check_a1r_route_audit(summary: Mapping[str, Any], result: ContractCheckResult) -> None:
+    allowed_statuses = {
+        "blocked_invalid_r1r_evidence",
+        "blocked_missing_r1r_restored_snapshot",
+        "blocked_read_only_audit_failed",
+        "route_still_blocked",
+        "route_partially_approved_for_one_next_phase",
+        "route_ready_for_next_source_layer_phase",
+    }
+    status = str(result.status or "")
+    if status not in allowed_statuses:
+        result.fail(
+            "a1r_route_status_unknown",
+            "A1R route status must use the explicit A1R vocabulary.",
+            path="final_route_decision_status",
+            expected=sorted(allowed_statuses),
+            actual=status or None,
+        )
+
+    intake = _get(summary, "r1r_evidence_intake", {})
+    if not isinstance(intake, Mapping):
+        result.fail("a1r_r1r_intake_not_object", "A1R requires structured R1R evidence intake.", path="r1r_evidence_intake")
+    elif status != "blocked_invalid_r1r_evidence" and not _as_bool(intake.get("passed")):
+        result.fail(
+            "a1r_r1r_evidence_not_passed",
+            "A1R cannot recommend a route unless R1R evidence intake passed.",
+            path="r1r_evidence_intake.passed",
+            expected=True,
+            actual=intake.get("passed"),
+        )
+
+    route = _get(summary, "route_decision_matrix", {})
+    if not isinstance(route, Mapping):
+        result.fail("a1r_route_matrix_not_object", "A1R requires a route decision matrix.", path="route_decision_matrix")
+        route = {}
+    options = route.get("options") if isinstance(route, Mapping) else []
+    if not isinstance(options, list):
+        result.fail("a1r_route_options_not_list", "A1R route_decision_matrix.options must be a list.", path="route_decision_matrix.options")
+        options = []
+    recommended_options = [item for item in options if isinstance(item, Mapping) and _as_bool(item.get("recommended"))]
+    if len(recommended_options) > 1:
+        result.fail(
+            "a1r_multiple_recommended_next_phases",
+            "A1R may recommend no more than one next phase.",
+            path="route_decision_matrix.options",
+            expected="0 or 1 recommended option",
+            actual=len(recommended_options),
+        )
+
+    recommended_next = _get(summary, "recommended_next_phase", None)
+    status_recommends = status in {"route_partially_approved_for_one_next_phase", "route_ready_for_next_source_layer_phase"}
+    if status_recommends:
+        if len(recommended_options) != 1:
+            result.fail(
+                "a1r_recommended_status_without_exactly_one_option",
+                "A1R recommended statuses require exactly one recommended option.",
+                path="route_decision_matrix.options",
+                expected=1,
+                actual=len(recommended_options),
+            )
+        if not recommended_next:
+            result.fail(
+                "a1r_recommended_status_missing_next_phase",
+                "A1R recommended statuses require recommended_next_phase.",
+                path="recommended_next_phase",
+            )
+        elif recommended_options and str(recommended_options[0].get("candidate")) != str(recommended_next):
+            result.fail(
+                "a1r_recommended_next_phase_mismatch",
+                "recommended_next_phase must match the sole recommended route matrix option.",
+                path="recommended_next_phase",
+                expected=recommended_options[0].get("candidate"),
+                actual=recommended_next,
+            )
+        if not _get(summary, "required_contract_for_next_phase", None):
+            result.fail(
+                "a1r_recommended_next_contract_missing",
+                "A1R recommendations must name the required next contract.",
+                path="required_contract_for_next_phase",
+            )
+    elif recommended_next:
+        result.fail(
+            "a1r_blocked_status_has_next_phase",
+            "Blocked A1R statuses must not recommend a next phase.",
+            path="recommended_next_phase",
+            actual=recommended_next,
+        )
+
+    authorization = _get(summary, "route_authorization", {})
+    if not isinstance(authorization, Mapping):
+        result.fail("a1r_route_authorization_not_object", "A1R requires explicit route_authorization flags.", path="route_authorization")
+        authorization = {}
+    for key in (
+        "r2_started",
+        "px1_b_started",
+        "provider_2_started",
+        "scale_up_started",
+        "entity_bridge_started",
+        "source_concept_truth_promotion_authorized",
+        "entity_truth_authorized",
+        "media_tags_truth_authorized",
+        "production_write_authorized",
+    ):
+        if key not in authorization:
+            result.fail(
+                "a1r_route_authorization_flag_missing",
+                "A1R must explicitly keep downstream start/truth/production flags false.",
+                path=f"route_authorization.{key}",
+                expected=False,
+            )
+        elif _as_bool(authorization.get(key)):
+            result.fail(
+                "a1r_forbidden_downstream_authorization",
+                "A1R must not start or authorize broad downstream/truth/production work.",
+                path=f"route_authorization.{key}",
+                expected=False,
+                actual=authorization.get(key),
+            )
+
+    still_blocked = authorization.get("still_blocked_routes", [])
+    if recommended_options and isinstance(still_blocked, list):
+        non_recommended = {
+            str(item.get("candidate"))
+            for item in options
+            if isinstance(item, Mapping) and not _as_bool(item.get("recommended")) and item.get("candidate")
+        }
+        missing_blocked = sorted(non_recommended - {str(item) for item in still_blocked})
+        if missing_blocked:
+            result.fail(
+                "a1r_non_recommended_routes_not_blocked",
+                "A1R must list non-recommended routes as still blocked.",
+                path="route_authorization.still_blocked_routes",
+                expected=sorted(non_recommended),
+                actual=still_blocked,
+            )
+
+    safety = _get(summary, "safety", {})
+    if isinstance(safety, Mapping):
+        for key in (
+            "db_write_attempted",
+            "provider_calls_attempted",
+            "llm_provider_calls_attempted",
+            "media_import_attempted",
+            "classification_ai_localization_attempted",
+            "source_concept_resolver_persistence_attempted",
+            "entity_or_media_tags_truth_mutation_attempted",
+            "source_icloud_app_storage_mutation_attempted",
+            "cleanup_delete_reset_drop_truncate_attempted",
+            "r2_started",
+            "px1_b_started",
+            "provider_2_started",
+            "scale_up_started",
+            "entity_bridge_started",
+            "source_concept_truth_promotion_attempted",
+        ):
+            if _as_bool(safety.get(key)):
+                result.fail(
+                    "a1r_forbidden_work_attempted",
+                    "A1R is read-only route audit work and must not attempt writes/providers/import/truth/downstream starts.",
+                    path=f"safety.{key}",
+                    expected=False,
+                    actual=safety.get(key),
+                )
+
+    if not _as_bool(_get(summary, "public_redaction.passed", False)):
+        result.fail("a1r_public_redaction_not_passed", "A1R public redaction must pass.", path="public_redaction.passed")
+    review_pack = _get(summary, "chatgpt_review_pack", _get(summary, "review_pack", {}))
+    if not isinstance(review_pack, Mapping) or not _as_bool(review_pack.get("generated")) or not _as_bool(review_pack.get("integrity_passed")):
+        result.fail(
+            "a1r_review_pack_missing_or_failed",
+            "A1R must generate a review pack with integrity proof.",
+            path="chatgpt_review_pack",
+        )
 
 
 def _check_route_approved_source_concept_upstream(upstream: Mapping[str, Any], result: ContractCheckResult) -> None:

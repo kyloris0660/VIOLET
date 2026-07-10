@@ -6564,6 +6564,110 @@ def test_route_audit_requires_upstream_contract_passed_and_missing_stages_list()
     assert "route_approval_upstream_missing_required_stages_absent" in _error_codes(missing_absent_result)
 
 
+def _a1r_route_audit_summary(**overrides: object) -> dict:
+    options = [
+        {
+            "candidate": "SCV2-R2 targeted resolver / gap reduction",
+            "recommended": True,
+            "allowed_by_A1R": True,
+        },
+        {
+            "candidate": "Entity bridge preview",
+            "recommended": False,
+            "allowed_by_A1R": False,
+        },
+    ]
+    summary = _route_audit_summary(
+        phase="4.5-SCV2-A1R",
+        phase_slug="phase-4.5-scv2-a1r-route-audit-after-r1r",
+        final_route_decision_status="route_partially_approved_for_one_next_phase",
+        recommended_next_phase="SCV2-R2 targeted resolver / gap reduction",
+        required_contract_for_next_phase="focused SCV2-R2 resolver/gap contract",
+        r1r_evidence_intake={"passed": True},
+        upstream_pipeline_contract=_route_full_chain_upstream(),
+        public_redaction={"passed": True},
+        chatgpt_review_pack=_complete_review_pack_proof(integrity_passed=True),
+        route_decision_matrix={"options": options},
+        route_authorization={
+            "recommended_next_phase": "SCV2-R2 targeted resolver / gap reduction",
+            "still_blocked_routes": ["Entity bridge preview"],
+            "r2_started": False,
+            "px1_b_started": False,
+            "provider_2_started": False,
+            "scale_up_started": False,
+            "entity_bridge_started": False,
+            "source_concept_truth_promotion_authorized": False,
+            "entity_truth_authorized": False,
+            "media_tags_truth_authorized": False,
+            "production_write_authorized": False,
+        },
+        safety={
+            "db_write_attempted": False,
+            "provider_calls_attempted": False,
+            "llm_provider_calls_attempted": False,
+            "media_import_attempted": False,
+            "classification_ai_localization_attempted": False,
+            "source_concept_resolver_persistence_attempted": False,
+            "entity_or_media_tags_truth_mutation_attempted": False,
+            "source_icloud_app_storage_mutation_attempted": False,
+            "cleanup_delete_reset_drop_truncate_attempted": False,
+            "r2_started": False,
+            "px1_b_started": False,
+            "provider_2_started": False,
+            "scale_up_started": False,
+            "entity_bridge_started": False,
+            "source_concept_truth_promotion_attempted": False,
+        },
+    )
+    for key, value in overrides.items():
+        summary[key] = value
+    return summary
+
+
+def test_a1r_route_audit_contract_accepts_one_next_phase_recommendation() -> None:
+    result = check_phase_contract("route_audit_contract_v1", _a1r_route_audit_summary())
+
+    assert result.passed is True
+
+
+def test_a1r_route_audit_contract_rejects_multiple_recommended_next_phases() -> None:
+    summary = _a1r_route_audit_summary()
+    summary["route_decision_matrix"]["options"].append(
+        {
+            "candidate": "PX1-B additional Pixiv/source metadata extraction",
+            "recommended": True,
+            "allowed_by_A1R": True,
+        }
+    )
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.passed is False
+    assert "a1r_multiple_recommended_next_phases" in _error_codes(result)
+
+
+def test_a1r_route_audit_contract_requires_explicit_false_downstream_flags() -> None:
+    summary = _a1r_route_audit_summary()
+    summary["route_authorization"].pop("entity_bridge_started")
+    summary["safety"]["provider_calls_attempted"] = True
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.passed is False
+    codes = _error_codes(result)
+    assert "a1r_route_authorization_flag_missing" in codes
+    assert "a1r_forbidden_work_attempted" in codes
+
+
+def test_a1r_route_audit_contract_requires_r1r_intake_for_recommendation() -> None:
+    summary = _a1r_route_audit_summary(r1r_evidence_intake={"passed": False})
+
+    result = check_phase_contract("route_audit_contract_v1", summary)
+
+    assert result.passed is False
+    assert "a1r_r1r_evidence_not_passed" in _error_codes(result)
+
+
 def test_review_pack_contract_fails_missing_manifest_checksum_redaction_scan() -> None:
     result = check_phase_contract("review_pack_contract_v1", {"review_pack": {"generated": True}})
 

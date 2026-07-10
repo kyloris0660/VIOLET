@@ -1,0 +1,2627 @@
+{
+  "artifact_lifecycle": {
+    "artifacts": [
+      {
+        "classification": "phase-scoped operational runner",
+        "committed": true,
+        "path": "scripts/run_phase45_scv2_a1r_route_audit_after_r1r.py"
+      },
+      {
+        "classification": "phase-scoped validation test",
+        "committed": true,
+        "path": "tests/test_phase45_scv2_a1r_route_audit_after_r1r.py"
+      },
+      {
+        "classification": "public report / handoff / roadmap update",
+        "committed": true,
+        "path": "docs/reports/phase-4.5-scv2-a1r-route-audit-after-r1r.md",
+        "redacted": true
+      },
+      {
+        "classification": "public report / handoff / roadmap update",
+        "committed": true,
+        "path": "docs/reports/phase-4.5-scv2-a1r-route-audit-after-r1r-summary.json",
+        "redacted": true
+      },
+      {
+        "classification": "one-off local artifact / ignored output",
+        "committed": false,
+        "path": ".local_manifests/phase-4.5-scv2-a1r-route-audit-after-r1r"
+      }
+    ]
+  },
+  "baseline_main_sha": "7224a61aeaea32cd86a07e8dfd6cf6a6d7fcc0ef",
+  "branch": "codex/scv2-a1r-route-audit-after-r1r",
+  "chatgpt_review_pack": {
+    "checksum_count": 13,
+    "checksums_present": true,
+    "generated": true,
+    "integrity_hash": "33b0edf63dd88a388ae08332a09e105fa10d39e00f6951e3d50c2d721f197290",
+    "integrity_passed": true,
+    "manifest_checksum_count": 13,
+    "manifest_present": true,
+    "not_committed": true,
+    "public_report_copy_current": true,
+    "redaction_passed": true,
+    "redaction_scan_covers_final_file_set": true,
+    "zip_generated": true,
+    "zip_path_label": "a1r-private-review-pack"
+  },
+  "contract_result": {
+    "contract_id": "route_audit_contract_v1",
+    "passed": true,
+    "result": {
+      "contract_id": "route_audit_contract_v1",
+      "details": {
+        "executed_stages": [],
+        "executed_stages_normalized": [],
+        "forbidden_stages_present": [],
+        "missing_required_summary_fields": [],
+        "route_approved": false,
+        "route_decision_status": "route_partially_approved_for_one_next_phase"
+      },
+      "error_count": 0,
+      "errors": [],
+      "full_chain_complete_claimed": false,
+      "passed": true,
+      "route_approved": false,
+      "safe_to_merge_claimed": false,
+      "status": "route_partially_approved_for_one_next_phase",
+      "target_met_claimed": false,
+      "warning_count": 0,
+      "warnings": []
+    },
+    "returncode": 0
+  },
+  "current_baseline": {
+    "distinct_eligible_media_with_source_metadata": 531,
+    "distinct_media_with_source_metadata": 531,
+    "eligible_ai_tag_coverage": {
+      "covered": 3687,
+      "percent": 100.0,
+      "total": 3687
+    },
+    "eligible_media": 3687,
+    "eligible_policy": "content_class IN ('anime', 'unknown')",
+    "pixiv_source_metadata_rows": 568,
+    "source_concept_media_with_evidence_or_links": 2200,
+    "source_layer_media_with_signals": 2204,
+    "source_metadata_coverage_percent": 14.4,
+    "source_metadata_linked_to_media": 531,
+    "source_metadata_records": 671,
+    "source_records_linked_to_media": 531,
+    "total_media": 3750
+  },
+  "final_route_decision_status": "route_partially_approved_for_one_next_phase",
+  "gap_audit_old_a1_comparison": {
+    "a1r_total_gap_signals": 4443,
+    "bucket_comparisons": [
+      {
+        "a1r": 1569,
+        "bucket": "cjk_alias_without_english_romaji_sibling",
+        "delta": -78,
+        "old_a1": 1647
+      },
+      {
+        "a1r": 220,
+        "bucket": "danbooru_parenthetical_without_cjk_sibling",
+        "delta": -34,
+        "old_a1": 254
+      },
+      {
+        "a1r": 13,
+        "bucket": "high_frequency_source_tag_or_name_unlinked",
+        "delta": 0,
+        "old_a1": 13
+      },
+      {
+        "a1r": 7,
+        "bucket": "identity_tag_present_no_source_concept_alias",
+        "delta": 0,
+        "old_a1": 7
+      },
+      {
+        "a1r": 579,
+        "bucket": "needs_review_cluster_with_no_active_alias_path",
+        "delta": -61,
+        "old_a1": 640
+      },
+      {
+        "a1r": 541,
+        "bucket": "same_display_name_split_across_contexts",
+        "delta": -3,
+        "old_a1": 544
+      },
+      {
+        "a1r": 541,
+        "bucket": "same_normalized_alias_key_split_across_multiple_concepts",
+        "delta": -3,
+        "old_a1": 544
+      },
+      {
+        "a1r": 24,
+        "bucket": "source_assertion_present_not_connected",
+        "delta": 0,
+        "old_a1": 24
+      },
+      {
+        "a1r": 2,
+        "bucket": "source_name_present_no_source_concept_alias",
+        "delta": 0,
+        "old_a1": 2
+      },
+      {
+        "a1r": 947,
+        "bucket": "source_tag_present_no_source_concept_alias",
+        "delta": 0,
+        "old_a1": 947
+      }
+    ],
+    "improved_buckets": [
+      "cjk_alias_without_english_romaji_sibling",
+      "danbooru_parenthetical_without_cjk_sibling",
+      "needs_review_cluster_with_no_active_alias_path",
+      "same_display_name_split_across_contexts",
+      "same_normalized_alias_key_split_across_multiple_concepts"
+    ],
+    "old_a1_total_gap_signals": 4622,
+    "still_route_blocking_buckets": [
+      "cjk_alias_without_english_romaji_sibling",
+      "needs_review_cluster_with_no_active_alias_path",
+      "same_display_name_split_across_contexts",
+      "same_normalized_alias_key_split_across_multiple_concepts",
+      "source_tag_present_no_source_concept_alias"
+    ],
+    "total_delta": -179,
+    "unchanged_buckets": [
+      "high_frequency_source_tag_or_name_unlinked",
+      "identity_tag_present_no_source_concept_alias",
+      "source_assertion_present_not_connected",
+      "source_name_present_no_source_concept_alias",
+      "source_tag_present_no_source_concept_alias"
+    ],
+    "worsened_buckets": []
+  },
+  "gap_audit_rerun": {
+    "gap_bucket_details": {
+      "cjk_alias_without_english_romaji_sibling": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 1569,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 2767
+      },
+      "danbooru_parenthetical_without_cjk_sibling": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 220,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 2767
+      },
+      "high_frequency_source_tag_or_name_unlinked": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 13,
+        "sample_limit": 25,
+        "sampled_missing_keys": 13,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 418
+      },
+      "identity_tag_present_no_source_concept_alias": {
+        "category_counts": {
+          "character": 320,
+          "general": 4225,
+          "meta": 4
+        },
+        "counts_are_full": true,
+        "excluded_category_counts": {
+          "general": 4225,
+          "meta": 4
+        },
+        "excluded_visual_or_meta_distinct_keys": 4229,
+        "identity_category_counts": {
+          "character": 320
+        },
+        "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+        "identity_eligible_distinct_keys": 320,
+        "missing_distinct_keys": 7,
+        "sample_limit": 30,
+        "sampled_missing_keys": 7,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 4549
+      },
+      "needs_review_cluster_with_no_active_alias_path": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 579,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1703
+      },
+      "same_display_name_split_across_contexts": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 541,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1662
+      },
+      "same_normalized_alias_key_split_across_multiple_concepts": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 541,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1665
+      },
+      "source_assertion_present_not_connected": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 24,
+        "sample_limit": 30,
+        "sampled_missing_keys": 24,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 929
+      },
+      "source_name_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 2,
+        "sample_limit": 30,
+        "sampled_missing_keys": 2,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1044
+      },
+      "source_tag_present_no_source_concept_alias": {
+        "counts_are_full": true,
+        "missing_distinct_keys": 947,
+        "sample_limit": 30,
+        "sampled_missing_keys": 30,
+        "sampling_affects": "examples_only",
+        "total_distinct_keys": 1463
+      }
+    },
+    "gap_buckets": {
+      "cjk_alias_without_english_romaji_sibling": 1569,
+      "danbooru_parenthetical_without_cjk_sibling": 220,
+      "high_frequency_source_tag_or_name_unlinked": 13,
+      "identity_tag_present_no_source_concept_alias": 7,
+      "needs_review_cluster_with_no_active_alias_path": 579,
+      "same_display_name_split_across_contexts": 541,
+      "same_normalized_alias_key_split_across_multiple_concepts": 541,
+      "source_assertion_present_not_connected": 24,
+      "source_name_present_no_source_concept_alias": 2,
+      "source_tag_present_no_source_concept_alias": 947
+    },
+    "normal_tag_gap_policy": {
+      "bucket": "identity_tag_present_no_source_concept_alias",
+      "counts_are_full": true,
+      "excluded_visual_or_meta_tags": 4229,
+      "identity_category_policy": "include character/copyright/artist and other identity/source-like categories; exclude general/meta/rating/visual descriptors; missing categories use conservative name-like heuristics",
+      "identity_eligible_normal_tags": 320,
+      "missing_identity_tags_without_source_concept_alias": 7,
+      "sampling_affects": "examples_only",
+      "table_present": true,
+      "total_normal_tags": 4549,
+      "visual_tags_counted_in_total_gap_signals": false
+    },
+    "recommended_next_fix_category": "source_concept_alias_resolver_improvement",
+    "sample_limit_policy": {
+      "counts_are_full": true,
+      "default_sample_limit": 30,
+      "high_frequency_sample_limit": 25,
+      "samples_are_limited_to_examples_only": true
+    },
+    "total_gap_signals": 4443
+  },
+  "generated_at": "2026-07-10T03:46:32Z",
+  "head_sha_at_runtime": "7224a61aeaea32cd86a07e8dfd6cf6a6d7fcc0ef",
+  "llm_decision_impact": {
+    "decision_counts": {
+      "cannot": 3815,
+      "same": 2072,
+      "total": 6429,
+      "uncertain": 542
+    },
+    "decision_distribution_by_edge_type": {
+      "llm_blocked_guard": 242,
+      "llm_needs_review": 542,
+      "llm_negative_guard": 3815,
+      "llm_same_concept": 1830
+    },
+    "decision_distribution_by_signal_or_provenance": "not_available_in_public_r1r_summary",
+    "decision_percentages": {
+      "cannot": 59.34,
+      "same": 32.23,
+      "uncertain": 8.43
+    },
+    "interpretation": {
+      "all_eligible_vs_300_pair_run": "All-eligible adjudication converts old 300-pair smoke evidence into complete route evidence, but it does not clear gap/search/needs_review blockers.",
+      "cannot_decisions": "The high cannot ratio indicates broad candidate generation / weak-edge selection and supports targeted resolver/gap reduction.",
+      "same_decisions": "LLM same decisions reduced deterministic fragmentation and are useful source-layer evidence, not truth promotion.",
+      "uncertain_decisions": "The uncertain residue remains meaningful review or resolver-targeting backlog."
+    },
+    "source_concept_output_change_vs_deterministic": {
+      "concept_delta": -94,
+      "deterministic_active": 1078,
+      "deterministic_concepts": 2861,
+      "deterministic_needs_review": 1783,
+      "r1r_active": 1064,
+      "r1r_concepts": 2767,
+      "r1r_needs_review": 1703
+    }
+  },
+  "mutation_proof": {
+    "changed_tables": [],
+    "checked_table_count": 31,
+    "db_write_attempted": false,
+    "destructive_operation_attempted": false,
+    "forbidden_changed_tables": [],
+    "missing_tables": [
+      "blombooru_local_source_hints"
+    ],
+    "passed": true,
+    "production_write_attempted": false,
+    "recorded_at": "2026-07-10T03:46:32Z",
+    "source_icloud_storage_write_attempted": false,
+    "unexpected_changed_tables": []
+  },
+  "needs_review_triage": {
+    "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
+    "manageable_for_next_route": false,
+    "needs_review_ai_only": 290,
+    "needs_review_clusters_with_no_active_alias_path": 579,
+    "needs_review_duplicate_or_fragment_candidate": 1124,
+    "needs_review_high_evidence_count": 94,
+    "needs_review_sharing_alias_with_active": 1124,
+    "needs_review_with_cjk_alias": 1035,
+    "needs_review_with_media": 1463,
+    "needs_review_with_parenthetical_context": 180,
+    "recommended_handling": "R2 targeted resolver/gap reduction before management UI/design",
+    "sample_count": 1316,
+    "top_reason_buckets": {},
+    "total_needs_review_concepts": 1703
+  },
+  "phase": "4.5-SCV2-A1R",
+  "phase_slug": "phase-4.5-scv2-a1r-route-audit-after-r1r",
+  "pipeline_contract": {
+    "claims": {
+      "full_chain_complete": false,
+      "route_approved": false,
+      "safe_to_merge": false,
+      "target_met": false
+    },
+    "contract_id": "route_audit_contract_v1",
+    "status": "route_partially_approved_for_one_next_phase"
+  },
+  "private_artifacts": {
+    "committed": false,
+    "exact_private_paths_public": false,
+    "private_artifact_root_label": "a1r-private-artifacts",
+    "review_pack_label": "a1r-private-review-pack"
+  },
+  "public_redaction": {
+    "allowed_findings": [],
+    "findings": [],
+    "passed": true,
+    "scanned_artifacts": [
+      "docs/reports/phase-4.5-scv2-a1r-route-audit-after-r1r.md",
+      "docs/reports/phase-4.5-scv2-a1r-route-audit-after-r1r-summary.json"
+    ]
+  },
+  "px1_evidence_impact": {
+    "impact_interpretation": "PX1 materially expanded review-scoped evidence and SourceConcept influence, but does not make route approval safe during the INC1 pipeline fidelity incident.",
+    "non_px1_pixiv_influenced_concepts": 505,
+    "pixiv_all_influenced_concepts": 2189,
+    "px1_assertions": null,
+    "px1_assertions_review_scoped": {
+      "interpretation": "PX1 assertions are evidence/backlog input, not active truth.",
+      "needs_review_requires_review": null,
+      "searchable_active": null
+    },
+    "px1_filter_scope": "strict SourceMetadataRecord filter: provider='pixiv' and PX1 run_label/provider_run_id provenance matches px1_slug",
+    "px1_names": null,
+    "px1_records": null,
+    "px1_slug": "phase-4.5-px1-pixiv-metadata-dedup-dry-run",
+    "px1_source_metadata_record_count_strict": 471,
+    "px1_strict_influenced_concepts": 1684,
+    "px1_tags": null,
+    "r1_summary_concepts_influenced_by_px1_evidence_after": null,
+    "r1_summary_concepts_newly_influenced_by_px1_evidence_current_head_rerun": null,
+    "route_decision_px1_impact_metric": "px1_strict_influenced_concepts"
+  },
+  "px1_source_metadata_coverage": {
+    "coverage_denominator_policy": "distinct eligible media, not raw metadata row count",
+    "pixiv_source_assertions": 1201,
+    "pixiv_source_metadata_rows": 568,
+    "pixiv_source_name_observations": 1154,
+    "pixiv_source_tag_observations": 4283,
+    "source_assertions_by_provider": {
+      "pixiv": 1201,
+      "saucenao": 17
+    },
+    "source_assertions_by_provider_role_status": [
+      {
+        "asserted_role": "work_title",
+        "count": 460,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "asserted_role": "artist",
+        "count": 459,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "asserted_role": "general_descriptor",
+        "count": 95,
+        "provider": "pixiv",
+        "status": "rejected"
+      },
+      {
+        "asserted_role": "character",
+        "count": 74,
+        "provider": "pixiv",
+        "status": "searchable_active"
+      },
+      {
+        "asserted_role": "artist",
+        "count": 48,
+        "provider": "pixiv",
+        "status": "searchable_active"
+      },
+      {
+        "asserted_role": "source_title",
+        "count": 30,
+        "provider": "pixiv",
+        "status": "searchable_active"
+      },
+      {
+        "asserted_role": "popularity_marker",
+        "count": 16,
+        "provider": "pixiv",
+        "status": "rejected"
+      },
+      {
+        "asserted_role": "work_title",
+        "count": 13,
+        "provider": "pixiv",
+        "status": "searchable_active"
+      },
+      {
+        "asserted_role": "work_title",
+        "count": 9,
+        "provider": "saucenao",
+        "status": "searchable_active"
+      },
+      {
+        "asserted_role": "creator",
+        "count": 6,
+        "provider": "saucenao",
+        "status": "searchable_active"
+      },
+      {
+        "asserted_role": "source_title",
+        "count": 3,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "asserted_role": "artist",
+        "count": 2,
+        "provider": "saucenao",
+        "status": "searchable_active"
+      },
+      {
+        "asserted_role": "source_title",
+        "count": 2,
+        "provider": "pixiv",
+        "status": "rejected"
+      },
+      {
+        "asserted_role": "unknown",
+        "count": 1,
+        "provider": "pixiv",
+        "status": "needs_review"
+      }
+    ],
+    "source_assertions_by_status": {
+      "needs_review": 923,
+      "rejected": 113,
+      "searchable_active": 182
+    },
+    "source_metadata_by_provider": {
+      "danbooru": 22,
+      "gelbooru": 21,
+      "google_vision": 1,
+      "no_tag_provider": 22,
+      "pixiv": 568,
+      "saucenao": 37
+    },
+    "source_metadata_by_status": {
+      "observed": 671
+    },
+    "source_metadata_distinct_eligible_media_count": 531,
+    "source_metadata_distinct_eligible_media_pct": 14.4,
+    "source_metadata_distinct_media_count": 531,
+    "source_metadata_distinct_media_pct": 14.16,
+    "source_metadata_records_linked_to_media": 531,
+    "source_metadata_records_total": 671,
+    "source_name_observations_by_provider": {
+      "danbooru": 66,
+      "gelbooru": 63,
+      "pixiv": 1154,
+      "saucenao": 94
+    },
+    "source_name_observations_by_provider_role_status": [
+      {
+        "count": 552,
+        "name_role": "work_title",
+        "provider": "pixiv",
+        "status": "observed"
+      },
+      {
+        "count": 545,
+        "name_role": "artist",
+        "provider": "pixiv",
+        "status": "observed"
+      },
+      {
+        "count": 57,
+        "name_role": "character",
+        "provider": "pixiv",
+        "status": "observed"
+      },
+      {
+        "count": 36,
+        "name_role": "work_title",
+        "provider": "saucenao",
+        "status": "observed"
+      },
+      {
+        "count": 28,
+        "name_role": "creator",
+        "provider": "saucenao",
+        "status": "observed"
+      },
+      {
+        "count": 27,
+        "name_role": "character",
+        "provider": "saucenao",
+        "status": "observed"
+      },
+      {
+        "count": 22,
+        "name_role": "work_title",
+        "provider": "danbooru",
+        "status": "observed"
+      },
+      {
+        "count": 22,
+        "name_role": "character",
+        "provider": "danbooru",
+        "status": "observed"
+      },
+      {
+        "count": 22,
+        "name_role": "artist",
+        "provider": "danbooru",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "name_role": "artist",
+        "provider": "gelbooru",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "name_role": "work_title",
+        "provider": "gelbooru",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "name_role": "character",
+        "provider": "gelbooru",
+        "status": "observed"
+      },
+      {
+        "count": 3,
+        "name_role": "artist",
+        "provider": "saucenao",
+        "status": "observed"
+      }
+    ],
+    "source_tag_observations_by_provider": {
+      "danbooru": 88,
+      "gelbooru": 63,
+      "google_vision": 2,
+      "pixiv": 4283,
+      "saucenao": 1
+    },
+    "source_tag_observations_by_provider_category_status": [
+      {
+        "count": 4281,
+        "provider": "pixiv",
+        "source_category_raw": "<null>",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "provider": "danbooru",
+        "source_category_raw": "3",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "provider": "danbooru",
+        "source_category_raw": "1",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "provider": "gelbooru",
+        "source_category_raw": "1",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "provider": "danbooru",
+        "source_category_raw": "4",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "provider": "gelbooru",
+        "source_category_raw": "4",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "provider": "danbooru",
+        "source_category_raw": "<null>",
+        "status": "observed"
+      },
+      {
+        "count": 21,
+        "provider": "gelbooru",
+        "source_category_raw": "3",
+        "status": "observed"
+      },
+      {
+        "count": 2,
+        "provider": "google_vision",
+        "source_category_raw": "<null>",
+        "status": "observed"
+      },
+      {
+        "count": 1,
+        "provider": "danbooru",
+        "source_category_raw": "general",
+        "status": "observed"
+      },
+      {
+        "count": 1,
+        "provider": "saucenao",
+        "source_category_raw": "<null>",
+        "status": "observed"
+      },
+      {
+        "count": 1,
+        "provider": "danbooru",
+        "source_category_raw": "artist",
+        "status": "observed"
+      },
+      {
+        "count": 1,
+        "provider": "pixiv",
+        "source_category_raw": "character",
+        "status": "observed"
+      },
+      {
+        "count": 1,
+        "provider": "danbooru",
+        "source_category_raw": "character",
+        "status": "observed"
+      },
+      {
+        "count": 1,
+        "provider": "danbooru",
+        "source_category_raw": "copyright",
+        "status": "observed"
+      },
+      {
+        "count": 1,
+        "provider": "pixiv",
+        "source_category_raw": "copyright",
+        "status": "observed"
+      }
+    ]
+  },
+  "r1r_evidence_intake": {
+    "budget_cap_usd": 15.0,
+    "cache_accounting": {
+      "exact_compatible_cache_hit_count": 6429,
+      "new_provider_call_count": 0,
+      "remaining_missing_pair_count": 0
+    },
+    "checks": [
+      {
+        "actual": "docs/reports/phase-4.5-scv2-r1r-full-source-concept-pipeline-replay-summary.json",
+        "check": "r1r_summary_file_exists",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": "docs/reports/phase-4.5-scv2-r1r-full-source-concept-pipeline-replay.md",
+        "check": "r1r_report_file_exists",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": "r1r_full_source_concept_pipeline_contract_v1",
+        "check": "r1r_contract_id_expected",
+        "expected": [
+          "r1r_full_source_concept_pipeline_contract_v1",
+          "source_concept_full_chain_contract_v1"
+        ],
+        "passed": true
+      },
+      {
+        "actual": "r1r_full_source_concept_pipeline_contract_v1",
+        "check": "r1r_pipeline_contract_id_expected",
+        "expected": "r1r_full_source_concept_pipeline_contract_v1",
+        "passed": true
+      },
+      {
+        "actual": "target_met_full_chain",
+        "check": "r1r_status_target_met_full_chain",
+        "expected": "target_met_full_chain",
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_contract_result_passed",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_public_redaction_passed",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_review_pack_integrity_recorded",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_review_pack_generated",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_review_pack_includes_stage_manifest",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": 6429,
+        "check": "r1r_eligible_pairs",
+        "expected": 6429,
+        "passed": true
+      },
+      {
+        "actual": 6429,
+        "check": "r1r_selected_pairs",
+        "expected": 6429,
+        "passed": true
+      },
+      {
+        "actual": 6429,
+        "check": "r1r_judged_pairs",
+        "expected": 6429,
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_all_eligible_pairs_adjudicated",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": 0,
+        "check": "r1r_provider_failures_zero",
+        "expected": 0,
+        "passed": true
+      },
+      {
+        "actual": false,
+        "check": "r1r_fallback_provider_used_false",
+        "expected": false,
+        "passed": true
+      },
+      {
+        "actual": 6429,
+        "check": "r1r_cache_exact_hits",
+        "expected": 6429,
+        "passed": true
+      },
+      {
+        "actual": 0,
+        "check": "r1r_new_provider_calls_zero",
+        "expected": 0,
+        "passed": true
+      },
+      {
+        "actual": 0,
+        "check": "r1r_remaining_missing_zero",
+        "expected": 0,
+        "passed": true
+      },
+      {
+        "actual": 15.0,
+        "check": "r1r_budget_cap_usd",
+        "expected": 15.0,
+        "passed": true
+      },
+      {
+        "actual": "blombooru_r1r_restored_test_20260618",
+        "check": "r1r_restored_db_label",
+        "expected": "blombooru_r1r_restored_test_20260618",
+        "passed": true
+      },
+      {
+        "actual": false,
+        "check": "r1r_production_write_attempted_false",
+        "expected": false,
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_mutation_proof_passed",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": false,
+        "check": "r1r_route_authorization_r2_authorized_false",
+        "expected": false,
+        "passed": true
+      },
+      {
+        "actual": false,
+        "check": "r1r_route_authorization_px1_b_authorized_false",
+        "expected": false,
+        "passed": true
+      },
+      {
+        "actual": false,
+        "check": "r1r_route_authorization_provider_2_authorized_false",
+        "expected": false,
+        "passed": true
+      },
+      {
+        "actual": false,
+        "check": "r1r_route_authorization_scale_up_authorized_false",
+        "expected": false,
+        "passed": true
+      },
+      {
+        "actual": false,
+        "check": "r1r_route_authorization_entity_bridge_authorized_false",
+        "expected": false,
+        "passed": true
+      },
+      {
+        "actual": false,
+        "check": "r1r_route_authorization_source_concept_truth_promotion_authorized_false",
+        "expected": false,
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_a1r_still_required",
+        "expected": true,
+        "passed": true
+      },
+      {
+        "actual": true,
+        "check": "r1r_report_mentions_a1r_required",
+        "expected": true,
+        "passed": true
+      }
+    ],
+    "decisions": {
+      "cannot": 3815,
+      "same": 2072,
+      "uncertain": 542
+    },
+    "llm_accounting": {
+      "all_eligible_pairs_adjudicated": true,
+      "eligible": 6429,
+      "judged": 6429,
+      "selected": 6429
+    },
+    "merge_commit": "7224a61aeaea32cd86a07e8dfd6cf6a6d7fcc0ef",
+    "passed": true,
+    "report_path": "docs/reports/phase-4.5-scv2-r1r-full-source-concept-pipeline-replay.md",
+    "status": "target_met_full_chain",
+    "status_if_failed": "blocked_invalid_r1r_evidence",
+    "summary_path": "docs/reports/phase-4.5-scv2-r1r-full-source-concept-pipeline-replay-summary.json"
+  },
+  "read_only_runtime_proof": {
+    "database": "blombooru_r1r_restored_test_20260618",
+    "db_source": "restored_r1r_db",
+    "public_private_boundary": {
+      "private_artifact_label": "a1r-private-artifacts",
+      "public_artifacts": [
+        "docs/reports/phase-4.5-scv2-a1r-route-audit-after-r1r.md",
+        "docs/reports/phase-4.5-scv2-a1r-route-audit-after-r1r-summary.json"
+      ],
+      "raw_db_url_recorded": false,
+      "raw_local_paths_recorded_in_public": false
+    },
+    "requested_db": "blombooru_r1r_restored_test_20260618",
+    "stable_snapshot": true,
+    "transaction_isolation": "repeatable read",
+    "transaction_read_only": "on"
+  },
+  "recommended_next_phase": "SCV2-R2 targeted resolver / gap reduction",
+  "required_contract_for_next_phase": "route_audit_contract_v1 plus focused SCV2-R2 resolver/gap contract",
+  "required_operator_approval_for_next_phase": true,
+  "review_pack": {
+    "checksum_count": 13,
+    "checksums_present": true,
+    "generated": true,
+    "integrity_hash": "33b0edf63dd88a388ae08332a09e105fa10d39e00f6951e3d50c2d721f197290",
+    "integrity_passed": true,
+    "manifest_checksum_count": 13,
+    "manifest_present": true,
+    "not_committed": true,
+    "public_report_copy_current": true,
+    "redaction_passed": true,
+    "redaction_scan_covers_final_file_set": true,
+    "zip_generated": true,
+    "zip_path_label": "a1r-private-review-pack"
+  },
+  "route_authorization": {
+    "authorized_now": {
+      "broad_downstream_work": false,
+      "production_or_truth_work": false,
+      "single_next_phase": "SCV2-R2 targeted resolver / gap reduction"
+    },
+    "entity_bridge_started": false,
+    "entity_truth_authorized": false,
+    "media_tags_truth_authorized": false,
+    "production_write_authorized": false,
+    "provider_2_started": false,
+    "px1_b_started": false,
+    "r2_started": false,
+    "recommended_next_phase": "SCV2-R2 targeted resolver / gap reduction",
+    "required_contract_for_next_phase": "route_audit_contract_v1 plus focused SCV2-R2 resolver/gap contract",
+    "required_operator_approval_for_next_phase": true,
+    "scale_up_started": false,
+    "source_concept_truth_promotion_authorized": false,
+    "still_blocked_routes": [
+      "PX1-B additional Pixiv/source metadata extraction",
+      "Provider-2-P0 taxonomy/alias enrichment metadata-only preparation",
+      "SCV2-E2 controlled scale-up import",
+      "SourceConcept management/editing UI/design",
+      "Entity bridge preview",
+      "DEDUP1 exact duplicate cleanup execution",
+      "Full-library / 10k or 40k expansion"
+    ]
+  },
+  "route_decision_matrix": {
+    "authorized_now": {
+      "broad_downstream_work": false,
+      "production_or_truth_work": false,
+      "single_next_phase": "SCV2-R2 targeted resolver / gap reduction"
+    },
+    "decision_criteria": {
+      "asymmetric_groups": 10,
+      "cannot_ratio_percent": 59.34,
+      "metadata_dominant": false,
+      "needs_review": 1703,
+      "resolver_dominant": true,
+      "source_metadata_coverage_percent": 14.4,
+      "total_gap_signals": 4443,
+      "ui_dominant": false,
+      "uncertain_count": 542,
+      "unmatched_seeds": 16
+    },
+    "final_route_decision_status": "route_partially_approved_for_one_next_phase",
+    "options": [
+      {
+        "a1r_itself_starts_it": false,
+        "allowed_by_A1R": true,
+        "blockers": [],
+        "candidate": "SCV2-R2 targeted resolver / gap reduction",
+        "priority": "P1",
+        "production_involved": false,
+        "recommended": true,
+        "required_next_contract": "focused SCV2-R2 resolver/gap contract with dry-run-first write gates",
+        "truth_path": false,
+        "why": "Resolver/gap signals still dominate: cannot_ratio=59.34%, uncertain=542, gap_signals=4443, asymmetric_groups=10, needs_review=1703.",
+        "writes_db": true
+      },
+      {
+        "a1r_itself_starts_it": false,
+        "allowed_by_A1R": false,
+        "blockers": [
+          "resolver/gap blockers remain primary",
+          "provider/source metadata write approval still separate"
+        ],
+        "candidate": "PX1-B additional Pixiv/source metadata extraction",
+        "priority": "P2",
+        "production_involved": false,
+        "recommended": false,
+        "required_next_contract": "source_metadata_contract_v1 plus provider/cache/budget approval contract",
+        "truth_path": false,
+        "why": "Source metadata coverage remains low (14.4%), but resolver/search/needs_review blockers dominate first.",
+        "writes_db": true
+      },
+      {
+        "a1r_itself_starts_it": false,
+        "allowed_by_A1R": false,
+        "blockers": [
+          "not the dominant next bottleneck",
+          "provider policy and privacy/budget design still absent"
+        ],
+        "candidate": "Provider-2-P0 taxonomy/alias enrichment metadata-only preparation",
+        "priority": "P2",
+        "production_involved": false,
+        "recommended": false,
+        "required_next_contract": "metadata-only provider design contract, no uploads, no truth writes",
+        "truth_path": false,
+        "why": "Taxonomy/alias enrichment may help later, but current evidence points first to resolver/gap reduction.",
+        "writes_db": false
+      },
+      {
+        "a1r_itself_starts_it": false,
+        "allowed_by_A1R": false,
+        "blockers": [
+          "search symmetry poor",
+          "gap buckets high",
+          "needs_review high",
+          "production/import ledger not in scope"
+        ],
+        "candidate": "SCV2-E2 controlled scale-up import",
+        "priority": "P3",
+        "production_involved": true,
+        "recommended": false,
+        "required_next_contract": "future ingestion/source item ledger contract after source-layer quality gates pass",
+        "truth_path": false,
+        "why": "Scale-up would amplify current retrieval/search/gap issues.",
+        "writes_db": true
+      },
+      {
+        "a1r_itself_starts_it": false,
+        "allowed_by_A1R": false,
+        "blockers": [
+          "machine resolver/gap reduction remains higher leverage",
+          "manual review must stay sparse/correction-oriented"
+        ],
+        "candidate": "SourceConcept management/editing UI/design",
+        "priority": "P2",
+        "production_involved": false,
+        "recommended": false,
+        "required_next_contract": "correction-oriented UI/design contract with audit/rollback and browser validation",
+        "truth_path": false,
+        "why": "Management UI may be useful, but remaining work is not primarily human triage yet.",
+        "writes_db": true
+      },
+      {
+        "a1r_itself_starts_it": false,
+        "allowed_by_A1R": false,
+        "blockers": [
+          "truth bridge contract absent",
+          "search symmetry not acceptable",
+          "needs_review/gap buckets not under control"
+        ],
+        "candidate": "Entity bridge preview",
+        "priority": "P3",
+        "production_involved": false,
+        "recommended": false,
+        "required_next_contract": "future entity_truth_bridge_contract_v1 only after route quality gates pass",
+        "truth_path": true,
+        "why": "Entity bridge remains unsafe while search symmetry, gap, and needs_review gates fail.",
+        "writes_db": true
+      },
+      {
+        "a1r_itself_starts_it": false,
+        "allowed_by_A1R": false,
+        "blockers": [
+          "destructive/file cleanup approval absent",
+          "not a SourceConcept route blocker"
+        ],
+        "candidate": "DEDUP1 exact duplicate cleanup execution",
+        "priority": "P3",
+        "production_involved": true,
+        "recommended": false,
+        "required_next_contract": "destructive_operation_contract_v1 with backup and exact targets",
+        "truth_path": false,
+        "why": "Duplicate cleanup is unrelated to the R1R SourceConcept route decision.",
+        "writes_db": true
+      },
+      {
+        "a1r_itself_starts_it": false,
+        "allowed_by_A1R": false,
+        "blockers": [
+          "scale-up explicitly out of A1R scope",
+          "quality gates fail",
+          "production ledger/cost/cache plan required"
+        ],
+        "candidate": "Full-library / 10k or 40k expansion",
+        "priority": "P3",
+        "production_involved": true,
+        "recommended": false,
+        "required_next_contract": "future full-library run ledger, budget/cache, and source-layer quality contracts",
+        "truth_path": false,
+        "why": "Full-library expansion remains blocked until source-layer quality and ledgers are credible.",
+        "writes_db": true
+      }
+    ],
+    "recommended_next_phase": "SCV2-R2 targeted resolver / gap reduction",
+    "required_contract_for_next_phase": "route_audit_contract_v1 plus focused SCV2-R2 resolver/gap contract",
+    "required_operator_approval_for_next_phase": true,
+    "still_blocked_routes": [
+      "PX1-B additional Pixiv/source metadata extraction",
+      "Provider-2-P0 taxonomy/alias enrichment metadata-only preparation",
+      "SCV2-E2 controlled scale-up import",
+      "SourceConcept management/editing UI/design",
+      "Entity bridge preview",
+      "DEDUP1 exact duplicate cleanup execution",
+      "Full-library / 10k or 40k expansion"
+    ]
+  },
+  "safety": {
+    "classification_ai_localization_attempted": false,
+    "cleanup_delete_reset_drop_truncate_attempted": false,
+    "db_write_attempted": false,
+    "entity_bridge_started": false,
+    "entity_or_media_tags_truth_mutation_attempted": false,
+    "llm_provider_calls_attempted": false,
+    "media_import_attempted": false,
+    "pixiv_gallery_dl_saucenao_google_attempted": false,
+    "provider_2_started": false,
+    "provider_calls_attempted": false,
+    "px1_b_started": false,
+    "r2_started": false,
+    "read_only": true,
+    "scale_up_started": false,
+    "source_concept_resolver_persistence_attempted": false,
+    "source_concept_truth_promotion_attempted": false,
+    "source_icloud_app_storage_mutation_attempted": false
+  },
+  "search_seed_old_a1_comparison": {
+    "a1r": {
+      "asymmetric_groups": 10,
+      "groups_tested": 10,
+      "matched_seeds": 42,
+      "seeds_tested": 58,
+      "symmetric_groups": 0,
+      "unmatched_seeds": 16
+    },
+    "asymmetry_reason_buckets": {
+      "active_only_vs_needs_review_contrast": 5,
+      "concept_split": 33,
+      "missing_alias_or_unmatched_seed": 10,
+      "needs_review_not_included_in_active_search": 9,
+      "unmatched_alias": 16
+    },
+    "delta": {
+      "asymmetric_groups": 0,
+      "groups_tested": 0,
+      "matched_seeds": 0,
+      "seeds_tested": 0,
+      "symmetric_groups": 0,
+      "unmatched_seeds": 0
+    },
+    "old_a1": {
+      "asymmetric_groups": 10,
+      "groups_tested": 10,
+      "matched_seeds": 42,
+      "seeds_tested": 58,
+      "symmetric_groups": 0,
+      "unmatched_seeds": 16
+    }
+  },
+  "search_seed_symmetry_audit_rerun": {
+    "aggregate": {
+      "asymmetric_groups": 10,
+      "asymmetry_reason_buckets": {
+        "active_only_vs_needs_review_contrast": 5,
+        "concept_split": 33,
+        "missing_alias_or_unmatched_seed": 10,
+        "needs_review_not_included_in_active_search": 9,
+        "unmatched_alias": 16
+      },
+      "groups_tested": 10,
+      "matched_seeds": 42,
+      "media_result_overlap_metrics": {
+        "average_pairwise_jaccard": 0.3752,
+        "min_pairwise_jaccard": 0.0,
+        "pairwise_jaccard_count": 32
+      },
+      "seeds_tested": 58,
+      "symmetric_groups": 0,
+      "unmatched_aliases_count_as_asymmetry": true,
+      "unmatched_seeds": 16
+    },
+    "groups": {
+      "2b": {
+        "active_only_vs_include_needs_review_contrast": true,
+        "asymmetry_reasons": {
+          "active_only_vs_needs_review_contrast": 1,
+          "missing_alias_or_unmatched_seed": 1,
+          "needs_review_not_included_in_active_search": 3,
+          "unmatched_alias": 1
+        },
+        "matched_seed_count": 3,
+        "seed_count": 4,
+        "seed_rows_public": [
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "2B",
+            "visible_media_count": 3
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "2b_(nier_automata)",
+            "visible_media_count": 3
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "ヨルハ二号B型",
+            "visible_media_count": 3
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "銉ヨ。儷銉忒二号B媚",
+            "visible_media_count": 0
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 1
+      },
+      "barbara": {
+        "active_only_vs_include_needs_review_contrast": true,
+        "asymmetry_reasons": {
+          "active_only_vs_needs_review_contrast": 1,
+          "concept_split": 3,
+          "missing_alias_or_unmatched_seed": 1,
+          "needs_review_not_included_in_active_search": 2,
+          "unmatched_alias": 1
+        },
+        "matched_seed_count": 3,
+        "seed_count": 4,
+        "seed_rows_public": [
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 7,
+            "seed_label": "Barbara",
+            "visible_media_count": 65
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 7,
+            "seed_label": "barbara_(genshin_impact)",
+            "visible_media_count": 65
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 2,
+            "matched": true,
+            "matched_concept_count": 7,
+            "seed_label": "バーバラ",
+            "visible_media_count": 65
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "銉愜。共銉愜。儥",
+            "visible_media_count": 0
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 1
+      },
+      "kamisato_ayaka": {
+        "active_only_vs_include_needs_review_contrast": false,
+        "asymmetry_reasons": {
+          "concept_split": 3,
+          "missing_alias_or_unmatched_seed": 1,
+          "unmatched_alias": 1
+        },
+        "matched_seed_count": 3,
+        "seed_count": 4,
+        "seed_rows_public": [
+          {
+            "active_matched": true,
+            "active_media_count": 1,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "Kamisato Ayaka",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 1,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "kamisato_ayaka",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 1,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "神里綾華",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "绁為噷缍捱彲",
+            "visible_media_count": 0
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 1
+      },
+      "mona": {
+        "active_only_vs_include_needs_review_contrast": true,
+        "asymmetry_reasons": {
+          "active_only_vs_needs_review_contrast": 1,
+          "concept_split": 2,
+          "missing_alias_or_unmatched_seed": 1,
+          "needs_review_not_included_in_active_search": 1,
+          "unmatched_alias": 2
+        },
+        "matched_seed_count": 2,
+        "seed_count": 4,
+        "seed_rows_public": [
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "Mona",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "mona_(genshin_impact)",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 1,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "モナ",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "銉、儕",
+            "visible_media_count": 0
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 2
+      },
+      "nahida_prompt_and_doc1": {
+        "active_only_vs_include_needs_review_contrast": true,
+        "asymmetry_reasons": {
+          "active_only_vs_needs_review_contrast": 1,
+          "concept_split": 4,
+          "missing_alias_or_unmatched_seed": 1,
+          "needs_review_not_included_in_active_search": 1,
+          "unmatched_alias": 2
+        },
+        "matched_seed_count": 4,
+        "seed_count": 6,
+        "seed_rows_public": [
+          {
+            "active_matched": true,
+            "active_media_count": 1,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "Nahida",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 1,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "纳西妲",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "草神",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 1,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "nahida_(genshin_impact)",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "绾宠タ濡瞏",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "鑽夬",
+            "visible_media_count": 0
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 2
+      },
+      "nilou": {
+        "active_only_vs_include_needs_review_contrast": false,
+        "asymmetry_reasons": {
+          "concept_split": 3,
+          "missing_alias_or_unmatched_seed": 1,
+          "unmatched_alias": 2
+        },
+        "matched_seed_count": 3,
+        "seed_count": 5,
+        "seed_rows_public": [
+          {
+            "active_matched": true,
+            "active_media_count": 2,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "Nilou",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 2,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "nilou_(genshin_impact)",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 3,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "妮露",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "濞渶",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "銉ニ。偅銉偊",
+            "visible_media_count": 0
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 2
+      },
+      "px1_ambiguous_short_names_private": {
+        "active_only_vs_include_needs_review_contrast": false,
+        "asymmetry_reasons": {
+          "concept_split": 5,
+          "missing_alias_or_unmatched_seed": 1,
+          "unmatched_alias": 1
+        },
+        "matched_seed_count": 6,
+        "seed_count": 7,
+        "seed_rows_public": [
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 11,
+            "matched": true,
+            "matched_concept_count": 24,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 12
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 8,
+            "matched": true,
+            "matched_concept_count": 17,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 8
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 7,
+            "matched": true,
+            "matched_concept_count": 18,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 9
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 6,
+            "matched": true,
+            "matched_concept_count": 13,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 6
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 5,
+            "matched": true,
+            "matched_concept_count": 11,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 5
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 5,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 5
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 1
+      },
+      "px1_high_frequency_source_names_private": {
+        "active_only_vs_include_needs_review_contrast": false,
+        "asymmetry_reasons": {
+          "concept_split": 6,
+          "missing_alias_or_unmatched_seed": 1,
+          "unmatched_alias": 1
+        },
+        "matched_seed_count": 7,
+        "seed_count": 8,
+        "seed_rows_public": [
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 11,
+            "matched": true,
+            "matched_concept_count": 24,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 12
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 8,
+            "matched": true,
+            "matched_concept_count": 17,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 8
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 7,
+            "matched": true,
+            "matched_concept_count": 18,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 9
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 9,
+            "matched": true,
+            "matched_concept_count": 2,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 9
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 6,
+            "matched": true,
+            "matched_concept_count": 13,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 6
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 5,
+            "matched": true,
+            "matched_concept_count": 11,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 5
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 5,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 5
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 1
+      },
+      "px1_high_frequency_source_tags_private": {
+        "active_only_vs_include_needs_review_contrast": true,
+        "asymmetry_reasons": {
+          "active_only_vs_needs_review_contrast": 1,
+          "concept_split": 2,
+          "missing_alias_or_unmatched_seed": 1,
+          "needs_review_not_included_in_active_search": 2,
+          "unmatched_alias": 4
+        },
+        "matched_seed_count": 4,
+        "seed_count": 8,
+        "seed_rows_public": [
+          {
+            "active_matched": true,
+            "active_media_count": 24,
+            "matched": true,
+            "matched_concept_count": 118,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 548
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 1
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 3,
+            "matched": true,
+            "matched_concept_count": 4,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 3
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 1
+          },
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 0
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 4
+      },
+      "px1_title_or_work_assertions_private": {
+        "active_only_vs_include_needs_review_contrast": false,
+        "asymmetry_reasons": {
+          "concept_split": 5,
+          "missing_alias_or_unmatched_seed": 1,
+          "unmatched_alias": 1
+        },
+        "matched_seed_count": 7,
+        "seed_count": 8,
+        "seed_rows_public": [
+          {
+            "active_matched": false,
+            "active_media_count": 0,
+            "matched": false,
+            "matched_concept_count": 0,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 0
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 11,
+            "matched": true,
+            "matched_concept_count": 24,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 12
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 8,
+            "matched": true,
+            "matched_concept_count": 17,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 8
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 9,
+            "matched": true,
+            "matched_concept_count": 2,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 9
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 7,
+            "matched": true,
+            "matched_concept_count": 18,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 9
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 6,
+            "matched": true,
+            "matched_concept_count": 13,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 6
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 5,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 5
+          },
+          {
+            "active_matched": true,
+            "active_media_count": 5,
+            "matched": true,
+            "matched_concept_count": 1,
+            "seed_label": "[redacted seed]",
+            "visible_media_count": 5
+          }
+        ],
+        "symmetric": false,
+        "symmetric_media_result": false,
+        "unmatched_seed_count": 1
+      }
+    },
+    "seed_group_source": {
+      "dynamic_px1_seed_group_count": 4,
+      "scv1_seed_group_count": 6
+    }
+  },
+  "source_concept_state_after_r1r": {
+    "active": 1064,
+    "active_concepts_sharing_aliases_with_needs_review": 487,
+    "active_concepts_with_weak_evidence": 2,
+    "all_status_source_concept_count": 2767,
+    "ambiguous": 0,
+    "by_status": {
+      "active": 1064,
+      "needs_review": 1703
+    },
+    "concept_component_size_distribution": {
+      "component_size_basis": "distinct source_concept_signal_links per concept",
+      "distribution": [
+        {
+          "bucket": "0",
+          "count": 0
+        },
+        {
+          "bucket": "1",
+          "count": 1515
+        },
+        {
+          "bucket": "2-3",
+          "count": 956
+        },
+        {
+          "bucket": "4-10",
+          "count": 216
+        },
+        {
+          "bucket": "11-25",
+          "count": 55
+        },
+        {
+          "bucket": "26+",
+          "count": 25
+        }
+      ],
+      "largest_components": [
+        {
+          "alias_count": 133,
+          "concept_ref": "concept_ref_001",
+          "evidence_count": 1057,
+          "media_count": 546,
+          "signal_count": 1057,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 10,
+          "concept_ref": "concept_ref_002",
+          "evidence_count": 118,
+          "media_count": 65,
+          "signal_count": 118,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 2,
+          "concept_ref": "concept_ref_003",
+          "evidence_count": 115,
+          "media_count": 113,
+          "signal_count": 115,
+          "status": "active"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_004",
+          "evidence_count": 98,
+          "media_count": 98,
+          "signal_count": 98,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 2,
+          "concept_ref": "concept_ref_005",
+          "evidence_count": 88,
+          "media_count": 24,
+          "signal_count": 88,
+          "status": "active"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_006",
+          "evidence_count": 76,
+          "media_count": 76,
+          "signal_count": 76,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_007",
+          "evidence_count": 72,
+          "media_count": 72,
+          "signal_count": 72,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_008",
+          "evidence_count": 69,
+          "media_count": 69,
+          "signal_count": 69,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_009",
+          "evidence_count": 57,
+          "media_count": 57,
+          "signal_count": 57,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_010",
+          "evidence_count": 48,
+          "media_count": 48,
+          "signal_count": 48,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_011",
+          "evidence_count": 44,
+          "media_count": 44,
+          "signal_count": 44,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_012",
+          "evidence_count": 39,
+          "media_count": 39,
+          "signal_count": 39,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_013",
+          "evidence_count": 39,
+          "media_count": 39,
+          "signal_count": 39,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 4,
+          "concept_ref": "concept_ref_014",
+          "evidence_count": 38,
+          "media_count": 10,
+          "signal_count": 38,
+          "status": "active"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_015",
+          "evidence_count": 36,
+          "media_count": 36,
+          "signal_count": 36,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_016",
+          "evidence_count": 35,
+          "media_count": 35,
+          "signal_count": 35,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_017",
+          "evidence_count": 33,
+          "media_count": 33,
+          "signal_count": 33,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_018",
+          "evidence_count": 32,
+          "media_count": 32,
+          "signal_count": 32,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 1,
+          "concept_ref": "concept_ref_019",
+          "evidence_count": 29,
+          "media_count": 29,
+          "signal_count": 29,
+          "status": "needs_review"
+        },
+        {
+          "alias_count": 8,
+          "concept_ref": "concept_ref_020",
+          "evidence_count": 28,
+          "media_count": 18,
+          "signal_count": 28,
+          "status": "needs_review"
+        }
+      ]
+    },
+    "concepts_influenced_by_all_pixiv_evidence": 2189,
+    "concepts_influenced_by_non_px1_pixiv_evidence": 505,
+    "concepts_influenced_by_px1_evidence": 1684,
+    "concepts_influenced_by_px1_evidence_scope": "strict PX1 SourceMetadataRecord provenance slug=phase-4.5-px1-pixiv-metadata-dedup-dry-run",
+    "concepts_influenced_by_strict_px1_evidence": 1684,
+    "concepts_with_media": 2209,
+    "concepts_with_media_status_scope": "visible_statuses_active_or_needs_review",
+    "concepts_with_no_aliases_by_status": {},
+    "concepts_with_only_weak_ai_general_evidence": 294,
+    "concepts_without_media": 558,
+    "concepts_without_media_status_scope": "visible_statuses_active_or_needs_review",
+    "context_conflict_groups": 541,
+    "duplicate_fragment_candidate_groups": 1082,
+    "hidden": 0,
+    "hidden_status_counts": {
+      "ambiguous": 0,
+      "hidden": 0,
+      "rejected": 0,
+      "superseded": 0,
+      "weak": 0
+    },
+    "needs_review": 1703,
+    "needs_review_concepts_sharing_aliases_with_active": 1124,
+    "needs_review_concepts_with_high_evidence": 94,
+    "overmerge_risk_groups": 2,
+    "rejected": 0,
+    "same_alias_key_group_count": 541,
+    "same_display_name_group_count": 541,
+    "source_concept_alias_count_by_role_status_provider": [
+      {
+        "alias_role": "provider_structured_field",
+        "count": 1007,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 812,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 745,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 380,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "ai_model_tag",
+        "count": 324,
+        "provider": "ai_wd",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 284,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 88,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 85,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 81,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 77,
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 72,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 66,
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 66,
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 63,
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 60,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_tag_observation",
+        "count": 57,
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 25,
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "f7a_candidate",
+        "count": 23,
+        "provider": "local_media_tags",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_assertion",
+        "count": 15,
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "alias_role": "provider_structured_field",
+        "count": 3,
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "source_alias_candidate",
+        "count": 2,
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review"
+      },
+      {
+        "alias_role": "ai_model_tag",
+        "count": 1,
+        "provider": "ai_wd",
+        "status": "active"
+      },
+      {
+        "alias_role": "source_name_observation",
+        "count": 1,
+        "provider": "saucenao",
+        "status": "needs_review"
+      }
+    ],
+    "source_concept_alias_total": 4400,
+    "source_concept_evidence_count_by_type_status_provider": [
+      {
+        "count": 2492,
+        "evidence_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "needs_review"
+      },
+      {
+        "count": 1101,
+        "evidence_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 1007,
+        "evidence_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 968,
+        "evidence_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 601,
+        "evidence_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 544,
+        "evidence_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 251,
+        "evidence_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 144,
+        "evidence_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 123,
+        "evidence_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 113,
+        "evidence_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "active"
+      },
+      {
+        "count": 106,
+        "evidence_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 97,
+        "evidence_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 93,
+        "evidence_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 88,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review"
+      },
+      {
+        "count": 66,
+        "evidence_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "count": 66,
+        "evidence_type": "source_name_observation",
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_name_observation",
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "count": 63,
+        "evidence_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "count": 51,
+        "evidence_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "status": "needs_review"
+      },
+      {
+        "count": 37,
+        "evidence_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 17,
+        "evidence_type": "source_assertion",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 3,
+        "evidence_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "count": 2,
+        "evidence_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review"
+      },
+      {
+        "count": 1,
+        "evidence_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "needs_review"
+      }
+    ],
+    "source_concept_evidence_total": 8097,
+    "source_concept_search_index_count_by_status": {
+      "active": 2485,
+      "needs_review": 1915
+    },
+    "source_concept_search_index_total": 4400,
+    "source_concept_signal_count_by_origin_provider_status": [
+      {
+        "count": 4016,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "rejected"
+      },
+      {
+        "count": 2605,
+        "origin_type": "ai_model_tag",
+        "provider": "ai_wd",
+        "status": "needs_review"
+      },
+      {
+        "count": 1551,
+        "origin_type": "provider_structured_field",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 1052,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 939,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 460,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 392,
+        "origin_type": "f7a_candidate",
+        "provider": "pixiv",
+        "status": "needs_review"
+      },
+      {
+        "count": 267,
+        "origin_type": "source_tag_observation",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 135,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 111,
+        "origin_type": "source_assertion",
+        "provider": "pixiv",
+        "status": "rejected"
+      },
+      {
+        "count": 100,
+        "origin_type": "provider_structured_field",
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "count": 88,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_parenthetical_pattern",
+        "status": "needs_review"
+      },
+      {
+        "count": 86,
+        "origin_type": "source_name_observation",
+        "provider": "pixiv",
+        "status": "active"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "active"
+      },
+      {
+        "count": 66,
+        "origin_type": "source_name_observation",
+        "provider": "danbooru",
+        "status": "needs_review"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "needs_review"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_name_observation",
+        "provider": "gelbooru",
+        "status": "needs_review"
+      },
+      {
+        "count": 63,
+        "origin_type": "source_tag_observation",
+        "provider": "gelbooru",
+        "status": "active"
+      },
+      {
+        "count": 51,
+        "origin_type": "f7a_candidate",
+        "provider": "local_media_tags",
+        "status": "needs_review"
+      },
+      {
+        "count": 31,
+        "origin_type": "source_name_observation",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 22,
+        "origin_type": "source_tag_observation",
+        "provider": "danbooru",
+        "status": "rejected"
+      },
+      {
+        "count": 17,
+        "origin_type": "source_assertion",
+        "provider": "saucenao",
+        "status": "active"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_alias_candidate",
+        "provider": "pixiv_provider_canonical",
+        "status": "needs_review"
+      },
+      {
+        "count": 2,
+        "origin_type": "source_tag_observation",
+        "provider": "google_vision",
+        "status": "rejected"
+      },
+      {
+        "count": 1,
+        "origin_type": "source_tag_observation",
+        "provider": "saucenao",
+        "status": "rejected"
+      }
+    ],
+    "source_concept_signal_count_by_origin_provider_status_total": 12249,
+    "source_scv1_inventory_public_fields": {
+      "ai_only_concept_count": 290,
+      "source_title_only_concept_count": 0,
+      "weak_only_concept_count": 2672
+    },
+    "superseded": 0,
+    "table_counts": {
+      "aliases": 4400,
+      "evidence": 8097,
+      "search_index": 4400,
+      "signal_links": 8097,
+      "source_concepts": 2767
+    },
+    "total_source_concepts": 2767,
+    "undermerge_risk_groups": 1082,
+    "visible_status_source_concept_count": 2767,
+    "weak": 0
+  },
+  "title": "SCV2-A1R: Route Audit Rerun After R1R",
+  "transaction_readonly_proof": {
+    "database": "blombooru_r1r_restored_test_20260618",
+    "db_user_redacted": true,
+    "passed": true,
+    "recorded_at": "2026-07-10T03:43:10Z",
+    "required_isolation": "repeatable read or serializable",
+    "server_port": 5432,
+    "snapshot_id_present": true,
+    "snapshot_id_redacted": true,
+    "stable_snapshot": true,
+    "transaction_isolation": "repeatable read",
+    "transaction_read_only": "on"
+  },
+  "upstream_pipeline_contract": {
+    "contract_id": "source_concept_full_chain_contract_v1",
+    "full_chain_fidelity_passed": true,
+    "missing_required_stages": [],
+    "passed": true,
+    "source_contract_id": "r1r_full_source_concept_pipeline_contract_v1",
+    "source_status": "target_met_full_chain",
+    "status": "full_chain_completed"
+  },
+  "validation": {
+    "browser_validation": "not_required_no_ui_runtime_change",
+    "dirty_worktree": {
+      "clean": false,
+      "dirty_count": 19,
+      "status_public": "redacted_dirty_entries:19",
+      "status_redacted": true
+    },
+    "llm_provider_attempted": false,
+    "operational_audit_command": "python scripts/run_phase45_scv2_a1r_route_audit_after_r1r.py --read-only --require-r1r-summary docs/reports/phase-4.5-scv2-r1r-full-source-concept-pipeline-replay-summary.json --require-r1r-report docs/reports/phase-4.5-scv2-r1r-full-source-concept-pipeline-replay.md --output-dir .local_manifests/phase-4.5-scv2-a1r-route-audit-after-r1r --write-public-report --write-review-pack",
+    "operational_audit_result": "passed",
+    "provider_network_attempted": false,
+    "python_executable": "python.exe",
+    "python_executable_path_redacted": true,
+    "python_version": "3.12.0 (tags/v3.12.0:0fb18b0, Oct  2 2023, 13:03:39) [MSC v.1935 64 bit (AMD64)]",
+    "server_started": false
+  }
+}
