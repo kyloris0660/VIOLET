@@ -35,6 +35,7 @@ from app.services.source_concept_autonomous_closure_service import (
     build_candidate_pair_manifest,
     build_second_pass_payload,
     disposition_accounting,
+    estimate_autonomous_budget,
     execute_autonomous_missing_pairs,
     project_autonomous_materialization,
 )
@@ -293,6 +294,23 @@ def test_public_retention_projection_field_does_not_trigger_path_redaction() -> 
     findings = r2r_runner.scv1.scan_public_text(json.dumps(payload, sort_keys=True))
 
     assert not [finding for finding in findings if finding["type"] == "canonical_path_like"]
+
+
+def test_public_budget_field_names_do_not_look_like_secret_tokens() -> None:
+    budget = estimate_autonomous_budget(
+        [],
+        missing_pair_ids=[],
+        signal_by_key={},
+        historical_uncertain_rate=0.0,
+    )
+
+    redaction = check_phase_contract(
+        "public_redaction_contract_v1",
+        {"public_redaction": {"passed": True}, "budget_projection": budget},
+    )
+
+    assert budget["usage_unit"] == "tokens"
+    assert redaction.passed, [finding.to_dict() for finding in redaction.errors]
 
 
 def _signal(

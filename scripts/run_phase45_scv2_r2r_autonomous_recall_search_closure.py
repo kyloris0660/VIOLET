@@ -834,7 +834,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
             f"- 当前 exact-compatible / stable-compatible：`{cache.get('exact_compatible_cache_hit_count')}` / `{cache.get('stable_compatible_reuse_count')}`。",
             f"- 全局 semantic priors：`{cache.get('semantic_prior_count')}`。",
             f"- 真正缺失 pair：`{cache.get('genuinely_missing_pair_count')}`。",
-            f"- 预计 first-pass input/completion tokens：`{budget.get('estimated_first_pass_input_tokens')}` / `{budget.get('estimated_first_pass_completion_tokens')}`。",
+            f"- 预计 first-pass input/completion tokens：`{budget.get('estimated_first_pass_input_usage_units')}` / `{budget.get('estimated_first_pass_completion_usage_units')}`。",
             f"- 预计 second-pass escalation：`{budget.get('expected_uncertain_escalation_count')}`。",
             f"- 预计总成本 / 请求预算：`${budget.get('projected_cost_usd')}` / `${budget.get('recommended_budget_usd')}`。",
             "",

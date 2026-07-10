@@ -438,12 +438,13 @@ def estimate_autonomous_budget(
     total_tokens = first_input + first_output + second_input + second_output
     return {
         "missing_pair_count": len(missing),
-        "estimated_first_pass_input_tokens": first_input,
-        "estimated_first_pass_completion_tokens": first_output,
+        "usage_unit": "tokens",
+        "estimated_first_pass_input_usage_units": first_input,
+        "estimated_first_pass_completion_usage_units": first_output,
         "expected_uncertain_escalation_count": expected_escalations,
-        "estimated_second_pass_input_tokens": second_input,
-        "estimated_second_pass_completion_tokens": second_output,
-        "estimated_total_tokens": total_tokens,
+        "estimated_second_pass_input_usage_units": second_input,
+        "estimated_second_pass_completion_usage_units": second_output,
+        "estimated_total_usage_units": total_tokens,
         "projected_cost_usd": round((total_tokens / 1000.0) * 0.002, 6),
         "cost_estimate_policy": "repo_projection_0.002_usd_per_1k_combined_tokens",
         "recommended_budget_usd": 2.0,
