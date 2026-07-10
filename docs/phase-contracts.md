@@ -81,7 +81,10 @@ phases.
 
 `route_audit_contract_v1` is mandatory for route-decision phases. A route cannot
 be approved while an upstream pipeline contract is failed, deterministic-only,
-or incomplete.
+or incomplete. For SCV2-A1R summaries, it also enforces the explicit A1R status
+vocabulary, at most one recommended next phase, explicit downstream/truth/
+production non-authorization flags, public redaction, review-pack integrity, and
+the required next contract when a single next phase is recommended.
 
 ## Public Artifact Gate
 
