@@ -282,13 +282,14 @@
     "r1r_baseline_preserved": true,
     "source_db": "blombooru_r1r_restored_test_20260618",
     "violet_env": "test",
-    "working_db": "blombooru_scv2_r2_test_20260710b",
+    "working_db": "blombooru_scv2_r2_review4_test_20260710",
     "working_db_is_separate_from_r1r_baseline": true
   },
   "evidence_version_boundary": {
-    "final_closeout_head_sha_source": "live_pr_134_head_after_final_push",
-    "resolver_code_changed_after_evidence": false,
-    "resolver_evidence_code_sha": "4b7b57c0d66299620322e9c653524788e376c0fe"
+    "post_evidence_resolver_code_changed": false,
+    "report_commit_parent_sha": "0e605ad95d20713b413340dc85e0fc80f38173dc",
+    "report_only_commit": true,
+    "resolver_evidence_code_sha": "0e605ad95d20713b413340dc85e0fc80f38173dc"
   },
   "fixed_input_manifest": {
     "baseline_to_working_clone_match": true,
@@ -322,18 +323,28 @@
       "blombooru_tags": 4549
     }
   },
-  "generated_at": "2026-07-10T06:32:35Z",
+  "generated_at": "2026-07-10T10:07:16Z",
   "graph_invariants": {
     "deterministic_hard_conflict_in_materialized_component_count": 0,
+    "deterministic_unknown_role_candidate_count": 4455,
     "direct_llm_cannot_pair_in_materialized_component_count": 0,
-    "materialized_identity_edge_count": 10971,
+    "llm_unknown_role_must_link_candidate_count": 104,
+    "materialized_identity_edge_count": 10953,
     "review_only_edge_used_in_union_count": 0,
-    "review_overlay_edge_count": 36119,
+    "review_overlay_edge_count": 36137,
     "transitive_cannot_violation_count": 0,
-    "unknown_role_bridge_candidate_count_before": 4455,
-    "unknown_role_bridge_materialized_count_after": 0
+    "unauthorized_unknown_role_materialization_count": 0,
+    "unknown_role_bridge_candidate_count_before": 4559,
+    "unknown_role_bridge_materialized_count_after": 0,
+    "unknown_role_corroboration_distribution": {
+      "cross_script_observed_count": 78,
+      "explicit_compatible_context_count": 0,
+      "independent_non_ai_sources_count": 486,
+      "manual_confirmed_count": 0,
+      "strong_cross_script_count": 0
+    },
+    "unknown_role_review_only_count": 4559
   },
-  "head_sha": "4b7b57c0d66299620322e9c653524788e376c0fe",
   "human_review_sample_pack": {
     "generated": true,
     "human_ground_truth_claimed": false,
@@ -359,16 +370,22 @@
     "projected_new_call_cost_usd": 0.73088,
     "provider_initialized": false,
     "reused_as_component_constraint_or_regression_label_count": 2080,
+    "same_decision_counts": {
+      "all_existing_r1r": 2072,
+      "compatible_proof_grade": 305,
+      "invalidated": 0,
+      "semantic_prior": 1767
+    },
     "semantic_prior_count": 4349,
     "stable_pair_identity_reuse_count": 2080
   },
   "metric_delta": {
     "gap_bucket_delta": {
-      "cjk_alias_without_english_romaji_sibling": 194,
-      "danbooru_parenthetical_without_cjk_sibling": 2044,
+      "cjk_alias_without_english_romaji_sibling": 200,
+      "danbooru_parenthetical_without_cjk_sibling": 2050,
       "high_frequency_source_tag_or_name_unlinked": 0,
       "identity_tag_present_no_source_concept_alias": 0,
-      "needs_review_cluster_with_no_active_alias_path": 2260,
+      "needs_review_cluster_with_no_active_alias_path": 2267,
       "same_display_name_split_across_contexts": 201,
       "same_normalized_alias_key_split_across_multiple_concepts": 202,
       "source_assertion_present_not_connected": 0,
@@ -376,10 +393,10 @@
       "source_tag_present_no_source_concept_alias": 0
     },
     "scalar_delta": {
-      "active": 28,
-      "concept_total": 2629,
-      "gap_total": 4901,
-      "needs_review": 2601,
+      "active": 29,
+      "concept_total": 2641,
+      "gap_total": 4920,
+      "needs_review": 2612,
       "superseded": 0
     },
     "search_delta": {
@@ -446,7 +463,7 @@
     "status": "target_met_constraint_aware_r2"
   },
   "post_r2_metrics": {
-    "active": 1092,
+    "active": 1093,
     "component_size_distribution": [
       {
         "bucket": "0",
@@ -454,7 +471,7 @@
       },
       {
         "bucket": "1",
-        "count": 4288
+        "count": 4303
       },
       {
         "bucket": "2-3",
@@ -462,7 +479,7 @@
       },
       {
         "bucket": "4-10",
-        "count": 166
+        "count": 163
       },
       {
         "bucket": "11-25",
@@ -473,20 +490,20 @@
         "count": 4
       }
     ],
-    "concept_total": 5396,
+    "concept_total": 5408,
     "gap_buckets": {
-      "cjk_alias_without_english_romaji_sibling": 1763,
-      "danbooru_parenthetical_without_cjk_sibling": 2264,
+      "cjk_alias_without_english_romaji_sibling": 1769,
+      "danbooru_parenthetical_without_cjk_sibling": 2270,
       "high_frequency_source_tag_or_name_unlinked": 13,
       "identity_tag_present_no_source_concept_alias": 7,
-      "needs_review_cluster_with_no_active_alias_path": 2839,
+      "needs_review_cluster_with_no_active_alias_path": 2846,
       "same_display_name_split_across_contexts": 742,
       "same_normalized_alias_key_split_across_multiple_concepts": 743,
       "source_assertion_present_not_connected": 24,
       "source_name_present_no_source_concept_alias": 2,
       "source_tag_present_no_source_concept_alias": 947
     },
-    "gap_total": 9344,
+    "gap_total": 9363,
     "largest_components": [
       {
         "alias_count": 2,
@@ -649,17 +666,17 @@
         "status": "active"
       }
     ],
-    "needs_review": 4304,
+    "needs_review": 4315,
     "needs_review_metrics": {
       "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
-      "needs_review_ai_only": 2577,
-      "needs_review_duplicate_or_fragment_candidate": 1465,
-      "needs_review_high_evidence_count": 9,
-      "needs_review_sharing_alias_with_active": 1465,
-      "needs_review_with_cjk_alias": 1208,
-      "needs_review_with_media": 4026,
-      "needs_review_with_parenthetical_context": 2220,
-      "total_needs_review_concepts": 4304
+      "needs_review_ai_only": 2580,
+      "needs_review_duplicate_or_fragment_candidate": 1469,
+      "needs_review_high_evidence_count": 8,
+      "needs_review_sharing_alias_with_active": 1469,
+      "needs_review_with_cjk_alias": 1209,
+      "needs_review_with_media": 4037,
+      "needs_review_with_parenthetical_context": 2224,
+      "total_needs_review_concepts": 4315
     },
     "search_aggregate": {
       "asymmetric_groups": 10,
@@ -673,7 +690,7 @@
       "groups_tested": 10,
       "matched_seeds": 42,
       "media_result_overlap_metrics": {
-        "average_pairwise_jaccard": 0.1539,
+        "average_pairwise_jaccard": 0.1552,
         "min_pairwise_jaccard": 0.0,
         "pairwise_jaccard_count": 32
       },
@@ -684,11 +701,11 @@
     },
     "superseded": 0,
     "table_counts": {
-      "aliases": 6904,
+      "aliases": 6908,
       "evidence": 8097,
-      "search_index": 6904,
+      "search_index": 6908,
       "signal_links": 8097,
-      "source_concepts": 5396
+      "source_concepts": 5408
     }
   },
   "public_redaction": {
@@ -703,33 +720,49 @@
     "unsafe_public_report_written": false
   },
   "quality_evaluation": {
+    "all_existing_r1r_same_decision_count": 2072,
     "changed_denominators_reported": true,
-    "compatible_high_confidence_same_pair_count": 37,
-    "compatible_high_confidence_same_pair_retained_count": 37,
+    "compatible_high_confidence_same_pair_count": 305,
+    "compatible_high_confidence_same_pair_retained_count": 22,
+    "compatible_must_link_benchmark_count": 305,
+    "compatible_same_accounting_complete": true,
+    "compatible_same_preservation_rate": 1.0,
     "constraint_safety_target_met": true,
     "fixed_evidence_preserved": true,
     "gap_quality_improved": false,
     "giant_component_remediation_improved": true,
-    "intentionally_split_same_pair_count": 3,
+    "intentionally_split_reason_ledger_count": 283,
+    "intentionally_split_same_pair_count": 283,
+    "intentionally_split_with_valid_constraint_count": 283,
+    "invalidated_same_decision_count": 0,
     "known_cannot_avoidance_rate": 1.0,
     "known_cannot_avoided_count": 1546,
     "known_cannot_constraint_regression": false,
     "known_cannot_pair_count": 1546,
-    "known_same_benchmark_pair_count": 40,
+    "known_same_benchmark_pair_count": 305,
     "known_same_constraint_regression": false,
-    "known_same_recall": 1.0,
+    "known_same_recall": 0.072131,
     "known_same_recall_protected": true,
     "known_same_regression_count": 0,
     "meaningful_structural_improvement": true,
+    "missing_signal_or_pair_count": 0,
     "no_major_quality_regression": false,
     "quality_interpretation": "R2 met the constraint-aware graph-remediation target but intentionally produced a more conservative and fragmented graph. Search, gap, and recall closure remain incomplete.",
     "r2r_followup_required": true,
     "recall_closure_complete": false,
-    "route_quality_ready_for_scale": false,
+    "retained_same_component_count": 22,
     "route_metrics_recomputed": true,
-    "same_pair_reason_ledger_count": 3,
+    "route_quality_ready_for_scale": false,
+    "same_benchmark_accounting_total_count": 305,
+    "same_benchmark_compatibility_policy": "exact_or_stable_pair_identity_only;semantic_prior_excluded",
+    "same_benchmark_constructed_from_current_output": false,
+    "same_benchmark_source": "compatible_reused_r1r_judgments",
+    "same_pair_reason_ledger_count": 283,
     "search_quality_improved": false,
-    "transitively_incompatible_same_pair_count": 3,
+    "semantic_prior_same_decision_count": 1767,
+    "split_same_reason_ledger_count": 283,
+    "transitively_incompatible_same_pair_count": 283,
+    "unexplained_same_regression_count": 0,
     "weak_review_evidence_discarded": false
   },
   "review_pack": {
@@ -751,7 +784,7 @@
     "scale_up_authorized": false,
     "source_concept_truth_promotion_authorized": false
   },
-  "run_id": "r2-execute-final-20260710",
+  "run_id": "r2-review4-execute-20260710",
   "source_concept_write_scope": {
     "allowed_tables": [
       "blombooru_source_concept_resolution_runs",
@@ -789,12 +822,9 @@
   "title": "SCV2-R2: Constraint-Aware SourceConcept Graph Remediation",
   "validation": {
     "browser_validation": "not_required_no_ui_runtime_change",
-    "database_rerun_performed_for_closeout": false,
     "provider_network_attempted": false,
     "python_executable": "python.exe",
     "python_executable_path_redacted": true,
-    "report_regenerated_without_database_execution": true,
-    "resolver_code_changed_after_evidence": false,
     "r2_contract_error_count": 0,
     "r2_contract_passed": true,
     "server_started": false

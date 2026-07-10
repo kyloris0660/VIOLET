@@ -71,13 +71,19 @@ historical ledger.
   0 deterministic hard conflicts, and 0 transitive cannot violations.
 - Scale shape: largest component 1,057 -> 88 signals; `26+` component bucket
   25 -> 4; 3,443 oversized hub edges prevented.
-- Benchmark preservation: compatible same 37 / 37; known cannot avoided
-  1,546 / 1,546.
+- Judgment-derived same accounting: 2,072 existing same decisions consist of
+  305 compatible proof-grade pairs, 1,767 semantic priors, and 0 invalidated.
+  The compatible equation is `305 = 22 retained + 283 intentionally
+  constrained + 0 unexplained`; every split has a private blocker-ledger
+  entry. Known cannot avoided remains 1,546 / 1,546.
+- Unknown-role diagnostics: 4,455 deterministic candidates and 104 LLM
+  must-link candidates; materialized, unauthorized materialized, direct
+  cannot, deterministic hard-conflict, and transitive cannot counts are all 0.
 - LLM boundary: 2,284 new/missing pairs are review-only and remain blocked for
   separate approval; no provider was initialized or called.
-- Visible debt: aggregate gaps 4,443 -> 9,344, search symmetry remains 0 / 10,
+- Visible debt: aggregate gaps 4,443 -> 9,363, search symmetry remains 0 / 10,
   unmatched seeds remain 16, and average pairwise search overlap fell from
-  0.3752 to 0.1539. The stricter graph exposes rather than hides this debt.
+  0.3752 to 0.1552. The stricter graph exposes rather than hides this debt.
 - Quality interpretation: the narrow constraint-remediation target is met;
   search quality improved, gap quality improved, recall closure complete, and
   route quality ready for scale are all false. R2R closure remains required
