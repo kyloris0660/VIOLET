@@ -5,7 +5,10 @@
 - Contract status: `target_met_constraint_aware_r2`.
 - Working DB: `blombooru_scv2_r2_review4_test_20260710`.
 - Resolver evidence code SHA: `0e605ad95d20713b413340dc85e0fc80f38173dc`.
-- Report commit parent SHA: `0e605ad95d20713b413340dc85e0fc80f38173dc`; post-evidence resolver code changed: `False`.
+- Post-evidence resolver/database execution semantics changed: `False`.
+- Post-evidence proof-only runner/contract code changed: `True`; resolver path unchanged.
+- Git relationship: The resolver evidence commit is an ancestor of the PR branch head; no direct-parent relationship is asserted.
+- Version model: The final PR head is reported externally in the PR body because embedding the final commit SHA inside that same commit would be self-referential.
 - R1R restored evidence DB preserved: `True`.
 - Browser validation: not required; no UI/runtime surface changed.
 
@@ -15,6 +18,8 @@
 - Baseline-to-clone match: `True`.
 - Before/after row-content match: `True`.
 - Table row counts: `{'blombooru_media': 3750, 'blombooru_media_tags': 196794, 'blombooru_provider_cache': 2, 'blombooru_source_metadata_evidence': 4386, 'blombooru_source_metadata_records': 671, 'blombooru_source_name_alias_candidates': 45, 'blombooru_source_name_candidate_extraction_runs': 2, 'blombooru_source_name_candidate_record_verdicts': 112, 'blombooru_source_name_candidates': 903, 'blombooru_source_name_observations': 1377, 'blombooru_source_name_registry': 371, 'blombooru_source_searchable_name_assertions': 1218, 'blombooru_source_tag_observations': 4437, 'blombooru_source_tag_registry': 418, 'blombooru_tags': 4549}`.
+- Forbidden truth tables measured: `11`; all exist in both DBs: `True`.
+- Forbidden truth row-count/schema/content comparison: `True` / `True` / `True`; changed tables: `[]`.
 - Raw rows and fingerprint values remain private.
 
 ## Constraint-aware graph

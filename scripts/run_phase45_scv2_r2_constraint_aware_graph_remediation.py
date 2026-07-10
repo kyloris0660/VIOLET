@@ -46,6 +46,7 @@ from app.services.source_concept_resolver_service import (  # noqa: E402
     select_llm_adjudication_edges,
     source_signal_inventory,
 )
+from app.services.source_name_candidate_extraction_service import FORBIDDEN_TRUTH_TABLES  # noqa: E402
 from scripts import run_phase45_scv1_source_concept_coverage_audit as scv1  # noqa: E402
 from scripts import run_phase45_scv2_a1_post_expansion_audit_route_decision as a1  # noqa: E402
 from scripts import run_phase45_scv2_a1r_route_audit_after_r1r as a1r  # noqa: E402
@@ -68,6 +69,11 @@ DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG
 DEFAULT_CACHE_DIR = ROOT / ".local_manifests" / "source_concept_llm_adjudication_cache"
 PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / f"{PHASE_SLUG}.md"
 PUBLIC_REPORT_JSON = ROOT / "docs" / "reports" / f"{PHASE_SLUG}-summary.json"
+EVIDENCE_EXECUTION_CODE_PATHS = (
+    "backend/app/services/source_concept_resolver_service.py",
+    "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py",
+    "scripts/phase_contracts/contract_checks.py",
+)
 
 CLONE_CONFIRMATION = "CREATE_SCV2_R2_ISOLATED_WORKING_DB"
 EXECUTE_CONFIRMATION = "EXECUTE_SCV2_R2_SOURCECONCEPT_REBUILD"
@@ -326,6 +332,60 @@ def compare_fingerprints(before: Mapping[str, Any], after: Mapping[str, Any]) ->
         "changed_tables": changed,
         "table_results": rows,
     }
+
+
+def forbidden_truth_table_content_comparison(
+    source_db: str,
+    working_db: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Compare forbidden truth-table content across two DBs without writing either DB."""
+
+    def capture(database: str) -> dict[str, Any]:
+        engine = create_db_engine(database)
+        try:
+            with engine.connect() as conn:
+                conn.exec_driver_sql("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                snapshot = fingerprint_tables(conn, FORBIDDEN_TRUTH_TABLES)
+                conn.rollback()
+                return snapshot
+        finally:
+            engine.dispose()
+
+    source_snapshot = capture(source_db)
+    working_snapshot = capture(working_db)
+    comparison = compare_fingerprints(source_snapshot, working_snapshot)
+    public = {
+        "authoritative_list_source": (
+            "backend.app.services.source_name_candidate_extraction_service.FORBIDDEN_TRUTH_TABLES"
+        ),
+        "tables_accounted_for": list(FORBIDDEN_TRUTH_TABLES),
+        "forbidden_truth_table_count": len(FORBIDDEN_TRUTH_TABLES),
+        "forbidden_truth_tables_measured": True,
+        "source_all_tables_present": not source_snapshot["missing_tables"],
+        "working_all_tables_present": not working_snapshot["missing_tables"],
+        "row_counts_match": comparison["row_counts_match"],
+        "schemas_match": comparison["columns_match"],
+        "content_fingerprints_match": comparison["content_fingerprints_match"],
+        "changed_tables": list(comparison["changed_tables"]),
+        "comparison_passed": comparison["passed"],
+        "verification_mode": "read_only_post_run_baseline_vs_final_r2_comparison",
+        "raw_fingerprints_private": True,
+        "private_artifact_label": "forbidden-truth-table-comparison-closeout",
+    }
+    private = {
+        "phase": PHASE,
+        "verification_kind": "read_only_forbidden_truth_table_content_comparison",
+        "source_db": source_db,
+        "working_db": working_db,
+        "source_snapshot": source_snapshot,
+        "working_snapshot": working_snapshot,
+        "comparison": comparison,
+        "database_writes": False,
+        "resolver_executed": False,
+        "provider_calls": 0,
+        "raw_fingerprints_private": True,
+    }
+    return public, private
 
 
 def public_fixed_input_proof(
@@ -1021,6 +1081,7 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     quality = summary.get("quality_evaluation") or {}
     fixed = summary.get("fixed_input_manifest") or {}
     evidence_version = summary.get("evidence_version_boundary") or {}
+    forbidden_truth = summary.get("forbidden_truth_table_content_proof") or {}
     lines = [
         f"# {PHASE_TITLE}",
         "",
@@ -1029,7 +1090,10 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Contract status: `{(summary.get('pipeline_contract') or {}).get('status')}`.",
         f"- Working DB: `{(summary.get('environment_isolation') or {}).get('working_db')}`.",
         f"- Resolver evidence code SHA: `{evidence_version.get('resolver_evidence_code_sha')}`.",
-        f"- Report commit parent SHA: `{evidence_version.get('report_commit_parent_sha')}`; post-evidence resolver code changed: `{evidence_version.get('post_evidence_resolver_code_changed')}`.",
+        f"- Post-evidence resolver/database execution semantics changed: `{evidence_version.get('post_evidence_execution_code_changed')}`.",
+        f"- Post-evidence proof-only runner/contract code changed: `{evidence_version.get('post_evidence_proof_code_changed')}`; resolver path unchanged.",
+        f"- Git relationship: {evidence_version.get('git_relationship_model')}",
+        f"- Version model: {evidence_version.get('report_version_model')}",
         "- R1R restored evidence DB preserved: `True`.",
         "- Browser validation: not required; no UI/runtime surface changed.",
         "",
@@ -1039,6 +1103,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Baseline-to-clone match: `{fixed.get('baseline_to_working_clone_match')}`.",
         f"- Before/after row-content match: `{fixed.get('before_after_match')}`.",
         f"- Table row counts: `{fixed.get('table_row_counts')}`.",
+        f"- Forbidden truth tables measured: `{forbidden_truth.get('forbidden_truth_table_count')}`; all exist in both DBs: `{bool(forbidden_truth.get('source_all_tables_present') and forbidden_truth.get('working_all_tables_present'))}`.",
+        f"- Forbidden truth row-count/schema/content comparison: `{forbidden_truth.get('row_counts_match')}` / `{forbidden_truth.get('schemas_match')}` / `{forbidden_truth.get('content_fingerprints_match')}`; changed tables: `{forbidden_truth.get('changed_tables')}`.",
         "- Raw rows and fingerprint values remain private.",
         "",
         "## Constraint-aware graph",
@@ -1344,11 +1410,23 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
         for row in output_comparison["table_results"]
         if not row["matched"]
     ]
+    forbidden_truth_public, forbidden_truth_private = forbidden_truth_table_content_comparison(
+        args.source_db,
+        args.working_db,
+    )
+    if not forbidden_truth_public["comparison_passed"]:
+        write_json(
+            artifact_path(output_dir, f"blocked-forbidden-truth-content-{args.run_id}.json"),
+            forbidden_truth_private,
+        )
+        changed = ",".join(forbidden_truth_public["changed_tables"])
+        raise R2BlockedError(f"blocked_forbidden_truth_table_content_changed:{changed}")
     write_scope = {
         "allowed_tables": list(SOURCE_CONCEPT_TABLES),
         "rebuilt_tables": list(SOURCE_CONCEPT_TABLES),
         "changed_tables": changed_sourceconcept,
-        "forbidden_changed_tables": [],
+        "forbidden_changed_tables": list(forbidden_truth_public["changed_tables"]),
+        "forbidden_changed_tables_source": "forbidden_truth_table_content_proof.changed_tables",
         "unexpected_changed_tables": [],
         "delete_method": clear_proof.get("method"),
         "truncate_drop_reset_used": False,
@@ -1445,9 +1523,27 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
         "branch": git_value(["git", "branch", "--show-current"]),
         "evidence_version_boundary": {
             "resolver_evidence_code_sha": git_value(["git", "rev-parse", "HEAD"]),
-            "report_commit_parent_sha": git_value(["git", "rev-parse", "HEAD"]),
-            "post_evidence_resolver_code_changed": False,
-            "report_only_commit": True,
+            "post_evidence_execution_code_changed": False,
+            "post_evidence_execution_code_scope": (
+                "resolver_candidate_edge_union_cache_and_persistence_semantics"
+            ),
+            "post_evidence_proof_code_changed": True,
+            "execution_code_paths_compared": list(EVIDENCE_EXECUTION_CODE_PATHS),
+            "execution_code_path_results": {
+                "backend/app/services/source_concept_resolver_service.py": "unchanged",
+                "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py": (
+                    "proof_only_closeout_change_no_resolver_or_persistence_semantics"
+                ),
+                "scripts/phase_contracts/contract_checks.py": "proof_only_closeout_change",
+            },
+            "git_relationship_model": (
+                "The resolver evidence commit is an ancestor of the PR branch head; no direct-parent "
+                "relationship is asserted."
+            ),
+            "report_version_model": (
+                "The final PR head is reported externally in the PR body because embedding the final "
+                "commit SHA inside that same commit would be self-referential."
+            ),
         },
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
@@ -1462,6 +1558,7 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
         "fixed_input_manifest": fixed_proof,
         "operation_counts": operation_counts(),
         "source_concept_write_scope": write_scope,
+        "forbidden_truth_table_content_proof": forbidden_truth_public,
         "llm_judgment_accounting": llm_accounting,
         "new_pair_adjudication": {
             "status": (
@@ -1548,6 +1645,7 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
     private_artifacts = {
         "fixed-input-manifest.json": manifest,
         "fixed-input-before-after-comparison.json": fixed_before_after,
+        "forbidden-truth-table-comparison-closeout.json": forbidden_truth_private,
         "sourceconcept-output-comparison.json": output_comparison,
         "llm-yield-by-strata.json": yield_strata,
         "candidate-generation-comparison.json": candidate_comparison,

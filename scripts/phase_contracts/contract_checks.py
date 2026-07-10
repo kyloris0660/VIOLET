@@ -54,6 +54,24 @@ R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = {
     "blombooru_source_concept_search_index",
 }
 R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = set(R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
+R2_FORBIDDEN_TRUTH_TABLES = {
+    "blombooru_entities",
+    "blombooru_entity_aliases",
+    "blombooru_entity_evidence",
+    "blombooru_entity_external_identities",
+    "blombooru_media_entity_candidates",
+    "blombooru_media_entity_assignments",
+    "blombooru_media_tags",
+    "blombooru_tag_translations",
+    "blombooru_tag_translation_jobs",
+    "blombooru_provider_cache",
+    "blombooru_negative_lookup_cache",
+}
+R2_EVIDENCE_EXECUTION_CODE_PATHS = {
+    "backend/app/services/source_concept_resolver_service.py",
+    "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py",
+    "scripts/phase_contracts/contract_checks.py",
+}
 R2_REQUIRED_ISOLATION_FLAGS: dict[str, bool] = {
     "passed": True,
     "working_db_is_separate_from_r1r_baseline": True,
@@ -2166,6 +2184,67 @@ def _check_r2_source_concept_graph_remediation(
                 expected=0,
                 actual="<missing>" if truth_write_count is MISSING else truth_write_count,
             )
+        forbidden_proof = _get(summary, "forbidden_truth_table_content_proof", MISSING)
+        if not isinstance(forbidden_proof, Mapping):
+            result.fail(
+                "r2_forbidden_truth_content_proof_missing",
+                "R2 target requires a measured baseline-vs-final content comparison for every forbidden truth table.",
+                path="forbidden_truth_table_content_proof",
+            )
+            forbidden_proof = {}
+        measured_tables = forbidden_proof.get("tables_accounted_for", MISSING)
+        measured_table_set = (
+            {str(value) for value in measured_tables}
+            if isinstance(measured_tables, list)
+            else set()
+        )
+        if (
+            measured_table_set != R2_FORBIDDEN_TRUTH_TABLES
+            or _as_int(forbidden_proof.get("forbidden_truth_table_count"), default=-1)
+            != len(R2_FORBIDDEN_TRUTH_TABLES)
+        ):
+            result.fail(
+                "r2_forbidden_truth_table_coverage_incomplete",
+                "R2 must account for the complete authoritative forbidden truth-table set.",
+                path="forbidden_truth_table_content_proof",
+                expected=sorted(R2_FORBIDDEN_TRUTH_TABLES),
+                actual=sorted(measured_table_set),
+            )
+        for key in (
+            "forbidden_truth_tables_measured",
+            "source_all_tables_present",
+            "working_all_tables_present",
+            "row_counts_match",
+            "schemas_match",
+            "content_fingerprints_match",
+            "comparison_passed",
+            "raw_fingerprints_private",
+        ):
+            if type(forbidden_proof.get(key, MISSING)) is not bool or forbidden_proof.get(key) is not True:
+                result.fail(
+                    "r2_forbidden_truth_content_proof_failed",
+                    "R2 target requires an explicit passing read-only content comparison for forbidden truth tables.",
+                    path=f"forbidden_truth_table_content_proof.{key}",
+                    expected=True,
+                    actual=forbidden_proof.get(key, "<missing>"),
+                )
+        measured_changed = forbidden_proof.get("changed_tables", MISSING)
+        if not isinstance(measured_changed, list) or measured_changed:
+            result.fail(
+                "r2_forbidden_truth_content_changed",
+                "R2 target requires zero measured forbidden truth-table content changes.",
+                path="forbidden_truth_table_content_proof.changed_tables",
+                expected=[],
+                actual=measured_changed,
+            )
+        if write_scope.get("forbidden_changed_tables") != measured_changed or str(
+            write_scope.get("forbidden_changed_tables_source") or ""
+        ) != "forbidden_truth_table_content_proof.changed_tables":
+            result.fail(
+                "r2_forbidden_changed_tables_not_derived_from_measurement",
+                "The public forbidden_changed_tables claim must be derived from the measured comparison.",
+                path="source_concept_write_scope",
+            )
         truncate_drop_reset = write_scope.get("truncate_drop_reset_used", MISSING)
         if type(truncate_drop_reset) is not bool or truncate_drop_reset is not False:
             result.fail(
@@ -2419,25 +2498,97 @@ def _check_r2_source_concept_graph_remediation(
             )
         else:
             resolver_sha = str(evidence_boundary.get("resolver_evidence_code_sha") or "")
-            report_parent_sha = str(evidence_boundary.get("report_commit_parent_sha") or "")
-            if not re.fullmatch(r"[0-9a-f]{40}", resolver_sha) or report_parent_sha != resolver_sha:
+            if not re.fullmatch(r"[0-9a-f]{40}", resolver_sha):
                 result.fail(
                     "r2_evidence_version_sha_invalid",
-                    "The final report parent must be the exact resolver code revision executed for evidence.",
-                    path="evidence_version_boundary",
-                    actual={"resolver_evidence_code_sha": resolver_sha, "report_commit_parent_sha": report_parent_sha},
+                    "R2 must report the exact resolver code revision executed for evidence.",
+                    path="evidence_version_boundary.resolver_evidence_code_sha",
+                    actual=resolver_sha,
                 )
-            for key, expected in (
-                ("post_evidence_resolver_code_changed", False),
-                ("report_only_commit", True),
+            execution_changed = evidence_boundary.get("post_evidence_execution_code_changed", MISSING)
+            if type(execution_changed) is not bool or execution_changed is not False:
+                result.fail(
+                    "r2_evidence_version_flag_missing_or_invalid",
+                    "R2 target requires explicit proof that resolver/database execution semantics did not change after evidence.",
+                    path="evidence_version_boundary.post_evidence_execution_code_changed",
+                    expected=False,
+                    actual=evidence_boundary.get("post_evidence_execution_code_changed", "<missing>"),
+                )
+            scope = str(evidence_boundary.get("post_evidence_execution_code_scope") or "")
+            if scope != "resolver_candidate_edge_union_cache_and_persistence_semantics":
+                result.fail(
+                    "r2_evidence_execution_scope_missing_or_invalid",
+                    "R2 must define the exact resolver/database execution semantics covered by the unchanged claim.",
+                    path="evidence_version_boundary.post_evidence_execution_code_scope",
+                    actual=scope,
+                )
+            proof_changed = evidence_boundary.get("post_evidence_proof_code_changed", MISSING)
+            if type(proof_changed) is not bool or proof_changed is not True:
+                result.fail(
+                    "r2_evidence_proof_code_change_not_disclosed",
+                    "The final proof-only runner/contract closeout changes must be explicitly disclosed.",
+                    path="evidence_version_boundary.post_evidence_proof_code_changed",
+                    expected=True,
+                    actual=evidence_boundary.get("post_evidence_proof_code_changed", "<missing>"),
+                )
+            compared_paths = evidence_boundary.get("execution_code_paths_compared", MISSING)
+            compared_path_set = (
+                {str(value) for value in compared_paths}
+                if isinstance(compared_paths, list)
+                else set()
+            )
+            if compared_path_set != R2_EVIDENCE_EXECUTION_CODE_PATHS:
+                result.fail(
+                    "r2_evidence_execution_path_coverage_invalid",
+                    "R2 must identify every resolver, runner, and contract path checked after evidence.",
+                    path="evidence_version_boundary.execution_code_paths_compared",
+                    expected=sorted(R2_EVIDENCE_EXECUTION_CODE_PATHS),
+                    actual=sorted(compared_path_set),
+                )
+            path_results = evidence_boundary.get("execution_code_path_results", MISSING)
+            if not isinstance(path_results, Mapping) or set(path_results) != R2_EVIDENCE_EXECUTION_CODE_PATHS:
+                result.fail(
+                    "r2_evidence_execution_path_results_invalid",
+                    "R2 must disclose the diff classification for each compared resolver, runner, and contract path.",
+                    path="evidence_version_boundary.execution_code_path_results",
+                )
+            elif (
+                path_results.get("backend/app/services/source_concept_resolver_service.py") != "unchanged"
+                or not str(path_results.get("scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py") or "").startswith("proof_only")
+                or not str(path_results.get("scripts/phase_contracts/contract_checks.py") or "").startswith("proof_only")
             ):
-                if type(evidence_boundary.get(key, MISSING)) is not bool or evidence_boundary.get(key) is not expected:
+                result.fail(
+                    "r2_evidence_execution_path_classification_invalid",
+                    "R2 must distinguish the unchanged resolver from proof-only runner and contract closeout changes.",
+                    path="evidence_version_boundary.execution_code_path_results",
+                    actual=dict(path_results),
+                )
+            git_relationship = str(evidence_boundary.get("git_relationship_model") or "")
+            if not all(phrase in git_relationship for phrase in ("ancestor", "no direct-parent relationship")):
+                result.fail(
+                    "r2_git_relationship_model_missing_or_invalid",
+                    "R2 must describe an ancestor relationship without inventing a direct parent.",
+                    path="evidence_version_boundary.git_relationship_model",
+                    actual=git_relationship,
+                )
+            version_model = str(evidence_boundary.get("report_version_model") or "")
+            if not all(phrase in version_model for phrase in ("final PR head", "PR body", "self-referential")):
+                result.fail(
+                    "r2_report_version_model_missing_or_invalid",
+                    "The report must explain why the final PR head is recorded externally instead of self-referentially.",
+                    path="evidence_version_boundary.report_version_model",
+                    actual=version_model,
+                )
+            for forbidden_key in (
+                "report_commit_parent_sha",
+                "report_only_commit",
+                "post_evidence_resolver_code_changed",
+            ):
+                if forbidden_key in evidence_boundary:
                     result.fail(
-                        "r2_evidence_version_flag_missing_or_invalid",
-                        "R2 target requires explicit post-evidence code and report-only commit flags.",
-                        path=f"evidence_version_boundary.{key}",
-                        expected=expected,
-                        actual=evidence_boundary.get(key, "<missing>"),
+                        "r2_ambiguous_evidence_topology_field_present",
+                        "R2 must not encode review-environment-dependent commit-topology claims in the public summary.",
+                        path=f"evidence_version_boundary.{forbidden_key}",
                     )
         if _has(summary, "head_sha"):
             result.fail(

@@ -286,9 +286,21 @@
     "working_db_is_separate_from_r1r_baseline": true
   },
   "evidence_version_boundary": {
-    "post_evidence_resolver_code_changed": false,
-    "report_commit_parent_sha": "0e605ad95d20713b413340dc85e0fc80f38173dc",
-    "report_only_commit": true,
+    "execution_code_path_results": {
+      "backend/app/services/source_concept_resolver_service.py": "unchanged",
+      "scripts/phase_contracts/contract_checks.py": "proof_only_closeout_change",
+      "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py": "proof_only_closeout_change_no_resolver_or_persistence_semantics"
+    },
+    "execution_code_paths_compared": [
+      "backend/app/services/source_concept_resolver_service.py",
+      "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py",
+      "scripts/phase_contracts/contract_checks.py"
+    ],
+    "git_relationship_model": "The resolver evidence commit is an ancestor of the PR branch head; no direct-parent relationship is asserted.",
+    "post_evidence_execution_code_changed": false,
+    "post_evidence_execution_code_scope": "resolver_candidate_edge_union_cache_and_persistence_semantics",
+    "post_evidence_proof_code_changed": true,
+    "report_version_model": "The final PR head is reported externally in the PR body because embedding the final commit SHA inside that same commit would be self-referential.",
     "resolver_evidence_code_sha": "0e605ad95d20713b413340dc85e0fc80f38173dc"
   },
   "fixed_input_manifest": {
@@ -322,6 +334,34 @@
       "blombooru_source_tag_registry": 418,
       "blombooru_tags": 4549
     }
+  },
+  "forbidden_truth_table_content_proof": {
+    "authoritative_list_source": "backend.app.services.source_name_candidate_extraction_service.FORBIDDEN_TRUTH_TABLES",
+    "changed_tables": [],
+    "comparison_passed": true,
+    "content_fingerprints_match": true,
+    "forbidden_truth_table_count": 11,
+    "forbidden_truth_tables_measured": true,
+    "private_artifact_label": "forbidden-truth-table-comparison-closeout",
+    "raw_fingerprints_private": true,
+    "row_counts_match": true,
+    "schemas_match": true,
+    "source_all_tables_present": true,
+    "tables_accounted_for": [
+      "blombooru_entities",
+      "blombooru_entity_aliases",
+      "blombooru_entity_evidence",
+      "blombooru_entity_external_identities",
+      "blombooru_media_entity_candidates",
+      "blombooru_media_entity_assignments",
+      "blombooru_media_tags",
+      "blombooru_tag_translations",
+      "blombooru_tag_translation_jobs",
+      "blombooru_provider_cache",
+      "blombooru_negative_lookup_cache"
+    ],
+    "verification_mode": "read_only_post_run_baseline_vs_final_r2_comparison",
+    "working_all_tables_present": true
   },
   "generated_at": "2026-07-10T10:07:16Z",
   "graph_invariants": {
@@ -806,6 +846,7 @@
     ],
     "delete_method": "dev_test_sourceconcept_owned_delete_rebuild",
     "forbidden_changed_tables": [],
+    "forbidden_changed_tables_source": "forbidden_truth_table_content_proof.changed_tables",
     "persistence_forbidden_truth_table_write_count": 0,
     "rebuilt_tables": [
       "blombooru_source_concept_resolution_runs",

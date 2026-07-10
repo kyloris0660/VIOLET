@@ -67,6 +67,9 @@ historical ledger.
 
 - Fixed upstream evidence: 15 tables, exact row-count and row-content match
   from R1R baseline to clone and before/after R2.
+- No-truth-write proof: all 11 authoritative forbidden tables exist in both
+  baseline and final R2 DBs; schemas, row counts, and content fingerprints
+  match, with measured changed tables `[]`.
 - Graph correctness: 0 review-only unions, 0 direct LLM cannot violations,
   0 deterministic hard conflicts, and 0 transitive cannot violations.
 - Scale shape: largest component 1,057 -> 88 signals; `26+` component bucket

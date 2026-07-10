@@ -397,9 +397,38 @@ def _passing_contract_summary() -> dict:
             "rebuilt_tables": allowed,
             "changed_tables": allowed,
             "forbidden_changed_tables": [],
+            "forbidden_changed_tables_source": "forbidden_truth_table_content_proof.changed_tables",
             "unexpected_changed_tables": [],
             "persistence_forbidden_truth_table_write_count": 0,
             "truncate_drop_reset_used": False,
+        },
+        "forbidden_truth_table_content_proof": {
+            "authoritative_list_source": (
+                "backend.app.services.source_name_candidate_extraction_service.FORBIDDEN_TRUTH_TABLES"
+            ),
+            "tables_accounted_for": [
+                "blombooru_entities",
+                "blombooru_entity_aliases",
+                "blombooru_entity_evidence",
+                "blombooru_entity_external_identities",
+                "blombooru_media_entity_candidates",
+                "blombooru_media_entity_assignments",
+                "blombooru_media_tags",
+                "blombooru_tag_translations",
+                "blombooru_tag_translation_jobs",
+                "blombooru_provider_cache",
+                "blombooru_negative_lookup_cache",
+            ],
+            "forbidden_truth_table_count": 11,
+            "forbidden_truth_tables_measured": True,
+            "source_all_tables_present": True,
+            "working_all_tables_present": True,
+            "row_counts_match": True,
+            "schemas_match": True,
+            "content_fingerprints_match": True,
+            "changed_tables": [],
+            "comparison_passed": True,
+            "raw_fingerprints_private": True,
         },
         "llm_judgment_accounting": {
             "existing_r1r_judgment_count": 6429,
@@ -489,9 +518,31 @@ def _passing_contract_summary() -> dict:
         },
         "evidence_version_boundary": {
             "resolver_evidence_code_sha": "a" * 40,
-            "report_commit_parent_sha": "a" * 40,
-            "post_evidence_resolver_code_changed": False,
-            "report_only_commit": True,
+            "post_evidence_execution_code_changed": False,
+            "post_evidence_execution_code_scope": (
+                "resolver_candidate_edge_union_cache_and_persistence_semantics"
+            ),
+            "post_evidence_proof_code_changed": True,
+            "execution_code_paths_compared": [
+                "backend/app/services/source_concept_resolver_service.py",
+                "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py",
+                "scripts/phase_contracts/contract_checks.py",
+            ],
+            "execution_code_path_results": {
+                "backend/app/services/source_concept_resolver_service.py": "unchanged",
+                "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py": (
+                    "proof_only_closeout_change_no_resolver_or_persistence_semantics"
+                ),
+                "scripts/phase_contracts/contract_checks.py": "proof_only_closeout_change",
+            },
+            "git_relationship_model": (
+                "The resolver evidence commit is an ancestor of the PR branch head; no direct-parent "
+                "relationship is asserted."
+            ),
+            "report_version_model": (
+                "The final PR head is reported externally in the PR body because embedding the final "
+                "commit SHA inside that same commit would be self-referential."
+            ),
         },
         "public_redaction": {"passed": True},
         "review_pack": {
@@ -732,8 +783,58 @@ def test_r2_contract_requires_non_ambiguous_evidence_version_boundary() -> None:
 
     codes = {error.code for error in result.errors}
     assert result.passed is False
-    assert "r2_evidence_version_sha_invalid" in codes
+    assert "r2_ambiguous_evidence_topology_field_present" in codes
     assert "r2_ambiguous_top_level_head_sha_present" in codes
+
+
+def test_r2_contract_requires_measured_forbidden_truth_table_content() -> None:
+    summary = _passing_contract_summary()
+    summary["forbidden_truth_table_content_proof"]["forbidden_truth_tables_measured"] = False
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_forbidden_truth_content_proof_failed" in {error.code for error in result.errors}
+
+
+def test_r2_contract_rejects_forbidden_truth_content_change() -> None:
+    summary = _passing_contract_summary()
+    changed = ["blombooru_entities"]
+    summary["forbidden_truth_table_content_proof"]["changed_tables"] = changed
+    summary["forbidden_truth_table_content_proof"]["comparison_passed"] = False
+    summary["source_concept_write_scope"]["forbidden_changed_tables"] = changed
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    codes = {error.code for error in result.errors}
+    assert "r2_forbidden_truth_content_changed" in codes
+    assert "r2_forbidden_truth_content_proof_failed" in codes
+
+
+def test_r2_contract_rejects_hard_coded_forbidden_changed_tables_claim() -> None:
+    summary = _passing_contract_summary()
+    del summary["source_concept_write_scope"]["forbidden_changed_tables_source"]
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_forbidden_changed_tables_not_derived_from_measurement" in {
+        error.code for error in result.errors
+    }
+
+
+def test_r2_runner_derives_forbidden_changes_from_authoritative_measurement() -> None:
+    source = (
+        ROOT / "scripts" / "run_phase45_scv2_r2_constraint_aware_graph_remediation.py"
+    ).read_text(encoding="utf-8")
+    expected_tables = set(
+        _passing_contract_summary()["forbidden_truth_table_content_proof"]["tables_accounted_for"]
+    )
+
+    assert set(runner.FORBIDDEN_TRUTH_TABLES) == expected_tables
+    assert '"forbidden_changed_tables": list(forbidden_truth_public["changed_tables"])' in source
+    assert "blocked_forbidden_truth_table_content_changed" in source
 
 
 def test_r2_contract_fails_closed_on_review_union_cannot_or_upstream_change() -> None:
