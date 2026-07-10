@@ -211,8 +211,8 @@ def _same_quality_for(
 
 def test_judgment_derived_same_benchmark_keeps_downgraded_must_link() -> None:
     signals = [
-        _signal("left", "different_identity_left", trust="medium_ai"),
-        _signal("right", "different_identity_right", trust="medium_ai"),
+        _signal("left", "different_identity_left"),
+        _signal("right", "different_identity_right"),
     ]
     judgment = {
         "left_signal_key": "left",
@@ -252,6 +252,27 @@ def test_judgment_derived_same_benchmark_classifies_valid_hard_constraint_split(
 
 def test_judgment_derived_same_benchmark_flags_split_without_blocker() -> None:
     signals = [
+        _signal("left", "different_identity_left"),
+        _signal("right", "different_identity_right"),
+    ]
+    judgment = {
+        "left_signal_key": "left",
+        "right_signal_key": "right",
+        "decision": "must_link",
+        "confidence": 0.5,
+        "judgment_id": "cached-same",
+    }
+
+    quality, ledger = _same_quality_for(signals, judgment)
+
+    assert quality["compatible_must_link_benchmark_count"] == 1
+    assert quality["unexplained_same_regression_count"] == 1
+    assert quality["compatible_same_accounting_complete"] is True
+    assert ledger[0]["classification"] == "unexplained_same_regression"
+
+
+def test_judgment_derived_same_benchmark_records_ai_only_review_guard() -> None:
+    signals = [
         _signal("left", "different_identity_left", trust="medium_ai"),
         _signal("right", "different_identity_right", trust="medium_ai"),
     ]
@@ -265,10 +286,9 @@ def test_judgment_derived_same_benchmark_flags_split_without_blocker() -> None:
 
     quality, ledger = _same_quality_for(signals, judgment)
 
-    assert quality["compatible_must_link_benchmark_count"] == 1
-    assert quality["unexplained_same_regression_count"] == 1
-    assert quality["compatible_same_accounting_complete"] is True
-    assert ledger[0]["classification"] == "unexplained_same_regression"
+    assert quality["intentionally_split_with_valid_constraint_count"] == 1
+    assert quality["unexplained_same_regression_count"] == 0
+    assert ledger[0]["blocker_classes"] == ["llm_same_ai_only_requires_non_ai_corroboration"]
 
 
 def test_data_aware_ambiguity_distinguishes_common_long_and_contextual_short_names() -> None:

@@ -719,6 +719,8 @@ def same_and_cannot_quality(
         "llm_cannot_link",
     }
     approved_review_blocker_codes = {
+        "same_scope_cross_script_canonical_bridge",
+        "llm_same_ai_only_requires_non_ai_corroboration",
         "unknown_role_requires_corroboration",
         "unknown_role_llm_same_requires_independent_corroboration",
     }

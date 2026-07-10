@@ -57,7 +57,7 @@ from .source_name_candidate_extraction_service import (
 )
 from ..utils.cache import invalidate_source_concept_search_cache
 
-RESOLVER_VERSION = "source_concept_resolver_core_v4_unknown_role_corroboration"
+RESOLVER_VERSION = "source_concept_resolver_core_v5_constraint_evidence_accounting"
 SOURCE_CONCEPT_SCHEMA_VERSION = "source_concept_schema_v1"
 LLM_CACHE_POLICY_VERSION = "source_concept_llm_adjudication_cache_v1"
 LLM_DECISION_SCHEMA_VERSION = "source_concept_pair_decision_schema_v1"
@@ -3157,10 +3157,15 @@ def edges_from_llm_judgments(
                     )
                 )
                 continue
+            ai_only_pair = signal_is_ai_origin(left) and signal_is_ai_origin(right)
+            if ai_only_pair and not guard_payload.get("review_only"):
+                guard_payload["review_only"] = True
+                guard_payload["review_reason"] = "llm_same_ai_only_requires_non_ai_corroboration"
+                guard_payload["ai_only_pair"] = True
             status = (
                 "active"
                 if confidence >= 0.75
-                and not (signal_is_ai_origin(left) and signal_is_ai_origin(right))
+                and not ai_only_pair
                 and not guard_payload.get("review_only")
                 else "needs_review"
             )
