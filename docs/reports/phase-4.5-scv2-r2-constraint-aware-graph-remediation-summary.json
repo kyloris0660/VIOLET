@@ -1,0 +1,873 @@
+{
+  "ambiguity_diagnostics": {
+    "ambiguous_surface_count": 659,
+    "profile_count": 1529
+  },
+  "artifact_lifecycle": {
+    "private_artifacts": "one-off local artifact / ignored output",
+    "public_report": "public report / handoff / roadmap update",
+    "resolver": "durable production code",
+    "runner": "phase-scoped operational runner",
+    "tests": "phase-scoped validation test"
+  },
+  "baseline_metrics": {
+    "active": 1064,
+    "component_size_distribution": [
+      {
+        "bucket": "0",
+        "count": 0
+      },
+      {
+        "bucket": "1",
+        "count": 1515
+      },
+      {
+        "bucket": "2-3",
+        "count": 956
+      },
+      {
+        "bucket": "4-10",
+        "count": 216
+      },
+      {
+        "bucket": "11-25",
+        "count": 55
+      },
+      {
+        "bucket": "26+",
+        "count": 25
+      }
+    ],
+    "concept_total": 2767,
+    "gap_buckets": {
+      "cjk_alias_without_english_romaji_sibling": 1569,
+      "danbooru_parenthetical_without_cjk_sibling": 220,
+      "high_frequency_source_tag_or_name_unlinked": 13,
+      "identity_tag_present_no_source_concept_alias": 7,
+      "needs_review_cluster_with_no_active_alias_path": 579,
+      "same_display_name_split_across_contexts": 541,
+      "same_normalized_alias_key_split_across_multiple_concepts": 541,
+      "source_assertion_present_not_connected": 24,
+      "source_name_present_no_source_concept_alias": 2,
+      "source_tag_present_no_source_concept_alias": 947
+    },
+    "gap_total": 4443,
+    "largest_components": [
+      {
+        "alias_count": 133,
+        "concept_ref": "concept_ref_001",
+        "evidence_count": 1057,
+        "media_count": 546,
+        "signal_count": 1057,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 10,
+        "concept_ref": "concept_ref_002",
+        "evidence_count": 118,
+        "media_count": 65,
+        "signal_count": 118,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 2,
+        "concept_ref": "concept_ref_003",
+        "evidence_count": 115,
+        "media_count": 113,
+        "signal_count": 115,
+        "status": "active"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_004",
+        "evidence_count": 98,
+        "media_count": 98,
+        "signal_count": 98,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 2,
+        "concept_ref": "concept_ref_005",
+        "evidence_count": 88,
+        "media_count": 24,
+        "signal_count": 88,
+        "status": "active"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_006",
+        "evidence_count": 76,
+        "media_count": 76,
+        "signal_count": 76,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_007",
+        "evidence_count": 72,
+        "media_count": 72,
+        "signal_count": 72,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_008",
+        "evidence_count": 69,
+        "media_count": 69,
+        "signal_count": 69,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_009",
+        "evidence_count": 57,
+        "media_count": 57,
+        "signal_count": 57,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_010",
+        "evidence_count": 48,
+        "media_count": 48,
+        "signal_count": 48,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_011",
+        "evidence_count": 44,
+        "media_count": 44,
+        "signal_count": 44,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_012",
+        "evidence_count": 39,
+        "media_count": 39,
+        "signal_count": 39,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_013",
+        "evidence_count": 39,
+        "media_count": 39,
+        "signal_count": 39,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_014",
+        "evidence_count": 38,
+        "media_count": 10,
+        "signal_count": 38,
+        "status": "active"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_015",
+        "evidence_count": 36,
+        "media_count": 36,
+        "signal_count": 36,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_016",
+        "evidence_count": 35,
+        "media_count": 35,
+        "signal_count": 35,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_017",
+        "evidence_count": 33,
+        "media_count": 33,
+        "signal_count": 33,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_018",
+        "evidence_count": 32,
+        "media_count": 32,
+        "signal_count": 32,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 1,
+        "concept_ref": "concept_ref_019",
+        "evidence_count": 29,
+        "media_count": 29,
+        "signal_count": 29,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 8,
+        "concept_ref": "concept_ref_020",
+        "evidence_count": 28,
+        "media_count": 18,
+        "signal_count": 28,
+        "status": "needs_review"
+      }
+    ],
+    "needs_review": 1703,
+    "needs_review_metrics": {
+      "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
+      "needs_review_ai_only": 290,
+      "needs_review_duplicate_or_fragment_candidate": 1124,
+      "needs_review_high_evidence_count": 94,
+      "needs_review_sharing_alias_with_active": 1124,
+      "needs_review_with_cjk_alias": 1035,
+      "needs_review_with_media": 1463,
+      "needs_review_with_parenthetical_context": 180,
+      "total_needs_review_concepts": 1703
+    },
+    "search_aggregate": {
+      "asymmetric_groups": 10,
+      "asymmetry_reason_buckets": {
+        "active_only_vs_needs_review_contrast": 5,
+        "concept_split": 33,
+        "missing_alias_or_unmatched_seed": 10,
+        "needs_review_not_included_in_active_search": 9,
+        "unmatched_alias": 16
+      },
+      "groups_tested": 10,
+      "matched_seeds": 42,
+      "media_result_overlap_metrics": {
+        "average_pairwise_jaccard": 0.3752,
+        "min_pairwise_jaccard": 0.0,
+        "pairwise_jaccard_count": 32
+      },
+      "seeds_tested": 58,
+      "symmetric_groups": 0,
+      "unmatched_aliases_count_as_asymmetry": true,
+      "unmatched_seeds": 16
+    },
+    "superseded": 0,
+    "table_counts": {
+      "aliases": 4400,
+      "evidence": 8097,
+      "search_index": 4400,
+      "signal_links": 8097,
+      "source_concepts": 2767
+    }
+  },
+  "branch": "codex/scv2-r2-constraint-aware-source-concept-graph-remediation",
+  "candidate_generation_comparison": {
+    "current_deterministic_eligible_pair_count": 3319,
+    "current_pairs_without_compatible_legacy_judgment": 2284,
+    "legacy_cached_pair_count": 2080,
+    "legacy_judgments_still_applied_as_constraints_or_regression_labels": true,
+    "legacy_pairs_not_regenerated_deterministically": 1045
+  },
+  "context_equivalence_diagnostics": {
+    "accepted_pair_count": 0,
+    "accepted_support_reasons": {},
+    "candidate_pair_count": 38,
+    "held_for_review_pair_count": 0,
+    "independence_policy": "two_distinct_records_and_two_media_provider_or_run_units_unless_normalized_equivalent",
+    "materialized_context_alias_key_count": 0,
+    "rejected_pair_count": 38
+  },
+  "environment_isolation": {
+    "dev_test_only": true,
+    "passed": true,
+    "production_profile_active": false,
+    "production_write_attempted": false,
+    "protected_source_write_attempted": false,
+    "r1r_baseline_preserved": true,
+    "source_db": "blombooru_r1r_restored_test_20260618",
+    "violet_env": "test",
+    "working_db": "blombooru_scv2_r2_review4_test_20260710",
+    "working_db_is_separate_from_r1r_baseline": true
+  },
+  "evidence_version_boundary": {
+    "execution_code_path_results": {
+      "backend/app/services/source_concept_resolver_service.py": "unchanged",
+      "scripts/phase_contracts/contract_checks.py": "proof_only_closeout_change",
+      "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py": "proof_only_closeout_change_no_resolver_or_persistence_semantics"
+    },
+    "execution_code_paths_compared": [
+      "backend/app/services/source_concept_resolver_service.py",
+      "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py",
+      "scripts/phase_contracts/contract_checks.py"
+    ],
+    "git_relationship_model": "The resolver evidence commit is an ancestor of the PR branch head; no direct-parent relationship is asserted.",
+    "post_evidence_execution_code_changed": false,
+    "post_evidence_execution_code_scope": "resolver_candidate_edge_union_cache_and_persistence_semantics",
+    "post_evidence_proof_code_changed": true,
+    "report_version_model": "The final PR head is reported externally in the PR body because embedding the final commit SHA inside that same commit would be self-referential.",
+    "resolver_evidence_code_sha": "0e605ad95d20713b413340dc85e0fc80f38173dc"
+  },
+  "fixed_input_manifest": {
+    "baseline_to_working_clone_match": true,
+    "before_after_match": true,
+    "changed_tables": [],
+    "content_fingerprint_count": 15,
+    "content_fingerprints_match": true,
+    "present": true,
+    "private_manifest_generated": true,
+    "private_manifest_label": "r2-private-fixed-input-manifest",
+    "provenance_unchanged": true,
+    "raw_fingerprint_values_public": false,
+    "raw_rows_public": false,
+    "row_counts_match": true,
+    "table_count": 15,
+    "table_row_counts": {
+      "blombooru_media": 3750,
+      "blombooru_media_tags": 196794,
+      "blombooru_provider_cache": 2,
+      "blombooru_source_metadata_evidence": 4386,
+      "blombooru_source_metadata_records": 671,
+      "blombooru_source_name_alias_candidates": 45,
+      "blombooru_source_name_candidate_extraction_runs": 2,
+      "blombooru_source_name_candidate_record_verdicts": 112,
+      "blombooru_source_name_candidates": 903,
+      "blombooru_source_name_observations": 1377,
+      "blombooru_source_name_registry": 371,
+      "blombooru_source_searchable_name_assertions": 1218,
+      "blombooru_source_tag_observations": 4437,
+      "blombooru_source_tag_registry": 418,
+      "blombooru_tags": 4549
+    }
+  },
+  "forbidden_truth_table_content_proof": {
+    "authoritative_list_source": "backend.app.services.source_name_candidate_extraction_service.FORBIDDEN_TRUTH_TABLES",
+    "changed_tables": [],
+    "comparison_passed": true,
+    "content_fingerprints_match": true,
+    "forbidden_truth_table_count": 11,
+    "forbidden_truth_tables_measured": true,
+    "private_artifact_label": "forbidden-truth-table-comparison-closeout",
+    "raw_fingerprints_private": true,
+    "row_counts_match": true,
+    "schemas_match": true,
+    "source_all_tables_present": true,
+    "tables_accounted_for": [
+      "blombooru_entities",
+      "blombooru_entity_aliases",
+      "blombooru_entity_evidence",
+      "blombooru_entity_external_identities",
+      "blombooru_media_entity_candidates",
+      "blombooru_media_entity_assignments",
+      "blombooru_media_tags",
+      "blombooru_tag_translations",
+      "blombooru_tag_translation_jobs",
+      "blombooru_provider_cache",
+      "blombooru_negative_lookup_cache"
+    ],
+    "verification_mode": "read_only_post_run_baseline_vs_final_r2_comparison",
+    "working_all_tables_present": true
+  },
+  "generated_at": "2026-07-10T10:07:16Z",
+  "graph_invariants": {
+    "deterministic_hard_conflict_in_materialized_component_count": 0,
+    "deterministic_unknown_role_candidate_count": 4455,
+    "direct_llm_cannot_pair_in_materialized_component_count": 0,
+    "llm_unknown_role_must_link_candidate_count": 104,
+    "materialized_identity_edge_count": 10953,
+    "review_only_edge_used_in_union_count": 0,
+    "review_overlay_edge_count": 36137,
+    "transitive_cannot_violation_count": 0,
+    "unauthorized_unknown_role_materialization_count": 0,
+    "unknown_role_bridge_candidate_count_before": 4559,
+    "unknown_role_bridge_materialized_count_after": 0,
+    "unknown_role_corroboration_distribution": {
+      "cross_script_observed_count": 78,
+      "explicit_compatible_context_count": 0,
+      "independent_non_ai_sources_count": 486,
+      "manual_confirmed_count": 0,
+      "strong_cross_script_count": 0
+    },
+    "unknown_role_review_only_count": 4559
+  },
+  "human_review_sample_pack": {
+    "generated": true,
+    "human_ground_truth_claimed": false,
+    "private_only": true,
+    "sample_categories": [
+      "same",
+      "cannot_or_conflict",
+      "uncertain_or_review",
+      "largest_components"
+    ]
+  },
+  "llm_judgment_accounting": {
+    "exact_compatible_reuse_count": 0,
+    "existing_r1r_judgment_count": 6429,
+    "genuinely_new_or_missing_pair_count": 2284,
+    "invalidated_count": 0,
+    "new_provider_call_count": 0,
+    "outcome_counts": {
+      "cannot": 3815,
+      "same": 2072,
+      "uncertain": 542
+    },
+    "projected_new_call_cost_usd": 0.73088,
+    "provider_initialized": false,
+    "reused_as_component_constraint_or_regression_label_count": 2080,
+    "same_decision_counts": {
+      "all_existing_r1r": 2072,
+      "compatible_proof_grade": 305,
+      "invalidated": 0,
+      "semantic_prior": 1767
+    },
+    "semantic_prior_count": 4349,
+    "stable_pair_identity_reuse_count": 2080
+  },
+  "metric_delta": {
+    "gap_bucket_delta": {
+      "cjk_alias_without_english_romaji_sibling": 200,
+      "danbooru_parenthetical_without_cjk_sibling": 2050,
+      "high_frequency_source_tag_or_name_unlinked": 0,
+      "identity_tag_present_no_source_concept_alias": 0,
+      "needs_review_cluster_with_no_active_alias_path": 2267,
+      "same_display_name_split_across_contexts": 201,
+      "same_normalized_alias_key_split_across_multiple_concepts": 202,
+      "source_assertion_present_not_connected": 0,
+      "source_name_present_no_source_concept_alias": 0,
+      "source_tag_present_no_source_concept_alias": 0
+    },
+    "scalar_delta": {
+      "active": 29,
+      "concept_total": 2641,
+      "gap_total": 4920,
+      "needs_review": 2612,
+      "superseded": 0
+    },
+    "search_delta": {
+      "asymmetric_groups": 0,
+      "matched_seeds": 0,
+      "symmetric_groups": 0,
+      "unmatched_seeds": 0
+    }
+  },
+  "new_pair_adjudication": {
+    "execution_scope_excludes_unadjudicated_review_pairs": true,
+    "pair_count": 2284,
+    "projected_cost_usd": 0.73088,
+    "provider_calls_made": 0,
+    "provider_initialized": false,
+    "separate_operator_approval_required": true,
+    "status": "blocked_llm_approval_required"
+  },
+  "operation_counts": {
+    "ai_tagging_calls": 0,
+    "gallery_dl_calls": 0,
+    "media_imports": 0,
+    "new_llm_provider_calls": 0,
+    "production_writes": 0,
+    "provider_pixiv_network_calls": 0,
+    "truth_path_writes": 0,
+    "upstream_observation_mutations": 0
+  },
+  "oversized_block_diagnostics": {
+    "blocking_block_count": 7683,
+    "edge_count": 45010,
+    "edge_counts_by_status": {
+      "active": 10931,
+      "needs_review": 28104,
+      "rejected": 1575,
+      "weak": 4400
+    },
+    "edge_counts_by_type": {
+      "context_only": 1551,
+      "cooccurrence_context": 2849,
+      "exact_canonical_key": 333,
+      "negative_guard": 2935,
+      "same_scope_duplicate_review": 319,
+      "same_surface_context": 246,
+      "stable_identity_anchor": 32322,
+      "unknown_role_review": 4455
+    },
+    "oversized_block_count": 40,
+    "oversized_hub_edges_prevented": 3443,
+    "oversized_largest_sub_block": 112,
+    "oversized_partition_count": 73,
+    "oversized_truncated_or_skipped_count": 34,
+    "processed_block_count": 4811
+  },
+  "phase": "4.5-SCV2-R2",
+  "phase_slug": "phase-4.5-scv2-r2-constraint-aware-graph-remediation",
+  "pipeline_contract": {
+    "claims": {
+      "route_approved": false,
+      "safe_to_merge": false,
+      "target_met": true
+    },
+    "contract_id": "r2_source_concept_graph_remediation_contract_v1",
+    "status": "target_met_constraint_aware_r2"
+  },
+  "post_r2_metrics": {
+    "active": 1093,
+    "component_size_distribution": [
+      {
+        "bucket": "0",
+        "count": 0
+      },
+      {
+        "bucket": "1",
+        "count": 4303
+      },
+      {
+        "bucket": "2-3",
+        "count": 899
+      },
+      {
+        "bucket": "4-10",
+        "count": 163
+      },
+      {
+        "bucket": "11-25",
+        "count": 39
+      },
+      {
+        "bucket": "26+",
+        "count": 4
+      }
+    ],
+    "concept_total": 5408,
+    "gap_buckets": {
+      "cjk_alias_without_english_romaji_sibling": 1769,
+      "danbooru_parenthetical_without_cjk_sibling": 2270,
+      "high_frequency_source_tag_or_name_unlinked": 13,
+      "identity_tag_present_no_source_concept_alias": 7,
+      "needs_review_cluster_with_no_active_alias_path": 2846,
+      "same_display_name_split_across_contexts": 742,
+      "same_normalized_alias_key_split_across_multiple_concepts": 743,
+      "source_assertion_present_not_connected": 24,
+      "source_name_present_no_source_concept_alias": 2,
+      "source_tag_present_no_source_concept_alias": 947
+    },
+    "gap_total": 9363,
+    "largest_components": [
+      {
+        "alias_count": 2,
+        "concept_ref": "concept_ref_001",
+        "evidence_count": 88,
+        "media_count": 24,
+        "signal_count": 88,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_002",
+        "evidence_count": 38,
+        "media_count": 10,
+        "signal_count": 38,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_003",
+        "evidence_count": 37,
+        "media_count": 5,
+        "signal_count": 37,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_004",
+        "evidence_count": 27,
+        "media_count": 9,
+        "signal_count": 27,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_005",
+        "evidence_count": 23,
+        "media_count": 3,
+        "signal_count": 23,
+        "status": "active"
+      },
+      {
+        "alias_count": 2,
+        "concept_ref": "concept_ref_006",
+        "evidence_count": 22,
+        "media_count": 11,
+        "signal_count": 22,
+        "status": "active"
+      },
+      {
+        "alias_count": 3,
+        "concept_ref": "concept_ref_007",
+        "evidence_count": 21,
+        "media_count": 3,
+        "signal_count": 21,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_008",
+        "evidence_count": 20,
+        "media_count": 2,
+        "signal_count": 20,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_009",
+        "evidence_count": 17,
+        "media_count": 5,
+        "signal_count": 17,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_010",
+        "evidence_count": 16,
+        "media_count": 4,
+        "signal_count": 16,
+        "status": "active"
+      },
+      {
+        "alias_count": 2,
+        "concept_ref": "concept_ref_011",
+        "evidence_count": 16,
+        "media_count": 8,
+        "signal_count": 16,
+        "status": "active"
+      },
+      {
+        "alias_count": 6,
+        "concept_ref": "concept_ref_012",
+        "evidence_count": 15,
+        "media_count": 3,
+        "signal_count": 15,
+        "status": "needs_review"
+      },
+      {
+        "alias_count": 3,
+        "concept_ref": "concept_ref_013",
+        "evidence_count": 15,
+        "media_count": 5,
+        "signal_count": 15,
+        "status": "active"
+      },
+      {
+        "alias_count": 3,
+        "concept_ref": "concept_ref_014",
+        "evidence_count": 15,
+        "media_count": 5,
+        "signal_count": 15,
+        "status": "active"
+      },
+      {
+        "alias_count": 3,
+        "concept_ref": "concept_ref_015",
+        "evidence_count": 15,
+        "media_count": 5,
+        "signal_count": 15,
+        "status": "active"
+      },
+      {
+        "alias_count": 3,
+        "concept_ref": "concept_ref_016",
+        "evidence_count": 15,
+        "media_count": 5,
+        "signal_count": 15,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_017",
+        "evidence_count": 14,
+        "media_count": 3,
+        "signal_count": 14,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_018",
+        "evidence_count": 14,
+        "media_count": 2,
+        "signal_count": 14,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_019",
+        "evidence_count": 14,
+        "media_count": 4,
+        "signal_count": 14,
+        "status": "active"
+      },
+      {
+        "alias_count": 4,
+        "concept_ref": "concept_ref_020",
+        "evidence_count": 14,
+        "media_count": 4,
+        "signal_count": 14,
+        "status": "active"
+      }
+    ],
+    "needs_review": 4315,
+    "needs_review_metrics": {
+      "assessment": "needs_review retains recall value but should be triaged/scored before broader truth or management work",
+      "needs_review_ai_only": 2580,
+      "needs_review_duplicate_or_fragment_candidate": 1469,
+      "needs_review_high_evidence_count": 8,
+      "needs_review_sharing_alias_with_active": 1469,
+      "needs_review_with_cjk_alias": 1209,
+      "needs_review_with_media": 4037,
+      "needs_review_with_parenthetical_context": 2224,
+      "total_needs_review_concepts": 4315
+    },
+    "search_aggregate": {
+      "asymmetric_groups": 10,
+      "asymmetry_reason_buckets": {
+        "active_only_vs_needs_review_contrast": 4,
+        "concept_split": 33,
+        "missing_alias_or_unmatched_seed": 10,
+        "needs_review_not_included_in_active_search": 7,
+        "unmatched_alias": 16
+      },
+      "groups_tested": 10,
+      "matched_seeds": 42,
+      "media_result_overlap_metrics": {
+        "average_pairwise_jaccard": 0.1552,
+        "min_pairwise_jaccard": 0.0,
+        "pairwise_jaccard_count": 32
+      },
+      "seeds_tested": 58,
+      "symmetric_groups": 0,
+      "unmatched_aliases_count_as_asymmetry": true,
+      "unmatched_seeds": 16
+    },
+    "superseded": 0,
+    "table_counts": {
+      "aliases": 6908,
+      "evidence": 8097,
+      "search_index": 6908,
+      "signal_links": 8097,
+      "source_concepts": 5408
+    }
+  },
+  "public_redaction": {
+    "allowed_findings": [],
+    "clean_before_public_write": true,
+    "findings": [],
+    "passed": true,
+    "scanned_artifacts": [
+      "docs/reports/phase-4.5-scv2-r2-constraint-aware-graph-remediation.md",
+      "docs/reports/phase-4.5-scv2-r2-constraint-aware-graph-remediation-summary.json"
+    ],
+    "unsafe_public_report_written": false
+  },
+  "quality_evaluation": {
+    "all_existing_r1r_same_decision_count": 2072,
+    "changed_denominators_reported": true,
+    "compatible_high_confidence_same_pair_count": 305,
+    "compatible_high_confidence_same_pair_retained_count": 22,
+    "compatible_must_link_benchmark_count": 305,
+    "compatible_same_accounting_complete": true,
+    "compatible_same_preservation_rate": 1.0,
+    "constraint_safety_target_met": true,
+    "fixed_evidence_preserved": true,
+    "gap_quality_improved": false,
+    "giant_component_remediation_improved": true,
+    "intentionally_split_reason_ledger_count": 283,
+    "intentionally_split_same_pair_count": 283,
+    "intentionally_split_with_valid_constraint_count": 283,
+    "invalidated_same_decision_count": 0,
+    "known_cannot_avoidance_rate": 1.0,
+    "known_cannot_avoided_count": 1546,
+    "known_cannot_constraint_regression": false,
+    "known_cannot_pair_count": 1546,
+    "known_same_benchmark_pair_count": 305,
+    "known_same_constraint_regression": false,
+    "known_same_recall": 0.072131,
+    "known_same_recall_protected": true,
+    "known_same_regression_count": 0,
+    "meaningful_structural_improvement": true,
+    "missing_signal_or_pair_count": 0,
+    "no_major_quality_regression": false,
+    "quality_interpretation": "R2 met the constraint-aware graph-remediation target but intentionally produced a more conservative and fragmented graph. Search, gap, and recall closure remain incomplete.",
+    "r2r_followup_required": true,
+    "recall_closure_complete": false,
+    "retained_same_component_count": 22,
+    "route_metrics_recomputed": true,
+    "route_quality_ready_for_scale": false,
+    "same_benchmark_accounting_total_count": 305,
+    "same_benchmark_compatibility_policy": "exact_or_stable_pair_identity_only;semantic_prior_excluded",
+    "same_benchmark_constructed_from_current_output": false,
+    "same_benchmark_source": "compatible_reused_r1r_judgments",
+    "same_pair_reason_ledger_count": 283,
+    "search_quality_improved": false,
+    "semantic_prior_same_decision_count": 1767,
+    "split_same_reason_ledger_count": 283,
+    "transitively_incompatible_same_pair_count": 283,
+    "unexplained_same_regression_count": 0,
+    "weak_review_evidence_discarded": false
+  },
+  "review_pack": {
+    "checksums_present": true,
+    "generated": true,
+    "integrity_passed": true,
+    "manifest_present": true,
+    "not_committed": true,
+    "public_report_copy_current": true,
+    "zip_generated": true,
+    "zip_path_label": "r2-private-review-pack"
+  },
+  "route_authorization": {
+    "entity_bridge_authorized": false,
+    "full_library_execution_authorized": false,
+    "production_authorized": false,
+    "provider_2_authorized": false,
+    "px1_b_authorized": false,
+    "scale_up_authorized": false,
+    "source_concept_truth_promotion_authorized": false
+  },
+  "run_id": "r2-review4-execute-20260710",
+  "source_concept_write_scope": {
+    "allowed_tables": [
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts",
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_search_index"
+    ],
+    "changed_tables": [
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_search_index",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts"
+    ],
+    "delete_method": "dev_test_sourceconcept_owned_delete_rebuild",
+    "forbidden_changed_tables": [],
+    "forbidden_changed_tables_source": "forbidden_truth_table_content_proof.changed_tables",
+    "persistence_forbidden_truth_table_write_count": 0,
+    "rebuilt_tables": [
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts",
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_search_index"
+    ],
+    "truncate_drop_reset_used": false,
+    "unexpected_changed_tables": []
+  },
+  "title": "SCV2-R2: Constraint-Aware SourceConcept Graph Remediation",
+  "validation": {
+    "browser_validation": "not_required_no_ui_runtime_change",
+    "provider_network_attempted": false,
+    "python_executable": "python.exe",
+    "python_executable_path_redacted": true,
+    "r2_contract_error_count": 0,
+    "r2_contract_passed": true,
+    "server_started": false
+  }
+}

@@ -32,6 +32,7 @@ extend a contract first.
 - `source_metadata_contract_v1`
 - `source_concept_full_chain_contract_v1`
 - `r1r_full_source_concept_pipeline_contract_v1`
+- `r2_source_concept_graph_remediation_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`
@@ -76,6 +77,38 @@ completion.
 See `docs/source-concept-llm-adjudication-cache.md` for the durable cache and
 checkpoint/reuse standard shared by R1R and future full-library SourceConcept
 phases.
+
+## R2 Constraint-Aware Graph Gate
+
+`r2_source_concept_graph_remediation_contract_v1` is the focused SCV2-R2 gate.
+It requires an immutable fixed-input manifest with content fingerprints, a
+separate dev/test working DB, SourceConcept-only output writes, complete
+accounting for all 6,429 R1R judgments, and an explicit approval boundary for
+genuinely new pairs. Initial R2 must not initialize or call an LLM provider for
+those pairs.
+
+Target completion requires zero review-only unions, zero applicable direct or
+transitive cannot violations, compatible known-same preservation with a private
+reason ledger for intentional splits, recomputed baseline/post metrics, public
+redaction, and an integrity-checked private review pack. It forbids provider,
+gallery-dl, AI/import, upstream evidence, production, Entity, and truth-path
+work and cannot authorize a downstream phase.
+
+The target gate also requires every production-isolation and downstream
+authorization flag to be present as an exact boolean, an explicit integer-zero
+forbidden truth-table persistence delta, empty forbidden/unexpected table
+lists, and `truncate_drop_reset_used=false`. Missing false-valued proofs do not
+count as evidence. User-controlled run IDs are bounded to a safe filename
+format, and exact final Markdown/JSON redaction failure blocks public writes.
+
+R2 quality is multidimensional: `constraint_safety_target_met=true` may coexist
+with `search_quality_improved=false`, `gap_quality_improved=false`,
+`recall_closure_complete=false`, and `route_quality_ready_for_scale=false`.
+Those acknowledged route debts do not invalidate the narrow constraint target,
+but they require R2R recall/search closure under a separate future approval.
+
+See `docs/source-evidence-snapshot-reuse-policy.md` for the acquisition versus
+rebuild boundary shared by R2 and future full-library work.
 
 ## Route Gate
 

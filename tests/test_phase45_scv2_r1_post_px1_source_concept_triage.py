@@ -438,13 +438,14 @@ def test_runner_does_not_import_provider_network_or_truth_promoters() -> None:
     assert "blombooru_media_tags INSERT" not in source
 
 
-def test_handoff_and_roadmap_are_post_px1_r1_factual() -> None:
+def test_handoff_and_roadmap_are_post_a1r_r2_factual() -> None:
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
 
-    assert "PR #103 / Phase 4.5-PX1 is merged" in handoff
-    assert "SCV2-R1" in handoff
-    assert "Current Route" in handoff
+    assert "PR #133" in handoff
+    assert "SCV2-R2" in handoff
+    assert "target_met_constraint_aware_r2" in handoff
+    assert "source-evidence-snapshot-reuse-policy.md" in handoff
     assert "SCV2-E1` - Medium Import + AI Tag Completion, then `PX1`" not in handoff
     assert "Phase 4.5-SCV2-R1" in roadmap
     assert "phase-4.5-scv2-r1-post-px1-source-concept-triage" in roadmap

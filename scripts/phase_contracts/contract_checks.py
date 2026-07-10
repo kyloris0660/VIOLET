@@ -11,6 +11,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from .contract_registry import (
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES,
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
+    R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES,
     SOURCE_CONCEPT_ALLOWED_STATUSES,
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
     get_contract,
@@ -51,6 +52,60 @@ R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = {
     "blombooru_source_concept_evidence",
     "blombooru_source_concept_signal_links",
     "blombooru_source_concept_search_index",
+}
+R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = set(R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
+R2_FORBIDDEN_TRUTH_TABLES = {
+    "blombooru_entities",
+    "blombooru_entity_aliases",
+    "blombooru_entity_evidence",
+    "blombooru_entity_external_identities",
+    "blombooru_media_entity_candidates",
+    "blombooru_media_entity_assignments",
+    "blombooru_media_tags",
+    "blombooru_tag_translations",
+    "blombooru_tag_translation_jobs",
+    "blombooru_provider_cache",
+    "blombooru_negative_lookup_cache",
+}
+R2_EVIDENCE_EXECUTION_CODE_PATHS = {
+    "backend/app/services/source_concept_resolver_service.py",
+    "scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py",
+    "scripts/phase_contracts/contract_checks.py",
+}
+R2_REQUIRED_ISOLATION_FLAGS: dict[str, bool] = {
+    "passed": True,
+    "working_db_is_separate_from_r1r_baseline": True,
+    "r1r_baseline_preserved": True,
+    "dev_test_only": True,
+    "production_profile_active": False,
+    "production_write_attempted": False,
+    "protected_source_write_attempted": False,
+}
+R2_REQUIRED_ROUTE_AUTHORIZATION_FLAGS: tuple[str, ...] = (
+    "px1_b_authorized",
+    "provider_2_authorized",
+    "scale_up_authorized",
+    "entity_bridge_authorized",
+    "production_authorized",
+    "full_library_execution_authorized",
+    "source_concept_truth_promotion_authorized",
+)
+R2_REQUIRED_QUALITY_FLAGS: dict[str, bool] = {
+    "route_metrics_recomputed": True,
+    "meaningful_structural_improvement": True,
+    "known_same_recall_protected": True,
+    "compatible_same_accounting_complete": True,
+    "constraint_safety_target_met": True,
+    "fixed_evidence_preserved": True,
+    "known_same_constraint_regression": False,
+    "known_cannot_constraint_regression": False,
+    "giant_component_remediation_improved": True,
+    "search_quality_improved": False,
+    "gap_quality_improved": False,
+    "recall_closure_complete": False,
+    "route_quality_ready_for_scale": False,
+    "r2r_followup_required": True,
+    "no_major_quality_regression": False,
 }
 R1R_INPUT_SCOPE_MIN_RATIO = 0.8
 R1R_BASELINE_ONLY_INPUT_SCOPE_METRICS = {
@@ -1955,6 +2010,622 @@ def _check_r1r_route_gate(
             expected=True,
             actual=route.get("a1r_still_required"),
         )
+
+
+def _check_r2_source_concept_graph_remediation(
+    _contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    status = str(_get(summary, "pipeline_contract.status", "") or "")
+    target = status == "target_met_constraint_aware_r2"
+    if status not in R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES:
+        result.fail(
+            "r2_status_invalid",
+            "R2 status must use the focused contract vocabulary.",
+            path="pipeline_contract.status",
+            expected=list(R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES),
+            actual=status,
+        )
+        return
+    if not target and _completion_or_approval_claimed(result):
+        result.fail(
+            "r2_non_target_status_claims_completion",
+            "Only target_met_constraint_aware_r2 may claim completion or downstream approval.",
+            path="pipeline_contract.status",
+            actual=status,
+        )
+    if target:
+        claims = _get(summary, "pipeline_contract.claims", MISSING)
+        if not isinstance(claims, Mapping):
+            result.fail(
+                "r2_pipeline_claims_not_object",
+                "R2 target requires explicit pipeline_contract.claims proof.",
+                path="pipeline_contract.claims",
+            )
+        else:
+            for key in ("route_approved", "safe_to_merge"):
+                actual = claims.get(key, MISSING)
+                if type(actual) is not bool or actual is not False:
+                    result.fail(
+                        "r2_pipeline_non_authorization_claim_missing_or_invalid",
+                        "R2 target requires explicit false route_approved and safe_to_merge claims.",
+                        path=f"pipeline_contract.claims.{key}",
+                        expected=False,
+                        actual="<missing>" if actual is MISSING else actual,
+                    )
+
+    isolation = _get(summary, "environment_isolation", MISSING)
+    if not isinstance(isolation, Mapping):
+        result.fail("r2_environment_isolation_not_object", "R2 requires structured isolation proof.", path="environment_isolation")
+        isolation = {}
+    if target:
+        for key, expected in R2_REQUIRED_ISOLATION_FLAGS.items():
+            actual = isolation.get(key, MISSING)
+            if type(actual) is not bool or actual is not expected:
+                result.fail(
+                    "r2_environment_isolation_proof_missing_or_invalid",
+                    "R2 target requires every isolation/safety flag to exist as an exact boolean with the required value.",
+                    path=f"environment_isolation.{key}",
+                    expected=expected,
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+
+    manifest = _get(summary, "fixed_input_manifest", {})
+    if not isinstance(manifest, Mapping):
+        result.fail("r2_fixed_input_manifest_not_object", "R2 requires fixed-input manifest proof.", path="fixed_input_manifest")
+        manifest = {}
+    if target:
+        for key in (
+            "present",
+            "private_manifest_generated",
+            "baseline_to_working_clone_match",
+            "before_after_match",
+            "row_counts_match",
+            "content_fingerprints_match",
+            "provenance_unchanged",
+        ):
+            if not _as_bool(manifest.get(key)):
+                result.fail(
+                    "r2_fixed_input_gate_failed",
+                    "R2 target requires unchanged fixed upstream evidence with row-content proof.",
+                    path=f"fixed_input_manifest.{key}",
+                    expected=True,
+                    actual=manifest.get(key),
+                )
+        table_count = _as_int(manifest.get("table_count"))
+        fingerprint_count = _as_int(manifest.get("content_fingerprint_count"))
+        if table_count < 14 or fingerprint_count != table_count:
+            result.fail(
+                "r2_fixed_input_table_coverage_incomplete",
+                "R2 fixed-input proof must cover every required upstream table with a content fingerprint.",
+                path="fixed_input_manifest",
+                expected="at least 14 tables and one fingerprint per table",
+                actual={"table_count": table_count, "content_fingerprint_count": fingerprint_count},
+            )
+        if manifest.get("changed_tables"):
+            result.fail("r2_upstream_evidence_changed", "Fixed upstream evidence changed.", path="fixed_input_manifest.changed_tables", actual=manifest.get("changed_tables"))
+
+    operations = _get(summary, "operation_counts", {})
+    if not isinstance(operations, Mapping):
+        result.fail("r2_operation_counts_not_object", "R2 requires forbidden-operation accounting.", path="operation_counts")
+        operations = {}
+    if target:
+        for key in (
+            "gallery_dl_calls",
+            "provider_pixiv_network_calls",
+            "ai_tagging_calls",
+            "media_imports",
+            "upstream_observation_mutations",
+            "new_llm_provider_calls",
+            "production_writes",
+            "truth_path_writes",
+        ):
+            if _as_int(operations.get(key), default=-1) != 0:
+                result.fail(
+                    "r2_forbidden_operation_nonzero",
+                    "R2 target requires zero acquisition/provider/import/truth/production operations.",
+                    path=f"operation_counts.{key}",
+                    expected=0,
+                    actual=operations.get(key),
+                )
+
+    write_scope = _get(summary, "source_concept_write_scope", {})
+    if not isinstance(write_scope, Mapping):
+        result.fail("r2_write_scope_not_object", "R2 requires SourceConcept write-scope proof.", path="source_concept_write_scope")
+        write_scope = {}
+    if target:
+        allowed_rows = write_scope.get("allowed_tables", MISSING)
+        rebuilt_rows = write_scope.get("rebuilt_tables", MISSING)
+        changed_rows = write_scope.get("changed_tables", MISSING)
+        allowed = {str(value) for value in allowed_rows} if isinstance(allowed_rows, list) else set()
+        rebuilt = {str(value) for value in rebuilt_rows} if isinstance(rebuilt_rows, list) else set()
+        changed = set(_table_names(changed_rows)) if isinstance(changed_rows, list) else set()
+        for key, actual in (
+            ("allowed_tables", allowed_rows),
+            ("rebuilt_tables", rebuilt_rows),
+            ("changed_tables", changed_rows),
+        ):
+            if not isinstance(actual, list):
+                result.fail(
+                    "r2_write_scope_table_list_missing_or_invalid",
+                    "R2 write-scope table fields must exist as lists.",
+                    path=f"source_concept_write_scope.{key}",
+                    expected="list",
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+        outside = sorted((allowed | rebuilt | changed) - R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
+        if outside:
+            result.fail("r2_write_outside_sourceconcept_allowlist", "R2 wrote outside the SourceConcept allowlist.", path="source_concept_write_scope", actual=outside)
+        if rebuilt != R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES:
+            result.fail(
+                "r2_sourceconcept_rebuild_incomplete",
+                "R2 target requires the complete SourceConcept-owned output set to be rebuilt.",
+                path="source_concept_write_scope.rebuilt_tables",
+                expected=sorted(R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES),
+                actual=sorted(rebuilt),
+            )
+        for key in ("forbidden_changed_tables", "unexpected_changed_tables"):
+            actual = write_scope.get(key, MISSING)
+            if not isinstance(actual, list) or actual:
+                result.fail(
+                    "r2_forbidden_or_unexpected_write",
+                    "R2 mutation proof requires explicit empty forbidden/unexpected changed-table lists.",
+                    path=f"source_concept_write_scope.{key}",
+                    expected=[],
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+        truth_write_count = write_scope.get("persistence_forbidden_truth_table_write_count", MISSING)
+        if type(truth_write_count) is not int or truth_write_count != 0:
+            result.fail(
+                "r2_persistence_forbidden_truth_write_count_invalid",
+                "R2 target requires an explicit integer zero forbidden truth-table persistence delta.",
+                path="source_concept_write_scope.persistence_forbidden_truth_table_write_count",
+                expected=0,
+                actual="<missing>" if truth_write_count is MISSING else truth_write_count,
+            )
+        forbidden_proof = _get(summary, "forbidden_truth_table_content_proof", MISSING)
+        if not isinstance(forbidden_proof, Mapping):
+            result.fail(
+                "r2_forbidden_truth_content_proof_missing",
+                "R2 target requires a measured baseline-vs-final content comparison for every forbidden truth table.",
+                path="forbidden_truth_table_content_proof",
+            )
+            forbidden_proof = {}
+        measured_tables = forbidden_proof.get("tables_accounted_for", MISSING)
+        measured_table_set = (
+            {str(value) for value in measured_tables}
+            if isinstance(measured_tables, list)
+            else set()
+        )
+        if (
+            measured_table_set != R2_FORBIDDEN_TRUTH_TABLES
+            or _as_int(forbidden_proof.get("forbidden_truth_table_count"), default=-1)
+            != len(R2_FORBIDDEN_TRUTH_TABLES)
+        ):
+            result.fail(
+                "r2_forbidden_truth_table_coverage_incomplete",
+                "R2 must account for the complete authoritative forbidden truth-table set.",
+                path="forbidden_truth_table_content_proof",
+                expected=sorted(R2_FORBIDDEN_TRUTH_TABLES),
+                actual=sorted(measured_table_set),
+            )
+        for key in (
+            "forbidden_truth_tables_measured",
+            "source_all_tables_present",
+            "working_all_tables_present",
+            "row_counts_match",
+            "schemas_match",
+            "content_fingerprints_match",
+            "comparison_passed",
+            "raw_fingerprints_private",
+        ):
+            if type(forbidden_proof.get(key, MISSING)) is not bool or forbidden_proof.get(key) is not True:
+                result.fail(
+                    "r2_forbidden_truth_content_proof_failed",
+                    "R2 target requires an explicit passing read-only content comparison for forbidden truth tables.",
+                    path=f"forbidden_truth_table_content_proof.{key}",
+                    expected=True,
+                    actual=forbidden_proof.get(key, "<missing>"),
+                )
+        measured_changed = forbidden_proof.get("changed_tables", MISSING)
+        if not isinstance(measured_changed, list) or measured_changed:
+            result.fail(
+                "r2_forbidden_truth_content_changed",
+                "R2 target requires zero measured forbidden truth-table content changes.",
+                path="forbidden_truth_table_content_proof.changed_tables",
+                expected=[],
+                actual=measured_changed,
+            )
+        if write_scope.get("forbidden_changed_tables") != measured_changed or str(
+            write_scope.get("forbidden_changed_tables_source") or ""
+        ) != "forbidden_truth_table_content_proof.changed_tables":
+            result.fail(
+                "r2_forbidden_changed_tables_not_derived_from_measurement",
+                "The public forbidden_changed_tables claim must be derived from the measured comparison.",
+                path="source_concept_write_scope",
+            )
+        truncate_drop_reset = write_scope.get("truncate_drop_reset_used", MISSING)
+        if type(truncate_drop_reset) is not bool or truncate_drop_reset is not False:
+            result.fail(
+                "r2_truncate_drop_reset_proof_missing_or_invalid",
+                "R2 target requires explicit truncate_drop_reset_used=false.",
+                path="source_concept_write_scope.truncate_drop_reset_used",
+                expected=False,
+                actual="<missing>" if truncate_drop_reset is MISSING else truncate_drop_reset,
+            )
+
+    graph = _get(summary, "graph_invariants", {})
+    if not isinstance(graph, Mapping):
+        result.fail("r2_graph_invariants_not_object", "R2 requires graph invariant diagnostics.", path="graph_invariants")
+        graph = {}
+    if target:
+        for key in (
+            "review_only_edge_used_in_union_count",
+            "direct_llm_cannot_pair_in_materialized_component_count",
+            "deterministic_hard_conflict_in_materialized_component_count",
+            "transitive_cannot_violation_count",
+            "unauthorized_unknown_role_materialization_count",
+        ):
+            if _as_int(graph.get(key), default=-1) != 0:
+                result.fail(
+                    "r2_graph_invariant_failed",
+                    "R2 target requires review-only exclusion and zero component-level cannot violations.",
+                    path=f"graph_invariants.{key}",
+                    expected=0,
+                    actual=graph.get(key),
+                )
+
+    llm = _get(summary, "llm_judgment_accounting", {})
+    if not isinstance(llm, Mapping):
+        result.fail("r2_llm_accounting_not_object", "R2 requires existing-judgment accounting.", path="llm_judgment_accounting")
+        llm = {}
+    if target:
+        existing_total = _as_int(llm.get("existing_r1r_judgment_count"))
+        accounted = sum(
+            _as_int(llm.get(key))
+            for key in (
+                "exact_compatible_reuse_count",
+                "stable_pair_identity_reuse_count",
+                "semantic_prior_count",
+                "invalidated_count",
+            )
+        )
+        if existing_total != 6429 or accounted != existing_total:
+            result.fail(
+                "r2_llm_existing_judgment_accounting_mismatch",
+                "R2 must account for all 6429 existing R1R judgments exactly once.",
+                path="llm_judgment_accounting",
+                expected=6429,
+                actual={"existing_total": existing_total, "accounted": accounted},
+            )
+        if _as_int(llm.get("new_provider_call_count"), default=-1) != 0:
+            result.fail("r2_new_llm_provider_calls_nonzero", "Initial R2 must make zero new LLM provider calls.", path="llm_judgment_accounting.new_provider_call_count", expected=0, actual=llm.get("new_provider_call_count"))
+        new_pair_count = _as_int(llm.get("genuinely_new_or_missing_pair_count"), default=-1)
+        adjudication = _get(summary, "new_pair_adjudication", {})
+        if not isinstance(adjudication, Mapping):
+            result.fail(
+                "r2_new_pair_adjudication_not_object",
+                "R2 requires a structured approval boundary for genuinely new pairs.",
+                path="new_pair_adjudication",
+            )
+        else:
+            expected_status = "blocked_llm_approval_required" if new_pair_count > 0 else "no_new_pairs"
+            if str(adjudication.get("status") or "") != expected_status:
+                result.fail(
+                    "r2_new_pair_adjudication_status_invalid",
+                    "New or incompatible R2 pairs must remain blocked from provider adjudication pending separate approval.",
+                    path="new_pair_adjudication.status",
+                    expected=expected_status,
+                    actual=adjudication.get("status"),
+                )
+            if _as_int(adjudication.get("pair_count"), default=-1) != new_pair_count:
+                result.fail(
+                    "r2_new_pair_adjudication_count_mismatch",
+                    "The new-pair approval boundary must match LLM accounting.",
+                    path="new_pair_adjudication.pair_count",
+                    expected=new_pair_count,
+                    actual=adjudication.get("pair_count"),
+                )
+            if _as_int(adjudication.get("provider_calls_made"), default=-1) != 0 or _as_bool(adjudication.get("provider_initialized")):
+                result.fail(
+                    "r2_new_pair_provider_boundary_violated",
+                    "Initial R2 must not initialize or call a provider for new pairs.",
+                    path="new_pair_adjudication",
+                )
+            if new_pair_count > 0 and not all(
+                _as_bool(adjudication.get(key))
+                for key in (
+                    "execution_scope_excludes_unadjudicated_review_pairs",
+                    "separate_operator_approval_required",
+                )
+            ):
+                result.fail(
+                    "r2_new_pair_approval_boundary_incomplete",
+                    "Unadjudicated new pairs must be excluded from materialization and require separate operator approval.",
+                    path="new_pair_adjudication",
+                )
+
+    quality = _get(summary, "quality_evaluation", {})
+    if not isinstance(quality, Mapping):
+        result.fail("r2_quality_evaluation_not_object", "R2 requires quality evaluation.", path="quality_evaluation")
+        quality = {}
+    if target:
+        for key, expected in R2_REQUIRED_QUALITY_FLAGS.items():
+            actual = quality.get(key, MISSING)
+            if type(actual) is not bool or actual is not expected:
+                result.fail(
+                    "r2_quality_dimension_missing_or_invalid",
+                    "R2 target requires explicit constraint, search, gap, recall, and route-quality dimensions.",
+                    path=f"quality_evaluation.{key}",
+                    expected=expected,
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+        interpretation = quality.get("quality_interpretation", MISSING)
+        if not isinstance(interpretation, str) or not interpretation.strip() or not all(
+            phrase in interpretation
+            for phrase in (
+                "constraint-aware graph-remediation target",
+                "Search, gap, and recall closure remain incomplete",
+            )
+        ):
+            result.fail(
+                "r2_quality_interpretation_missing_or_invalid",
+                "R2 must explicitly distinguish its narrow constraint target from incomplete search/gap/recall quality.",
+                path="quality_evaluation.quality_interpretation",
+                actual="<missing>" if interpretation is MISSING else interpretation,
+            )
+        integer_fields = (
+            "all_existing_r1r_same_decision_count",
+            "compatible_must_link_benchmark_count",
+            "semantic_prior_same_decision_count",
+            "invalidated_same_decision_count",
+            "retained_same_component_count",
+            "intentionally_split_with_valid_constraint_count",
+            "unexplained_same_regression_count",
+            "missing_signal_or_pair_count",
+            "same_benchmark_accounting_total_count",
+            "intentionally_split_reason_ledger_count",
+            "split_same_reason_ledger_count",
+        )
+        invalid_integer_fields = [
+            key for key in integer_fields if type(quality.get(key, MISSING)) is not int or quality.get(key, -1) < 0
+        ]
+        if invalid_integer_fields:
+            result.fail(
+                "r2_same_benchmark_field_missing_or_invalid",
+                "R2 same-benchmark counts must be explicit non-negative integers.",
+                path="quality_evaluation",
+                actual=invalid_integer_fields,
+            )
+        benchmark = _as_int(quality.get("compatible_must_link_benchmark_count"), default=-1)
+        retained = _as_int(quality.get("retained_same_component_count"), default=-1)
+        intentional = _as_int(quality.get("intentionally_split_with_valid_constraint_count"), default=-1)
+        unexplained = _as_int(quality.get("unexplained_same_regression_count"), default=-1)
+        accounted = _as_int(quality.get("same_benchmark_accounting_total_count"), default=-1)
+        split_ledger = _as_int(quality.get("split_same_reason_ledger_count"), default=-1)
+        intentional_ledger = _as_int(quality.get("intentionally_split_reason_ledger_count"), default=-1)
+        if benchmark != retained + intentional + unexplained or accounted != benchmark:
+            result.fail(
+                "r2_same_benchmark_accounting_mismatch",
+                "Compatible must-link judgments must balance exactly across retained, intentionally constrained, and unexplained outcomes.",
+                path="quality_evaluation",
+                expected="benchmark = retained + intentional + unexplained",
+                actual={
+                    "benchmark": benchmark,
+                    "retained": retained,
+                    "intentional": intentional,
+                    "unexplained": unexplained,
+                    "accounted": accounted,
+                },
+            )
+        if unexplained != 0:
+            result.fail(
+                "r2_unexplained_same_regression",
+                "R2 target cannot contain an unexplained compatible must-link split.",
+                path="quality_evaluation.unexplained_same_regression_count",
+                expected=0,
+                actual=unexplained,
+            )
+        if intentional_ledger != intentional or split_ledger != intentional + unexplained:
+            result.fail(
+                "r2_same_split_reason_ledger_incomplete",
+                "Every split compatible must-link judgment requires a private reason-ledger entry, including its blocker class.",
+                path="quality_evaluation",
+                actual={
+                    "intentional": intentional,
+                    "unexplained": unexplained,
+                    "intentional_ledger": intentional_ledger,
+                    "split_ledger": split_ledger,
+                },
+            )
+        if str(quality.get("same_benchmark_source") or "") != "compatible_reused_r1r_judgments" or quality.get(
+            "same_benchmark_constructed_from_current_output", MISSING
+        ) is not False:
+            result.fail(
+                "r2_same_benchmark_source_invalid",
+                "R2 must construct its proof-grade same benchmark from compatible reused R1R judgments, never current active output.",
+                path="quality_evaluation",
+            )
+        if str(quality.get("same_benchmark_compatibility_policy") or "") != (
+            "exact_or_stable_pair_identity_only;semantic_prior_excluded"
+        ):
+            result.fail(
+                "r2_same_benchmark_compatibility_policy_invalid",
+                "Semantic-prior-only same judgments must remain outside the proof-grade benchmark.",
+                path="quality_evaluation.same_benchmark_compatibility_policy",
+            )
+        all_same = _as_int(quality.get("all_existing_r1r_same_decision_count"), default=-1)
+        semantic_same = _as_int(quality.get("semantic_prior_same_decision_count"), default=-1)
+        invalidated_same = _as_int(quality.get("invalidated_same_decision_count"), default=-1)
+        if all_same != benchmark + semantic_same + invalidated_same:
+            result.fail(
+                "r2_all_same_decision_accounting_mismatch",
+                "All existing R1R same decisions must be classified as compatible proof-grade, semantic prior, or invalidated.",
+                path="quality_evaluation",
+                actual={
+                    "all": all_same,
+                    "compatible": benchmark,
+                    "semantic_prior": semantic_same,
+                    "invalidated": invalidated_same,
+                },
+            )
+        llm_same_counts = llm.get("same_decision_counts") if isinstance(llm.get("same_decision_counts"), Mapping) else {}
+        expected_same_counts = {
+            "all_existing_r1r": all_same,
+            "compatible_proof_grade": benchmark,
+            "semantic_prior": semantic_same,
+            "invalidated": invalidated_same,
+        }
+        if any(
+            type(llm_same_counts.get(key, MISSING)) is not int or llm_same_counts.get(key) != expected
+            for key, expected in expected_same_counts.items()
+        ):
+            result.fail(
+                "r2_same_benchmark_judgment_source_mismatch",
+                "The quality benchmark must match same-decision counts computed while loading R1R judgments.",
+                path="llm_judgment_accounting.same_decision_counts",
+                expected=expected_same_counts,
+                actual=dict(llm_same_counts),
+            )
+
+        evidence_boundary = _get(summary, "evidence_version_boundary", MISSING)
+        if not isinstance(evidence_boundary, Mapping):
+            result.fail(
+                "r2_evidence_version_boundary_missing",
+                "R2 target requires non-ambiguous resolver and report commit evidence.",
+                path="evidence_version_boundary",
+            )
+        else:
+            resolver_sha = str(evidence_boundary.get("resolver_evidence_code_sha") or "")
+            if not re.fullmatch(r"[0-9a-f]{40}", resolver_sha):
+                result.fail(
+                    "r2_evidence_version_sha_invalid",
+                    "R2 must report the exact resolver code revision executed for evidence.",
+                    path="evidence_version_boundary.resolver_evidence_code_sha",
+                    actual=resolver_sha,
+                )
+            execution_changed = evidence_boundary.get("post_evidence_execution_code_changed", MISSING)
+            if type(execution_changed) is not bool or execution_changed is not False:
+                result.fail(
+                    "r2_evidence_version_flag_missing_or_invalid",
+                    "R2 target requires explicit proof that resolver/database execution semantics did not change after evidence.",
+                    path="evidence_version_boundary.post_evidence_execution_code_changed",
+                    expected=False,
+                    actual=evidence_boundary.get("post_evidence_execution_code_changed", "<missing>"),
+                )
+            scope = str(evidence_boundary.get("post_evidence_execution_code_scope") or "")
+            if scope != "resolver_candidate_edge_union_cache_and_persistence_semantics":
+                result.fail(
+                    "r2_evidence_execution_scope_missing_or_invalid",
+                    "R2 must define the exact resolver/database execution semantics covered by the unchanged claim.",
+                    path="evidence_version_boundary.post_evidence_execution_code_scope",
+                    actual=scope,
+                )
+            proof_changed = evidence_boundary.get("post_evidence_proof_code_changed", MISSING)
+            if type(proof_changed) is not bool or proof_changed is not True:
+                result.fail(
+                    "r2_evidence_proof_code_change_not_disclosed",
+                    "The final proof-only runner/contract closeout changes must be explicitly disclosed.",
+                    path="evidence_version_boundary.post_evidence_proof_code_changed",
+                    expected=True,
+                    actual=evidence_boundary.get("post_evidence_proof_code_changed", "<missing>"),
+                )
+            compared_paths = evidence_boundary.get("execution_code_paths_compared", MISSING)
+            compared_path_set = (
+                {str(value) for value in compared_paths}
+                if isinstance(compared_paths, list)
+                else set()
+            )
+            if compared_path_set != R2_EVIDENCE_EXECUTION_CODE_PATHS:
+                result.fail(
+                    "r2_evidence_execution_path_coverage_invalid",
+                    "R2 must identify every resolver, runner, and contract path checked after evidence.",
+                    path="evidence_version_boundary.execution_code_paths_compared",
+                    expected=sorted(R2_EVIDENCE_EXECUTION_CODE_PATHS),
+                    actual=sorted(compared_path_set),
+                )
+            path_results = evidence_boundary.get("execution_code_path_results", MISSING)
+            if not isinstance(path_results, Mapping) or set(path_results) != R2_EVIDENCE_EXECUTION_CODE_PATHS:
+                result.fail(
+                    "r2_evidence_execution_path_results_invalid",
+                    "R2 must disclose the diff classification for each compared resolver, runner, and contract path.",
+                    path="evidence_version_boundary.execution_code_path_results",
+                )
+            elif (
+                path_results.get("backend/app/services/source_concept_resolver_service.py") != "unchanged"
+                or not str(path_results.get("scripts/run_phase45_scv2_r2_constraint_aware_graph_remediation.py") or "").startswith("proof_only")
+                or not str(path_results.get("scripts/phase_contracts/contract_checks.py") or "").startswith("proof_only")
+            ):
+                result.fail(
+                    "r2_evidence_execution_path_classification_invalid",
+                    "R2 must distinguish the unchanged resolver from proof-only runner and contract closeout changes.",
+                    path="evidence_version_boundary.execution_code_path_results",
+                    actual=dict(path_results),
+                )
+            git_relationship = str(evidence_boundary.get("git_relationship_model") or "")
+            if not all(phrase in git_relationship for phrase in ("ancestor", "no direct-parent relationship")):
+                result.fail(
+                    "r2_git_relationship_model_missing_or_invalid",
+                    "R2 must describe an ancestor relationship without inventing a direct parent.",
+                    path="evidence_version_boundary.git_relationship_model",
+                    actual=git_relationship,
+                )
+            version_model = str(evidence_boundary.get("report_version_model") or "")
+            if not all(phrase in version_model for phrase in ("final PR head", "PR body", "self-referential")):
+                result.fail(
+                    "r2_report_version_model_missing_or_invalid",
+                    "The report must explain why the final PR head is recorded externally instead of self-referentially.",
+                    path="evidence_version_boundary.report_version_model",
+                    actual=version_model,
+                )
+            for forbidden_key in (
+                "report_commit_parent_sha",
+                "report_only_commit",
+                "post_evidence_resolver_code_changed",
+            ):
+                if forbidden_key in evidence_boundary:
+                    result.fail(
+                        "r2_ambiguous_evidence_topology_field_present",
+                        "R2 must not encode review-environment-dependent commit-topology claims in the public summary.",
+                        path=f"evidence_version_boundary.{forbidden_key}",
+                    )
+        if _has(summary, "head_sha"):
+            result.fail(
+                "r2_ambiguous_top_level_head_sha_present",
+                "R2 must not retain an ambiguous generic head_sha after resolver evidence regeneration.",
+                path="head_sha",
+                actual=_get(summary, "head_sha", None),
+            )
+
+    if target:
+        if not _as_bool(_get(summary, "public_redaction.passed", False)):
+            result.fail("r2_public_redaction_failed", "R2 public redaction must pass.", path="public_redaction.passed")
+        pack = _get(summary, "review_pack", {})
+        if not isinstance(pack, Mapping) or not all(
+            _as_bool(pack.get(key))
+            for key in ("generated", "manifest_present", "checksums_present", "integrity_passed", "not_committed")
+        ):
+            result.fail("r2_review_pack_incomplete", "R2 target requires a complete private review pack.", path="review_pack")
+
+    route = _get(summary, "route_authorization", MISSING)
+    if not isinstance(route, Mapping):
+        result.fail("r2_route_authorization_not_object", "R2 requires downstream non-authorization proof.", path="route_authorization")
+    else:
+        if target:
+            for key in R2_REQUIRED_ROUTE_AUTHORIZATION_FLAGS:
+                actual = route.get(key, MISSING)
+                if type(actual) is not bool or actual is not False:
+                    result.fail(
+                        "r2_route_authorization_flag_missing_or_invalid",
+                        "R2 target requires every downstream authorization flag to exist as exact false.",
+                        path=f"route_authorization.{key}",
+                        expected=False,
+                        actual="<missing>" if actual is MISSING else actual,
+                    )
+        forbidden_true = sorted(key for key, value in route.items() if value is True)
+        if forbidden_true:
+            result.fail("r2_forbidden_route_authorization", "R2 cannot authorize downstream/provider/production/truth work.", path="route_authorization", actual=forbidden_true)
 
 
 def _zero_eligible_proof_passed(plan: Mapping[str, Any]) -> bool:
@@ -9626,6 +10297,7 @@ CUSTOM_CHECKS = {
     "source_metadata": _check_source_metadata,
     "source_concept_full_chain": _check_source_concept_full_chain,
     "r1r_full_source_concept_pipeline": _check_r1r_full_source_concept_pipeline,
+    "r2_source_concept_graph_remediation": _check_r2_source_concept_graph_remediation,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,

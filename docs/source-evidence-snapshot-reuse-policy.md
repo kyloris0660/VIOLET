@@ -1,0 +1,49 @@
+# Source Evidence Snapshot Reuse Policy
+
+## Purpose
+
+Source acquisition and graph resolution are separate lifecycle stages.
+Changing aggregation, resolver, candidate-generation, or search logic does not
+by itself authorize reacquiring provider data or rewriting observations.
+
+## Durable Evidence Rule
+
+- Provider/source observations are durable facts once acquired with provenance.
+- A resolver rerun starts cache-first and input-snapshot-first.
+- `gallery-dl`, Pixiv, or another provider is not called again merely because
+  SourceConcept aggregation logic changed.
+- Raw source observations are not edited, deleted, or normalized in place to
+  improve resolver metrics. Corrections require an explicit evidence lifecycle
+  with provenance rather than retrospective metric tuning.
+
+## Rebuild Boundary
+
+- Source metadata records, evidence, tag/name observations and registries,
+  candidate inputs, media/tag inputs, and provider cache rows are fixed upstream
+  evidence for a resolver replay unless the approved phase says otherwise.
+- A fixed-input manifest must record table coverage, row counts, schema columns,
+  and content fingerprints. Target completion fails if the fixed evidence
+  differs before/after.
+- SourceConcept-derived concepts, signals, links, aliases, evidence projections,
+  search index rows, and resolution-run rows are rebuildable outputs in an
+  isolated dev/test database.
+
+## LLM Judgment Reuse
+
+Existing pair judgments are reusable only under explicit compatibility levels:
+
+1. exact-compatible cache reuse;
+2. stable pair-identity reuse under a documented compatibility rule;
+3. semantic prior for evaluation only;
+4. invalidated judgment with a recorded reason;
+5. genuinely new/incompatible pair requiring separate approval.
+
+New pairs must not trigger automatic provider calls. Report their count,
+projected cost, incompatibility reason, and approval state first.
+
+## Full-Library Rule
+
+Full-library work must separate evidence acquisition from graph recomputation in
+its contract, run ledger, write allowlist, and reports. Provider collection,
+resolver rebuild, truth promotion, and production mutation are independent
+approval boundaries; success in one does not authorize another.

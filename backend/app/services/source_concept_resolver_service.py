@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import re
 import time
 from collections import Counter, defaultdict
@@ -56,7 +57,7 @@ from .source_name_candidate_extraction_service import (
 )
 from ..utils.cache import invalidate_source_concept_search_cache
 
-RESOLVER_VERSION = "source_concept_resolver_core_v2_graph"
+RESOLVER_VERSION = "source_concept_resolver_core_v5_constraint_evidence_accounting"
 SOURCE_CONCEPT_SCHEMA_VERSION = "source_concept_schema_v1"
 LLM_CACHE_POLICY_VERSION = "source_concept_llm_adjudication_cache_v1"
 LLM_DECISION_SCHEMA_VERSION = "source_concept_pair_decision_schema_v1"
@@ -370,6 +371,114 @@ def is_short_ambiguous_key(value: str | None) -> bool:
     if "_" not in stripped and len(stripped) <= 7:
         return True
     return False
+
+
+def _script_family(value: str | None) -> str:
+    text_value = normalize_source_text(value)
+    if not text_value:
+        return "unknown"
+    has_latin = any("a" <= char.casefold() <= "z" for char in text_value)
+    has_cjk = any("\u4e00" <= char <= "\u9fff" for char in text_value)
+    has_kana = any("\u3040" <= char <= "\u30ff" for char in text_value)
+    has_hangul = any("\uac00" <= char <= "\ud7af" for char in text_value)
+    families = [
+        name
+        for name, present in (
+            ("latin", has_latin),
+            ("cjk", has_cjk),
+            ("kana", has_kana),
+            ("hangul", has_hangul),
+        )
+        if present
+    ]
+    return "+".join(families) if families else "other"
+
+
+def _role_entropy(roles: Counter[str]) -> float:
+    total = sum(roles.values())
+    if total <= 1 or len(roles) <= 1:
+        return 0.0
+    entropy = -sum((count / total) * math.log2(count / total) for count in roles.values() if count)
+    return round(entropy / math.log2(len(roles)), 4)
+
+
+def build_data_aware_ambiguity_profiles(
+    signals: Sequence[SourceConceptSignalDraft],
+) -> dict[str, dict[str, Any]]:
+    """Score name ambiguity from the fixed evidence snapshot, not length alone."""
+
+    grouped: dict[str, list[SourceConceptSignalDraft]] = defaultdict(list)
+    for signal in signals:
+        surface = signal_surface_key(signal)
+        if surface and signal.status != "rejected" and signal.trust_tier != "rejected":
+            grouped[surface].append(signal)
+
+    profiles: dict[str, dict[str, Any]] = {}
+    for surface, rows in grouped.items():
+        contexts = {
+            context
+            for signal in rows
+            for context in _declared_context_keys(signal)
+            if context
+        }
+        providers = {signal.provider for signal in rows if signal.provider}
+        roles = Counter(signal.role_hint or "unknown" for signal in rows)
+        record_units = {signal.source_metadata_record_id for signal in rows if signal.source_metadata_record_id is not None}
+        media_units = {signal.media_id for signal in rows if signal.media_id is not None}
+        scripts = {_script_family(signal.display_value or signal.raw_value) for signal in rows}
+        has_parenthetical = any(
+            signal.parenthetical_context or parse_parenthetical(signal.raw_value)[1]
+            for signal in rows
+        )
+
+        score = 0.0
+        if is_short_ambiguous_key(surface):
+            score += 0.35
+        if not contexts:
+            score += 0.15
+        elif len(contexts) > 1:
+            score += min(0.5, 0.25 + 0.08 * (len(contexts) - 1))
+        frequency = len(rows)
+        if frequency >= 5:
+            score += min(0.25, 0.08 + 0.04 * math.log2(frequency))
+        entropy = _role_entropy(roles)
+        score += 0.25 * entropy
+        if len(providers) > 1 and len(contexts) > 1:
+            score += 0.08
+        independent_units = max(len(record_units), len(media_units))
+        if len(contexts) == 1 and independent_units >= 2:
+            score -= 0.25
+        if has_parenthetical:
+            score -= 0.15
+        if len(scripts) > 1 and len(contexts) <= 1:
+            score -= 0.05
+        score = round(max(0.0, min(1.0, score)), 4)
+        profiles[surface] = {
+            "score": score,
+            "ambiguous": score >= 0.5,
+            "signal_frequency": frequency,
+            "distinct_work_contexts": len(contexts),
+            "distinct_providers": len(providers),
+            "role_entropy": entropy,
+            "distinct_records": len(record_units),
+            "distinct_media": len(media_units),
+            "parenthetical_disambiguator_present": bool(has_parenthetical),
+            "cross_script_family_count": len(scripts),
+            "short_length_prior": is_short_ambiguous_key(surface),
+        }
+    return profiles
+
+
+def _surface_is_ambiguous(
+    surface: str | None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
+) -> bool:
+    if not surface:
+        return True
+    profile = (ambiguity_profiles or {}).get(surface)
+    if profile is None:
+        return is_short_ambiguous_key(surface)
+    return bool(profile.get("ambiguous"))
 
 
 def role_from_source_role(value: Any) -> str:
@@ -1467,11 +1576,20 @@ def _is_context_alias_candidate(value: str) -> bool:
     return "_" in value or ":" in value or any(char.isdigit() for char in value) or len(compact) > 8
 
 
-def _context_equivalence_lookup(signals: Sequence[SourceConceptSignalDraft]) -> dict[str, str]:
+def _context_equivalence_analysis(
+    signals: Sequence[SourceConceptSignalDraft],
+) -> tuple[dict[str, str], dict[str, Any]]:
     work_contexts_by_scope = _context_candidates_by_scope(signals, include_parenthetical_contexts=False)
     declared_contexts_by_scope = _context_candidates_by_scope(signals, include_parenthetical_contexts=True)
     uf = UnionFind()
-    cooccurrence_counts: Counter[tuple[str, str]] = Counter()
+    support_by_pair: dict[tuple[str, str], dict[str, set[Any]]] = defaultdict(
+        lambda: {"records": set(), "media": set(), "providers": set(), "runs": set()}
+    )
+    work_contexts_by_declared: dict[str, set[str]] = defaultdict(set)
+    signal_by_record: dict[int, list[SourceConceptSignalDraft]] = defaultdict(list)
+    for signal in signals:
+        if signal.source_metadata_record_id is not None:
+            signal_by_record[int(signal.source_metadata_record_id)].append(signal)
     for scope, work_contexts in work_contexts_by_scope.items():
         if scope[0] != "record":
             continue
@@ -1495,10 +1613,43 @@ def _context_equivalence_lookup(signals: Sequence[SourceConceptSignalDraft]) -> 
                 ):
                     continue
                 uf.add(declared_context)
-                cooccurrence_counts[tuple(sorted((work_context, declared_context)))] += 1
-    for (left, right), count in cooccurrence_counts.items():
-        if count >= 2 or _compact_context_key(left) == _compact_context_key(right):
+                pair = tuple(sorted((work_context, declared_context)))
+                support = support_by_pair[pair]
+                support["records"].add(scope[1])
+                for signal in signal_by_record.get(int(scope[1]), []):
+                    if signal.media_id is not None:
+                        support["media"].add(signal.media_id)
+                    if signal.provider:
+                        support["providers"].add(signal.provider)
+                    if signal.source_run_id:
+                        support["runs"].add(signal.source_run_id)
+                work_contexts_by_declared[declared_context].add(work_context)
+
+    accepted = 0
+    held_for_review = 0
+    rejected = 0
+    accepted_support: Counter[str] = Counter()
+    for (left, right), support in support_by_pair.items():
+        compact_equivalent = _compact_context_key(left) == _compact_context_key(right)
+        distinct_records = len(support["records"])
+        independent_axis = max(len(support["media"]), len(support["providers"]), len(support["runs"]))
+        conflicting_declared_context = any(
+            len(work_contexts_by_declared.get(value, set())) > 1
+            for value in (left, right)
+        )
+        independently_supported = distinct_records >= 2 and independent_axis >= 2
+        if compact_equivalent:
+            accepted += 1
+            accepted_support["normalized_equivalent"] += 1
             uf.union(left, right)
+        elif independently_supported and not conflicting_declared_context:
+            accepted += 1
+            accepted_support["independent_evidence_units"] += 1
+            uf.union(left, right)
+        elif distinct_records >= 2 and not conflicting_declared_context:
+            held_for_review += 1
+        else:
+            rejected += 1
     lookup: dict[str, str] = {}
     for members in uf.groups().values():
         if len(members) < 2:
@@ -1506,6 +1657,19 @@ def _context_equivalence_lookup(signals: Sequence[SourceConceptSignalDraft]) -> 
         root = sorted(members, key=lambda value: (not _has_latin(value), len(value), value))[0]
         for member in members:
             lookup[member] = root
+    return lookup, {
+        "candidate_pair_count": len(support_by_pair),
+        "accepted_pair_count": accepted,
+        "held_for_review_pair_count": held_for_review,
+        "rejected_pair_count": rejected,
+        "accepted_support_reasons": dict(accepted_support),
+        "materialized_context_alias_key_count": len(lookup),
+        "independence_policy": "two_distinct_records_and_two_media_provider_or_run_units_unless_normalized_equivalent",
+    }
+
+
+def _context_equivalence_lookup(signals: Sequence[SourceConceptSignalDraft]) -> dict[str, str]:
+    lookup, _diagnostics = _context_equivalence_analysis(signals)
     return lookup
 
 
@@ -1647,6 +1811,7 @@ def signal_identity_anchor(
     *,
     context_by_scope: Mapping[tuple[str, int], set[str]],
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, str] | None:
     if signal.status == "rejected" or signal.trust_tier == "rejected":
         return None
@@ -1660,7 +1825,7 @@ def signal_identity_anchor(
     context, _reason = signal_context_key(signal, context_by_scope, context_alias_by_key)
     role = signal.role_hint if signal.role_hint in CONCEPT_ROLES else "unknown"
     if role in {"character", "person"}:
-        if is_short_ambiguous_key(surface) and not context:
+        if _surface_is_ambiguous(surface, ambiguity_profiles) and not context:
             return None
         if context:
             anchor = _concept_key_from_parts(role, surface, "work", context)
@@ -1751,6 +1916,7 @@ def _signal_blocking_keys(
     context_by_scope: Mapping[tuple[str, int], set[str]],
     alias_component_by_key: Mapping[str, str],
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> set[str]:
     keys: set[str] = set()
     if signal.status == "rejected" or signal.trust_tier == "rejected":
@@ -1769,6 +1935,7 @@ def _signal_blocking_keys(
         signal,
         context_by_scope=context_by_scope,
         context_alias_by_key=context_alias_by_key,
+        ambiguity_profiles=ambiguity_profiles,
     )
     if identity_anchor:
         keys.add(f"identity:{identity_anchor['identity_anchor']}")
@@ -1823,6 +1990,7 @@ def _pair_edge(
     context_by_scope: Mapping[tuple[str, int], set[str]],
     alias_component_by_key: Mapping[str, str],
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> SourceConceptEdgeDraft | None:
     if left.signal_key == right.signal_key:
         return None
@@ -1846,6 +2014,7 @@ def _pair_edge(
     left_ai = signal_is_ai_origin(left)
     right_ai = signal_is_ai_origin(right)
     has_non_ai = not (left_ai and right_ai)
+    unknown_role_payload: dict[str, Any] = {}
 
     if not roles_compatible(left, right):
         return _edge(
@@ -1879,6 +2048,60 @@ def _pair_edge(
             union_allowed=False,
             payload={"left_role": left.role_hint, "right_role": right.role_hint},
         )
+
+    if "unknown" in {left.role_hint, right.role_hint}:
+        manual_confirmed = any(
+            bool((signal.evidence_payload or {}).get(key))
+            for signal in (left, right)
+            for key in ("manual_confirmation", "manually_confirmed", "stable_alias_approved")
+        )
+        independent_non_ai = bool(
+            not left_ai
+            and not right_ai
+            and left.provider
+            and right.provider
+            and left.provider != right.provider
+            and (
+                left.source_metadata_record_id != right.source_metadata_record_id
+                or left.media_id != right.media_id
+            )
+        )
+        explicit_compatible_context = bool(
+            context.status == "compatible"
+            and context.left_context
+            and context.right_context
+            and context.left_reason in {"explicit_work_context", "parenthetical_context"}
+            and context.right_reason in {"explicit_work_context", "parenthetical_context"}
+        )
+        strong_cross_script = bool(
+            _script_family(left.display_value) != _script_family(right.display_value)
+            and same_canonical
+            and context.status != "incompatible"
+        )
+        materialize_unknown = manual_confirmed or (
+            independent_non_ai and (explicit_compatible_context or strong_cross_script)
+        )
+        unknown_role_payload = {
+            "unknown_role_bridge_candidate": True,
+            "unknown_role_candidate_origin": "deterministic",
+            "unknown_role_materialization_authorized": materialize_unknown,
+            "manual_confirmed": manual_confirmed,
+            "independent_non_ai_sources": independent_non_ai,
+            "explicit_compatible_context": explicit_compatible_context,
+            "strong_cross_script": strong_cross_script,
+        }
+        if not materialize_unknown:
+            return _edge(
+                left,
+                right,
+                edge_type="unknown_role_review",
+                weight=0.38,
+                evidence_source=block_key,
+                status="needs_review",
+                reason_code="unknown_role_requires_corroboration",
+                union_allowed=False,
+                payload={**unknown_role_payload, **_context_payload(context)},
+            )
 
     characterish_pair = left.role_hint in {"character", "person"} and right.role_hint in {"character", "person"}
     if context.status == "incompatible" and characterish_pair and (same_alias_component or same_canonical or same_surface):
@@ -1919,6 +2142,7 @@ def _pair_edge(
             payload={
                 "alias_component_key": alias_component,
                 "alias_only": alias_only,
+                **unknown_role_payload,
                 **_context_payload(context),
             },
         )
@@ -1928,7 +2152,7 @@ def _pair_edge(
         same_surface
         and not same_context
         and {left.role_hint, right.role_hint} & {"character", "person", "unknown"}
-        and is_short_ambiguous_key(surface_for_guard)
+        and _surface_is_ambiguous(surface_for_guard, ambiguity_profiles)
     ):
         if left_context and right_context and left_context != right_context:
             return _edge(
@@ -1941,7 +2165,7 @@ def _pair_edge(
                 reason_code="work_context_conflict_guard",
                 negative_reason_code="work_context_conflict",
                 union_allowed=False,
-                payload={"surface_key": surface_for_guard, **_context_payload(context)},
+                payload={"surface_key": surface_for_guard, **unknown_role_payload, **_context_payload(context)},
             )
         same_scope = (
             (left.media_id is not None and left.media_id == right.media_id)
@@ -1960,7 +2184,7 @@ def _pair_edge(
                 status="needs_review",
                 reason_code="ambiguous_short_same_scope_review",
                 union_allowed=True,
-                payload={"surface_key": surface_for_guard, **_context_payload(context)},
+                payload={"surface_key": surface_for_guard, **unknown_role_payload, **_context_payload(context)},
             )
         if left_context or right_context:
             return _edge(
@@ -1972,7 +2196,7 @@ def _pair_edge(
                 status="needs_review",
                 reason_code="ambiguous_short_partial_work_context_review",
                 union_allowed=True,
-                payload={"surface_key": surface_for_guard, **_context_payload(context)},
+                payload={"surface_key": surface_for_guard, **unknown_role_payload, **_context_payload(context)},
             )
         return _edge(
             left,
@@ -1984,18 +2208,20 @@ def _pair_edge(
             reason_code="ambiguous_short_guard",
             negative_reason_code="ambiguous_short_without_work_context",
             union_allowed=False,
-            payload={"surface_key": surface_for_guard, **_context_payload(context)},
+            payload={"surface_key": surface_for_guard, **unknown_role_payload, **_context_payload(context)},
         )
 
     left_anchor = signal_identity_anchor(
         left,
         context_by_scope=context_by_scope,
         context_alias_by_key=context_alias_by_key,
+        ambiguity_profiles=ambiguity_profiles,
     )
     right_anchor = signal_identity_anchor(
         right,
         context_by_scope=context_by_scope,
         context_alias_by_key=context_alias_by_key,
+        ambiguity_profiles=ambiguity_profiles,
     )
     if left_anchor and right_anchor and left_anchor["identity_anchor"] == right_anchor["identity_anchor"]:
         if left_ai and right_ai:
@@ -2023,6 +2249,7 @@ def _pair_edge(
                 "identity_anchor": left_anchor["identity_anchor"],
                 "canonical_key": left_anchor["canonical_key"],
                 "work_context_key": left_anchor["work_context_key"] or None,
+                **unknown_role_payload,
             },
         )
 
@@ -2049,6 +2276,7 @@ def _pair_edge(
             payload={
                 "surface_key": left_surface,
                 "work_context_key": left_context,
+                **unknown_role_payload,
                 **_context_payload(context),
             },
         )
@@ -2079,7 +2307,11 @@ def _pair_edge(
             status=status,
             reason_code=reason,
             union_allowed=status in {"active", "needs_review"},
-            payload={"canonical_key": left.canonical_key or left.normalized_key, **_context_payload(context)},
+            payload={
+                "canonical_key": left.canonical_key or left.normalized_key,
+                **unknown_role_payload,
+                **_context_payload(context),
+            },
         )
 
     if block_key.startswith("record_context:") or block_key.startswith("media_context:"):
@@ -2097,6 +2329,7 @@ def _pair_edge(
                 "right_surface_key": right_surface,
                 "left_context": left_context,
                 "right_context": right_context,
+                **unknown_role_payload,
             },
         )
     return None
@@ -2108,6 +2341,7 @@ def _generate_edges(
     context_by_scope: Mapping[tuple[str, int], set[str]],
     alias_component_by_key: Mapping[str, str],
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
     max_block_size: int = 60,
 ) -> tuple[tuple[SourceConceptEdgeDraft, ...], list[dict[str, Any]], dict[str, Any]]:
     blocks: dict[str, list[SourceConceptSignalDraft]] = defaultdict(list)
@@ -2117,6 +2351,7 @@ def _generate_edges(
             context_by_scope=context_by_scope,
             alias_component_by_key=alias_component_by_key,
             context_alias_by_key=context_alias_by_key,
+            ambiguity_profiles=ambiguity_profiles,
         ):
             blocks[key].append(signal)
 
@@ -2128,43 +2363,123 @@ def _generate_edges(
         if len(unique_block_signals) < 2:
             continue
         if len(unique_block_signals) > max_block_size:
+            if not (block_key.startswith("exact:") or block_key.startswith("context:") or block_key.startswith("identity:")):
+                oversized_blocks.append(
+                    {
+                        "block_key_hash": value_hash(block_key, 16),
+                        "block_kind": block_key.split(":", 1)[0],
+                        "signal_count": len(unique_block_signals),
+                        "partition_count": 0,
+                        "largest_sub_block": 0,
+                        "hub_edges_prevented": max(0, len(unique_block_signals) - 1),
+                        "truncated_or_skipped": True,
+                        "reason": "non_identity_oversized_block_skipped",
+                    }
+                )
+                continue
+            partitions: dict[tuple[str, ...], list[SourceConceptSignalDraft]] = defaultdict(list)
+            for signal in unique_block_signals:
+                surface = signal_surface_key(signal)
+                context, _reason = signal_context_key(signal, context_by_scope, context_alias_by_key)
+                profile = (ambiguity_profiles or {}).get(surface or "", {})
+                partitions[
+                    (
+                        signal_role_group(signal),
+                        context or "no_context",
+                        "ai" if signal_is_ai_origin(signal) else "non_ai",
+                        "strong" if signal.trust_tier == "strong" else "medium" if signal.trust_tier in MEDIUM_TRUST else "weak",
+                        _script_family(signal.display_value),
+                        "ambiguous" if profile.get("ambiguous") else "specific",
+                    )
+                ].append(signal)
+
+            generated_before = len(edges)
+            representatives: list[SourceConceptSignalDraft] = []
+            processed_blocks += 1
+            for partition_signals in partitions.values():
+                ranked = sorted(
+                    partition_signals,
+                    key=lambda signal: (
+                        TRUST_WEIGHTS.get(signal.trust_tier, 0.0),
+                        0 if signal_is_ai_origin(signal) else 1,
+                        source_confidence_score(signal.confidence, 0.0) or 0.0,
+                        signal.signal_key,
+                    ),
+                    reverse=True,
+                )
+                representatives.append(ranked[0])
+                pairs = (
+                    ((ranked[0], other) for other in ranked[1:])
+                    if len(ranked) > max_block_size
+                    else (
+                        (left, right)
+                        for index, left in enumerate(ranked)
+                        for right in ranked[index + 1 :]
+                    )
+                )
+                for left, right in pairs:
+                    edge = _pair_edge(
+                        left,
+                        right,
+                        block_key=block_key,
+                        context_by_scope=context_by_scope,
+                        alias_component_by_key=alias_component_by_key,
+                        context_alias_by_key=context_alias_by_key,
+                        ambiguity_profiles=ambiguity_profiles,
+                    )
+                    if edge is None:
+                        continue
+                    previous = edges.get(edge.edge_key)
+                    if previous is None or edge.weight > previous.weight or (edge.status == "active" and previous.status != "active"):
+                        edges[edge.edge_key] = edge
+
+            for index, left in enumerate(representatives):
+                left_anchor = signal_identity_anchor(
+                    left,
+                    context_by_scope=context_by_scope,
+                    context_alias_by_key=context_alias_by_key,
+                    ambiguity_profiles=ambiguity_profiles,
+                )
+                if not left_anchor:
+                    continue
+                for right in representatives[index + 1 :]:
+                    right_anchor = signal_identity_anchor(
+                        right,
+                        context_by_scope=context_by_scope,
+                        context_alias_by_key=context_alias_by_key,
+                        ambiguity_profiles=ambiguity_profiles,
+                    )
+                    if not right_anchor or left_anchor["identity_anchor"] != right_anchor["identity_anchor"]:
+                        continue
+                    edge = _pair_edge(
+                        left,
+                        right,
+                        block_key=block_key,
+                        context_by_scope=context_by_scope,
+                        alias_component_by_key=alias_component_by_key,
+                        context_alias_by_key=context_alias_by_key,
+                        ambiguity_profiles=ambiguity_profiles,
+                    )
+                    if edge is None or edge.status != "active" or not edge.union_allowed:
+                        continue
+                    previous = edges.get(edge.edge_key)
+                    if previous is None or edge.weight > previous.weight:
+                        edges[edge.edge_key] = edge
+
+            old_unrestricted_hub_edges = len(unique_block_signals) - 1
             oversized_blocks.append(
                 {
                     "block_key_hash": value_hash(block_key, 16),
                     "block_kind": block_key.split(":", 1)[0],
                     "signal_count": len(unique_block_signals),
-                    "max_block_size": max_block_size,
-                    "reason": "block_exceeded_pairwise_cap",
+                    "partition_count": len(partitions),
+                    "largest_sub_block": max((len(rows) for rows in partitions.values()), default=0),
+                    "generated_edge_count": len(edges) - generated_before,
+                    "hub_edges_prevented": max(0, old_unrestricted_hub_edges - max(0, len(representatives) - 1)),
+                    "truncated_or_skipped": any(len(rows) > max_block_size for rows in partitions.values()),
+                    "reason": "constraint_aware_partitioned_oversized_block",
                 }
             )
-            if not (block_key.startswith("exact:") or block_key.startswith("context:") or block_key.startswith("identity:")):
-                continue
-            ranked_block_signals = sorted(
-                unique_block_signals,
-                key=lambda signal: (
-                    TRUST_WEIGHTS.get(signal.trust_tier, 0.0),
-                    0 if signal_is_ai_origin(signal) else 1,
-                    source_confidence_score(signal.confidence, 0.0) or 0.0,
-                    signal.signal_key,
-                ),
-                reverse=True,
-            )
-            anchor = ranked_block_signals[0]
-            processed_blocks += 1
-            for other in ranked_block_signals[1:]:
-                edge = _pair_edge(
-                    anchor,
-                    other,
-                    block_key=block_key,
-                    context_by_scope=context_by_scope,
-                    alias_component_by_key=alias_component_by_key,
-                    context_alias_by_key=context_alias_by_key,
-                )
-                if edge is None:
-                    continue
-                previous = edges.get(edge.edge_key)
-                if previous is None or edge.weight > previous.weight or (edge.status == "active" and previous.status != "active"):
-                    edges[edge.edge_key] = edge
             continue
         processed_blocks += 1
         for index, left in enumerate(unique_block_signals):
@@ -2176,6 +2491,7 @@ def _generate_edges(
                     context_by_scope=context_by_scope,
                     alias_component_by_key=alias_component_by_key,
                     context_alias_by_key=context_alias_by_key,
+                    ambiguity_profiles=ambiguity_profiles,
                 )
                 if edge is None:
                     continue
@@ -2186,6 +2502,10 @@ def _generate_edges(
         "blocking_block_count": len(blocks),
         "processed_block_count": processed_blocks,
         "oversized_block_count": len(oversized_blocks),
+        "oversized_partition_count": sum(int(row.get("partition_count") or 0) for row in oversized_blocks),
+        "oversized_largest_sub_block": max((int(row.get("largest_sub_block") or 0) for row in oversized_blocks), default=0),
+        "oversized_hub_edges_prevented": sum(int(row.get("hub_edges_prevented") or 0) for row in oversized_blocks),
+        "oversized_truncated_or_skipped_count": sum(bool(row.get("truncated_or_skipped")) for row in oversized_blocks),
         "edge_count": len(edges),
         "edge_counts_by_status": dict(Counter(edge.status for edge in edges.values())),
         "edge_counts_by_type": dict(Counter(edge.edge_type for edge in edges.values())),
@@ -2678,6 +2998,7 @@ def _llm_must_link_guard(
     *,
     context_by_scope: Mapping[tuple[str, int], set[str]],
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[bool, str | None, dict[str, Any]]:
     left_surface = signal_surface_key(left)
     right_surface = signal_surface_key(right)
@@ -2724,11 +3045,60 @@ def _llm_must_link_guard(
         same_scope
         and ((left_latin_canonical and right_non_ascii) or (right_latin_canonical and left_non_ascii))
     )
+    if "unknown" in {left.role_hint, right.role_hint}:
+        independent_non_ai = bool(
+            not signal_is_ai_origin(left)
+            and not signal_is_ai_origin(right)
+            and left.provider
+            and right.provider
+            and left.provider != right.provider
+            and (
+                left.source_metadata_record_id != right.source_metadata_record_id
+                or left.media_id != right.media_id
+            )
+        )
+        explicit_context = bool(
+            context.status == "compatible"
+            and context.left_context
+            and context.right_context
+            and context.left_reason in {"explicit_work_context", "parenthetical_context"}
+            and context.right_reason in {"explicit_work_context", "parenthetical_context"}
+        )
+        cross_script = _script_family(left.display_value) != _script_family(right.display_value)
+        same_canonical = bool(
+            (left.canonical_key or left.normalized_key)
+            and (left.canonical_key or left.normalized_key) == (right.canonical_key or right.normalized_key)
+        )
+        strong_cross_script = bool(cross_script and same_canonical and context.status != "incompatible")
+        manual_confirmed = any(
+            bool((signal.evidence_payload or {}).get(key))
+            for signal in (left, right)
+            for key in ("manual_confirmation", "manually_confirmed", "stable_alias_approved")
+        )
+        materialization_authorized = manual_confirmed or (
+            independent_non_ai and (explicit_context or strong_cross_script)
+        )
+        payload.update(
+            {
+                "unknown_role_bridge_candidate": True,
+                "unknown_role_candidate_origin": "llm_must_link",
+                "unknown_role_materialization_authorized": materialization_authorized,
+                "manual_confirmed": manual_confirmed,
+                "independent_non_ai_sources": independent_non_ai,
+                "explicit_compatible_context": explicit_context,
+                "cross_script_observed": cross_script,
+                "strong_cross_script": strong_cross_script,
+            }
+        )
+        if not materialization_authorized:
+            payload["review_only"] = True
+            payload["review_reason"] = "unknown_role_llm_same_requires_independent_corroboration"
+            return True, None, payload
     short_without_context = (
         not (left_context or right_context)
         and (
-            (left_surface and is_short_ambiguous_key(left_surface))
-            or (right_surface and is_short_ambiguous_key(right_surface))
+            (left_surface and _surface_is_ambiguous(left_surface, ambiguity_profiles))
+            or (right_surface and _surface_is_ambiguous(right_surface, ambiguity_profiles))
         )
     )
     if short_without_context:
@@ -2746,6 +3116,7 @@ def edges_from_llm_judgments(
     signal_by_key: Mapping[str, SourceConceptSignalDraft],
     context_by_scope: Mapping[tuple[str, int], set[str]] | None = None,
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[SourceConceptEdgeDraft]:
     edges: list[SourceConceptEdgeDraft] = []
     if context_by_scope is None:
@@ -2763,6 +3134,7 @@ def edges_from_llm_judgments(
                 right,
                 context_by_scope=context_by_scope,
                 context_alias_by_key=context_alias_by_key,
+                ambiguity_profiles=ambiguity_profiles,
             )
             if not guard_passed:
                 edges.append(
@@ -2785,10 +3157,15 @@ def edges_from_llm_judgments(
                     )
                 )
                 continue
+            ai_only_pair = signal_is_ai_origin(left) and signal_is_ai_origin(right)
+            if ai_only_pair and not guard_payload.get("review_only"):
+                guard_payload["review_only"] = True
+                guard_payload["review_reason"] = "llm_same_ai_only_requires_non_ai_corroboration"
+                guard_payload["ai_only_pair"] = True
             status = (
                 "active"
                 if confidence >= 0.75
-                and not (signal_is_ai_origin(left) and signal_is_ai_origin(right))
+                and not ai_only_pair
                 and not guard_payload.get("review_only")
                 else "needs_review"
             )
@@ -2801,7 +3178,7 @@ def edges_from_llm_judgments(
                     evidence_source="bounded_llm_adjudication",
                     status=status,
                     reason_code="llm_must_link_source_layer_evidence",
-                    union_allowed=True,
+                    union_allowed=status == "active",
                     payload={
                         "source_layer_only": True,
                         "llm_judgment_id": row.get("judgment_id"),
@@ -2826,6 +3203,8 @@ def edges_from_llm_judgments(
                         "source_layer_only": True,
                         "llm_judgment_id": row.get("judgment_id"),
                         "decision": decision,
+                        "constraint_level": "hard_cannot",
+                        "constraint_policy": "all_compatible_llm_cannot_rows_block_component_union",
                     },
                 )
             )
@@ -3342,6 +3721,7 @@ def _signal_guard_reason(
     *,
     context_by_scope: Mapping[tuple[str, int], set[str]],
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str | None:
     if signal.status == "rejected" or signal.trust_tier == "rejected":
         return "rejected_signal"
@@ -3353,8 +3733,8 @@ def _signal_guard_reason(
         return "unknown_role_guard"
     surface = signal_surface_key(signal)
     context, _context_reason = signal_context_key(signal, context_by_scope, context_alias_by_key)
-    if signal.role_hint in {"character", "person"} and is_short_ambiguous_key(surface) and not context:
-        return "ambiguous_short_without_work_context"
+    if signal.role_hint in {"character", "person"} and _surface_is_ambiguous(surface, ambiguity_profiles) and not context:
+        return "data_aware_ambiguity_without_work_context"
     return None
 
 
@@ -3395,6 +3775,7 @@ def _component_concept_key(
     *,
     context_by_scope: Mapping[tuple[str, int], set[str]],
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
     anchors = [
         anchor["identity_anchor"]
@@ -3404,6 +3785,7 @@ def _component_concept_key(
                 signal,
                 context_by_scope=context_by_scope,
                 context_alias_by_key=context_alias_by_key,
+                ambiguity_profiles=ambiguity_profiles,
             )
         )
     ]
@@ -3421,13 +3803,14 @@ def _component_concept_key(
             signal,
             context_by_scope=context_by_scope,
             context_alias_by_key=context_alias_by_key,
+            ambiguity_profiles=ambiguity_profiles,
         )
         for signal in signals
     }
     guards.discard(None)
     if role in {"character", "person"} and context:
         return _concept_key_from_parts(role, surface, "work", context, "component", component_hash)
-    if role in {"character", "person"} and "ambiguous_short_without_work_context" in guards:
+    if role in {"character", "person"} and "data_aware_ambiguity_without_work_context" in guards:
         if len(signals) == 1:
             return _concept_key_from_parts(role, "ambiguous", surface, "signal", component_hash)
         return _concept_key_from_parts(role, "ambiguous", surface, "component", component_hash)
@@ -3443,7 +3826,7 @@ def _pair_id(edge: SourceConceptEdgeDraft) -> tuple[str, str]:
 
 
 def _edge_should_materialize(edge: SourceConceptEdgeDraft) -> bool:
-    return bool(edge.union_allowed and edge.status in {"active", "needs_review"} and not edge.negative_reason_code)
+    return bool(edge.union_allowed and edge.status == "active" and not edge.negative_reason_code)
 
 
 HARD_NEGATIVE_REASON_CODES = {
@@ -3453,6 +3836,7 @@ HARD_NEGATIVE_REASON_CODES = {
     "rejected_signal_guard",
     "source_title_only_guard",
     "generic_identity_surface_guard",
+    "llm_cannot_link",
 }
 
 
@@ -3467,9 +3851,10 @@ def resolve_source_concepts(
     llm_config: LLMAdjudicationConfig | None = None,
     llm_judgments: Sequence[Mapping[str, Any]] | None = None,
 ) -> SourceConceptResolutionResult:
-    context_alias_by_key = _context_equivalence_lookup(signals)
+    context_alias_by_key, context_equivalence_diagnostics = _context_equivalence_analysis(signals)
     context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
     alias_component_by_key = _alias_component_lookup(signals)
+    ambiguity_profiles = build_data_aware_ambiguity_profiles(signals)
     rejected: list[dict[str, Any]] = []
     eligible_signals: list[SourceConceptSignalDraft] = []
     for signal in signals:
@@ -3492,6 +3877,7 @@ def resolve_source_concepts(
         context_by_scope=context_by_scope,
         alias_component_by_key=alias_component_by_key,
         context_alias_by_key=context_alias_by_key,
+        ambiguity_profiles=ambiguity_profiles,
     )
 
     llm_plan = plan_llm_adjudication(
@@ -3505,6 +3891,7 @@ def resolve_source_concepts(
             signal_by_key={signal.signal_key: signal for signal in eligible_signals},
             context_by_scope=context_by_scope,
             context_alias_by_key=context_alias_by_key,
+            ambiguity_profiles=ambiguity_profiles,
         )
     )
     if llm_edges:
@@ -3563,6 +3950,7 @@ def resolve_source_concepts(
             ordered_signals,
             context_by_scope=context_by_scope,
             context_alias_by_key=context_alias_by_key,
+            ambiguity_profiles=ambiguity_profiles,
         )
         concept_items.append((concept_key, ordered_signals, tuple(component_edges.get(root, []))))
     concept_key_counts = Counter(concept_key for concept_key, _signals, _edges in concept_items)
@@ -3595,6 +3983,7 @@ def resolve_source_concepts(
             component_edges=bucket_edges,
             context_by_scope=context_by_scope,
             context_alias_by_key=context_alias_by_key,
+            ambiguity_profiles=ambiguity_profiles,
         )
         concepts.append(concept)
         for signal in bucket_signals:
@@ -3602,6 +3991,7 @@ def resolve_source_concepts(
                 signal,
                 context_by_scope=context_by_scope,
                 context_alias_by_key=context_alias_by_key,
+                ambiguity_profiles=ambiguity_profiles,
             )
             if signal_guard:
                 ambiguous.append(
@@ -3709,8 +4099,54 @@ def resolve_source_concepts(
             edge_candidates,
             context_by_scope=context_by_scope,
             context_alias_by_key=context_alias_by_key,
+            ambiguity_profiles=ambiguity_profiles,
         )
     )
+    concept_key_by_signal = {
+        signal.signal_key: concept.concept_key
+        for concept in concepts
+        for signal in concept.signals
+    }
+    hard_negative_same_component = [
+        edge
+        for edge in edge_candidates
+        if _edge_is_hard_blocker(edge)
+        and concept_key_by_signal.get(edge.left_signal_key)
+        and concept_key_by_signal.get(edge.left_signal_key) == concept_key_by_signal.get(edge.right_signal_key)
+    ]
+    llm_cannot_same_component = [
+        edge for edge in hard_negative_same_component if edge.negative_reason_code == "llm_cannot_link"
+    ]
+    unknown_bridge_candidates = [
+        edge for edge in edge_candidates if bool((edge.payload or {}).get("unknown_role_bridge_candidate"))
+    ]
+    deterministic_unknown_candidates = [
+        edge
+        for edge in unknown_bridge_candidates
+        if (edge.payload or {}).get("unknown_role_candidate_origin") == "deterministic"
+    ]
+    llm_unknown_candidates = [
+        edge
+        for edge in unknown_bridge_candidates
+        if (edge.payload or {}).get("unknown_role_candidate_origin") == "llm_must_link"
+    ]
+    materialized_unknown_candidates = [edge for edge in unknown_bridge_candidates if _edge_should_materialize(edge)]
+    unknown_corroboration_distribution = {
+        "manual_confirmed_count": sum(bool((edge.payload or {}).get("manual_confirmed")) for edge in unknown_bridge_candidates),
+        "independent_non_ai_sources_count": sum(
+            bool((edge.payload or {}).get("independent_non_ai_sources")) for edge in unknown_bridge_candidates
+        ),
+        "explicit_compatible_context_count": sum(
+            bool((edge.payload or {}).get("explicit_compatible_context")) for edge in unknown_bridge_candidates
+        ),
+        "cross_script_observed_count": sum(
+            bool((edge.payload or {}).get("cross_script_observed")) for edge in unknown_bridge_candidates
+        ),
+        "strong_cross_script_count": sum(
+            bool((edge.payload or {}).get("strong_cross_script")) for edge in unknown_bridge_candidates
+        ),
+    }
+    review_overlay_edges = [edge for edge in edge_candidates if edge.status != "active" or not edge.union_allowed]
     summary = {
         "run_id": run_id,
         "resolver_version": RESOLVER_VERSION,
@@ -3729,6 +4165,25 @@ def resolve_source_concepts(
         "edge_graph": edge_stats,
         "blocking_oversized_blocks": len(oversized_blocks),
         "context_alias_count": len(context_alias_by_key),
+        "context_equivalence": context_equivalence_diagnostics,
+        "ambiguity_profile_count": len(ambiguity_profiles),
+        "data_aware_ambiguous_surface_count": sum(bool(row.get("ambiguous")) for row in ambiguity_profiles.values()),
+        "materialized_identity_edge_count": sum(_edge_should_materialize(edge) for edge in edge_candidates),
+        "review_overlay_edge_count": len(review_overlay_edges),
+        "review_only_edge_used_in_union_count": 0,
+        "direct_llm_cannot_pair_in_materialized_component_count": len(llm_cannot_same_component),
+        "deterministic_hard_conflict_in_materialized_component_count": len(hard_negative_same_component) - len(llm_cannot_same_component),
+        "transitive_cannot_violation_count": len(hard_negative_same_component),
+        "unknown_role_bridge_candidate_count_before": len(unknown_bridge_candidates),
+        "deterministic_unknown_role_candidate_count": len(deterministic_unknown_candidates),
+        "llm_unknown_role_must_link_candidate_count": len(llm_unknown_candidates),
+        "unknown_role_bridge_materialized_count_after": len(materialized_unknown_candidates),
+        "unknown_role_review_only_count": sum(not _edge_should_materialize(edge) for edge in unknown_bridge_candidates),
+        "unauthorized_unknown_role_materialization_count": sum(
+            not bool((edge.payload or {}).get("unknown_role_materialization_authorized"))
+            for edge in materialized_unknown_candidates
+        ),
+        "unknown_role_corroboration_distribution": unknown_corroboration_distribution,
         "undermerge_violation_count": sum(1 for row in undermerge_review if row.get("violation")),
         "overmerge_violation_count": sum(1 for row in overmerge_review if row.get("violation")),
         "context_conflict_active_merge_count": sum(1 for row in context_conflict_review if row.get("violation")),
@@ -3807,6 +4262,7 @@ def _build_concept_draft(
     component_edges: Sequence[SourceConceptEdgeDraft] = (),
     context_by_scope: Mapping[tuple[str, int], set[str]] | None = None,
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> SourceConceptDraft:
     trust_counts = Counter(signal.trust_tier for signal in signals)
     origin_counts = Counter(signal.origin_type for signal in signals)
@@ -3829,6 +4285,7 @@ def _build_concept_draft(
             signal,
             context_by_scope=context_lookup,
             context_alias_by_key=context_alias_by_key,
+            ambiguity_profiles=ambiguity_profiles,
         )
         for signal in signals
     }
@@ -4057,9 +4514,12 @@ def _undermerge_review(
     for concept in concepts:
         for signal in concept.signals:
             concept_by_signal[signal.signal_key] = concept.concept_key
+    hard_blocked_pairs = {_pair_id(edge) for edge in edges if _edge_is_hard_blocker(edge)}
     rows: list[dict[str, Any]] = []
     for edge in edges:
         if not _edge_should_materialize(edge):
+            continue
+        if _pair_id(edge) in hard_blocked_pairs:
             continue
         left_concept = concept_by_signal.get(edge.left_signal_key)
         right_concept = concept_by_signal.get(edge.right_signal_key)
@@ -4087,6 +4547,7 @@ def _fragmentation_review(
     *,
     context_by_scope: Mapping[tuple[str, int], set[str]],
     context_alias_by_key: Mapping[str, str] | None = None,
+    ambiguity_profiles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     concept_by_signal: dict[str, SourceConceptDraft] = {}
     for concept in concepts:
@@ -4100,6 +4561,7 @@ def _fragmentation_review(
             signal,
             context_by_scope=context_by_scope,
             context_alias_by_key=context_alias_by_key,
+            ambiguity_profiles=ambiguity_profiles,
         )
         if not anchor:
             continue
