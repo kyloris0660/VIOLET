@@ -1,126 +1,91 @@
 # Current Mainline Roadmap
 
-Status: active during SCV2-R2 after PR #133 / A1R merged into `main` on
-2026-07-10.
+Status: active during the initial cache-only SCV2-R2R run after PR #134 / R2
+merged into `main` on 2026-07-10.
 
 This is the durable short-term routing document. It records the accepted
-mainline sequence and current stop boundary without turning the handoff into a
-historical ledger.
+mainline sequence and current stop boundary.
 
 ## Current Baseline
 
-- PR #113 / Phase 4.7-S2 established the real production baseline library.
-- PR #122 / PROD-LAUNCHER-UX1/PF1 established the accepted temporary Windows
-  personal production launcher.
-- PR #123 / PD1-A-R1 established the executable production/development
-  separation contract.
-- PR #124 / S2G-M1, PR #125 / S3A-M1, PR #126 / S3A-M2, and PR #129 /
-  S3A-M2-R are merged. Issue #130 tracks deferred manual-sync hardening.
-- PR #132 / R1R is merged at
-  `7224a61aeaea32cd86a07e8dfd6cf6a6d7fcc0ef`; its full-chain result is
-  `target_met_full_chain` over restored dev/test evidence.
-- PR #133 / A1R is merged at
-  `4a44d5809c9ec567bf59474cc3e20df62a0e97de`; it approved exactly one next
-  phase, SCV2-R2.
-- SCV2-R2 is the current PR #134 review branch. Its isolated result is
-  `target_met_constraint_aware_r2`, but it does not approve any downstream
-  phase, provider call, production work, or truth promotion.
+- PR #132 / R1R merged at
+  `7224a61aeaea32cd86a07e8dfd6cf6a6d7fcc0ef` with 6,429 adjudicated pairs
+  and a durable cache.
+- PR #133 / A1R merged at
+  `4a44d5809c9ec567bf59474cc3e20df62a0e97de` and approved SCV2-R2.
+- PR #134 / R2 merged at
+  `d553a7f51222f2c52c3fe5014e878faed7f7b5a1`. R2 established the accepted
+  constraint-safe graph baseline but left recall/search closure incomplete.
+- SCV2-R2R is the only active mainline phase. Its initial cache-only status is
+  `blocked_llm_approval_required`; it authorizes no downstream route.
 
 ## Accepted Sequence
 
-1. `S2G-M1: AI Tagging Execution and Manual Sync Foundation` - merged in
-   PR #124; no production writes.
+1. `R1R: Full SourceConcept Pipeline Replay / Remediation` - merged in PR #132.
 
-2. `S3A-M1: Guarded Manual Sync Execute` - merged in PR #125; sync remains
-   manual/operator-triggered.
+2. `SCV2-A1R: Route Audit Rerun After R1R` - merged in PR #133.
 
-3. `S3A-M2: Production Delta Manual Sync E2E + GPU Telemetry` - merged in
-   PR #126; owner-run GUI Execute run #18 met current-stage DB-truth acceptance.
+3. `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation` - merged in
+   PR #134 with zero review-only union, direct/transitive cannot violation,
+   unauthorized unknown-role materialization, or unexplained compatible-same
+   regression.
 
-4. `S3A-M2-R: Manual Sync Stabilization and Operator Validation` - merged in
-   PR #129 and closed as operator-ready with visible non-clean debt.
+4. `SCV2-R2R: Autonomous Recall and Search Closure` - current. It replaces
+   human-review semantics with `must_link`, `cannot_link`, and
+   `deferred_nonblocking`; separates materialized identities from retained
+   evidence; and implements identity plus evidence-fallback source search.
 
-5. `R1R: Full SourceConcept Pipeline Replay / Remediation` - merged in
-   PR #132 with all 6,429 eligible pairs adjudicated and a durable cache.
-
-6. `SCV2-A1R: Route Audit Rerun After R1R` - merged in PR #133. It was
-   read-only and selected SCV2-R2 as the sole next phase.
-
-7. `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation` - current
-   PR #134.
-   It separates identity materialization from review evidence, enforces
-   component-level cannot constraints, partitions oversized blocks, guards
-   unknown roles, and reuses R1R judgments without new provider calls.
-
-8. `Pixiv/source metadata strategy polish` - later only if a separate route
+5. `Pixiv/source metadata strategy polish` - later only if a separate route
    decision makes source coverage the dominant approved bottleneck. PX1-B is
-   not authorized by R2.
+   not authorized by R2R.
 
-9. `S3B: Opt-in automated incremental sync` - later and opt-in only. It stays
-   disabled by default and must bind to production runtime config, not the
-   development `.env`.
+6. `S3B: Opt-in automated incremental sync` - later and opt-in only. It stays
+   disabled by default and must bind to production runtime config.
 
-10. `S2F0: Desired-media gap audit / support decision report` - low priority,
-    audit-only, and not implementation.
+## R2R Cache-Only Gate
 
-## R2 Evidence And Remaining Debt
-
-- Fixed upstream evidence: 15 tables, exact row-count and row-content match
-  from R1R baseline to clone and before/after R2.
-- No-truth-write proof: all 11 authoritative forbidden tables exist in both
-  baseline and final R2 DBs; schemas, row counts, and content fingerprints
-  match, with measured changed tables `[]`.
-- Graph correctness: 0 review-only unions, 0 direct LLM cannot violations,
-  0 deterministic hard conflicts, and 0 transitive cannot violations.
-- Scale shape: largest component 1,057 -> 88 signals; `26+` component bucket
-  25 -> 4; 3,443 oversized hub edges prevented.
-- Judgment-derived same accounting: 2,072 existing same decisions consist of
-  305 compatible proof-grade pairs, 1,767 semantic priors, and 0 invalidated.
-  The compatible equation is `305 = 22 retained + 283 intentionally
-  constrained + 0 unexplained`; every split has a private blocker-ledger
-  entry. Known cannot avoided remains 1,546 / 1,546.
-- Unknown-role diagnostics: 4,455 deterministic candidates and 104 LLM
-  must-link candidates; materialized, unauthorized materialized, direct
-  cannot, deterministic hard-conflict, and transitive cannot counts are all 0.
-- LLM boundary: 2,284 new/missing pairs are review-only and remain blocked for
-  separate approval; no provider was initialized or called.
-- Visible debt: aggregate gaps 4,443 -> 9,363, search symmetry remains 0 / 10,
-  unmatched seeds remain 16, and average pairwise search overlap fell from
-  0.3752 to 0.1552. The stricter graph exposes rather than hides this debt.
-- Quality interpretation: the narrow constraint-remediation target is met;
-  search quality improved, gap quality improved, recall closure complete, and
-  route quality ready for scale are all false. R2R closure remains required
-  under separate approval and has not started.
+- Fixed evidence: 15 upstream tables and 11 forbidden truth tables match the
+  accepted R2 snapshot in the isolated R2R database.
+- Candidate population: 3,319 unique all-eligible pairs. Current exact/stable
+  compatible coverage is 0 / 1,035; 2,284 pairs are genuinely missing.
+- Existing 6,429 cache rows classify globally as 0 exact-compatible, 2,080
+  stable pair-identity, 4,349 semantic priors, and 0 invalidated.
+- Initial machine dispositions are 200 `must_link`, 760 `cannot_link`, and 75
+  `deferred_nonblocking`; 2,284 remain unaccounted until approved execution.
+- Estimated first-pass input/completion is 639,658 / 182,720 tokens. Historical
+  uncertainty projects 193 second-pass escalations and a total repo-model cost
+  of `$1.912254`; proposed maximum budget is `$2.00`.
+- Provider initialization/calls/errors are 0 / 0 / 0. No provider execution may
+  begin without a separate explicit operator authorization.
+- In-memory projection retains all 12,249 signals, previews 1,093 materialized
+  concepts, and materializes 0 `needs_review` concepts. No human queue exists.
+- The expanded automatic benchmark is generated with identity/fallback metrics
+  separated. The current legacy 58-seed compatibility result still fails final
+  search-improvement gates; target status is therefore not claimed before
+  approved adjudication and final rebuild.
 
 ## What Is Intentionally Not Next
 
-- Do not start a downstream phase merely because the R2 contract passed.
-- Do not call the LLM for new R2 pairs without separate operator approval.
-- Do not start provider/Pixiv/gallery-dl/SauceNAO/Google acquisition work,
-  PX1-B, Provider-2, scale-up, Entity bridge, confirmed assignments,
-  `media_tags` truth, Entity truth, or SourceConcept truth promotion.
-- Do not run production import, classification, AI tagging, localization,
-  schema migration, source/iCloud write, cleanup, delete, reset, drop, or
-  truncate without a separate approved phase and executable contract.
-- Do not add automatic, scheduled, startup, service, or unattended production
-  sync. Manual sync remains the default.
+- Do not call the primary LLM until the operator approves the reported budget.
+- Do not use a fallback LLM provider or reacquire gallery-dl/Pixiv/source data.
+- Do not start PX1-B, Provider-2, scale-up, Entity bridge, confirmed assignment,
+  production, full-library execution, or SourceConcept/Entity/`media_tags`
+  truth promotion.
+- Do not run import, classification, AI tagging, localization, schema migration,
+  source/iCloud mutation, cleanup, delete, reset, drop, or truncate.
 
 ## Production / Development Separation
 
-- Feature work uses dev/test DBs, dev/test storage, fixtures, or restored
-  snapshots. The R1R evidence DB is read-only input; R2 writes only to a
-  separate test clone.
-- Development `.env` is not production truth. Production import or mutation
-  requires explicit promotion mode, clean identity gates, backup proof where
-  applicable, redacted public artifacts, and private ignored ledgers.
-- Public reports remain aggregate-only and path-redacted. Fixed-input hashes,
-  raw source labels, cache rows, review ledgers, and review packs remain local
-  ignored artifacts.
+- R2R reads the preserved R2 isolated baseline and uses a separate test working
+  database. Production profile, database, storage, source, and truth paths are
+  forbidden.
+- Public reports remain aggregate-only and path-redacted. Raw pair payloads,
+  fixed fingerprints, signal names, caches, ledgers, and review packs remain
+  local ignored artifacts.
 
 ## Choosing The Next Work
 
-The current action is the final bounded review of SCV2-R2 PR #134, not another
-phase.
-After merge, any next route must be separately approved and should first decide
-whether to evaluate the 2,284 blocked review pairs, improve search/gap semantics,
-or gather new source evidence. R2 itself authorizes none of those routes.
+The only permitted next action is a separate operator decision on the proposed
+`$2.00` maximum primary-provider budget for the 2,284 missing pairs. If approved,
+continue in the same R2R PR; otherwise remain at
+`blocked_llm_approval_required`. Do not start another phase.

@@ -1,67 +1,52 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> Last updated for SCV2-R2 after PR #133 / A1R merged.
-> Active PR: #134 on `codex/scv2-r2-constraint-aware-source-concept-graph-remediation`.
+> Last updated for the initial SCV2-R2R cache-only dry-run after PR #134 merged.
 
 ## Canonical Context
 
 | Item | Value |
 |------|-------|
 | Repository | `kyloris0660/VIOLET` |
-| Current phase | `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation` |
-| Baseline main | PR #133 merge `4a44d5809c9ec567bf59474cc3e20df62a0e97de` |
-| R1R evidence DB | `blombooru_r1r_restored_test_20260618` (preserved) |
-| Final isolated R2 DB | `blombooru_scv2_r2_review4_test_20260710` |
-| Current result | `target_met_constraint_aware_r2`; no downstream route approved |
+| Current phase | `SCV2-R2R: Autonomous Recall and Search Closure` |
+| Baseline main | PR #134 merge `d553a7f51222f2c52c3fe5014e878faed7f7b5a1` |
+| Preserved R2 DB | `blombooru_scv2_r2_review4_test_20260710` |
+| Isolated R2R DB | `blombooru_scv2_r2r_dryrun_test_20260710` |
+| Current result | `blocked_llm_approval_required`; no downstream route approved |
 
-## Current R2 State
+## Current R2R State
 
-- PR #132 / R1R and PR #133 / A1R are merged into `main`; PR #134 remains
-  open and unmerged.
-- R2 reused one immutable 15-table R1R snapshot. Clone and before/after row
-  counts and content fingerprints matched; only seven SourceConcept-owned
-  tables were rebuilt in the isolated R2 DB.
-- Resolver evidence code is
-  `0e605ad95d20713b413340dc85e0fc80f38173dc`. The final PR head is recorded
-  externally in PR #134 because embedding it in the same commit is
-  self-referential.
-- All 11 forbidden truth tables were compared read-only between the R1R
-  baseline and final R2 DB. Schemas, row counts, and content fingerprints
-  match; measured changed tables are empty.
-- The R2 and public-redaction contracts pass. Private fingerprints, reason
-  ledger, and checksummed review pack remain ignored and uncommitted.
-
-## Accepted Result And Remaining Debt
-
-- Same benchmark: `305 = 22 retained + 283 intentionally constrained + 0
-  unexplained`; missing pairs/signals are 0. Known cannot avoidance is
-  1,546 / 1,546.
-- Unknown-role deterministic/LLM candidates are 4,455 / 104; all 4,559 are
-  review-only and unauthorized materializations are 0. Review-only union,
-  direct cannot, deterministic hard-conflict, and transitive cannot counts are
-  all 0. Largest component size is 88.
-- R2 found 2,284 genuinely new/missing pairs. They remain
-  `blocked_llm_approval_required`, unadjudicated, and unmaterialized; provider
-  and new LLM calls are 0.
-- Gaps increased 4,443 -> 9,363. Search symmetry remains 0 / 10, unmatched
-  seeds remain 16, and pairwise Jaccard fell 0.3752 -> 0.1552. Search quality,
-  gap quality, recall closure, and scale readiness remain false.
+- The cache-only dry-run reused the unchanged 15-table fixed evidence snapshot,
+  the 11 forbidden truth tables, and the existing 6,429 R1R cache records.
+- Current unique eligible candidate population is 3,319 pairs: 1,035 current
+  stable-compatible hits and 2,284 genuinely missing pairs. Exact-compatible
+  hits are 0; 4,349 existing records remain semantic priors only.
+- The projected all-missing first pass is 2,284 calls. Historical uncertainty
+  projects 193 second-pass escalations. The repo cost model projects `$1.912254`
+  against the proposed `$2.00` operator cap; no fixed 300-pair cap is used.
+- Provider initialization/calls/errors are 0 / 0 / 0. Candidate disposition
+  coverage is currently 1,035 / 3,319 (`0.311840915939`), so target completion
+  is not claimed.
+- The in-memory non-materialized projection retains all 12,249 signals, previews
+  1,093 materialized identity concepts, and has 0 materialized `needs_review`
+  rows. No human review queue is generated.
+- The R2R contract, public redaction, overlay checksum, and private review-pack
+  integrity pass for the truthful approval-blocked status.
 
 ## Stop Boundary And Next Action
 
-- Complete the final bounded review of PR #134; merge remains a manual user
-  decision.
-- Do not start R2R without separate approval. R2R recall/search closure is
-  still required but was not started by this closeout.
+- Stop before all live LLM/provider calls. A separate explicit operator budget
+  authorization is required to adjudicate the 2,284 missing pairs.
+- After approval, continue in the same R2R PR with primary-provider-only
+  execution, autonomous second pass, cache-only regeneration, isolated rebuild,
+  and final contract evidence.
 - Do not start PX1-B, Provider-2, scale-up, Entity bridge, production,
-  full-library execution, provider acquisition, or SourceConcept/Entity/
-  `media_tags` truth promotion.
-- Do not call an LLM for the 2,284 blocked pairs without separate approval.
+  full-library execution, acquisition, or truth promotion.
 
 ## Durable Links
 
+- Autonomous policy: `docs/source-concept-autonomous-resolution-policy.md`.
 - Fixed evidence policy: `docs/source-evidence-snapshot-reuse-policy.md`.
 - LLM cache policy: `docs/source-concept-llm-adjudication-cache.md`.
 - Current route: `docs/roadmap/current-mainline-roadmap.md`.
-- R2 report: `docs/reports/phase-4.5-scv2-r2-constraint-aware-graph-remediation.md`.
-- R2 summary: `docs/reports/phase-4.5-scv2-r2-constraint-aware-graph-remediation-summary.json`.
+- R2R report: `docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure.md`.
+- R2R summary: `docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure-summary.json`.

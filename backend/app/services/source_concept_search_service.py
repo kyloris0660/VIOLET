@@ -28,6 +28,12 @@ from .source_metadata_registry_service import canonical_source_key, normalize_so
 ACTIVE_SOURCE_CONCEPT_STATUSES = ("active",)
 REVIEW_SOURCE_CONCEPT_STATUSES = ("needs_review",)
 VISIBLE_SOURCE_CONCEPT_STATUSES = ACTIVE_SOURCE_CONCEPT_STATUSES + REVIEW_SOURCE_CONCEPT_STATUSES
+EVIDENCE_FALLBACK_SIGNAL_STATUSES = (
+    "materialized_identity",
+    "isolated_evidence",
+    "active",
+    "needs_review",
+)
 FORBIDDEN_TRUTH_PATHS = (
     "Entity",
     "EntityAlias",
@@ -237,64 +243,10 @@ def _query_search_index_concept_ids(
         .distinct()
         .all()
     )
-    return _expand_concept_ids_by_alias_closure(
-        db,
-        [int(row[0]) for row in rows],
-        include_needs_review=include_needs_review,
-    )
-
-
-def _expand_concept_ids_by_alias_closure(
-    db: Session,
-    concept_ids: Sequence[int],
-    *,
-    include_needs_review: bool,
-) -> list[int]:
-    """Expand matched concepts to visible sibling concepts that share aliases.
-
-    A query term can match any alias of a SourceConcept. Once a concept is
-    matched, all visible concepts sharing that alias set should contribute the
-    same concept-level media set, so q=A/q=B/q=C behave symmetrically.
-    """
-
-    statuses = _status_scope(include_needs_review)
-    all_ids = {int(concept_id) for concept_id in concept_ids if concept_id is not None}
-    if not all_ids:
-        return []
-
-    for _ in range(4):
-        alias_keys = {
-            row[0]
-            for row in (
-                db.query(SourceConceptAlias.alias_key)
-                .filter(SourceConceptAlias.concept_id.in_(sorted(all_ids)))
-                .filter(SourceConceptAlias.status.in_(statuses))
-                .filter(SourceConceptAlias.alias_key.isnot(None))
-                .all()
-            )
-            if row[0]
-        }
-        if not alias_keys:
-            break
-
-        sibling_ids = {
-            int(row[0])
-            for row in (
-                db.query(SourceConcept.id)
-                .join(SourceConceptAlias, SourceConceptAlias.concept_id == SourceConcept.id)
-                .filter(SourceConcept.status.in_(statuses))
-                .filter(SourceConceptAlias.status.in_(statuses))
-                .filter(SourceConceptAlias.alias_key.in_(sorted(alias_keys)))
-                .distinct()
-                .all()
-            )
-        }
-        before = len(all_ids)
-        all_ids.update(sibling_ids)
-        if len(all_ids) == before:
-            break
-
-    return sorted(all_ids)
+    # Identity search may only return concepts directly matched by their own
+    # materialized alias rows. Shared surface text must not recursively union
+    # sibling concepts because those siblings may be cannot-linked.
+    return sorted({int(row[0]) for row in rows})
 
 
 def _source_concept_media_condition(concept_ids: Sequence[int], *, include_needs_review: bool = False):
@@ -328,6 +280,45 @@ def _source_concept_media_condition(concept_ids: Sequence[int], *, include_needs
     return or_(evidence_condition, signal_condition)
 
 
+def _overlay_fallback_media_ids(
+    db: Session,
+    keys: set[str],
+    *,
+    statuses: Sequence[str],
+) -> set[int]:
+    """Resolve signal-level fallback neighbors without creating an identity union."""
+
+    if not keys:
+        return set()
+    media_ids: set[int] = set()
+    rows = (
+        db.query(SourceConceptSignal.media_id, SourceConceptSignal.evidence_payload)
+        .filter(SourceConceptSignal.status.in_(tuple(statuses)))
+        .filter(SourceConceptSignal.media_id.isnot(None))
+        .all()
+    )
+    for media_id, payload in rows:
+        overlay = payload.get("r2r_search_overlay") if isinstance(payload, dict) else None
+        if not isinstance(overlay, dict) or overlay.get("identity_union_allowed") is not False:
+            continue
+        neighbors = overlay.get("neighbors") if isinstance(overlay.get("neighbors"), list) else []
+        for neighbor in neighbors:
+            if not isinstance(neighbor, dict) or neighbor.get("relation") not in {
+                "must_link",
+                "deferred_nonblocking",
+            }:
+                continue
+            alias_keys = {
+                str(value)
+                for value in (neighbor.get("fallback_alias_keys") or [])
+                if value
+            }
+            if keys.intersection(alias_keys):
+                media_ids.add(int(media_id))
+                break
+    return media_ids
+
+
 def source_concept_media_condition_for_term(
     db: Session,
     term: str,
@@ -336,12 +327,134 @@ def source_concept_media_condition_for_term(
 ):
     """Return a read-only Media condition for SourceConcept expansion."""
 
+    keys = _search_keys_for_term(term)
     concept_ids = _query_search_index_concept_ids(
         db,
         term,
         include_needs_review=include_needs_review,
     )
-    return _source_concept_media_condition(concept_ids, include_needs_review=include_needs_review)
+    identity_condition = _source_concept_media_condition(
+        concept_ids,
+        include_needs_review=include_needs_review,
+    )
+    if not keys:
+        return identity_condition
+
+    fallback_signal = aliased(SourceConceptSignal)
+    fallback_statuses = list(EVIDENCE_FALLBACK_SIGNAL_STATUSES)
+    if not include_needs_review:
+        fallback_statuses = [
+            status for status in fallback_statuses if status != "needs_review"
+        ]
+    evidence_fallback_condition = exists().where(
+        and_(
+            fallback_signal.media_id == Media.id,
+            fallback_signal.status.in_(fallback_statuses),
+            or_(
+                fallback_signal.canonical_key.in_(sorted(keys)),
+                fallback_signal.normalized_key.in_(sorted(keys)),
+            ),
+        )
+    )
+    overlay_media_ids = _overlay_fallback_media_ids(
+        db,
+        keys,
+        statuses=fallback_statuses,
+    )
+    if overlay_media_ids:
+        evidence_fallback_condition = or_(
+            evidence_fallback_condition,
+            Media.id.in_(sorted(overlay_media_ids)),
+        )
+    if identity_condition is None:
+        return evidence_fallback_condition
+    return or_(identity_condition, evidence_fallback_condition)
+
+
+def source_layer_search_path_media_ids(
+    db: Session,
+    term: str,
+    *,
+    include_needs_review: bool = True,
+) -> dict[str, set[int]]:
+    """Return separate identity and evidence-fallback result sets for QA.
+
+    The fallback set contains media with direct matching signal evidence or a
+    versioned pair-overlay neighbor. It never traverses alias-sharing concepts
+    or creates identity unions.
+    """
+
+    keys = _search_keys_for_term(term)
+    concept_ids = _query_search_index_concept_ids(
+        db,
+        term,
+        include_needs_review=include_needs_review,
+    )
+    identity_ids: set[int] = set()
+    if concept_ids:
+        statuses = _status_scope(include_needs_review)
+        identity_ids.update(
+            int(row[0])
+            for row in (
+                db.query(SourceConceptEvidence.media_id)
+                .filter(SourceConceptEvidence.concept_id.in_(concept_ids))
+                .filter(SourceConceptEvidence.status.in_(statuses))
+                .filter(SourceConceptEvidence.media_id.isnot(None))
+                .distinct()
+                .all()
+            )
+        )
+        identity_ids.update(
+            int(row[0])
+            for row in (
+                db.query(SourceConceptSignal.media_id)
+                .join(
+                    SourceConceptSignalLink,
+                    SourceConceptSignalLink.signal_id == SourceConceptSignal.id,
+                )
+                .filter(SourceConceptSignalLink.concept_id.in_(concept_ids))
+                .filter(SourceConceptSignalLink.link_status.in_(statuses))
+                .filter(SourceConceptSignal.media_id.isnot(None))
+                .distinct()
+                .all()
+            )
+        )
+
+    fallback_ids: set[int] = set()
+    if keys:
+        fallback_statuses = list(EVIDENCE_FALLBACK_SIGNAL_STATUSES)
+        if not include_needs_review:
+            fallback_statuses = [
+                status for status in fallback_statuses if status != "needs_review"
+            ]
+        fallback_ids.update(
+            int(row[0])
+            for row in (
+                db.query(SourceConceptSignal.media_id)
+                .filter(SourceConceptSignal.status.in_(fallback_statuses))
+                .filter(SourceConceptSignal.media_id.isnot(None))
+                .filter(
+                    or_(
+                        SourceConceptSignal.canonical_key.in_(sorted(keys)),
+                        SourceConceptSignal.normalized_key.in_(sorted(keys)),
+                    )
+                )
+                .distinct()
+                .all()
+            )
+        )
+        fallback_ids.update(
+            _overlay_fallback_media_ids(
+                db,
+                keys,
+                statuses=fallback_statuses,
+            )
+        )
+    return {
+        "identity": identity_ids,
+        "evidence_fallback": fallback_ids,
+        "combined": identity_ids | fallback_ids,
+    }
 
 
 def apply_source_concept_filter(

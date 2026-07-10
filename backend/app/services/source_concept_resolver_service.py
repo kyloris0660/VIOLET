@@ -3208,6 +3208,25 @@ def edges_from_llm_judgments(
                     },
                 )
             )
+        elif decision in {"deferred_nonblocking", "deferred"}:
+            edges.append(
+                _edge(
+                    left,
+                    right,
+                    edge_type="deferred_nonblocking",
+                    weight=confidence,
+                    evidence_source="autonomous_llm_adjudication",
+                    status="deferred_nonblocking",
+                    reason_code="machine_deferred_nonblocking_source_layer_evidence",
+                    union_allowed=False,
+                    payload={
+                        "source_layer_only": True,
+                        "llm_judgment_id": row.get("judgment_id"),
+                        "decision": "deferred_nonblocking",
+                        "human_review_required": False,
+                    },
+                )
+            )
         else:
             edges.append(
                 _edge(
@@ -4185,6 +4204,12 @@ def resolve_source_concepts(
         ),
         "unknown_role_corroboration_distribution": unknown_corroboration_distribution,
         "undermerge_violation_count": sum(1 for row in undermerge_review if row.get("violation")),
+        "undermerge_split_classification_counts": dict(
+            Counter(
+                str(row.get("split_classification") or "unclassified")
+                for row in undermerge_review
+            )
+        ),
         "overmerge_violation_count": sum(1 for row in overmerge_review if row.get("violation")),
         "context_conflict_active_merge_count": sum(1 for row in context_conflict_review if row.get("violation")),
         "alias_context_conflict_active_merge_count": sum(
@@ -4515,15 +4540,33 @@ def _undermerge_review(
         for signal in concept.signals:
             concept_by_signal[signal.signal_key] = concept.concept_key
     hard_blocked_pairs = {_pair_id(edge) for edge in edges if _edge_is_hard_blocker(edge)}
+    signals_by_concept: dict[str, set[str]] = defaultdict(set)
+    for signal_key, concept_key in concept_by_signal.items():
+        signals_by_concept[concept_key].add(signal_key)
+
+    def split_classification(
+        left_signal_key: str,
+        right_signal_key: str,
+        left_concept: str,
+        right_concept: str,
+    ) -> tuple[str, tuple[str, str] | None]:
+        direct = tuple(sorted((left_signal_key, right_signal_key)))
+        if direct in hard_blocked_pairs:
+            return "directly_blocked_split", direct
+        for left_member in signals_by_concept.get(left_concept, set()):
+            for right_member in signals_by_concept.get(right_concept, set()):
+                pair = tuple(sorted((left_member, right_member)))
+                if pair in hard_blocked_pairs:
+                    return "transitively_blocked_split", pair
+        return "true_unexplained_undermerge", None
+
     rows: list[dict[str, Any]] = []
     for edge in edges:
-        if not _edge_should_materialize(edge):
-            continue
-        if _pair_id(edge) in hard_blocked_pairs:
-            continue
         left_concept = concept_by_signal.get(edge.left_signal_key)
         right_concept = concept_by_signal.get(edge.right_signal_key)
-        if left_concept and right_concept and left_concept != right_concept:
+        if not left_concept or not right_concept or left_concept == right_concept:
+            continue
+        if edge.status == "deferred_nonblocking" or edge.edge_type == "deferred_nonblocking":
             rows.append(
                 {
                     "left_signal_key": edge.left_signal_key,
@@ -4533,10 +4576,40 @@ def _undermerge_review(
                     "edge_key": edge.edge_key,
                     "edge_type": edge.edge_type,
                     "edge_status": edge.status,
-                    "violation": True,
-                    "reason": "safe_edge_not_materialized_in_same_component",
+                    "split_classification": "deferred_nonblocking_split",
+                    "blocking_pair": None,
+                    "violation": False,
+                    "reason": "machine_deferred_relation_does_not_union",
                 }
             )
+            continue
+        if not _edge_should_materialize(edge):
+            continue
+        classification, blocker = split_classification(
+            edge.left_signal_key,
+            edge.right_signal_key,
+            left_concept,
+            right_concept,
+        )
+        rows.append(
+            {
+                "left_signal_key": edge.left_signal_key,
+                "right_signal_key": edge.right_signal_key,
+                "left_concept_key": left_concept,
+                "right_concept_key": right_concept,
+                "edge_key": edge.edge_key,
+                "edge_type": edge.edge_type,
+                "edge_status": edge.status,
+                "split_classification": classification,
+                "blocking_pair": list(blocker) if blocker else None,
+                "violation": classification == "true_unexplained_undermerge",
+                "reason": (
+                    "safe_edge_not_materialized_in_same_component"
+                    if classification == "true_unexplained_undermerge"
+                    else "component_merge_blocked_by_cannot_constraint"
+                ),
+            }
+        )
     return rows
 
 
@@ -4962,7 +5035,17 @@ def persist_source_concept_resolution(
             current_status = getattr(row, status_field)
             if current_status == "superseded":
                 continue
-            if current_status not in {"active", "needs_review", "ambiguous", "rejected", "weak"}:
+            if current_status not in {
+                "active",
+                "needs_review",
+                "ambiguous",
+                "rejected",
+                "weak",
+                "materialized_identity",
+                "isolated_evidence",
+                "rejected_evidence",
+                "deferred_nonblocking",
+            }:
                 continue
             setattr(row, status_field, "superseded")
             if hasattr(row, "created_by_run_id"):
@@ -4970,7 +5053,7 @@ def persist_source_concept_resolution(
             changed += 1
         return changed
 
-    valid_link_statuses = {"active", "needs_review"}
+    valid_link_statuses = {"active", "needs_review", "materialized_identity"}
 
     def _concept_has_valid_signal_link(concept_id: int) -> bool:
         return (
@@ -5008,7 +5091,17 @@ def persist_source_concept_resolution(
         for row in query.all():
             if row.status == "superseded":
                 continue
-            if row.status not in {"active", "needs_review", "ambiguous", "rejected", "weak"}:
+            if row.status not in {
+                "active",
+                "needs_review",
+                "ambiguous",
+                "rejected",
+                "weak",
+                "materialized_identity",
+                "isolated_evidence",
+                "rejected_evidence",
+                "deferred_nonblocking",
+            }:
                 continue
             if _concept_has_valid_signal_link(int(row.id)):
                 continue
@@ -5026,7 +5119,17 @@ def persist_source_concept_resolution(
         for row in query.all():
             if row.status == "superseded":
                 continue
-            if row.status not in {"active", "needs_review", "ambiguous", "rejected", "weak"}:
+            if row.status not in {
+                "active",
+                "needs_review",
+                "ambiguous",
+                "rejected",
+                "weak",
+                "materialized_identity",
+                "isolated_evidence",
+                "rejected_evidence",
+                "deferred_nonblocking",
+            }:
                 continue
             if _search_row_has_valid_alias_support(row):
                 continue
