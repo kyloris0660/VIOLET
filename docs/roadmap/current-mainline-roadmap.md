@@ -22,7 +22,7 @@ historical ledger.
 - PR #133 / A1R is merged at
   `4a44d5809c9ec567bf59474cc3e20df62a0e97de`; it approved exactly one next
   phase, SCV2-R2.
-- SCV2-R2 is the current review branch. Its isolated result is
+- SCV2-R2 is the current PR #134 review branch. Its isolated result is
   `target_met_constraint_aware_r2`, but it does not approve any downstream
   phase, provider call, production work, or truth promotion.
 
@@ -46,7 +46,8 @@ historical ledger.
 6. `SCV2-A1R: Route Audit Rerun After R1R` - merged in PR #133. It was
    read-only and selected SCV2-R2 as the sole next phase.
 
-7. `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation` - current PR.
+7. `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation` - current
+   PR #134.
    It separates identity materialization from review evidence, enforces
    component-level cannot constraints, partitions oversized blocks, guards
    unknown roles, and reuses R1R judgments without new provider calls.

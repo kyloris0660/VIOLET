@@ -11,7 +11,7 @@
 | Repository | `kyloris0660/VIOLET` |
 | Current phase | `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation` |
 | Current branch | `codex/scv2-r2-constraint-aware-source-concept-graph-remediation` |
-| Current PR | Pending creation from this branch |
+| Current PR | PR #134 |
 | Baseline main | PR #133 merge `4a44d5809c9ec567bf59474cc3e20df62a0e97de` |
 | R1R evidence DB | `blombooru_r1r_restored_test_20260618` (preserved) |
 | Final isolated R2 DB | `blombooru_scv2_r2_test_20260710b` |
