@@ -78,6 +78,10 @@ historical ledger.
 - Visible debt: aggregate gaps 4,443 -> 9,344, search symmetry remains 0 / 10,
   unmatched seeds remain 16, and average pairwise search overlap fell from
   0.3752 to 0.1539. The stricter graph exposes rather than hides this debt.
+- Quality interpretation: the narrow constraint-remediation target is met;
+  search quality improved, gap quality improved, recall closure complete, and
+  route quality ready for scale are all false. R2R closure remains required
+  under separate approval and has not started.
 
 ## What Is Intentionally Not Next
 
@@ -106,7 +110,8 @@ historical ledger.
 
 ## Choosing The Next Work
 
-The current action is review/merge of the SCV2-R2 PR, not another phase.
+The current action is the final bounded review of SCV2-R2 PR #134, not another
+phase.
 After merge, any next route must be separately approved and should first decide
 whether to evaluate the 2,284 blocked review pairs, improve search/gap semantics,
 or gather new source evidence. R2 itself authorizes none of those routes.

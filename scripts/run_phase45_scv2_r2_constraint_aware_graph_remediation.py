@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import zipfile
@@ -56,6 +57,12 @@ PHASE_TITLE = "SCV2-R2: Constraint-Aware SourceConcept Graph Remediation"
 PHASE_SLUG = "phase-4.5-scv2-r2-constraint-aware-graph-remediation"
 BRANCH = "codex/scv2-r2-constraint-aware-source-concept-graph-remediation"
 CONTRACT_ID = "r2_source_concept_graph_remediation_contract_v1"
+RESOLVER_EVIDENCE_CODE_SHA = "4b7b57c0d66299620322e9c653524788e376c0fe"
+QUALITY_INTERPRETATION = (
+    "R2 met the constraint-aware graph-remediation target but intentionally produced a more conservative "
+    "and fragmented graph. Search, gap, and recall closure remain incomplete."
+)
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 R1R_BASELINE_DB = "blombooru_r1r_restored_test_20260618"
 DEFAULT_WORKING_DB = "blombooru_scv2_r2_test_20260710"
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests" / PHASE_SLUG
@@ -92,6 +99,7 @@ TARGET_STATUSES = {
     "blocked_missing_fixed_input_manifest",
     "blocked_llm_approval_required",
     "blocked_quality_regression",
+    "blocked_public_redaction",
     "partial_improvement_not_target_met",
     "target_met_constraint_aware_r2",
 }
@@ -167,6 +175,30 @@ def require_safe_output_dir(path: Path) -> Path:
         raise R2BlockedError("output_dir_must_be_under_repo_local_manifests")
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
+
+
+def validate_run_id(value: str) -> str:
+    if not isinstance(value, str) or not RUN_ID_RE.fullmatch(value) or ".." in value:
+        raise R2BlockedError("blocked_invalid_run_id")
+    return value
+
+
+def derived_run_id(value: str, suffix: str) -> str:
+    value = validate_run_id(value)
+    suffix = validate_run_id(suffix)
+    candidate = f"{value}-{suffix}"
+    if len(candidate) > 128:
+        digest = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12]
+        candidate = f"{value[:96]}-{digest}-{suffix}"
+    return validate_run_id(candidate)
+
+
+def artifact_path(output_dir: Path, name: str) -> Path:
+    root = output_dir.resolve()
+    candidate = (root / name).resolve()
+    if candidate == root or not candidate.is_relative_to(root):
+        raise R2BlockedError("blocked_artifact_path_escape")
+    return candidate
 
 
 def environment_isolation(source_db: str, working_db: str) -> dict[str, Any]:
@@ -942,6 +974,9 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Gap total: `{baseline.get('gap_total')}` -> `{post.get('gap_total')}`.",
         f"- Search aggregate before: `{baseline.get('search_aggregate')}`.",
         f"- Search aggregate after: `{post.get('search_aggregate')}`.",
+        f"- Search symmetry: `{(baseline.get('search_aggregate') or {}).get('symmetric_groups')}` / `10` -> `{(post.get('search_aggregate') or {}).get('symmetric_groups')}` / `10`.",
+        f"- Unmatched seeds: `{(baseline.get('search_aggregate') or {}).get('unmatched_seeds')}` -> `{(post.get('search_aggregate') or {}).get('unmatched_seeds')}`.",
+        f"- Average pairwise Jaccard: `{((baseline.get('search_aggregate') or {}).get('media_result_overlap_metrics') or {}).get('average_pairwise_jaccard')}` -> `{((post.get('search_aggregate') or {}).get('media_result_overlap_metrics') or {}).get('average_pairwise_jaccard')}`.",
         f"- Metric deltas: `{summary.get('metric_delta')}`.",
         "",
         "## Quality",
@@ -950,7 +985,14 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
         f"- Transitively incompatible same labels held apart with private reasons: `{quality.get('transitively_incompatible_same_pair_count')}`.",
         f"- Known cannot avoidance: `{quality.get('known_cannot_avoidance_rate')}`.",
         f"- Meaningful structural improvement: `{quality.get('meaningful_structural_improvement')}`.",
-        f"- No major quality regression: `{quality.get('no_major_quality_regression')}`.",
+        f"- Constraint target met: `{quality.get('constraint_safety_target_met')}`.",
+        f"- Search quality improved: `{quality.get('search_quality_improved')}`.",
+        f"- Gap quality improved: `{quality.get('gap_quality_improved')}`.",
+        f"- Recall closure complete: `{quality.get('recall_closure_complete')}`.",
+        f"- Route quality ready for scale: `{quality.get('route_quality_ready_for_scale')}`.",
+        f"- R2R follow-up required: `{quality.get('r2r_followup_required')}`.",
+        f"- Broad route/search quality non-regression: `{quality.get('no_major_quality_regression')}`.",
+        f"- Interpretation: {quality.get('quality_interpretation')}",
         "",
         "## Safety",
         "",
@@ -968,7 +1010,8 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
 
 
 def scan_public_outputs(markdown: str, summary: Mapping[str, Any], output_dir: Path, run_id: str) -> dict[str, Any]:
-    staging = output_dir / f"public-redaction-staging-{run_id}"
+    run_id = validate_run_id(run_id)
+    staging = artifact_path(output_dir, f"public-redaction-staging-{run_id}")
     staging.mkdir(parents=True, exist_ok=False)
     md = staging / PUBLIC_REPORT_MD.name
     js = staging / PUBLIC_REPORT_JSON.name
@@ -996,6 +1039,41 @@ def scan_public_outputs(markdown: str, summary: Mapping[str, Any], output_dir: P
     }
 
 
+def public_redaction_success_record() -> dict[str, Any]:
+    return {
+        "passed": True,
+        "findings": [],
+        "allowed_findings": [],
+        "scanned_artifacts": [f"docs/reports/{PUBLIC_REPORT_MD.name}", f"docs/reports/{PUBLIC_REPORT_JSON.name}"],
+        "clean_before_public_write": True,
+        "unsafe_public_report_written": False,
+    }
+
+
+def write_public_outputs_after_redaction(
+    markdown: str,
+    summary: dict[str, Any],
+    output_dir: Path,
+    run_id: str,
+) -> dict[str, Any]:
+    run_id = validate_run_id(run_id)
+    redaction = scan_public_outputs(markdown, summary, output_dir, derived_run_id(run_id, "public-write"))
+    if not redaction["passed"] or redaction != summary.get("public_redaction"):
+        summary["public_redaction"] = redaction
+        diagnostic = {
+            "phase": PHASE,
+            "run_id": run_id,
+            "status": "blocked_public_redaction",
+            "public_redaction": redaction,
+            "public_files_written": False,
+        }
+        write_json(artifact_path(output_dir, f"blocked-public-redaction-{run_id}.json"), diagnostic)
+        raise R2BlockedError("blocked_public_redaction")
+    write_text(PUBLIC_REPORT_MD, markdown)
+    write_json(PUBLIC_REPORT_JSON, summary)
+    return redaction
+
+
 def write_review_pack(
     output_dir: Path,
     run_id: str,
@@ -1003,7 +1081,8 @@ def write_review_pack(
     markdown: str,
     artifacts: Mapping[str, Any],
 ) -> dict[str, Any]:
-    pack_dir = output_dir / f"review-pack-{run_id}"
+    run_id = validate_run_id(run_id)
+    pack_dir = artifact_path(output_dir, f"review-pack-{run_id}")
     pack_dir.mkdir(parents=True, exist_ok=False)
     write_text(pack_dir / "public-report.md", markdown)
     write_json(pack_dir / "public-summary.json", summary)
@@ -1024,7 +1103,7 @@ def write_review_pack(
         if path.is_file() and path.name != "checksums.json"
     }
     write_json(pack_dir / "checksums.json", checksums)
-    zip_path = output_dir / f"review-pack-{run_id}.zip"
+    zip_path = artifact_path(output_dir, f"review-pack-{run_id}.zip")
     with zipfile.ZipFile(zip_path, "x", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(pack_dir.rglob("*")):
             if path.is_file():
@@ -1061,7 +1140,14 @@ def determine_status(
         )
     ):
         return "blocked_quality_regression"
-    if not quality.get("known_same_recall_protected") or not quality.get("no_major_quality_regression"):
+    if (
+        not quality.get("known_same_recall_protected")
+        or not quality.get("constraint_safety_target_met")
+        or not quality.get("fixed_evidence_preserved")
+        or quality.get("known_same_constraint_regression")
+        or quality.get("known_cannot_constraint_regression")
+        or not quality.get("giant_component_remediation_improved")
+    ):
         return "blocked_quality_regression"
     if quality.get("meaningful_structural_improvement"):
         return "target_met_constraint_aware_r2"
@@ -1069,6 +1155,7 @@ def determine_status(
 
 
 def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    args.run_id = validate_run_id(args.run_id)
     isolation = environment_isolation(args.source_db, args.working_db)
     if not isolation["passed"]:
         raise R2BlockedError("blocked_environment_isolation")
@@ -1121,7 +1208,7 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
             "provider_calls": 0,
             "db_write": False,
         }
-        write_json(output_dir / f"dry-run-{run_id}.json", dry_run_payload)
+        write_json(artifact_path(output_dir, f"dry-run-{run_id}.json"), dry_run_payload)
         if args.mode == "dry-run":
             session.rollback()
             return {
@@ -1180,6 +1267,38 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
     same_recall = float(same_quality.get("known_same_recall") or 0.0)
     search_before = baseline_public.get("search_aggregate") or {}
     search_after = post_public.get("search_aggregate") or {}
+    baseline_largest = baseline_public.get("largest_components") or []
+    post_largest = post_public.get("largest_components") or []
+    baseline_largest_size = int((baseline_largest[0] if baseline_largest else {}).get("signal_count") or 0)
+    post_largest_size = int((post_largest[0] if post_largest else {}).get("signal_count") or 0)
+    baseline_overlap = float((search_before.get("media_result_overlap_metrics") or {}).get("average_pairwise_jaccard") or 0.0)
+    post_overlap = float((search_after.get("media_result_overlap_metrics") or {}).get("average_pairwise_jaccard") or 0.0)
+    constraint_safety_target_met = all(
+        int(graph.get(key) or 0) == 0
+        for key in (
+            "review_only_edge_used_in_union_count",
+            "direct_llm_cannot_pair_in_materialized_component_count",
+            "deterministic_hard_conflict_in_materialized_component_count",
+            "transitive_cannot_violation_count",
+        )
+    )
+    fixed_evidence_preserved = bool(
+        fixed_proof.get("baseline_to_working_clone_match") and fixed_proof.get("before_after_match")
+    )
+    known_same_constraint_regression = int(same_quality.get("known_same_regression_count") or 0) > 0
+    known_cannot_constraint_regression = float(same_quality.get("known_cannot_avoidance_rate") or 0.0) < 1.0
+    giant_component_remediation_improved = 0 < post_largest_size < baseline_largest_size
+    search_quality_improved = bool(
+        int(search_after.get("symmetric_groups") or 0) > int(search_before.get("symmetric_groups") or 0)
+        and int(search_after.get("unmatched_seeds") or 0) <= int(search_before.get("unmatched_seeds") or 0)
+        and post_overlap >= baseline_overlap
+    )
+    gap_quality_improved = int(post_public.get("gap_total") or 0) < int(baseline_public.get("gap_total") or 0)
+    recall_closure_complete = bool(
+        llm_accounting["genuinely_new_or_missing_pair_count"] == 0
+        and search_quality_improved
+        and gap_quality_improved
+    )
     quality = {
         **same_quality,
         "route_metrics_recomputed": True,
@@ -1189,11 +1308,18 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
             and int((result.summary.get("edge_graph") or {}).get("oversized_hub_edges_prevented") or 0) > 0
         ),
         "known_same_recall_protected": same_recall >= 0.98,
-        "no_major_quality_regression": (
-            same_recall >= 0.98
-            and int(search_after.get("symmetric_groups") or 0) >= int(search_before.get("symmetric_groups") or 0)
-            and len(result.signals) == int(result.summary.get("signal_count") or 0)
-        ),
+        "constraint_safety_target_met": constraint_safety_target_met,
+        "fixed_evidence_preserved": fixed_evidence_preserved,
+        "known_same_constraint_regression": known_same_constraint_regression,
+        "known_cannot_constraint_regression": known_cannot_constraint_regression,
+        "giant_component_remediation_improved": giant_component_remediation_improved,
+        "search_quality_improved": search_quality_improved,
+        "gap_quality_improved": gap_quality_improved,
+        "recall_closure_complete": recall_closure_complete,
+        "route_quality_ready_for_scale": False,
+        "r2r_followup_required": True,
+        "no_major_quality_regression": False,
+        "quality_interpretation": QUALITY_INTERPRETATION,
         "changed_denominators_reported": True,
         "weak_review_evidence_discarded": False,
     }
@@ -1219,6 +1345,11 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
         "generated_at": utc_now_iso(),
         "branch": git_value(["git", "branch", "--show-current"]),
         "head_sha": git_value(["git", "rev-parse", "HEAD"]),
+        "evidence_version_boundary": {
+            "resolver_evidence_code_sha": RESOLVER_EVIDENCE_CODE_SHA,
+            "resolver_code_changed_after_evidence": False,
+            "final_closeout_head_sha_source": "live_pr_134_head_after_final_push",
+        },
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
             "status": status,
@@ -1268,13 +1399,7 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
             "sample_categories": ["same", "cannot_or_conflict", "uncertain_or_review", "largest_components"],
             "human_ground_truth_claimed": False,
         },
-        "public_redaction": {
-            "passed": True,
-            "findings": [],
-            "scanned_artifacts": [f"docs/reports/{PUBLIC_REPORT_MD.name}", f"docs/reports/{PUBLIC_REPORT_JSON.name}"],
-            "clean_before_public_write": True,
-            "unsafe_public_report_written": False,
-        },
+        "public_redaction": public_redaction_success_record(),
         "review_pack": review_pack_claim,
         "route_authorization": route_authorization(),
         "artifact_lifecycle": {
@@ -1293,15 +1418,6 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
         },
     }
 
-    markdown = public_report_markdown(summary)
-    redaction = scan_public_outputs(markdown, summary, output_dir, args.run_id)
-    summary["public_redaction"] = redaction
-    contract_result = check_phase_contract(CONTRACT_ID, summary)
-    summary["validation"]["r2_contract_passed"] = contract_result.passed
-    summary["validation"]["r2_contract_error_count"] = len(contract_result.errors)
-    markdown = public_report_markdown(summary)
-    redaction = scan_public_outputs(markdown, summary, output_dir, f"{args.run_id}-final")
-    summary["public_redaction"] = redaction
     contract_result = check_phase_contract(CONTRACT_ID, summary)
     summary["validation"]["r2_contract_passed"] = contract_result.passed
     summary["validation"]["r2_contract_error_count"] = len(contract_result.errors)
@@ -1309,6 +1425,25 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
         summary["pipeline_contract"]["status"] = "blocked_quality_regression"
         summary["pipeline_contract"]["claims"]["target_met"] = False
         status = "blocked_quality_regression"
+    markdown = public_report_markdown(summary)
+    redaction = scan_public_outputs(markdown, summary, output_dir, derived_run_id(args.run_id, "final"))
+    if not redaction["passed"]:
+        summary["public_redaction"] = redaction
+        write_json(
+            artifact_path(output_dir, f"blocked-public-redaction-{args.run_id}.json"),
+            {
+                "phase": PHASE,
+                "run_id": args.run_id,
+                "status": "blocked_public_redaction",
+                "public_redaction": redaction,
+                "public_files_written": False,
+            },
+        )
+        raise R2BlockedError("blocked_public_redaction")
+    summary["public_redaction"] = redaction
+    contract_result = check_phase_contract(CONTRACT_ID, summary)
+    summary["validation"]["r2_contract_passed"] = contract_result.passed
+    summary["validation"]["r2_contract_error_count"] = len(contract_result.errors)
     markdown = public_report_markdown(summary)
 
     private_artifacts = {
@@ -1330,9 +1465,13 @@ def run_remediation(args: argparse.Namespace, output_dir: Path) -> dict[str, Any
     if not pack_result["integrity_passed"]:
         raise R2BlockedError("review_pack_integrity_failed")
     if args.write_public_report:
-        write_text(PUBLIC_REPORT_MD, markdown)
-        write_json(PUBLIC_REPORT_JSON, summary)
-    write_json(output_dir / f"execute-result-{args.run_id}.json", summary)
+        write_public_outputs_after_redaction(
+            markdown,
+            summary,
+            output_dir,
+            args.run_id,
+        )
+    write_json(artifact_path(output_dir, f"execute-result-{args.run_id}.json"), summary)
     return summary
 
 
@@ -1358,6 +1497,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     output_dir = require_safe_output_dir(Path(args.output_dir))
     try:
+        args.run_id = validate_run_id(args.run_id)
         result = (
             prepare_working_database(args, output_dir)
             if args.mode == "prepare"
@@ -1372,7 +1512,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "provider_calls": 0,
             "production_writes": 0,
         }
-        write_json(output_dir / f"blocked-{args.mode}-{args.run_id}.json", payload)
+        diagnostic_run_id = args.run_id if isinstance(args.run_id, str) and RUN_ID_RE.fullmatch(args.run_id) and ".." not in args.run_id else "invalid-run-id"
+        write_json(artifact_path(output_dir, f"blocked-{args.mode}-{diagnostic_run_id}.json"), payload)
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         return 2
     public = {

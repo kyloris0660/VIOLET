@@ -92,6 +92,7 @@ R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES: tuple[str, ...] = (
     "blocked_missing_fixed_input_manifest",
     "blocked_llm_approval_required",
     "blocked_quality_regression",
+    "blocked_public_redaction",
     "partial_improvement_not_target_met",
     "target_met_constraint_aware_r2",
 )

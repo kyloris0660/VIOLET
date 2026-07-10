@@ -29,6 +29,9 @@
   paths were not touched.
 - The focused R2 contract and public redaction contract pass. The private
   review pack is checksummed, ZIP-valid, ignored, and uncommitted.
+- PR #134 final closeout changes only contract/report safety and containment.
+  Resolver evidence remains commit `4b7b57c0d66299620322e9c653524788e376c0fe`;
+  resolver code and the R2 databases were not rerun or changed.
 
 ## R2 Result
 
@@ -50,17 +53,21 @@
   because uncertain/review evidence is no longer collapsed into identity
   components. Raw `needs_review` count is not a quality score.
 - Aggregate gap signals increased from 4,443 to 9,344 under the stricter graph.
-  Search remains 0 / 10 symmetric with 16 unmatched seeds. These are visible
-  unresolved quality debts, not authorization to weaken the constraints.
+  Search remains 0 / 10 symmetric with 16 unmatched seeds, and average
+  pairwise Jaccard fell from 0.3752 to 0.1539. Constraint target met is `true`;
+  search quality improved, gap quality improved, and recall closure complete
+  are all `false`.
 
 ## Current Stop Condition
 
-- Review and merge the current R2 PR if the latest head is accepted.
+- Complete the final bounded review of PR #134 before any merge decision.
 - Do not call an LLM for the 2,284 new pairs without separate operator approval.
 - Do not start PX1-B, Provider-2, scale-up, Entity bridge, production work,
   full-library execution, or SourceConcept/Entity/`media_tags` truth promotion.
 - No downstream phase is selected by R2. A later route decision must account
   for the larger truthful gap surface and unchanged search symmetry.
+- R2R recall/search closure is still required, but R2R was not started or
+  authorized by this closeout.
 
 ## Durable Policies And Links
 

@@ -94,6 +94,19 @@ redaction, and an integrity-checked private review pack. It forbids provider,
 gallery-dl, AI/import, upstream evidence, production, Entity, and truth-path
 work and cannot authorize a downstream phase.
 
+The target gate also requires every production-isolation and downstream
+authorization flag to be present as an exact boolean, an explicit integer-zero
+forbidden truth-table persistence delta, empty forbidden/unexpected table
+lists, and `truncate_drop_reset_used=false`. Missing false-valued proofs do not
+count as evidence. User-controlled run IDs are bounded to a safe filename
+format, and exact final Markdown/JSON redaction failure blocks public writes.
+
+R2 quality is multidimensional: `constraint_safety_target_met=true` may coexist
+with `search_quality_improved=false`, `gap_quality_improved=false`,
+`recall_closure_complete=false`, and `route_quality_ready_for_scale=false`.
+Those acknowledged route debts do not invalidate the narrow constraint target,
+but they require R2R recall/search closure under a separate future approval.
+
 See `docs/source-evidence-snapshot-reuse-policy.md` for the acquisition versus
 rebuild boundary shared by R2 and future full-library work.
 

@@ -5,6 +5,9 @@
 - Contract status: `target_met_constraint_aware_r2`.
 - Working DB: `blombooru_scv2_r2_test_20260710b`.
 - R1R restored evidence DB preserved: `True`.
+- Resolver evidence code SHA: `4b7b57c0d66299620322e9c653524788e376c0fe`.
+- Resolver code changed after evidence: `False`.
+- Final closeout regenerated reports/contracts only; database rerun: `False`.
 - Browser validation: not required; no UI/runtime surface changed.
 
 ## Fixed upstream evidence
@@ -38,6 +41,9 @@
 - Gap total: `4443` -> `9344`.
 - Search aggregate before: `{'groups_tested': 10, 'seeds_tested': 58, 'matched_seeds': 42, 'unmatched_seeds': 16, 'symmetric_groups': 0, 'asymmetric_groups': 10, 'asymmetry_reason_buckets': {'concept_split': 33, 'needs_review_not_included_in_active_search': 9, 'unmatched_alias': 16, 'missing_alias_or_unmatched_seed': 10, 'active_only_vs_needs_review_contrast': 5}, 'unmatched_aliases_count_as_asymmetry': True, 'media_result_overlap_metrics': {'pairwise_jaccard_count': 32, 'average_pairwise_jaccard': 0.3752, 'min_pairwise_jaccard': 0.0}}`.
 - Search aggregate after: `{'groups_tested': 10, 'seeds_tested': 58, 'matched_seeds': 42, 'unmatched_seeds': 16, 'symmetric_groups': 0, 'asymmetric_groups': 10, 'asymmetry_reason_buckets': {'concept_split': 33, 'needs_review_not_included_in_active_search': 7, 'unmatched_alias': 16, 'missing_alias_or_unmatched_seed': 10, 'active_only_vs_needs_review_contrast': 4}, 'unmatched_aliases_count_as_asymmetry': True, 'media_result_overlap_metrics': {'pairwise_jaccard_count': 32, 'average_pairwise_jaccard': 0.1539, 'min_pairwise_jaccard': 0.0}}`.
+- Search symmetry: `0 / 10` -> `0 / 10`.
+- Unmatched seeds: `16` -> `16`.
+- Average pairwise Jaccard: `0.3752` -> `0.1539`.
 - Metric deltas: `{'scalar_delta': {'concept_total': 2629, 'active': 28, 'needs_review': 2601, 'superseded': 0, 'gap_total': 4901}, 'gap_bucket_delta': {'cjk_alias_without_english_romaji_sibling': 194, 'danbooru_parenthetical_without_cjk_sibling': 2044, 'high_frequency_source_tag_or_name_unlinked': 0, 'identity_tag_present_no_source_concept_alias': 0, 'needs_review_cluster_with_no_active_alias_path': 2260, 'same_display_name_split_across_contexts': 201, 'same_normalized_alias_key_split_across_multiple_concepts': 202, 'source_assertion_present_not_connected': 0, 'source_name_present_no_source_concept_alias': 0, 'source_tag_present_no_source_concept_alias': 0}, 'search_delta': {'matched_seeds': 0, 'unmatched_seeds': 0, 'symmetric_groups': 0, 'asymmetric_groups': 0}}`.
 
 ## Quality
@@ -46,15 +52,24 @@
 - Transitively incompatible same labels held apart with private reasons: `3`.
 - Known cannot avoidance: `1.0`.
 - Meaningful structural improvement: `True`.
-- No major quality regression: `True`.
+- Constraint target met: `True`.
+- Search quality improved: `False`.
+- Gap quality improved: `False`.
+- Recall closure complete: `False`.
+- Route quality ready for scale: `False`.
+- R2R follow-up required: `True`; R2R was not started or authorized by this closeout.
+- Broad route/search quality non-regression: `False`.
+- Interpretation: R2 met the constraint-aware graph-remediation target but intentionally produced a more conservative and fragmented graph. Search, gap, and recall closure remain incomplete.
 
 ## Safety
 
 - Operation counts: `{'gallery_dl_calls': 0, 'provider_pixiv_network_calls': 0, 'ai_tagging_calls': 0, 'media_imports': 0, 'upstream_observation_mutations': 0, 'new_llm_provider_calls': 0, 'production_writes': 0, 'truth_path_writes': 0}`.
 - No PX1-B, Provider-2, scale-up, Entity bridge, production, full-library execution, or truth promotion was started or authorized.
+- Closeout calls: gallery-dl `0`, provider/Pixiv `0`, AI tagging `0`, media import `0`, LLM provider `0`.
 
 ## Validation
 
 - R2 contract passed: `True`.
 - Public redaction passed: `True`.
 - Review pack integrity passed: `True`.
+- Existing summary was rechecked through the corrected contract; no resolver or database execution was performed.

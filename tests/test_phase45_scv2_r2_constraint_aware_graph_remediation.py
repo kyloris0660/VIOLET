@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND_ROOT = ROOT / "backend"
 if str(ROOT) not in sys.path:
@@ -187,6 +189,7 @@ def _passing_contract_summary() -> dict:
             "dev_test_only": True,
             "production_profile_active": False,
             "production_write_attempted": False,
+            "protected_source_write_attempted": False,
         },
         "fixed_input_manifest": {
             "present": True,
@@ -216,6 +219,8 @@ def _passing_contract_summary() -> dict:
             "changed_tables": allowed,
             "forbidden_changed_tables": [],
             "unexpected_changed_tables": [],
+            "persistence_forbidden_truth_table_write_count": 0,
+            "truncate_drop_reset_used": False,
         },
         "llm_judgment_accounting": {
             "existing_r1r_judgment_count": 6429,
@@ -241,13 +246,43 @@ def _passing_contract_summary() -> dict:
             "deterministic_hard_conflict_in_materialized_component_count": 0,
             "transitive_cannot_violation_count": 0,
         },
-        "baseline_metrics": {"concept_total": 2767},
-        "post_r2_metrics": {"concept_total": 2800},
+        "baseline_metrics": {
+            "concept_total": 2767,
+            "gap_total": 4443,
+            "search_aggregate": {
+                "symmetric_groups": 0,
+                "unmatched_seeds": 16,
+                "media_result_overlap_metrics": {"average_pairwise_jaccard": 0.3752},
+            },
+        },
+        "post_r2_metrics": {
+            "concept_total": 2800,
+            "gap_total": 9344,
+            "search_aggregate": {
+                "symmetric_groups": 0,
+                "unmatched_seeds": 16,
+                "media_result_overlap_metrics": {"average_pairwise_jaccard": 0.1539},
+            },
+        },
         "quality_evaluation": {
             "route_metrics_recomputed": True,
             "meaningful_structural_improvement": True,
             "known_same_recall_protected": True,
-            "no_major_quality_regression": True,
+            "constraint_safety_target_met": True,
+            "fixed_evidence_preserved": True,
+            "known_same_constraint_regression": False,
+            "known_cannot_constraint_regression": False,
+            "giant_component_remediation_improved": True,
+            "search_quality_improved": False,
+            "gap_quality_improved": False,
+            "recall_closure_complete": False,
+            "route_quality_ready_for_scale": False,
+            "r2r_followup_required": True,
+            "no_major_quality_regression": False,
+            "quality_interpretation": (
+                "R2 met the constraint-aware graph-remediation target but intentionally produced a more "
+                "conservative and fragmented graph. Search, gap, and recall closure remain incomplete."
+            ),
             "known_same_regression_count": 0,
             "same_pair_reason_ledger_count": 0,
         },
@@ -265,6 +300,7 @@ def _passing_contract_summary() -> dict:
             "scale_up_authorized": False,
             "entity_bridge_authorized": False,
             "production_authorized": False,
+            "full_library_execution_authorized": False,
             "source_concept_truth_promotion_authorized": False,
         },
     }
@@ -277,6 +313,147 @@ def test_r2_contract_accepts_complete_constraint_aware_proof() -> None:
     )
 
     assert result.passed is True
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "passed",
+        "working_db_is_separate_from_r1r_baseline",
+        "r1r_baseline_preserved",
+        "dev_test_only",
+        "production_profile_active",
+        "production_write_attempted",
+        "protected_source_write_attempted",
+    ],
+)
+def test_r2_contract_requires_every_explicit_isolation_field(field: str) -> None:
+    summary = _passing_contract_summary()
+    del summary["environment_isolation"][field]
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_environment_isolation_proof_missing_or_invalid" in {error.code for error in result.errors}
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "passed",
+        "working_db_is_separate_from_r1r_baseline",
+        "r1r_baseline_preserved",
+        "dev_test_only",
+        "production_profile_active",
+        "production_write_attempted",
+        "protected_source_write_attempted",
+    ],
+)
+def test_r2_contract_rejects_null_isolation_field(field: str) -> None:
+    summary = _passing_contract_summary()
+    summary["environment_isolation"][field] = None
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_environment_isolation_proof_missing_or_invalid" in {error.code for error in result.errors}
+
+
+@pytest.mark.parametrize("value", [1, None, "0", 0.0, False, "malformed"])
+def test_r2_contract_rejects_missing_positive_or_malformed_truth_write_count(value: object) -> None:
+    summary = _passing_contract_summary()
+    if value is None:
+        del summary["source_concept_write_scope"]["persistence_forbidden_truth_table_write_count"]
+    else:
+        summary["source_concept_write_scope"]["persistence_forbidden_truth_table_write_count"] = value
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_persistence_forbidden_truth_write_count_invalid" in {error.code for error in result.errors}
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "px1_b_authorized",
+        "provider_2_authorized",
+        "scale_up_authorized",
+        "entity_bridge_authorized",
+        "production_authorized",
+        "full_library_execution_authorized",
+        "source_concept_truth_promotion_authorized",
+    ],
+)
+def test_r2_contract_requires_every_downstream_authorization_flag(field: str) -> None:
+    summary = _passing_contract_summary()
+    del summary["route_authorization"][field]
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_route_authorization_flag_missing_or_invalid" in {error.code for error in result.errors}
+
+
+@pytest.mark.parametrize("value", [None, "false", 0, 1, True])
+def test_r2_contract_rejects_non_boolean_or_true_downstream_authorization(value: object) -> None:
+    summary = _passing_contract_summary()
+    summary["route_authorization"]["entity_bridge_authorized"] = value
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_route_authorization_flag_missing_or_invalid" in {error.code for error in result.errors}
+
+
+@pytest.mark.parametrize("field", ["route_approved", "safe_to_merge"])
+def test_r2_contract_requires_explicit_false_pipeline_non_authorization_claim(field: str) -> None:
+    summary = _passing_contract_summary()
+    del summary["pipeline_contract"]["claims"][field]
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_pipeline_non_authorization_claim_missing_or_invalid" in {error.code for error in result.errors}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("search_quality_improved", True),
+        ("gap_quality_improved", True),
+        ("recall_closure_complete", True),
+        ("route_quality_ready_for_scale", True),
+        ("r2r_followup_required", False),
+        ("no_major_quality_regression", True),
+    ],
+)
+def test_r2_contract_requires_truthful_degraded_route_quality_dimensions(field: str, value: bool) -> None:
+    summary = _passing_contract_summary()
+    summary["quality_evaluation"][field] = value
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is False
+    assert "r2_quality_dimension_missing_or_invalid" in {error.code for error in result.errors}
+
+
+def test_r2_narrow_target_does_not_require_broad_route_quality_improvement() -> None:
+    summary = _passing_contract_summary()
+
+    result = check_phase_contract("r2_source_concept_graph_remediation_contract_v1", summary)
+
+    assert result.passed is True
+    assert summary["quality_evaluation"]["constraint_safety_target_met"] is True
+    assert summary["quality_evaluation"]["search_quality_improved"] is False
+    assert summary["quality_evaluation"]["gap_quality_improved"] is False
+    assert summary["quality_evaluation"]["recall_closure_complete"] is False
+    assert runner.determine_status(
+        {"before_after_match": True},
+        summary["llm_judgment_accounting"],
+        summary["graph_invariants"],
+        summary["quality_evaluation"],
+    ) == "target_met_constraint_aware_r2"
 
 
 def test_r2_contract_fails_closed_on_review_union_cannot_or_upstream_change() -> None:
@@ -400,6 +577,85 @@ def test_public_isolation_field_names_do_not_trigger_canonical_path_redaction() 
     findings = runner.scv1.scan_public_text(json.dumps(isolation, sort_keys=True))
 
     assert not [finding for finding in findings if finding["type"] == "canonical_path_like"]
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    [
+        "",
+        "foo/../../docs/pwn",
+        "..\\..\\docs\\pwn",
+        r"C:\\temp\\pwn",
+        "/tmp/pwn",
+        "control\ncharacter",
+        "a" * 129,
+        "safe..but-forbidden",
+    ],
+)
+def test_run_id_rejects_traversal_absolute_control_empty_and_overlong_values(run_id: str) -> None:
+    with pytest.raises(runner.R2BlockedError, match="blocked_invalid_run_id"):
+        runner.validate_run_id(run_id)
+
+
+def test_run_id_accepts_bounded_normal_value_and_artifact_stays_contained(tmp_path: Path) -> None:
+    run_id = runner.validate_run_id("r2-closeout_20260710.final-1")
+
+    artifact = runner.artifact_path(tmp_path, f"execute-result-{run_id}.json")
+
+    assert run_id == "r2-closeout_20260710.final-1"
+    assert artifact.is_relative_to(tmp_path.resolve())
+    assert len(runner.derived_run_id("a" * 128, "public-write")) <= 128
+
+
+def test_main_rejects_traversal_run_id_before_any_runner_or_db_work(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    output_dir = tmp_path / ".local_manifests" / "r2-test"
+
+    exit_code = runner.main(
+        [
+            "--mode",
+            "dry-run",
+            "--output-dir",
+            str(output_dir),
+            "--run-id",
+            "foo/../../docs/pwn",
+        ]
+    )
+
+    assert exit_code == 2
+    assert list(output_dir.glob("blocked-dry-run-invalid-run-id.json"))
+    assert not (tmp_path / "docs" / "pwn").exists()
+
+
+def test_redaction_failure_blocks_public_report_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "private-output"
+    output_dir.mkdir()
+    public_md = tmp_path / "public-report.md"
+    public_json = tmp_path / "public-summary.json"
+    public_md.write_text("original markdown\n", encoding="utf-8")
+    public_json.write_text('{"original": true}\n', encoding="utf-8")
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_MD", public_md)
+    monkeypatch.setattr(runner, "PUBLIC_REPORT_JSON", public_json)
+    summary = _passing_contract_summary()
+    summary["public_redaction"] = runner.public_redaction_success_record()
+    summary["injected_private_value"] = r"C:\\Users\\private\\secret.json"
+    markdown = runner.public_report_markdown(summary)
+
+    with pytest.raises(runner.R2BlockedError, match="blocked_public_redaction"):
+        runner.write_public_outputs_after_redaction(markdown, summary, output_dir, "safe-run-id")
+
+    assert summary["public_redaction"]["passed"] is False
+    assert public_md.read_text(encoding="utf-8") == "original markdown\n"
+    assert public_json.read_text(encoding="utf-8") == '{"original": true}\n'
+    diagnostics = list(output_dir.glob("blocked-public-redaction-*.json"))
+    assert len(diagnostics) == 1
+    assert diagnostics[0].is_relative_to(output_dir.resolve())
 
 
 def test_snapshot_reuse_policy_preserves_acquisition_rebuild_boundary() -> None:

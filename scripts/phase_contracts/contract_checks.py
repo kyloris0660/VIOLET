@@ -54,6 +54,40 @@ R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = {
     "blombooru_source_concept_search_index",
 }
 R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = set(R1R_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
+R2_REQUIRED_ISOLATION_FLAGS: dict[str, bool] = {
+    "passed": True,
+    "working_db_is_separate_from_r1r_baseline": True,
+    "r1r_baseline_preserved": True,
+    "dev_test_only": True,
+    "production_profile_active": False,
+    "production_write_attempted": False,
+    "protected_source_write_attempted": False,
+}
+R2_REQUIRED_ROUTE_AUTHORIZATION_FLAGS: tuple[str, ...] = (
+    "px1_b_authorized",
+    "provider_2_authorized",
+    "scale_up_authorized",
+    "entity_bridge_authorized",
+    "production_authorized",
+    "full_library_execution_authorized",
+    "source_concept_truth_promotion_authorized",
+)
+R2_REQUIRED_QUALITY_FLAGS: dict[str, bool] = {
+    "route_metrics_recomputed": True,
+    "meaningful_structural_improvement": True,
+    "known_same_recall_protected": True,
+    "constraint_safety_target_met": True,
+    "fixed_evidence_preserved": True,
+    "known_same_constraint_regression": False,
+    "known_cannot_constraint_regression": False,
+    "giant_component_remediation_improved": True,
+    "search_quality_improved": False,
+    "gap_quality_improved": False,
+    "recall_closure_complete": False,
+    "route_quality_ready_for_scale": False,
+    "r2r_followup_required": True,
+    "no_major_quality_regression": False,
+}
 R1R_INPUT_SCOPE_MIN_RATIO = 0.8
 R1R_BASELINE_ONLY_INPUT_SCOPE_METRICS = {
     "source_concept_total",
@@ -1982,28 +2016,40 @@ def _check_r2_source_concept_graph_remediation(
             path="pipeline_contract.status",
             actual=status,
         )
+    if target:
+        claims = _get(summary, "pipeline_contract.claims", MISSING)
+        if not isinstance(claims, Mapping):
+            result.fail(
+                "r2_pipeline_claims_not_object",
+                "R2 target requires explicit pipeline_contract.claims proof.",
+                path="pipeline_contract.claims",
+            )
+        else:
+            for key in ("route_approved", "safe_to_merge"):
+                actual = claims.get(key, MISSING)
+                if type(actual) is not bool or actual is not False:
+                    result.fail(
+                        "r2_pipeline_non_authorization_claim_missing_or_invalid",
+                        "R2 target requires explicit false route_approved and safe_to_merge claims.",
+                        path=f"pipeline_contract.claims.{key}",
+                        expected=False,
+                        actual="<missing>" if actual is MISSING else actual,
+                    )
 
-    isolation = _get(summary, "environment_isolation", {})
+    isolation = _get(summary, "environment_isolation", MISSING)
     if not isinstance(isolation, Mapping):
         result.fail("r2_environment_isolation_not_object", "R2 requires structured isolation proof.", path="environment_isolation")
         isolation = {}
     if target:
-        expected_isolation = {
-            "passed": True,
-            "working_db_is_separate_from_r1r_baseline": True,
-            "r1r_baseline_preserved": True,
-            "dev_test_only": True,
-            "production_profile_active": False,
-            "production_write_attempted": False,
-        }
-        for key, expected in expected_isolation.items():
-            if _as_bool(isolation.get(key)) != expected:
+        for key, expected in R2_REQUIRED_ISOLATION_FLAGS.items():
+            actual = isolation.get(key, MISSING)
+            if type(actual) is not bool or actual is not expected:
                 result.fail(
-                    "r2_environment_isolation_gate_failed",
-                    "R2 target requires a separate dev/test working DB and preserved R1R baseline.",
+                    "r2_environment_isolation_proof_missing_or_invalid",
+                    "R2 target requires every isolation/safety flag to exist as an exact boolean with the required value.",
                     path=f"environment_isolation.{key}",
                     expected=expected,
-                    actual=isolation.get(key),
+                    actual="<missing>" if actual is MISSING else actual,
                 )
 
     manifest = _get(summary, "fixed_input_manifest", {})
@@ -2070,9 +2116,25 @@ def _check_r2_source_concept_graph_remediation(
         result.fail("r2_write_scope_not_object", "R2 requires SourceConcept write-scope proof.", path="source_concept_write_scope")
         write_scope = {}
     if target:
-        allowed = {str(value) for value in (write_scope.get("allowed_tables") or [])}
-        rebuilt = {str(value) for value in (write_scope.get("rebuilt_tables") or [])}
-        changed = set(_table_names(write_scope.get("changed_tables") or []))
+        allowed_rows = write_scope.get("allowed_tables", MISSING)
+        rebuilt_rows = write_scope.get("rebuilt_tables", MISSING)
+        changed_rows = write_scope.get("changed_tables", MISSING)
+        allowed = {str(value) for value in allowed_rows} if isinstance(allowed_rows, list) else set()
+        rebuilt = {str(value) for value in rebuilt_rows} if isinstance(rebuilt_rows, list) else set()
+        changed = set(_table_names(changed_rows)) if isinstance(changed_rows, list) else set()
+        for key, actual in (
+            ("allowed_tables", allowed_rows),
+            ("rebuilt_tables", rebuilt_rows),
+            ("changed_tables", changed_rows),
+        ):
+            if not isinstance(actual, list):
+                result.fail(
+                    "r2_write_scope_table_list_missing_or_invalid",
+                    "R2 write-scope table fields must exist as lists.",
+                    path=f"source_concept_write_scope.{key}",
+                    expected="list",
+                    actual="<missing>" if actual is MISSING else actual,
+                )
         outside = sorted((allowed | rebuilt | changed) - R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
         if outside:
             result.fail("r2_write_outside_sourceconcept_allowlist", "R2 wrote outside the SourceConcept allowlist.", path="source_concept_write_scope", actual=outside)
@@ -2084,8 +2146,34 @@ def _check_r2_source_concept_graph_remediation(
                 expected=sorted(R2_SOURCE_CONCEPT_ALLOWED_WRITE_TABLES),
                 actual=sorted(rebuilt),
             )
-        if write_scope.get("forbidden_changed_tables") or write_scope.get("unexpected_changed_tables"):
-            result.fail("r2_forbidden_or_unexpected_write", "R2 mutation proof found a forbidden/unexpected table change.", path="source_concept_write_scope")
+        for key in ("forbidden_changed_tables", "unexpected_changed_tables"):
+            actual = write_scope.get(key, MISSING)
+            if not isinstance(actual, list) or actual:
+                result.fail(
+                    "r2_forbidden_or_unexpected_write",
+                    "R2 mutation proof requires explicit empty forbidden/unexpected changed-table lists.",
+                    path=f"source_concept_write_scope.{key}",
+                    expected=[],
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+        truth_write_count = write_scope.get("persistence_forbidden_truth_table_write_count", MISSING)
+        if type(truth_write_count) is not int or truth_write_count != 0:
+            result.fail(
+                "r2_persistence_forbidden_truth_write_count_invalid",
+                "R2 target requires an explicit integer zero forbidden truth-table persistence delta.",
+                path="source_concept_write_scope.persistence_forbidden_truth_table_write_count",
+                expected=0,
+                actual="<missing>" if truth_write_count is MISSING else truth_write_count,
+            )
+        truncate_drop_reset = write_scope.get("truncate_drop_reset_used", MISSING)
+        if type(truncate_drop_reset) is not bool or truncate_drop_reset is not False:
+            result.fail(
+                "r2_truncate_drop_reset_proof_missing_or_invalid",
+                "R2 target requires explicit truncate_drop_reset_used=false.",
+                path="source_concept_write_scope.truncate_drop_reset_used",
+                expected=False,
+                actual="<missing>" if truncate_drop_reset is MISSING else truncate_drop_reset,
+            )
 
     graph = _get(summary, "graph_invariants", {})
     if not isinstance(graph, Mapping):
@@ -2182,14 +2270,30 @@ def _check_r2_source_concept_graph_remediation(
         result.fail("r2_quality_evaluation_not_object", "R2 requires quality evaluation.", path="quality_evaluation")
         quality = {}
     if target:
-        for key in (
-            "route_metrics_recomputed",
-            "meaningful_structural_improvement",
-            "known_same_recall_protected",
-            "no_major_quality_regression",
+        for key, expected in R2_REQUIRED_QUALITY_FLAGS.items():
+            actual = quality.get(key, MISSING)
+            if type(actual) is not bool or actual is not expected:
+                result.fail(
+                    "r2_quality_dimension_missing_or_invalid",
+                    "R2 target requires explicit constraint, search, gap, recall, and route-quality dimensions.",
+                    path=f"quality_evaluation.{key}",
+                    expected=expected,
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+        interpretation = quality.get("quality_interpretation", MISSING)
+        if not isinstance(interpretation, str) or not interpretation.strip() or not all(
+            phrase in interpretation
+            for phrase in (
+                "constraint-aware graph-remediation target",
+                "Search, gap, and recall closure remain incomplete",
+            )
         ):
-            if not _as_bool(quality.get(key)):
-                result.fail("r2_quality_gate_failed", "R2 target requires structural improvement without known-same regression.", path=f"quality_evaluation.{key}", expected=True, actual=quality.get(key))
+            result.fail(
+                "r2_quality_interpretation_missing_or_invalid",
+                "R2 must explicitly distinguish its narrow constraint target from incomplete search/gap/recall quality.",
+                path="quality_evaluation.quality_interpretation",
+                actual="<missing>" if interpretation is MISSING else interpretation,
+            )
         regressions = _as_int(quality.get("known_same_regression_count"))
         ledger = _as_int(quality.get("same_pair_reason_ledger_count"))
         if regressions > ledger:
@@ -2205,11 +2309,22 @@ def _check_r2_source_concept_graph_remediation(
         ):
             result.fail("r2_review_pack_incomplete", "R2 target requires a complete private review pack.", path="review_pack")
 
-    route = _get(summary, "route_authorization", {})
+    route = _get(summary, "route_authorization", MISSING)
     if not isinstance(route, Mapping):
         result.fail("r2_route_authorization_not_object", "R2 requires downstream non-authorization proof.", path="route_authorization")
     else:
-        forbidden_true = sorted(key for key, value in route.items() if _as_bool(value))
+        if target:
+            for key in R2_REQUIRED_ROUTE_AUTHORIZATION_FLAGS:
+                actual = route.get(key, MISSING)
+                if type(actual) is not bool or actual is not False:
+                    result.fail(
+                        "r2_route_authorization_flag_missing_or_invalid",
+                        "R2 target requires every downstream authorization flag to exist as exact false.",
+                        path=f"route_authorization.{key}",
+                        expected=False,
+                        actual="<missing>" if actual is MISSING else actual,
+                    )
+        forbidden_true = sorted(key for key, value in route.items() if value is True)
         if forbidden_true:
             result.fail("r2_forbidden_route_authorization", "R2 cannot authorize downstream/provider/production/truth work.", path="route_authorization", actual=forbidden_true)
 
