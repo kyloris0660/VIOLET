@@ -400,4 +400,15 @@ def test_public_isolation_field_names_do_not_trigger_canonical_path_redaction() 
     findings = runner.scv1.scan_public_text(json.dumps(isolation, sort_keys=True))
 
     assert not [finding for finding in findings if finding["type"] == "canonical_path_like"]
+
+
+def test_snapshot_reuse_policy_preserves_acquisition_rebuild_boundary() -> None:
+    policy = (ROOT / "docs" / "source-evidence-snapshot-reuse-policy.md").read_text(encoding="utf-8")
+
+    assert "Provider/source observations are durable facts once acquired" in policy
+    assert "resolver rerun starts cache-first and input-snapshot-first" in policy
+    assert "not called again merely because" in policy
+    assert "SourceConcept-derived concepts" in policy
+    assert "stable pair-identity reuse" in policy
+    assert "separate evidence acquisition from graph recomputation" in policy
     assert all(value == 0 for value in runner.operation_counts().values())

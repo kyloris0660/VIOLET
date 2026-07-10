@@ -120,11 +120,11 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
     line_count = len(handoff.splitlines())
 
     assert line_count <= 85
-    assert "PR #96" in handoff
-    assert "PR #97" in handoff
-    assert "PR #98" in handoff
-    assert "Phase 4.5-SCV1" in handoff
-    assert "SourceConcept remains source-layer evidence only" in handoff
+    assert "PR #133" in handoff
+    assert "SCV2-R2: Constraint-Aware SourceConcept Graph Remediation" in handoff
+    assert "target_met_constraint_aware_r2" in handoff
+    assert "blocked_llm_approval_required" in handoff
+    assert "no downstream route approved" in handoff
     assert "Phase 4.4-B0" not in handoff
     assert "Phase 4.4-D1G" not in handoff
 

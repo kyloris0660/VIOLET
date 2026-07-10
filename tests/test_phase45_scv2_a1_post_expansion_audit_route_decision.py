@@ -449,7 +449,9 @@ def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     roadmap = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
     workflow = (ROOT / "docs" / "test-workflow.md").read_text(encoding="utf-8")
 
-    assert "SCV2-A1" in handoff
+    assert "SCV2-R2" in handoff
+    assert "PR #133" in handoff
+    assert "target_met_constraint_aware_r2" in handoff
     assert "Phase 4.5-SCV2-A1" in roadmap
     assert "ChatGPT review pack" in workflow
     assert "Entity bridge" in handoff

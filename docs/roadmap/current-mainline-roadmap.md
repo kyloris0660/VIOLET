@@ -1,126 +1,111 @@
 # Current Mainline Roadmap
 
-Status: active during SCV2-A1R after PR #132 / R1R merged into `main` on
-2026-07-08.
+Status: active during SCV2-R2 after PR #133 / A1R merged into `main` on
+2026-07-10.
 
-This is the durable short-term routing document for post-#122 work. It keeps
-the accepted sequence visible for ChatGPT, CodeX, and operator sessions without
-turning the current handoff into a historical ledger.
+This is the durable short-term routing document. It records the accepted
+mainline sequence and current stop boundary without turning the handoff into a
+historical ledger.
 
 ## Current Baseline
 
-- PR #113 / Phase 4.7-S2 is merged into `main`; V.I.O.L.E.T. has a real
-  production baseline library.
-- PR #122 / PROD-LAUNCHER-UX1/PF1 is merged into `main`; the Electron-based
-  launcher is the accepted temporary Windows personal production entrypoint.
-- PR #123 / PD1-A-R1 is merged into `main`; the
-  `production_development_separation_contract_v1` gate remains the current
-  executable production/development separation foundation.
-- PR #124 / S2G-M1 is merged into `main`.
-- PR #125 / S3A-M1 is merged into `main`.
-- PR #126 / S3A-M2 is merged into `main`; owner-run Web Admin GUI Execute run
-  #18 met current-stage DB-truth acceptance.
-- PR #129 / S3A-M2-R PR-R2 is merged into `main`.
-  - Merge commit: `285e76d3eaa76f02acaa9dccf2b7fc91761ca428`.
-  - Status: closed as operator-ready with visible non-clean debt.
-  - Truth boundary: `operator_ready=true`, `full_chain_complete=false`,
-    `full_s3a_m2_r_complete=false`.
-- PR #132 / R1R is merged into `main`.
-  - Merge commit: `7224a61aeaea32cd86a07e8dfd6cf6a6d7fcc0ef`.
-  - Status: `target_met_full_chain`.
-  - R1R used restored dev/test DB `blombooru_r1r_restored_test_20260618`.
-  - LLM accounting: 6429 / 6429 / 6429 eligible / selected / judged pairs;
-    all eligible pairs adjudicated; latest evidence regeneration was
-    cache-only with 6429 exact-compatible hits, 0 new provider calls, and
-    0 failures / 0 remaining.
-  - R1R did not authorize R2, PX1-B, Provider-2, scale-up, Entity bridge, or
-    SourceConcept truth promotion; A1R remained required.
-- Development work must not casually use production DB, production storage,
-  production source roots, or production private ledgers as fixtures.
+- PR #113 / Phase 4.7-S2 established the real production baseline library.
+- PR #122 / PROD-LAUNCHER-UX1/PF1 established the accepted temporary Windows
+  personal production launcher.
+- PR #123 / PD1-A-R1 established the executable production/development
+  separation contract.
+- PR #124 / S2G-M1, PR #125 / S3A-M1, PR #126 / S3A-M2, and PR #129 /
+  S3A-M2-R are merged. Issue #130 tracks deferred manual-sync hardening.
+- PR #132 / R1R is merged at
+  `7224a61aeaea32cd86a07e8dfd6cf6a6d7fcc0ef`; its full-chain result is
+  `target_met_full_chain` over restored dev/test evidence.
+- PR #133 / A1R is merged at
+  `4a44d5809c9ec567bf59474cc3e20df62a0e97de`; it approved exactly one next
+  phase, SCV2-R2.
+- SCV2-R2 is the current review branch. Its isolated result is
+  `target_met_constraint_aware_r2`, but it does not approve any downstream
+  phase, provider call, production work, or truth promotion.
 
 ## Accepted Sequence
 
 1. `S2G-M1: AI Tagging Execution and Manual Sync Foundation` - merged in
-   PR #124. It added the AI tagging execution profile, provider
-   fallback/load-control/provenance foundation, manual sync dry-run planner, and
-   sync job/ledger foundation. No production writes.
+   PR #124; no production writes.
 
-2. `S3A-M1: Guarded Manual Sync Execute` - merged in PR #125. It added the
-   explicit manual-sync execute path, Admin UI controls, launcher entry, CLI
-   runner, and `s3a_m1_manual_sync_execute_contract_v1`. Sync remains manual.
+2. `S3A-M1: Guarded Manual Sync Execute` - merged in PR #125; sync remains
+   manual/operator-triggered.
 
 3. `S3A-M2: Production Delta Manual Sync E2E + GPU Telemetry` - merged in
-   PR #126. Owner-run GUI Execute run #18 achieved current-stage DB-truth
-   acceptance.
+   PR #126; owner-run GUI Execute run #18 met current-stage DB-truth acceptance.
 
 4. `S3A-M2-R: Manual Sync Stabilization and Operator Validation` - merged in
-   PR #129 and closed as operator-ready. Follow-up hardening lives in issue
-   #130 and is not a mainline blocker.
+   PR #129 and closed as operator-ready with visible non-clean debt.
 
 5. `R1R: Full SourceConcept Pipeline Replay / Remediation` - merged in
-   PR #132. R1R remediated the INC1 old-R1 deterministic-only incident by
-   proving old-R1-scale full-chain SourceConcept replay with all-eligible LLM
-   adjudication under a budget-driven, cache-first policy.
+   PR #132 with all 6,429 eligible pairs adjudicated and a durable cache.
 
-6. `SCV2-A1R: Route Audit Rerun After R1R` - current route audit PR. A1R is
-   read-only and uses R1R public report/summary plus the restored R1R DB. A1R
-   result is `route_partially_approved_for_one_next_phase` with exactly one
-   recommended next phase: `SCV2-R2 targeted resolver / gap reduction`.
+6. `SCV2-A1R: Route Audit Rerun After R1R` - merged in PR #133. It was
+   read-only and selected SCV2-R2 as the sole next phase.
 
-7. `SCV2-R2 targeted resolver / gap reduction` - recommended next technical
-   phase if A1R is reviewed and merged. R2 must be separately approved and must
-   define its own focused contract/dry-run/write gates. A1R does not start R2.
+7. `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation` - current PR.
+   It separates identity materialization from review evidence, enforces
+   component-level cannot constraints, partitions oversized blocks, guards
+   unknown roles, and reuses R1R judgments without new provider calls.
 
-8. `Pixiv/source metadata strategy polish` - after source-layer resolver/gap
-   quality is improved enough to make source metadata coverage the dominant
-   bottleneck. PX1-B is not the immediate next route from A1R.
+8. `Pixiv/source metadata strategy polish` - later only if a separate route
+   decision makes source coverage the dominant approved bottleneck. PX1-B is
+   not authorized by R2.
 
-9. `S3B: Opt-in automated incremental sync` - later and opt-in only. It remains
-   disabled by default and must bind to production profile/runtime config, not
+9. `S3B: Opt-in automated incremental sync` - later and opt-in only. It stays
+   disabled by default and must bind to production runtime config, not the
    development `.env`.
 
 10. `S2F0: Desired-media gap audit / support decision report` - low priority,
     audit-only, and not implementation.
 
+## R2 Evidence And Remaining Debt
+
+- Fixed upstream evidence: 15 tables, exact row-count and row-content match
+  from R1R baseline to clone and before/after R2.
+- Graph correctness: 0 review-only unions, 0 direct LLM cannot violations,
+  0 deterministic hard conflicts, and 0 transitive cannot violations.
+- Scale shape: largest component 1,057 -> 88 signals; `26+` component bucket
+  25 -> 4; 3,443 oversized hub edges prevented.
+- Benchmark preservation: compatible same 37 / 37; known cannot avoided
+  1,546 / 1,546.
+- LLM boundary: 2,284 new/missing pairs are review-only and remain blocked for
+  separate approval; no provider was initialized or called.
+- Visible debt: aggregate gaps 4,443 -> 9,344, search symmetry remains 0 / 10,
+  unmatched seeds remain 16, and average pairwise search overlap fell from
+  0.3752 to 0.1539. The stricter graph exposes rather than hides this debt.
+
 ## What Is Intentionally Not Next
 
-- Do not start S3B, automatic sync, scheduled sync, startup sync, service sync,
-  or unattended production sync.
-- Do not treat S2G-M1, S3A-M1, S3A-M2, S3A-M2-R, R1R, or A1R evidence as
-  approval for broad future production imports.
-- Do not run provider, Pixiv, gallery-dl, SauceNAO, Google, or source-enrichment
-  work before an approved later phase.
-- Do not run PX1-B, Provider-2, scale-up, Entity bridge, confirmed assignment
-  creation, `media_tags` truth, Entity truth, or SourceConcept truth promotion
-  before a separate approved phase and contract.
-- Do not run production import, classification, AI tagging, localization, DB
-  migration, source-root write, cleanup, delete, reset, drop, or truncate
-  without a separate approved phase and promotion gate.
+- Do not start a downstream phase merely because the R2 contract passed.
+- Do not call the LLM for new R2 pairs without separate operator approval.
+- Do not start provider/Pixiv/gallery-dl/SauceNAO/Google acquisition work,
+  PX1-B, Provider-2, scale-up, Entity bridge, confirmed assignments,
+  `media_tags` truth, Entity truth, or SourceConcept truth promotion.
+- Do not run production import, classification, AI tagging, localization,
+  schema migration, source/iCloud write, cleanup, delete, reset, drop, or
+  truncate without a separate approved phase and executable contract.
+- Do not add automatic, scheduled, startup, service, or unattended production
+  sync. Manual sync remains the default.
 
 ## Production / Development Separation
 
-- The current Windows personal production launcher uses local ignored
-  production profile/runtime config.
-- Development `.env` must not be converted into production and must not be the
-  production source of truth.
-- Develop/feature branches use dev/test DB, dev/test storage, fixtures, or
-  restored snapshots.
-- R1R/A1R evidence came from restored dev/test DB only; live production
-  DB/storage/source roots were not mutated.
-- Production import/classification/AI/localization/source-root/schema writes
-  require explicit production/promotion mode, clean identity gates, backup proof
-  where applicable, redacted public artifacts, and local ignored private ledgers.
-- Public reports stay aggregate-only and path-redacted.
-- Private ledgers remain local ignored artifacts.
-- SourceConcept LLM pair adjudication cache records remain private ignored
-  artifacts; public reports may cite only aggregate cache counts and labels.
+- Feature work uses dev/test DBs, dev/test storage, fixtures, or restored
+  snapshots. The R1R evidence DB is read-only input; R2 writes only to a
+  separate test clone.
+- Development `.env` is not production truth. Production import or mutation
+  requires explicit promotion mode, clean identity gates, backup proof where
+  applicable, redacted public artifacts, and private ignored ledgers.
+- Public reports remain aggregate-only and path-redacted. Fixed-input hashes,
+  raw source labels, cache rows, review ledgers, and review packs remain local
+  ignored artifacts.
 
 ## Choosing The Next Work
 
-If A1R is merged, the recommended next technical phase is
-`SCV2-R2 targeted resolver / gap reduction`.
-
-R2 should focus on the remaining source-layer quality blockers identified by
-A1R: high cannot ratio, meaningful uncertain residue, 4443 gap signals,
-10 asymmetric search-seed groups, 16 unmatched seeds, and 1703 `needs_review`
-concepts. R2 must not authorize production/truth-path work by default.
+The current action is review/merge of the SCV2-R2 PR, not another phase.
+After merge, any next route must be separately approved and should first decide
+whether to evaluate the 2,284 blocked review pairs, improve search/gap semantics,
+or gather new source evidence. R2 itself authorizes none of those routes.

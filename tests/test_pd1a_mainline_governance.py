@@ -27,12 +27,12 @@ def _assert_split_s2g_not_active(text: str) -> None:
     assert "Recommended immediate next phase after PD1-A: `S2G-1`" not in text
 
 
-def test_current_mainline_roadmap_persists_post_pr129_sequence() -> None:
+def test_current_mainline_roadmap_persists_post_pr133_r2_sequence() -> None:
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
     assert "PR #129" in text
-    assert "285e76d3eaa76f02acaa9dccf2b7fc91761ca428" in text
-    assert "ef9b4447e48221ece00924afed78101640ed56e9" in text
+    assert "PR #133" in text
+    assert "4a44d5809c9ec567bf59474cc3e20df62a0e97de" in text
     assert "operator-ready" in text
     assert "Issue #130" in text
     _assert_in_order(
@@ -43,14 +43,15 @@ def test_current_mainline_roadmap_persists_post_pr129_sequence() -> None:
             "3. `S3A-M2",
             "4. `S3A-M2-R",
             "5. `R1R",
-            "6. `A1R",
-            "7. `Pixiv/source metadata strategy polish`",
-            "8. `S3B",
-            "9. `S2F0",
+            "6. `SCV2-A1R",
+            "7. `SCV2-R2",
+            "8. `Pixiv/source metadata strategy polish`",
+            "9. `S3B",
+            "10. `S2F0",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "R1R must use dev/test/restored-snapshot DB only" in text
+    assert "R1R evidence DB is read-only input" in text
     assert "Production / Development Separation" in text
     assert "What Is Intentionally Not Next" in text
 
@@ -85,8 +86,8 @@ def test_handoff_points_to_current_mainline_roadmap() -> None:
     text = _read("docs/current-handoff.md")
 
     assert "docs/roadmap/current-mainline-roadmap.md" in text
-    assert "R1R-P0: Current Handoff and Roadmap Slim Refresh" in text
-    assert "R1R: Full SourceConcept Pipeline Replay / Remediation" in text
-    assert "A1R: Route audit rerun after R1R outputs exist" in text
+    assert "SCV2-R2: Constraint-Aware SourceConcept Graph Remediation" in text
+    assert "target_met_constraint_aware_r2" in text
+    assert "no downstream route approved" in text
     assert "Current phase | `S3A-M2-R" not in text
     _assert_split_s2g_not_active(text)
