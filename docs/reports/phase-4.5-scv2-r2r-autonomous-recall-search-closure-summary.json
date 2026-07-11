@@ -102,7 +102,7 @@
     "working_db": "blombooru_scv2_r2r_dryrun_test_20260710",
     "working_db_is_separate_from_r2_baseline": true
   },
-  "evidence_code_sha": "e00a7975653bce738e83ae4e355337bb902d19c2",
+  "evidence_code_sha": "56a654bb16509c72d3b90c86ceee9d57b5e40f0e",
   "fixed_input_proof": {
     "baseline_to_working_clone_match": true,
     "before_after_match": true,
@@ -117,7 +117,17 @@
     "source_recheck_match": true,
     "table_count": 15
   },
-  "generated_at": "2026-07-11T12:06:29.032420+00:00",
+  "foundation_outcomes": {
+    "autonomous_candidate_closure_completed": true,
+    "context_aware_search_followup_required": true,
+    "experimental_fallback_enabled_by_default": false,
+    "full_library_scale_approved": false,
+    "graph_constraint_safety_passed": true,
+    "materialized_needs_review_eliminated": true,
+    "no_human_review_dependency": true,
+    "search_closure_completed": false
+  },
+  "generated_at": "2026-07-11T15:15:14.867991+00:00",
   "graph_invariants": {
     "deferred_nonblocking_split_count": 6,
     "deterministic_hard_conflict_count": 0,
@@ -12078,21 +12088,37 @@
       "4-10": 160
     },
     "deferred_evidence_signal_count": 4480,
+    "deferred_overlay_atomic": true,
+    "deferred_overlay_checksum_passed": true,
+    "deferred_overlay_versioned": true,
     "evidence_fallback_relation_count": 1528,
     "evidence_retention_projection": "SourceConceptSignal projection plus private versioned pair overlay",
+    "fallback_index_generated": true,
+    "fallback_index_idempotent": true,
+    "fallback_index_identity_union_allowed": false,
     "idempotent_fingerprint_match": true,
     "indexed_fallback": {
+      "active_row_count": 4947,
       "blocked_cannot_alias_key_count": 442,
-      "deterministic": true,
-      "deterministic_fingerprint": "b64ecc5f6730655d977d37557f1268e53f9ebc683e8af74ce0f925fa59dc37c5",
+      "blocked_row_count": 1649,
+      "deterministic_fingerprint": "e060ac072d74f57801b3a91037341ca890e030112df2ba7077c0d40b66525e7d",
+      "first_rebuild_fingerprint": "e060ac072d74f57801b3a91037341ca890e030112df2ba7077c0d40b66525e7d",
       "full_signal_python_scan_per_query": false,
       "generated": true,
       "idempotent": true,
       "identity_union_allowed": false,
       "index_version": "source_concept_deferred_overlay_v1",
-      "row_count": 2654,
+      "relation_counts": {
+        "cannot_link": 1649,
+        "deferred_nonblocking": 5,
+        "direct_evidence": 3942,
+        "must_link": 1000
+      },
+      "row_count": 6596,
+      "second_rebuild_fingerprint": "e060ac072d74f57801b3a91037341ca890e030112df2ba7077c0d40b66525e7d",
       "source_layer_only": true,
-      "unique_alias_key_count": 520
+      "unique_alias_key_count": 1282,
+      "write_performed": false
     },
     "manual_review_queue_generated": false,
     "manual_review_required_count": 0,
@@ -12157,8 +12183,31 @@
     ],
     "unsafe_public_report_written": false
   },
+  "r2r_output_mutation_proof": {
+    "accepted_execution_before_row_count": 2654,
+    "changed_allowed_output_tables": [],
+    "closeout_run_before_row_count": 6596,
+    "fallback_index_after_row_count": 6596,
+    "fallback_index_before_row_count": 6596,
+    "fallback_index_first_fingerprint": "e060ac072d74f57801b3a91037341ca890e030112df2ba7077c0d40b66525e7d",
+    "fallback_index_second_fingerprint": "e060ac072d74f57801b3a91037341ca890e030112df2ba7077c0d40b66525e7d",
+    "fallback_index_second_fingerprint_match": true,
+    "fallback_index_table_included": true,
+    "r2r_output_table_count": 8,
+    "tables": [
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts",
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_search_index",
+      "blombooru_source_concept_fallback_search_index"
+    ],
+    "unexpected_changed_tables": []
+  },
   "review_pack": {
-    "checksum_count": 11,
+    "checksum_count": 8,
     "checksums_present": true,
     "generated": true,
     "integrity_passed": true,
@@ -12177,9 +12226,9 @@
     "scale_up_authorized": false,
     "truth_promotion_authorized": false
   },
-  "run_id": "r2r-20260711-execution7",
+  "run_id": "r2r-20260711-zero-provider-closeout-final",
   "search_benchmark": {
-    "average_overlap_improved_vs_r2": true,
+    "benchmark_uses_persisted_runtime_index": true,
     "benchmark_version": "r2r_automated_search_benchmark_v2_independent_universe_complete_cannot",
     "blocked_cannot_ambiguous_alias_key_count": 442,
     "cannot_linked_search_contamination_count": 8768,
@@ -12249,7 +12298,8 @@
       "symmetric_family_count": 2833,
       "unmatched_seed_count": 6188
     },
-    "evidence_fallback_relation_count": 1528,
+    "evidence_fallback_relation_count": 1005,
+    "experimental_fallback_enabled_by_default": false,
     "false_broad_union_category_breakdown": {
       "alias_family_two_independent_seed_forms": 2,
       "known_cannot_linked_negative_family": 9184,
@@ -12260,7 +12310,6 @@
     "false_broad_union_indicator_count": 9186,
     "family_count": 9488,
     "generated": true,
-    "giant_component_recurrence": false,
     "identity_and_fallback_reported_separately": true,
     "identity_path": {
       "asymmetric_family_count": 2234,
@@ -12272,19 +12321,6 @@
     },
     "identity_path_cannot_contamination_count": 1370,
     "identity_union_from_fallback": false,
-    "indexed_fallback": {
-      "blocked_cannot_alias_key_count": 442,
-      "deterministic": true,
-      "deterministic_fingerprint": "b64ecc5f6730655d977d37557f1268e53f9ebc683e8af74ce0f925fa59dc37c5",
-      "full_signal_python_scan_per_query": false,
-      "generated": true,
-      "idempotent": true,
-      "identity_union_allowed": false,
-      "index_version": "source_concept_deferred_overlay_v1",
-      "row_count": 2654,
-      "source_layer_only": true,
-      "unique_alias_key_count": 520
-    },
     "legacy_58_seed_compatibility_benchmark": {
       "average_overlap_improved_vs_r2": true,
       "evidence_fallback_path": {
@@ -12308,22 +12344,45 @@
       "unmatched_seeds_decreased_vs_r2": false
     },
     "negative_family_count": 9468,
+    "persisted_fallback_index": {
+      "active_row_count": 4947,
+      "blocked_row_count": 1649,
+      "deterministic_content_fingerprint": "b100ba9f93bdb242f41916454a2013f87d74baa984a2c4de091409fa690c544b",
+      "index_version": "source_concept_deferred_overlay_v1",
+      "relation_counts": {
+        "cannot_link": 1649,
+        "deferred_nonblocking": 5,
+        "direct_evidence": 3942,
+        "must_link": 1000
+      },
+      "row_count": 6596
+    },
     "reproducible": true,
+    "runtime_benchmark_equality_mismatch_count": 0,
+    "runtime_benchmark_equality_passed": true,
     "seed_count": 17424,
     "seeds_with_false_broad_union": 9186,
     "source_layer_only": true,
-    "symmetry_improved_vs_r2": false,
-    "unexpected_media_count": 217739,
-    "unmatched_seeds_decreased_vs_r2": false
+    "unexpected_media_count": 217739
   },
   "title": "SCV2-R2R: Autonomous Recall and Search Closure",
   "validation": {
     "browser_validation": "not_required_no_ui_change",
-    "provider_network_attempted": true,
+    "provider_network_attempted": false,
+    "provider_surface_initialized": false,
     "python_executable": "python.exe",
     "python_executable_path_redacted": true,
     "r2r_contract_error_count": 0,
     "r2r_contract_passed": true,
     "server_started": false
+  },
+  "zero_provider_closeout": {
+    "checkpoint_cache_miss_attempts": 0,
+    "completed": true,
+    "existing_working_database_reused": true,
+    "graph_rebuilt": false,
+    "materialization_rebuilt": false,
+    "provider_calls": 0,
+    "provider_surface_initialized": false
   }
 }
