@@ -2071,7 +2071,6 @@ def _check_r2_source_concept_graph_remediation(
                     expected=expected,
                     actual="<missing>" if actual is MISSING else actual,
                 )
-
     manifest = _get(summary, "fixed_input_manifest", {})
     if not isinstance(manifest, Mapping):
         result.fail("r2_fixed_input_manifest_not_object", "R2 requires fixed-input manifest proof.", path="fixed_input_manifest")
@@ -2679,6 +2678,26 @@ def _check_r2r_autonomous_recall_search_closure(
                     expected=expected,
                     actual="<missing>" if actual is MISSING else actual,
                 )
+    if status == "partial_autonomous_closure" and _get(
+        summary, "zero_provider_closeout.completed", False
+    ) is True:
+        closeout = _get(summary, "zero_provider_closeout", {})
+        for key, expected in {
+            "completed": True,
+            "provider_surface_initialized": False,
+            "provider_calls": 0,
+            "graph_rebuilt": False,
+            "materialization_rebuilt": False,
+            "existing_working_database_reused": True,
+        }.items():
+            if closeout.get(key, MISSING) != expected:
+                result.fail(
+                    "r2r_zero_provider_closeout_invalid",
+                    "Partial closeout must prove zero provider use and reuse accepted graph state.",
+                    path=f"zero_provider_closeout.{key}",
+                    expected=expected,
+                    actual=closeout.get(key, "<missing>"),
+                )
 
     fixed = _get(summary, "fixed_input_proof", {})
     if not isinstance(fixed, Mapping):
@@ -2878,6 +2897,27 @@ def _check_r2r_autonomous_recall_search_closure(
                     expected=expected,
                     actual="<missing>" if actual is MISSING else actual,
                 )
+    if status == "partial_autonomous_closure" and _get(
+        summary, "zero_provider_closeout.completed", False
+    ) is True:
+        for key, expected in {
+            "materialized_needs_review_count": 0,
+            "unresolved_evidence_retained": True,
+            "deferred_overlay_versioned": True,
+            "deferred_overlay_atomic": True,
+            "fallback_index_generated": True,
+            "fallback_index_idempotent": True,
+            "fallback_index_identity_union_allowed": False,
+            "manual_review_queue_generated": False,
+        }.items():
+            if materialization.get(key, MISSING) != expected:
+                result.fail(
+                    "r2r_partial_materialization_proof_incomplete",
+                    "Partial closeout requires measured overlay/materialization lifecycle proof.",
+                    path=f"materialization_projection.{key}",
+                    expected=expected,
+                    actual=materialization.get(key, "<missing>"),
+                )
 
     graph = _get(summary, "graph_invariants", {})
     if not isinstance(graph, Mapping):
@@ -2973,6 +3013,33 @@ def _check_r2r_autonomous_recall_search_closure(
                 "r2r_indexed_fallback_proof_failed",
                 "Target status requires a deterministic indexed source-layer fallback lookup.",
                 path="search_benchmark.indexed_fallback",
+            )
+    if status == "partial_autonomous_closure" and _get(
+        summary, "zero_provider_closeout.completed", False
+    ) is True:
+        for key, expected in {
+            "benchmark_uses_persisted_runtime_index": True,
+            "runtime_benchmark_equality_passed": True,
+            "experimental_fallback_enabled_by_default": False,
+        }.items():
+            if search.get(key, MISSING) != expected:
+                result.fail(
+                    "r2r_partial_search_runtime_proof_incomplete",
+                    "Partial closeout benchmark must use the persisted opt-in runtime path.",
+                    path=f"search_benchmark.{key}",
+                    expected=expected,
+                    actual=search.get(key, "<missing>"),
+                )
+        output_proof = _get(summary, "r2r_output_mutation_proof", {})
+        if not isinstance(output_proof, Mapping) or (
+            output_proof.get("fallback_index_table_included") is not True
+            or output_proof.get("unexpected_changed_tables") != []
+            or output_proof.get("fallback_index_second_fingerprint_match") is not True
+        ):
+            result.fail(
+                "r2r_partial_output_mutation_proof_incomplete",
+                "Partial closeout must include the fallback index in deterministic mutation proof.",
+                path="r2r_output_mutation_proof",
             )
 
     if target:

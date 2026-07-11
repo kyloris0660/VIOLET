@@ -43,13 +43,24 @@ Source-layer search has two distinct paths:
 
 1. the identity index searches aliases of materialized SourceConcepts and may
    project component-safe media;
-2. the evidence fallback searches direct source names, source tags, AI tags,
-   isolated signals, and eligible deferred alias neighbors.
+2. the experimental evidence fallback searches direct source names, source
+   tags, AI tags, isolated signals, and eligible deferred alias neighbors only
+   when a caller opts in explicitly.
 
 Evidence fallback improves retrieval without changing identity membership. It
 must preserve provenance, role, work context, confidence, and cannot-link
 boundaries. Fallback traversal is not Entity truth and must not create broad
 media unions across constrained components.
+
+The canonical fallback-eligible signal states are `materialized_identity`,
+`isolated_evidence`, `active`, and the query-visible legacy compatibility state
+`needs_review`. The latter is evidence compatibility only, never a human work
+queue; no final materialized SourceConcept may remain in that state. Rejected,
+`rejected_evidence`, superseded, invalid, and deleted signals are excluded.
+Both endpoints of a relation must be eligible before an active fallback-index
+row is written. Ordinary gallery search remains identity-only; fallback is
+diagnostic/experimental and disabled by default until context-aware search is
+implemented.
 
 ## Optional Manual Overrides
 

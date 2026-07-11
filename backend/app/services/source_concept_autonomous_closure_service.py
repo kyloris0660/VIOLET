@@ -744,7 +744,7 @@ def execute_autonomous_missing_pairs(
                     provider_usage=(
                         response.get("_provider_usage")
                         if isinstance(response, Mapping)
-                        else None
+                        else getattr(exc, "provider_usage", None)
                     ),
                 )
                 counters["failed_attempt_count"] += 1

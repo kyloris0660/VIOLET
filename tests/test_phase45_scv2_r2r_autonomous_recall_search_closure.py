@@ -7,6 +7,7 @@ from dataclasses import replace
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Mapping
 
 import pytest
@@ -50,10 +51,12 @@ from app.services.source_concept_resolver_service import (
     resolve_source_concepts,
 )
 from app.services.source_concept_search_service import (
+    FALLBACK_ELIGIBLE_SIGNAL_STATUSES,
     R2R_FALLBACK_DISPOSITION_VERSION,
     R2R_FALLBACK_INDEX_VERSION,
     _query_overlay_fallback_rows,
     rebuild_source_concept_fallback_search_index,
+    source_concept_media_condition_for_term,
     source_layer_search_path_media_ids,
 )
 from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2_runner
@@ -312,6 +315,54 @@ def test_r2r_contract_accepts_scope_bounded_authorized_execution_state() -> None
     assert result.passed, [finding.to_dict() for finding in result.errors]
 
 
+def test_partial_closeout_contract_requires_runtime_index_and_overlay_proofs() -> None:
+    summary = _summary(target=False)
+    summary["pipeline_contract"]["status"] = "partial_autonomous_closure"
+    summary["zero_provider_closeout"] = {
+        "completed": True,
+        "provider_surface_initialized": False,
+        "provider_calls": 0,
+        "graph_rebuilt": False,
+        "materialization_rebuilt": False,
+        "existing_working_database_reused": True,
+    }
+    summary["materialization_projection"].update(
+        {
+            "fallback_index_generated": True,
+            "fallback_index_idempotent": True,
+            "fallback_index_identity_union_allowed": False,
+            "manual_review_queue_generated": False,
+        }
+    )
+    summary["search_benchmark"].update(
+        {
+            "benchmark_uses_persisted_runtime_index": True,
+            "runtime_benchmark_equality_passed": True,
+            "experimental_fallback_enabled_by_default": False,
+        }
+    )
+    summary["r2r_output_mutation_proof"] = {
+        "fallback_index_table_included": True,
+        "unexpected_changed_tables": [],
+        "fallback_index_second_fingerprint_match": True,
+    }
+    assert check_phase_contract(CONTRACT_ID, summary).passed
+
+    summary["search_benchmark"]["benchmark_uses_persisted_runtime_index"] = False
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert not result.passed
+    assert "r2r_partial_search_runtime_proof_incomplete" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_r2r_output_table_set_includes_rebuildable_fallback_index() -> None:
+    assert r2r_runner.FALLBACK_INDEX_TABLE in r2r_runner.R2R_SOURCE_CONCEPT_OUTPUT_TABLES
+    assert len(r2r_runner.R2R_SOURCE_CONCEPT_OUTPUT_TABLES) == len(
+        set(r2r_runner.R2R_SOURCE_CONCEPT_OUTPUT_TABLES)
+    )
+
+
 def test_canonical_production_profile_flag_blocks_reused_r2_and_r2r_gates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -343,9 +394,69 @@ def test_r2r_runner_records_scope_bounded_primary_provider_authorization() -> No
     assert authorization["further_budget_approval_required"] is False
     assert authorization["primary_provider_only"] is True
     assert authorization["fallback_provider_authorized"] is False
-    assert 'choices=("prepare", "dry-run", "execute")' in source
+    assert 'choices=("prepare", "dry-run", "execute", "closeout")' in source
     assert "import gallery_dl" not in source
     assert "import requests" not in source
+
+
+def test_execute_preflight_binding_rejects_other_db_identity_with_same_candidate_count(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(r2r_runner, "sha256_file", lambda _path: "manifest-sha")
+    args = SimpleNamespace(
+        run_id="execute-run",
+        preflight_run_id="preflight-run",
+        source_db="source_db",
+        working_db="working_db",
+        output_dir=str(r2r_runner.DEFAULT_OUTPUT_DIR),
+    )
+    source_identity = {"db_name": "source_db", "server": "fixture"}
+    working_identity = {"db_name": "working_db", "server": "fixture"}
+    manifest = {
+        "working_fixed_snapshot": {"tables": {"fixed": {"count": 1}}},
+        "working_forbidden_snapshot": {"tables": {"truth": {"count": 1}}},
+    }
+    candidates = {"candidate_pair_count": 2, "pairs": ["a", "b"]}
+    binding = {
+        "preflight_run_id": "preflight-run",
+        "source_db": "source_db",
+        "working_db": "working_db",
+        "source_db_identity": source_identity,
+        "working_db_identity": working_identity,
+        "fixed_input_manifest_sha256": "manifest-sha",
+        "fixed_input_fingerprint": r2r_runner.canonical_payload_sha256(
+            manifest["working_fixed_snapshot"]
+        ),
+        "forbidden_truth_fingerprint": r2r_runner.canonical_payload_sha256(
+            manifest["working_forbidden_snapshot"]
+        ),
+        "candidate_manifest_fingerprint": r2r_runner.canonical_payload_sha256(
+            candidates
+        ),
+        "evidence_code_sha": "head-sha",
+        "candidate_algorithm_version": r2r_runner.CANDIDATE_ALGORITHM_VERSION,
+        "compatibility_version": r2r_runner.COMPATIBILITY_VERSION,
+    }
+    r2r_runner.verify_preflight_identity_binding(
+        binding,
+        args=args,
+        manifest=manifest,
+        current_source_identity=source_identity,
+        current_working_identity=working_identity,
+        evidence_code_sha="head-sha",
+        candidate_manifest_payload=candidates,
+    )
+
+    with pytest.raises(r2r_runner.R2RBlockedError, match="working_db_identity"):
+        r2r_runner.verify_preflight_identity_binding(
+            binding,
+            args=args,
+            manifest=manifest,
+            current_source_identity=source_identity,
+            current_working_identity={"db_name": "other_clone", "server": "fixture"},
+            evidence_code_sha="head-sha",
+            candidate_manifest_payload=candidates,
+        )
 
 
 def test_r2r_supersedes_legacy_review_concepts_without_deleting_evidence(db_session) -> None:
@@ -421,6 +532,73 @@ def test_primary_provider_executor_records_usage_without_fallback() -> None:
         "pair_id": candidate.pair_id,
         "pass_version": FIRST_PASS_VERSION,
     }
+
+
+@pytest.mark.parametrize(
+    ("response_mode", "usage_expected"),
+    [
+        ("malformed_json", True),
+        ("invalid_envelope", True),
+        ("invalid_confidence", True),
+        ("transport_failure", False),
+    ],
+)
+def test_future_malformed_attempts_preserve_available_provider_usage(
+    tmp_path: Path,
+    response_mode: str,
+    usage_expected: bool,
+) -> None:
+    candidate = _candidate()
+    signals = {"left": _signal("left", "Alias"), "right": _signal("right", "Alias")}
+
+    class FakeProvider:
+        last_usage = {}
+
+        async def complete_json(self, messages, *, temperature, max_tokens):
+            if response_mode == "transport_failure":
+                raise ConnectionError("transport failed before response")
+            self.last_usage = {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "total_tokens": 120,
+            }
+            if response_mode == "malformed_json":
+                raise ValueError("malformed JSON after response")
+            payload = json.loads(messages[1]["content"])
+            return {
+                "pair_id": "wrong" if response_mode == "invalid_envelope" else payload["pair_id"],
+                "pass_version": payload["pass_version"],
+                "decision": "must_link",
+                "confidence": "0.9" if response_mode == "invalid_confidence" else 0.9,
+                "reason_code": "fixture",
+            }
+
+    executor = r2r_runner.PrimaryProviderJudgmentExecutor(
+        FakeProvider(),
+        {"uses_fallback_provider": False, "provider_mode": "primary_openai"},
+    )
+    dispositions, proof = execute_autonomous_missing_pairs(
+        [candidate],
+        initial_dispositions={},
+        signal_by_key=signals,
+        cache_root=tmp_path,
+        executor=executor,
+        max_attempts_per_pass=1,
+    )
+
+    assert dispositions == {}
+    assert proof["provider_failure"] == 1
+    assert not list((tmp_path / "first" / "records").glob("*.json"))
+    failure = json.loads(
+        next((tmp_path / "first" / "failures").glob("*.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert failure["success"] is False
+    assert failure["provider_call_attempted"] is True
+    assert failure["provider_usage"]["usage_reported"] is usage_expected
+    if usage_expected:
+        assert failure["provider_usage"]["total_tokens"] == 120
 
 
 def test_durable_provider_usage_summary_detects_preinstrumentation_gap(tmp_path: Path) -> None:
@@ -1125,16 +1303,20 @@ def test_dual_search_path_uses_direct_evidence_without_alias_closure(db_session)
         run_id="fixture-index",
     )
     db_session.commit()
-    assert index_proof["row_count"] == 2
+    assert index_proof["row_count"] == 4
     assert index_proof["full_signal_python_scan_per_query"] is False
 
-    paths = source_layer_search_path_media_ids(db_session, "Shared Alias")
+    paths = source_layer_search_path_media_ids(
+        db_session, "Shared Alias", include_evidence_fallback=True
+    )
 
     assert paths["identity"] == {media_identity.id}
     assert paths["evidence_fallback"] == set()
     assert paths["combined"] == {media_identity.id}
 
-    overlay_paths = source_layer_search_path_media_ids(db_session, "Remote Alias")
+    overlay_paths = source_layer_search_path_media_ids(
+        db_session, "Remote Alias", include_evidence_fallback=True
+    )
     assert overlay_paths["identity"] == set()
     assert overlay_paths["evidence_fallback"] == {media_identity.id, media_fallback.id}
 
@@ -1262,10 +1444,90 @@ def test_identity_benchmark_excludes_isolated_signal_even_with_active_link(db_se
     )
     db_session.commit()
 
-    paths = source_layer_search_path_media_ids(db_session, "Isolated Alias")
+    rebuild_source_concept_fallback_search_index(
+        db_session,
+        signals=[signal],
+        dispositions=[],
+        run_id="fixture-isolated-index",
+    )
+    db_session.commit()
+    default_paths = source_layer_search_path_media_ids(db_session, "Isolated Alias")
+    paths = source_layer_search_path_media_ids(
+        db_session, "Isolated Alias", include_evidence_fallback=True
+    )
 
+    assert default_paths["identity"] == set()
+    assert default_paths["evidence_fallback"] == set()
+    assert default_paths["combined"] == set()
     assert paths["identity"] == set()
     assert paths["evidence_fallback"] == {media.id}
+
+    default_condition = source_concept_media_condition_for_term(
+        db_session, "Isolated Alias"
+    )
+    explicit_condition = source_concept_media_condition_for_term(
+        db_session, "Isolated Alias", include_evidence_fallback=True
+    )
+    assert db_session.query(Media.id).filter(default_condition).all() == []
+    assert db_session.query(Media.id).filter(explicit_condition).all() == [(media.id,)]
+
+
+def test_fallback_index_uses_one_endpoint_eligibility_policy(db_session) -> None:
+    assert set(FALLBACK_ELIGIBLE_SIGNAL_STATUSES) == {
+        "materialized_identity",
+        "isolated_evidence",
+        "active",
+        "needs_review",
+    }
+    drafts = [
+        replace(_signal("eligible-materialized", "Materialized"), status="materialized_identity"),
+        replace(_signal("eligible-isolated", "Isolated"), status="isolated_evidence"),
+        replace(_signal("rejected-projected", "Rejected"), status="rejected_evidence"),
+        replace(_signal("superseded-projected", "Superseded"), status="superseded"),
+    ]
+    persisted = []
+    for index, draft in enumerate(drafts):
+        row = _persist_benchmark_signal(db_session, draft, f"eligibility-{index}")
+        row.status = draft.status
+        persisted.append(row)
+        drafts[index] = replace(draft, media_id=row.media_id)
+    db_session.commit()
+    dispositions = [
+        PairDisposition(
+            pair_id=str(index + 3) * 64,
+            left_signal_key=drafts[0].signal_key,
+            right_signal_key=target.signal_key,
+            disposition="deferred_nonblocking",
+            source="fixture",
+            pass_name="second",
+            confidence=0.5,
+            reason_code="fixture",
+        )
+        for index, target in enumerate(drafts[1:])
+    ]
+
+    proof = rebuild_source_concept_fallback_search_index(
+        db_session,
+        signals=drafts,
+        dispositions=dispositions,
+        run_id="eligibility-policy",
+    )
+    db_session.commit()
+
+    indexed_signal_ids = {
+        value
+        for row in db_session.query(SourceConceptFallbackSearchIndex).all()
+        for value in (row.source_signal_id, row.neighbor_signal_id)
+    }
+    assert persisted[0].id in indexed_signal_ids
+    assert persisted[1].id in indexed_signal_ids
+    assert persisted[2].id not in indexed_signal_ids
+    assert persisted[3].id not in indexed_signal_ids
+    assert proof["relation_counts"]["deferred_nonblocking"] == 2
+    rejected_paths = source_layer_search_path_media_ids(
+        db_session, "Rejected", include_evidence_fallback=True
+    )
+    assert rejected_paths["evidence_fallback"] == set()
 
 
 def test_cannot_ambiguous_alias_guard_blocks_identity_and_fallback_paths(db_session) -> None:
@@ -1390,6 +1652,14 @@ def test_broad_union_metric_uses_independent_allowed_family_universe(db_session)
         )
     db_session.commit()
 
+    rebuild_source_concept_fallback_search_index(
+        db_session,
+        signals=[left, right, unrelated],
+        dispositions=[],
+        run_id="broad-runtime-index",
+    )
+    db_session.commit()
+
     public, private = r2r_runner.build_automated_search_benchmark(
         db_session,
         [left, right, unrelated],
@@ -1432,6 +1702,15 @@ def test_new_current_cannot_disposition_contaminates_fallback_benchmark(db_sessi
     )
     db_session.commit()
 
+    rebuild_source_concept_fallback_search_index(
+        db_session,
+        signals=[left, right],
+        dispositions=[disposition],
+        run_id="cannot-contaminated-runtime-index",
+        cannot_pairs=[],
+    )
+    db_session.commit()
+
     public, _private = r2r_runner.build_automated_search_benchmark(
         db_session,
         [left, right],
@@ -1446,6 +1725,14 @@ def test_new_current_cannot_disposition_contaminates_fallback_benchmark(db_sessi
     assert public["evidence_fallback_cannot_contamination_count"] > 0
     assert public["cannot_linked_search_contamination_count"] > 0
 
+    rebuild_source_concept_fallback_search_index(
+        db_session,
+        signals=[left, right],
+        dispositions=[disposition],
+        run_id="cannot-guarded-runtime-index",
+        cannot_pairs=[(left.signal_key, right.signal_key)],
+    )
+    db_session.commit()
     guarded, _guarded_private = r2r_runner.build_automated_search_benchmark(
         db_session,
         [left, right],

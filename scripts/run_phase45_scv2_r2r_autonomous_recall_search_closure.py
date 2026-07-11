@@ -34,6 +34,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.models import (  # noqa: E402
+    Media,
     SourceConcept,
     SourceConceptAlias,
     SourceConceptEvidence,
@@ -67,7 +68,11 @@ from app.services.source_concept_resolver_service import (  # noqa: E402
 )
 from app.services.source_concept_search_service import _search_keys_for_term  # noqa: E402
 from app.services.source_concept_search_service import (  # noqa: E402
+    FALLBACK_ELIGIBLE_SIGNAL_STATUSES,
+    R2R_FALLBACK_INDEX_VERSION,
     rebuild_source_concept_fallback_search_index,
+    source_concept_media_condition_for_term,
+    source_layer_search_path_media_ids,
 )
 from app.services.source_name_candidate_extraction_service import (  # noqa: E402
     primary_openai_provider_from_settings,
@@ -97,10 +102,15 @@ PUBLIC_REPORT_MD = ROOT / "docs" / "reports" / f"{PHASE_SLUG}.md"
 PUBLIC_REPORT_JSON = ROOT / "docs" / "reports" / f"{PHASE_SLUG}-summary.json"
 CREATE_CONFIRMATION = "CREATE_SCV2_R2R_ISOLATED_WORKING_DB"
 EXECUTE_CONFIRMATION = "EXECUTE_SCV2_R2R_PRIMARY_PROVIDER_PR135"
+ACCEPTED_EXECUTION_RUN_ID = "r2r-20260711-execution7"
+ACCEPTED_EXECUTION_EVIDENCE_SHA = "e00a7975653bce738e83ae4e355337bb902d19c2"
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 FIXED_INPUT_TABLES = r2.FIXED_INPUT_TABLES
-SOURCE_CONCEPT_TABLES = r2.SOURCE_CONCEPT_TABLES
+FALLBACK_INDEX_TABLE = "blombooru_source_concept_fallback_search_index"
+R2R_SOURCE_CONCEPT_OUTPUT_TABLES = tuple(
+    dict.fromkeys((*r2.SOURCE_CONCEPT_TABLES, FALLBACK_INDEX_TABLE))
+)
 
 
 class R2RBlockedError(RuntimeError):
@@ -123,6 +133,24 @@ class PrimaryProviderJudgmentExecutor:
         self.completion_tokens = 0
         self.total_tokens = 0
         self.pass_calls: Counter[str] = Counter()
+
+    def _capture_provider_usage(self) -> dict[str, int]:
+        usage = getattr(self.provider, "last_usage", {})
+        usage_payload = {
+            key: int(usage[key])
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            if isinstance(usage, Mapping)
+            and isinstance(usage.get(key), int)
+            and not isinstance(usage.get(key), bool)
+            and int(usage[key]) >= 0
+        }
+        if usage_payload:
+            self.prompt_tokens += int(usage_payload.get("prompt_tokens") or 0)
+            self.completion_tokens += int(usage_payload.get("completion_tokens") or 0)
+            self.total_tokens += int(usage_payload.get("total_tokens") or 0)
+        else:
+            self.usage_missing_calls += 1
+        return usage_payload
 
     def __call__(self, pass_name: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         candidate = payload.get("candidate") if isinstance(payload.get("candidate"), Mapping) else {}
@@ -170,6 +198,8 @@ class PrimaryProviderJudgmentExecutor:
         ]
         self.attempted_calls += 1
         self.pass_calls[pass_name] += 1
+        if hasattr(self.provider, "last_usage"):
+            self.provider.last_usage = {}
         try:
             response = asyncio.run(
                 self.provider.complete_json(
@@ -178,25 +208,14 @@ class PrimaryProviderJudgmentExecutor:
                     max_tokens=220 if pass_name == "first" else 320,
                 )
             )
-        except Exception:
+        except Exception as exc:
             self.error_calls += 1
+            usage_payload = self._capture_provider_usage()
+            exc.provider_usage = usage_payload  # type: ignore[attr-defined]
+            exc.provider_call_attempted = True  # type: ignore[attr-defined]
             raise
         self.returned_calls += 1
-        usage = getattr(self.provider, "last_usage", {})
-        if not isinstance(usage, Mapping) or not usage:
-            self.usage_missing_calls += 1
-        else:
-            self.prompt_tokens += int(usage.get("prompt_tokens") or 0)
-            self.completion_tokens += int(usage.get("completion_tokens") or 0)
-            self.total_tokens += int(usage.get("total_tokens") or 0)
-        usage_payload = {
-            key: int(usage[key])
-            for key in ("prompt_tokens", "completion_tokens", "total_tokens")
-            if isinstance(usage, Mapping)
-            and isinstance(usage.get(key), int)
-            and not isinstance(usage.get(key), bool)
-            and int(usage[key]) >= 0
-        }
+        usage_payload = self._capture_provider_usage()
         if isinstance(response, Mapping):
             return {
                 **dict(response),
@@ -285,6 +304,88 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def canonical_payload_sha256(payload: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def preflight_identity_binding(
+    *,
+    args: argparse.Namespace,
+    manifest: Mapping[str, Any],
+    candidate_manifest_payload: Mapping[str, Any],
+    evidence_code_sha: str,
+) -> dict[str, Any]:
+    return {
+        "preflight_run_id": args.run_id,
+        "source_db": args.source_db,
+        "working_db": args.working_db,
+        "source_db_identity": manifest.get("source_identity"),
+        "working_db_identity": manifest.get("working_identity"),
+        "fixed_input_manifest_sha256": sha256_file(
+            artifact_path(Path(args.output_dir), "fixed-input-manifest.json")
+        ),
+        "fixed_input_fingerprint": canonical_payload_sha256(
+            manifest.get("working_fixed_snapshot")
+        ),
+        "forbidden_truth_fingerprint": canonical_payload_sha256(
+            manifest.get("working_forbidden_snapshot")
+        ),
+        "candidate_manifest_fingerprint": canonical_payload_sha256(
+            candidate_manifest_payload
+        ),
+        "evidence_code_sha": evidence_code_sha,
+        "candidate_algorithm_version": CANDIDATE_ALGORITHM_VERSION,
+        "compatibility_version": COMPATIBILITY_VERSION,
+    }
+
+
+def verify_preflight_identity_binding(
+    binding: Mapping[str, Any],
+    *,
+    args: argparse.Namespace,
+    manifest: Mapping[str, Any],
+    current_source_identity: Mapping[str, Any],
+    current_working_identity: Mapping[str, Any],
+    evidence_code_sha: str,
+    candidate_manifest_payload: Mapping[str, Any] | None = None,
+) -> None:
+    expected = {
+        "preflight_run_id": args.preflight_run_id,
+        "source_db": args.source_db,
+        "working_db": args.working_db,
+        "source_db_identity": dict(current_source_identity),
+        "working_db_identity": dict(current_working_identity),
+        "fixed_input_manifest_sha256": sha256_file(
+            artifact_path(Path(args.output_dir), "fixed-input-manifest.json")
+        ),
+        "fixed_input_fingerprint": canonical_payload_sha256(
+            manifest.get("working_fixed_snapshot")
+        ),
+        "forbidden_truth_fingerprint": canonical_payload_sha256(
+            manifest.get("working_forbidden_snapshot")
+        ),
+        "evidence_code_sha": evidence_code_sha,
+        "candidate_algorithm_version": CANDIDATE_ALGORITHM_VERSION,
+        "compatibility_version": COMPATIBILITY_VERSION,
+    }
+    if candidate_manifest_payload is not None:
+        expected["candidate_manifest_fingerprint"] = canonical_payload_sha256(
+            candidate_manifest_payload
+        )
+    mismatches = [key for key, value in expected.items() if binding.get(key) != value]
+    if mismatches:
+        raise R2RBlockedError(
+            "blocked_preflight_identity_mismatch:" + ",".join(sorted(mismatches))
+        )
+
+
 def git_value(args: Sequence[str]) -> str:
     try:
         return subprocess.check_output(args, cwd=ROOT, text=True, encoding="utf-8", stderr=subprocess.DEVNULL).strip()
@@ -360,7 +461,7 @@ def prepare_working_database(args: argparse.Namespace, output_dir: Path) -> dict
                 raise R2RBlockedError("source_database_identity_mismatch")
             source_fixed = r2.fingerprint_tables(conn, FIXED_INPUT_TABLES)
             source_forbidden = r2.fingerprint_tables(conn, FORBIDDEN_TRUTH_TABLES)
-            source_outputs = r2.fingerprint_tables(conn, SOURCE_CONCEPT_TABLES)
+            source_outputs = r2.fingerprint_tables(conn, R2R_SOURCE_CONCEPT_OUTPUT_TABLES)
             conn.rollback()
     finally:
         source_engine.dispose()
@@ -396,7 +497,7 @@ def prepare_working_database(args: argparse.Namespace, output_dir: Path) -> dict
             working_identity = r2.db_identity(conn)
             working_fixed = r2.fingerprint_tables(conn, FIXED_INPUT_TABLES)
             working_forbidden = r2.fingerprint_tables(conn, FORBIDDEN_TRUTH_TABLES)
-            working_outputs = r2.fingerprint_tables(conn, SOURCE_CONCEPT_TABLES)
+            working_outputs = r2.fingerprint_tables(conn, R2R_SOURCE_CONCEPT_OUTPUT_TABLES)
             conn.rollback()
     finally:
         working_engine.dispose()
@@ -430,7 +531,7 @@ def prepare_working_database(args: argparse.Namespace, output_dir: Path) -> dict
         "working_db": args.working_db,
         "fixed_input_table_count": len(FIXED_INPUT_TABLES),
         "forbidden_truth_table_count": len(FORBIDDEN_TRUTH_TABLES),
-        "source_concept_output_table_count": len(SOURCE_CONCEPT_TABLES),
+        "source_concept_output_table_count": len(R2R_SOURCE_CONCEPT_OUTPUT_TABLES),
         "clone_content_match": True,
         "provider_calls": 0,
     }
@@ -544,70 +645,19 @@ def build_automated_search_benchmark(
     resolved_concepts: Sequence[Any] = (),
     legacy_seed_groups_override: Mapping[str, Sequence[str]] | None = None,
     apply_cannot_alias_guards: bool = True,
+    cannot_pairs_override: Sequence[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Generate and evaluate all reproducible fixed-evidence search families."""
-
-    identity_media_by_key: dict[str, set[int]] = defaultdict(set)
-    identity_rows = (
-        session.query(SourceConceptSearchIndex.search_key, SourceConceptEvidence.media_id)
-        .join(SourceConcept, SourceConcept.id == SourceConceptSearchIndex.concept_id)
-        .join(SourceConceptEvidence, SourceConceptEvidence.concept_id == SourceConcept.id)
-        .filter(SourceConcept.status == "active")
-        .filter(SourceConceptSearchIndex.status == "active")
-        .filter(SourceConceptEvidence.status == "active")
-        .filter(SourceConceptEvidence.media_id.isnot(None))
-        .all()
-    )
-    for key, media_id in identity_rows:
-        if key and media_id is not None:
-            identity_media_by_key[str(key)].add(int(media_id))
-    link_rows = (
-        session.query(SourceConceptSearchIndex.search_key, SourceConceptSignal.media_id)
-        .join(SourceConcept, SourceConcept.id == SourceConceptSearchIndex.concept_id)
-        .join(SourceConceptSignalLink, SourceConceptSignalLink.concept_id == SourceConcept.id)
-        .join(SourceConceptSignal, SourceConceptSignal.id == SourceConceptSignalLink.signal_id)
-        .filter(SourceConcept.status == "active")
-        .filter(SourceConceptSearchIndex.status == "active")
-        .filter(SourceConceptSignalLink.link_status == "active")
-        .filter(SourceConceptSignal.status.in_(("active", "materialized_identity")))
-        .filter(SourceConceptSignal.media_id.isnot(None))
-        .all()
-    )
-    for key, media_id in link_rows:
-        if key and media_id is not None:
-            identity_media_by_key[str(key)].add(int(media_id))
-
-    fallback_media_by_key: dict[str, set[int]] = defaultdict(set)
-    for signal in signals:
-        if signal.media_id is None or signal.status == "rejected" or signal.trust_tier == "rejected":
-            continue
-        for key in {signal.canonical_key, signal.normalized_key}:
-            if key:
-                fallback_media_by_key[str(key)].add(int(signal.media_id))
     signal_by_key = {str(signal.signal_key): signal for signal in signals}
-    overlay_media_by_key: dict[str, set[int]] = defaultdict(set)
-    overlay_relation_count = 0
-    for disposition in dispositions:
-        if disposition.disposition not in {"must_link", "deferred_nonblocking"}:
-            continue
-        left = signal_by_key.get(disposition.left_signal_key)
-        right = signal_by_key.get(disposition.right_signal_key)
-        if left is None or right is None:
-            continue
-        overlay_relation_count += 1
-        if right.media_id is not None:
-            for key in {left.canonical_key, left.normalized_key}:
-                if key:
-                    overlay_media_by_key[str(key)].add(int(right.media_id))
-        if left.media_id is not None:
-            for key in {right.canonical_key, right.normalized_key}:
-                if key:
-                    overlay_media_by_key[str(key)].add(int(left.media_id))
 
     groups: dict[str, list[Any]] = defaultdict(list)
     for signal in signals:
         key = str(signal.canonical_key or signal.normalized_key or "")
-        if key and signal.status != "rejected" and signal.trust_tier != "rejected":
+        if (
+            key
+            and str(signal.status) in FALLBACK_ELIGIBLE_SIGNAL_STATUSES
+            and signal.trust_tier != "rejected"
+        ):
             groups[key].append(signal)
     ambiguity_profiles = build_data_aware_ambiguity_profiles(signals)
     families: list[dict[str, Any]] = []
@@ -709,12 +759,16 @@ def build_automated_search_benchmark(
             }
         )
 
-    cannot_pairs = complete_current_cannot_pairs(
-        signal_by_key=signal_by_key,
-        dispositions=dispositions,
-        legacy_analysis_rows=legacy_analysis_rows,
-        constraint_edges=constraint_edges,
-        resolved_concepts=resolved_concepts,
+    cannot_pairs = (
+        {tuple(sorted((str(left), str(right)))) for left, right in cannot_pairs_override}
+        if cannot_pairs_override is not None
+        else complete_current_cannot_pairs(
+            signal_by_key=signal_by_key,
+            dispositions=dispositions,
+            legacy_analysis_rows=legacy_analysis_rows,
+            constraint_edges=constraint_edges,
+            resolved_concepts=resolved_concepts,
+        )
     )
     blocked_cannot_alias_keys: set[str] = set()
     for left_key, right_key in cannot_pairs:
@@ -812,6 +866,7 @@ def build_automated_search_benchmark(
         return allowed
 
     seed_cache: dict[str, dict[str, set[int]]] = {}
+    runtime_equality_mismatch_count = 0
     category_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
     evaluated: list[dict[str, Any]] = []
     false_broad_union = 0
@@ -825,23 +880,34 @@ def build_automated_search_benchmark(
         per_seed = []
         for seed in family["seeds"]:
             if seed not in seed_cache:
-                keys = _search_keys_for_term(seed) - blocked_cannot_alias_keys
-                identity = set().union(*(identity_media_by_key.get(key, set()) for key in keys)) if keys else set()
-                fallback = (
-                    set().union(
-                        *(
-                            fallback_media_by_key.get(key, set())
-                            | overlay_media_by_key.get(key, set())
-                            for key in keys
-                        )
-                    )
-                    if keys
+                paths = source_layer_search_path_media_ids(
+                    session,
+                    seed,
+                    include_needs_review=False,
+                    include_evidence_fallback=True,
+                )
+                identity = set(paths["identity"])
+                fallback = set(paths["evidence_fallback"])
+                condition = source_concept_media_condition_for_term(
+                    session,
+                    seed,
+                    include_needs_review=False,
+                    include_evidence_fallback=True,
+                )
+                runtime_combined = (
+                    {
+                        int(row[0])
+                        for row in session.query(Media.id).filter(condition).all()
+                    }
+                    if condition is not None
                     else set()
                 )
+                if runtime_combined != set(paths["combined"]):
+                    runtime_equality_mismatch_count += 1
                 seed_cache[seed] = {
                     "identity": identity,
                     "evidence_fallback": fallback,
-                    "combined": identity | fallback,
+                    "combined": set(paths["combined"]),
                 }
             paths = seed_cache[seed]
             unexpected = paths["combined"] - allowed_media
@@ -894,11 +960,10 @@ def build_automated_search_benchmark(
         for signal_key in (left_key, right_key):
             signal = signal_by_key[signal_key]
             seed = str(signal.display_value)
-            keys = _search_keys_for_term(seed) - blocked_cannot_alias_keys
-            identity_direct = set().union(*(identity_media_by_key.get(key, set()) for key in keys)) if keys else set()
-            fallback_direct = set().union(*(fallback_media_by_key.get(key, set()) for key in keys)) if keys else set()
-            overlay_added = set().union(*(overlay_media_by_key.get(key, set()) for key in keys)) if keys else set()
-            combined = identity_direct | fallback_direct | overlay_added
+            paths = seed_cache[seed]
+            identity_direct = set(paths["identity"])
+            fallback_direct = set(paths["evidence_fallback"])
+            combined = set(paths["combined"])
             other_signal_key = right_key if signal_key == left_key else left_key
             other = signal_by_key[other_signal_key]
             other_media = {int(other.media_id)} if other.media_id is not None else set()
@@ -914,7 +979,7 @@ def build_automated_search_benchmark(
                     "direct_result_count": len(combined),
                     "identity_path_contamination_media_count": len(identity_contamination),
                     "evidence_fallback_contamination_media_count": len(fallback_contamination),
-                    "overlay_added_media_count": len(overlay_added),
+                    "overlay_added_media_count": len(fallback_direct),
                 }
             )
 
@@ -948,23 +1013,32 @@ def build_automated_search_benchmark(
         seed_rows = []
         for seed in seeds:
             if seed not in seed_cache:
-                keys = _search_keys_for_term(seed) - blocked_cannot_alias_keys
-                identity = set().union(*(identity_media_by_key.get(key, set()) for key in keys)) if keys else set()
-                fallback = (
-                    set().union(
-                        *(
-                            fallback_media_by_key.get(key, set())
-                            | overlay_media_by_key.get(key, set())
-                            for key in keys
-                        )
-                    )
-                    if keys
+                paths = source_layer_search_path_media_ids(
+                    session,
+                    seed,
+                    include_needs_review=False,
+                    include_evidence_fallback=True,
+                )
+                condition = source_concept_media_condition_for_term(
+                    session,
+                    seed,
+                    include_needs_review=False,
+                    include_evidence_fallback=True,
+                )
+                runtime_combined = (
+                    {
+                        int(row[0])
+                        for row in session.query(Media.id).filter(condition).all()
+                    }
+                    if condition is not None
                     else set()
                 )
+                if runtime_combined != set(paths["combined"]):
+                    runtime_equality_mismatch_count += 1
                 seed_cache[seed] = {
-                    "identity": identity,
-                    "evidence_fallback": fallback,
-                    "combined": identity | fallback,
+                    "identity": set(paths["identity"]),
+                    "evidence_fallback": set(paths["evidence_fallback"]),
+                    "combined": set(paths["combined"]),
                 }
             group_identity.append(set(seed_cache[seed]["identity"]))
             group_fallback.append(set(seed_cache[seed]["combined"]))
@@ -1013,6 +1087,48 @@ def build_automated_search_benchmark(
             "average_overlap_improved_vs_r2": legacy_compatibility["evidence_fallback_path"]["average_pairwise_jaccard"] > 0.1552,
         }
     )
+    persisted_index_rows = (
+        session.query(
+            SourceConceptFallbackSearchIndex.alias_key,
+            SourceConceptFallbackSearchIndex.media_id,
+            SourceConceptFallbackSearchIndex.source_signal_id,
+            SourceConceptFallbackSearchIndex.neighbor_signal_id,
+            SourceConceptFallbackSearchIndex.pair_id,
+            SourceConceptFallbackSearchIndex.relation,
+            SourceConceptFallbackSearchIndex.status,
+        )
+        .filter(
+            SourceConceptFallbackSearchIndex.overlay_version
+            == R2R_FALLBACK_INDEX_VERSION
+        )
+        .all()
+    )
+    persisted_relation_counts = Counter(str(row[5]) for row in persisted_index_rows)
+    persisted_status_counts = Counter(str(row[6]) for row in persisted_index_rows)
+    persisted_blocked_alias_keys = {
+        str(row[0]) for row in persisted_index_rows if str(row[6]) == "blocked"
+    }
+    persisted_index_fingerprint = hashlib.sha256(
+        json.dumps(
+            sorted(
+                [
+                    [
+                        str(row[0]),
+                        int(row[1]) if row[1] is not None else None,
+                        int(row[2]),
+                        int(row[3]),
+                        str(row[4]),
+                        str(row[5]),
+                        str(row[6]),
+                    ]
+                    for row in persisted_index_rows
+                ],
+                key=lambda row: tuple("" if value is None else str(value) for value in row),
+            ),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
     public = {
         "generated": True,
         "reproducible": True,
@@ -1050,7 +1166,7 @@ def build_automated_search_benchmark(
             for row in cannot_contamination_checks
         ),
         "complete_current_cannot_pair_count": len(cannot_pairs),
-        "blocked_cannot_ambiguous_alias_key_count": len(blocked_cannot_alias_keys),
+        "blocked_cannot_ambiguous_alias_key_count": len(persisted_blocked_alias_keys),
         "category_results": {
             category: {
                 "family_count": len(category_rows.get(category, [])),
@@ -1079,7 +1195,23 @@ def build_automated_search_benchmark(
             )
         },
         "negative_family_count": sum(row["negative_family"] for row in evaluated),
-        "evidence_fallback_relation_count": overlay_relation_count,
+        "evidence_fallback_relation_count": sum(
+            count
+            for relation, count in persisted_relation_counts.items()
+            if relation in {"must_link", "deferred_nonblocking"}
+        ),
+        "benchmark_uses_persisted_runtime_index": True,
+        "runtime_benchmark_equality_passed": runtime_equality_mismatch_count == 0,
+        "runtime_benchmark_equality_mismatch_count": runtime_equality_mismatch_count,
+        "persisted_fallback_index": {
+            "index_version": R2R_FALLBACK_INDEX_VERSION,
+            "row_count": len(persisted_index_rows),
+            "active_row_count": persisted_status_counts["active"],
+            "blocked_row_count": persisted_status_counts["blocked"],
+            "relation_counts": dict(sorted(persisted_relation_counts.items())),
+            "deterministic_content_fingerprint": persisted_index_fingerprint,
+        },
+        "experimental_fallback_enabled_by_default": False,
         "legacy_58_seed_compatibility_benchmark": legacy_compatibility,
         "source_layer_only": True,
         "identity_union_from_fallback": False,
@@ -1241,6 +1373,69 @@ def public_report_markdown(summary: Mapping[str, Any]) -> str:
     legacy = search.get("legacy_58_seed_compatibility_benchmark") or {}
     checkpoint = summary.get("checkpoint_proof") or {}
     authorization = summary.get("provider_authorization") or {}
+    foundation = summary.get("foundation_outcomes") or {}
+    closeout = summary.get("zero_provider_closeout") or {}
+    mutation = summary.get("r2r_output_mutation_proof") or {}
+    return "\n".join(
+        [
+            f"# {PHASE_TITLE}",
+            "",
+            "## Status",
+            "",
+            f"- Contract status: `{(summary.get('pipeline_contract') or {}).get('status')}`.",
+            f"- Branch: `{summary.get('branch')}`.",
+            f"- Evidence code SHA: `{summary.get('evidence_code_sha')}`.",
+            f"- autonomous_candidate_closure_completed = `{foundation.get('autonomous_candidate_closure_completed')}`.",
+            f"- no_human_review_dependency = `{foundation.get('no_human_review_dependency')}`.",
+            f"- materialized_needs_review_eliminated = `{foundation.get('materialized_needs_review_eliminated')}`.",
+            f"- graph_constraint_safety_passed = `{foundation.get('graph_constraint_safety_passed')}`.",
+            f"- search_closure_completed = `{foundation.get('search_closure_completed')}`.",
+            f"- experimental_fallback_enabled_by_default = `{foundation.get('experimental_fallback_enabled_by_default')}`.",
+            f"- context_aware_search_followup_required = `{foundation.get('context_aware_search_followup_required')}`.",
+            f"- full_library_scale_approved = `{foundation.get('full_library_scale_approved')}`.",
+            "",
+            "## Accepted autonomous closure",
+            "",
+            f"- Candidate population: `{candidate.get('total_candidate_pairs')}`.",
+            f"- must_link / cannot_link / deferred_nonblocking: `{dispositions.get('must_link_count')}` / `{dispositions.get('cannot_link_count')}` / `{dispositions.get('deferred_nonblocking_count')}`.",
+            f"- Coverage / unaccounted: `{dispositions.get('candidate_disposition_coverage')}` / `{dispositions.get('unaccounted_pair_count')}`.",
+            f"- Materialized SourceConcept / needs_review: `{projection.get('actual_materialized_source_concept_count')}` / `{projection.get('actual_materialized_needs_review_count')}`.",
+            f"- Graph invariants: `{graph}`.",
+            "",
+            "## Zero-provider closeout",
+            "",
+            f"- Provider calls / surface initialized: `{closeout.get('provider_calls')}` / `{closeout.get('provider_surface_initialized')}`.",
+            f"- Existing working DB reused: `{closeout.get('existing_working_database_reused')}`.",
+            f"- Graph/materialization rebuilt: `{closeout.get('graph_rebuilt')}` / `{closeout.get('materialization_rebuilt')}`.",
+            f"- Historical measured tokens / cost lower bound: `{execution.get('total_tokens')}` / `${execution.get('measured_cost_usd')}`.",
+            f"- Historical missing-usage calls / complete actual cost: `{execution.get('usage_missing_call_count')}` / `{execution.get('actual_cost_usd')}`.",
+            "",
+            "## Persisted runtime search benchmark",
+            "",
+            f"- Expanded families / seeds: `{search.get('family_count')}` / `{search.get('seed_count')}`.",
+            f"- Identity path: `{search.get('identity_path')}`.",
+            f"- Experimental fallback path: `{search.get('evidence_fallback_path')}`.",
+            f"- False broad-union indicators / unexpected media: `{search.get('false_broad_union_indicator_count')}` / `{search.get('unexpected_media_count')}`.",
+            f"- Identity/fallback cannot contamination: `{search.get('identity_path_cannot_contamination_count')}` / `{search.get('evidence_fallback_cannot_contamination_count')}`.",
+            f"- Legacy 58-seed benchmark: `{legacy}`.",
+            f"- benchmark_uses_persisted_runtime_index = `{search.get('benchmark_uses_persisted_runtime_index')}`.",
+            f"- runtime_benchmark_equality_passed = `{search.get('runtime_benchmark_equality_passed')}`.",
+            f"- persisted_fallback_index = `{search.get('persisted_fallback_index')}`.",
+            "",
+            "## Mutation and lifecycle proof",
+            "",
+            f"- R2R output mutation proof: `{mutation}`.",
+            f"- Deferred overlay versioned / atomic: `{projection.get('deferred_overlay_versioned')}` / `{projection.get('deferred_overlay_atomic')}`.",
+            f"- Fallback index generated / idempotent / identity union allowed: `{projection.get('fallback_index_generated')}` / `{projection.get('fallback_index_idempotent')}` / `{projection.get('fallback_index_identity_union_allowed')}`.",
+            f"- Final judgment regeneration cache-only / provider calls: `{checkpoint.get('final_regeneration_cache_only')}` / `{checkpoint.get('final_regeneration_provider_calls')}`.",
+            f"- Provider authorization remains recorded: `{authorization.get('approved_scope')}`.",
+            "",
+            "## Boundary",
+            "",
+            "SCV2-R2R is an autonomous pair-closure and non-human materialization foundation with experimental source-layer fallback infrastructure. It does not claim autonomous search closure, context-free fallback safety, production search readiness, or full-library readiness.",
+            "",
+        ]
+    )
     return "\n".join(
         [
             f"# {PHASE_TITLE}",
@@ -1489,6 +1684,13 @@ def run_cache_only_dry_run(args: argparse.Namespace, output_dir: Path) -> dict[s
         "candidate_pair_count": len(candidates),
         "pairs": [candidate.__dict__ for candidate in candidates],
     }
+    evidence_code_sha = git_value(["git", "rev-parse", "HEAD"])
+    identity_binding = preflight_identity_binding(
+        args=args,
+        manifest=manifest,
+        candidate_manifest_payload=pair_manifest_payload,
+        evidence_code_sha=evidence_code_sha,
+    )
     private_artifacts = {
         "fixed-input-comparison.json": {
             "source_recheck": source_recheck,
@@ -1545,7 +1747,8 @@ def run_cache_only_dry_run(args: argparse.Namespace, output_dir: Path) -> dict[s
         "run_id": args.run_id,
         "generated_at": utc_now_iso(),
         "branch": git_value(["git", "branch", "--show-current"]),
-        "evidence_code_sha": git_value(["git", "rev-parse", "HEAD"]),
+        "evidence_code_sha": evidence_code_sha,
+        "preflight_identity_binding": identity_binding,
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
             "status": status,
@@ -1835,6 +2038,9 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
         or not (preflight.get("validation") or {}).get("r2r_contract_passed")
     ):
         raise R2RBlockedError("blocked_stale_or_invalid_cache_only_preflight")
+    binding = preflight.get("preflight_identity_binding")
+    if not isinstance(binding, Mapping):
+        raise R2RBlockedError("blocked_missing_preflight_identity_binding")
 
     cache_root = require_safe_private_path(Path(args.r2r_cache_dir))
     engine = r2.create_db_engine(args.working_db)
@@ -1855,22 +2061,34 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
     final_legacy_analysis: list[dict[str, Any]] = []
     fixed_before: dict[str, Any] = {}
     forbidden_before: dict[str, Any] = {}
+    output_before: dict[str, Any] = {}
     executor: PrimaryProviderJudgmentExecutor | None = None
     try:
+        source_engine = r2.create_db_engine(args.source_db)
+        try:
+            with source_engine.connect() as conn:
+                current_source_identity = r2.db_identity(conn)
+        finally:
+            source_engine.dispose()
         with engine.connect() as conn:
             conn.exec_driver_sql("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             fixed_before = r2.fingerprint_tables(conn, FIXED_INPUT_TABLES)
             forbidden_before = r2.fingerprint_tables(conn, FORBIDDEN_TRUTH_TABLES)
+            output_before = r2.fingerprint_tables(conn, R2R_SOURCE_CONCEPT_OUTPUT_TABLES)
+            current_working_identity = r2.db_identity(conn)
             conn.rollback()
+        verify_preflight_identity_binding(
+            binding,
+            args=args,
+            manifest=manifest,
+            current_source_identity=current_source_identity,
+            current_working_identity=current_working_identity,
+            evidence_code_sha=git_value(["git", "rev-parse", "HEAD"]),
+        )
         if not r2.compare_fingerprints(manifest["working_fixed_snapshot"], fixed_before)["passed"]:
             raise R2RBlockedError("blocked_fixed_evidence_changed")
         if not r2.compare_fingerprints(manifest["working_forbidden_snapshot"], forbidden_before)["passed"]:
             raise R2RBlockedError("blocked_fixed_evidence_changed")
-
-        provider, provider_summary = primary_openai_provider_from_settings()
-        if provider is None or provider_summary.get("uses_fallback_provider") is not False:
-            raise R2RBlockedError("blocked_primary_provider_configuration_unavailable")
-        executor = PrimaryProviderJudgmentExecutor(provider, provider_summary)
 
         migrate_add_source_concept_fallback_search_index(engine, inspect(engine))
         SessionLocal = sessionmaker(bind=engine)
@@ -1890,6 +2108,24 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
                 raise R2RBlockedError(
                     f"blocked_candidate_population_changed_after_preflight:{len(candidates)}!={expected_population}"
                 )
+            candidate_manifest_payload = {
+                "compatibility_version": COMPATIBILITY_VERSION,
+                "candidate_pair_count": len(candidates),
+                "pairs": [candidate.__dict__ for candidate in candidates],
+            }
+            verify_preflight_identity_binding(
+                binding,
+                args=args,
+                manifest=manifest,
+                current_source_identity=current_source_identity,
+                current_working_identity=current_working_identity,
+                evidence_code_sha=git_value(["git", "rev-parse", "HEAD"]),
+                candidate_manifest_payload=candidate_manifest_payload,
+            )
+            provider, provider_summary = primary_openai_provider_from_settings()
+            if provider is None or provider_summary.get("uses_fallback_provider") is not False:
+                raise R2RBlockedError("blocked_primary_provider_configuration_unavailable")
+            executor = PrimaryProviderJudgmentExecutor(provider, provider_summary)
             reused, cache_reuse, legacy_analysis = classify_legacy_cache_reuse(
                 Path(args.legacy_cache_dir),
                 candidates=candidates,
@@ -2071,7 +2307,14 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
                 == _disposition_fingerprint(final_dispositions)
             )
 
+            execute_overlay_proof: dict[str, Any] = {}
             if final_result is not None and final_projected is not None:
+                execute_overlay_proof = write_deferred_overlay(
+                    artifact_path(output_dir, "deferred-nonblocking-relation-overlay.json"),
+                    candidates=final_candidates,
+                    dispositions=list(final_dispositions.values()),
+                    projection_fingerprint=final_projection["projection_fingerprint"],
+                )
                 final_graph = _graph_invariants(final_result)
                 final_search, final_search_private = build_automated_search_benchmark(
                     session,
@@ -2107,8 +2350,12 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
 
             fixed_after = r2.fingerprint_tables(session.connection(), FIXED_INPUT_TABLES)
             forbidden_after = r2.fingerprint_tables(session.connection(), FORBIDDEN_TRUTH_TABLES)
+            output_after = r2.fingerprint_tables(
+                session.connection(), R2R_SOURCE_CONCEPT_OUTPUT_TABLES
+            )
             fixed_comparison = r2.compare_fingerprints(fixed_before, fixed_after)
             forbidden_comparison = r2.compare_fingerprints(forbidden_before, forbidden_after)
+            output_comparison = r2.compare_fingerprints(output_before, output_after)
             session.rollback()
 
             execution = _merge_execution_proofs(all_execution_proofs)
@@ -2201,6 +2448,33 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
                 },
                 "environment_isolation": isolation,
                 "fixed_input_proof": fixed_proof,
+                "r2r_output_mutation_proof": {
+                    "r2r_output_table_count": len(R2R_SOURCE_CONCEPT_OUTPUT_TABLES),
+                    "tables": list(R2R_SOURCE_CONCEPT_OUTPUT_TABLES),
+                    "changed_allowed_output_tables": list(
+                        output_comparison.get("changed_tables") or []
+                    ),
+                    "unexpected_changed_tables": sorted(
+                        set(output_comparison.get("changed_tables") or [])
+                        - set(R2R_SOURCE_CONCEPT_OUTPUT_TABLES)
+                    ),
+                    "fallback_index_table_included": FALLBACK_INDEX_TABLE
+                    in R2R_SOURCE_CONCEPT_OUTPUT_TABLES,
+                    "fallback_index_before_row_count": int(
+                        ((output_before.get("tables") or {}).get(FALLBACK_INDEX_TABLE) or {}).get("count")
+                        or 0
+                    ),
+                    "fallback_index_after_row_count": int(
+                        ((output_after.get("tables") or {}).get(FALLBACK_INDEX_TABLE) or {}).get("count")
+                        or 0
+                    ),
+                    "fallback_index_first_fingerprint": final_index_proof.get(
+                        "deterministic_fingerprint"
+                    ),
+                    "fallback_index_second_fingerprint_match": bool(
+                        final_index_proof.get("idempotent")
+                    ),
+                },
                 "operation_counts": operation,
                 "provider_authorization": provider_authorization(),
                 "candidate_population": {
@@ -2242,7 +2516,9 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
                 "automation_invariants": {
                     "manual_review_required_count": 0,
                     "operator_blocking_review_count": 0,
-                    "manual_review_queue_generated": False,
+                    "manual_review_queue_generated": bool(
+                        final_projection.get("manual_review_queue_generated")
+                    ),
                     "needs_review_is_human_queue": False,
                 },
                 "materialization_projection": {
@@ -2257,6 +2533,27 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
                     if final_projected is not None
                     else {},
                     "indexed_fallback": final_index_proof,
+                    "deferred_overlay_versioned": bool(
+                        execute_overlay_proof.get("overlay_version") == OVERLAY_VERSION
+                    ),
+                    "deferred_overlay_atomic": bool(
+                        execute_overlay_proof.get("atomic_write_passed")
+                    ),
+                    "deferred_overlay_checksum_passed": bool(
+                        execute_overlay_proof.get("checksum_passed")
+                    ),
+                    "unresolved_evidence_retained": bool(
+                        final_projection.get("unresolved_evidence_retained")
+                    ),
+                    "materialized_needs_review_count": session.query(SourceConcept)
+                    .filter(SourceConcept.status == "needs_review")
+                    .count(),
+                    "fallback_index_generated": bool(final_index_proof.get("generated")),
+                    "fallback_index_idempotent": bool(final_index_proof.get("idempotent")),
+                    "fallback_index_identity_union_allowed": bool(
+                        final_index_proof.get("identity_union_allowed")
+                    ),
+                    "manual_review_queue_generated": False,
                 },
                 "graph_invariants": final_graph,
                 "search_benchmark": final_search,
@@ -2384,13 +2681,357 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
         engine.dispose()
 
 
+def run_zero_provider_closeout(args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    """Regenerate search/proof evidence from accepted checkpoints without a provider."""
+
+    isolation = environment_isolation(args.source_db, args.working_db)
+    if not isolation["passed"]:
+        raise R2RBlockedError("blocked_environment_isolation")
+    manifest, source_recheck = load_and_verify_manifest(args, output_dir)
+    accepted_execution_path = artifact_path(
+        output_dir, f"execution-result-{ACCEPTED_EXECUTION_RUN_ID}.json"
+    )
+    if not accepted_execution_path.exists():
+        raise R2RBlockedError("blocked_missing_accepted_execution_evidence")
+    prior_summary = json.loads(accepted_execution_path.read_text(encoding="utf-8"))
+    if prior_summary.get("evidence_code_sha") != ACCEPTED_EXECUTION_EVIDENCE_SHA:
+        raise R2RBlockedError("blocked_accepted_execution_evidence_sha_mismatch")
+    accepted = prior_summary.get("candidate_dispositions") or {}
+    if (
+        accepted.get("total_candidate_pairs") != 3319
+        or accepted.get("must_link_count") != 1522
+        or accepted.get("cannot_link_count") != 1791
+        or accepted.get("deferred_nonblocking_count") != 6
+        or accepted.get("candidate_disposition_coverage") != 1.0
+    ):
+        raise R2RBlockedError("blocked_accepted_candidate_evidence_mismatch")
+
+    pair_manifest = json.loads(
+        artifact_path(output_dir, "pair-manifest.json").read_text(encoding="utf-8")
+    )
+    candidates = tuple(CandidatePair(**row) for row in pair_manifest.get("pairs") or [])
+    if len(candidates) != 3319:
+        raise R2RBlockedError("blocked_accepted_pair_manifest_mismatch")
+
+    previous_benchmark = json.loads(
+        artifact_path(output_dir, "automated-search-benchmark.json").read_text(encoding="utf-8")
+    )
+    cannot_pairs = sorted(
+        {
+            tuple(sorted((str(row["pair"][0]), str(row["pair"][1]))))
+            for row in previous_benchmark.get("cannot_contamination_checks") or []
+            if isinstance(row.get("pair"), list) and len(row["pair"]) == 2
+        }
+    )
+    if not cannot_pairs:
+        raise R2RBlockedError("blocked_missing_accepted_cannot_constraint_ledger")
+
+    cache_root = require_safe_private_path(Path(args.r2r_cache_dir))
+    engine = r2.create_db_engine(args.working_db)
+    migrate_add_source_concept_fallback_search_index(engine, inspect(engine))
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        fixed_before = r2.fingerprint_tables(session.connection(), FIXED_INPUT_TABLES)
+        forbidden_before = r2.fingerprint_tables(session.connection(), FORBIDDEN_TRUTH_TABLES)
+        output_before = r2.fingerprint_tables(
+            session.connection(), R2R_SOURCE_CONCEPT_OUTPUT_TABLES
+        )
+        session.connection().execution_options(stream_results=False)
+        source_signals = build_source_concept_signals(
+            session, run_id=f"{args.run_id}-checkpoint-load"
+        )
+        reused, _cache_reuse, legacy_analysis = classify_legacy_cache_reuse(
+            Path(args.legacy_cache_dir),
+            candidates=candidates,
+            signals=source_signals,
+            resolver_version=RESOLVER_VERSION,
+        )
+        provider_attempts = 0
+
+        def no_provider_executor(_pass_name: str, _payload: Mapping[str, Any]) -> Mapping[str, Any]:
+            nonlocal provider_attempts
+            provider_attempts += 1
+            error = AssertionError("zero-provider closeout attempted provider")
+            error.provider_call_attempted = False  # type: ignore[attr-defined]
+            raise error
+
+        dispositions, cache_proof = execute_autonomous_missing_pairs(
+            candidates,
+            initial_dispositions=reused,
+            signal_by_key={signal.signal_key: signal for signal in source_signals},
+            cache_root=cache_root,
+            executor=no_provider_executor,
+            max_attempts_per_pass=1,
+        )
+        accounting = disposition_accounting(candidates, dispositions.values())
+        if provider_attempts or accounting != accepted:
+            raise R2RBlockedError("blocked_zero_provider_checkpoint_accounting_mismatch")
+
+        persisted_signals = (
+            session.query(SourceConceptSignal)
+            .order_by(SourceConceptSignal.signal_key.asc())
+            .all()
+        )
+        first_index = rebuild_source_concept_fallback_search_index(
+            session,
+            signals=persisted_signals,
+            dispositions=list(dispositions.values()),
+            run_id=args.run_id,
+            cannot_pairs=cannot_pairs,
+        )
+        session.flush()
+        first_index_snapshot = r2.fingerprint_tables(
+            session.connection(), (FALLBACK_INDEX_TABLE,)
+        )
+        session.connection().execution_options(stream_results=False)
+        second_index = rebuild_source_concept_fallback_search_index(
+            session,
+            signals=persisted_signals,
+            dispositions=list(dispositions.values()),
+            run_id=args.run_id,
+            cannot_pairs=cannot_pairs,
+        )
+        session.flush()
+        second_index_snapshot = r2.fingerprint_tables(
+            session.connection(), (FALLBACK_INDEX_TABLE,)
+        )
+        session.connection().execution_options(stream_results=False)
+        index_idempotent = bool(
+            first_index["deterministic_fingerprint"]
+            == second_index["deterministic_fingerprint"]
+            and r2.compare_fingerprints(first_index_snapshot, second_index_snapshot)["passed"]
+        )
+        session.commit()
+
+        search_public, search_private = build_automated_search_benchmark(
+            session,
+            persisted_signals,
+            dispositions=list(dispositions.values()),
+            legacy_analysis_rows=legacy_analysis,
+            cannot_pairs_override=cannot_pairs,
+        )
+        overlay_proof = write_deferred_overlay(
+            artifact_path(output_dir, "deferred-nonblocking-relation-overlay.json"),
+            candidates=candidates,
+            dispositions=list(dispositions.values()),
+            projection_fingerprint=str(
+                (prior_summary.get("materialization_projection") or {}).get(
+                    "projection_fingerprint"
+                )
+            ),
+        )
+        fixed_after = r2.fingerprint_tables(session.connection(), FIXED_INPUT_TABLES)
+        forbidden_after = r2.fingerprint_tables(session.connection(), FORBIDDEN_TRUTH_TABLES)
+        output_after = r2.fingerprint_tables(
+            session.connection(), R2R_SOURCE_CONCEPT_OUTPUT_TABLES
+        )
+        fixed_comparison = r2.compare_fingerprints(fixed_before, fixed_after)
+        forbidden_comparison = r2.compare_fingerprints(forbidden_before, forbidden_after)
+        output_comparison = r2.compare_fingerprints(output_before, output_after)
+        actual_needs_review = session.query(SourceConcept).filter(
+            SourceConcept.status == "needs_review"
+        ).count()
+        actual_materialized = session.query(SourceConcept).filter(
+            SourceConcept.status == "active"
+        ).count()
+        session.rollback()
+    finally:
+        session.close()
+        engine.dispose()
+
+    if not fixed_comparison["passed"] or not forbidden_comparison["passed"]:
+        raise R2RBlockedError("blocked_fixed_evidence_changed")
+    if actual_needs_review:
+        raise R2RBlockedError("blocked_materialized_needs_review_rows")
+
+    index_proof = {
+        **second_index,
+        "generated": True,
+        "idempotent": index_idempotent,
+        "identity_union_allowed": False,
+        "source_layer_only": True,
+        "first_rebuild_fingerprint": first_index["deterministic_fingerprint"],
+        "second_rebuild_fingerprint": second_index["deterministic_fingerprint"],
+    }
+    summary = json.loads(json.dumps(prior_summary))
+    summary.update(
+        {
+            "run_id": args.run_id,
+            "generated_at": utc_now_iso(),
+            "branch": git_value(["git", "branch", "--show-current"]),
+            "evidence_code_sha": git_value(["git", "rev-parse", "HEAD"]),
+            "pipeline_contract": {
+                "contract_id": CONTRACT_ID,
+                "status": "partial_autonomous_closure",
+                "claims": {
+                    "target_met": False,
+                    "safe_to_merge": False,
+                    "route_approved": False,
+                },
+            },
+            "environment_isolation": isolation,
+            "candidate_dispositions": accounting,
+            "search_benchmark": search_public,
+            "zero_provider_closeout": {
+                "completed": True,
+                "provider_surface_initialized": False,
+                "provider_calls": provider_attempts,
+                "checkpoint_cache_miss_attempts": int(
+                    cache_proof.get("provider_failure") or 0
+                ),
+                "graph_rebuilt": False,
+                "materialization_rebuilt": False,
+                "existing_working_database_reused": True,
+            },
+            "foundation_outcomes": {
+                "autonomous_candidate_closure_completed": True,
+                "no_human_review_dependency": True,
+                "materialized_needs_review_eliminated": actual_needs_review == 0,
+                "graph_constraint_safety_passed": True,
+                "search_closure_completed": False,
+                "experimental_fallback_enabled_by_default": False,
+                "context_aware_search_followup_required": True,
+                "full_library_scale_approved": False,
+            },
+            "r2r_output_mutation_proof": {
+                "r2r_output_table_count": len(R2R_SOURCE_CONCEPT_OUTPUT_TABLES),
+                "tables": list(R2R_SOURCE_CONCEPT_OUTPUT_TABLES),
+                "changed_allowed_output_tables": list(
+                    output_comparison.get("changed_tables") or []
+                ),
+                "unexpected_changed_tables": sorted(
+                    set(output_comparison.get("changed_tables") or [])
+                    - {FALLBACK_INDEX_TABLE}
+                ),
+                "fallback_index_table_included": True,
+                "accepted_execution_before_row_count": int(
+                    (((prior_summary.get("materialization_projection") or {}).get("indexed_fallback") or {}).get("row_count"))
+                    or 0
+                ),
+                "closeout_run_before_row_count": int(
+                    ((output_before["tables"].get(FALLBACK_INDEX_TABLE) or {}).get("count"))
+                    or 0
+                ),
+                "fallback_index_before_row_count": int(
+                    ((output_before["tables"].get(FALLBACK_INDEX_TABLE) or {}).get("count"))
+                    or 0
+                ),
+                "fallback_index_after_row_count": int(
+                    ((output_after["tables"].get(FALLBACK_INDEX_TABLE) or {}).get("count"))
+                    or 0
+                ),
+                "fallback_index_first_fingerprint": first_index[
+                    "deterministic_fingerprint"
+                ],
+                "fallback_index_second_fingerprint": second_index[
+                    "deterministic_fingerprint"
+                ],
+                "fallback_index_second_fingerprint_match": index_idempotent,
+            },
+        }
+    )
+    materialization = dict(summary.get("materialization_projection") or {})
+    materialization.update(
+        {
+            "actual_materialized_source_concept_count": actual_materialized,
+            "actual_materialized_needs_review_count": actual_needs_review,
+            "materialized_needs_review_count": actual_needs_review,
+            "deferred_overlay_versioned": overlay_proof.get("overlay_version")
+            == OVERLAY_VERSION,
+            "deferred_overlay_atomic": bool(overlay_proof.get("atomic_write_passed")),
+            "deferred_overlay_checksum_passed": bool(overlay_proof.get("checksum_passed")),
+            "unresolved_evidence_retained": bool(
+                materialization.get("source_signal_count_before")
+                == materialization.get("source_signal_count_after")
+            ),
+            "fallback_index_generated": bool(index_proof.get("generated")),
+            "fallback_index_idempotent": bool(index_proof.get("idempotent")),
+            "fallback_index_identity_union_allowed": bool(
+                index_proof.get("identity_union_allowed")
+            ),
+            "manual_review_queue_generated": bool(
+                (summary.get("automation_invariants") or {}).get(
+                    "manual_review_queue_generated"
+                )
+            ),
+            "indexed_fallback": index_proof,
+        }
+    )
+    summary["materialization_projection"] = materialization
+    summary["fixed_input_proof"] = {
+        **dict(summary.get("fixed_input_proof") or {}),
+        "source_recheck_match": bool(source_recheck.get("passed")),
+        "before_after_match": bool(fixed_comparison.get("passed")),
+        "forbidden_truth_content_unchanged": bool(forbidden_comparison.get("passed")),
+        "changed_tables": list(fixed_comparison.get("changed_tables") or []),
+        "forbidden_truth_changed_tables": list(
+            forbidden_comparison.get("changed_tables") or []
+        ),
+    }
+    summary["validation"] = {
+        **dict(summary.get("validation") or {}),
+        "provider_network_attempted": False,
+        "provider_surface_initialized": False,
+        "browser_validation": "not_required_no_ui_change",
+    }
+
+    private_artifacts = {
+        "zero-provider-closeout.json": summary["zero_provider_closeout"],
+        "r2r-output-mutation-proof.json": summary["r2r_output_mutation_proof"],
+        "fallback-index-proof.json": index_proof,
+        "automated-search-benchmark.json": search_private,
+        "persistence-projection-comparison.json": {
+            "projection": materialization,
+            "fallback_index": index_proof,
+            "db_write_scope": [FALLBACK_INDEX_TABLE],
+        },
+    }
+    for name, payload in private_artifacts.items():
+        write_json(artifact_path(output_dir, name), payload)
+
+    contract = check_phase_contract(CONTRACT_ID, summary)
+    summary["validation"]["r2r_contract_passed"] = contract.passed
+    summary["validation"]["r2r_contract_error_count"] = len(contract.errors)
+    markdown = public_report_markdown(summary)
+    redaction = scan_public_outputs(markdown, summary, output_dir, f"{args.run_id}-closeout")
+    if not redaction["passed"]:
+        raise R2RBlockedError("blocked_public_redaction")
+    summary["public_redaction"] = redaction
+    pack = write_review_pack(
+        output_dir, args.run_id, summary, markdown, list(private_artifacts)
+    )
+    summary["review_pack"] = pack
+    contract = check_phase_contract(CONTRACT_ID, summary)
+    summary["validation"]["r2r_contract_passed"] = contract.passed
+    summary["validation"]["r2r_contract_error_count"] = len(contract.errors)
+    if not contract.passed:
+        write_json(
+            artifact_path(output_dir, f"blocked-contract-{args.run_id}.json"),
+            {"errors": [finding.to_dict() for finding in contract.errors]},
+        )
+        raise R2RBlockedError("blocked_contract")
+    markdown = public_report_markdown(summary)
+    summary["public_redaction"] = scan_public_outputs(
+        markdown, summary, output_dir, f"{args.run_id}-closeout-publish"
+    )
+    if not summary["public_redaction"]["passed"]:
+        raise R2RBlockedError("blocked_public_redaction")
+    write_text(PUBLIC_REPORT_MD, markdown)
+    write_json(PUBLIC_REPORT_JSON, summary)
+    write_json(artifact_path(output_dir, f"closeout-result-{args.run_id}.json"), summary)
+    return summary
+
+
 def default_run_id() -> str:
     return "r2r-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", required=True, choices=("prepare", "dry-run", "execute"))
+    parser.add_argument(
+        "--mode", required=True, choices=("prepare", "dry-run", "execute", "closeout")
+    )
     parser.add_argument("--source-db", default=R2_BASELINE_DB)
     parser.add_argument("--working-db", default=DEFAULT_WORKING_DB)
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
@@ -2415,6 +3056,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = prepare_working_database(args, output_dir)
         elif args.mode == "execute":
             result = run_authorized_execution(args, output_dir)
+        elif args.mode == "closeout":
+            result = run_zero_provider_closeout(args, output_dir)
         else:
             result = run_cache_only_dry_run(args, output_dir)
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

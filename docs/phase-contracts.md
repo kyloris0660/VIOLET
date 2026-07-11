@@ -146,6 +146,13 @@ cannot-link or unknown-role regression, fallback-provider use, search
 contamination, missing checkpoints, public redaction failure, or downstream
 authorization.
 
+For the honest `partial_autonomous_closure` foundation, the contract also
+requires zero-provider closeout proof, complete overlay lifecycle proof, the
+fallback-index table in the R2R mutation set, deterministic double-rebuild
+fingerprints, persisted-runtime benchmark equivalence, and
+`experimental_fallback_enabled_by_default=false`. Historical missing usage is
+retained honestly and does not become fabricated actual cost.
+
 See `docs/source-concept-autonomous-resolution-policy.md` for the durable
 no-human-review and evidence-fallback policy.
 
