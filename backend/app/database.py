@@ -214,6 +214,7 @@ def check_and_migrate_schema(engine):
         migrate_add_source_metadata_name_registry,
         migrate_add_source_name_candidate_extraction,
         migrate_add_source_concept_resolver_core,
+        migrate_add_source_concept_fallback_search_index,
         migrate_add_dynamic_library_sync_tables,
     ]
     
@@ -1230,6 +1231,61 @@ def migrate_add_source_concept_resolver_core(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_source_concept_search_weight ON blombooru_source_concept_search_index(weight)",
         ]
         for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()
+
+
+def migrate_add_source_concept_fallback_search_index(engine, inspector):
+    """Add the indexed SCV2-R2R non-materialized evidence lookup.
+
+    This additive table is SourceConcept/source-layer only. It is not an Entity
+    or truth-path table and is populated only by an explicitly approved R2R
+    materialization run.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    if 'blombooru_source_concept_fallback_search_index' in tables:
+        return
+
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+    json_type = 'JSON'
+    with engine.connect() as conn:
+        conn.execute(text(f"""
+            CREATE TABLE blombooru_source_concept_fallback_search_index (
+                id {pk_type},
+                alias_key VARCHAR(500) NOT NULL,
+                media_id INTEGER REFERENCES blombooru_media(id) ON DELETE CASCADE,
+                source_signal_id INTEGER NOT NULL REFERENCES blombooru_source_concept_signals(id) ON DELETE CASCADE,
+                neighbor_signal_id INTEGER NOT NULL REFERENCES blombooru_source_concept_signals(id) ON DELETE CASCADE,
+                pair_id VARCHAR(64) NOT NULL,
+                relation VARCHAR(50) NOT NULL,
+                overlay_version VARCHAR(100) NOT NULL,
+                disposition_version VARCHAR(100) NOT NULL,
+                role_hint VARCHAR(100),
+                work_context_key VARCHAR(500),
+                provenance_payload {json_type},
+                status VARCHAR(50) NOT NULL DEFAULT 'active',
+                run_id VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                CONSTRAINT uq_source_concept_fallback_search_row UNIQUE (
+                    alias_key,
+                    media_id,
+                    source_signal_id,
+                    neighbor_signal_id,
+                    pair_id,
+                    overlay_version
+                )
+            )
+        """))
+        for statement in (
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_fallback_search_lookup ON blombooru_source_concept_fallback_search_index(alias_key, status, overlay_version)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_fallback_search_pair ON blombooru_source_concept_fallback_search_index(pair_id, relation)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_fallback_search_media ON blombooru_source_concept_fallback_search_index(media_id)",
+        ):
             conn.execute(text(statement))
         conn.commit()
 

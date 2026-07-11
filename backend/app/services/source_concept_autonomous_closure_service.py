@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import re
+import time
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
@@ -28,10 +31,13 @@ from .source_concept_resolver_service import (
 PAIR_DISPOSITIONS = ("must_link", "cannot_link", "deferred_nonblocking")
 SIGNAL_PROJECTIONS = ("materialized_identity", "isolated_evidence", "rejected_evidence")
 OVERLAY_VERSION = "source_concept_deferred_overlay_v1"
-COMPATIBILITY_VERSION = "r2r_autonomous_pair_compatibility_v1"
-FIRST_PASS_VERSION = "r2r_autonomous_first_pass_v1"
-SECOND_PASS_VERSION = "r2r_autonomous_second_pass_v1"
+COMPATIBILITY_VERSION = "r2r_autonomous_pair_compatibility_v2"
+FIRST_PASS_VERSION = "r2r_autonomous_first_pass_v2_validated_response"
+SECOND_PASS_VERSION = "r2r_autonomous_second_pass_v2_richer_fixed_evidence"
 FINAL_DISPOSITION_VERSION = "r2r_machine_disposition_v1"
+CANDIDATE_ALGORITHM_VERSION = "r2r_unique_pair_representative_v2"
+MAX_REASON_CODE_LENGTH = 120
+SAFE_REASON_CODE_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 
 
 class AutonomousClosureError(RuntimeError):
@@ -132,18 +138,25 @@ def build_candidate_pair_manifest(
 
     config = LLMAdjudicationConfig(
         enabled=True,
-        max_calls=max_calls,
+        max_calls=max(1, len(edges)),
         max_budget_usd=10_000.0,
         selection_policy="budget_driven_all_eligible",
     )
     selected = select_llm_adjudication_edges(edges, signals=signals, config=config)
+    if len(selected) > max_calls:
+        raise AutonomousClosureError(
+            f"unique_candidate_pair_count_exceeds_emergency_ceiling:{len(selected)}>{max_calls}"
+        )
     by_pair: dict[str, CandidatePair] = {}
     for edge in selected:
         candidate = _candidate_from_edge(edge)
         previous = by_pair.get(candidate.pair_id)
         if previous is None or (candidate.weight, candidate.edge_key) > (previous.weight, previous.edge_key):
             by_pair[candidate.pair_id] = candidate
-    return tuple(sorted(by_pair.values(), key=lambda row: row.pair_id))
+    manifest = tuple(sorted(by_pair.values(), key=lambda row: row.pair_id))
+    if len(manifest) != len(selected):
+        raise AutonomousClosureError("candidate_manifest_unique_pair_accounting_mismatch")
+    return manifest
 
 
 def signal_identity_payload(signal: SourceConceptSignalDraft) -> dict[str, str]:
@@ -295,6 +308,7 @@ def build_first_pass_payload(
 
     return {
         "pass": "first",
+        "pass_version": FIRST_PASS_VERSION,
         "compatibility_version": COMPATIBILITY_VERSION,
         "candidate": asdict(candidate),
         "left": side(signal_by_key[candidate.left_signal_key]),
@@ -379,6 +393,7 @@ def build_second_pass_payload(
     }
     return {
         "pass": "second",
+        "pass_version": SECOND_PASS_VERSION,
         "compatibility_version": COMPATIBILITY_VERSION,
         "candidate": asdict(candidate),
         "left": side(left),
@@ -524,6 +539,10 @@ def load_exact_pass_record(
         or record.get("success") is not True
     ):
         return None
+    try:
+        validate_provider_response(record, pass_name=pass_name, candidate=candidate)
+    except AutonomousClosureError:
+        return None
     return record
 
 
@@ -535,22 +554,11 @@ def persist_successful_pass_record(
     payload: Mapping[str, Any],
     response: Mapping[str, Any],
 ) -> dict[str, Any]:
-    raw_decision = str(response.get("decision") or "").strip().casefold()
-    if raw_decision not in {
-        "must_link",
-        "same",
-        "same_concept",
-        "cannot_link",
-        "cannot",
-        "different",
-        "not_same",
-        "deferred_nonblocking",
-        "deferred",
-        "needs_review",
-        "uncertain",
-    }:
-        raise AutonomousClosureError("invalid_or_missing_machine_decision")
-    disposition = normalize_machine_disposition(raw_decision)
+    validated = validate_provider_response(
+        response,
+        pass_name=pass_name,
+        candidate=candidate,
+    )
     record = {
         "pair_id": candidate.pair_id,
         "left_signal_key": candidate.left_signal_key,
@@ -559,15 +567,58 @@ def persist_successful_pass_record(
         "pass_version": FIRST_PASS_VERSION if pass_name == "first" else SECOND_PASS_VERSION,
         "compatibility_version": COMPATIBILITY_VERSION,
         "payload_hash": _sha256(payload),
-        "decision": disposition,
-        "confidence": response.get("confidence"),
-        "reason_code": response.get("reason_code"),
+        "decision": validated["decision"],
+        "confidence": validated["confidence"],
+        "reason_code": validated["reason_code"],
         "success": True,
         "error_state": None,
         "persisted_at": utc_now_iso(),
     }
     _atomic_write_json(_cache_record_path(cache_root, pass_name, candidate.pair_id), record)
     return record
+
+
+def validate_provider_response(
+    response: Any,
+    *,
+    pass_name: str,
+    candidate: CandidatePair,
+) -> dict[str, Any]:
+    """Validate the complete response before any success checkpoint exists."""
+
+    if not isinstance(response, Mapping):
+        raise AutonomousClosureError("provider_response_not_structured_object")
+    expected_version = FIRST_PASS_VERSION if pass_name == "first" else SECOND_PASS_VERSION
+    if response.get("pair_id") != candidate.pair_id:
+        raise AutonomousClosureError("provider_response_pair_identity_mismatch")
+    if response.get("pass_version") != expected_version:
+        raise AutonomousClosureError("provider_response_pass_version_mismatch")
+    if response.get("error") or response.get("error_state") or response.get("success") is False:
+        raise AutonomousClosureError("provider_response_contains_error_state")
+    decision = response.get("decision")
+    if not isinstance(decision, str) or decision not in PAIR_DISPOSITIONS:
+        raise AutonomousClosureError("invalid_or_missing_machine_decision")
+    confidence = response.get("confidence")
+    if (
+        isinstance(confidence, bool)
+        or not isinstance(confidence, (int, float))
+        or not math.isfinite(float(confidence))
+        or not 0.0 <= float(confidence) <= 1.0
+    ):
+        raise AutonomousClosureError("invalid_machine_confidence")
+    reason_code = response.get("reason_code")
+    if reason_code is not None and (
+        not isinstance(reason_code, str)
+        or not reason_code
+        or len(reason_code) > MAX_REASON_CODE_LENGTH
+        or SAFE_REASON_CODE_RE.fullmatch(reason_code) is None
+    ):
+        raise AutonomousClosureError("invalid_or_unsafe_reason_code")
+    return {
+        "decision": decision,
+        "confidence": float(confidence),
+        "reason_code": reason_code,
+    }
 
 
 def persist_failed_pass_attempt(
@@ -603,47 +654,92 @@ def execute_autonomous_missing_pairs(
     signal_by_key: Mapping[str, SourceConceptSignalDraft],
     cache_root: Path,
     executor: JudgmentExecutor,
+    max_attempts_per_pass: int = 1,
+    retry_backoff_seconds: float = 0.0,
 ) -> tuple[dict[str, PairDisposition], dict[str, Any]]:
     """Execute cache-first autonomous passes with immediate atomic checkpoints."""
 
-    dispositions = dict(initial_dispositions)
+    if max_attempts_per_pass < 1 or max_attempts_per_pass > 5:
+        raise AutonomousClosureError("invalid_bounded_retry_count")
+    reused_deferred = {
+        pair_id: disposition
+        for pair_id, disposition in initial_dispositions.items()
+        if disposition.disposition == "deferred_nonblocking"
+        and disposition.pass_name != "second"
+    }
+    dispositions = {
+        pair_id: disposition
+        for pair_id, disposition in initial_dispositions.items()
+        if disposition.disposition != "deferred_nonblocking"
+        or disposition.pass_name == "second"
+    }
     counters: Counter[str] = Counter()
     transitions: list[dict[str, Any]] = []
+
+    def execute_pass(
+        pass_name: str,
+        candidate: CandidatePair,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        record = load_exact_pass_record(
+            cache_root,
+            pass_name=pass_name,
+            candidate=candidate,
+            payload=payload,
+        )
+        if record is not None:
+            counters[f"{pass_name}_cache_hit"] += 1
+            return record
+        for attempt in range(1, max_attempts_per_pass + 1):
+            counters[f"{pass_name}_provider_attempted"] += 1
+            try:
+                response = executor(pass_name, payload)
+                record = persist_successful_pass_record(
+                    cache_root,
+                    pass_name=pass_name,
+                    candidate=candidate,
+                    payload=payload,
+                    response=response,
+                )
+                counters[f"{pass_name}_provider_success"] += 1
+                return record
+            except Exception as exc:
+                persist_failed_pass_attempt(
+                    cache_root,
+                    pass_name=pass_name,
+                    candidate=candidate,
+                    payload=payload,
+                    error=exc,
+                )
+                counters["failed_attempt_count"] += 1
+                if isinstance(exc, AutonomousClosureError):
+                    counters["malformed_response_attempt_count"] += 1
+                else:
+                    counters["provider_error_attempt_count"] += 1
+                if attempt < max_attempts_per_pass:
+                    counters["retry_count"] += 1
+                    if retry_backoff_seconds > 0:
+                        time.sleep(retry_backoff_seconds * (2 ** (attempt - 1)))
+        counters["provider_failure"] += 1
+        return None
+
+    pending_second: dict[str, tuple[CandidatePair, str]] = {}
+    first_stage_snapshot: dict[str, PairDisposition] = dict(dispositions)
     for candidate in candidates:
         if candidate.pair_id in dispositions:
             counters["already_accounted"] += 1
             continue
-        first_payload = build_first_pass_payload(candidate, signal_by_key)
-        first = load_exact_pass_record(
-            cache_root,
-            pass_name="first",
-            candidate=candidate,
-            payload=first_payload,
-        )
-        if first is None:
-            try:
-                response = executor("first", first_payload)
-                first = persist_successful_pass_record(
-                    cache_root,
-                    pass_name="first",
-                    candidate=candidate,
-                    payload=first_payload,
-                    response=response,
-                )
-                counters["first_provider_success"] += 1
-            except Exception as exc:
-                persist_failed_pass_attempt(
-                    cache_root,
-                    pass_name="first",
-                    candidate=candidate,
-                    payload=first_payload,
-                    error=exc,
-                )
-                counters["provider_failure"] += 1
-                continue
+        reused = reused_deferred.get(candidate.pair_id)
+        if reused is not None:
+            first = None
+            first_disposition = "deferred_nonblocking"
+            counters["reused_deferred_selected_for_second_pass"] += 1
         else:
-            counters["first_cache_hit"] += 1
-        first_disposition = normalize_machine_disposition(first.get("decision"))
+            first_payload = build_first_pass_payload(candidate, signal_by_key)
+            first = execute_pass("first", candidate, first_payload)
+            if first is None:
+                continue
+            first_disposition = normalize_machine_disposition(first.get("decision"))
         if first_disposition in {"must_link", "cannot_link"}:
             final = PairDisposition(
                 pair_id=candidate.pair_id,
@@ -657,45 +753,39 @@ def execute_autonomous_missing_pairs(
                 cache_key=candidate.pair_id,
             )
             dispositions[candidate.pair_id] = final
+            first_stage_snapshot[candidate.pair_id] = final
             transitions.append({"pair_id": candidate.pair_id, "first": first_disposition, "final": first_disposition})
             continue
 
         counters["first_uncertain"] += 1
+        pending_disposition = PairDisposition(
+            pair_id=candidate.pair_id,
+            left_signal_key=candidate.left_signal_key,
+            right_signal_key=candidate.right_signal_key,
+            disposition="deferred_nonblocking",
+            source="legacy_cache_compatible" if reused is not None else "r2r_first_pass",
+            pass_name="reused" if reused is not None else "first",
+            confidence=(reused.confidence if reused is not None else float(first["confidence"])),
+            reason_code=(reused.reason_code if reused is not None else first.get("reason_code")),
+            cache_key=(reused.cache_key if reused is not None else candidate.pair_id),
+        )
+        first_stage_snapshot[candidate.pair_id] = pending_disposition
+        pending_second[candidate.pair_id] = (candidate, first_disposition)
+
+    for candidate in candidates:
+        pending = pending_second.get(candidate.pair_id)
+        if pending is None:
+            continue
+        _pending_candidate, first_disposition = pending
         second_payload = build_second_pass_payload(
             candidate,
             signal_by_key=signal_by_key,
             all_candidates=candidates,
-            existing_dispositions=dispositions,
+            existing_dispositions=first_stage_snapshot,
         )
-        second = load_exact_pass_record(
-            cache_root,
-            pass_name="second",
-            candidate=candidate,
-            payload=second_payload,
-        )
+        second = execute_pass("second", candidate, second_payload)
         if second is None:
-            try:
-                response = executor("second", second_payload)
-                second = persist_successful_pass_record(
-                    cache_root,
-                    pass_name="second",
-                    candidate=candidate,
-                    payload=second_payload,
-                    response=response,
-                )
-                counters["second_provider_success"] += 1
-            except Exception as exc:
-                persist_failed_pass_attempt(
-                    cache_root,
-                    pass_name="second",
-                    candidate=candidate,
-                    payload=second_payload,
-                    error=exc,
-                )
-                counters["provider_failure"] += 1
-                continue
-        else:
-            counters["second_cache_hit"] += 1
+            continue
         final_disposition = normalize_machine_disposition(second.get("decision"))
         final = PairDisposition(
             pair_id=candidate.pair_id,
@@ -730,6 +820,13 @@ def execute_autonomous_missing_pairs(
                 "second_provider_success",
                 "second_cache_hit",
                 "provider_failure",
+                "first_provider_attempted",
+                "second_provider_attempted",
+                "failed_attempt_count",
+                "malformed_response_attempt_count",
+                "provider_error_attempt_count",
+                "retry_count",
+                "reused_deferred_selected_for_second_pass",
             )
         },
         "transitions": transitions,

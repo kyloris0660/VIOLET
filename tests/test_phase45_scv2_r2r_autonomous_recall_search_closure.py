@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import json
 import sys
 from pathlib import Path
@@ -25,11 +26,13 @@ from app.models import (
     SourceConcept,
     SourceConceptAlias,
     SourceConceptEvidence,
+    SourceConceptFallbackSearchIndex,
     SourceConceptSearchIndex,
     SourceConceptSignal,
     SourceConceptSignalLink,
 )
 from app.services.source_concept_autonomous_closure_service import (
+    FIRST_PASS_VERSION,
     CandidatePair,
     PairDisposition,
     build_candidate_pair_manifest,
@@ -44,7 +47,13 @@ from app.services.source_concept_resolver_service import (
     SourceConceptSignalDraft,
     resolve_source_concepts,
 )
-from app.services.source_concept_search_service import source_layer_search_path_media_ids
+from app.services.source_concept_search_service import (
+    R2R_FALLBACK_DISPOSITION_VERSION,
+    R2R_FALLBACK_INDEX_VERSION,
+    _query_overlay_fallback_rows,
+    rebuild_source_concept_fallback_search_index,
+    source_layer_search_path_media_ids,
+)
 from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2_runner
 from scripts import run_phase45_scv2_r2r_autonomous_recall_search_closure as r2r_runner
 from scripts.phase_contracts.contract_checks import check_phase_contract
@@ -108,12 +117,31 @@ def _summary(*, target: bool = True) -> dict:
             "fallback_provider_calls": 0,
             "primary_provider_calls": 12 if target else 0,
         },
-        "candidate_population": {"total_candidate_pairs": total},
+        "candidate_population": {
+            "total_candidate_pairs": total,
+            "candidate_manifest_pair_count": total,
+            "unique_budget_eligible_pair_count": total,
+        },
         "cache_reuse": {
             "exact_compatible_cache_hit_count": 0,
             "stable_compatible_reuse_count": 5,
             "semantic_prior_count": 7,
             "genuinely_missing_pair_count": 7,
+        },
+        "provider_authorization": {
+            "status": "approved" if target else "pending",
+            "approved_scope": "pr_135_autonomous_pair_closure" if target else None,
+            "primary_provider_only": True,
+            "fixed_monetary_cap": None,
+            "further_budget_approval_required": False if target else True,
+            "first_pass_authorized": target,
+            "second_pass_authorized": target,
+            "compatible_deferred_reescalation_authorized": target,
+            "post_rebuild_new_pair_authorized": target,
+            "bounded_retry_authorized": target,
+            "fallback_provider_authorized": False,
+            "metadata_acquisition_authorized": False,
+            "other_phase_authorized": False,
         },
         "llm_execution": {
             "all_approved_missing_pairs_accounted": target,
@@ -162,7 +190,19 @@ def _summary(*, target: bool = True) -> dict:
             "average_overlap_improved_vs_r2": True,
             "cannot_linked_search_contamination_count": 0,
             "false_broad_union_indicator_count": 0,
+            "seeds_with_false_broad_union": 0,
+            "unexpected_media_count": 0,
+            "identity_path_cannot_contamination_count": 0,
+            "evidence_fallback_cannot_contamination_count": 0,
             "giant_component_recurrence": False,
+            "indexed_fallback": {
+                "generated": True,
+                "deterministic": True,
+                "idempotent": True,
+                "full_signal_python_scan_per_query": False,
+                "source_layer_only": True,
+                "identity_union_allowed": False,
+            },
         },
         "checkpoint_proof": {
             "durable_checkpoint_passed": True,
@@ -219,6 +259,7 @@ def test_r2r_cache_only_approval_block_is_truthful_and_noncompleting() -> None:
         (("materialization_projection", "materialized_needs_review_count"), 1, "r2r_materialization_projection_failed"),
         (("graph_invariants", "transitive_cannot_violation_count"), 1, "r2r_constraint_regression"),
         (("search_benchmark", "cannot_linked_search_contamination_count"), 1, "r2r_search_target_failed"),
+        (("search_benchmark", "false_broad_union_indicator_count"), 1, "r2r_search_target_failed"),
         (("checkpoint_proof", "final_regeneration_cache_only"), False, "r2r_llm_checkpoint_incomplete"),
     ],
 )
@@ -254,6 +295,20 @@ def test_r2r_approval_block_rejects_any_provider_call() -> None:
     assert "r2r_provider_called_before_approval" in {finding.code for finding in result.errors}
 
 
+def test_r2r_contract_accepts_scope_bounded_authorized_execution_state() -> None:
+    summary = _summary(target=False)
+    summary["pipeline_contract"]["status"] = "partial_autonomous_closure"
+    summary["provider_authorization"] = r2r_runner.provider_authorization()
+    summary["operation_counts"]["primary_provider_calls"] = 1
+    summary["llm_execution"]["operator_approval_required"] = False
+    summary["llm_execution"]["fixed_monetary_cap"] = None
+    summary["llm_execution"]["further_budget_approval_required"] = False
+
+    result = check_phase_contract(CONTRACT_ID, summary)
+
+    assert result.passed, [finding.to_dict() for finding in result.errors]
+
+
 def test_canonical_production_profile_flag_blocks_reused_r2_and_r2r_gates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -275,13 +330,58 @@ def test_canonical_production_profile_flag_blocks_reused_r2_and_r2r_gates(
     assert r2r_isolation["canonical_production_profile_flag_checked"] is True
 
 
-def test_initial_r2r_runner_has_no_provider_execution_surface() -> None:
+def test_r2r_runner_records_scope_bounded_primary_provider_authorization() -> None:
     source = Path(r2r_runner.__file__).read_text(encoding="utf-8")
+    authorization = r2r_runner.provider_authorization()
 
-    assert "primary_openai_provider_from_settings" not in source
-    assert 'choices=("prepare", "dry-run")' in source
+    assert authorization["status"] == "approved"
+    assert authorization["approved_scope"] == "pr_135_autonomous_pair_closure"
+    assert authorization["fixed_monetary_cap"] is None
+    assert authorization["further_budget_approval_required"] is False
+    assert authorization["primary_provider_only"] is True
+    assert authorization["fallback_provider_authorized"] is False
+    assert 'choices=("prepare", "dry-run", "execute")' in source
     assert "import gallery_dl" not in source
     assert "import requests" not in source
+
+
+def test_primary_provider_executor_records_usage_without_fallback() -> None:
+    class FakePrimaryProvider:
+        last_usage = {}
+
+        async def complete_json(self, messages, *, temperature, max_tokens):
+            self.last_usage = {
+                "prompt_tokens": 120,
+                "completion_tokens": 30,
+                "total_tokens": 150,
+            }
+            payload = json.loads(messages[1]["content"])
+            return {
+                "pair_id": payload["pair_id"],
+                "pass_version": payload["pass_version"],
+                "decision": "cannot_link",
+                "confidence": 0.95,
+                "reason_code": "context_conflict",
+            }
+
+    executor = r2r_runner.PrimaryProviderJudgmentExecutor(
+        FakePrimaryProvider(),
+        {"uses_fallback_provider": False, "provider_mode": "primary_openai"},
+    )
+    candidate = _candidate()
+    payload = {
+        "candidate": candidate.__dict__,
+        "pass_version": FIRST_PASS_VERSION,
+    }
+
+    response = executor("first", payload)
+    summary = executor.public_summary()
+
+    assert response["decision"] == "cannot_link"
+    assert summary["attempted_calls"] == 1
+    assert summary["total_tokens"] == 150
+    assert summary["actual_cost_usd"] == 0.0003
+    assert summary["fallback_provider_used"] is False
 
 
 def test_public_retention_projection_field_does_not_trigger_path_redaction() -> None:
@@ -406,6 +506,63 @@ def test_candidate_manifest_and_disposition_accounting_are_unique() -> None:
     assert accounting["candidate_disposition_coverage"] == 1.0
 
 
+def test_candidate_manifest_deduplicates_before_emergency_ceiling() -> None:
+    signals = [
+        _signal("left", "Alias Name"),
+        _signal("right", "Alias Name"),
+        _signal("later", "Alias Name"),
+    ]
+    edges = [
+        SourceConceptEdgeDraft(
+            edge_key="duplicate-weaker",
+            left_signal_key="left",
+            right_signal_key="right",
+            edge_type="cooccurrence_context",
+            weight=0.3,
+            evidence_source="fixture",
+            status="needs_review",
+            resolution_reason_code="fixture",
+            negative_reason_code=None,
+            union_allowed=False,
+            payload={},
+        ),
+        SourceConceptEdgeDraft(
+            edge_key="duplicate-stronger",
+            left_signal_key="right",
+            right_signal_key="left",
+            edge_type="exact_canonical_key",
+            weight=0.9,
+            evidence_source="fixture",
+            status="needs_review",
+            resolution_reason_code="fixture",
+            negative_reason_code=None,
+            union_allowed=False,
+            payload={},
+        ),
+        SourceConceptEdgeDraft(
+            edge_key="later-unique",
+            left_signal_key="left",
+            right_signal_key="later",
+            edge_type="same_surface_context",
+            weight=0.7,
+            evidence_source="fixture",
+            status="needs_review",
+            resolution_reason_code="fixture",
+            negative_reason_code=None,
+            union_allowed=False,
+            payload={},
+        ),
+    ]
+
+    candidates = build_candidate_pair_manifest(edges, signals=signals, max_calls=2)
+
+    assert len(candidates) == 2
+    assert {candidate.edge_key for candidate in candidates} == {
+        "duplicate-stronger",
+        "later-unique",
+    }
+
+
 def test_projection_eliminates_materialized_needs_review_without_dropping_signals() -> None:
     active_left = _signal("active-left", "Stable Identity")
     active_right = _signal("active-right", "Stable Identity")
@@ -493,9 +650,21 @@ def test_autonomous_passes_checkpoint_resume_and_never_count_failure_as_success(
     def executor(pass_name: str, payload: Mapping[str, object]) -> Mapping[str, object]:
         calls.append(pass_name)
         if pass_name == "first":
-            return {"decision": "deferred_nonblocking", "confidence": 0.5}
+            return {
+                "pair_id": payload["candidate"]["pair_id"],
+                "pass_version": payload["pass_version"],
+                "decision": "deferred_nonblocking",
+                "confidence": 0.5,
+                "reason_code": "insufficient_fixed_evidence",
+            }
         assert payload["human_escalation_allowed"] is False
-        return {"decision": "cannot_link", "confidence": 0.91}
+        return {
+            "pair_id": payload["candidate"]["pair_id"],
+            "pass_version": payload["pass_version"],
+            "decision": "cannot_link",
+            "confidence": 0.91,
+            "reason_code": "context_conflict",
+        }
 
     dispositions, proof = execute_autonomous_missing_pairs(
         [candidate],
@@ -546,7 +715,12 @@ def test_autonomous_passes_checkpoint_resume_and_never_count_failure_as_success(
     malformed_root = tmp_path / "malformed"
 
     def malformed(pass_name: str, payload: Mapping[str, object]) -> Mapping[str, object]:
-        return {"decision": "ask_a_human", "confidence": 0.5}
+        return {
+            "pair_id": payload["candidate"]["pair_id"],
+            "pass_version": payload["pass_version"],
+            "decision": "ask_a_human",
+            "confidence": 0.5,
+        }
 
     malformed_dispositions, malformed_proof = execute_autonomous_missing_pairs(
         [candidate],
@@ -559,6 +733,138 @@ def test_autonomous_passes_checkpoint_resume_and_never_count_failure_as_success(
     assert malformed_proof["provider_failure"] == 1
     assert malformed_proof["accounting"]["unaccounted_pair_count"] == 1
     assert not list((malformed_root / "first" / "records").glob("*.json"))
+
+
+@pytest.mark.parametrize("confidence", ["0.9", True, float("nan"), float("inf"), float("-inf"), -0.1, 1.1, None])
+def test_invalid_confidence_never_writes_success_checkpoint(
+    tmp_path: Path,
+    confidence: object,
+) -> None:
+    candidate = _candidate()
+    signals = {"left": _signal("left", "Alias"), "right": _signal("right", "Alias")}
+
+    def invalid_executor(pass_name: str, payload: Mapping[str, object]) -> Mapping[str, object]:
+        response = {
+            "pair_id": candidate.pair_id,
+            "pass_version": FIRST_PASS_VERSION,
+            "decision": "must_link",
+        }
+        if confidence is not None:
+            response["confidence"] = confidence
+        return response
+
+    dispositions, proof = execute_autonomous_missing_pairs(
+        [candidate],
+        initial_dispositions={},
+        signal_by_key=signals,
+        cache_root=tmp_path,
+        executor=invalid_executor,
+    )
+
+    assert dispositions == {}
+    assert proof["provider_failure"] == 1
+    assert proof["accounting"]["unaccounted_pair_count"] == 1
+    assert not list((tmp_path / "first" / "records").glob("*.json"))
+    assert len(list((tmp_path / "first" / "failures").glob("*.json"))) == 1
+
+
+def test_valid_numeric_confidence_writes_success_checkpoint(tmp_path: Path) -> None:
+    candidate = _candidate()
+    signals = {"left": _signal("left", "Alias"), "right": _signal("right", "Alias")}
+
+    def valid_executor(pass_name: str, payload: Mapping[str, object]) -> Mapping[str, object]:
+        return {
+            "pair_id": candidate.pair_id,
+            "pass_version": FIRST_PASS_VERSION,
+            "decision": "must_link",
+            "confidence": 0.9,
+            "reason_code": "strong_fixed_evidence",
+        }
+
+    dispositions, proof = execute_autonomous_missing_pairs(
+        [candidate],
+        initial_dispositions={},
+        signal_by_key=signals,
+        cache_root=tmp_path,
+        executor=valid_executor,
+    )
+
+    assert dispositions[candidate.pair_id].disposition == "must_link"
+    assert proof["provider_failure"] == 0
+    assert len(list((tmp_path / "first" / "records").glob("*.json"))) == 1
+
+
+def test_malformed_attempt_is_retryable_and_valid_retry_writes_success(tmp_path: Path) -> None:
+    candidate = _candidate()
+    signals = {"left": _signal("left", "Alias"), "right": _signal("right", "Alias")}
+    attempts = 0
+
+    def retrying_executor(pass_name: str, payload: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal attempts
+        attempts += 1
+        return {
+            "pair_id": candidate.pair_id,
+            "pass_version": FIRST_PASS_VERSION,
+            "decision": "must_link",
+            "confidence": "0.9" if attempts == 1 else 0.9,
+            "reason_code": "strong_fixed_evidence",
+        }
+
+    dispositions, proof = execute_autonomous_missing_pairs(
+        [candidate],
+        initial_dispositions={},
+        signal_by_key=signals,
+        cache_root=tmp_path,
+        executor=retrying_executor,
+        max_attempts_per_pass=3,
+    )
+
+    assert attempts == 2
+    assert dispositions[candidate.pair_id].disposition == "must_link"
+    assert proof["retry_count"] == 1
+    assert proof["malformed_response_attempt_count"] == 1
+    assert proof["provider_failure"] == 0
+    assert len(list((tmp_path / "first" / "records").glob("*.json"))) == 1
+    assert len(list((tmp_path / "first" / "failures").glob("*.json"))) == 1
+
+
+def test_compatible_reused_deferred_pair_gets_current_second_pass(tmp_path: Path) -> None:
+    candidate = _candidate()
+    signals = {"left": _signal("left", "Alias"), "right": _signal("right", "Alias")}
+    reused = PairDisposition(
+        pair_id=candidate.pair_id,
+        left_signal_key=candidate.left_signal_key,
+        right_signal_key=candidate.right_signal_key,
+        disposition="deferred_nonblocking",
+        source="legacy_cache_compatible",
+        pass_name="reused",
+        confidence=0.5,
+        reason_code="legacy_uncertain",
+    )
+    calls: list[str] = []
+
+    def second_only(pass_name: str, payload: Mapping[str, object]) -> Mapping[str, object]:
+        calls.append(pass_name)
+        return {
+            "pair_id": candidate.pair_id,
+            "pass_version": payload["pass_version"],
+            "decision": "deferred_nonblocking",
+            "confidence": 0.6,
+            "reason_code": "insufficient_fixed_evidence",
+        }
+
+    dispositions, proof = execute_autonomous_missing_pairs(
+        [candidate],
+        initial_dispositions={candidate.pair_id: reused},
+        signal_by_key=signals,
+        cache_root=tmp_path,
+        executor=second_only,
+    )
+
+    assert calls == ["second"]
+    assert proof["reused_deferred_selected_for_second_pass"] == 1
+    assert dispositions[candidate.pair_id].pass_name == "second"
+    assert dispositions[candidate.pair_id].disposition == "deferred_nonblocking"
 
 
 def test_second_pass_payload_contains_required_fixed_evidence_context() -> None:
@@ -630,30 +936,20 @@ def test_dual_search_path_uses_direct_evidence_without_alias_closure(db_session)
         raw_value="Identity Alias",
         display_value="Identity Alias",
         normalized_key="identity_alias",
-        canonical_key="shared_alias",
+        canonical_key="identity_alias",
         role_hint="character",
         trust_tier="strong",
         status="materialized_identity",
         media_id=media_identity.id,
-        evidence_payload={
-            "r2r_search_overlay": {
-                "identity_union_allowed": False,
-                "neighbors": [
-                    {
-                        "relation": "deferred_nonblocking",
-                        "fallback_alias_keys": ["remote_alias"],
-                    }
-                ],
-            }
-        },
+        evidence_payload={},
     )
     signal_fallback = SourceConceptSignal(
         signal_key="fallback-signal",
         origin_type="source_name_observation",
         raw_value="Shared Alias",
         display_value="Shared Alias",
-        normalized_key="shared_alias",
-        canonical_key="shared_alias",
+        normalized_key="remote_alias",
+        canonical_key="remote_alias",
         role_hint="character",
         trust_tier="weak",
         status="isolated_evidence",
@@ -699,12 +995,351 @@ def test_dual_search_path_uses_direct_evidence_without_alias_closure(db_session)
     )
     db_session.commit()
 
+    index_proof = rebuild_source_concept_fallback_search_index(
+        db_session,
+        signals=[signal_identity, signal_fallback],
+        dispositions=[
+            PairDisposition(
+                pair_id="0" * 64,
+                left_signal_key=signal_identity.signal_key,
+                right_signal_key=signal_fallback.signal_key,
+                disposition="deferred_nonblocking",
+                source="fixture",
+                pass_name="second",
+                confidence=0.5,
+                reason_code="insufficient_fixed_evidence",
+            )
+        ],
+        run_id="fixture-index",
+    )
+    db_session.commit()
+    assert index_proof["row_count"] == 2
+    assert index_proof["full_signal_python_scan_per_query"] is False
+
     paths = source_layer_search_path_media_ids(db_session, "Shared Alias")
 
     assert paths["identity"] == {media_identity.id}
-    assert paths["evidence_fallback"] == {media_identity.id, media_fallback.id}
-    assert paths["combined"] == {media_identity.id, media_fallback.id}
+    assert paths["evidence_fallback"] == set()
+    assert paths["combined"] == {media_identity.id}
 
     overlay_paths = source_layer_search_path_media_ids(db_session, "Remote Alias")
     assert overlay_paths["identity"] == set()
-    assert overlay_paths["evidence_fallback"] == {media_identity.id}
+    assert overlay_paths["evidence_fallback"] == {media_identity.id, media_fallback.id}
+
+
+def test_indexed_fallback_loads_only_matching_rows_with_many_irrelevant_signals(db_session) -> None:
+    medias = []
+    signals = []
+    for index in range(101):
+        media = Media(
+            filename=f"indexed-{index}.jpg",
+            path=f"original/indexed-{index}.jpg",
+            hash=f"r2r-indexed-{index}",
+            file_type=FileTypeEnum.image,
+            mime_type="image/jpeg",
+            file_size=10,
+        )
+        signal = SourceConceptSignal(
+            signal_key=f"indexed-signal-{index}",
+            origin_type="source_name_observation",
+            raw_value=f"Alias {index}",
+            display_value=f"Alias {index}",
+            normalized_key=f"alias_{index}",
+            canonical_key=f"alias_{index}",
+            role_hint="character",
+            trust_tier="weak",
+            status="isolated_evidence",
+            media_id=None,
+            evidence_payload={},
+        )
+        medias.append(media)
+        signals.append(signal)
+        db_session.add(media)
+        db_session.flush()
+        signal.media_id = media.id
+        db_session.add(signal)
+    db_session.flush()
+    target = signals[-1]
+    anchor = signals[0]
+    db_session.add(
+        SourceConceptFallbackSearchIndex(
+            alias_key="needle_alias",
+            media_id=target.media_id,
+            source_signal_id=target.id,
+            neighbor_signal_id=anchor.id,
+            pair_id="1" * 64,
+            relation="deferred_nonblocking",
+            overlay_version=R2R_FALLBACK_INDEX_VERSION,
+            disposition_version=R2R_FALLBACK_DISPOSITION_VERSION,
+            role_hint="character",
+            status="active",
+            run_id="fixture-index-scaling",
+            provenance_payload={"source_layer_only": True},
+        )
+    )
+    db_session.commit()
+
+    rows = _query_overlay_fallback_rows(db_session, {"needle_alias"})
+
+    assert db_session.query(SourceConceptSignal).count() == 101
+    assert rows == [(target.media_id,)]
+
+
+def test_identity_benchmark_excludes_isolated_signal_even_with_active_link(db_session) -> None:
+    media = Media(
+        filename="isolated-link.jpg",
+        path="original/isolated-link.jpg",
+        hash="r2r-isolated-link",
+        file_type=FileTypeEnum.image,
+        mime_type="image/jpeg",
+        file_size=10,
+    )
+    db_session.add(media)
+    db_session.flush()
+    concept = SourceConcept(
+        concept_key="character:isolated-link",
+        primary_display_name="Isolated Alias",
+        concept_type_hint="character",
+        status="active",
+        media_count=0,
+        source_count=1,
+    )
+    db_session.add(concept)
+    db_session.flush()
+    signal = SourceConceptSignal(
+        signal_key="isolated-active-link-signal",
+        origin_type="source_name_observation",
+        raw_value="Isolated Alias",
+        display_value="Isolated Alias",
+        normalized_key="isolated_alias",
+        canonical_key="isolated_alias",
+        role_hint="character",
+        trust_tier="weak",
+        status="isolated_evidence",
+        media_id=media.id,
+        evidence_payload={},
+    )
+    db_session.add(signal)
+    db_session.flush()
+    db_session.add_all(
+        [
+            SourceConceptAlias(
+                concept_id=concept.id,
+                alias_value="Isolated Alias",
+                alias_key="isolated_alias",
+                display_name="Isolated Alias",
+                alias_role="source_name_observation",
+                status="active",
+                source_signal_id=signal.id,
+            ),
+            SourceConceptSearchIndex(
+                concept_id=concept.id,
+                search_key="isolated_alias",
+                display_name="Isolated Alias",
+                alias_role="source_name_observation",
+                status="active",
+            ),
+            SourceConceptSignalLink(
+                signal_id=signal.id,
+                concept_id=concept.id,
+                link_status="active",
+                resolver_version="fixture",
+                run_id="fixture-isolated-link",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    paths = source_layer_search_path_media_ids(db_session, "Isolated Alias")
+
+    assert paths["identity"] == set()
+    assert paths["evidence_fallback"] == {media.id}
+
+
+def test_cannot_ambiguous_alias_guard_blocks_identity_and_fallback_paths(db_session) -> None:
+    left_draft = replace(_signal("guard-left", "Shared Guard"), media_id=None)
+    right_draft = replace(_signal("guard-right", "Shared Guard"), media_id=None)
+    left = _persist_benchmark_signal(db_session, left_draft, "guard-left")
+    right = _persist_benchmark_signal(db_session, right_draft, "guard-right")
+    left_draft = replace(left_draft, media_id=left.media_id)
+    right_draft = replace(right_draft, media_id=right.media_id)
+
+    proof = rebuild_source_concept_fallback_search_index(
+        db_session,
+        signals=[left_draft, right_draft],
+        dispositions=[],
+        cannot_pairs=[(left_draft.signal_key, right_draft.signal_key)],
+        run_id="fixture-cannot-alias-guard",
+    )
+    db_session.commit()
+
+    paths = source_layer_search_path_media_ids(db_session, "Shared Guard")
+
+    assert proof["blocked_cannot_alias_key_count"] == 1
+    assert paths["identity"] == set()
+    assert paths["evidence_fallback"] == set()
+    assert paths["combined"] == set()
+
+
+def _persist_benchmark_signal(db_session, draft: SourceConceptSignalDraft, suffix: str) -> SourceConceptSignal:
+    media = Media(
+        filename=f"benchmark-{suffix}.jpg",
+        path=f"original/benchmark-{suffix}.jpg",
+        hash=f"r2r-benchmark-{suffix}",
+        file_type=FileTypeEnum.image,
+        mime_type="image/jpeg",
+        file_size=10,
+    )
+    db_session.add(media)
+    db_session.flush()
+    draft = replace(draft, media_id=media.id)
+    row = SourceConceptSignal(
+        signal_key=draft.signal_key,
+        origin_type=draft.origin_type,
+        origin_table=draft.origin_table,
+        origin_id=draft.origin_id,
+        provider=draft.provider,
+        media_id=media.id,
+        source_record_id=draft.source_record_id,
+        raw_value=draft.raw_value,
+        display_value=draft.display_value,
+        normalized_key=draft.normalized_key,
+        canonical_key=draft.canonical_key,
+        role_hint=draft.role_hint,
+        work_context_key=draft.work_context_key,
+        source_kind=draft.source_kind,
+        trust_tier=draft.trust_tier,
+        confidence=draft.confidence,
+        status="active",
+        evidence_payload={},
+    )
+    db_session.add(row)
+    db_session.flush()
+    return row
+
+
+def test_broad_union_metric_uses_independent_allowed_family_universe(db_session) -> None:
+    left = replace(
+        _signal("broad-left", "Alias One"),
+        canonical_key="family_alias",
+        media_id=None,
+    )
+    right = replace(
+        _signal("broad-right", "別名"),
+        canonical_key="family_alias",
+        media_id=None,
+    )
+    unrelated = replace(
+        _signal("broad-unrelated", "Unrelated Returned"),
+        canonical_key="alias_one",
+        normalized_key="alias_one",
+        media_id=None,
+    )
+    left_row = _persist_benchmark_signal(db_session, left, "broad-left")
+    right_row = _persist_benchmark_signal(db_session, right, "broad-right")
+    unrelated_row = _persist_benchmark_signal(db_session, unrelated, "broad-unrelated")
+    left = replace(left, media_id=left_row.media_id)
+    right = replace(right, media_id=right_row.media_id)
+    unrelated = replace(unrelated, media_id=unrelated_row.media_id)
+    concept = SourceConcept(
+        concept_key="character:broad-family",
+        primary_display_name="Alias One",
+        concept_type_hint="character",
+        status="active",
+        media_count=2,
+        source_count=2,
+    )
+    db_session.add(concept)
+    db_session.flush()
+    for row, value, key in (
+        (left_row, "Alias One", "alias_one"),
+        (right_row, "別名", "別名"),
+    ):
+        db_session.add(
+            SourceConceptAlias(
+                concept_id=concept.id,
+                alias_value=value,
+                alias_key=key,
+                display_name=value,
+                alias_role="source_name_observation",
+                status="active",
+                source_signal_id=row.id,
+            )
+        )
+        db_session.add(
+            SourceConceptEvidence(
+                concept_id=concept.id,
+                signal_id=row.id,
+                media_id=row.media_id,
+                evidence_type="source_name_observation",
+                evidence_strength="strong",
+                status="active",
+            )
+        )
+    db_session.commit()
+
+    public, private = r2r_runner.build_automated_search_benchmark(
+        db_session,
+        [left, right, unrelated],
+        dispositions=[],
+        legacy_analysis_rows=[],
+        legacy_seed_groups_override={},
+        apply_cannot_alias_guards=False,
+    )
+
+    assert public["seeds_with_false_broad_union"] > 0
+    assert public["false_broad_union_indicator_count"] > 0
+    assert public["unexpected_media_count"] > 0
+    assert private["false_broad_union_samples"]
+    assert private["false_broad_union_samples"][0]["unexpected_media_ids_redacted"] is True
+    summary = _summary()
+    summary["search_benchmark"]["false_broad_union_indicator_count"] = public[
+        "false_broad_union_indicator_count"
+    ]
+    contract = check_phase_contract(CONTRACT_ID, summary)
+    assert not contract.passed
+    assert "r2r_search_target_failed" in {finding.code for finding in contract.errors}
+
+
+def test_new_current_cannot_disposition_contaminates_fallback_benchmark(db_session) -> None:
+    left = replace(_signal("cannot-left", "Shared Name"), media_id=None)
+    right = replace(_signal("cannot-right", "Shared Name"), media_id=None)
+    left_row = _persist_benchmark_signal(db_session, left, "cannot-left")
+    right_row = _persist_benchmark_signal(db_session, right, "cannot-right")
+    left = replace(left, media_id=left_row.media_id)
+    right = replace(right, media_id=right_row.media_id)
+    disposition = PairDisposition(
+        pair_id="2" * 64,
+        left_signal_key=left.signal_key,
+        right_signal_key=right.signal_key,
+        disposition="cannot_link",
+        source="current_second_pass",
+        pass_name="second",
+        confidence=0.99,
+        reason_code="context_conflict",
+    )
+    db_session.commit()
+
+    public, _private = r2r_runner.build_automated_search_benchmark(
+        db_session,
+        [left, right],
+        dispositions=[disposition],
+        legacy_analysis_rows=[],
+        legacy_seed_groups_override={},
+        apply_cannot_alias_guards=False,
+    )
+
+    assert public["complete_current_cannot_pair_count"] == 1
+    assert public["identity_path_cannot_contamination_count"] == 0
+    assert public["evidence_fallback_cannot_contamination_count"] > 0
+    assert public["cannot_linked_search_contamination_count"] > 0
+
+    guarded, _guarded_private = r2r_runner.build_automated_search_benchmark(
+        db_session,
+        [left, right],
+        dispositions=[disposition],
+        legacy_analysis_rows=[],
+        legacy_seed_groups_override={},
+    )
+    assert guarded["blocked_cannot_ambiguous_alias_key_count"] == 1
+    assert guarded["cannot_linked_search_contamination_count"] == 0

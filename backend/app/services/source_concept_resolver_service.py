@@ -30,6 +30,7 @@ from ..models import (
     SourceConcept,
     SourceConceptAlias,
     SourceConceptEvidence,
+    SourceConceptFallbackSearchIndex,
     SourceConceptResolutionRun,
     SourceConceptSearchIndex,
     SourceConceptSignal,
@@ -3363,6 +3364,41 @@ def select_llm_adjudication_edges(
         edge for edge in edges
         if edge.status in {"weak", "needs_review"}
         and edge.edge_type in {"cooccurrence_context", "alias_candidate_edge", "same_surface_context", "exact_canonical_key"}
+    ]
+    edge_type_priority = {
+        "exact_canonical_key": 4,
+        "same_surface_context": 3,
+        "alias_candidate_edge": 2,
+        "cooccurrence_context": 1,
+    }
+    status_priority = {"needs_review": 2, "weak": 1}
+    representative_by_pair: dict[tuple[str, str], SourceConceptEdgeDraft] = {}
+    for edge in eligible_edges:
+        pair = _pair_id(edge)
+        previous = representative_by_pair.get(pair)
+        rank = (
+            int(not edge.union_allowed),
+            status_priority.get(edge.status, 0),
+            edge_type_priority.get(edge.edge_type, 0),
+            float(edge.weight),
+            str(edge.evidence_source),
+            str(edge.resolution_reason_code),
+            str(edge.edge_key),
+        )
+        previous_rank = (
+            int(not previous.union_allowed),
+            status_priority.get(previous.status, 0),
+            edge_type_priority.get(previous.edge_type, 0),
+            float(previous.weight),
+            str(previous.evidence_source),
+            str(previous.resolution_reason_code),
+            str(previous.edge_key),
+        ) if previous is not None else None
+        if previous_rank is None or rank > previous_rank:
+            representative_by_pair[pair] = edge
+    eligible_edges = [
+        representative_by_pair[pair]
+        for pair in sorted(representative_by_pair)
     ]
     if (config.selection_policy or "").strip().casefold() in {"all_eligible", "budget_driven_all_eligible"}:
         return eligible_edges[: config.max_calls]

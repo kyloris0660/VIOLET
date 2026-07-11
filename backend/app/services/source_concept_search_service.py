@@ -9,7 +9,9 @@ confirmed assignment path.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Sequence
+import hashlib
+import json
+from typing import Any, Iterable, Mapping, Sequence
 
 from sqlalchemy import and_, exists, func, or_
 from sqlalchemy.orm import Query, Session, aliased
@@ -19,6 +21,7 @@ from ..models import (
     SourceConcept,
     SourceConceptAlias,
     SourceConceptEvidence,
+    SourceConceptFallbackSearchIndex,
     SourceConceptSearchIndex,
     SourceConceptSignal,
     SourceConceptSignalLink,
@@ -48,6 +51,8 @@ FORBIDDEN_TRUTH_PATHS = (
 MAX_SEARCH_EXPANSIONS_PER_TERM = 8
 MAX_ALIASES_PER_CONCEPT = 18
 MAX_EVIDENCE_ITEMS_PER_CONCEPT = 12
+R2R_FALLBACK_INDEX_VERSION = "source_concept_deferred_overlay_v1"
+R2R_FALLBACK_DISPOSITION_VERSION = "r2r_machine_disposition_v1"
 REDACTED_TEXT = "[redacted source value]"
 MEDIA_EXTENSION_PARTS = (
     "jpg",
@@ -280,43 +285,218 @@ def _source_concept_media_condition(concept_ids: Sequence[int], *, include_needs
     return or_(evidence_condition, signal_condition)
 
 
-def _overlay_fallback_media_ids(
+def _query_overlay_fallback_rows(
     db: Session,
     keys: set[str],
-    *,
-    statuses: Sequence[str],
-) -> set[int]:
-    """Resolve signal-level fallback neighbors without creating an identity union."""
+) -> list[tuple[int]]:
+    """Load only indexed overlay rows matching the normalized query keys."""
 
     if not keys:
-        return set()
-    media_ids: set[int] = set()
-    rows = (
-        db.query(SourceConceptSignal.media_id, SourceConceptSignal.evidence_payload)
-        .filter(SourceConceptSignal.status.in_(tuple(statuses)))
-        .filter(SourceConceptSignal.media_id.isnot(None))
+        return []
+    return (
+        db.query(SourceConceptFallbackSearchIndex.media_id)
+        .filter(SourceConceptFallbackSearchIndex.alias_key.in_(sorted(keys)))
+        .filter(SourceConceptFallbackSearchIndex.status == "active")
+        .filter(
+            SourceConceptFallbackSearchIndex.overlay_version
+            == R2R_FALLBACK_INDEX_VERSION
+        )
+        .filter(
+            SourceConceptFallbackSearchIndex.relation.in_(
+                ("must_link", "deferred_nonblocking")
+            )
+        )
+        .filter(SourceConceptFallbackSearchIndex.media_id.isnot(None))
+        .distinct()
         .all()
     )
-    for media_id, payload in rows:
-        overlay = payload.get("r2r_search_overlay") if isinstance(payload, dict) else None
-        if not isinstance(overlay, dict) or overlay.get("identity_union_allowed") is not False:
+
+
+def _overlay_fallback_media_ids(db: Session, keys: set[str]) -> set[int]:
+    """Resolve indexed evidence fallback without scanning all signals in Python."""
+
+    return {int(row[0]) for row in _query_overlay_fallback_rows(db, keys)}
+
+
+def _blocked_cannot_alias_keys(db: Session, keys: set[str]) -> set[str]:
+    if not keys:
+        return set()
+    return {
+        str(row[0])
+        for row in (
+            db.query(SourceConceptFallbackSearchIndex.alias_key)
+            .filter(SourceConceptFallbackSearchIndex.alias_key.in_(sorted(keys)))
+            .filter(SourceConceptFallbackSearchIndex.status == "blocked")
+            .filter(SourceConceptFallbackSearchIndex.relation == "cannot_link")
+            .filter(
+                SourceConceptFallbackSearchIndex.overlay_version
+                == R2R_FALLBACK_INDEX_VERSION
+            )
+            .distinct()
+            .all()
+        )
+    }
+
+
+def rebuild_source_concept_fallback_search_index(
+    db: Session,
+    *,
+    signals: Sequence[Any],
+    dispositions: Sequence[Any],
+    run_id: str,
+    cannot_pairs: Sequence[tuple[str, str]] = (),
+) -> dict[str, Any]:
+    """Deterministically rebuild the non-materialized source-layer lookup."""
+
+    signal_rows = {
+        str(row.signal_key): row
+        for row in db.query(SourceConceptSignal)
+        .filter(SourceConceptSignal.signal_key.in_([str(signal.signal_key) for signal in signals]))
+        .all()
+    }
+    signal_drafts = {str(signal.signal_key): signal for signal in signals}
+    blocked_alias_pairs: dict[str, set[tuple[str, str]]] = {}
+    for left_key, right_key in cannot_pairs:
+        left = signal_drafts.get(str(left_key))
+        right = signal_drafts.get(str(right_key))
+        if left is None or right is None:
             continue
-        neighbors = overlay.get("neighbors") if isinstance(overlay.get("neighbors"), list) else []
-        for neighbor in neighbors:
-            if not isinstance(neighbor, dict) or neighbor.get("relation") not in {
-                "must_link",
-                "deferred_nonblocking",
-            }:
+        left_aliases = {
+            str(value) for value in (left.canonical_key, left.normalized_key) if value
+        }
+        right_aliases = {
+            str(value) for value in (right.canonical_key, right.normalized_key) if value
+        }
+        for alias_key in left_aliases.intersection(right_aliases):
+            blocked_alias_pairs.setdefault(alias_key, set()).add(
+                tuple(sorted((str(left_key), str(right_key))))
+            )
+
+    rows: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for disposition in sorted(dispositions, key=lambda row: str(row.pair_id)):
+        relation = str(disposition.disposition)
+        if relation not in {"must_link", "deferred_nonblocking"}:
+            continue
+        left = signal_drafts.get(str(disposition.left_signal_key))
+        right = signal_drafts.get(str(disposition.right_signal_key))
+        if left is None or right is None:
+            continue
+        for query_signal, target_signal in ((left, right), (right, left)):
+            query_row = signal_rows.get(str(query_signal.signal_key))
+            target_row = signal_rows.get(str(target_signal.signal_key))
+            if query_row is None or target_row is None or target_signal.media_id is None:
                 continue
-            alias_keys = {
-                str(value)
-                for value in (neighbor.get("fallback_alias_keys") or [])
-                if value
+            for alias_key in sorted(
+                {
+                    str(value)
+                    for value in (query_signal.canonical_key, query_signal.normalized_key)
+                    if value
+                }
+            ):
+                if alias_key in blocked_alias_pairs:
+                    continue
+                key = (
+                    alias_key,
+                    int(target_signal.media_id),
+                    int(target_row.id),
+                    int(query_row.id),
+                    str(disposition.pair_id),
+                    R2R_FALLBACK_INDEX_VERSION,
+                )
+                rows[key] = {
+                    "alias_key": alias_key,
+                    "media_id": int(target_signal.media_id),
+                    "source_signal_id": int(target_row.id),
+                    "neighbor_signal_id": int(query_row.id),
+                    "pair_id": str(disposition.pair_id),
+                    "relation": relation,
+                    "overlay_version": R2R_FALLBACK_INDEX_VERSION,
+                    "disposition_version": R2R_FALLBACK_DISPOSITION_VERSION,
+                    "role_hint": str(target_signal.role_hint or "unknown"),
+                    "work_context_key": target_signal.work_context_key,
+                    "provenance_payload": {
+                        "source_layer_only": True,
+                        "identity_union_allowed": False,
+                        "human_review_required": False,
+                    },
+                    "status": "active",
+                    "run_id": run_id,
+                }
+
+    for alias_key, pairs in sorted(blocked_alias_pairs.items()):
+        for left_key, right_key in sorted(pairs):
+            left_row = signal_rows.get(left_key)
+            right_row = signal_rows.get(right_key)
+            if left_row is None or right_row is None:
+                continue
+            media_id = left_row.media_id if left_row.media_id is not None else right_row.media_id
+            pair_id = hashlib.sha256(
+                json.dumps([left_key, right_key], separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            key = (
+                alias_key,
+                int(media_id) if media_id is not None else None,
+                int(left_row.id),
+                int(right_row.id),
+                pair_id,
+                R2R_FALLBACK_INDEX_VERSION,
+            )
+            rows[key] = {
+                "alias_key": alias_key,
+                "media_id": int(media_id) if media_id is not None else None,
+                "source_signal_id": int(left_row.id),
+                "neighbor_signal_id": int(right_row.id),
+                "pair_id": pair_id,
+                "relation": "cannot_link",
+                "overlay_version": R2R_FALLBACK_INDEX_VERSION,
+                "disposition_version": R2R_FALLBACK_DISPOSITION_VERSION,
+                "role_hint": "constraint_guard",
+                "work_context_key": None,
+                "provenance_payload": {
+                    "source_layer_only": True,
+                    "identity_union_allowed": False,
+                    "cannot_ambiguous_alias_guard": True,
+                },
+                "status": "blocked",
+                "run_id": run_id,
             }
-            if keys.intersection(alias_keys):
-                media_ids.add(int(media_id))
-                break
-    return media_ids
+
+    db.query(SourceConceptFallbackSearchIndex).filter(
+        SourceConceptFallbackSearchIndex.overlay_version == R2R_FALLBACK_INDEX_VERSION
+    ).delete(synchronize_session=False)
+    for values in rows.values():
+        db.add(SourceConceptFallbackSearchIndex(**values))
+    db.flush()
+    fingerprint_payload = [
+        {
+            "alias_key": key[0],
+            "media_id": key[1],
+            "source_signal_id": key[2],
+            "neighbor_signal_id": key[3],
+            "pair_id": key[4],
+            "relation": rows[key]["relation"],
+        }
+        for key in sorted(
+            rows,
+            key=lambda item: tuple("" if value is None else str(value) for value in item),
+        )
+    ]
+    return {
+        "index_version": R2R_FALLBACK_INDEX_VERSION,
+        "row_count": len(rows),
+        "unique_alias_key_count": len({key[0] for key in rows}),
+        "blocked_cannot_alias_key_count": len(blocked_alias_pairs),
+        "deterministic_fingerprint": hashlib.sha256(
+            json.dumps(
+                fingerprint_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest(),
+        "identity_union_allowed": False,
+        "full_signal_python_scan_per_query": False,
+    }
 
 
 def source_concept_media_condition_for_term(
@@ -328,16 +508,29 @@ def source_concept_media_condition_for_term(
     """Return a read-only Media condition for SourceConcept expansion."""
 
     keys = _search_keys_for_term(term)
+    blocked_keys = _blocked_cannot_alias_keys(db, keys)
+    safe_keys = keys - blocked_keys
     concept_ids = _query_search_index_concept_ids(
         db,
         term,
         include_needs_review=include_needs_review,
     )
+    if blocked_keys:
+        concept_ids = [
+            int(row[0])
+            for row in (
+                db.query(SourceConceptSearchIndex.concept_id)
+                .filter(SourceConceptSearchIndex.concept_id.in_(concept_ids or [-1]))
+                .filter(SourceConceptSearchIndex.search_key.in_(sorted(safe_keys or {"__blocked__"})))
+                .distinct()
+                .all()
+            )
+        ]
     identity_condition = _source_concept_media_condition(
         concept_ids,
         include_needs_review=include_needs_review,
     )
-    if not keys:
+    if not safe_keys:
         return identity_condition
 
     fallback_signal = aliased(SourceConceptSignal)
@@ -351,16 +544,12 @@ def source_concept_media_condition_for_term(
             fallback_signal.media_id == Media.id,
             fallback_signal.status.in_(fallback_statuses),
             or_(
-                fallback_signal.canonical_key.in_(sorted(keys)),
-                fallback_signal.normalized_key.in_(sorted(keys)),
+                fallback_signal.canonical_key.in_(sorted(safe_keys)),
+                fallback_signal.normalized_key.in_(sorted(safe_keys)),
             ),
         )
     )
-    overlay_media_ids = _overlay_fallback_media_ids(
-        db,
-        keys,
-        statuses=fallback_statuses,
-    )
+    overlay_media_ids = _overlay_fallback_media_ids(db, safe_keys)
     if overlay_media_ids:
         evidence_fallback_condition = or_(
             evidence_fallback_condition,
@@ -385,11 +574,24 @@ def source_layer_search_path_media_ids(
     """
 
     keys = _search_keys_for_term(term)
+    blocked_keys = _blocked_cannot_alias_keys(db, keys)
+    safe_keys = keys - blocked_keys
     concept_ids = _query_search_index_concept_ids(
         db,
         term,
         include_needs_review=include_needs_review,
     )
+    if blocked_keys:
+        concept_ids = [
+            int(row[0])
+            for row in (
+                db.query(SourceConceptSearchIndex.concept_id)
+                .filter(SourceConceptSearchIndex.concept_id.in_(concept_ids or [-1]))
+                .filter(SourceConceptSearchIndex.search_key.in_(sorted(safe_keys or {"__blocked__"})))
+                .distinct()
+                .all()
+            )
+        ]
     identity_ids: set[int] = set()
     if concept_ids:
         statuses = _status_scope(include_needs_review)
@@ -414,6 +616,7 @@ def source_layer_search_path_media_ids(
                 )
                 .filter(SourceConceptSignalLink.concept_id.in_(concept_ids))
                 .filter(SourceConceptSignalLink.link_status.in_(statuses))
+                .filter(SourceConceptSignal.status.in_(statuses))
                 .filter(SourceConceptSignal.media_id.isnot(None))
                 .distinct()
                 .all()
@@ -421,7 +624,7 @@ def source_layer_search_path_media_ids(
         )
 
     fallback_ids: set[int] = set()
-    if keys:
+    if safe_keys:
         fallback_statuses = list(EVIDENCE_FALLBACK_SIGNAL_STATUSES)
         if not include_needs_review:
             fallback_statuses = [
@@ -435,8 +638,8 @@ def source_layer_search_path_media_ids(
                 .filter(SourceConceptSignal.media_id.isnot(None))
                 .filter(
                     or_(
-                        SourceConceptSignal.canonical_key.in_(sorted(keys)),
-                        SourceConceptSignal.normalized_key.in_(sorted(keys)),
+                        SourceConceptSignal.canonical_key.in_(sorted(safe_keys)),
+                        SourceConceptSignal.normalized_key.in_(sorted(safe_keys)),
                     )
                 )
                 .distinct()
@@ -444,11 +647,7 @@ def source_layer_search_path_media_ids(
             )
         )
         fallback_ids.update(
-            _overlay_fallback_media_ids(
-                db,
-                keys,
-                statuses=fallback_statuses,
-            )
+            _overlay_fallback_media_ids(db, safe_keys)
         )
     return {
         "identity": identity_ids,

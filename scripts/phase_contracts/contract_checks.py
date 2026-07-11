@@ -2726,7 +2726,7 @@ def _check_r2r_autonomous_recall_search_closure(
         "truth_path_writes",
         "fallback_provider_calls",
     )
-    if target or status == "blocked_llm_approval_required":
+    if status != "blocked_environment_isolation":
         for key in forbidden_zero_keys:
             if type(operations.get(key, MISSING)) is not int or operations.get(key) != 0:
                 result.fail(
@@ -2745,6 +2745,50 @@ def _check_r2r_autonomous_recall_search_closure(
             actual=operations.get("primary_provider_calls"),
         )
 
+    authorization = _get(summary, "provider_authorization", {})
+    if not isinstance(authorization, Mapping):
+        result.fail(
+            "r2r_provider_authorization_not_object",
+            "R2R requires structured provider authorization proof.",
+            path="provider_authorization",
+        )
+        authorization = {}
+    provider_execution_authorized = authorization.get("status") == "approved"
+    if provider_execution_authorized:
+        required_authorization = {
+            "approved_scope": "pr_135_autonomous_pair_closure",
+            "primary_provider_only": True,
+            "fixed_monetary_cap": None,
+            "further_budget_approval_required": False,
+            "first_pass_authorized": True,
+            "second_pass_authorized": True,
+            "compatible_deferred_reescalation_authorized": True,
+            "post_rebuild_new_pair_authorized": True,
+            "bounded_retry_authorized": True,
+            "fallback_provider_authorized": False,
+            "metadata_acquisition_authorized": False,
+            "other_phase_authorized": False,
+        }
+        for key, expected in required_authorization.items():
+            actual = authorization.get(key, MISSING)
+            if actual is MISSING or type(actual) is not type(expected) or actual != expected:
+                result.fail(
+                    "r2r_provider_authorization_invalid",
+                    "Provider execution requires the exact scope-bounded PR #135 authorization proof.",
+                    path=f"provider_authorization.{key}",
+                    expected=expected,
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+    primary_calls = _as_int(operations.get("primary_provider_calls"), default=0)
+    if primary_calls > 0 and not provider_execution_authorized:
+        result.fail(
+            "r2r_provider_called_without_authorization",
+            "Primary-provider calls require explicit scope-bounded authorization proof.",
+            path="provider_authorization.status",
+            expected="approved",
+            actual=authorization.get("status"),
+        )
+
     population = _get(summary, "candidate_population", {})
     dispositions = _get(summary, "candidate_dispositions", {})
     if not isinstance(population, Mapping) or not isinstance(dispositions, Mapping):
@@ -2752,6 +2796,16 @@ def _check_r2r_autonomous_recall_search_closure(
         population = {}
         dispositions = {}
     total = _as_int(population.get("total_candidate_pairs"), default=-1)
+    manifest_pairs = _as_int(population.get("candidate_manifest_pair_count"), default=total)
+    unique_eligible = _as_int(population.get("unique_budget_eligible_pair_count"), default=total)
+    if manifest_pairs != unique_eligible or total != manifest_pairs:
+        result.fail(
+            "r2r_candidate_manifest_unique_population_mismatch",
+            "Candidate deduplication must happen before manifest, budget, selection, and call ceilings.",
+            path="candidate_population",
+            expected="total_candidate_pairs = candidate_manifest_pair_count = unique_budget_eligible_pair_count",
+            actual={"total": total, "manifest": manifest_pairs, "unique_eligible": unique_eligible},
+        )
     must_link = _as_int(dispositions.get("must_link_count"), default=-1)
     cannot_link = _as_int(dispositions.get("cannot_link_count"), default=-1)
     deferred = _as_int(dispositions.get("deferred_nonblocking_count"), default=-1)
@@ -2886,6 +2940,10 @@ def _check_r2r_autonomous_recall_search_closure(
             "average_overlap_improved_vs_r2": True,
             "cannot_linked_search_contamination_count": 0,
             "false_broad_union_indicator_count": 0,
+            "seeds_with_false_broad_union": 0,
+            "unexpected_media_count": 0,
+            "identity_path_cannot_contamination_count": 0,
+            "evidence_fallback_cannot_contamination_count": 0,
             "giant_component_recurrence": False,
         }.items():
             actual = search.get(key, MISSING)
@@ -2898,6 +2956,23 @@ def _check_r2r_autonomous_recall_search_closure(
                     expected=expected,
                     actual="<missing>" if actual is MISSING else actual,
                 )
+        fallback_index = search.get("indexed_fallback")
+        if not isinstance(fallback_index, Mapping) or not all(
+            fallback_index.get(key) is expected
+            for key, expected in {
+                "generated": True,
+                "deterministic": True,
+                "idempotent": True,
+                "full_signal_python_scan_per_query": False,
+                "source_layer_only": True,
+                "identity_union_allowed": False,
+            }.items()
+        ):
+            result.fail(
+                "r2r_indexed_fallback_proof_failed",
+                "Target status requires a deterministic indexed source-layer fallback lookup.",
+                path="search_benchmark.indexed_fallback",
+            )
 
     if target:
         if not _as_bool(_get(summary, "public_redaction.passed", False)):

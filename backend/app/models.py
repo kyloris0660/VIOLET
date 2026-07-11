@@ -1216,6 +1216,62 @@ class SourceConceptSearchIndex(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SourceConceptFallbackSearchIndex(Base):
+    """Versioned source-layer lookup for non-materialized evidence fallback.
+
+    Rows are retrieval evidence only. They never authorize an identity union or
+    write Entity truth.
+    """
+
+    __tablename__ = 'blombooru_source_concept_fallback_search_index'
+    __table_args__ = (
+        UniqueConstraint(
+            'alias_key',
+            'media_id',
+            'source_signal_id',
+            'neighbor_signal_id',
+            'pair_id',
+            'overlay_version',
+            name='uq_source_concept_fallback_search_row',
+        ),
+        Index(
+            'ix_source_concept_fallback_search_lookup',
+            'alias_key',
+            'status',
+            'overlay_version',
+        ),
+        Index('ix_source_concept_fallback_search_pair', 'pair_id', 'relation'),
+        Index('ix_source_concept_fallback_search_media', 'media_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    alias_key = Column(String(500), nullable=False, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), nullable=True, index=True)
+    source_signal_id = Column(
+        Integer,
+        ForeignKey('blombooru_source_concept_signals.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    neighbor_signal_id = Column(
+        Integer,
+        ForeignKey('blombooru_source_concept_signals.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    pair_id = Column(String(64), nullable=False, index=True)
+    relation = Column(String(50), nullable=False, index=True)
+    overlay_version = Column(String(100), nullable=False, index=True)
+    disposition_version = Column(String(100), nullable=False)
+    role_hint = Column(String(100), nullable=True)
+    work_context_key = Column(String(500), nullable=True)
+    provenance_payload = Column(JSON, nullable=True)
+    status = Column(String(50), nullable=False, default='active', server_default='active', index=True)
+    run_id = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class NegativeLookupCache(Base):
     __tablename__ = 'blombooru_negative_lookup_cache'
     __table_args__ = (
