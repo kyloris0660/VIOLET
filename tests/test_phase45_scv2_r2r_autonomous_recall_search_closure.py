@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.services.source_concept_autonomous_closure_service import (
     FIRST_PASS_VERSION,
+    AutonomousClosureError,
     CandidatePair,
     PairDisposition,
     build_candidate_pair_manifest,
@@ -40,6 +41,7 @@ from app.services.source_concept_autonomous_closure_service import (
     disposition_accounting,
     estimate_autonomous_budget,
     execute_autonomous_missing_pairs,
+    persist_failed_pass_attempt,
     project_autonomous_materialization,
 )
 from app.services.source_concept_resolver_service import (
@@ -841,6 +843,31 @@ def test_valid_numeric_confidence_writes_success_checkpoint(tmp_path: Path) -> N
     assert dispositions[candidate.pair_id].disposition == "must_link"
     assert proof["provider_failure"] == 0
     assert len(list((tmp_path / "first" / "records").glob("*.json"))) == 1
+
+
+def test_failure_checkpoint_records_only_bounded_safe_validation_code(tmp_path: Path) -> None:
+    candidate = _candidate()
+    payload = {"candidate": {"pair_id": candidate.pair_id}}
+
+    safe_path = persist_failed_pass_attempt(
+        tmp_path,
+        pass_name="first",
+        candidate=candidate,
+        payload=payload,
+        error=AutonomousClosureError("invalid_machine_confidence"),
+    )
+    safe_record = json.loads(safe_path.read_text(encoding="utf-8"))
+    assert safe_record["validation_error_code"] == "invalid_machine_confidence"
+
+    unsafe_path = persist_failed_pass_attempt(
+        tmp_path,
+        pass_name="first",
+        candidate=candidate,
+        payload=payload,
+        error=RuntimeError("private value with spaces"),
+    )
+    unsafe_record = json.loads(unsafe_path.read_text(encoding="utf-8"))
+    assert unsafe_record["validation_error_code"] is None
 
 
 def test_malformed_attempt_is_retryable_and_valid_retry_writes_success(tmp_path: Path) -> None:

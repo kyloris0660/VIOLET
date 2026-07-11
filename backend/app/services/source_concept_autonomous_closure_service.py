@@ -650,6 +650,13 @@ def persist_failed_pass_attempt(
     provider_usage: Any = None,
 ) -> Path:
     path = _failure_record_path(cache_root, pass_name, candidate.pair_id)
+    error_code = str(error)
+    if (
+        not error_code
+        or len(error_code) > MAX_REASON_CODE_LENGTH
+        or SAFE_REASON_CODE_RE.fullmatch(error_code) is None
+    ):
+        error_code = None
     _atomic_write_json(
         path,
         {
@@ -658,6 +665,7 @@ def persist_failed_pass_attempt(
             "payload_hash": _sha256(payload),
             "success": False,
             "error_type": type(error).__name__,
+            "validation_error_code": error_code,
             "provider_call_attempted": getattr(error, "provider_call_attempted", True),
             "provider_usage": _validated_provider_usage(provider_usage),
             "recorded_at": utc_now_iso(),
