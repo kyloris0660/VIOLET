@@ -348,6 +348,34 @@ def test_r2r_runner_records_scope_bounded_primary_provider_authorization() -> No
     assert "import requests" not in source
 
 
+def test_r2r_supersedes_legacy_review_concepts_without_deleting_evidence(db_session) -> None:
+    active = SourceConcept(
+        concept_key="active",
+        primary_display_name="Active",
+        concept_type_hint="unknown",
+        status="active",
+    )
+    deferred = SourceConcept(
+        concept_key="legacy-review",
+        primary_display_name="Deferred",
+        concept_type_hint="unknown",
+        status="needs_review",
+    )
+    db_session.add_all([active, deferred])
+    db_session.flush()
+
+    changed = r2r_runner.supersede_r2r_nonmaterialized_concepts(
+        db_session,
+        run_id="r2r-test",
+    )
+
+    assert changed == 1
+    assert active.status == "active"
+    assert deferred.status == "superseded"
+    assert deferred.created_by_run_id == "r2r-test"
+    assert db_session.query(SourceConcept).count() == 2
+
+
 def test_primary_provider_executor_records_usage_without_fallback() -> None:
     class FakePrimaryProvider:
         last_usage = {}

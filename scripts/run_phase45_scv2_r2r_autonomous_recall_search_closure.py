@@ -333,6 +333,17 @@ def environment_isolation(source_db: str, working_db: str) -> dict[str, Any]:
     }
 
 
+def supersede_r2r_nonmaterialized_concepts(session: Any, *, run_id: str) -> int:
+    """Retain legacy rows as history without exposing them as review concepts."""
+
+    rows = session.query(SourceConcept).filter(SourceConcept.status == "needs_review").all()
+    for row in rows:
+        row.status = "superseded"
+        row.created_by_run_id = run_id
+    session.flush()
+    return len(rows)
+
+
 def prepare_working_database(args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
     isolation = environment_isolation(args.source_db, args.working_db)
     if not isolation["passed"]:
@@ -1932,6 +1943,9 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
                     apply=True,
                     inventory=source_signal_inventory(session),
                     run_label="scv2_r2r_autonomous_recall_search_closure",
+                )
+                persistence["r2r_superseded_legacy_needs_review_concept_count"] = (
+                    supersede_r2r_nonmaterialized_concepts(session, run_id=run_id)
                 )
                 current_cannot_pairs = complete_current_cannot_pairs(
                     signal_by_key={signal.signal_key: signal for signal in projected.signals},
