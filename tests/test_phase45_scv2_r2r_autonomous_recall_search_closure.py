@@ -351,8 +351,10 @@ def test_r2r_runner_records_scope_bounded_primary_provider_authorization() -> No
 def test_primary_provider_executor_records_usage_without_fallback() -> None:
     class FakePrimaryProvider:
         last_usage = {}
+        messages = None
 
         async def complete_json(self, messages, *, temperature, max_tokens):
+            self.messages = messages
             self.last_usage = {
                 "prompt_tokens": 120,
                 "completion_tokens": 30,
@@ -367,8 +369,9 @@ def test_primary_provider_executor_records_usage_without_fallback() -> None:
                 "reason_code": "context_conflict",
             }
 
+    provider = FakePrimaryProvider()
     executor = r2r_runner.PrimaryProviderJudgmentExecutor(
-        FakePrimaryProvider(),
+        provider,
         {"uses_fallback_provider": False, "provider_mode": "primary_openai"},
     )
     candidate = _candidate()
@@ -385,6 +388,11 @@ def test_primary_provider_executor_records_usage_without_fallback() -> None:
     assert summary["total_tokens"] == 150
     assert summary["actual_cost_usd"] == 0.0003
     assert summary["fallback_provider_used"] is False
+    envelope = json.loads(provider.messages[-1]["content"].split(": ", 1)[1])
+    assert envelope == {
+        "pair_id": candidate.pair_id,
+        "pass_version": FIRST_PASS_VERSION,
+    }
 
 
 def test_durable_provider_usage_summary_detects_preinstrumentation_gap(tmp_path: Path) -> None:

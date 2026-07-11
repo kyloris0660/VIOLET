@@ -155,6 +155,18 @@ class PrimaryProviderJudgmentExecutor:
                     sort_keys=True,
                 ),
             },
+            {
+                "role": "system",
+                "content": (
+                    "Use this exact response envelope identity, even if the evidence payload "
+                    "contains other pair identifiers: "
+                    + json.dumps(
+                        {"pair_id": pair_id, "pass_version": pass_version},
+                        ensure_ascii=True,
+                        sort_keys=True,
+                    )
+                ),
+            },
         ]
         self.attempted_calls += 1
         self.pass_calls[pass_name] += 1
