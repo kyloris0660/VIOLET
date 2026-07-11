@@ -570,12 +570,29 @@ def persist_successful_pass_record(
         "decision": validated["decision"],
         "confidence": validated["confidence"],
         "reason_code": validated["reason_code"],
+        "provider_usage": _validated_provider_usage(response.get("_provider_usage")),
         "success": True,
         "error_state": None,
         "persisted_at": utc_now_iso(),
     }
     _atomic_write_json(_cache_record_path(cache_root, pass_name, candidate.pair_id), record)
     return record
+
+
+def _validated_provider_usage(value: Any) -> dict[str, Any]:
+    usage = value if isinstance(value, Mapping) else {}
+    normalized: dict[str, int] = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        item = usage.get(key)
+        if isinstance(item, int) and not isinstance(item, bool) and item >= 0:
+            normalized[key] = item
+    return {
+        **normalized,
+        "usage_reported": all(
+            key in normalized
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+        ),
+    }
 
 
 def validate_provider_response(
@@ -587,6 +604,8 @@ def validate_provider_response(
     """Validate the complete response before any success checkpoint exists."""
 
     if not isinstance(response, Mapping):
+        raise AutonomousClosureError("provider_response_not_structured_object")
+    if response.get("_provider_response_was_mapping") is False:
         raise AutonomousClosureError("provider_response_not_structured_object")
     expected_version = FIRST_PASS_VERSION if pass_name == "first" else SECOND_PASS_VERSION
     if response.get("pair_id") != candidate.pair_id:
@@ -628,6 +647,7 @@ def persist_failed_pass_attempt(
     candidate: CandidatePair,
     payload: Mapping[str, Any],
     error: BaseException,
+    provider_usage: Any = None,
 ) -> Path:
     path = _failure_record_path(cache_root, pass_name, candidate.pair_id)
     _atomic_write_json(
@@ -638,6 +658,8 @@ def persist_failed_pass_attempt(
             "payload_hash": _sha256(payload),
             "success": False,
             "error_type": type(error).__name__,
+            "provider_call_attempted": getattr(error, "provider_call_attempted", True),
+            "provider_usage": _validated_provider_usage(provider_usage),
             "recorded_at": utc_now_iso(),
         },
     )
@@ -692,6 +714,7 @@ def execute_autonomous_missing_pairs(
             return record
         for attempt in range(1, max_attempts_per_pass + 1):
             counters[f"{pass_name}_provider_attempted"] += 1
+            response: Any = None
             try:
                 response = executor(pass_name, payload)
                 record = persist_successful_pass_record(
@@ -710,6 +733,11 @@ def execute_autonomous_missing_pairs(
                     candidate=candidate,
                     payload=payload,
                     error=exc,
+                    provider_usage=(
+                        response.get("_provider_usage")
+                        if isinstance(response, Mapping)
+                        else None
+                    ),
                 )
                 counters["failed_attempt_count"] += 1
                 if isinstance(exc, AutonomousClosureError):

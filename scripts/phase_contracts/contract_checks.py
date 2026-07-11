@@ -2915,6 +2915,7 @@ def _check_r2r_autonomous_recall_search_closure(
             or llm.get("failed_judgments_counted_as_success") is not False
             or llm.get("primary_provider_only") is not True
             or llm.get("fallback_provider_used") is not False
+            or llm.get("usage_accounting_complete") is not True
             or checkpoint.get("durable_checkpoint_passed") is not True
             or checkpoint.get("atomic_per_success_persistence") is not True
             or checkpoint.get("final_regeneration_cache_only") is not True

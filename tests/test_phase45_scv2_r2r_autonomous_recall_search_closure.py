@@ -150,6 +150,7 @@ def _summary(*, target: bool = True) -> dict:
             "failed_judgments_counted_as_success": False,
             "primary_provider_only": True,
             "fallback_provider_used": False,
+            "usage_accounting_complete": True,
         },
         "candidate_dispositions": {
             "must_link_count": 3,
@@ -382,6 +383,54 @@ def test_primary_provider_executor_records_usage_without_fallback() -> None:
     assert summary["total_tokens"] == 150
     assert summary["actual_cost_usd"] == 0.0003
     assert summary["fallback_provider_used"] is False
+
+
+def test_durable_provider_usage_summary_detects_preinstrumentation_gap(tmp_path: Path) -> None:
+    first_records = tmp_path / "first" / "records"
+    first_failures = tmp_path / "first" / "failures"
+    first_records.mkdir(parents=True)
+    first_failures.mkdir(parents=True)
+    (first_records / "measured.json").write_text(
+        json.dumps(
+            {
+                "provider_usage": {
+                    "usage_reported": True,
+                    "prompt_tokens": 100,
+                    "completion_tokens": 20,
+                    "total_tokens": 120,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (first_records / "missing.json").write_text(
+        json.dumps({"success": True}),
+        encoding="utf-8",
+    )
+    (first_failures / "failed.json").write_text(
+        json.dumps(
+            {
+                "provider_call_attempted": True,
+                "provider_usage": {
+                    "usage_reported": True,
+                    "prompt_tokens": 80,
+                    "completion_tokens": 10,
+                    "total_tokens": 90,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = r2r_runner.summarize_durable_provider_usage(tmp_path)
+
+    assert summary["attempted_calls"] == 3
+    assert summary["usage_reported_call_count"] == 2
+    assert summary["usage_missing_call_count"] == 1
+    assert summary["total_tokens"] == 210
+    assert summary["measured_cost_usd"] == 0.00042
+    assert summary["actual_cost_usd"] is None
+    assert summary["usage_accounting_complete"] is False
 
 
 def test_public_retention_projection_field_does_not_trigger_path_redaction() -> None:

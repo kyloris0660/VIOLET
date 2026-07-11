@@ -177,7 +177,24 @@ class PrimaryProviderJudgmentExecutor:
             self.prompt_tokens += int(usage.get("prompt_tokens") or 0)
             self.completion_tokens += int(usage.get("completion_tokens") or 0)
             self.total_tokens += int(usage.get("total_tokens") or 0)
-        return response
+        usage_payload = {
+            key: int(usage[key])
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            if isinstance(usage, Mapping)
+            and isinstance(usage.get(key), int)
+            and not isinstance(usage.get(key), bool)
+            and int(usage[key]) >= 0
+        }
+        if isinstance(response, Mapping):
+            return {
+                **dict(response),
+                "_provider_response_was_mapping": True,
+                "_provider_usage": usage_payload,
+            }
+        return {
+            "_provider_response_was_mapping": False,
+            "_provider_usage": usage_payload,
+        }
 
     def public_summary(self) -> dict[str, Any]:
         return {
@@ -1725,6 +1742,57 @@ def _merge_execution_proofs(proofs: Sequence[Mapping[str, Any]]) -> dict[str, An
     return {**dict(aggregate), "transitions": transitions}
 
 
+def summarize_durable_provider_usage(cache_root: Path) -> dict[str, Any]:
+    """Aggregate actual provider usage from durable success/failure attempts."""
+
+    counters: Counter[str] = Counter()
+    for pass_name in ("first", "second"):
+        for record_kind in ("records", "failures"):
+            directory = cache_root / pass_name / record_kind
+            for path in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+                try:
+                    record = json.loads(path.read_text(encoding="utf-8"))
+                except Exception:
+                    counters["invalid_ledger_record_count"] += 1
+                    continue
+                if record.get("provider_call_attempted") is False:
+                    counters["non_provider_failure_ledger_count"] += 1
+                    continue
+                counters["attempted_calls"] += 1
+                counters[f"{pass_name}_pass_calls"] += 1
+                counters[
+                    "successful_call_count" if record_kind == "records" else "failed_attempt_count"
+                ] += 1
+                usage = record.get("provider_usage") if isinstance(record, Mapping) else None
+                if not isinstance(usage, Mapping) or usage.get("usage_reported") is not True:
+                    counters["usage_missing_call_count"] += 1
+                    continue
+                counters["usage_reported_call_count"] += 1
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    counters[key] += int(usage.get(key) or 0)
+    complete = bool(
+        counters["attempted_calls"] > 0
+        and counters["usage_missing_call_count"] == 0
+        and counters["invalid_ledger_record_count"] == 0
+    )
+    measured_cost = round(
+        counters["total_tokens"] / 1000.0 * PROVIDER_COST_RATE_USD_PER_1K_TOKENS,
+        6,
+    )
+    return {
+        **dict(counters),
+        "usage_accounting_complete": complete,
+        "measured_cost_usd": measured_cost,
+        "actual_cost_usd": measured_cost if complete else None,
+        "actual_cost_incomplete_reason": (
+            None if complete else "provider_usage_missing_for_pre_instrumentation_attempts"
+        ),
+        "cost_accounting_rate_usd_per_1k_tokens": PROVIDER_COST_RATE_USD_PER_1K_TOKENS,
+        "provider_identity_redacted": True,
+        "provider_url_redacted": True,
+    }
+
+
 def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
     """Execute the approved primary-provider closure and deterministic rebuild."""
 
@@ -1948,7 +2016,9 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
             def cache_only_executor(_pass_name: str, _payload: Mapping[str, Any]) -> Mapping[str, Any]:
                 nonlocal cache_only_provider_attempts
                 cache_only_provider_attempts += 1
-                raise AssertionError("final cache-only regeneration attempted provider")
+                error = AssertionError("final cache-only regeneration attempted provider")
+                error.provider_call_attempted = False  # type: ignore[attr-defined]
+                raise error
 
             regen_reused, _regen_cache, _regen_analysis = classify_legacy_cache_reuse(
                 Path(args.legacy_cache_dir),
@@ -2016,7 +2086,15 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
             session.rollback()
 
             execution = _merge_execution_proofs(all_execution_proofs)
-            provider_public = executor.public_summary()
+            process_provider_summary = executor.public_summary()
+            durable_usage = summarize_durable_provider_usage(cache_root)
+            provider_public = {
+                **process_provider_summary,
+                **durable_usage,
+                "attempted_calls_this_process": process_provider_summary["attempted_calls"],
+                "first_pass_calls": durable_usage.get("first_pass_calls", 0),
+                "second_pass_calls": durable_usage.get("second_pass_calls", 0),
+            }
             constraints_clean = bool(
                 final_graph
                 and all(
@@ -2044,7 +2122,11 @@ def run_authorized_execution(args: argparse.Namespace, output_dir: Path) -> dict
                 status = "blocked_llm_execution_incomplete"
             elif not constraints_clean:
                 status = "blocked_constraint_regression"
-            elif not final_regeneration_cache_only or not search_target:
+            elif (
+                not final_regeneration_cache_only
+                or not search_target
+                or not durable_usage["usage_accounting_complete"]
+            ):
                 status = "partial_autonomous_closure"
             else:
                 status = "target_met_autonomous_recall_search_closure"
