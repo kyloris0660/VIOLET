@@ -36,6 +36,8 @@ from app.models import (  # noqa: E402
     SourceConceptSearchIndex,
     SourceConceptSignal,
     SourceConceptSignalLink,
+    SourceMetadataRecord,
+    SourceNameObservation,
     Tag,
     TagTranslation,
     blombooru_media_tags,
@@ -392,6 +394,72 @@ def test_runtime_shared_name_union_and_media_level_and_disambiguation(client, db
     assert concept_a.id != concept_b.id
     assert db.query(SourceConcept).count() == identity_before["concepts"]
     assert db.query(SourceConceptSignalLink).count() == identity_before["links"]
+
+
+def test_exact_pixiv_creator_and_work_title_are_default_search_support(client, db):
+    media = create_media(db, "exact-pixiv-creator-work")
+    record = SourceMetadataRecord(
+        provider="pixiv",
+        provider_record_key="pixiv-fixture:creator-work",
+        media_id=media.id,
+        source_work_id="123456789",
+        source_page_index=0,
+        title="Fixture Work Title",
+        artist_name="Fixture Creator",
+        artist_id="42",
+        raw_metadata_json={"user": {"id": 42, "name": "Fixture Creator"}},
+        status="observed",
+    )
+    db.add(record)
+    db.flush()
+    observations = [
+        SourceNameObservation(
+            source_metadata_record_id=record.id,
+            provider="pixiv",
+            observation_key="pixiv-fixture:creator",
+            media_id=media.id,
+            source_work_id="123456789",
+            source_page_index=0,
+            raw_name="Fixture Creator",
+            normalized_name="Fixture Creator",
+            canonical_name_key=canonical_source_key("Fixture Creator"),
+            name_role="artist",
+            source_field="pixiv_user_metadata",
+            requires_review=True,
+            status="observed",
+        ),
+        SourceNameObservation(
+            source_metadata_record_id=record.id,
+            provider="pixiv",
+            observation_key="pixiv-fixture:work",
+            media_id=media.id,
+            source_work_id="123456789",
+            source_page_index=0,
+            raw_name="Fixture Work Title",
+            normalized_name="Fixture Work Title",
+            canonical_name_key=canonical_source_key("Fixture Work Title"),
+            name_role="work_title",
+            source_field="pixiv_title",
+            requires_review=True,
+            status="observed",
+        ),
+    ]
+    db.add_all(observations)
+    db.commit()
+
+    response = client.get(
+        "/api/search",
+        params={"q": '"Fixture Creator" "Fixture Work Title"'},
+    )
+    assert result_ids(response) == {media.id}
+
+    observations[1].status = "rejected"
+    db.commit()
+    rejected = client.get(
+        "/api/search",
+        params={"q": '"Fixture Creator" "Fixture Work Title"'},
+    )
+    assert result_ids(rejected) == set()
 
 
 def test_normal_tag_results_are_preserved_when_alias_also_matches(client, db):

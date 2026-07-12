@@ -45,6 +45,14 @@ DEFAULT_ASSERTION_ROLES = (
 EXCLUDED_DEFAULT_ASSERTION_ROLES = ("general_descriptor", "popularity_marker", "unknown")
 ACTIVE_SOURCE_TAG_STATUSES = ("observed",)
 ACTIVE_NAME_OBSERVATION_STATUSES = ("observed",)
+DEFAULT_QUERY_VISIBLE_EXACT_PIXIV_NAME_FIELDS = (
+    "pixiv_user_metadata",
+    "pixiv_user_account",
+    "pixiv_title",
+    "pixiv_parenthetical_inner_work",
+    "pixiv_character_tag",
+    "pixiv_work_title_tag",
+)
 SOFT_ALIAS_RELATION_TYPES = (
     "curated_alias",
     "provider_canonical",
@@ -227,7 +235,15 @@ def _source_name_condition(
         name.canonical_name_key.in_(sorted(keys)),
     ]
     if not include_needs_review:
-        name_conditions.append(name.requires_review == False)
+        name_conditions.append(
+            or_(
+                name.requires_review == False,
+                and_(
+                    name.provider == "pixiv",
+                    name.source_field.in_(DEFAULT_QUERY_VISIBLE_EXACT_PIXIV_NAME_FIELDS),
+                ),
+            )
+        )
     if provider:
         name_conditions.append(name.provider == provider)
     if role:
@@ -299,7 +315,15 @@ def _source_layer_exact_text_condition(term: str, *, include_needs_review: bool 
         ),
     ]
     if not include_needs_review:
-        name_conditions.append(name.requires_review == False)
+        name_conditions.append(
+            or_(
+                name.requires_review == False,
+                and_(
+                    name.provider == "pixiv",
+                    name.source_field.in_(DEFAULT_QUERY_VISIBLE_EXACT_PIXIV_NAME_FIELDS),
+                ),
+            )
+        )
 
     source_tag = aliased(SourceTagObservation)
     source_tag_record = aliased(SourceMetadataRecord)
