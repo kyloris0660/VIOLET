@@ -479,6 +479,21 @@ def test_review_pack_equivalence_fails_when_packed_evidence_differs(tmp_path: Pa
         ml1_runner.verify_review_pack_equivalence(public, pack_dir)
 
 
+def test_public_markdown_uses_current_blocker_and_no_durable_semantics() -> None:
+    wrapper = json.loads(
+        (ROOT / "docs/reports/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure-summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    evidence = wrapper.get("evidence_summary", wrapper)
+    report = ml1_runner.render_report(evidence)
+    assert "credential rotation confirmed" in report
+    assert "no-durable-result" in report
+    assert "approval required: `True`" not in report
+    assert "Identity-eligible / search-only families" in report
+    assert "Unsupported / rejected / superseded results" in report
+
+
 def test_creator_audit_detects_account_loss_without_destroying_stable_id() -> None:
     metadata = [
         {
