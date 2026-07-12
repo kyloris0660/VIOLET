@@ -11,6 +11,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from .contract_registry import (
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES,
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
+    R2R_AUTONOMOUS_RECALL_SEARCH_CLOSURE_STATUSES,
     R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES,
     SOURCE_CONCEPT_ALLOWED_STATUSES,
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
@@ -2070,7 +2071,6 @@ def _check_r2_source_concept_graph_remediation(
                     expected=expected,
                     actual="<missing>" if actual is MISSING else actual,
                 )
-
     manifest = _get(summary, "fixed_input_manifest", {})
     if not isinstance(manifest, Mapping):
         result.fail("r2_fixed_input_manifest_not_object", "R2 requires fixed-input manifest proof.", path="fixed_input_manifest")
@@ -2626,6 +2626,444 @@ def _check_r2_source_concept_graph_remediation(
         forbidden_true = sorted(key for key, value in route.items() if value is True)
         if forbidden_true:
             result.fail("r2_forbidden_route_authorization", "R2 cannot authorize downstream/provider/production/truth work.", path="route_authorization", actual=forbidden_true)
+
+
+def _check_r2r_autonomous_recall_search_closure(
+    _contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    """Fail-closed SCV2-R2R gate for autonomous closure without human queues."""
+
+    status = str(_get(summary, "pipeline_contract.status", "") or "")
+    target = status == "target_met_autonomous_recall_search_closure"
+    if status not in R2R_AUTONOMOUS_RECALL_SEARCH_CLOSURE_STATUSES:
+        result.fail(
+            "r2r_status_invalid",
+            "R2R status must use the autonomous closure vocabulary.",
+            path="pipeline_contract.status",
+            expected=list(R2R_AUTONOMOUS_RECALL_SEARCH_CLOSURE_STATUSES),
+            actual=status,
+        )
+        return
+    if not target and _completion_or_approval_claimed(result):
+        result.fail(
+            "r2r_non_target_status_claims_completion",
+            "Only target_met_autonomous_recall_search_closure may claim completion.",
+            path="pipeline_contract.claims",
+        )
+
+    isolation = _get(summary, "environment_isolation", {})
+    if not isinstance(isolation, Mapping):
+        result.fail("r2r_isolation_not_object", "R2R requires structured isolation proof.", path="environment_isolation")
+        isolation = {}
+    isolation_expected = {
+        "passed": True,
+        "dev_test_only": True,
+        "working_db_is_separate_from_r2_baseline": True,
+        "r2_baseline_preserved": True,
+        "production_profile_active": False,
+        "canonical_production_profile_flag_checked": True,
+        "production_write_attempted": False,
+        "protected_source_write_attempted": False,
+    }
+    if target or status != "blocked_environment_isolation":
+        for key, expected in isolation_expected.items():
+            actual = isolation.get(key, MISSING)
+            if type(actual) is not bool or actual is not expected:
+                result.fail(
+                    "r2r_isolation_proof_missing_or_invalid",
+                    "R2R isolation flags must be exact booleans.",
+                    path=f"environment_isolation.{key}",
+                    expected=expected,
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+    if status == "partial_autonomous_closure" and _get(
+        summary, "zero_provider_closeout.completed", False
+    ) is True:
+        closeout = _get(summary, "zero_provider_closeout", {})
+        for key, expected in {
+            "completed": True,
+            "provider_surface_initialized": False,
+            "provider_calls": 0,
+            "graph_rebuilt": False,
+            "materialization_rebuilt": False,
+            "existing_working_database_reused": True,
+        }.items():
+            if closeout.get(key, MISSING) != expected:
+                result.fail(
+                    "r2r_zero_provider_closeout_invalid",
+                    "Partial closeout must prove zero provider use and reuse accepted graph state.",
+                    path=f"zero_provider_closeout.{key}",
+                    expected=expected,
+                    actual=closeout.get(key, "<missing>"),
+                )
+
+    fixed = _get(summary, "fixed_input_proof", {})
+    if not isinstance(fixed, Mapping):
+        result.fail("r2r_fixed_input_not_object", "R2R requires fixed-input proof.", path="fixed_input_proof")
+        fixed = {}
+    if target:
+        for key in (
+            "present",
+            "baseline_to_working_clone_match",
+            "before_after_match",
+            "row_counts_match",
+            "schemas_match",
+            "content_fingerprints_match",
+            "forbidden_truth_content_unchanged",
+        ):
+            if fixed.get(key) is not True:
+                result.fail(
+                    "r2r_fixed_evidence_changed_or_unproven",
+                    "Target status requires unchanged fixed and forbidden evidence.",
+                    path=f"fixed_input_proof.{key}",
+                    expected=True,
+                    actual=fixed.get(key),
+                )
+        if fixed.get("changed_tables") != [] or fixed.get("forbidden_truth_changed_tables") != []:
+            result.fail(
+                "r2r_fixed_evidence_changed",
+                "R2R cannot complete with changed fixed or forbidden tables.",
+                path="fixed_input_proof",
+            )
+
+    operations = _get(summary, "operation_counts", {})
+    if not isinstance(operations, Mapping):
+        result.fail("r2r_operation_counts_not_object", "R2R requires forbidden-operation accounting.", path="operation_counts")
+        operations = {}
+    forbidden_zero_keys = (
+        "gallery_dl_calls",
+        "provider_metadata_acquisition_calls",
+        "pixiv_provider_calls",
+        "ai_tagging_calls",
+        "media_imports",
+        "classification_calls",
+        "localization_calls",
+        "upstream_observation_mutations",
+        "production_writes",
+        "truth_path_writes",
+        "fallback_provider_calls",
+    )
+    if status != "blocked_environment_isolation":
+        for key in forbidden_zero_keys:
+            if type(operations.get(key, MISSING)) is not int or operations.get(key) != 0:
+                result.fail(
+                    "r2r_forbidden_operation_nonzero_or_missing",
+                    "R2R requires explicit zero acquisition/import/truth/production/fallback operations.",
+                    path=f"operation_counts.{key}",
+                    expected=0,
+                    actual=operations.get(key, "<missing>"),
+                )
+    if status == "blocked_llm_approval_required" and _as_int(operations.get("primary_provider_calls"), default=-1) != 0:
+        result.fail(
+            "r2r_provider_called_before_approval",
+            "The initial cache-only run must make zero primary-provider calls.",
+            path="operation_counts.primary_provider_calls",
+            expected=0,
+            actual=operations.get("primary_provider_calls"),
+        )
+
+    authorization = _get(summary, "provider_authorization", {})
+    if not isinstance(authorization, Mapping):
+        result.fail(
+            "r2r_provider_authorization_not_object",
+            "R2R requires structured provider authorization proof.",
+            path="provider_authorization",
+        )
+        authorization = {}
+    provider_execution_authorized = authorization.get("status") == "approved"
+    if provider_execution_authorized:
+        required_authorization = {
+            "approved_scope": "pr_135_autonomous_pair_closure",
+            "primary_provider_only": True,
+            "fixed_monetary_cap": None,
+            "further_budget_approval_required": False,
+            "first_pass_authorized": True,
+            "second_pass_authorized": True,
+            "compatible_deferred_reescalation_authorized": True,
+            "post_rebuild_new_pair_authorized": True,
+            "bounded_retry_authorized": True,
+            "fallback_provider_authorized": False,
+            "metadata_acquisition_authorized": False,
+            "other_phase_authorized": False,
+        }
+        for key, expected in required_authorization.items():
+            actual = authorization.get(key, MISSING)
+            if actual is MISSING or type(actual) is not type(expected) or actual != expected:
+                result.fail(
+                    "r2r_provider_authorization_invalid",
+                    "Provider execution requires the exact scope-bounded PR #135 authorization proof.",
+                    path=f"provider_authorization.{key}",
+                    expected=expected,
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+    primary_calls = _as_int(operations.get("primary_provider_calls"), default=0)
+    if primary_calls > 0 and not provider_execution_authorized:
+        result.fail(
+            "r2r_provider_called_without_authorization",
+            "Primary-provider calls require explicit scope-bounded authorization proof.",
+            path="provider_authorization.status",
+            expected="approved",
+            actual=authorization.get("status"),
+        )
+
+    population = _get(summary, "candidate_population", {})
+    dispositions = _get(summary, "candidate_dispositions", {})
+    if not isinstance(population, Mapping) or not isinstance(dispositions, Mapping):
+        result.fail("r2r_candidate_accounting_not_object", "R2R requires candidate population and dispositions.", path="candidate_population")
+        population = {}
+        dispositions = {}
+    total = _as_int(population.get("total_candidate_pairs"), default=-1)
+    manifest_pairs = _as_int(population.get("candidate_manifest_pair_count"), default=total)
+    unique_eligible = _as_int(population.get("unique_budget_eligible_pair_count"), default=total)
+    if manifest_pairs != unique_eligible or total != manifest_pairs:
+        result.fail(
+            "r2r_candidate_manifest_unique_population_mismatch",
+            "Candidate deduplication must happen before manifest, budget, selection, and call ceilings.",
+            path="candidate_population",
+            expected="total_candidate_pairs = candidate_manifest_pair_count = unique_budget_eligible_pair_count",
+            actual={"total": total, "manifest": manifest_pairs, "unique_eligible": unique_eligible},
+        )
+    must_link = _as_int(dispositions.get("must_link_count"), default=-1)
+    cannot_link = _as_int(dispositions.get("cannot_link_count"), default=-1)
+    deferred = _as_int(dispositions.get("deferred_nonblocking_count"), default=-1)
+    unaccounted = _as_int(dispositions.get("unaccounted_pair_count"), default=-1)
+    coverage = dispositions.get("candidate_disposition_coverage")
+    equality = total == must_link + cannot_link + deferred
+    if target and (
+        min(total, must_link, cannot_link, deferred, unaccounted) < 0
+        or not equality
+        or unaccounted != 0
+        or coverage != 1.0
+        or dispositions.get("accounting_equality_passed") is not True
+        or dispositions.get("duplicate_disposition_count") != 0
+        or dispositions.get("silently_dropped_pair_count") != 0
+    ):
+        result.fail(
+            "r2r_candidate_disposition_accounting_incomplete",
+            "Every candidate pair must have exactly one machine disposition.",
+            path="candidate_dispositions",
+            expected="total = must_link + cannot_link + deferred_nonblocking; coverage=1.0",
+            actual={
+                "total": total,
+                "must_link": must_link,
+                "cannot_link": cannot_link,
+                "deferred_nonblocking": deferred,
+                "unaccounted": unaccounted,
+                "coverage": coverage,
+            },
+        )
+
+    automation = _get(summary, "automation_invariants", {})
+    if not isinstance(automation, Mapping):
+        result.fail("r2r_automation_invariants_not_object", "R2R requires automation invariants.", path="automation_invariants")
+        automation = {}
+    for key, expected in {
+        "manual_review_required_count": 0,
+        "operator_blocking_review_count": 0,
+        "manual_review_queue_generated": False,
+    }.items():
+        actual = automation.get(key, MISSING)
+        valid = type(actual) is int and actual == expected if type(expected) is int else type(actual) is bool and actual is expected
+        if not valid:
+            result.fail(
+                "r2r_human_review_dependency_present",
+                "R2R must not create or depend on human review.",
+                path=f"automation_invariants.{key}",
+                expected=expected,
+                actual="<missing>" if actual is MISSING else actual,
+            )
+
+    materialization = _get(summary, "materialization_projection", {})
+    if not isinstance(materialization, Mapping):
+        result.fail("r2r_materialization_not_object", "R2R requires materialization projection proof.", path="materialization_projection")
+        materialization = {}
+    if target:
+        for key, expected in {
+            "materialized_needs_review_count": 0,
+            "unresolved_evidence_retained": True,
+            "idempotent_fingerprint_match": True,
+            "deferred_overlay_versioned": True,
+            "deferred_overlay_atomic": True,
+        }.items():
+            actual = materialization.get(key, MISSING)
+            valid = type(actual) is int and actual == expected if type(expected) is int else type(actual) is bool and actual is expected
+            if not valid:
+                result.fail(
+                    "r2r_materialization_projection_failed",
+                    "R2R target requires zero materialized needs_review rows and retained unresolved evidence.",
+                    path=f"materialization_projection.{key}",
+                    expected=expected,
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+    if status == "partial_autonomous_closure" and _get(
+        summary, "zero_provider_closeout.completed", False
+    ) is True:
+        for key, expected in {
+            "materialized_needs_review_count": 0,
+            "unresolved_evidence_retained": True,
+            "deferred_overlay_versioned": True,
+            "deferred_overlay_atomic": True,
+            "fallback_index_generated": True,
+            "fallback_index_idempotent": True,
+            "fallback_index_identity_union_allowed": False,
+            "manual_review_queue_generated": False,
+        }.items():
+            if materialization.get(key, MISSING) != expected:
+                result.fail(
+                    "r2r_partial_materialization_proof_incomplete",
+                    "Partial closeout requires measured overlay/materialization lifecycle proof.",
+                    path=f"materialization_projection.{key}",
+                    expected=expected,
+                    actual=materialization.get(key, "<missing>"),
+                )
+
+    graph = _get(summary, "graph_invariants", {})
+    if not isinstance(graph, Mapping):
+        result.fail("r2r_graph_invariants_not_object", "R2R requires graph invariants.", path="graph_invariants")
+        graph = {}
+    if target:
+        for key in (
+            "review_or_deferred_edge_used_in_union_count",
+            "direct_cannot_violation_count",
+            "transitive_cannot_violation_count",
+            "deterministic_hard_conflict_count",
+            "unauthorized_unknown_role_materialization_count",
+            "unexplained_proof_grade_same_regression_count",
+        ):
+            if _as_int(graph.get(key), default=-1) != 0:
+                result.fail(
+                    "r2r_constraint_regression",
+                    "R2R target requires zero union/cannot/unknown-role/same-regression violations.",
+                    path=f"graph_invariants.{key}",
+                    expected=0,
+                    actual=graph.get(key),
+                )
+
+    llm = _get(summary, "llm_execution", {})
+    checkpoint = _get(summary, "checkpoint_proof", {})
+    if not isinstance(llm, Mapping) or not isinstance(checkpoint, Mapping):
+        result.fail("r2r_llm_or_checkpoint_not_object", "R2R requires LLM and checkpoint proof.", path="llm_execution")
+        llm = {}
+        checkpoint = {}
+    if target:
+        if (
+            _as_int(llm.get("remaining_unaccounted_missing_pairs"), default=-1) != 0
+            or _as_int(llm.get("provider_failure_count"), default=-1) != 0
+            or llm.get("all_approved_missing_pairs_accounted") is not True
+            or llm.get("failed_judgments_counted_as_success") is not False
+            or llm.get("primary_provider_only") is not True
+            or llm.get("fallback_provider_used") is not False
+            or llm.get("usage_accounting_complete") is not True
+            or checkpoint.get("durable_checkpoint_passed") is not True
+            or checkpoint.get("atomic_per_success_persistence") is not True
+            or checkpoint.get("final_regeneration_cache_only") is not True
+            or _as_int(checkpoint.get("final_regeneration_provider_calls"), default=-1) != 0
+        ):
+            result.fail(
+                "r2r_llm_checkpoint_incomplete",
+                "Target status requires complete approved-pair accounting and cache-only regeneration.",
+                path="llm_execution",
+            )
+
+    search = _get(summary, "search_benchmark", {})
+    if not isinstance(search, Mapping):
+        result.fail("r2r_search_benchmark_not_object", "R2R requires automated search benchmark proof.", path="search_benchmark")
+        search = {}
+    if target:
+        for key, expected in {
+            "generated": True,
+            "reproducible": True,
+            "identity_and_fallback_reported_separately": True,
+            "symmetry_improved_vs_r2": True,
+            "unmatched_seeds_decreased_vs_r2": True,
+            "average_overlap_improved_vs_r2": True,
+            "cannot_linked_search_contamination_count": 0,
+            "false_broad_union_indicator_count": 0,
+            "seeds_with_false_broad_union": 0,
+            "unexpected_media_count": 0,
+            "identity_path_cannot_contamination_count": 0,
+            "evidence_fallback_cannot_contamination_count": 0,
+            "giant_component_recurrence": False,
+        }.items():
+            actual = search.get(key, MISSING)
+            valid = type(actual) is int and actual == expected if type(expected) is int else type(actual) is bool and actual is expected
+            if not valid:
+                result.fail(
+                    "r2r_search_target_failed",
+                    "R2R target requires improved dual-path search without contamination or giant components.",
+                    path=f"search_benchmark.{key}",
+                    expected=expected,
+                    actual="<missing>" if actual is MISSING else actual,
+                )
+        fallback_index = search.get("indexed_fallback")
+        if not isinstance(fallback_index, Mapping) or not all(
+            fallback_index.get(key) is expected
+            for key, expected in {
+                "generated": True,
+                "deterministic": True,
+                "idempotent": True,
+                "full_signal_python_scan_per_query": False,
+                "source_layer_only": True,
+                "identity_union_allowed": False,
+            }.items()
+        ):
+            result.fail(
+                "r2r_indexed_fallback_proof_failed",
+                "Target status requires a deterministic indexed source-layer fallback lookup.",
+                path="search_benchmark.indexed_fallback",
+            )
+    if status == "partial_autonomous_closure" and _get(
+        summary, "zero_provider_closeout.completed", False
+    ) is True:
+        for key, expected in {
+            "benchmark_uses_persisted_runtime_index": True,
+            "runtime_benchmark_equality_passed": True,
+            "experimental_fallback_enabled_by_default": False,
+        }.items():
+            if search.get(key, MISSING) != expected:
+                result.fail(
+                    "r2r_partial_search_runtime_proof_incomplete",
+                    "Partial closeout benchmark must use the persisted opt-in runtime path.",
+                    path=f"search_benchmark.{key}",
+                    expected=expected,
+                    actual=search.get(key, "<missing>"),
+                )
+        output_proof = _get(summary, "r2r_output_mutation_proof", {})
+        if not isinstance(output_proof, Mapping) or (
+            output_proof.get("fallback_index_table_included") is not True
+            or output_proof.get("unexpected_changed_tables") != []
+            or output_proof.get("fallback_index_second_fingerprint_match") is not True
+        ):
+            result.fail(
+                "r2r_partial_output_mutation_proof_incomplete",
+                "Partial closeout must include the fallback index in deterministic mutation proof.",
+                path="r2r_output_mutation_proof",
+            )
+
+    if target:
+        if not _as_bool(_get(summary, "public_redaction.passed", False)):
+            result.fail("r2r_public_redaction_failed", "R2R public redaction must pass.", path="public_redaction.passed")
+        pack = _get(summary, "review_pack", {})
+        if not isinstance(pack, Mapping) or not all(
+            _as_bool(pack.get(key))
+            for key in ("generated", "manifest_present", "checksums_present", "integrity_passed", "not_committed")
+        ):
+            result.fail("r2r_review_pack_incomplete", "R2R requires an integrity-checked private review pack.", path="review_pack")
+
+    route = _get(summary, "route_authorization", {})
+    if not isinstance(route, Mapping):
+        result.fail("r2r_route_authorization_not_object", "R2R requires explicit downstream non-authorization.", path="route_authorization")
+    else:
+        forbidden_true = sorted(key for key, value in route.items() if value is True)
+        if forbidden_true:
+            result.fail(
+                "r2r_forbidden_route_authorization",
+                "R2R cannot authorize downstream, production, or truth work.",
+                path="route_authorization",
+                actual=forbidden_true,
+            )
 
 
 def _zero_eligible_proof_passed(plan: Mapping[str, Any]) -> bool:
@@ -10298,6 +10736,7 @@ CUSTOM_CHECKS = {
     "source_concept_full_chain": _check_source_concept_full_chain,
     "r1r_full_source_concept_pipeline": _check_r1r_full_source_concept_pipeline,
     "r2_source_concept_graph_remediation": _check_r2_source_concept_graph_remediation,
+    "r2r_autonomous_recall_search_closure": _check_r2r_autonomous_recall_search_closure,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,

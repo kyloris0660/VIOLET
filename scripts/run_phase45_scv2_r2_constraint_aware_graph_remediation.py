@@ -210,7 +210,12 @@ def environment_isolation(source_db: str, working_db: str) -> dict[str, Any]:
     violet_env = str(os.environ.get("VIOLET_ENV") or "").casefold()
     production_profile_active = any(
         str(os.environ.get(name) or "").strip().casefold() in {"1", "true", "yes", "production"}
-        for name in ("VIOLET_PRODUCTION_PROFILE", "VIOLET_PRODUCTION_MODE", "VIOLET_LAUNCH_PRODUCTION")
+        for name in (
+            "VIOLET_PRODUCTION_PROFILE_ACTIVE",
+            "VIOLET_PRODUCTION_PROFILE",
+            "VIOLET_PRODUCTION_MODE",
+            "VIOLET_LAUNCH_PRODUCTION",
+        )
     )
     separate = source_db != working_db
     working_name_safe = working_db.startswith("blombooru_scv2_r2_") and "test" in working_db.casefold()
@@ -231,6 +236,7 @@ def environment_isolation(source_db: str, working_db: str) -> dict[str, Any]:
         "r1r_baseline_preserved": True,
         "dev_test_only": violet_env == "test" and working_name_safe,
         "production_profile_active": production_profile_active,
+        "canonical_production_profile_flag_checked": True,
         "production_write_attempted": False,
         "protected_source_write_attempted": False,
     }

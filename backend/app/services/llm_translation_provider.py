@@ -330,6 +330,12 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.label = label
+        self.last_usage: Dict[str, int] = {}
+        self.usage_totals: Dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
 
     def is_available(self) -> bool:
         return bool(self.api_key and self.model and self.base_url)
@@ -385,6 +391,16 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             raise LLMHTTPStatusError(resp.status_code, msg)
 
         data = resp.json()
+        usage = data.get("usage") if isinstance(data, dict) else None
+        normalized_usage: Dict[str, int] = {}
+        if isinstance(usage, dict):
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = usage.get(key)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    normalized_usage[key] = value
+        self.last_usage = normalized_usage
+        for key in self.usage_totals:
+            self.usage_totals[key] += int(normalized_usage.get(key, 0))
         return data["choices"][0]["message"]["content"].strip()
 
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:

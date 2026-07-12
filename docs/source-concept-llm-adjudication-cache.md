@@ -75,3 +75,19 @@ R1R and future full-library SourceConcept phases must report:
 
 Private review packs should include cache index, compatibility, hit/miss, and
 failure-ledger summaries. Raw cache records remain local ignored artifacts.
+
+## Autonomous R2R Passes
+
+R2R retains the cache-first and atomic-write rules while replacing
+`needs_review` queue semantics with autonomous dispositions. A successful
+first-pass `must_link` or `cannot_link` is final subject to deterministic and
+component guards. A first-pass uncertain result receives one richer second
+pass over the same fixed evidence. A still-unresolved second pass becomes
+`deferred_nonblocking`; it is retained for future automatic re-evaluation and
+never requires human action.
+
+First- and second-pass cache records use separate prompt/payload compatibility
+versions. Each successful judgment is atomically persisted immediately.
+Provider failures go only to the failure ledger, do not overwrite successful
+records, and remain unaccounted until retry or an explicitly contracted
+machine-defer policy. Final evidence regeneration must be cache-only.

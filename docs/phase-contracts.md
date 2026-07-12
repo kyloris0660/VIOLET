@@ -33,6 +33,7 @@ extend a contract first.
 - `source_concept_full_chain_contract_v1`
 - `r1r_full_source_concept_pipeline_contract_v1`
 - `r2_source_concept_graph_remediation_contract_v1`
+- `r2r_autonomous_recall_search_closure_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`
@@ -109,6 +110,51 @@ but they require R2R recall/search closure under a separate future approval.
 
 See `docs/source-evidence-snapshot-reuse-policy.md` for the acquisition versus
 rebuild boundary shared by R2 and future full-library work.
+
+## R2R Autonomous Recall/Search Gate
+
+`r2r_autonomous_recall_search_closure_contract_v1` is the focused SCV2-R2R
+gate. It requires immutable R1R/R2 evidence, a separate dev/test working DB,
+cache-first pair planning, complete machine-disposition accounting, an
+autonomous first/second-pass ladder, non-materialized deferred evidence,
+constraint-safe rebuild, dual-path source search, an expanded reproducible
+benchmark, cache-only final regeneration, public redaction, and an
+integrity-checked private review pack.
+
+Normal completion cannot depend on a human queue. Target status requires:
+
+```text
+total_candidate_pairs
+= must_link_count + cannot_link_count + deferred_nonblocking_count
+```
+
+It also requires `manual_review_required_count=0`,
+`operator_blocking_review_count=0`, `manual_review_queue_generated=false`,
+candidate disposition coverage `1.0`, and zero materialized SourceConcept
+`needs_review` rows. Deferred relations preserve evidence but never union.
+
+The initial cache-only run must use `blocked_llm_approval_required` whenever
+compatible cache coverage does not account for all eligible pairs. That status
+requires zero provider initialization/calls and cannot claim target completion.
+After separate approval, provider errors stay unaccounted until retried; they
+never count as successful judgments. Final target evidence must regenerate
+cache-only with zero provider calls.
+
+The contract also fails on fixed-evidence mutation, production profile/DB use,
+truth writes, acquisition/import/AI/localization calls, review/deferred union,
+cannot-link or unknown-role regression, fallback-provider use, search
+contamination, missing checkpoints, public redaction failure, or downstream
+authorization.
+
+For the honest `partial_autonomous_closure` foundation, the contract also
+requires zero-provider closeout proof, complete overlay lifecycle proof, the
+fallback-index table in the R2R mutation set, deterministic double-rebuild
+fingerprints, persisted-runtime benchmark equivalence, and
+`experimental_fallback_enabled_by_default=false`. Historical missing usage is
+retained honestly and does not become fabricated actual cost.
+
+See `docs/source-concept-autonomous-resolution-policy.md` for the durable
+no-human-review and evidence-fallback policy.
 
 ## Route Gate
 

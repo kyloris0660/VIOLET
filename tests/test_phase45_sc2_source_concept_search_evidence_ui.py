@@ -349,7 +349,7 @@ def test_normal_tag_results_are_preserved_when_alias_also_matches(client, db):
     assert result_ids(response) == {normal_tag_media.id, source_media.id}
 
 
-def test_source_concept_aliases_expand_to_same_concept_level_media_set(client, db):
+def test_source_concept_aliases_do_not_transitively_union_sibling_concepts(client, db):
     shared_one = create_media(db, "alias-shared-one")
     shared_two = create_media(db, "alias-shared-two")
     add_source_concept(
@@ -373,9 +373,13 @@ def test_source_concept_aliases_expand_to_same_concept_level_media_set(client, d
         client.get("/api/search", params={"q": "kamisato_ayaka"}),
     ]
 
-    expected_ids = {shared_one.id, shared_two.id}
+    # The CJK alias directly belongs only to the first identity component. A
+    # shared English alias may directly match both components, but it must not
+    # make every other alias recursively union their media sets.
+    assert result_ids(responses[0]) == {shared_one.id}
+    assert result_ids(responses[1]) == {shared_one.id, shared_two.id}
+    assert result_ids(responses[2]) == {shared_one.id, shared_two.id}
     for response in responses:
-        assert result_ids(response) == expected_ids
         assert expansion_names(response) == {"Kamisato Ayaka"}
         expansion_text = payload_text(response.json()["source_concept_expansions"])
         assert "unconfirmed source-layer" in expansion_text
