@@ -116,7 +116,6 @@ ML1_MULTILINGUAL_ALIAS_SOURCE_METADATA_CLOSURE_STATUSES: tuple[str, ...] = (
     "blocked_pixiv_metadata_audit_incomplete",
     "blocked_pixiv_incremental_acquisition_approval_required",
     "blocked_credential_rotation_confirmation_required",
-    "blocked_owner_pixiv_sample_validation_required",
     "blocked_pixiv_acquisition_execution_incomplete",
     "blocked_creator_metadata_loss",
     "blocked_multilingual_benchmark_incomplete",
@@ -125,6 +124,7 @@ ML1_MULTILINGUAL_ALIAS_SOURCE_METADATA_CLOSURE_STATUSES: tuple[str, ...] = (
     "blocked_and_search_semantics",
     "partial_multilingual_alias_closure",
     "partial_ml1_pixiv_metadata_closure_complete",
+    "partial_ml1_pixiv_metadata_foundation_complete",
     "target_met_multilingual_alias_source_metadata_closure",
 )
 

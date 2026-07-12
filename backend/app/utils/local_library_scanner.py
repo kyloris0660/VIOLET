@@ -694,18 +694,19 @@ def run_scan_job(job_id: int) -> None:
         job.failed_files_json = json.dumps(result["failed_files"][:MAX_FAILED_REPORT])
         job.finished_at = datetime.now(timezone.utc)
         pixiv_closure = result.get("pixiv_metadata_closure") or {}
+        source_metadata_blocked = bool(pixiv_closure and not pixiv_closure.get("closed", False))
         if was_cancelled:
             job.status = "cancelled"
-        elif pixiv_closure and not pixiv_closure.get("closed", False):
-            # Import succeeded, but the source-metadata stage is observably
-            # incomplete. Do not trigger downstream AI/classification work.
-            job.status = "metadata_pending"
+        else:
+            # Scan execution and source-metadata completion are separate
+            # lifecycles. The API derives structured metadata status from the
+            # linked imported media rows.
+            job.status = "completed"
+        if source_metadata_blocked:
             job.error_message = (
-                "Pixiv source metadata is incomplete: "
+                "Scan completed; Pixiv source metadata acquisition remains pending: "
                 f"{pixiv_closure.get('open_candidate_count', 0)} open candidate state(s)"
             )
-        else:
-            job.status = "completed"
 
         imported_media_ids = result.get("imported_media_ids", [])
         for mid in imported_media_ids:
@@ -713,7 +714,7 @@ def run_scan_job(job_id: int) -> None:
 
         db.commit()
 
-        if job.status == "completed" and imported_media_ids and not job.dry_run:
+        if job.status == "completed" and not source_metadata_blocked and imported_media_ids and not job.dry_run:
             try:
                 from ..services.ai_tagging_job_service import create_auto_tag_job_after_scan
                 create_auto_tag_job_after_scan(job_id, imported_media_ids)

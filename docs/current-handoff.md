@@ -62,14 +62,23 @@ The corrected ML1 re-audit in PR #136 currently stops at
   ML1 contract passed for the honest blocked status.
 
 The project owner has authorized the exact corrected Pixiv manifest in PR #136,
-but execution remains forbidden until both one-time stage gates pass: the private
-60-work owner sample is manually validated and
-`VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED=true` is present; affected
-credentials are rotated/revoked, new values remain only in the user-managed
-store, old-secret fingerprints scan clean, and
-`VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` is present. The owner sample is a
-stage-outcome quality check, not a per-item dependency in normal ingestion. The
-current standard test environment contains neither confirmation.
+but execution remains forbidden until affected credentials are rotated/revoked,
+new values remain only in the user-managed store, old-secret fingerprints scan
+clean, and `VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` is present. The private
+60-work owner sample remains optional deterministic diagnostic evidence; it is
+not a runtime gate, does not require row-by-row owner adjudication, and is not a
+human dependency in normal ingestion. The current environment does not contain
+the credential confirmation or compromised-secret fingerprint input, so no
+profile check, canary, or external request has run.
+
+The isolated acquisition database is
+`blombooru_scv2_ml1_acquisition_test_20260712`, cloned once from the accepted
+R2R snapshot. Pre-credential preparation records 1,713 pending acquisition
+works plus 3 separately governed conflicts. Deterministic creator backfill
+accounts for 536 stable IDs, 545 display names, 459 accounts, and 536 raw or
+derived profile identities; name/account search support is 1.0 and silent field
+drop is zero. Current status remains
+`blocked_credential_rotation_confirmation_required`.
 
 Potential future phase `PX-REC1: Archived Source Metadata Recovery` remains
 deferred until authenticated Pixiv acquisition measures the actual terminal

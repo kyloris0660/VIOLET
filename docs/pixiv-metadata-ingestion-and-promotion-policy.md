@@ -20,12 +20,10 @@ checkpoint/resume; no hidden daemon is allowed.
 ## Acquisition Safety
 
 External execution requires rotated credentials, the non-secret
-`VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` confirmation and the one-time
-stage-quality owner-sample confirmation
-`VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED=true`. The owner-sample gate is
-checked before credentials or provider profiles are read; it is not a per-item
-human dependency in normal ingestion. After both confirmations, execution still
-requires a clean scan against known compromised-secret SHA-256 fingerprints and
+`VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` confirmation. The deterministic
+owner sample remains optional stage evidence and is not a runtime gate or a
+per-item human dependency in normal ingestion. After credential confirmation,
+execution still requires a clean scan against known compromised-secret SHA-256 fingerprints and
 a redacted authentication preflight. gallery-dl execution is metadata-only (`--dump-json --no-download`),
 uses at least two-second request spacing, at most three bounded attempts per
 work, stops after exhausted retryable/systemic failures, has no fallback

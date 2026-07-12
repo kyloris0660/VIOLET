@@ -44,7 +44,7 @@ from app.services.source_metadata_registry_service import (  # noqa: E402
 from app.services.pixiv_filename_prior_service import PARSER_VERSION  # noqa: E402
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     CANONICAL_COMPLETE_STATUSES,
-    OWNER_SAMPLE_CONFIRMATION_ENV,
+    classify_pixiv_metadata_lifecycle,
     llm_budget_policy,
     promotion_manifest,
 )
@@ -60,6 +60,7 @@ PHASE_TITLE = "SCV2-ML1: Multilingual Alias and Source-Metadata Closure"
 CONTRACT_ID = "ml1_multilingual_alias_source_metadata_closure_contract_v1"
 BASELINE_SHA = "5bbbb8ff13b140ea77a839757603714bfdd87181"
 ACCEPTED_R2R_DB = "blombooru_scv2_r2r_dryrun_test_20260710"
+ACQUISITION_DB = "blombooru_scv2_ml1_acquisition_test_20260712"
 ACCEPTED_R2_SOURCE_DB = "blombooru_scv2_r2_review4_test_20260710"
 REPORT_MD = ROOT / "docs/reports/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure.md"
 REPORT_JSON = ROOT / "docs/reports/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure-summary.json"
@@ -333,25 +334,37 @@ def build_pixiv_accounting(
         matching: list[int] = []
         if len(matches) == 1:
             work_id, page_index = matches[0]
-            for item in metadata:
-                if (
-                    str(item.get("source_work_id") or "") == work_id
-                    and int(item.get("source_page_index") or 0) == page_index
-                    and str(item.get("status") or "") in CANONICAL_COMPLETE_STATUSES
-                ):
-                    matching.append(int(item["id"]))
-            if matching:
+            exact_rows = [
+                item for item in metadata
+                if str(item.get("source_work_id") or "") == work_id
+                and int(item.get("source_page_index") or 0) == page_index
+            ]
+            mismatched_rows = [item for item in metadata if item not in exact_rows]
+            lifecycle_classes = {
+                classify_pixiv_metadata_lifecycle(item.get("status")) for item in exact_rows
+            }
+            matching = [int(item["id"]) for item in exact_rows if classify_pixiv_metadata_lifecycle(item.get("status")) == "complete"]
+            if "complete" in lifecycle_classes:
                 status = "metadata_present_complete"
                 reason = "exact_media_work_page_match"
-            elif any(str(item.get("status") or "") == "terminal_remote_unavailable" for item in metadata):
+            elif "terminal" in lifecycle_classes:
                 status = "terminal_remote_unavailable"
                 reason = "durable_authenticated_remote_unavailable_evidence"
-            elif any(str(item.get("status") or "").startswith("metadata_retryable") for item in metadata):
-                status = "retryable_provider_failure"
-                reason = "durable_retryable_attempt_evidence"
-            elif any(str(item.get("status") or "") == "normalization_failed" for item in metadata):
+            elif mismatched_rows:
+                status = "filename_identity_conflict"
+                reason = "metadata_exists_but_work_or_page_mismatch"
+            elif "normalization_failed" in lifecycle_classes:
                 status = "metadata_parse_or_normalization_failure"
                 reason = "durable_normalization_failure_evidence"
+            elif "retryable" in lifecycle_classes:
+                status = "retryable_provider_failure"
+                reason = "durable_retryable_attempt_evidence"
+            elif "pending" in lifecycle_classes:
+                status = "metadata_pending"
+                reason = "exact_work_page_pending_acquisition"
+            elif exact_rows:
+                status = "metadata_parse_or_normalization_failure"
+                reason = "unknown_matching_metadata_lifecycle"
             elif metadata:
                 status = "filename_identity_conflict"
                 reason = "metadata_exists_but_work_or_page_mismatch"
@@ -412,10 +425,12 @@ def build_pixiv_accounting(
             status = "complete"
         elif statuses <= {"metadata_present_complete", "terminal_remote_unavailable"} and "terminal_remote_unavailable" in statuses:
             status = "terminal"
+        elif "metadata_pending" in statuses:
+            status = "pending"
         elif statuses & retryable_statuses:
             status = "retryable"
         elif "metadata_parse_or_normalization_failure" in statuses:
-            status = "retryable"
+            status = "normalization_failed"
         else:
             status = "missing"
         memberships = [
@@ -446,9 +461,9 @@ def build_pixiv_accounting(
     retryable_media_count = sum(status_counts[key] for key in retryable_statuses)
     parse_conflict_count = status_counts["metadata_parse_or_normalization_failure"] + status_counts["filename_identity_conflict"]
     complete_media_count = status_counts["metadata_present_complete"]
-    target_request_work_ids = {str(item["work_id"]) for item in work_rows if item["status"] in {"missing", "retryable"}}
+    target_request_work_ids = {str(item["work_id"]) for item in work_rows if item["status"] in {"missing", "pending", "retryable"}}
     work_accounting_sum = sum(
-        work_status_counts[key] for key in ("complete", "terminal", "retryable", "missing", "unresolved_conflict")
+        work_status_counts[key] for key in ("complete", "terminal", "pending", "retryable", "normalization_failed", "missing", "unresolved_conflict")
     )
     conflict_media = [item for item in candidates if item.status == "filename_identity_conflict"]
     conflict_tokens = {
@@ -475,9 +490,12 @@ def build_pixiv_accounting(
         "candidate_work_accounting_coverage": round(work_accounting_sum / distinct_work_count, 6) if distinct_work_count else 1.0,
         "metadata_present_complete_media_count": complete_media_count,
         "metadata_present_complete_work_count": complete_work_count,
+        "metadata_pending_media_count": status_counts["metadata_pending"],
         "terminal_remote_unavailable_media_count": status_counts["terminal_remote_unavailable"],
         "terminal_remote_unavailable_work_count": terminal_work_count,
+        "pending_work_count": work_status_counts["pending"],
         "retryable_work_count": work_status_counts["retryable"],
+        "normalization_failed_work_count": work_status_counts["normalization_failed"],
         "missing_work_count": work_status_counts["missing"],
         "retryable_failure_media_count": retryable_media_count,
         "retryable_authentication_failure_media_count": status_counts["retryable_authentication_failure"],
@@ -578,7 +596,7 @@ def build_owner_review_artifacts(
     status_by_work = {str(row["work_id"]): str(row["status"]) for row in work_rows}
     eligible_work_ids = sorted(
         work_id for work_id, status in status_by_work.items()
-        if status in {"missing", "retryable"} and re.fullmatch(r"[1-9]\d{5,11}", work_id)
+        if status in {"missing", "pending", "retryable"} and re.fullmatch(r"[1-9]\d{5,11}", work_id)
     )
     base_rows: list[dict[str, Any]] = []
     for work_id in eligible_work_ids:
@@ -777,7 +795,8 @@ def build_owner_review_artifacts(
             "conflict_cases_exported": len(conflict_rows),
             "sample_manifest_fingerprint": manifest_fingerprint,
             "validation_confirmed": False,
-            "confirmation_env": OWNER_SAMPLE_CONFIRMATION_ENV,
+            "confirmation_env": None,
+            "optional_stage_evidence": True,
             "normal_pipeline_human_dependency": False,
         },
         "selection": selection_evidence,
@@ -2048,7 +2067,6 @@ def determine_status(
     *,
     document_proof: Mapping[str, Any] | None = None,
     credential_rotation_confirmed: bool = False,
-    owner_sample_validation_confirmed: bool = False,
     acquisition_authorized: bool = True,
     continuous_ingestion_gate_implemented: bool = False,
 ) -> tuple[str, list[str]]:
@@ -2064,9 +2082,7 @@ def determine_status(
         else:
             if not credential_rotation_confirmed:
                 hard_blockers.append("blocked_credential_rotation_confirmation_required")
-            if not owner_sample_validation_confirmed:
-                hard_blockers.append("blocked_owner_pixiv_sample_validation_required")
-            if credential_rotation_confirmed and owner_sample_validation_confirmed:
+            if credential_rotation_confirmed:
                 hard_blockers.append("blocked_pixiv_acquisition_execution_incomplete")
     if int(creator.get("silently_dropped_creator_field_count") or 0) > 0:
         deferred_blockers.append("blocked_creator_metadata_loss")
@@ -2086,15 +2102,15 @@ def determine_status(
     if hard_blockers:
         return hard_blockers[0], blockers
     if continuous_ingestion_gate_implemented and deferred_blockers:
-        return "partial_ml1_pixiv_metadata_closure_complete", deferred_blockers
+        return "partial_ml1_pixiv_metadata_foundation_complete", deferred_blockers
     if deferred_blockers:
         return deferred_blockers[0], deferred_blockers
     return "target_met_multilingual_alias_source_metadata_closure", []
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    if args.database != ACCEPTED_R2R_DB:
-        raise ML1BlockedError("blocked_environment_isolation:database_must_be_accepted_r2r")
+    if args.database not in {ACCEPTED_R2R_DB, ACQUISITION_DB}:
+        raise ML1BlockedError("blocked_environment_isolation:database_must_be_accepted_r2r_or_ml1_acquisition")
     if str(os.getenv("VIOLET_ENV") or "").casefold() != "test":
         raise ML1BlockedError("blocked_environment_isolation:VIOLET_ENV_must_be_test")
     output_dir = args.output_dir.resolve()
@@ -2109,7 +2125,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     try:
         session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
         identity = session.execute(text("SELECT current_database(), current_user")).one()
-        if str(identity[0]) != ACCEPTED_R2R_DB:
+        if str(identity[0]) != args.database:
             raise ML1BlockedError("blocked_environment_isolation:database_identity_mismatch")
         fixed_before = fast_fingerprint_tables(session, FIXED_TABLES)
         forbidden_before = fast_fingerprint_tables(session, FORBIDDEN_TRUTH_TABLES)
@@ -2166,7 +2182,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     owner_review, owner_private_files = build_owner_review_artifacts(output_dir, candidate_rows, work_rows)
     private_files.extend(owner_private_files)
     credential_confirmation = str(os.getenv("VIOLET_CREDENTIAL_ROTATION_CONFIRMED") or "").casefold() == "true"
-    owner_sample_confirmation = str(os.getenv(OWNER_SAMPLE_CONFIRMATION_ENV) or "").casefold() == "true"
     status, active_blockers = determine_status(
         pixiv,
         creator,
@@ -2174,7 +2189,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         search,
         document_proof=document_proof,
         credential_rotation_confirmed=credential_confirmation,
-        owner_sample_validation_confirmed=owner_sample_confirmation,
         acquisition_authorized=True,
         continuous_ingestion_gate_implemented=True,
     )
@@ -2220,7 +2234,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     acquisition_manifest_fingerprint = owner_review["owner_sample_validation"]["sample_manifest_fingerprint"]
     acquisition_execution = {
         "acquisition_route_active": False,
-        "acquisition_manifest_distinct_work_count": pixiv["missing_work_count"] + pixiv["retryable_work_count"],
+        "acquisition_manifest_distinct_work_count": (
+            pixiv["missing_work_count"] + pixiv["pending_work_count"] + pixiv["retryable_work_count"]
+        ),
+        "conflict_resolution_manifest_count": pixiv["conflict_unresolved_work_count"],
         "acquisition_manifest_fingerprint": acquisition_manifest_fingerprint,
         "max_attempts_per_work": 3,
         "unique_work_ids_attempted_count": 0,
@@ -2264,7 +2281,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "production_profile_active": False,
             "production_write_attempted": False,
             "network_disabled": True,
-            "database_label": "accepted-r2r-working-database",
+            "database_label": "isolated-ml1-acquisition-database" if args.database == ACQUISITION_DB else "accepted-r2r-working-database",
+            "database_identity": args.database,
+            "accepted_source_database_identity": ACCEPTED_R2R_DB,
         },
         "credential_safety": {
             "rotation_confirmation_present": credential_confirmation,
@@ -2280,17 +2299,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "owner_sample_validation": {
             **owner_review["owner_sample_validation"],
-            "validation_confirmed": owner_sample_confirmation,
+            "validation_confirmed": False,
+            "runtime_gate_required": False,
         },
         "owner_review_selection": owner_review["selection"],
         "local_distribution_diagnostics": owner_review["diagnostics"],
         "pixiv_accounting": pixiv,
         "pixiv_metadata_foundation": {
-            "current_stock_closed": not bool(pixiv["incremental_acquisition_required"]),
+            "current_stock_closed": (
+                not bool(pixiv["incremental_acquisition_required"])
+                and int(pixiv["conflict_unresolved_work_count"]) == 0
+                and int(pixiv["normalization_failed_work_count"]) == 0
+                and int(pixiv["pending_work_count"]) == 0
+                and int(pixiv["retryable_work_count"]) == 0
+                and int(pixiv["missing_work_count"]) == 0
+            ),
             "continuous_ingestion_gate_implemented": True,
             "complete_or_terminal_coverage": round(
                 (pixiv["metadata_present_complete_work_count"] + pixiv["terminal_remote_unavailable_work_count"])
-                / pixiv["candidate_distinct_work_count"],
+                / max(1, pixiv["candidate_distinct_work_count"] - pixiv["conflict_unresolved_work_count"]),
                 6,
             ) if pixiv["candidate_distinct_work_count"] else 1.0,
             "normal_missing_count": pixiv["normal_retrievable_missing_media_count"],

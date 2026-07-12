@@ -15,6 +15,7 @@ from app.models import SourceMetadataRecord, SourceNameObservation, SourceTagObs
 from app.services.pixiv_metadata_ingestion_service import (
     PixivMetadataGateError,
     PixivMetadataState,
+    backfill_creator_source_observations,
     build_gallery_dl_metadata_command,
     classify_gallery_dl_failure,
     mark_work_state,
@@ -24,7 +25,6 @@ from app.services.pixiv_metadata_ingestion_service import (
     promotion_manifest,
     queue_media_for_pixiv_metadata,
     require_rotation_confirmation,
-    require_owner_sample_validation_confirmation,
     run_bounded_acquisition,
     summarize_batch_closure,
 )
@@ -133,6 +133,74 @@ def test_complete_compatible_record_is_reused_without_reacquisition(db) -> None:
     assert summarize_batch_closure(db, [9])["closed"] is True
 
 
+def test_historical_gallery_dl_complete_kind_is_reused(db) -> None:
+    db.add(SourceMetadataRecord(
+        provider="pixiv", provider_record_key="historical:123456789:p0",
+        source_work_id="123456789", source_page_index=0,
+        metadata_kind="gallery_dl_real_pixiv_metadata",
+        data_type_label="authenticated_provider_metadata", status="observed",
+    ))
+    db.commit()
+    decision = queue_media_for_pixiv_metadata(db, {"id": 16, "filename": "123456789_p0.jpg", "path": "media/16.jpg"})
+    db.commit()
+    assert decision.state == PixivMetadataState.COMPLETE.value
+    assert pending_distinct_work_ids(db) == ()
+
+
+def test_historical_wrong_work_or_page_is_queued_as_conflict_not_acquisition(db) -> None:
+    db.add(SourceMetadataRecord(
+        provider="pixiv", provider_record_key="historical:wrong:p1", media_id=17,
+        source_work_id="999999999", source_page_index=1,
+        metadata_kind="gallery_dl_real_pixiv_metadata",
+        data_type_label="authenticated_provider_metadata", status="observed",
+    ))
+    db.commit()
+    decision = queue_media_for_pixiv_metadata(db, {"id": 17, "filename": "123456789_p0.jpg", "path": "media/17.jpg"})
+    db.commit()
+    assert decision.state == PixivMetadataState.CONFLICT.value
+    assert pending_distinct_work_ids(db) == ()
+
+
+def test_explicit_conflict_resolution_preserves_historical_metadata_and_links_exact_page(db) -> None:
+    historical = SourceMetadataRecord(
+        provider="pixiv", provider_record_key="historical:wrong:resolve", media_id=18,
+        source_work_id="999999999", source_page_index=1,
+        metadata_kind="gallery_dl_real_pixiv_metadata", data_type_label="authenticated_provider_metadata", status="observed",
+    )
+    db.add(historical); db.commit()
+    queue_media_for_pixiv_metadata(db, {"id": 18, "filename": "123456789_p0.jpg", "path": "media/18.jpg"}); db.commit()
+    payload = [[3, "url", {"id": 123456789, "num": 0, "title": "Exact", "user": {"id": 42, "name": "Creator"}}]]
+    result = run_bounded_acquisition(
+        db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        command_runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr=""),
+        sleeper=lambda _seconds: None, max_attempts_per_work=1, allow_conflict_resolution=True,
+    )[0]
+    db.refresh(historical)
+    queue = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.provider_record_key.like("pixiv-ingestion:%")).one()
+    assert result.state == PixivMetadataState.COMPLETE.value
+    assert queue.status == PixivMetadataState.COMPLETE.value
+    assert historical.source_work_id == "999999999" and historical.status == "observed"
+
+
+def test_explicit_conflict_resolution_can_persist_authenticated_terminal(db) -> None:
+    db.add(SourceMetadataRecord(
+        provider="pixiv", provider_record_key="historical:wrong:terminal", media_id=19,
+        source_work_id="999999999", source_page_index=1,
+        metadata_kind="gallery_dl_real_pixiv_metadata", data_type_label="authenticated_provider_metadata", status="observed",
+    )); db.commit()
+    queue_media_for_pixiv_metadata(db, {"id": 19, "filename": "123456789_p0.jpg", "path": "media/19.jpg"}); db.commit()
+    result = run_bounded_acquisition(
+        db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        command_runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 1, stdout="", stderr="404 private"),
+        sleeper=lambda _seconds: None, max_attempts_per_work=1, allow_conflict_resolution=True,
+    )[0]
+    queue = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.provider_record_key.like("pixiv-ingestion:%")).one()
+    assert result.state == PixivMetadataState.TERMINAL.value
+    assert queue.status == PixivMetadataState.TERMINAL.value
+
+
 def test_non_pixiv_import_is_not_applicable_and_closed(db) -> None:
     decision = queue_media_for_pixiv_metadata(db, {"id": 10, "filename": "ordinary.jpg", "path": "media/original/ordinary.jpg"})
     db.commit()
@@ -145,8 +213,6 @@ def test_non_pixiv_import_is_not_applicable_and_closed(db) -> None:
 def test_rotation_gate_and_metadata_only_command() -> None:
     with pytest.raises(PixivMetadataGateError, match="blocked_credential_rotation_confirmation_required"):
         require_rotation_confirmation({})
-    with pytest.raises(PixivMetadataGateError, match="blocked_owner_pixiv_sample_validation_required"):
-        require_owner_sample_validation_confirmation({})
     command = build_gallery_dl_metadata_command(("python", "-m", "gallery_dl"), "123456789")
     assert "--dump-json" in command
     assert "--no-download" in command
@@ -160,44 +226,34 @@ def test_rotation_gate_and_metadata_only_command() -> None:
     assert ingestion_runner._isolated_database_allowed("blombooru") is False
 
 
-def test_owner_sample_gate_fails_before_any_provider_call(db) -> None:
+def test_credential_gate_is_the_only_operator_confirmation_before_provider_call(db) -> None:
     queue_media_for_pixiv_metadata(db, {"id": 15, "filename": "123456789_p0.jpg", "path": "media/15.jpg"})
     db.commit()
     calls = []
-    with pytest.raises(PixivMetadataGateError, match="blocked_owner_pixiv_sample_validation_required"):
+    with pytest.raises(PixivMetadataGateError, match="blocked_credential_rotation_confirmation_required"):
         run_bounded_acquisition(
             db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=True,
-            env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+            env={},
             command_runner=lambda *args, **kwargs: calls.append(args),
         )
     assert calls == []
     assert pending_distinct_work_ids(db) == ("123456789",)
 
 
-def test_redacted_auth_failure_is_checkpointed_without_raw_output(db, monkeypatch) -> None:
+def test_explicit_auth_failure_in_canary_blocks_without_raw_output(db) -> None:
     queue_media_for_pixiv_metadata(
         db,
         {"id": 14, "filename": "123456789_p0.jpg", "path": "media/original/123456789_p0.jpg"},
     )
     db.commit()
 
-    monkeypatch.setattr(
-        ingestion_runner.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 1, stdout="", stderr="401 authentication failed"),
-    )
-    preflight, passed = ingestion_runner._redacted_auth_and_first_acquisition(
-        db,
-        entrypoint=("gallery-dl",),
-        work_id="123456789",
-        timeout_seconds=5,
-    )
-
-    assert passed is False
-    assert preflight["authentication_test_passed"] is False
-    assert preflight["raw_values_exposed"] is False
-    record = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 14).one()
-    assert record.status == PixivMetadataState.RETRYABLE.value
+    result = type("R", (), {"work_id": "123456789", "state": PixivMetadataState.RETRYABLE.value, "request_attempted": True, "attempt_count": 1, "error_class": "retryable_authentication"})()
+    with pytest.raises(PixivMetadataGateError, match="blocked_gallery_dl_authentication_invalid"):
+        ingestion_runner.run_deterministic_auth_canary(
+            db, ["123456789"], entrypoint=("gallery-dl",),
+            env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+            acquire=lambda *_args, **_kwargs: [result],
+        )
 
 
 def test_bounded_acquisition_deduplicates_manifest_and_checkpoints(db) -> None:
@@ -222,7 +278,7 @@ def test_bounded_acquisition_deduplicates_manifest_and_checkpoints(db) -> None:
         ["123456789", "123456789"],
         entrypoint=("gallery-dl",),
         authentication_passed=True,
-        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true", "VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED": "true"},
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
         command_runner=runner,
         sleeper=lambda _seconds: None,
     )
@@ -291,7 +347,7 @@ def test_resume_does_not_reopen_or_request_completed_page(db) -> None:
     calls = []
     results = run_bounded_acquisition(
         db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=True,
-        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true", "VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED": "true"},
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
         command_runner=lambda *args, **kwargs: calls.append(args), sleeper=lambda _seconds: None,
     )
     assert calls == []
@@ -339,7 +395,7 @@ def test_rate_limit_retry_is_bounded_spaced_and_checkpointed(db) -> None:
         ["123456789"],
         entrypoint=("gallery-dl",),
         authentication_passed=True,
-        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true", "VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED": "true"},
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
         command_runner=runner,
         sleeper=sleeps.append,
     )
@@ -357,3 +413,153 @@ def test_promotion_and_usd10_llm_policy_are_fail_closed() -> None:
     assert llm_budget_policy(10.0, finite_manifest=True, primary_provider=True, cache_first=True, fallback_provider=False, production_or_truth_write=False)["preauthorized"] is True
     assert llm_budget_policy(10.01, finite_manifest=True, primary_provider=True, cache_first=True, fallback_provider=False, production_or_truth_write=False)["approval_required"] is True
     assert llm_budget_policy(1.0, finite_manifest=True, primary_provider=True, cache_first=True, fallback_provider=True, production_or_truth_write=False)["approval_required"] is True
+
+
+@pytest.mark.parametrize("secret", [
+    "token-padding=", "token-padding==", "token+plus", "token/slash",
+    "token-dash", "token_under", "token.dot", "cookie:part:material==",
+])
+def test_compromised_secret_scan_hashes_full_punctuated_value(secret: str) -> None:
+    fingerprint = hashlib.sha256(secret.encode("utf-8")).hexdigest()
+    assert scan_text_for_fingerprints(f"prefix {secret} suffix", {fingerprint}) == 1
+
+
+def test_malformed_secret_fingerprint_fails_closed_without_raw_value() -> None:
+    with pytest.raises(PixivMetadataGateError) as caught:
+        ingestion_runner._known_secret_fingerprints({"VIOLET_COMPROMISED_SECRET_SHA256": "not-a-sha256"})
+    assert "not-a-sha256" not in str(caught.value)
+
+
+def test_malformed_json_persists_normalization_failed_and_continues(db) -> None:
+    for media_id, work_id in ((201, "123456789"), (202, "223456789")):
+        queue_media_for_pixiv_metadata(db, {"id": media_id, "filename": f"{work_id}_p0.jpg", "path": f"media/{media_id}.jpg"})
+    db.commit()
+    calls = 0
+    def runner(command, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(command, 0, stdout="{malformed", stderr="")
+        work_id = command[-1].rsplit("/", 1)[-1]
+        payload = [[3, "url", {"id": int(work_id), "num": 0, "title": "Work", "user": {"id": 42, "name": "Display"}}]]
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+    results = run_bounded_acquisition(
+        db, ["123456789", "223456789"], entrypoint=("gallery-dl",), authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, command_runner=runner,
+        sleeper=lambda _seconds: None, max_attempts_per_work=1,
+    )
+    assert [item.state for item in results] == [PixivMetadataState.NORMALIZATION_FAILED.value, PixivMetadataState.COMPLETE.value]
+    failed = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 201).one()
+    assert failed.status == PixivMetadataState.NORMALIZATION_FAILED.value
+    assert failed.raw_metadata_json["structural_diagnostics"]["provider_output_returned"] is True
+    assert failed.raw_metadata_json["structural_diagnostics"]["raw_provider_output_retained_in_diagnostic"] is False
+    assert pending_distinct_work_ids(db) == ()
+
+
+def test_missing_required_local_page_persists_normalization_failed(db) -> None:
+    queue_media_for_pixiv_metadata(db, {"id": 203, "filename": "123456789_p1.jpg", "path": "media/203.jpg"})
+    db.commit()
+    payload = [[3, "url", {"id": 123456789, "num": 0, "title": "Work", "user": {"id": 42}}]]
+    results = run_bounded_acquisition(
+        db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        command_runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr=""),
+        sleeper=lambda _seconds: None, max_attempts_per_work=1,
+    )
+    assert results[0].state == PixivMetadataState.NORMALIZATION_FAILED.value
+    assert db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 203).one().status == PixivMetadataState.NORMALIZATION_FAILED.value
+
+
+def test_transport_timeout_persists_retryable(db) -> None:
+    queue_media_for_pixiv_metadata(db, {"id": 204, "filename": "123456789_p0.jpg", "path": "media/204.jpg"})
+    db.commit()
+    def timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired("gallery-dl", 1)
+    result = run_bounded_acquisition(
+        db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, command_runner=timeout,
+        sleeper=lambda _seconds: None, max_attempts_per_work=1,
+    )[0]
+    assert result.state == PixivMetadataState.RETRYABLE.value
+    assert db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 204).one().status == PixivMetadataState.RETRYABLE.value
+
+
+@pytest.mark.parametrize(
+    ("stderr", "authentication_passed", "expected_state", "expected_error"),
+    [
+        ("429 rate limit", True, PixivMetadataState.RETRYABLE.value, "retryable_rate_limit"),
+        ("401 authentication failed", True, PixivMetadataState.RETRYABLE.value, "retryable_authentication"),
+        ("404 private unavailable", True, PixivMetadataState.TERMINAL.value, "authenticated_remote_deleted_private_unavailable"),
+    ],
+)
+def test_provider_failures_persist_exact_retry_or_terminal_class(
+    db, stderr: str, authentication_passed: bool, expected_state: str, expected_error: str
+) -> None:
+    queue_media_for_pixiv_metadata(db, {"id": 205, "filename": "123456789_p0.jpg", "path": "media/205.jpg"})
+    db.commit()
+    result = run_bounded_acquisition(
+        db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=authentication_passed,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        command_runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 1, stdout="", stderr=stderr),
+        sleeper=lambda _seconds: None, max_attempts_per_work=1,
+    )[0]
+    record = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 205).one()
+    assert result.state == expected_state and result.error_class == expected_error
+    assert record.status == expected_state
+
+
+def test_pending_to_terminal_lifecycle_closes_batch(db) -> None:
+    queue_media_for_pixiv_metadata(db, {"id": 206, "filename": "123456789_p0.jpg", "path": "media/206.jpg"})
+    db.commit()
+    assert summarize_batch_closure(db, [206])["closed"] is False
+    run_bounded_acquisition(
+        db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        command_runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 1, stdout="", stderr="404 private"),
+        sleeper=lambda _seconds: None, max_attempts_per_work=1,
+    )
+    closure = summarize_batch_closure(db, [206])
+    assert closure["closed"] is True and closure["terminal_remote_unavailable_count"] == 1
+
+
+def test_deleted_first_canary_does_not_block_later_success(db) -> None:
+    terminal = type("R", (), {"work_id": "123456789", "state": PixivMetadataState.TERMINAL.value, "request_attempted": True, "attempt_count": 1, "error_class": "authenticated_remote_deleted_private_unavailable"})()
+    success = type("R", (), {"work_id": "223456789", "state": PixivMetadataState.COMPLETE.value, "request_attempted": True, "attempt_count": 1, "error_class": None})()
+    results, proof = ingestion_runner.run_deterministic_auth_canary(
+        db, ["123456789", "223456789"], entrypoint=("gallery-dl",),
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        acquire=lambda *_args, **_kwargs: [terminal, success],
+    )
+    assert len(results) == 2 and proof["passed"] is True
+    assert proof["terminal_count"] == 1 and proof["success_count"] == 1
+
+
+def test_terminal_only_canary_advances_to_next_bounded_batch(db) -> None:
+    calls = []
+    def acquire(_session, work_ids, **_kwargs):
+        calls.append(tuple(work_ids))
+        state = PixivMetadataState.TERMINAL.value if len(calls) == 1 else PixivMetadataState.COMPLETE.value
+        return [type("R", (), {"work_id": work_ids[0], "state": state, "request_attempted": True, "attempt_count": 1, "error_class": None})()]
+    _, proof = ingestion_runner.run_deterministic_auth_canary(
+        db, ["123456789", "223456789"], entrypoint=("gallery-dl",),
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, acquire=acquire, batch_size=1,
+    )
+    assert calls == [("123456789",), ("223456789",)]
+    assert proof["passed"] is True
+
+
+def test_creator_source_backfill_is_additive_query_visible_and_role_safe(db) -> None:
+    record = SourceMetadataRecord(
+        provider="pixiv", provider_record_key="existing:123456789:p0", media_id=1,
+        source_work_id="123456789", source_page_index=0, metadata_kind="provider_metadata",
+        data_type_label="authenticated_provider_metadata", status="metadata_complete",
+        raw_metadata_json={"user": {"id": 42, "name": "Display", "account": "handle"}},
+    )
+    db.add(record); db.commit()
+    proof = backfill_creator_source_observations(db); db.commit()
+    observations = db.query(SourceNameObservation).all()
+    assert {(item.raw_name, item.name_role) for item in observations} == {("Display", "artist"), ("handle", "artist")}
+    assert proof["query_visible_creator_name_count"] == 1
+    assert proof["query_visible_creator_account_count"] == 1
+    assert proof["explicit_creator_role_misclassification_count"] == 0
+    assert record.raw_metadata_json["creator_profile_identity_source"] == "derived_from_stable_creator_id"

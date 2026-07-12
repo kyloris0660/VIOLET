@@ -63,8 +63,10 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "sample_size": 60,
             "conflict_cases_exported": 0,
             "sample_manifest_fingerprint": "a" * 64,
-            "validation_confirmed": status != "blocked_owner_pixiv_sample_validation_required",
-            "confirmation_env": "VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED",
+            "validation_confirmed": False,
+            "confirmation_env": None,
+            "optional_stage_evidence": True,
+            "runtime_gate_required": False,
             "normal_pipeline_human_dependency": False,
         },
         "pixiv_accounting": {
@@ -72,6 +74,7 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "candidate_media_count": 3,
             "accounted_media_count": 3,
             "metadata_present_complete_media_count": 2,
+            "metadata_pending_media_count": 0,
             "terminal_remote_unavailable_media_count": 1,
             "retryable_failure_media_count": 0,
             "parse_or_identity_failure_media_count": 0,
@@ -83,7 +86,9 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "candidate_work_accounting_coverage": 1.0,
             "metadata_present_complete_work_count": 1,
             "terminal_remote_unavailable_work_count": 1,
+            "pending_work_count": 0,
             "retryable_work_count": 0,
+            "normalization_failed_work_count": 0,
             "missing_work_count": 0,
             "conflict_unresolved_work_count": 0,
             "no_durable_attempt_or_result_evidence_media_count": 0,
@@ -266,10 +271,9 @@ def test_interrupted_checkpoint_resume_requires_remaining_open_proof() -> None:
     assert "ml1_acquisition_resume_or_retry_proof_missing" in {item.code for item in check_phase_contract(CONTRACT_ID, summary).errors}
 
 
-def test_zero_call_owner_sample_block_passes() -> None:
-    summary = _summary(status="blocked_owner_pixiv_sample_validation_required")
+def test_owner_sample_is_optional_and_not_a_runtime_blocker() -> None:
+    summary = _summary(status="blocked_credential_rotation_confirmation_required")
     summary["pixiv_accounting"].update(incremental_acquisition_required=True, missing_work_count=1, candidate_distinct_work_count=3, accounted_distinct_work_count=3)
-    summary["credential_safety"]["rotation_confirmation_present"] = True
     summary["acquisition_execution"].update(acquisition_manifest_distinct_work_count=1, acquisition_manifest_fingerprint="c" * 64)
     result = check_phase_contract(CONTRACT_ID, summary)
     assert result.passed, [item.to_dict() for item in result.errors]
@@ -331,6 +335,51 @@ def test_wrong_page_metadata_complete_remains_mismatch_and_terminal_retryable_di
     assert candidates[0].status == "filename_identity_conflict"
     assert public["terminal_remote_unavailable_media_count"] == 1
     assert public["retryable_failure_media_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("record_status", "candidate_status", "work_status", "in_manifest"),
+    [
+        ("metadata_pending", "metadata_pending", "pending", True),
+        ("metadata_retryable", "retryable_provider_failure", "retryable", True),
+        ("metadata_complete", "metadata_present_complete", "complete", False),
+        ("terminal_remote_unavailable", "terminal_remote_unavailable", "terminal", False),
+        ("normalization_failed", "metadata_parse_or_normalization_failure", "normalization_failed", False),
+    ],
+)
+def test_exact_lifecycle_status_drives_manifest_without_false_conflict(
+    record_status: str, candidate_status: str, work_status: str, in_manifest: bool
+) -> None:
+    media = [{"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None}]
+    metadata = [{"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "status": record_status}]
+    public, candidates, work_rows = ml1_runner.build_pixiv_accounting(media, metadata)
+    assert candidates[0].status == candidate_status
+    assert candidates[0].status != "filename_identity_conflict"
+    assert work_rows[0]["status"] == work_status
+    assert bool(public["projected_gallery_dl_request_count"]) is in_manifest
+
+
+def test_pending_to_complete_post_acquisition_audit_transition() -> None:
+    media = [{"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None}]
+    row = {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "status": "metadata_pending"}
+    before = ml1_runner.build_pixiv_accounting(media, [row])
+    assert before[2][0]["status"] == "pending"
+    row["status"] = "metadata_complete"
+    after = ml1_runner.build_pixiv_accounting(media, [row])
+    assert after[2][0]["status"] == "complete"
+    assert after[0]["projected_gallery_dl_request_count"] == 0
+
+
+def test_matching_pending_queue_does_not_hide_historical_work_page_mismatch() -> None:
+    media = [{"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None}]
+    metadata = [
+        {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "status": "metadata_pending"},
+        {"id": 11, "provider": "pixiv", "media_id": 1, "source_work_id": "999999999", "source_page_index": 1, "status": "observed"},
+    ]
+    public, candidates, work_rows = ml1_runner.build_pixiv_accounting(media, metadata)
+    assert candidates[0].status == "filename_identity_conflict"
+    assert work_rows[0]["status"] == "unresolved_conflict"
+    assert public["projected_gallery_dl_request_count"] == 0
 
 
 def test_owner_review_sample_is_deterministic_exact_unique_private_and_conflicts_exported(tmp_path: Path) -> None:
@@ -423,7 +472,6 @@ def test_ml1_pixiv_acquisition_block_requires_exact_projection() -> None:
         "blocked_document_semantics_not_corrected",
         "blocked_environment_isolation",
         "blocked_credential_rotation_confirmation_required",
-        "blocked_owner_pixiv_sample_validation_required",
         "blocked_fixed_evidence_changed",
         "blocked_pixiv_metadata_audit_incomplete",
         "blocked_pixiv_incremental_acquisition_approval_required",
