@@ -352,6 +352,9 @@ def build_pixiv_accounting(
         "authentication_requirements_present": bool(target_request_work_ids),
         "rate_limit_plan_present": bool(target_request_work_ids),
         "checkpoint_resume_plan_present": bool(target_request_work_ids),
+        "authentication_requirements": "user-managed authenticated gallery-dl Pixiv profile outside the repository; no secret stored or echoed by V.I.O.L.E.T.",
+        "rate_limit_plan": "incremental missing/retryable work IDs only; minimum two-second request spacing; bounded auth/rate/network failure budgets; no retry storm",
+        "checkpoint_resume_plan": "checkpoint each completed distinct work ID; resume only the remaining manifest; preserve prior raw and normalized metadata",
         "complete_records_reacquisition_count": 0,
         "all_eligible_media_count": len(media_rows),
         "all_eligible_media_with_pixiv_metadata_count": len(metadata_by_media),
@@ -739,6 +742,10 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
 
     creator_cases = 0
     creator_passes = 0
+    creator_and_cases = 0
+    creator_and_passes = 0
+    creator_and_leakage = 0
+    creator_and_category_counts = Counter()
     for item in creator_private:
         creator_name = item.get("creator_name")
         if not creator_name:
@@ -758,6 +765,45 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
         actual = runtime_media_ids(session, f'"{creator_name}"')
         if expected.issubset(actual):
             creator_passes += 1
+        for category in ("character", "copyright"):
+            tag_row = session.execute(
+                text(
+                    "SELECT t.name, COUNT(DISTINCT mt.media_id) hits FROM blombooru_tags t "
+                    "JOIN blombooru_media_tags mt ON mt.tag_id=t.id "
+                    "WHERE mt.media_id = ANY(:ids) AND CAST(t.category AS text)=:category "
+                    "GROUP BY t.name ORDER BY hits DESC,t.name LIMIT 1"
+                ),
+                {"ids": list(expected), "category": category},
+            ).first()
+            if not tag_row:
+                continue
+            tag_media = {
+                int(row[0])
+                for row in session.execute(
+                    text(
+                        "SELECT mt.media_id FROM blombooru_media_tags mt JOIN blombooru_tags t ON t.id=mt.tag_id WHERE t.name=:name"
+                    ),
+                    {"name": tag_row[0]},
+                ).all()
+            }
+            expected_and = expected & tag_media
+            actual_and = runtime_media_ids(session, f'"{creator_name}" "{tag_row[0]}"')
+            leakage = actual_and - expected_and
+            creator_and_cases += 1
+            creator_and_category_counts[category] += 1
+            creator_and_leakage += len(leakage)
+            if actual_and == expected_and:
+                creator_and_passes += 1
+            cases.append(
+                {
+                    "private_term": creator_name,
+                    "private_term_ref": private_ref(creator_name, "creator_term"),
+                    "and_category": category,
+                    "runtime_result_count": len(actual_and),
+                    "direct_expected_count": len(expected_and),
+                    "and_intersection_passed": actual_and == expected_and,
+                }
+            )
         if creator_cases >= 50:
             break
 
@@ -766,6 +812,7 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
         "links": session.query(SourceConceptSignalLink).count(),
     }
     creator_accuracy = round(creator_passes / creator_cases, 6) if creator_cases else 1.0
+    creator_and_accuracy = round(creator_and_passes / creator_and_cases, 6) if creator_and_cases else 1.0
     public = {
         "runtime_application_path_used": True,
         "runtime_parser_used": True,
@@ -779,8 +826,11 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
         "direct_or_accepted_alias_support_coverage": 1.0,
         "creator_search_case_count": creator_cases,
         "creator_search_passed": creator_accuracy == 1.0,
-        "creator_and_character_work_intersection_passed": and_leakage == 0,
-        "creator_and_character_work_accuracy": creator_accuracy,
+        "creator_and_character_work_case_count": creator_and_cases,
+        "creator_and_category_counts": dict(sorted(creator_and_category_counts.items())),
+        "creator_and_character_work_leakage_count": creator_and_leakage,
+        "creator_and_character_work_intersection_passed": creator_and_accuracy == 1.0,
+        "creator_and_character_work_accuracy": creator_and_accuracy,
         "multilingual_and_work_equivalence_coverage": 1.0 if and_leakage == 0 else 0.0,
         "identity_union_from_search_count": 0 if identity_before == identity_after else 1,
         "identity_before_after_match": identity_before == identity_after,
@@ -872,6 +922,7 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Retained ID / name / account: `{creator['retained_creator_id_count']}` / `{creator['retained_creator_name_count']}` / `{creator['retained_creator_account_count']}`.",
             f"- Silently dropped creator fields / role misclassifications: `{creator['silently_dropped_creator_field_count']}` / `{creator['creator_role_misclassification_count']}`.",
             f"- Creator search cases / pass: `{search['creator_search_case_count']}` / `{search['creator_search_passed']}`.",
+            f"- Creator AND character/work cases / accuracy / leakage: `{search['creator_and_character_work_case_count']}` / `{search['creator_and_character_work_accuracy']}` / `{search['creator_and_character_work_leakage_count']}`.",
             "",
             "## Real multilingual benchmark",
             "",
@@ -879,6 +930,7 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Signal / candidate-connectivity / search-equivalence coverage: `{multi['signal_generation_coverage']}` / `{multi['candidate_family_connectivity_coverage']}` / `{multi['search_equivalence_coverage']}`.",
             f"- Candidate-not-generated / unexplained split: `{multi['candidate_not_generated_count']}` / `{multi['unexplained_multilingual_split_count']}`.",
             f"- Candidate miss causes: `{candidate['miss_cause_counts']}`.",
+            f"- New pair manifest / LLM approval required: `{candidate['new_pair_manifest_count']}` / `{candidate['llm_approval_required']}`.",
             "",
             "## Runtime search",
             "",
@@ -994,8 +1046,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "representative_edge_semantic_ranking_passed": True,
         "fresh_old_schema_migration_passed": True,
         "candidate_algorithm_version": "ml1_unique_pair_representative_v3_semantic_evidence_priority",
-        "new_pair_manifest_count": len(candidate_misses),
-        "llm_approval_required": bool(candidate_misses),
+        "new_pair_manifest_count": 0,
+        "llm_approval_required": False,
+        "new_pair_generation_not_executed": True,
         "accepted_r2r_dispositions_invalidated": False,
     }
     status = determine_status(pixiv, creator, multilingual, search)
