@@ -27,33 +27,25 @@ def _assert_split_s2g_not_active(text: str) -> None:
     assert "Recommended immediate next phase after PD1-A: `S2G-1`" not in text
 
 
-def test_current_mainline_roadmap_persists_post_pr133_r2_sequence() -> None:
+def test_current_mainline_roadmap_persists_post_pr135_ml1_sequence() -> None:
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
-    assert "PR #129" in text
+    assert "PR #135" in text
     assert "PR #133" in text
-    assert "4a44d5809c9ec567bf59474cc3e20df62a0e97de" in text
-    assert "operator-ready" in text
-    assert "Issue #130" in text
+    assert "5bbbb8ff13b140ea77a839757603714bfdd87181" in text
     _assert_in_order(
         text,
         [
-            "1. `S2G-M1",
-            "2. `S3A-M1",
-            "3. `S3A-M2",
-            "4. `S3A-M2-R",
-            "5. `R1R",
-            "6. `SCV2-A1R",
-            "7. `SCV2-R2",
-            "8. `Pixiv/source metadata strategy polish`",
-            "9. `S3B",
-            "10. `S2F0",
+            "1. R1R merged in PR #132",
+            "2. SCV2-A1R merged in PR #133",
+            "3. SCV2-R2 merged in PR #134",
+            "4. SCV2-R2R merged in PR #135",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "R1R evidence DB is read-only input" in text
-    assert "Production / Development Separation" in text
-    assert "What Is Intentionally Not Next" in text
+    assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in text
+    assert "search-result union" in text.casefold()
+    assert "Stop Boundary" in text
 
 
 def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:
@@ -86,8 +78,8 @@ def test_handoff_points_to_current_mainline_roadmap() -> None:
     text = _read("docs/current-handoff.md")
 
     assert "docs/roadmap/current-mainline-roadmap.md" in text
-    assert "SCV2-R2: Constraint-Aware SourceConcept Graph Remediation" in text
-    assert "target_met_constraint_aware_r2" in text
-    assert "no downstream route approved" in text
+    assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in text
+    assert "Search-result union is not identity union" in text
+    assert "remain unauthorized" in text
     assert "Current phase | `S3A-M2-R" not in text
     _assert_split_s2g_not_active(text)

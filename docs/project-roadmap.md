@@ -21,9 +21,17 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is now the post-PR #129 return to SourceConcept route
-remediation. The canonical current sequence lives in
-`docs/roadmap/current-mainline-roadmap.md`.
+PR #135 is merged at `5bbbb8ff13b140ea77a839757603714bfdd87181`.
+SCV2-R2R autonomous closure is accepted, and the current approved phase is
+`SCV2-ML1: Multilingual Alias and Source-Metadata Closure`. The canonical current
+sequence lives in `docs/roadmap/current-mainline-roadmap.md`.
+
+The former SR1 interpretation is superseded: identity union and search-result
+union are different. `cannot_link` blocks identity union, but a bare name returns
+the union of every media item with legitimate direct or accepted-alias support;
+additional terms disambiguate by media-level AND intersection. The primary ML1
+quality question is multilingual alias coverage and candidate-generation recall.
+See `docs/source-concept-tag-search-semantics.md`.
 
 PR #113 / Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline
 library, PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows

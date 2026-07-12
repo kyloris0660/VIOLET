@@ -41,6 +41,13 @@ Existing pair judgments are reusable only under explicit compatibility levels:
 New pairs must not trigger automatic provider calls. Report their count,
 projected cost, incompatibility reason, and approval state first.
 
+For SCV2-ML1, the accepted R2R source and working databases are immutable input.
+The accepted `3319 = 1522 must_link + 1791 cannot_link + 6 deferred_nonblocking`
+dispositions are reused and must not be repeated. Canonical Pixiv filename
+candidate accounting is recomputed from current rows; already complete metadata
+is never reacquired. Missing/retryable Pixiv work IDs and genuinely new alias
+pairs produce separate acquisition and LLM approval manifests.
+
 ## Full-Library Rule
 
 Full-library work must separate evidence acquisition from graph recomputation in

@@ -1,33 +1,54 @@
 # Current Mainline Roadmap
 
-Status: SCV2-R2R is closing in PR #135 as `partial_autonomous_closure`.
+Status: PR #135 is merged at `5bbbb8ff13b140ea77a839757603714bfdd87181`.
+SCV2-R2R is accepted as `partial_autonomous_closure`; SCV2-ML1 is the current
+approved phase.
 
 ## Accepted Mainline
 
 1. R1R merged in PR #132.
 2. SCV2-A1R merged in PR #133.
 3. SCV2-R2 merged in PR #134 at `d553a7f51222f2c52c3fe5014e878faed7f7b5a1`.
-4. SCV2-R2R in PR #135 closes autonomous pair disposition and non-human
-   materialization. Its experimental evidence fallback remains disabled by default.
+4. SCV2-R2R merged in PR #135 at `5bbbb8ff13b140ea77a839757603714bfdd87181`.
+   It accepted complete autonomous pair disposition, constraint-safe non-human
+   materialization, immutable-evidence proof, and a disabled-by-default source
+   evidence fallback. It did not authorize production or full-library work.
 
-## Sole Recommended Next Phase
+## Corrected Route Semantics
 
-`SCV2-SR1: Context-Aware Disambiguated Source Search`
+The former `SCV2-SR1: Context-Aware Disambiguated Source Search` recommendation
+is superseded. It incorrectly treated a legitimate shared bare-name result union
+as generic contamination.
 
-SR1, when separately approved, owns:
+- Identity union and search-result union are separate.
+- `cannot_link` blocks identity union and unsupported alias propagation, not direct
+  retrieval of independently supported same-name media.
+- Bare names return the union of legitimate matches across concepts/roles/works.
+- Additional terms use media-level AND intersection for disambiguation.
+- R2R broad-union/cannot-contamination counts remain historical diagnostics and
+  are not product-failure gates under the corrected policy.
 
-- role-aware and work-context-aware search;
-- disambiguated candidate concept groups;
-- no flat union across cannot-linked concepts;
-- safe bare-name ambiguity handling;
-- balanced positive/negative search benchmarks;
-- identity results separated from source-evidence candidates.
+## Current Approved Phase
 
-SR1 is not implemented or started in PR #135.
+`SCV2-ML1: Multilingual Alias and Source-Metadata Closure`
+
+ML1 owns:
+
+- canonical Pixiv filename-candidate completeness accounting over actual data;
+- existing Pixiv/gallery-dl creator metadata preservation and source-layer search;
+- a real fixed-evidence multilingual alias benchmark;
+- candidate-generation recall and representative-edge/fresh-schema debt;
+- actual application-runtime shared-name union and AND-intersection validation;
+- zero-network execution first, with separate Pixiv acquisition and LLM gates.
+
+The primary unresolved quality question is multilingual alias coverage and
+candidate-generation recall, not whether one shared bare name returns media from
+several correctly separated identities.
 
 ## Stop Boundary
 
-Do not start PX1-B, Provider-2, scale-up, Entity bridge, production,
-full-library execution, metadata reacquisition, truth promotion, or another
-phase from this PR. The fallback index is SourceConcept/source-layer output,
-not Entity truth and not production-search authorization.
+Do not start PX1-B broad acquisition, Provider-2, general scale-up, Entity bridge,
+production, full-library execution, truth promotion, media import, AI tagging,
+classification, localization, or another phase from ML1. Any incremental Pixiv
+acquisition or new-pair LLM adjudication requires its own exact manifest and
+separate operator approval.

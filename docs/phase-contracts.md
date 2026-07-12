@@ -34,6 +34,7 @@ extend a contract first.
 - `r1r_full_source_concept_pipeline_contract_v1`
 - `r2_source_concept_graph_remediation_contract_v1`
 - `r2r_autonomous_recall_search_closure_contract_v1`
+- `ml1_multilingual_alias_source_metadata_closure_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`
@@ -141,10 +142,18 @@ never count as successful judgments. Final target evidence must regenerate
 cache-only with zero provider calls.
 
 The contract also fails on fixed-evidence mutation, production profile/DB use,
-truth writes, acquisition/import/AI/localization calls, review/deferred union,
-cannot-link or unknown-role regression, fallback-provider use, search
-contamination, missing checkpoints, public redaction failure, or downstream
-authorization.
+truth writes, acquisition/import/AI/localization calls, review/deferred identity
+union, cannot-link or unknown-role identity regression, fallback-provider use,
+missing checkpoints, public redaction failure, or downstream authorization.
+
+R2R's historical `false_broad_union_indicator_count` and
+`cannot_linked_search_contamination_count` were measured under an overly
+restrictive one-name/one-family interpretation. Their numeric values remain
+preserved diagnostics, but they are not generic product-search failure gates.
+The corrected rule is defined in
+`docs/source-concept-tag-search-semantics.md`: shared supported bare-name results
+are valid, while unsupported/rejected results, AND leakage, and identity mutation
+are failures.
 
 For the honest `partial_autonomous_closure` foundation, the contract also
 requires zero-provider closeout proof, complete overlay lifecycle proof, the
@@ -155,6 +164,28 @@ retained honestly and does not become fabricated actual cost.
 
 See `docs/source-concept-autonomous-resolution-policy.md` for the durable
 no-human-review and evidence-fallback policy.
+
+## ML1 Multilingual Alias And Source-Metadata Gate
+
+`ml1_multilingual_alias_source_metadata_closure_contract_v1` is the focused
+SCV2-ML1 gate. Its first execution is read-only and zero-network over the
+immutable accepted R2R evidence database. It requires corrected durable search
+semantics, complete canonical Pixiv filename-candidate accounting at media/page
+and distinct-work levels, creator-field retention, a real fixed-evidence
+multilingual-family benchmark, candidate-generation recall accounting, actual
+runtime AND-search proof, public redaction, and an integrity-checked review pack.
+
+The contract does not require one bare name to resolve to one identity and does
+not use the historical R2R broad-union/cannot-contamination counts as target
+gates. It fails on unsupported or rejected results, AND leakage, search-caused
+identity mutation, silently lost aliases/creator fields, unexplained candidate
+misses, human-review dependency, fixed/forbidden evidence mutation, unauthorized
+provider/LLM/gallery-dl calls, redaction gaps, or downstream authorization.
+
+`blocked_pixiv_incremental_acquisition_approval_required` and
+`blocked_llm_approval_required` are valid honest outcomes only with exact private
+manifests, zero unauthorized calls, and no completion claim. Metadata acquisition
+and LLM adjudication are separate approval boundaries.
 
 ## Route Gate
 

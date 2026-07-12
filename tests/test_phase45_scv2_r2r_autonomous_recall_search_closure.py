@@ -210,6 +210,14 @@ def _summary(*, target: bool = True) -> dict:
                 "identity_union_allowed": False,
             },
         },
+        "search_semantics_interpretation_erratum": {
+            "old_interpretation_superseded": True,
+            "historical_numeric_fields_preserved": True,
+            "identity_union_is_search_result_union": False,
+            "shared_bare_name_results_are_legitimate_when_supported": True,
+            "and_search_is_media_level_intersection": True,
+            "cannot_link_blocks_direct_supported_matches": False,
+        },
         "checkpoint_proof": {
             "durable_checkpoint_passed": True,
             "atomic_per_success_persistence": True,
@@ -264,8 +272,7 @@ def test_r2r_cache_only_approval_block_is_truthful_and_noncompleting() -> None:
         (("automation_invariants", "manual_review_queue_generated"), True, "r2r_human_review_dependency_present"),
         (("materialization_projection", "materialized_needs_review_count"), 1, "r2r_materialization_projection_failed"),
         (("graph_invariants", "transitive_cannot_violation_count"), 1, "r2r_constraint_regression"),
-        (("search_benchmark", "cannot_linked_search_contamination_count"), 1, "r2r_search_target_failed"),
-        (("search_benchmark", "false_broad_union_indicator_count"), 1, "r2r_search_target_failed"),
+        (("search_semantics_interpretation_erratum", "identity_union_is_search_result_union"), True, "r2r_search_semantics_erratum_missing"),
         (("checkpoint_proof", "final_regeneration_cache_only"), False, "r2r_llm_checkpoint_incomplete"),
     ],
 )
@@ -1592,7 +1599,7 @@ def _persist_benchmark_signal(db_session, draft: SourceConceptSignalDraft, suffi
     return row
 
 
-def test_broad_union_metric_uses_independent_allowed_family_universe(db_session) -> None:
+def test_historical_broad_union_metric_is_not_a_product_failure_gate(db_session) -> None:
     left = replace(
         _signal("broad-left", "Alias One"),
         canonical_key="family_alias",
@@ -1679,8 +1686,7 @@ def test_broad_union_metric_uses_independent_allowed_family_universe(db_session)
         "false_broad_union_indicator_count"
     ]
     contract = check_phase_contract(CONTRACT_ID, summary)
-    assert not contract.passed
-    assert "r2r_search_target_failed" in {finding.code for finding in contract.errors}
+    assert contract.passed, [finding.to_dict() for finding in contract.errors]
 
 
 def test_new_current_cannot_disposition_contaminates_fallback_benchmark(db_session) -> None:

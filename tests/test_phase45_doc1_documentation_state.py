@@ -120,11 +120,11 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
     line_count = len(handoff.splitlines())
 
     assert line_count <= 85
-    assert "PR #133" in handoff
-    assert "SCV2-R2: Constraint-Aware SourceConcept Graph Remediation" in handoff
-    assert "target_met_constraint_aware_r2" in handoff
-    assert "blocked_llm_approval_required" in handoff
-    assert "no downstream route approved" in handoff
+    assert "PR #135" in handoff
+    assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in handoff
+    assert "Search-result union is not identity union" in handoff
+    assert "metadata acquisition" in handoff
+    assert "remain unauthorized" in handoff
     assert "Phase 4.4-B0" not in handoff
     assert "Phase 4.4-D1G" not in handoff
 
