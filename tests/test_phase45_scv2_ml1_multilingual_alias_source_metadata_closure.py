@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 
@@ -283,3 +284,21 @@ def test_public_redaction_rejects_paths_secrets_and_private_name_keys() -> None:
         ml1_runner.assert_public_safe({"value": "C:\\Users\\person\\private.jpg"})
     with pytest.raises(ml1_runner.ML1BlockedError):
         ml1_runner.assert_public_safe({"creator_name": "private"})
+
+
+def test_missing_forbidden_table_fingerprint_is_stable() -> None:
+    missing = {
+        "table": "table_that_is_absent",
+        "status": "missing",
+        "count": None,
+        "row_content_sha256": hashlib.sha256(b"missing_table").hexdigest(),
+        "columns": [],
+    }
+    before = {"tables": {"table_that_is_absent": missing}}
+    after = {"tables": {"table_that_is_absent": dict(missing)}}
+    comparison = __import__(
+        "scripts.run_phase45_scv2_r2_constraint_aware_graph_remediation",
+        fromlist=["compare_fingerprints"],
+    ).compare_fingerprints(before, after)
+    assert comparison["passed"] is True
+    assert comparison["changed_tables"] == []

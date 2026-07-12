@@ -160,7 +160,13 @@ def fast_fingerprint_tables(session: Session, tables: Sequence[str]) -> dict[str
     for table in tables:
         exists = bool(session.execute(text("SELECT to_regclass(:name) IS NOT NULL"), {"name": table}).scalar())
         if not exists:
-            snapshots[table] = {"table": table, "status": "missing", "count": None, "row_content_sha256": None, "columns": []}
+            snapshots[table] = {
+                "table": table,
+                "status": "missing",
+                "count": None,
+                "row_content_sha256": hashlib.sha256(b"missing_table").hexdigest(),
+                "columns": [],
+            }
             continue
         columns = [
             str(row[0])
