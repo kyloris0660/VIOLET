@@ -756,6 +756,7 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
     creator_and_passes = 0
     creator_and_leakage = 0
     creator_and_category_counts = Counter()
+    creator_and_failure_causes = Counter()
     for item in creator_private:
         creator_name = item.get("creator_name")
         if not creator_name:
@@ -804,6 +805,8 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
             creator_and_leakage += len(leakage)
             if actual_and == expected_and:
                 creator_and_passes += 1
+            else:
+                creator_and_failure_causes["character_runtime_intersection_mismatch"] += 1
             cases.append(
                 {
                     "private_term": creator_name,
@@ -823,6 +826,16 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
         ).first()
         if work_row:
             work_title = str(work_row[0])
+            work_observation_present = bool(
+                session.execute(
+                    text(
+                        "SELECT 1 FROM blombooru_source_name_observations WHERE source_metadata_record_id=:record_id "
+                        "AND source_field IN ('pixiv_title','pixiv_parenthetical_inner_work','pixiv_work_title_tag') "
+                        "AND status='observed' LIMIT 1"
+                    ),
+                    {"record_id": int(item["source_metadata_record_id"])},
+                ).first()
+            )
             expected_work = {
                 int(row[0])
                 for row in session.execute(
@@ -840,6 +853,12 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
             creator_and_leakage += len(leakage)
             if actual_work == expected_work:
                 creator_and_passes += 1
+            elif not work_observation_present:
+                creator_and_failure_causes["source_work_observation_missing"] += 1
+            elif actual_work.issubset(expected_work):
+                creator_and_failure_causes["work_title_runtime_under_recall"] += 1
+            else:
+                creator_and_failure_causes["work_title_runtime_intersection_mismatch"] += 1
             cases.append(
                 {
                     "private_term": creator_name,
@@ -875,6 +894,7 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
         "creator_and_character_work_case_count": creator_and_cases,
         "creator_and_category_counts": dict(sorted(creator_and_category_counts.items())),
         "creator_and_character_work_leakage_count": creator_and_leakage,
+        "creator_and_failure_cause_counts": dict(sorted(creator_and_failure_causes.items())),
         "creator_and_character_work_intersection_passed": creator_and_accuracy == 1.0,
         "creator_and_character_work_accuracy": creator_and_accuracy,
         "multilingual_and_work_equivalence_coverage": 1.0 if and_leakage == 0 else 0.0,
@@ -969,6 +989,7 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Silently dropped creator fields / role misclassifications: `{creator['silently_dropped_creator_field_count']}` / `{creator['creator_role_misclassification_count']}`.",
             f"- Creator search cases / pass: `{search['creator_search_case_count']}` / `{search['creator_search_passed']}`.",
             f"- Creator AND character/work cases / accuracy / leakage: `{search['creator_and_character_work_case_count']}` / `{search['creator_and_character_work_accuracy']}` / `{search['creator_and_character_work_leakage_count']}`.",
+            f"- Creator AND failure causes: `{search['creator_and_failure_cause_counts']}`.",
             "",
             "## Real multilingual benchmark",
             "",
