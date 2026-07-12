@@ -35,7 +35,7 @@ COMPATIBILITY_VERSION = "r2r_autonomous_pair_compatibility_v2"
 FIRST_PASS_VERSION = "r2r_autonomous_first_pass_v2_validated_response"
 SECOND_PASS_VERSION = "r2r_autonomous_second_pass_v2_richer_fixed_evidence"
 FINAL_DISPOSITION_VERSION = "r2r_machine_disposition_v1"
-CANDIDATE_ALGORITHM_VERSION = "r2r_unique_pair_representative_v2"
+CANDIDATE_ALGORITHM_VERSION = "ml1_unique_pair_representative_v3_semantic_evidence_priority"
 MAX_REASON_CODE_LENGTH = 120
 SAFE_REASON_CODE_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 

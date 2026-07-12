@@ -1581,6 +1581,10 @@ def run_cache_only_dry_run(args: argparse.Namespace, output_dir: Path) -> dict[s
     manifest, source_recheck = load_and_verify_manifest(args, output_dir)
     r2r_cache_root = require_safe_private_path(Path(args.r2r_cache_dir))
     engine = r2.create_db_engine(args.working_db)
+    # A fresh clone from the pre-R2R schema does not yet contain the fallback
+    # index. Create the additive source-layer table before any dry-run benchmark
+    # query; this only runs against the already-isolated working clone.
+    migrate_add_source_concept_fallback_search_index(engine, inspect(engine))
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
     try:

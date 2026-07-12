@@ -7,9 +7,13 @@ import json
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine, inspect, text
 
+from app.database import migrate_add_source_concept_fallback_search_index
 from scripts.phase_contracts.contract_checks import check_phase_contract
 from scripts.phase_contracts.contract_registry import get_contract
+from scripts import run_phase45_scv2_r2r_autonomous_recall_search_closure as r2r_runner
+from scripts import run_phase45_scv2_ml1_multilingual_alias_source_metadata_closure as ml1_runner
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -199,3 +203,83 @@ def test_durable_documents_encode_corrected_search_semantics() -> None:
     assert erratum["historical_numeric_fields_preserved"] is True
     assert summary["search_benchmark"]["false_broad_union_indicator_count"] == 9186
     assert summary["search_benchmark"]["cannot_linked_search_contamination_count"] == 8768
+
+
+def test_old_r2_schema_clone_adds_fallback_index_before_dry_run(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'old-r2-clone.db'}")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE blombooru_media (id INTEGER PRIMARY KEY)"))
+        conn.execute(
+            text(
+                "CREATE TABLE blombooru_source_concept_signals "
+                "(id INTEGER PRIMARY KEY, media_id INTEGER)"
+            )
+        )
+
+    assert "blombooru_source_concept_fallback_search_index" not in inspect(engine).get_table_names()
+    migrate_add_source_concept_fallback_search_index(engine, inspect(engine))
+    assert "blombooru_source_concept_fallback_search_index" in inspect(engine).get_table_names()
+
+    source = __import__("inspect").getsource(r2r_runner.run_cache_only_dry_run)
+    assert source.index("migrate_add_source_concept_fallback_search_index") < source.index("SessionLocal = sessionmaker")
+    engine.dispose()
+
+
+def test_pixiv_accounting_handles_prefix_suffix_multipage_and_exact_linkage() -> None:
+    media_rows = [
+        {"id": 1, "filename": "prefix-123456789_p0-copy.jpg", "path": "", "thumbnail_path": "", "source": ""},
+        {"id": 2, "filename": "123456789_p1.jpg", "path": "", "thumbnail_path": "", "source": ""},
+        {"id": 3, "filename": "987654321_p0.jpg", "path": "", "thumbnail_path": "", "source": ""},
+    ]
+    metadata_rows = [
+        {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "status": "observed"},
+        {"id": 11, "provider": "pixiv", "media_id": 2, "source_work_id": "123456789", "source_page_index": 1, "status": "observed"},
+    ]
+
+    public, candidates, works = ml1_runner.build_pixiv_accounting(media_rows, metadata_rows)
+
+    assert public["candidate_media_count"] == 3
+    assert public["candidate_distinct_work_count"] == 2
+    assert public["metadata_present_complete_media_count"] == 2
+    assert public["metadata_present_complete_work_count"] == 1
+    assert public["not_attempted_media_count"] == 1
+    assert public["projected_gallery_dl_request_count"] == 1
+    assert [item.page_index for item in candidates[:2]] == [0, 1]
+    assert {item["media_count"] for item in works} == {1, 2}
+
+
+def test_creator_audit_detects_account_loss_without_destroying_stable_id() -> None:
+    metadata = [
+        {
+            "id": 1,
+            "provider": "pixiv",
+            "artist_id": "42",
+            "artist_name": "Display",
+            "raw_metadata_json": {"user": {"id": 42, "name": "Display", "account": "handle"}},
+        }
+    ]
+    observations = [
+        {
+            "source_metadata_record_id": 1,
+            "raw_name": "Display",
+            "name_role": "artist",
+            "source_field": "pixiv_user_metadata",
+        }
+    ]
+
+    public, private, aliases = ml1_runner.build_creator_audit(metadata, observations)
+
+    assert public["stable_creator_id_preservation_coverage"] == 1.0
+    assert public["observed_creator_name_search_support_coverage"] == 1.0
+    assert public["observed_creator_account_search_support_coverage"] == 0.0
+    assert public["silently_dropped_creator_field_count"] == 1
+    assert private[0]["dropped_fields"] == ["creator_account"]
+    assert aliases["42"] == {"Display", "handle"}
+
+
+def test_public_redaction_rejects_paths_secrets_and_private_name_keys() -> None:
+    ml1_runner.assert_public_safe({"aggregate_count": 1})
+    with pytest.raises(ml1_runner.ML1BlockedError):
+        ml1_runner.assert_public_safe({"value": "C:\\Users\\person\\private.jpg"})
+    with pytest.raises(ml1_runner.ML1BlockedError):
+        ml1_runner.assert_public_safe({"creator_name": "private"})

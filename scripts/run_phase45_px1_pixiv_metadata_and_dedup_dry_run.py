@@ -1572,6 +1572,7 @@ def normalize_gallery_dl_metadata(
         or user.get("account")
     )
     artist_id = preferred.get("user_id") or preferred.get("artist_id") or user.get("id")
+    artist_account = preferred.get("user_account") or preferred.get("artist_account") or user.get("account")
     tags = _as_text_list(preferred.get("tags") or preferred.get("tag") or preferred.get("keywords"))
     translated_tags = _as_text_list(preferred.get("translated_tags") or preferred.get("tag_translations"))
     title = normalize_text(preferred.get("title"))
@@ -1584,6 +1585,10 @@ def normalize_gallery_dl_metadata(
         "title": title or None,
         "artist_name": normalize_text(artist_name) or None,
         "artist_id": str(artist_id) if artist_id not in (None, "") else None,
+        "artist_account": normalize_text(artist_account) or None,
+        "artist_profile_url": f"https://www.pixiv.net/users/{artist_id}"
+        if artist_id not in (None, "")
+        else None,
         "tags": tags,
         "translated_tags": translated_tags,
         "caption": caption or None,
@@ -2271,6 +2276,7 @@ def persist_source_metadata_successes(
             counts["SourceMetadataEvidence_" + evidence_action] += 1
         name_rows = [
             ("artist", row.get("artist_name"), "pixiv_user_metadata", 0.94),
+            ("artist", row.get("artist_account"), "pixiv_user_account", 0.94),
             ("work_title", row.get("title"), "pixiv_title", 0.72),
         ]
         name_ids: list[int] = []
