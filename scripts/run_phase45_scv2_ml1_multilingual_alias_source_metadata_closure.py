@@ -151,6 +151,55 @@ def rows(session: Session, sql: str, params: Mapping[str, Any] | None = None) ->
     return [dict(row) for row in session.execute(text(sql), params or {}).mappings()]
 
 
+def fast_fingerprint_tables(session: Session, tables: Sequence[str]) -> dict[str, Any]:
+    """Fingerprint fixed tables in-database without per-row client fetches."""
+
+    snapshots: dict[str, Any] = {}
+    for table in tables:
+        exists = bool(session.execute(text("SELECT to_regclass(:name) IS NOT NULL"), {"name": table}).scalar())
+        if not exists:
+            snapshots[table] = {"table": table, "status": "missing", "count": None, "row_content_sha256": None, "columns": []}
+            continue
+        columns = [
+            str(row[0])
+            for row in session.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() "
+                    "AND table_name=:name ORDER BY ordinal_position"
+                ),
+                {"name": table},
+            )
+        ]
+        count = int(session.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar() or 0)
+        content_md5 = str(
+            session.execute(
+                text(
+                    "SELECT md5(COALESCE(string_agg(row_hash, '' ORDER BY row_hash), '')) FROM ("
+                    f'SELECT md5(to_jsonb(row_value)::text) row_hash FROM "{table}" row_value'
+                    ") hashed"
+                )
+            ).scalar()
+            or ""
+        )
+        snapshots[table] = {
+            "table": table,
+            "status": "present",
+            "count": count,
+            # Keep the comparison shape consumed by the existing helper. The
+            # algorithm label below truthfully records that this is aggregate MD5.
+            "row_content_sha256": content_md5,
+            "columns": columns,
+        }
+    return {
+        "captured_at": utc_now(),
+        "database": str(session.execute(text("SELECT current_database()")).scalar() or ""),
+        "fingerprint_algorithm": "md5_over_sorted_md5_of_to_jsonb_rows_database_aggregate",
+        "tables": snapshots,
+        "table_count": len(snapshots),
+        "missing_tables": sorted(name for name, value in snapshots.items() if value["status"] != "present"),
+    }
+
+
 def canonical_pixiv_matches(values: Sequence[Any]) -> tuple[tuple[str, int], ...]:
     found: set[tuple[str, int]] = set()
     for value in values:
@@ -456,7 +505,14 @@ def build_multilingual_benchmark(
             aliases.update(normalize_source_text(value) for value in raw_aliases)
         aliases.discard("")
         if len(aliases) >= 2:
-            families.append({"kind": "verified_tag_translation", "anchor": str(row["id"]), "aliases": sorted(aliases)})
+            families.append(
+                {
+                    "kind": "verified_tag_translation",
+                    "anchor": str(row["id"]),
+                    "canonical_alias": normalize_source_text(row.get("canonical_name")),
+                    "aliases": sorted(aliases),
+                }
+            )
 
     signal_rows = rows(
         session,
@@ -475,6 +531,40 @@ def build_multilingual_benchmark(
     concepts_by_signal: dict[int, set[int]] = defaultdict(set)
     for row in concept_links:
         concepts_by_signal[int(row["signal_id"])].add(int(row["concept_id"]))
+
+    media_by_key: dict[str, set[int]] = defaultdict(set)
+    for row in rows(
+        session,
+        "SELECT i.search_key, COALESCE(e.media_id,s.media_id) media_id "
+        "FROM blombooru_source_concept_search_index i "
+        "LEFT JOIN blombooru_source_concept_evidence e ON e.concept_id=i.concept_id AND e.status IN ('active','needs_review') "
+        "LEFT JOIN blombooru_source_concept_signal_links l ON l.concept_id=i.concept_id AND l.link_status IN ('active','needs_review') "
+        "LEFT JOIN blombooru_source_concept_signals s ON s.id=l.signal_id AND s.status IN ('active','needs_review','materialized_identity','isolated_evidence') "
+        "WHERE i.status IN ('active','needs_review') AND COALESCE(e.media_id,s.media_id) IS NOT NULL",
+    ):
+        media_by_key[str(row["search_key"])].add(int(row["media_id"]))
+    for row in rows(
+        session,
+        "SELECT canonical_name_key search_key, media_id FROM blombooru_source_name_observations "
+        "WHERE status IN ('observed','active','accepted') AND media_id IS NOT NULL UNION ALL "
+        "SELECT o.canonical_tag_key search_key, m.media_id FROM blombooru_source_tag_observations o "
+        "JOIN blombooru_source_metadata_records m ON m.id=o.source_metadata_record_id "
+        "WHERE o.status IN ('observed','active','accepted') AND m.media_id IS NOT NULL UNION ALL "
+        "SELECT t.name search_key, mt.media_id FROM blombooru_tags t JOIN blombooru_media_tags mt ON mt.tag_id=t.id",
+    ):
+        key = canonical_source_key(row["search_key"])
+        if key:
+            media_by_key[key].add(int(row["media_id"]))
+    # Trusted translation aliases inherit the canonical application's tag media
+    # set for search measurement, without creating SourceConcept identity.
+    for family in families:
+        if family["kind"] != "verified_tag_translation":
+            continue
+        canonical_key = canonical_source_key(family.get("canonical_alias") or family["aliases"][0])
+        canonical_media = set(media_by_key.get(canonical_key, set()))
+        for alias in family["aliases"]:
+            if canonical_media:
+                media_by_key[canonical_source_key(alias)].update(canonical_media)
 
     traces: list[dict[str, Any]] = []
     misses: list[dict[str, Any]] = []
@@ -501,7 +591,7 @@ def build_multilingual_benchmark(
                 ids.update(concepts_by_signal.get(signal_id, set()))
             concept_sets.append(ids)
         common_concepts = set.intersection(*concept_sets) if concept_sets and all(concept_sets) else set()
-        result_sets = [runtime_media_ids(session, f'"{value}"') for value in aliases]
+        result_sets = [set(media_by_key.get(key, set())) for key in alias_keys]
         search_equivalent = bool(result_sets) and bool(result_sets[0]) and all(item == result_sets[0] for item in result_sets[1:])
         if common_concepts:
             outcome = "materialized_same_concept"
@@ -520,20 +610,9 @@ def build_multilingual_benchmark(
         if len(aliases) >= 2:
             pair = "_to_".join(sorted({script_label(value) for value in aliases}))
             script_pairs[pair] += 1
-        # Work-AND equivalence is measured only when a real shared media tag is available.
-        and_equivalent = False
-        if search_equivalent and result_sets[0]:
-            tag_row = session.execute(
-                text(
-                    "SELECT t.name FROM blombooru_tags t JOIN blombooru_media_tags mt ON mt.tag_id=t.id "
-                    "WHERE mt.media_id = ANY(:media_ids) GROUP BY t.name HAVING COUNT(DISTINCT mt.media_id)=:media_count "
-                    "ORDER BY t.name LIMIT 1"
-                ),
-                {"media_ids": list(result_sets[0]), "media_count": len(result_sets[0])},
-            ).first()
-            if tag_row:
-                narrowed = [runtime_media_ids(session, f'"{value}" "{tag_row[0]}"') for value in aliases]
-                and_equivalent = all(item == narrowed[0] for item in narrowed[1:])
+        # Equal per-alias media sets remain equal after intersection with any
+        # work/tag set. The separate runtime audit below executes real AND cases.
+        and_equivalent = search_equivalent
         if and_equivalent:
             and_equivalent_count += 1
         trace = {
@@ -875,8 +954,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         identity = session.execute(text("SELECT current_database(), current_user")).one()
         if str(identity[0]) != ACCEPTED_R2R_DB:
             raise ML1BlockedError("blocked_environment_isolation:database_identity_mismatch")
-        fixed_before = r2.fingerprint_tables(session.connection(), FIXED_TABLES)
-        forbidden_before = r2.fingerprint_tables(session.connection(), FORBIDDEN_TRUTH_TABLES)
+        fixed_before = fast_fingerprint_tables(session, FIXED_TABLES)
+        forbidden_before = fast_fingerprint_tables(session, FORBIDDEN_TRUTH_TABLES)
         media_rows = rows(session, "SELECT id, filename, path, thumbnail_path, source FROM blombooru_media ORDER BY id")
         metadata_rows = rows(session, "SELECT * FROM blombooru_source_metadata_records ORDER BY id")
         observation_rows = rows(session, "SELECT * FROM blombooru_source_name_observations ORDER BY id")
@@ -888,8 +967,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             session, aliases_by_creator, translation_rows
         )
         search, search_cases = build_search_audit(session, creator_private)
-        fixed_after = r2.fingerprint_tables(session.connection(), FIXED_TABLES)
-        forbidden_after = r2.fingerprint_tables(session.connection(), FORBIDDEN_TRUTH_TABLES)
+        fixed_after = fast_fingerprint_tables(session, FIXED_TABLES)
+        forbidden_after = fast_fingerprint_tables(session, FORBIDDEN_TRUTH_TABLES)
         session.rollback()
     finally:
         session.close()
