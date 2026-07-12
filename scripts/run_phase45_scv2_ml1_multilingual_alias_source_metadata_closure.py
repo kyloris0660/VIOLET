@@ -91,7 +91,9 @@ LOCAL_PATH_RE = re.compile(
 SECRET_RE = re.compile(
     r"(?i)(bearer\s+[A-Za-z0-9._~+\-/]{8,}|(?:access|refresh)[_-]?token\s*[=:]|api[_-]?key\s*[=:]|sk-[A-Za-z0-9_-]{12,})"
 )
-PRIVATE_NAME_KEY_RE = re.compile(r"(?i)(raw_name|creator_name|creator_account|filename|local_path|source_url|user_id|work_id)$")
+PRIVATE_NAME_KEY_RE = re.compile(
+    r"(?i)^(raw_name|creator_name|creator_account|filename|local_path|source_url|user_id|work_id)$"
+)
 
 
 class ML1BlockedError(RuntimeError):
