@@ -36,6 +36,7 @@ from app.services.source_metadata_registry_service import (  # noqa: E402
     canonical_source_key,
     normalize_source_text,
 )
+from app.services.source_concept_search_service import _format_search_query_token  # noqa: E402
 from app.utils.search_parser import parse_search_query  # noqa: E402
 from scripts import run_phase44p0_pixiv_source_prior_auto_verify as p0  # noqa: E402
 from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2  # noqa: E402
@@ -493,6 +494,13 @@ def runtime_media_ids(session: Session, query_text: str) -> set[int]:
     return {int(row[0]) for row in query.distinct().all()}
 
 
+def runtime_and_terms(session: Session, *terms: str) -> set[int]:
+    query_text = " ".join(
+        token for token in (_format_search_query_token(term) for term in terms) if token
+    )
+    return runtime_media_ids(session, query_text)
+
+
 def build_multilingual_benchmark(
     session: Session,
     aliases_by_creator: Mapping[str, set[str]],
@@ -685,7 +693,7 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
     supported_results = 0
     for item in shared:
         term = str(item["search_key"])
-        actual = runtime_media_ids(session, f'"{term}"')
+        actual = runtime_and_terms(session, term)
         expected = {
             int(row[0])
             for row in session.execute(
@@ -722,7 +730,7 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
                     {"name": tag_row[0]},
                 ).all()
             }
-            narrowed = runtime_media_ids(session, f'"{term}" "{tag_row[0]}"')
+            narrowed = runtime_and_terms(session, term, str(tag_row[0]))
             expected_and = actual & tag_media
             leakage = narrowed - expected_and
             and_leakage += len(leakage)
@@ -764,7 +772,7 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
         if not expected:
             continue
         creator_cases += 1
-        actual = runtime_media_ids(session, f'"{creator_name}"')
+        actual = runtime_and_terms(session, str(creator_name))
         if expected.issubset(actual):
             creator_passes += 1
         for category in ("character", "copyright"):
@@ -789,7 +797,7 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
                 ).all()
             }
             expected_and = expected & tag_media
-            actual_and = runtime_media_ids(session, f'"{creator_name}" "{tag_row[0]}"')
+            actual_and = runtime_and_terms(session, str(creator_name), str(tag_row[0]))
             leakage = actual_and - expected_and
             creator_and_cases += 1
             creator_and_category_counts[category] += 1
@@ -825,7 +833,7 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
                     {"creator_name": creator_name, "work_title": work_title},
                 ).all()
             }
-            actual_work = runtime_media_ids(session, f'"{creator_name}" "{work_title}"')
+            actual_work = runtime_and_terms(session, str(creator_name), work_title)
             leakage = actual_work - expected_work
             creator_and_cases += 1
             creator_and_category_counts["work_title"] += 1
