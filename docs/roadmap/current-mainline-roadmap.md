@@ -32,6 +32,12 @@ as generic contamination.
 
 `SCV2-ML1: Multilingual Alias and Source-Metadata Closure`
 
+The initial read-only, zero-network audit has completed with
+`blocked_pixiv_incremental_acquisition_approval_required`. It fully accounted
+`2,285` candidate media/pages and `2,235` distinct works; `1,713` missing-work
+requests require a separate private-manifest approval. This blocked result does
+not authorize gallery-dl, Pixiv, LLM, or another phase.
+
 ML1 owns:
 
 - canonical Pixiv filename-candidate completeness accounting over actual data;

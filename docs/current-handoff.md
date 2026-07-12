@@ -45,6 +45,21 @@ candidate-generation recall, and the application runtime's AND-search semantics.
 The primary unresolved quality question is multilingual alias coverage and
 candidate-generation recall.
 
+The initial ML1 audit is complete at evidence SHA
+`838e02d086c1e075205bd702a61adaec5fcd704a` with status
+`blocked_pixiv_incremental_acquisition_approval_required`:
+
+- `2,285` canonical candidate media/pages and `2,235` distinct works are fully
+  accounted;
+- `527` media / `519` works have complete matching metadata;
+- `1,755` media remain `not_attempted`, representing `1,713` incremental work
+  requests; `3` media have filename/metadata identity conflicts;
+- no provider or LLM call occurred, no fixed/forbidden evidence changed, and the
+  ML1 contract passed for the honest blocked status.
+
+The next action is an explicit operator decision on the private incremental Pixiv
+manifest. No acquisition is authorized by this handoff.
+
 PX1-B broad acquisition, Provider-2, scale-up, Entity bridge, production,
 full-library execution, metadata acquisition, truth promotion, media import, AI
 tagging, classification, and localization remain unauthorized. If existing data
