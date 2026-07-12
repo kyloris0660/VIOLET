@@ -740,6 +740,8 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
             }
         )
 
+    shared_case_count = len(cases)
+    shared_and_case_count = sum(bool(item.get("and_case_available")) for item in cases)
     creator_cases = 0
     creator_passes = 0
     creator_and_cases = 0
@@ -816,12 +818,12 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
     public = {
         "runtime_application_path_used": True,
         "runtime_parser_used": True,
-        "shared_name_case_count": len(cases),
+        "shared_name_case_count": shared_case_count,
         "shared_name_union_passed": shared_pass,
         "supported_result_count": supported_results,
         "unsupported_result_media_count": 0,
         "rejected_evidence_result_count": 0,
-        "and_case_count": sum(item["and_case_available"] for item in cases),
+        "and_case_count": shared_and_case_count,
         "and_constraint_leakage_count": and_leakage,
         "direct_or_accepted_alias_support_coverage": 1.0,
         "creator_search_case_count": creator_cases,
