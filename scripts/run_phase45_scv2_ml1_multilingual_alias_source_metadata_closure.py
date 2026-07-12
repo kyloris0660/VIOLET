@@ -806,6 +806,42 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
                     "and_intersection_passed": actual_and == expected_and,
                 }
             )
+        work_row = session.execute(
+            text(
+                "SELECT title FROM blombooru_source_metadata_records WHERE id=:record_id "
+                "AND COALESCE(title,'')<>'' LIMIT 1"
+            ),
+            {"record_id": int(item["source_metadata_record_id"])},
+        ).first()
+        if work_row:
+            work_title = str(work_row[0])
+            expected_work = {
+                int(row[0])
+                for row in session.execute(
+                    text(
+                        "SELECT media_id FROM blombooru_source_metadata_records WHERE provider='pixiv' "
+                        "AND artist_name=:creator_name AND title=:work_title AND media_id IS NOT NULL"
+                    ),
+                    {"creator_name": creator_name, "work_title": work_title},
+                ).all()
+            }
+            actual_work = runtime_media_ids(session, f'"{creator_name}" "{work_title}"')
+            leakage = actual_work - expected_work
+            creator_and_cases += 1
+            creator_and_category_counts["work_title"] += 1
+            creator_and_leakage += len(leakage)
+            if actual_work == expected_work:
+                creator_and_passes += 1
+            cases.append(
+                {
+                    "private_term": creator_name,
+                    "private_term_ref": private_ref(creator_name, "creator_term"),
+                    "and_category": "work_title",
+                    "runtime_result_count": len(actual_work),
+                    "direct_expected_count": len(expected_work),
+                    "and_intersection_passed": actual_work == expected_work,
+                }
+            )
         if creator_cases >= 50:
             break
 
