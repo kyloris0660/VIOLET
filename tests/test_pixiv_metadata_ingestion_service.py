@@ -247,13 +247,16 @@ def test_explicit_auth_failure_in_canary_blocks_without_raw_output(db) -> None:
     )
     db.commit()
 
-    result = type("R", (), {"work_id": "123456789", "state": PixivMetadataState.RETRYABLE.value, "request_attempted": True, "attempt_count": 1, "error_class": "retryable_authentication"})()
-    with pytest.raises(PixivMetadataGateError, match="blocked_gallery_dl_authentication_invalid"):
-        ingestion_runner.run_deterministic_auth_canary(
-            db, ["123456789"], entrypoint=("gallery-dl",),
-            env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
-            acquire=lambda *_args, **_kwargs: [result],
-        )
+    result = type("R", (), {"work_id": "123456789", "state": PixivMetadataState.RETRYABLE.value, "request_attempted": True, "attempt_count": 1, "error_class": "retryable_authentication", "systemic_stop": True})()
+    results, evidence = ingestion_runner.run_deterministic_auth_canary(
+        db, ["123456789"], entrypoint=("gallery-dl",),
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        acquire=lambda *_args, **_kwargs: [result],
+    )
+    assert results == [result]
+    assert evidence["passed"] is False
+    assert evidence["systemic_stop"] is True
+    assert evidence["raw_values_exposed"] is False
 
 
 def test_bounded_acquisition_deduplicates_manifest_and_checkpoints(db) -> None:
@@ -286,6 +289,76 @@ def test_bounded_acquisition_deduplicates_manifest_and_checkpoints(db) -> None:
     assert len(calls) == 1
     assert len(results) == 1 and results[0].state == PixivMetadataState.COMPLETE.value
     assert summarize_batch_closure(db, [11, 12])["closed"] is True
+
+
+@pytest.mark.parametrize(
+    "stderr,expected_error",
+    [
+        ("401 authentication expired", "retryable_authentication"),
+        ("429 rate limit", "retryable_rate_limit"),
+        ("network connection timeout", "retryable_network_transport"),
+    ],
+)
+def test_systemic_failure_stops_all_later_main_and_conflict_calls(db, stderr: str, expected_error: str) -> None:
+    for media_id, work_id in ((21, "123456789"), (22, "223456789")):
+        queue_media_for_pixiv_metadata(db, {"id": media_id, "filename": f"{work_id}_p0.jpg", "path": f"media/{work_id}_p0.jpg"})
+    db.commit()
+    calls = []
+
+    def failed(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr=stderr)
+
+    results = run_bounded_acquisition(
+        db,
+        ["123456789", "223456789"],
+        entrypoint=("gallery-dl",),
+        authentication_passed=True,
+        accept_local_credential_risk=True,
+        command_runner=failed,
+        sleeper=lambda _seconds: None,
+        max_attempts_per_work=1,
+    )
+    assert len(calls) == 1
+    assert len(results) == 1
+    assert results[0].systemic_stop is True
+    assert results[0].error_class == expected_error
+    assert ingestion_runner.conflict_manifest_may_start(results) is False
+
+
+def test_terminal_and_normalization_failures_do_not_stop_unrelated_works(db) -> None:
+    for media_id, work_id in ((23, "123456789"), (24, "223456789"), (25, "323456789")):
+        queue_media_for_pixiv_metadata(db, {"id": media_id, "filename": f"{work_id}_p0.jpg", "path": f"media/{work_id}_p0.jpg"})
+    db.commit()
+    calls = []
+
+    def mixed(command, **_kwargs):
+        work_id = command[-1].rsplit("/", 1)[-1]
+        calls.append(work_id)
+        if work_id == "123456789":
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="404 unavailable")
+        if work_id == "223456789":
+            return subprocess.CompletedProcess(command, 0, stdout="{}", stderr="")
+        payload = [[3, "url", {"id": int(work_id), "num": 0, "title": "ok"}]]
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+
+    results = run_bounded_acquisition(
+        db,
+        ["123456789", "223456789", "323456789"],
+        entrypoint=("gallery-dl",),
+        authentication_passed=True,
+        accept_local_credential_risk=True,
+        command_runner=mixed,
+        sleeper=lambda _seconds: None,
+        max_attempts_per_work=1,
+    )
+    assert calls == ["123456789", "223456789", "323456789"]
+    assert [item.state for item in results] == [
+        PixivMetadataState.TERMINAL.value,
+        PixivMetadataState.NORMALIZATION_FAILED.value,
+        PixivMetadataState.COMPLETE.value,
+    ]
+    assert ingestion_runner.conflict_manifest_may_start(results) is True
 
 
 def test_page_failure_preserves_complete_page_and_updates_only_attempted_pending(db) -> None:

@@ -13,11 +13,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, migrate_add_source_concept_fallback_search_index
 from app.models import TagTranslation
+from app.services import source_assertion_search_service as source_search
 from app.utils.search_parser import parse_search_query
 from scripts.phase_contracts.contract_checks import check_phase_contract
 from scripts.phase_contracts.contract_registry import get_contract
 from scripts import run_phase45_scv2_r2r_autonomous_recall_search_closure as r2r_runner
 from scripts import run_phase45_scv2_ml1_multilingual_alias_source_metadata_closure as ml1_runner
+from scripts import run_pixiv_metadata_ingestion as ingestion_runner
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,8 +63,10 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
         "owner_sample_validation": {
             "sample_generated": True,
             "sample_size": 60,
+            "required_sample_size": 60,
+            "current_eligible_manifest_count": 60,
             "conflict_cases_exported": 0,
-            "sample_manifest_fingerprint": "a" * 64,
+            "owner_review_manifest_fingerprint": "a" * 64,
             "validation_confirmed": False,
             "confirmation_env": None,
             "optional_stage_evidence": True,
@@ -89,15 +93,31 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "pending_work_count": 0,
             "retryable_work_count": 0,
             "normalization_failed_work_count": 0,
+            "provider_identity_mismatch_work_count": 0,
             "missing_work_count": 0,
             "conflict_unresolved_work_count": 0,
             "no_durable_attempt_or_result_evidence_media_count": 0,
+            "provider_identity_mismatch_media_count": 0,
             "work_accounting_equality_holds": True,
             "normal_retrievable_missing_media_count": 0,
             "work_id_mismatch_media_count": 0,
             "incremental_acquisition_required": False,
+            "all_eligible_media_count": 3,
+            "pixiv_ingestion_decision_media_count": 3,
+            "pixiv_ingestion_decision_coverage": 1.0,
+            "pixiv_candidate_media_count": 3,
+            "pixiv_candidate_complete_media_count": 2,
+            "pixiv_candidate_complete_media_coverage": 0.666667,
+            "pixiv_candidate_work_count": 2,
+            "pixiv_candidate_complete_work_count": 1,
+            "pixiv_candidate_complete_work_coverage": 0.5,
         },
         "creator_metadata": {
+            "pixiv_registry_record_count": 3,
+            "pixiv_queue_decision_record_count": 0,
+            "pixiv_provider_metadata_record_count": 3,
+            "pixiv_successful_acquisition_record_count": 0,
+            "pixiv_terminal_evidence_record_count": 1,
             "available_creator_fields_accounting_coverage": 1.0,
             "stable_creator_id_preservation_coverage": 1.0,
             "observed_creator_search_support_coverage": 1.0,
@@ -162,14 +182,22 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
         "acquisition_execution": {
             "acquisition_route_active": False,
             "acquisition_manifest_distinct_work_count": 0,
-            "acquisition_manifest_fingerprint": "",
+            "acquisition_manifest_fingerprint": "b" * 64,
+            "conflict_resolution_manifest_count": 0,
+            "conflict_resolution_manifest_fingerprint": "c" * 64,
+            "checkpoint_main_manifest_fingerprint": "b" * 64,
+            "checkpoint_conflict_manifest_fingerprint": "c" * 64,
             "max_attempts_per_work": 3,
             "unique_work_ids_attempted_count": 0,
+            "normal_manifest_work_ids_attempted_count": 0,
+            "conflict_manifest_work_ids_attempted_count": 0,
             "provider_request_attempt_count": 0,
             "gallery_dl_call_count": 0,
             "successful_work_count": 0,
             "terminal_work_count": 0,
             "retryable_work_count": 0,
+            "normalization_failed_work_count": 0,
+            "provider_identity_mismatch_work_count": 0,
             "skipped_complete_work_count": 0,
             "resumed_work_count": 0,
             "duplicate_unexpected_work_attempt_count": 0,
@@ -178,6 +206,8 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "max_observed_attempts_for_one_work": 0,
             "retry_attempts_attributable_to_manifest_work": True,
             "resume_only_remaining_open_works": True,
+            "final_outcome_counts": {},
+            "final_outcome_ledger_fingerprint": None,
         },
         "graph_invariants": {
             "review_or_deferred_identity_union_count": 0,
@@ -218,11 +248,18 @@ def _configure_acquisition(summary: dict, *, manifest: int, attempts: int, uniqu
         acquisition_route_active=True,
         acquisition_manifest_distinct_work_count=manifest,
         acquisition_manifest_fingerprint="b" * 64,
+        checkpoint_main_manifest_fingerprint="b" * 64,
         max_attempts_per_work=max_attempts,
         unique_work_ids_attempted_count=unique,
+        normal_manifest_work_ids_attempted_count=unique,
+        conflict_manifest_work_ids_attempted_count=0,
         provider_request_attempt_count=attempts,
         gallery_dl_call_count=attempts,
         max_observed_attempts_for_one_work=min(attempts, max_attempts),
+        average_request_interval_seconds=2.5 if attempts > 1 else None,
+        successful_work_count=unique,
+        final_outcome_counts={"metadata_complete": unique} if unique else {},
+        final_outcome_ledger_fingerprint="d" * 64 if unique else None,
     )
     for key in ("gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls"):
         summary["operation_counts"][key] = attempts
@@ -271,10 +308,149 @@ def test_interrupted_checkpoint_resume_requires_remaining_open_proof() -> None:
     assert "ml1_acquisition_resume_or_retry_proof_missing" in {item.code for item in check_phase_contract(CONTRACT_ID, summary).errors}
 
 
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "metadata_complete",
+        "terminal_remote_unavailable",
+        "retryable_exhausted_or_systemically_stopped",
+        "normalization_failed",
+        "provider_identity_mismatch",
+        "conflict_resolved_metadata_complete",
+        "conflict_resolved_terminal_unavailable",
+        "conflict_unresolved_after_exact_provider_evidence",
+        "conflict_normalization_failed",
+        "conflict_retryable_exhausted",
+    ],
+)
+def test_every_attempted_work_final_outcome_is_accepted(outcome: str) -> None:
+    summary = _summary()
+    _configure_acquisition(summary, manifest=1, attempts=1, unique=1)
+    summary["acquisition_execution"]["final_outcome_counts"] = {outcome: 1}
+    if outcome.startswith("conflict_"):
+        summary["acquisition_execution"].update(
+            acquisition_manifest_distinct_work_count=0,
+            normal_manifest_work_ids_attempted_count=0,
+            conflict_resolution_manifest_count=1,
+            conflict_manifest_work_ids_attempted_count=1,
+        )
+    assert check_phase_contract(CONTRACT_ID, summary).passed
+
+
+def test_attempted_work_outcomes_reject_omitted_duplicate_and_count_mismatch() -> None:
+    omitted = _summary()
+    _configure_acquisition(omitted, manifest=1, attempts=1, unique=1)
+    omitted["acquisition_execution"]["final_outcome_counts"] = {}
+    assert "ml1_acquisition_final_outcome_accounting_invalid" in {
+        item.code for item in check_phase_contract(CONTRACT_ID, omitted).errors
+    }
+
+    duplicate = _summary()
+    _configure_acquisition(duplicate, manifest=1, attempts=1, unique=1)
+    duplicate["acquisition_execution"]["final_outcome_counts"] = {
+        "metadata_complete": 1,
+        "terminal_remote_unavailable": 1,
+    }
+    assert "ml1_acquisition_final_outcome_accounting_invalid" in {
+        item.code for item in check_phase_contract(CONTRACT_ID, duplicate).errors
+    }
+
+    mismatch = _summary()
+    _configure_acquisition(mismatch, manifest=2, attempts=2, unique=2)
+    mismatch["acquisition_execution"]["final_outcome_counts"] = {"metadata_complete": 1}
+    assert "ml1_acquisition_final_outcome_accounting_invalid" in {
+        item.code for item in check_phase_contract(CONTRACT_ID, mismatch).errors
+    }
+
+
+@pytest.mark.parametrize("eligible", [1713, 60, 59, 1, 0])
+def test_owner_sample_size_tracks_current_eligible_manifest(eligible: int) -> None:
+    summary = _summary()
+    expected = min(60, eligible)
+    summary["owner_sample_validation"].update(
+        current_eligible_manifest_count=eligible,
+        required_sample_size=expected,
+        sample_size=expected,
+    )
+    assert check_phase_contract(CONTRACT_ID, summary).passed
+
+
+def test_local_credential_risk_waiver_is_isolated_and_never_claims_rotation() -> None:
+    summary = _summary()
+    summary["credential_safety"] = {
+        **ingestion_runner.credential_waiver_evidence(accepted=True),
+        "rotation_confirmation_present": False,
+        "known_old_secret_fingerprint_scan_performed": False,
+        "raw_secret_value_exposed": False,
+        "external_call_attempted": False,
+    }
+    summary["environment_isolation"]["database_identity"] = "blombooru_scv2_ml1_acquisition_test_20260712"
+    assert check_phase_contract(CONTRACT_ID, summary).passed
+
+    production = deepcopy(summary)
+    production["environment_isolation"]["database_identity"] = "blombooru"
+    assert "ml1_local_credential_risk_waiver_environment_invalid" in {
+        item.code for item in check_phase_contract(CONTRACT_ID, production).errors
+    }
+
+
+def test_executable_manifest_fingerprint_is_membership_only_and_order_normalized() -> None:
+    first = ingestion_runner.build_executable_manifest(["223456789", "123456789"], manifest_kind="main")
+    second = ingestion_runner.build_executable_manifest(["123456789", "223456789"], manifest_kind="main")
+    changed = ingestion_runner.build_executable_manifest(["123456789"], manifest_kind="main")
+    assert ingestion_runner.executable_manifest_fingerprint(first) == ingestion_runner.executable_manifest_fingerprint(second)
+    assert ingestion_runner.executable_manifest_fingerprint(first) != ingestion_runner.executable_manifest_fingerprint(changed)
+    assert "basename" not in first and "review_notes" not in first
+
+
+def test_endpoint_equivalent_search_helper_enables_needs_review_sourceconcept(monkeypatch) -> None:
+    captured = {}
+    sentinel_query = object()
+
+    def fake_apply(query, parsed, db, **kwargs):
+        captured.update(kwargs)
+        return query
+
+    monkeypatch.setattr(source_search, "apply_source_soft_search", fake_apply)
+    assert source_search.apply_endpoint_equivalent_text_search(sentinel_query, {"tags": {}, "meta": {}}, object()) is sentinel_query
+    assert captured == {
+        "include_needs_review": False,
+        "include_source_concept_needs_review": True,
+    }
+
+
+def test_incompatible_checkpoint_fingerprint_is_rejected() -> None:
+    summary = _summary()
+    summary["acquisition_execution"]["checkpoint_main_manifest_fingerprint"] = "f" * 64
+    assert "ml1_manifest_checkpoint_fingerprint_mismatch" in {
+        item.code for item in check_phase_contract(CONTRACT_ID, summary).errors
+    }
+
+
+def test_public_metric_semantics_reject_queue_coverage_as_provider_success() -> None:
+    summary = _summary()
+    summary["pixiv_accounting"]["all_eligible_media_metadata_coverage"] = 1.0
+    summary["creator_metadata"]["successful_pixiv_metadata_record_count"] = 3
+    assert "ml1_pixiv_metric_semantics_regressed" in {
+        item.code for item in check_phase_contract(CONTRACT_ID, summary).errors
+    }
+
+
 def test_owner_sample_is_optional_and_not_a_runtime_blocker() -> None:
     summary = _summary(status="blocked_credential_rotation_confirmation_required")
-    summary["pixiv_accounting"].update(incremental_acquisition_required=True, missing_work_count=1, candidate_distinct_work_count=3, accounted_distinct_work_count=3)
-    summary["acquisition_execution"].update(acquisition_manifest_distinct_work_count=1, acquisition_manifest_fingerprint="c" * 64)
+    summary["pixiv_accounting"].update(
+        incremental_acquisition_required=True,
+        missing_work_count=1,
+        candidate_distinct_work_count=3,
+        accounted_distinct_work_count=3,
+        pixiv_candidate_work_count=3,
+        pixiv_candidate_complete_work_coverage=0.333333,
+    )
+    summary["acquisition_execution"].update(
+        acquisition_manifest_distinct_work_count=1,
+        acquisition_manifest_fingerprint="e" * 64,
+        checkpoint_main_manifest_fingerprint="e" * 64,
+    )
     result = check_phase_contract(CONTRACT_ID, summary)
     assert result.passed, [item.to_dict() for item in result.errors]
 
@@ -707,26 +883,59 @@ def test_translation_support_inherits_exact_and_parenthetical_direct_tags() -> N
 
 
 def test_review_pack_equivalence_fails_when_packed_evidence_differs(tmp_path: Path) -> None:
-    pack_dir = tmp_path / "review-pack"
-    pack_dir.mkdir()
     evidence = {"phase": "test", "value": 1}
-    (pack_dir / "evidence-summary.json").write_text(json.dumps(evidence), encoding="utf-8")
-    (pack_dir / "public-report-copy.md").write_text("report", encoding="utf-8")
-    (pack_dir / "contract-evidence.json").write_text("{}", encoding="utf-8")
+    evidence_path = tmp_path / "evidence-summary.json"
+    report_path = tmp_path / "public-report-copy.md"
+    contract_path = tmp_path / "contract-evidence.json"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    report_path.write_text("report", encoding="utf-8")
+    contract_path.write_text("{}", encoding="utf-8")
+    attestation = ml1_runner.write_review_pack(
+        tmp_path,
+        [evidence_path, report_path, contract_path],
+        evidence_summary_name=evidence_path.name,
+        report_name=report_path.name,
+        contract_evidence_name=contract_path.name,
+    )
+    pack_dir = tmp_path / "review-pack"
     public = {
         "evidence_summary": evidence,
-        "review_pack_attestation": {
-            "packed_evidence_summary_sha256": ml1_runner.sha256_file(pack_dir / "evidence-summary.json"),
-            "packed_report_sha256": ml1_runner.sha256_file(pack_dir / "public-report-copy.md"),
-            "packed_contract_evidence_sha256": ml1_runner.sha256_file(pack_dir / "contract-evidence.json"),
-            "self_referential_hash_claimed": False,
-            "placeholder_field_count": 0,
-        },
+        "review_pack_attestation": attestation,
     }
     ml1_runner.verify_review_pack_equivalence(public, pack_dir)
     (pack_dir / "evidence-summary.json").write_text(json.dumps({"phase": "test", "value": 2}), encoding="utf-8")
-    with pytest.raises(ml1_runner.ML1BlockedError, match="review_pack_evidence_summary_mismatch"):
+    with pytest.raises(ml1_runner.ML1BlockedError, match="review_pack_(checksum|evidence_summary)_mismatch"):
         ml1_runner.verify_review_pack_equivalence(public, pack_dir)
+
+
+def test_review_pack_rebuild_excludes_stale_and_removed_members(tmp_path: Path) -> None:
+    first = tmp_path / "evidence-summary.json"
+    report = tmp_path / "public-report-copy.md"
+    contract = tmp_path / "contract-evidence.json"
+    removed = tmp_path / "removed-next-run.json"
+    for path, content in ((first, "{}"), (report, "report"), (contract, "{}"), (removed, "{}")):
+        path.write_text(content, encoding="utf-8")
+    stale_dir = tmp_path / "review-pack"
+    stale_dir.mkdir()
+    (stale_dir / "stale-prior-run.json").write_text("{}", encoding="utf-8")
+    ml1_runner.write_review_pack(
+        tmp_path,
+        [first, report, contract, removed],
+        evidence_summary_name=first.name,
+        report_name=report.name,
+        contract_evidence_name=contract.name,
+    )
+    assert not (stale_dir / "stale-prior-run.json").exists()
+    ml1_runner.write_review_pack(
+        tmp_path,
+        [first, report, contract],
+        evidence_summary_name=first.name,
+        report_name=report.name,
+        contract_evidence_name=contract.name,
+    )
+    assert not (stale_dir / removed.name).exists()
+    with ml1_runner.zipfile.ZipFile(tmp_path / "phase-4.5-scv2-ml1-private-review-pack.zip") as archive:
+        assert removed.name not in archive.namelist()
 
 
 def test_public_markdown_uses_current_blocker_and_no_durable_semantics() -> None:

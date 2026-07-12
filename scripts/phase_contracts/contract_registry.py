@@ -2305,7 +2305,7 @@ CONTRACTS: dict[str, PhaseContract] = {
             "public_redaction",
             "review_pack_generation",
             "continuous_pixiv_on_import_gate",
-            "credential_rotation_and_redacted_authentication_gate",
+            "credential_rotation_or_isolated_owner_waiver_and_redacted_authentication_gate",
             "bounded_incremental_pixiv_metadata_acquisition_when_manifest_nonempty",
             "production_promotion_manifest",
         ),

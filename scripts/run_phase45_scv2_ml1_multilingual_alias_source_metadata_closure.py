@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import random
 import re
+import shutil
 import sys
 from typing import Any, Iterable, Mapping, Sequence
 import zipfile
@@ -35,7 +36,7 @@ for candidate in (ROOT, BACKEND_ROOT):
 from app.models import Media, SourceConcept, SourceConceptSignalLink  # noqa: E402
 from app.services.source_assertion_search_service import (  # noqa: E402
     _source_concept_key_candidates,
-    apply_source_soft_search,
+    apply_endpoint_equivalent_text_search,
 )
 from app.services.source_metadata_registry_service import (  # noqa: E402
     canonical_source_key,
@@ -52,6 +53,10 @@ from app.services.source_concept_search_service import _format_search_query_toke
 from app.utils.search_parser import parse_search_query, wildcard_to_regex  # noqa: E402
 from scripts import run_phase44p0_pixiv_source_prior_auto_verify as p0  # noqa: E402
 from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2  # noqa: E402
+from scripts.run_pixiv_metadata_ingestion import (  # noqa: E402
+    build_executable_manifest,
+    executable_manifest_fingerprint,
+)
 from scripts.phase_contracts.contract_checks import check_phase_contract  # noqa: E402
 
 
@@ -65,6 +70,8 @@ ACCEPTED_R2_SOURCE_DB = "blombooru_scv2_r2_review4_test_20260710"
 REPORT_MD = ROOT / "docs/reports/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure.md"
 REPORT_JSON = ROOT / "docs/reports/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure-summary.json"
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure"
+ACQUISITION_OUTPUT_DIR = ROOT / ".local_manifests/phase-4.5-scv2-ml1-pixiv-metadata-ingestion"
+ACQUISITION_EXECUTION_SUMMARY = ACQUISITION_OUTPUT_DIR / "execution-summary.json"
 
 FIXED_TABLES = (
     "blombooru_media",
@@ -350,6 +357,9 @@ def build_pixiv_accounting(
             elif "terminal" in lifecycle_classes:
                 status = "terminal_remote_unavailable"
                 reason = "durable_authenticated_remote_unavailable_evidence"
+            elif "provider_identity_mismatch" in lifecycle_classes:
+                status = "provider_identity_mismatch"
+                reason = "durable_provider_identity_mismatch_evidence"
             elif mismatched_rows:
                 status = "filename_identity_conflict"
                 reason = "metadata_exists_but_work_or_page_mismatch"
@@ -431,6 +441,8 @@ def build_pixiv_accounting(
             status = "retryable"
         elif "metadata_parse_or_normalization_failure" in statuses:
             status = "normalization_failed"
+        elif "provider_identity_mismatch" in statuses:
+            status = "provider_identity_mismatch"
         else:
             status = "missing"
         memberships = [
@@ -463,7 +475,7 @@ def build_pixiv_accounting(
     complete_media_count = status_counts["metadata_present_complete"]
     target_request_work_ids = {str(item["work_id"]) for item in work_rows if item["status"] in {"missing", "pending", "retryable"}}
     work_accounting_sum = sum(
-        work_status_counts[key] for key in ("complete", "terminal", "pending", "retryable", "normalization_failed", "missing", "unresolved_conflict")
+        work_status_counts[key] for key in ("complete", "terminal", "pending", "retryable", "normalization_failed", "provider_identity_mismatch", "missing", "unresolved_conflict")
     )
     conflict_media = [item for item in candidates if item.status == "filename_identity_conflict"]
     conflict_tokens = {
@@ -496,6 +508,7 @@ def build_pixiv_accounting(
         "pending_work_count": work_status_counts["pending"],
         "retryable_work_count": work_status_counts["retryable"],
         "normalization_failed_work_count": work_status_counts["normalization_failed"],
+        "provider_identity_mismatch_work_count": work_status_counts["provider_identity_mismatch"],
         "missing_work_count": work_status_counts["missing"],
         "retryable_failure_media_count": retryable_media_count,
         "retryable_authentication_failure_media_count": status_counts["retryable_authentication_failure"],
@@ -503,6 +516,7 @@ def build_pixiv_accounting(
         "retryable_network_or_transport_failure_media_count": status_counts["retryable_network_or_transport_failure"],
         "parse_or_identity_failure_media_count": parse_conflict_count,
         "metadata_parse_or_normalization_failure_media_count": status_counts["metadata_parse_or_normalization_failure"],
+        "provider_identity_mismatch_media_count": status_counts["provider_identity_mismatch"],
         "filename_identity_conflict_media_count": status_counts["filename_identity_conflict"],
         "filename_identity_conflict_token_count": len(conflict_tokens),
         "filename_identity_conflict_distinct_work_count": len(conflict_works),
@@ -531,8 +545,14 @@ def build_pixiv_accounting(
         "checkpoint_resume_plan": "checkpoint each completed distinct work ID; resume only the remaining manifest; preserve prior raw and normalized metadata",
         "complete_records_reacquisition_count": 0,
         "all_eligible_media_count": len(media_rows),
-        "all_eligible_media_with_pixiv_metadata_count": len(metadata_by_media),
-        "all_eligible_media_metadata_coverage": round(len(metadata_by_media) / len(media_rows), 6) if media_rows else 1.0,
+        "pixiv_ingestion_decision_media_count": len(metadata_by_media),
+        "pixiv_ingestion_decision_coverage": round(len(metadata_by_media) / len(media_rows), 6) if media_rows else 1.0,
+        "pixiv_candidate_media_count": candidate_count,
+        "pixiv_candidate_complete_media_count": complete_media_count,
+        "pixiv_candidate_complete_media_coverage": round(complete_media_count / candidate_count, 6) if candidate_count else 1.0,
+        "pixiv_candidate_work_count": distinct_work_count,
+        "pixiv_candidate_complete_work_count": complete_work_count,
+        "pixiv_candidate_complete_work_coverage": round(complete_work_count / distinct_work_count, 6) if distinct_work_count else 1.0,
         "exact_work_ids_public": False,
         "work_status_counts": dict(sorted(work_status_counts.items())),
         "work_accounting_equality_holds": work_accounting_sum == distinct_work_count,
@@ -671,7 +691,7 @@ def build_owner_review_artifacts(
     take("multi_page_or_multiple_local_media", [row for row in numeric_rows if ";" in str(row["observed_local_page_indexes"]) or int(row["local_media_count"]) > 1])
     take("nontrivial_filename_layout", [row for row in numeric_rows if row["layout_classification"] != "exact_token_basename"])
 
-    target_size = 60
+    target_size = min(60, len(base_rows))
     seed_hex = manifest_fingerprint[:16]
     rng = random.Random(int(seed_hex, 16))
     random_fill = sorted(remaining, key=lambda value: int(value))
@@ -760,7 +780,7 @@ def build_owner_review_artifacts(
         duplicate_page_distribution[str(len(pages) - len(set(pages)))] += 1
     category_counts = Counter(category for categories in selected.values() for category in categories)
     selection_evidence = {
-        "manifest_fingerprint": manifest_fingerprint,
+        "owner_review_manifest_fingerprint": manifest_fingerprint,
         "deterministic_seed_derivation": "int(first_16_hex_chars_of_manifest_sha256, 16)",
         "deterministic_seed_hex": seed_hex,
         "full_manifest_row_count": len(base_rows),
@@ -792,8 +812,10 @@ def build_owner_review_artifacts(
         "owner_sample_validation": {
             "sample_generated": True,
             "sample_size": len(sample_rows),
+            "required_sample_size": target_size,
+            "current_eligible_manifest_count": len(base_rows),
             "conflict_cases_exported": len(conflict_rows),
-            "sample_manifest_fingerprint": manifest_fingerprint,
+            "owner_review_manifest_fingerprint": manifest_fingerprint,
             "validation_confirmed": False,
             "confirmation_env": None,
             "optional_stage_evidence": True,
@@ -910,7 +932,23 @@ def build_creator_audit(
         return round(counter[field] / available[field], 6) if available[field] else 1.0
 
     public = {
-        "successful_pixiv_metadata_record_count": len(successful),
+        "pixiv_registry_record_count": len(successful),
+        "pixiv_queue_decision_record_count": sum(
+            str(row.get("metadata_kind") or "") == "pixiv_ingestion_gate" for row in successful
+        ),
+        "pixiv_provider_metadata_record_count": sum(
+            str(row.get("metadata_kind") or "") != "pixiv_ingestion_gate"
+            and classify_pixiv_metadata_lifecycle(row.get("status")) == "complete"
+            for row in successful
+        ),
+        "pixiv_successful_acquisition_record_count": sum(
+            str(row.get("metadata_kind") or "") == "pixiv_metadata_acquisition"
+            and classify_pixiv_metadata_lifecycle(row.get("status")) == "complete"
+            for row in successful
+        ),
+        "pixiv_terminal_evidence_record_count": sum(
+            classify_pixiv_metadata_lifecycle(row.get("status")) == "terminal" for row in successful
+        ),
         "records_with_creator_id": available["creator_id"],
         "records_with_creator_display_name": available["creator_name"],
         "records_with_creator_account": available["creator_account"],
@@ -958,7 +996,7 @@ def script_label(value: str) -> str:
 
 def runtime_media_ids(session: Session, query_text: str) -> set[int]:
     parsed = parse_search_query(query_text, db=session)
-    query = apply_source_soft_search(session.query(Media.id), parsed, session)
+    query = apply_endpoint_equivalent_text_search(session.query(Media.id), parsed, session)
     return {int(row[0]) for row in query.distinct().all()}
 
 
@@ -1890,7 +1928,7 @@ def render_report(summary: Mapping[str, Any]) -> str:
         "sample_generated": False,
         "sample_size": 0,
         "conflict_cases_exported": 0,
-        "sample_manifest_fingerprint": "not_generated",
+        "owner_review_manifest_fingerprint": "not_generated",
         "validation_confirmed": False,
         "normal_pipeline_human_dependency": False,
     })
@@ -1929,7 +1967,7 @@ def render_report(summary: Mapping[str, Any]) -> str:
             "## Owner sample gate",
             "",
             f"- Sample generated / size / conflicts exported: `{owner_sample['sample_generated']}` / `{owner_sample['sample_size']}` / `{owner_sample['conflict_cases_exported']}`.",
-            f"- Sample fingerprint: `{owner_sample['sample_manifest_fingerprint']}`.",
+            f"- Owner-review manifest fingerprint: `{owner_sample.get('owner_review_manifest_fingerprint', owner_sample.get('sample_manifest_fingerprint', 'not_generated'))}`.",
             f"- Owner validation confirmed / normal-pipeline human dependency: `{owner_sample['validation_confirmed']}` / `{owner_sample['normal_pipeline_human_dependency']}`.",
             "- Ignored private artifacts are under `.local_manifests/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure/owner-review/`; no raw work IDs, URLs, or basenames are published here.",
             "- `missing` means no durable complete/terminal/result evidence; it does not mean remotely deleted.",
@@ -1999,26 +2037,43 @@ def write_review_pack(
     contract_evidence_name: str,
 ) -> dict[str, Any]:
     pack_dir = output_dir / "review-pack"
-    pack_dir.mkdir(parents=True, exist_ok=True)
+    if pack_dir.exists():
+        shutil.rmtree(pack_dir)
+    pack_dir.mkdir(parents=True, exist_ok=False)
     copied: list[Path] = []
+    if len({source.name for source in files}) != len(files):
+        raise ML1BlockedError("review_pack_duplicate_member_name")
     for source in files:
         target = pack_dir / source.name
         target.write_bytes(source.read_bytes())
         copied.append(target)
-    checksums = {path.name: sha256_file(path) for path in sorted(copied)}
-    write_json(pack_dir / "checksums.json", checksums)
-    write_json(pack_dir / "manifest.json", {"phase": PHASE, "files": sorted(checksums), "public_values_redacted": True})
+    payload_checksums = {path.name: sha256_file(path) for path in sorted(copied)}
+    manifest_path = pack_dir / "manifest.json"
+    write_json(manifest_path, {"phase": PHASE, "files": sorted(payload_checksums), "public_values_redacted": True})
+    checksums = {**payload_checksums, "manifest.json": sha256_file(manifest_path)}
+    checksums_path = pack_dir / "checksums.json"
+    write_json(checksums_path, checksums)
+    zip_members = sorted([*payload_checksums, "manifest.json", "checksums.json"])
     zip_path = output_dir / "phase-4.5-scv2-ml1-private-review-pack.zip"
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(pack_dir.iterdir()):
-            archive.write(path, arcname=path.name)
+        for name in zip_members:
+            archive.write(pack_dir / name, arcname=name)
     integrity = all(sha256_file(pack_dir / name) == digest for name, digest in checksums.items())
+    with zipfile.ZipFile(zip_path) as archive:
+        actual_zip_members = sorted(archive.namelist())
+    integrity = integrity and actual_zip_members == zip_members
+    zip_member_checksums = {
+        name: sha256_file(pack_dir / name) for name in zip_members
+    }
     attestation = {
         "attestation_version": "ml1_review_pack_attestation_v2",
         "generated": True,
         "manifest_present": True,
         "checksums_present": True,
-        "checksum_count": len(checksums),
+        "checksum_count": len(zip_member_checksums),
+        "zip_member_count": len(zip_members),
+        "zip_members_equal_current_manifest": actual_zip_members == zip_members,
+        "zip_member_checksums": zip_member_checksums,
         "integrity_passed": integrity,
         "not_committed": True,
         "zip_generated": zip_path.exists(),
@@ -2027,8 +2082,8 @@ def write_review_pack(
         "packed_evidence_summary_sha256": checksums[evidence_summary_name],
         "packed_report_sha256": checksums[report_name],
         "packed_contract_evidence_sha256": checksums[contract_evidence_name],
-        "packed_checksums_sha256": sha256_file(pack_dir / "checksums.json"),
-        "packed_manifest_sha256": sha256_file(pack_dir / "manifest.json"),
+        "packed_checksums_sha256": sha256_file(checksums_path),
+        "packed_manifest_sha256": sha256_file(manifest_path),
         "substantive_evidence_excludes_attestation": True,
         "self_referential_hash_claimed": False,
         "placeholder_field_count": 0,
@@ -2044,6 +2099,25 @@ def verify_review_pack_equivalence(public_summary: Mapping[str, Any], pack_dir: 
     packed_evidence_path = pack_dir / "evidence-summary.json"
     packed_report_path = pack_dir / "public-report-copy.md"
     packed_contract_path = pack_dir / "contract-evidence.json"
+    manifest = json.loads((pack_dir / "manifest.json").read_text(encoding="utf-8"))
+    checksums = json.loads((pack_dir / "checksums.json").read_text(encoding="utf-8"))
+    expected_members = set(manifest.get("files") or ()) | {"manifest.json", "checksums.json"}
+    zip_path = pack_dir.parent / "phase-4.5-scv2-ml1-private-review-pack.zip"
+    with zipfile.ZipFile(zip_path) as archive:
+        actual_members = set(archive.namelist())
+    if actual_members != expected_members:
+        raise ML1BlockedError("review_pack_zip_member_mismatch")
+    if set(checksums) != expected_members - {"checksums.json"}:
+        raise ML1BlockedError("review_pack_checksum_member_mismatch")
+    for name, digest in checksums.items():
+        if sha256_file(pack_dir / name) != digest:
+            raise ML1BlockedError(f"review_pack_checksum_mismatch:{name}")
+    attested_member_checksums = attestation.get("zip_member_checksums")
+    actual_member_checksums = {
+        name: sha256_file(pack_dir / name) for name in sorted(expected_members)
+    }
+    if attested_member_checksums != actual_member_checksums:
+        raise ML1BlockedError("review_pack_zip_member_checksum_attestation_mismatch")
     packed_evidence = json.loads(packed_evidence_path.read_text(encoding="utf-8"))
     if packed_evidence != dict(evidence):
         raise ML1BlockedError("review_pack_evidence_summary_mismatch")
@@ -2066,7 +2140,7 @@ def determine_status(
     search: Mapping[str, Any],
     *,
     document_proof: Mapping[str, Any] | None = None,
-    credential_rotation_confirmed: bool = False,
+    credential_safety_gate_satisfied: bool = False,
     acquisition_authorized: bool = True,
     continuous_ingestion_gate_implemented: bool = False,
 ) -> tuple[str, list[str]]:
@@ -2080,9 +2154,9 @@ def determine_status(
         if not acquisition_authorized:
             hard_blockers.append("blocked_pixiv_incremental_acquisition_approval_required")
         else:
-            if not credential_rotation_confirmed:
+            if not credential_safety_gate_satisfied:
                 hard_blockers.append("blocked_credential_rotation_confirmation_required")
-            if credential_rotation_confirmed:
+            if credential_safety_gate_satisfied:
                 hard_blockers.append("blocked_pixiv_acquisition_execution_incomplete")
     if int(creator.get("silently_dropped_creator_field_count") or 0) > 0:
         deferred_blockers.append("blocked_creator_metadata_loss")
@@ -2182,13 +2256,53 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     owner_review, owner_private_files = build_owner_review_artifacts(output_dir, candidate_rows, work_rows)
     private_files.extend(owner_private_files)
     credential_confirmation = str(os.getenv("VIOLET_CREDENTIAL_ROTATION_CONFIRMED") or "").casefold() == "true"
+    acquisition_evidence: dict[str, Any] = {}
+    if args.database == ACQUISITION_DB and ACQUISITION_EXECUTION_SUMMARY.is_file():
+        loaded_execution = json.loads(ACQUISITION_EXECUTION_SUMMARY.read_text(encoding="utf-8"))
+        if isinstance(loaded_execution, Mapping):
+            acquisition_evidence = dict(loaded_execution)
+        execution_accounting = acquisition_evidence.get("acquisition_execution") or {}
+        if bool(execution_accounting.get("acquisition_route_active")):
+            main_manifest_path = ACQUISITION_OUTPUT_DIR / "exact-distinct-work-manifest.json"
+            conflict_manifest_path = ACQUISITION_OUTPUT_DIR / "exact-conflict-resolution-manifest.json"
+            checkpoint_path = ACQUISITION_OUTPUT_DIR / "acquisition-checkpoint.json"
+            for required_path in (main_manifest_path, conflict_manifest_path, checkpoint_path):
+                if not required_path.is_file():
+                    raise ML1BlockedError(f"acquisition_private_evidence_missing:{required_path.name}")
+            main_manifest_evidence = json.loads(main_manifest_path.read_text(encoding="utf-8"))
+            conflict_manifest_evidence = json.loads(conflict_manifest_path.read_text(encoding="utf-8"))
+            checkpoint_evidence = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            expected_main_fingerprint = executable_manifest_fingerprint(main_manifest_evidence)
+            expected_conflict_fingerprint = executable_manifest_fingerprint(conflict_manifest_evidence)
+            if not (
+                execution_accounting.get("acquisition_manifest_fingerprint") == expected_main_fingerprint
+                == checkpoint_evidence.get("main_manifest_fingerprint")
+                and execution_accounting.get("conflict_resolution_manifest_fingerprint") == expected_conflict_fingerprint
+                == checkpoint_evidence.get("conflict_manifest_fingerprint")
+            ):
+                raise ML1BlockedError("acquisition_manifest_checkpoint_fingerprint_mismatch")
+            private_files.extend((
+                main_manifest_path,
+                conflict_manifest_path,
+                checkpoint_path,
+                ACQUISITION_EXECUTION_SUMMARY,
+            ))
+            outcome_ledger_path = ACQUISITION_OUTPUT_DIR / "final-work-outcome-ledger.json"
+            if outcome_ledger_path.is_file():
+                private_files.append(outcome_ledger_path)
+    waiver_evidence = acquisition_evidence.get("credential_safety") or {}
+    waiver_authorized = (
+        isinstance(waiver_evidence, Mapping)
+        and waiver_evidence.get("policy") == "operator_accepted_local_credential_risk_v1"
+        and waiver_evidence.get("project_owner_authorized") is True
+    )
     status, active_blockers = determine_status(
         pixiv,
         creator,
         multilingual,
         search,
         document_proof=document_proof,
-        credential_rotation_confirmed=credential_confirmation,
+        credential_safety_gate_satisfied=credential_confirmation or waiver_authorized,
         acquisition_authorized=True,
         continuous_ingestion_gate_implemented=True,
     )
@@ -2214,7 +2328,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             write_json(path, payload)
         private_files.append(path)
 
-    operation_counts = {
+    zero_operation_counts = {
         "gallery_dl_calls": 0,
         "pixiv_provider_calls": 0,
         "provider_metadata_acquisition_calls": 0,
@@ -2231,16 +2345,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "localization_calls": 0,
         "entity_writes": 0,
     }
-    acquisition_manifest_fingerprint = owner_review["owner_sample_validation"]["sample_manifest_fingerprint"]
-    acquisition_execution = {
+    executable_main_work_ids = [
+        str(item["work_id"])
+        for item in work_rows
+        if item["status"] in {"missing", "pending", "retryable"}
+    ]
+    executable_conflict_work_ids = [
+        str(item["work_id"]) for item in work_rows if item["status"] == "unresolved_conflict"
+    ]
+    current_main_manifest = build_executable_manifest(executable_main_work_ids, manifest_kind="main")
+    current_conflict_manifest = build_executable_manifest(executable_conflict_work_ids, manifest_kind="conflict")
+    default_acquisition_execution = {
         "acquisition_route_active": False,
-        "acquisition_manifest_distinct_work_count": (
-            pixiv["missing_work_count"] + pixiv["pending_work_count"] + pixiv["retryable_work_count"]
-        ),
+        "acquisition_manifest_distinct_work_count": len(executable_main_work_ids),
         "conflict_resolution_manifest_count": pixiv["conflict_unresolved_work_count"],
-        "acquisition_manifest_fingerprint": acquisition_manifest_fingerprint,
+        "acquisition_manifest_fingerprint": executable_manifest_fingerprint(current_main_manifest),
+        "conflict_resolution_manifest_fingerprint": executable_manifest_fingerprint(current_conflict_manifest),
+        "checkpoint_main_manifest_fingerprint": executable_manifest_fingerprint(current_main_manifest),
+        "checkpoint_conflict_manifest_fingerprint": executable_manifest_fingerprint(current_conflict_manifest),
         "max_attempts_per_work": 3,
         "unique_work_ids_attempted_count": 0,
+        "normal_manifest_work_ids_attempted_count": 0,
+        "conflict_manifest_work_ids_attempted_count": 0,
         "provider_request_attempt_count": 0,
         "gallery_dl_call_count": 0,
         "successful_work_count": 0,
@@ -2254,7 +2380,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "max_observed_attempts_for_one_work": 0,
         "retry_attempts_attributable_to_manifest_work": True,
         "resume_only_remaining_open_works": True,
+        "final_outcome_counts": {},
+        "final_outcome_ledger_fingerprint": None,
+        "systemic_stop": False,
+        "systemic_stop_class": None,
+        "systemic_stop_stage": None,
+        "conflict_manifest_started": False,
     }
+    operation_counts = {
+        **zero_operation_counts,
+        **dict(acquisition_evidence.get("operation_counts") or {}),
+    }
+    acquisition_execution = dict(
+        acquisition_evidence.get("acquisition_execution") or default_acquisition_execution
+    )
+    acquisition_execution.pop("attempts_by_work", None)
+    current_stock_fixed_point = (
+        not bool(pixiv["incremental_acquisition_required"])
+        and int(pixiv["conflict_unresolved_work_count"]) == 0
+        and int(pixiv["normalization_failed_work_count"]) == 0
+        and int(pixiv["pending_work_count"]) == 0
+        and int(pixiv["retryable_work_count"]) == 0
+        and int(pixiv["missing_work_count"]) == 0
+        and int(pixiv.get("provider_identity_mismatch_work_count") or 0) == 0
+    )
+    safe_to_merge = status == "partial_ml1_pixiv_metadata_foundation_complete" and current_stock_fixed_point
     summary: dict[str, Any] = {
         "phase": PHASE,
         "title": PHASE_TITLE,
@@ -2266,9 +2416,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "contract_id": CONTRACT_ID,
             "status": status,
             "claims": {
-                "target_met": status == "target_met_multilingual_alias_source_metadata_closure",
-                "route_approved": False,
-                "safe_to_merge": False,
+                "target_met": False,
+                "route_approved": safe_to_merge,
+                "safe_to_merge": safe_to_merge,
             },
             "active_blockers": active_blockers,
         },
@@ -2280,19 +2430,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "source_database_immutable": True,
             "production_profile_active": False,
             "production_write_attempted": False,
-            "network_disabled": True,
+            "network_disabled": int(operation_counts.get("gallery_dl_calls") or 0) == 0,
             "database_label": "isolated-ml1-acquisition-database" if args.database == ACQUISITION_DB else "accepted-r2r-working-database",
             "database_identity": args.database,
             "accepted_source_database_identity": ACCEPTED_R2R_DB,
         },
         "credential_safety": {
+            **dict(waiver_evidence),
             "rotation_confirmation_present": credential_confirmation,
-            "redacted_authentication_preflight_performed": False,
-            "external_call_attempted": False,
+            "redacted_authentication_preflight_performed": bool(
+                (acquisition_evidence.get("redacted_authentication_preflight") or {}).get("performed")
+            ),
+            "external_call_attempted": int(operation_counts.get("gallery_dl_calls") or 0) > 0,
             "raw_secret_value_exposed": False,
             "known_old_secret_fingerprint_scan_performed": False,
             "status": (
-                "blocked_credential_rotation_confirmation_required"
+                "operator_accepted_local_credential_risk_v1"
+                if waiver_authorized
+                else "blocked_credential_rotation_confirmation_required"
                 if not credential_confirmation and pixiv["incremental_acquisition_required"]
                 else "not_required_for_zero_network_audit"
             ),
@@ -2306,14 +2461,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "local_distribution_diagnostics": owner_review["diagnostics"],
         "pixiv_accounting": pixiv,
         "pixiv_metadata_foundation": {
-            "current_stock_closed": (
-                not bool(pixiv["incremental_acquisition_required"])
-                and int(pixiv["conflict_unresolved_work_count"]) == 0
-                and int(pixiv["normalization_failed_work_count"]) == 0
-                and int(pixiv["pending_work_count"]) == 0
-                and int(pixiv["retryable_work_count"]) == 0
-                and int(pixiv["missing_work_count"]) == 0
-            ),
+            "current_stock_closed": current_stock_fixed_point,
             "continuous_ingestion_gate_implemented": True,
             "complete_or_terminal_coverage": round(
                 (pixiv["metadata_present_complete_work_count"] + pixiv["terminal_remote_unavailable_work_count"])

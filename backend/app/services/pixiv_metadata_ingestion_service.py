@@ -49,6 +49,7 @@ class PixivMetadataState(str, Enum):
     TERMINAL = "terminal_remote_unavailable"
     CONFLICT = "filename_identity_conflict"
     NORMALIZATION_FAILED = "normalization_failed"
+    PROVIDER_IDENTITY_MISMATCH = "provider_identity_mismatch"
 
 
 CLOSED_STATES = frozenset({PixivMetadataState.COMPLETE.value, PixivMetadataState.TERMINAL.value})
@@ -76,6 +77,8 @@ def classify_pixiv_metadata_lifecycle(status: Any) -> str:
         return "terminal"
     if value == PixivMetadataState.NORMALIZATION_FAILED.value:
         return "normalization_failed"
+    if value == PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value:
+        return "provider_identity_mismatch"
     if value == PixivMetadataState.CONFLICT.value:
         return "conflict"
     if value == PixivMetadataState.NOT_APPLICABLE.value:
@@ -101,6 +104,7 @@ class AcquisitionResult:
     page_count: int
     error_class: str | None = None
     attempt_count: int = 1
+    systemic_stop: bool = False
 
 
 def utc_now() -> datetime:
@@ -477,7 +481,14 @@ def parse_gallery_dl_stdout(stdout: str, expected_work_id: str) -> list[dict[str
             }
         )
     if not normalized:
-        raise PixivMetadataGateError("metadata_identity_mismatch_or_unsupported_shape")
+        returned_work_ids = {
+            str(raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid"))
+            for raw in records
+            if raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid")
+        }
+        if returned_work_ids and str(expected_work_id) not in returned_work_ids:
+            raise PixivMetadataGateError("provider_identity_mismatch")
+        raise PixivMetadataGateError("metadata_normalization_failed_unsupported_shape")
     return sorted(normalized, key=lambda item: int(item["page_index"]))
 
 
@@ -792,10 +803,13 @@ def run_bounded_acquisition(
     min_spacing_seconds: float = MIN_REQUEST_SPACING_SECONDS,
     max_attempts_per_work: int = 3,
     allow_conflict_resolution: bool = False,
+    accept_local_credential_risk: bool = False,
+    result_callback: Callable[[AcquisitionResult], None] | None = None,
 ) -> list[AcquisitionResult]:
     """Execute a finite distinct-work manifest with per-work DB checkpoints."""
 
-    require_rotation_confirmation(env)
+    if not accept_local_credential_risk:
+        require_rotation_confirmation(env)
     if not authentication_passed:
         raise PixivMetadataGateError("blocked_gallery_dl_redacted_authentication_preflight_failed")
     if min_spacing_seconds < MIN_REQUEST_SPACING_SECONDS:
@@ -811,7 +825,10 @@ def run_bounded_acquisition(
             session, work_id, allow_conflict_resolution=allow_conflict_resolution
         )
         if not attempted_records:
-            results.append(AcquisitionResult(work_id, "skipped_complete_or_closed", False, 0, attempt_count=0))
+            result = AcquisitionResult(work_id, "skipped_complete_or_closed", False, 0, attempt_count=0)
+            results.append(result)
+            if result_callback:
+                result_callback(result)
             continue
         attempted_record_ids = tuple(int(record.id) for record in attempted_records)
         command = build_gallery_dl_metadata_command(entrypoint, work_id)
@@ -835,7 +852,10 @@ def run_bounded_acquisition(
                 session.commit()
                 if attempt < max_attempts_per_work:
                     continue
-                results.append(AcquisitionResult(work_id, state, True, 0, exc.__class__.__name__, attempt))
+                result = AcquisitionResult(work_id, state, True, 0, exc.__class__.__name__, attempt, True)
+                results.append(result)
+                if result_callback:
+                    result_callback(result)
                 stop_remaining_manifest = True
                 break
             if completed.returncode != 0:
@@ -849,7 +869,11 @@ def run_bounded_acquisition(
                 }
                 if retryable and attempt < max_attempts_per_work:
                     continue
-                results.append(AcquisitionResult(work_id, state, True, 0, reason, attempt))
+                systemic_stop = state == PixivMetadataState.RETRYABLE.value
+                result = AcquisitionResult(work_id, state, True, 0, reason, attempt, systemic_stop)
+                results.append(result)
+                if result_callback:
+                    result_callback(result)
                 if state == PixivMetadataState.RETRYABLE.value:
                     stop_remaining_manifest = True
                 break
@@ -863,10 +887,29 @@ def run_bounded_acquisition(
                     raise PixivMetadataGateError("metadata_normalization_failed_no_local_page_link")
             except (PixivMetadataGateError, ValueError, TypeError, json.JSONDecodeError) as exc:
                 session.rollback()
+                identity_mismatch = "identity_mismatch" in str(exc)
+                failure_state = (
+                    PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value
+                    if identity_mismatch
+                    else PixivMetadataState.NORMALIZATION_FAILED.value
+                )
+                if allow_conflict_resolution and identity_mismatch:
+                    result = AcquisitionResult(
+                        work_id,
+                        failure_state,
+                        True,
+                        0,
+                        exc.__class__.__name__,
+                        attempt,
+                    )
+                    results.append(result)
+                    if result_callback:
+                        result_callback(result)
+                    break
                 mark_work_state(
                     session,
                     work_id,
-                    PixivMetadataState.NORMALIZATION_FAILED.value,
+                    failure_state,
                     reason=exc.__class__.__name__,
                     attempted_record_ids=attempted_record_ids,
                     structural_diagnostics={
@@ -881,10 +924,16 @@ def run_bounded_acquisition(
                     allow_conflict_resolution=allow_conflict_resolution,
                 )
                 session.commit()
-                results.append(AcquisitionResult(work_id, PixivMetadataState.NORMALIZATION_FAILED.value, True, 0, exc.__class__.__name__, attempt))
+                result = AcquisitionResult(work_id, failure_state, True, 0, exc.__class__.__name__, attempt)
+                results.append(result)
+                if result_callback:
+                    result_callback(result)
                 break
             session.commit()
-            results.append(AcquisitionResult(work_id, PixivMetadataState.COMPLETE.value, True, len(pages), attempt_count=attempt))
+            result = AcquisitionResult(work_id, PixivMetadataState.COMPLETE.value, True, len(pages), attempt_count=attempt)
+            results.append(result)
+            if result_callback:
+                result_callback(result)
             break
         if stop_remaining_manifest:
             break

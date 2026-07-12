@@ -3212,15 +3212,46 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
                     actual=operations.get(key),
                 )
 
+    credential_safety = _get(summary, "credential_safety", {})
+    if not isinstance(credential_safety, Mapping):
+        result.fail("ml1_credential_safety_not_object", "ML1 requires structured credential-safety evidence.", path="credential_safety")
+        credential_safety = {}
+    if credential_safety.get("policy") == "operator_accepted_local_credential_risk_v1":
+        for key, expected in {
+            "project_owner_authorized": True,
+            "credential_rotation_required": False,
+            "fingerprint_scan_required": False,
+            "existing_profile_use_authorized": True,
+            "scope": "isolated_ml1_pixiv_metadata_only_execution",
+            "production_allowed": False,
+            "raw_secret_exposure_allowed": False,
+            "rotation_confirmation_present": False,
+            "known_old_secret_fingerprint_scan_performed": False,
+            "raw_secret_value_exposed": False,
+        }.items():
+            if credential_safety.get(key, MISSING) != expected:
+                result.fail("ml1_local_credential_risk_waiver_invalid", "The owner waiver must remain explicit, isolated, and non-production.", path=f"credential_safety.{key}", expected=expected, actual=credential_safety.get(key, "<missing>"))
+        environment = _get(summary, "environment_isolation", {})
+        if not isinstance(environment, Mapping) or (
+            environment.get("violet_env_test") is not True
+            or environment.get("database_identity") != "blombooru_scv2_ml1_acquisition_test_20260712"
+            or environment.get("accepted_r2r_database_immutable") is not True
+            or environment.get("production_profile_active") is not False
+            or environment.get("production_write_attempted") is not False
+        ):
+            result.fail("ml1_local_credential_risk_waiver_environment_invalid", "The credential waiver is valid only for the exact isolated ML1 test database.", path="environment_isolation")
+
     acquisition = _get(summary, "acquisition_execution", {})
     if not isinstance(acquisition, Mapping):
         result.fail("ml1_acquisition_accounting_not_object", "ML1 requires bounded manifest execution accounting.", path="acquisition_execution")
         acquisition = {}
     integer_fields = (
         "acquisition_manifest_distinct_work_count", "max_attempts_per_work",
-        "unique_work_ids_attempted_count", "provider_request_attempt_count",
+        "unique_work_ids_attempted_count", "normal_manifest_work_ids_attempted_count",
+        "conflict_manifest_work_ids_attempted_count", "provider_request_attempt_count",
         "gallery_dl_call_count", "successful_work_count", "terminal_work_count",
-        "retryable_work_count", "skipped_complete_work_count", "resumed_work_count",
+        "retryable_work_count", "normalization_failed_work_count",
+        "provider_identity_mismatch_work_count", "skipped_complete_work_count", "resumed_work_count",
         "duplicate_unexpected_work_attempt_count", "out_of_manifest_work_attempt_count",
         "complete_work_reacquisition_count", "max_observed_attempts_for_one_work",
     )
@@ -3235,8 +3266,13 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
     unique_attempted = _as_int(acquisition.get("unique_work_ids_attempted_count"), default=-1)
     request_attempts = _as_int(acquisition.get("provider_request_attempt_count"), default=-1)
     fingerprint = acquisition.get("acquisition_manifest_fingerprint")
-    if manifest_count > 0 and (not isinstance(fingerprint, str) or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None):
-        result.fail("ml1_acquisition_manifest_fingerprint_invalid", "A non-empty manifest requires a reproducible SHA-256 fingerprint.", path="acquisition_execution.acquisition_manifest_fingerprint")
+    conflict_fingerprint = acquisition.get("conflict_resolution_manifest_fingerprint")
+    for key, value in (
+        ("acquisition_manifest_fingerprint", fingerprint),
+        ("conflict_resolution_manifest_fingerprint", conflict_fingerprint),
+    ):
+        if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            result.fail("ml1_acquisition_manifest_fingerprint_invalid", "Executable manifests require reproducible SHA-256 fingerprints, including empty fixed-point manifests.", path=f"acquisition_execution.{key}")
     if max_attempts < 1 or max_attempts > 3:
         result.fail("ml1_acquisition_retry_budget_invalid", "ML1 allows one to three attempts per manifest work.", path="acquisition_execution.max_attempts_per_work", actual=max_attempts)
     if unique_attempted > total_governed_manifest_count:
@@ -3245,12 +3281,69 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
         result.fail("ml1_acquisition_request_bound_exceeded", "Provider requests exceeded governed manifest size times retry allowance.", path="acquisition_execution.provider_request_attempt_count", expected=f"<= {total_governed_manifest_count * max(max_attempts, 0)}", actual=request_attempts)
     if request_attempts < unique_attempted:
         result.fail("ml1_acquisition_attempt_attribution_invalid", "Every attempted unique work requires at least one attributable request.", path="acquisition_execution.provider_request_attempt_count")
-    classified_attempted = sum(
-        _as_int(acquisition.get(key), default=-10**9)
-        for key in ("successful_work_count", "terminal_work_count", "retryable_work_count")
+    final_outcomes = acquisition.get("final_outcome_counts")
+    allowed_final_outcomes = {
+        "metadata_complete",
+        "terminal_remote_unavailable",
+        "retryable_exhausted_or_systemically_stopped",
+        "normalization_failed",
+        "provider_identity_mismatch",
+        "conflict_resolved_metadata_complete",
+        "conflict_resolved_terminal_unavailable",
+        "conflict_unresolved_after_exact_provider_evidence",
+        "conflict_normalization_failed",
+        "conflict_retryable_exhausted",
+    }
+    if not isinstance(final_outcomes, Mapping):
+        result.fail("ml1_acquisition_final_outcomes_missing", "Every attempted work requires one exhaustive final outcome.", path="acquisition_execution.final_outcome_counts")
+        final_outcomes = {}
+    unknown_outcomes = sorted(set(final_outcomes) - allowed_final_outcomes)
+    invalid_outcome_counts = {
+        key: value for key, value in final_outcomes.items()
+        if type(value) is not int or value < 0
+    }
+    outcome_sum = sum(value for value in final_outcomes.values() if type(value) is int and value >= 0)
+    if unknown_outcomes or invalid_outcome_counts or outcome_sum != unique_attempted:
+        result.fail(
+            "ml1_acquisition_final_outcome_accounting_invalid",
+            "Final outcome buckets must be valid, mutually exclusive, and exhaustive for attempted works.",
+            path="acquisition_execution.final_outcome_counts",
+            expected=unique_attempted,
+            actual={"sum": outcome_sum, "unknown": unknown_outcomes, "invalid": invalid_outcome_counts},
+        )
+    normal_outcome_sum = sum(
+        _as_int(final_outcomes.get(key), default=0)
+        for key in (
+            "metadata_complete",
+            "terminal_remote_unavailable",
+            "retryable_exhausted_or_systemically_stopped",
+            "normalization_failed",
+            "provider_identity_mismatch",
+        )
     )
-    if classified_attempted < 0 or classified_attempted > unique_attempted:
-        result.fail("ml1_acquisition_result_accounting_invalid", "Successful, terminal, and retryable work outcomes cannot exceed unique attempted manifest works.", path="acquisition_execution", expected=f"0..{unique_attempted}", actual=classified_attempted)
+    conflict_outcome_sum = sum(
+        _as_int(final_outcomes.get(key), default=0)
+        for key in (
+            "conflict_resolved_metadata_complete",
+            "conflict_resolved_terminal_unavailable",
+            "conflict_unresolved_after_exact_provider_evidence",
+            "conflict_normalization_failed",
+            "conflict_retryable_exhausted",
+        )
+    )
+    normal_attempted = _as_int(acquisition.get("normal_manifest_work_ids_attempted_count"), default=-1)
+    conflict_attempted = _as_int(acquisition.get("conflict_manifest_work_ids_attempted_count"), default=-1)
+    if (
+        normal_outcome_sum != normal_attempted
+        or conflict_outcome_sum != conflict_attempted
+        or normal_attempted > manifest_count
+        or conflict_attempted > conflict_manifest_count
+        or normal_attempted + conflict_attempted != unique_attempted
+    ):
+        result.fail("ml1_acquisition_manifest_outcome_attribution_invalid", "Main/conflict outcomes must belong to their executable manifests and cover every attempted work exactly once.", path="acquisition_execution", actual={"normal_outcomes": normal_outcome_sum, "normal_attempted": normal_attempted, "conflict_outcomes": conflict_outcome_sum, "conflict_attempted": conflict_attempted})
+    ledger_fingerprint = acquisition.get("final_outcome_ledger_fingerprint")
+    if unique_attempted > 0 and re.fullmatch(r"[0-9a-f]{64}", str(ledger_fingerprint or "")) is None:
+        result.fail("ml1_acquisition_outcome_ledger_fingerprint_invalid", "Attempted-work outcome ledger requires a reproducible private fingerprint.", path="acquisition_execution.final_outcome_ledger_fingerprint")
     for key in ("gallery_dl_call_count",):
         if _as_int(acquisition.get(key), default=-1) != request_attempts:
             result.fail("ml1_acquisition_external_count_mismatch", "gallery-dl calls must equal provider request attempts.", path=f"acquisition_execution.{key}", expected=request_attempts, actual=acquisition.get(key))
@@ -3262,9 +3355,26 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
             result.fail("ml1_acquisition_scope_violation", "Out-of-manifest, unexpected duplicate, and complete-work attempts are forbidden.", path=f"acquisition_execution.{key}", expected=0, actual=acquisition.get(key))
     if _as_int(acquisition.get("max_observed_attempts_for_one_work"), default=-1) > max_attempts:
         result.fail("ml1_acquisition_per_work_retry_bound_exceeded", "No manifest work may exceed max_attempts_per_work.", path="acquisition_execution.max_observed_attempts_for_one_work", expected=f"<= {max_attempts}", actual=acquisition.get("max_observed_attempts_for_one_work"))
+    average_interval = acquisition.get("average_request_interval_seconds")
+    if request_attempts > 1 and _as_float(average_interval, default=-1.0) < 2.0:
+        result.fail("ml1_acquisition_request_spacing_invalid", "Observed average provider request interval must be at least two seconds.", path="acquisition_execution.average_request_interval_seconds", expected=">= 2.0", actual=average_interval)
+    if (
+        acquisition.get("systemic_stop") is True
+        and acquisition.get("systemic_stop_stage") in {"canary", "main_manifest"}
+        and acquisition.get("conflict_manifest_started") is True
+    ):
+        result.fail("ml1_systemic_stop_conflict_call_suppression_failed", "A canary/main systemic stop must suppress all conflict-manifest execution.", path="acquisition_execution.conflict_manifest_started", expected=False, actual=True)
     for key in ("retry_attempts_attributable_to_manifest_work", "resume_only_remaining_open_works"):
         if acquisition.get(key) is not True:
             result.fail("ml1_acquisition_resume_or_retry_proof_missing", "Retries and resume attempts must be attributable to remaining manifest work.", path=f"acquisition_execution.{key}", expected=True, actual=acquisition.get(key))
+    for manifest_key, checkpoint_key in (
+        ("acquisition_manifest_fingerprint", "checkpoint_main_manifest_fingerprint"),
+        ("conflict_resolution_manifest_fingerprint", "checkpoint_conflict_manifest_fingerprint"),
+    ):
+        manifest_fingerprint = acquisition.get(manifest_key)
+        checkpoint_fingerprint = acquisition.get(checkpoint_key)
+        if manifest_fingerprint != checkpoint_fingerprint:
+            result.fail("ml1_manifest_checkpoint_fingerprint_mismatch", "Executable manifest and checkpoint fingerprints must match exactly.", path=f"acquisition_execution.{checkpoint_key}", expected=manifest_fingerprint, actual=checkpoint_fingerprint)
     route_active = acquisition.get("acquisition_route_active") is True
     blocker_values = _get(summary, "pipeline_contract.active_blockers", [])
     blocked_zero_call = bool(
@@ -3321,9 +3431,14 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
     if not isinstance(owner_sample, Mapping):
         result.fail("ml1_owner_sample_not_object", "ML1 requires structured one-time owner sample proof.", path="owner_sample_validation")
         owner_sample = {}
+    current_eligible_manifest_count = _as_int(
+        owner_sample.get("current_eligible_manifest_count"), default=-1
+    )
+    required_sample_size = min(60, max(0, current_eligible_manifest_count))
     for key, expected in {
         "sample_generated": True,
-        "sample_size": 60,
+        "sample_size": required_sample_size,
+        "required_sample_size": required_sample_size,
         "normal_pipeline_human_dependency": False,
         "confirmation_env": None,
         "optional_stage_evidence": True,
@@ -3333,7 +3448,9 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
             result.fail("ml1_owner_sample_proof_invalid", "Owner sample must be exact, deterministic, and non-runtime.", path=f"owner_sample_validation.{key}", expected=expected, actual=owner_sample.get(key, "<missing>"))
     if _as_int(owner_sample.get("conflict_cases_exported"), default=-1) < 0:
         result.fail("ml1_owner_sample_proof_invalid", "Conflict export count must be explicit.", path="owner_sample_validation.conflict_cases_exported")
-    if re.fullmatch(r"[0-9a-f]{64}", str(owner_sample.get("sample_manifest_fingerprint") or "")) is None:
+    if current_eligible_manifest_count < 0:
+        result.fail("ml1_owner_sample_proof_invalid", "Current eligible owner-review manifest size must be explicit.", path="owner_sample_validation.current_eligible_manifest_count")
+    if re.fullmatch(r"[0-9a-f]{64}", str(owner_sample.get("owner_review_manifest_fingerprint") or "")) is None:
         result.fail("ml1_owner_sample_proof_invalid", "Owner sample requires a reproducible manifest fingerprint.", path="owner_sample_validation.sample_manifest_fingerprint")
     if status not in {
         "blocked_document_semantics_not_corrected",
@@ -3349,6 +3466,7 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
                 "terminal_remote_unavailable_media_count",
                 "metadata_pending_media_count",
                 "retryable_failure_media_count",
+                "provider_identity_mismatch_media_count",
                 "parse_or_identity_failure_media_count",
                 "unexplained_missing_media_count",
             )
@@ -3374,6 +3492,7 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
                 "pending_work_count",
                 "retryable_work_count",
                 "normalization_failed_work_count",
+                "provider_identity_mismatch_work_count",
                 "missing_work_count",
                 "conflict_unresolved_work_count",
             )
@@ -3393,6 +3512,33 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
         for key in ("candidate_media_accounting_coverage", "candidate_work_accounting_coverage"):
             if _as_float(pixiv.get(key), default=-1.0) != 1.0:
                 result.fail("ml1_pixiv_accounting_coverage_failed", "Pixiv accounting coverage must equal 1.0.", path=f"pixiv_accounting.{key}")
+        if "all_eligible_media_metadata_coverage" in pixiv:
+            result.fail("ml1_pixiv_metric_semantics_regressed", "Queue/decision coverage must not be labeled provider metadata coverage.", path="pixiv_accounting.all_eligible_media_metadata_coverage")
+        metric_pairs = (
+            ("pixiv_candidate_complete_media_count", "pixiv_candidate_media_count", "pixiv_candidate_complete_media_coverage"),
+            ("pixiv_candidate_complete_work_count", "pixiv_candidate_work_count", "pixiv_candidate_complete_work_coverage"),
+            ("pixiv_ingestion_decision_media_count", "all_eligible_media_count", "pixiv_ingestion_decision_coverage"),
+        )
+        for numerator_key, denominator_key, coverage_key in metric_pairs:
+            numerator = _as_int(pixiv.get(numerator_key), default=-1)
+            denominator = _as_int(pixiv.get(denominator_key), default=-1)
+            expected_coverage = round(numerator / denominator, 6) if denominator > 0 and numerator >= 0 else 1.0 if denominator == 0 and numerator == 0 else -1.0
+            if numerator < 0 or denominator < 0 or _as_float(pixiv.get(coverage_key), default=-2.0) != expected_coverage:
+                result.fail("ml1_pixiv_metric_semantics_regressed", "Pixiv decision and provider-completeness metrics require truthful numerators, denominators, and coverage.", path=f"pixiv_accounting.{coverage_key}", expected=expected_coverage, actual=pixiv.get(coverage_key))
+
+    creator_metrics = _get(summary, "creator_metadata", {})
+    if isinstance(creator_metrics, Mapping):
+        if "successful_pixiv_metadata_record_count" in creator_metrics:
+            result.fail("ml1_pixiv_metric_semantics_regressed", "Registry/queue records must not be labeled successful provider metadata.", path="creator_metadata.successful_pixiv_metadata_record_count")
+        for key in (
+            "pixiv_registry_record_count",
+            "pixiv_queue_decision_record_count",
+            "pixiv_provider_metadata_record_count",
+            "pixiv_successful_acquisition_record_count",
+            "pixiv_terminal_evidence_record_count",
+        ):
+            if type(creator_metrics.get(key)) is not int or creator_metrics.get(key) < 0:
+                result.fail("ml1_pixiv_metric_semantics_regressed", "Pixiv registry/provider outcome counters must be explicit nonnegative integers.", path=f"creator_metadata.{key}")
 
     if status == "blocked_pixiv_incremental_acquisition_approval_required":
         if pixiv.get("incremental_acquisition_required") is not True or (
@@ -3445,6 +3591,7 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
         status_proven = (
             isinstance(credential, Mapping)
             and credential.get("rotation_confirmation_present") is False
+            and credential.get("policy") != "operator_accepted_local_credential_risk_v1"
             and credential.get("external_call_attempted") is False
             and bool(pixiv.get("incremental_acquisition_required"))
         )
@@ -3474,9 +3621,15 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
         )
     elif status == "blocked_pixiv_acquisition_execution_incomplete":
         credential = _get(summary, "credential_safety", {})
+        credential_gate_satisfied = isinstance(credential, Mapping) and (
+            credential.get("rotation_confirmation_present") is True
+            or (
+                credential.get("policy") == "operator_accepted_local_credential_risk_v1"
+                and credential.get("project_owner_authorized") is True
+            )
+        )
         status_proven = (
-            isinstance(credential, Mapping)
-            and credential.get("rotation_confirmation_present") is True
+            credential_gate_satisfied
             and (
                 _as_int(pixiv.get("retryable_work_count"), default=0)
                 + _as_int(pixiv.get("missing_work_count"), default=0)
@@ -3528,12 +3681,14 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
         if isinstance(route_state, Mapping) and route_state.get("pixiv_acquisition_authorized") is False:
             known_blockers.add("blocked_pixiv_incremental_acquisition_approval_required")
         else:
-            if not isinstance(credential_state, Mapping) or credential_state.get("rotation_confirmation_present") is not True:
+            waiver_active = isinstance(credential_state, Mapping) and (
+                credential_state.get("policy") == "operator_accepted_local_credential_risk_v1"
+                and credential_state.get("project_owner_authorized") is True
+            )
+            rotation_active = isinstance(credential_state, Mapping) and credential_state.get("rotation_confirmation_present") is True
+            if not (waiver_active or rotation_active):
                 known_blockers.add("blocked_credential_rotation_confirmation_required")
-            if (
-                isinstance(credential_state, Mapping)
-                and credential_state.get("rotation_confirmation_present") is True
-            ):
+            if waiver_active or rotation_active:
                 known_blockers.add("blocked_pixiv_acquisition_execution_incomplete")
     if _as_int(creator.get("silently_dropped_creator_field_count"), default=0) > 0:
         known_blockers.add("blocked_creator_metadata_loss")

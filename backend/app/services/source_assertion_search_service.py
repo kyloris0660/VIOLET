@@ -783,6 +783,24 @@ def apply_source_soft_search(
     return apply_search_criteria(query, parsed, db)
 
 
+def apply_endpoint_equivalent_text_search(
+    query: Query,
+    parsed_query: dict[str, Any],
+    db: Session,
+    *,
+    include_source_needs_review: bool = False,
+) -> Query:
+    """Apply the ordinary /api/search text semantics with its exact source flags."""
+
+    return apply_source_soft_search(
+        query,
+        parsed_query,
+        db,
+        include_needs_review=include_source_needs_review,
+        include_source_concept_needs_review=True,
+    )
+
+
 def _soft_search_condition_for_term(
     db: Session,
     term: str,

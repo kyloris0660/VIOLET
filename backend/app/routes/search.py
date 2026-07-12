@@ -10,8 +10,8 @@ from ..database import get_db
 from ..models import Media
 from ..schemas import MediaResponse
 from ..services.source_assertion_search_service import (
+    apply_endpoint_equivalent_text_search,
     apply_source_layer_filters,
-    apply_source_soft_search,
     has_source_layer_filters,
     resolve_source_filter_labels,
 )
@@ -96,12 +96,11 @@ async def search_media(
         parsed['meta']['rating'].append({'value': rating_value, 'negated': False})
 
     # Apply all criteria
-    query = apply_source_soft_search(
+    query = apply_endpoint_equivalent_text_search(
         query,
         parsed,
         db,
-        include_needs_review=include_source_needs_review,
-        include_source_concept_needs_review=source_concept_include_needs_review,
+        include_source_needs_review=include_source_needs_review,
     )
     query = apply_source_layer_filters(
         query,
@@ -163,12 +162,11 @@ async def get_random_media(
             parsed['meta']['rating'] = []
         parsed['meta']['rating'].append({'value': rating_value, 'negated': False})
 
-    query = apply_source_soft_search(
+    query = apply_endpoint_equivalent_text_search(
         query,
         parsed,
         db,
-        include_needs_review=include_source_needs_review,
-        include_source_concept_needs_review=source_concept_include_needs_review,
+        include_source_needs_review=include_source_needs_review,
     )
     query = apply_source_layer_filters(
         query,
