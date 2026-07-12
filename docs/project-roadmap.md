@@ -33,6 +33,15 @@ additional terms disambiguate by media-level AND intersection. The primary ML1
 quality question is multilingual alias coverage and candidate-generation recall.
 See `docs/source-concept-tag-search-semantics.md`.
 
+PR #136 currently stops at
+`blocked_credential_rotation_confirmation_required`. Its corrected audit covers
+`2,285` canonical Pixiv candidate media and `2,235` works, with an exact
+`1,713`-work metadata-only manifest. That manifest is authorized only after the
+credential-rotation, old-secret fingerprint, and redacted authentication gates;
+no Pixiv/gallery-dl call has occurred. Continuous Pixiv-on-import completeness,
+production evidence promotion, and the bounded USD-10 LLM policy are defined in
+`docs/pixiv-metadata-ingestion-and-promotion-policy.md`.
+
 PR #113 / Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline
 library, PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows
 personal production launcher entrypoint, and PR #123 / PD1-A-R1 is merged with

@@ -168,8 +168,8 @@ no-human-review and evidence-fallback policy.
 ## ML1 Multilingual Alias And Source-Metadata Gate
 
 `ml1_multilingual_alias_source_metadata_closure_contract_v1` is the focused
-SCV2-ML1 gate. Its first execution is read-only and zero-network over the
-immutable accepted R2R evidence database. It requires corrected durable search
+SCV2-ML1 gate. Audit execution is read-only over the immutable accepted R2R
+evidence database. It requires corrected durable search
 semantics, complete canonical Pixiv filename-candidate accounting at media/page
 and distinct-work levels, creator-field retention, a real fixed-evidence
 multilingual-family benchmark, candidate-generation recall accounting, actual
@@ -180,12 +180,29 @@ not use the historical R2R broad-union/cannot-contamination counts as target
 gates. It fails on unsupported or rejected results, AND leakage, search-caused
 identity mutation, silently lost aliases/creator fields, unexplained candidate
 misses, human-review dependency, fixed/forbidden evidence mutation, unauthorized
-provider/LLM/gallery-dl calls, redaction gaps, or downstream authorization.
+provider/LLM/gallery-dl calls outside the exact authorization, redaction gaps,
+or downstream authorization.
 
-`blocked_pixiv_incremental_acquisition_approval_required` and
-`blocked_llm_approval_required` are valid honest outcomes only with exact private
-manifests, zero unauthorized calls, and no completion claim. Metadata acquisition
-and LLM adjudication are separate approval boundaries.
+PR #136 authorizes only the exact deduplicated current-stock Pixiv metadata
+manifest after credential rotation, old-secret fingerprint scanning, and a
+redacted authenticated gallery-dl preflight. Execution is metadata-only, uses at
+least two-second request spacing, bounded retry/backoff, per-work checkpoints,
+one isolated ML1 dev/test database, and no fallback provider or media download.
+`blocked_credential_rotation_confirmation_required` and
+`blocked_pixiv_acquisition_execution_incomplete` require executable evidence and
+must expose all active blockers. The accepted R2R database remains immutable.
+
+New imports use the canonical `phase44p0_pixiv_filename_prior_v1` parser and a
+durable source-metadata queue record. A Pixiv candidate batch closes only when
+every candidate is `metadata_complete` or `terminal_remote_unavailable`; pending,
+retryable, conflict, authentication/rate/network, parser, or normalization states
+remain incomplete and suppress downstream scan automation.
+
+The default primary-provider LLM policy pre-authorizes only one finite,
+reproducible, cache-first execution whose projected aggregate cost including
+retries is at most USD 10.00, with no fallback, image upload, production/truth
+write, or semantic scope expansion. No ML1 LLM call is expected while candidate
+remediation is deferred.
 
 ## Route Gate
 

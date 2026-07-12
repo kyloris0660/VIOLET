@@ -30,6 +30,11 @@ A returned media item must have a trace to at least one approved search support:
 - accepted search-only alias relation that preserves role/context and does not
   assert identity;
 - exact creator/source metadata;
+- trusted `TagTranslation` resolution to a canonical query whose returned media
+  retain their own legal support traces;
+- exact-text and wildcard tag support as executed by the application parser;
+- query-visible provider-canonical source-name relations. These remain
+  search-only evidence and do not authorize identity materialization;
 - another explicitly versioned and approved source-layer evidence type.
 
 Rejected, superseded, invalid, deleted, or otherwise non-query-visible evidence
@@ -72,6 +77,12 @@ aliases must be accounted. Strong source-confirmed same-entity aliases may be
 materialized when identity guards pass; otherwise they may be search-equivalent
 without identity union. Generated transliteration alone is candidate/search
 evidence, not automatic identity truth. No alias may silently disappear.
+
+Runtime benchmarks must resolve translations, query media, and build support
+from the same explicit database session/snapshot. A global alias cache from a
+different database is invalid evidence. Static support may be bulk-indexed, but
+result sets must come from the real application search path; copying a canonical
+media set into aliases before measurement is forbidden.
 
 ## Creator And Artist Search
 

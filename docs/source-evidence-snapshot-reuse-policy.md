@@ -48,6 +48,14 @@ candidate accounting is recomputed from current rows; already complete metadata
 is never reacquired. Missing/retryable Pixiv work IDs and genuinely new alias
 pairs produce separate acquisition and LLM approval manifests.
 
+Reusable Pixiv evidence is promoted by stable provider/work/page identity and
+content fingerprint, never development row IDs. Raw/normalized provider facts,
+creator ID/name/account/profile identity, titles, source tags, parser version,
+provenance, and terminal evidence may be reused when compatible. SourceConcept
+IDs/components, candidates, signal links, clusters, aliases, search/fallback
+indexes, graph metrics, confidence aggregates, and benchmarks must be recomputed
+from the production snapshot.
+
 ## Full-Library Rule
 
 Full-library work must separate evidence acquisition from graph recomputation in

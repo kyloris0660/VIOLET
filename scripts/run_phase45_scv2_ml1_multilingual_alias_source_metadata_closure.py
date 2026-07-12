@@ -31,13 +31,18 @@ for candidate in (ROOT, BACKEND_ROOT):
         sys.path.insert(0, str(candidate))
 
 from app.models import Media, SourceConcept, SourceConceptSignalLink  # noqa: E402
-from app.services.source_assertion_search_service import apply_source_soft_search  # noqa: E402
+from app.services.source_assertion_search_service import (  # noqa: E402
+    _source_concept_key_candidates,
+    apply_source_soft_search,
+)
 from app.services.source_metadata_registry_service import (  # noqa: E402
     canonical_source_key,
     normalize_source_text,
 )
+from app.services.pixiv_filename_prior_service import PARSER_VERSION  # noqa: E402
+from app.services.pixiv_metadata_ingestion_service import llm_budget_policy, promotion_manifest  # noqa: E402
 from app.services.source_concept_search_service import _format_search_query_token  # noqa: E402
-from app.utils.search_parser import parse_search_query  # noqa: E402
+from app.utils.search_parser import parse_search_query, wildcard_to_regex  # noqa: E402
 from scripts import run_phase44p0_pixiv_source_prior_auto_verify as p0  # noqa: E402
 from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2  # noqa: E402
 from scripts.phase_contracts.contract_checks import check_phase_contract  # noqa: E402
@@ -108,6 +113,7 @@ class PixivCandidate:
     work_id: str | None
     page_index: int | None
     all_matches: tuple[tuple[str, int], ...]
+    match_origins: tuple[tuple[str, str, int], ...]
     status: str
     metadata_record_ids: tuple[int, ...]
     matching_metadata_record_ids: tuple[int, ...]
@@ -217,6 +223,16 @@ def canonical_pixiv_matches(values: Sequence[Any]) -> tuple[tuple[str, int], ...
     return tuple(sorted(found))
 
 
+def canonical_pixiv_matches_by_field(
+    fields: Sequence[tuple[str, Any]],
+) -> tuple[tuple[str, str, int], ...]:
+    found: set[tuple[str, str, int]] = set()
+    for source_field, value in fields:
+        for match in p0.extract_pixiv_filename_prior_from_text(str(value or "")):
+            found.add((str(source_field), str(match["pixiv_work_id"]), int(match["page_index"])))
+    return tuple(sorted(found))
+
+
 def build_pixiv_accounting(
     media_rows: Sequence[Mapping[str, Any]],
     metadata_rows: Sequence[Mapping[str, Any]],
@@ -227,13 +243,43 @@ def build_pixiv_accounting(
             metadata_by_media[int(row["media_id"])].append(dict(row))
 
     candidates: list[PixivCandidate] = []
+    origin_media: dict[str, set[int]] = defaultdict(set)
+    origin_works: dict[str, set[str]] = defaultdict(set)
+    agreement_counts = Counter()
     for media in media_rows:
         media_id = int(media["id"])
-        matches = canonical_pixiv_matches(
-            (media.get("filename"), media.get("path"), media.get("thumbnail_path"), media.get("source"))
+        match_origins = canonical_pixiv_matches_by_field(
+            (
+                ("filename", media.get("filename")),
+                ("stored_path", media.get("path")),
+                ("thumbnail_path", media.get("thumbnail_path")),
+                ("source_field", media.get("source")),
+            )
         )
+        matches = tuple(sorted({(work_id, page_index) for _, work_id, page_index in match_origins}))
         if not matches:
             continue
+        fields_present: set[str] = set()
+        field_pairs: dict[str, set[tuple[str, int]]] = defaultdict(set)
+        for source_field, work_id, page_index in match_origins:
+            fields_present.add(source_field)
+            field_pairs[source_field].add((work_id, page_index))
+            origin_media[source_field].add(media_id)
+            origin_works[source_field].add(work_id)
+        if field_pairs["filename"] and field_pairs["stored_path"]:
+            agreement_counts[
+                "filename_path_agreement" if field_pairs["filename"] == field_pairs["stored_path"] else "filename_path_conflict"
+            ] += 1
+        if field_pairs["filename"] and field_pairs["source_field"]:
+            agreement_counts[
+                "filename_source_agreement" if field_pairs["filename"] == field_pairs["source_field"] else "filename_source_conflict"
+            ] += 1
+        if len(fields_present) > 1:
+            agreement_counts["multi_field_agreement" if len(matches) == 1 else "multi_field_conflict"] += 1
+        if fields_present == {"source_field"}:
+            agreement_counts["source_only"] += 1
+        if fields_present == {"thumbnail_path"}:
+            agreement_counts["thumbnail_only"] += 1
         metadata = metadata_by_media.get(media_id, [])
         metadata_ids = tuple(sorted(int(item["id"]) for item in metadata))
         matching: list[int] = []
@@ -249,12 +295,21 @@ def build_pixiv_accounting(
             if matching:
                 status = "metadata_present_complete"
                 reason = "exact_media_work_page_match"
+            elif any(str(item.get("status") or "") == "terminal_remote_unavailable" for item in metadata):
+                status = "terminal_remote_unavailable"
+                reason = "durable_authenticated_remote_unavailable_evidence"
+            elif any(str(item.get("status") or "").startswith("metadata_retryable") for item in metadata):
+                status = "retryable_provider_failure"
+                reason = "durable_retryable_attempt_evidence"
+            elif any(str(item.get("status") or "") == "normalization_failed" for item in metadata):
+                status = "metadata_parse_or_normalization_failure"
+                reason = "durable_normalization_failure_evidence"
             elif metadata:
                 status = "filename_identity_conflict"
                 reason = "metadata_exists_but_work_or_page_mismatch"
             else:
-                status = "not_attempted"
-                reason = "no_existing_pixiv_metadata_or_terminal_failure_evidence"
+                status = "no_durable_attempt_or_result_evidence"
+                reason = "no_durable_attempt_or_result_evidence"
         else:
             work_id = None
             page_index = None
@@ -267,6 +322,7 @@ def build_pixiv_accounting(
                 work_id=work_id,
                 page_index=page_index,
                 all_matches=matches,
+                match_origins=match_origins,
                 status=status,
                 metadata_record_ids=metadata_ids,
                 matching_metadata_record_ids=tuple(sorted(matching)),
@@ -279,59 +335,89 @@ def build_pixiv_accounting(
         "retryable_authentication_failure",
         "retryable_rate_limit_failure",
         "retryable_network_or_transport_failure",
+        "retryable_provider_failure",
     }
     work_rows: list[dict[str, Any]] = []
     by_work: dict[str, list[PixivCandidate]] = defaultdict(list)
     for item in candidates:
-        if item.work_id:
-            by_work[item.work_id].append(item)
+        # A conflicted media row belongs to every concrete work it exposed.
+        # This prevents a conflict from disappearing from the work ledger.
+        for work_id in sorted({match[0] for match in item.all_matches}):
+            by_work[work_id].append(item)
     for work_id, items in sorted(by_work.items()):
         statuses = {item.status for item in items}
-        if statuses == {"metadata_present_complete"}:
-            status = "metadata_present_complete"
-        elif "filename_identity_conflict" in statuses:
-            status = "filename_identity_conflict"
-        elif "not_attempted" in statuses:
-            status = "not_attempted"
+        if "filename_identity_conflict" in statuses:
+            status = "unresolved_conflict"
+        elif statuses == {"metadata_present_complete"}:
+            status = "complete"
+        elif statuses <= {"metadata_present_complete", "terminal_remote_unavailable"} and "terminal_remote_unavailable" in statuses:
+            status = "terminal"
         elif statuses & retryable_statuses:
-            status = sorted(statuses & retryable_statuses)[0]
+            status = "retryable"
+        elif "metadata_parse_or_normalization_failure" in statuses:
+            status = "retryable"
         else:
-            status = sorted(statuses)[0]
+            status = "missing"
+        memberships = [
+            {
+                "private_media_ref": item.private_media_ref,
+                "matched_pages": sorted(page for candidate_work, page in item.all_matches if candidate_work == work_id),
+                "source_fields": sorted({field for field, candidate_work, _ in item.match_origins if candidate_work == work_id}),
+                "media_status": item.status,
+            }
+            for item in items
+        ]
         work_rows.append(
             {
                 "private_work_ref": private_ref(work_id, "pixiv_work"),
                 "work_id": work_id,
-                "media_count": len(items),
-                "page_indexes": sorted({item.page_index for item in items if item.page_index is not None}),
+                "media_count": len({item.media_id for item in items}),
+                "page_indexes": sorted({page for item in items for candidate_work, page in item.all_matches if candidate_work == work_id}),
                 "status": status,
+                "conflict_memberships": memberships if status == "unresolved_conflict" else [],
             }
         )
 
     candidate_count = len(candidates)
     distinct_work_count = len(by_work)
-    complete_work_count = sum(item["status"] == "metadata_present_complete" for item in work_rows)
-    terminal_work_count = sum(item["status"] == "terminal_remote_unavailable" for item in work_rows)
+    work_status_counts = Counter(str(item["status"]) for item in work_rows)
+    complete_work_count = work_status_counts["complete"]
+    terminal_work_count = work_status_counts["terminal"]
     retryable_media_count = sum(status_counts[key] for key in retryable_statuses)
     parse_conflict_count = status_counts["metadata_parse_or_normalization_failure"] + status_counts["filename_identity_conflict"]
     complete_media_count = status_counts["metadata_present_complete"]
-    target_request_work_ids = {
-        item.work_id
-        for item in candidates
-        if item.work_id and item.status in retryable_statuses | {"not_attempted", "missing_without_explanation"}
+    target_request_work_ids = {str(item["work_id"]) for item in work_rows if item["status"] in {"missing", "retryable"}}
+    work_accounting_sum = sum(
+        work_status_counts[key] for key in ("complete", "terminal", "retryable", "missing", "unresolved_conflict")
+    )
+    conflict_media = [item for item in candidates if item.status == "filename_identity_conflict"]
+    conflict_tokens = {
+        (item.media_id, field, work_id, page)
+        for item in conflict_media
+        for field, work_id, page in item.match_origins
+    }
+    conflict_works = {work_id for _, _, work_id, _ in conflict_tokens}
+    public_origin_labels = {
+        "filename": "filename_origin",
+        "stored_path": "stored_path_origin",
+        "thumbnail_path": "thumbnail_origin",
+        "source_field": "source_field_origin",
     }
     public = {
         "canonical_parser_rule": "lowercase_work_id_p_page_token_nonzero_6_to_12_digit_work_id",
-        "canonical_parser_version": "phase44p0_pixiv_filename_prior_v1",
+        "canonical_parser_version": PARSER_VERSION,
         "candidate_media_count": candidate_count,
         "accounted_media_count": candidate_count,
         "candidate_distinct_work_count": distinct_work_count,
-        "accounted_distinct_work_count": distinct_work_count,
+        "accounted_distinct_work_count": work_accounting_sum,
         "candidate_media_accounting_coverage": 1.0 if candidate_count >= 0 else 0.0,
-        "candidate_work_accounting_coverage": 1.0 if distinct_work_count >= 0 else 0.0,
+        "candidate_work_accounting_coverage": round(work_accounting_sum / distinct_work_count, 6) if distinct_work_count else 1.0,
         "metadata_present_complete_media_count": complete_media_count,
         "metadata_present_complete_work_count": complete_work_count,
         "terminal_remote_unavailable_media_count": status_counts["terminal_remote_unavailable"],
         "terminal_remote_unavailable_work_count": terminal_work_count,
+        "retryable_work_count": work_status_counts["retryable"],
+        "missing_work_count": work_status_counts["missing"],
         "retryable_failure_media_count": retryable_media_count,
         "retryable_authentication_failure_media_count": status_counts["retryable_authentication_failure"],
         "retryable_rate_limit_failure_media_count": status_counts["retryable_rate_limit_failure"],
@@ -339,9 +425,17 @@ def build_pixiv_accounting(
         "parse_or_identity_failure_media_count": parse_conflict_count,
         "metadata_parse_or_normalization_failure_media_count": status_counts["metadata_parse_or_normalization_failure"],
         "filename_identity_conflict_media_count": status_counts["filename_identity_conflict"],
-        "not_attempted_media_count": status_counts["not_attempted"],
+        "filename_identity_conflict_token_count": len(conflict_tokens),
+        "filename_identity_conflict_distinct_work_count": len(conflict_works),
+        "filename_identity_conflict_source_field_counts": dict(
+            sorted(Counter(public_origin_labels[field] for _, field, _, _ in conflict_tokens).items())
+        ),
+        "conflict_resolved_work_count": 0,
+        "conflict_unresolved_work_count": work_status_counts["unresolved_conflict"],
+        "no_durable_attempt_or_result_evidence_media_count": status_counts["no_durable_attempt_or_result_evidence"],
+        "not_attempted_media_count": 0,
         "unexplained_missing_media_count": status_counts["missing_without_explanation"],
-        "normal_retrievable_missing_media_count": retryable_media_count + status_counts["not_attempted"] + status_counts["missing_without_explanation"],
+        "normal_retrievable_missing_media_count": retryable_media_count + status_counts["no_durable_attempt_or_result_evidence"] + status_counts["missing_without_explanation"],
         "work_id_mismatch_media_count": status_counts["filename_identity_conflict"],
         "successful_metadata_linked_to_every_relevant_page": all(
             item.status != "metadata_present_complete" or bool(item.matching_metadata_record_ids)
@@ -361,6 +455,18 @@ def build_pixiv_accounting(
         "all_eligible_media_with_pixiv_metadata_count": len(metadata_by_media),
         "all_eligible_media_metadata_coverage": round(len(metadata_by_media) / len(media_rows), 6) if media_rows else 1.0,
         "exact_work_ids_public": False,
+        "work_status_counts": dict(sorted(work_status_counts.items())),
+        "work_accounting_equality_holds": work_accounting_sum == distinct_work_count,
+        "origin_breakdown": {
+            public_origin_labels[field]: {
+                "candidate_media_count": len(origin_media[field]),
+                "distinct_work_count": len(origin_works[field]),
+            }
+            for field in ("filename", "stored_path", "thumbnail_path", "source_field")
+        },
+        "origin_agreement_counts": dict(sorted(agreement_counts.items())),
+        "filename_path_candidate_media_count": len(origin_media["filename"] | origin_media["stored_path"]),
+        "filename_path_candidate_distinct_work_count": len(origin_works["filename"] | origin_works["stored_path"]),
     }
     return public, candidates, work_rows
 
@@ -372,9 +478,12 @@ def creator_fields(raw: Any, row: Mapping[str, Any]) -> dict[str, Any]:
     creator_id = row.get("artist_id") or payload.get("user_id") or payload.get("artist_id") or user.get("id")
     creator_name = row.get("artist_name") or payload.get("user_name") or payload.get("artist_name") or user.get("name")
     account = payload.get("user_account") or payload.get("artist_account") or user.get("account")
-    profile_identity = payload.get("artist_profile_url") or payload.get("user_url")
-    if not profile_identity and creator_id not in (None, ""):
-        profile_identity = f"https://www.pixiv.net/users/{creator_id}"
+    profile_identity = (
+        payload.get("creator_profile_identity")
+        or payload.get("artist_profile_url")
+        or payload.get("user_url")
+        or user.get("profile_url")
+    )
     return {
         "creator_id": str(creator_id) if creator_id not in (None, "") else None,
         "creator_name": normalize_source_text(creator_name) or None,
@@ -387,6 +496,8 @@ def creator_fields(raw: Any, row: Mapping[str, Any]) -> dict[str, Any]:
 def build_creator_audit(
     metadata_rows: Sequence[Mapping[str, Any]],
     observation_rows: Sequence[Mapping[str, Any]],
+    *,
+    consumed_sourceconcept_keys: set[str] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, set[str]]]:
     observations_by_metadata: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
     for observation in observation_rows:
@@ -394,7 +505,9 @@ def build_creator_audit(
     private_rows: list[dict[str, Any]] = []
     aliases_by_creator: dict[str, set[str]] = defaultdict(set)
     available = Counter()
-    retained = Counter()
+    normalized_retained = Counter()
+    searchable_retained = Counter()
+    sourceconcept_consumed = Counter()
     silently_dropped = 0
     role_misclassified = 0
     successful = [row for row in metadata_rows if str(row.get("provider") or "").casefold() == "pixiv"]
@@ -412,26 +525,38 @@ def build_creator_audit(
         for key in ("creator_id", "creator_name", "creator_account", "creator_profile_identity"):
             if fields[key]:
                 available[key] += 1
+        raw_payload = read_json_value(row.get("raw_metadata_json"))
+        raw_payload = raw_payload if isinstance(raw_payload, Mapping) else {}
         if fields["creator_id"] and str(row.get("artist_id") or "") == fields["creator_id"]:
-            retained["creator_id"] += 1
+            normalized_retained["creator_id"] += 1
         if fields["creator_name"] and fields["creator_name"] in artist_values:
-            retained["creator_name"] += 1
+            searchable_retained["creator_name"] += 1
         if fields["creator_account"] and fields["creator_account"] in artist_values:
-            retained["creator_account"] += 1
-        if fields["creator_profile_identity"] and fields["raw_user_object_present"]:
-            retained["creator_profile_identity"] += 1
+            searchable_retained["creator_account"] += 1
+        if fields["creator_name"] and normalize_source_text(row.get("artist_name")) == fields["creator_name"]:
+            normalized_retained["creator_name"] += 1
+        if fields["creator_account"] and normalize_source_text(raw_payload.get("creator_account")) == fields["creator_account"]:
+            normalized_retained["creator_account"] += 1
+        if fields["creator_profile_identity"] and str(raw_payload.get("creator_profile_identity") or "") == fields["creator_profile_identity"]:
+            normalized_retained["creator_profile_identity"] += 1
+        for key in ("creator_name", "creator_account"):
+            value = fields[key]
+            if value and canonical_source_key(value) in set(consumed_sourceconcept_keys or ()):
+                sourceconcept_consumed[key] += 1
         dropped_fields = [
             key for key in ("creator_id", "creator_name", "creator_account", "creator_profile_identity")
-            if fields[key] and retained[key] < available[key]
+            if fields[key] and normalized_retained[key] < available[key]
         ]
         # Recompute per-row to avoid the aggregate counters obscuring gaps.
         dropped_fields = []
         if fields["creator_id"] and str(row.get("artist_id") or "") != fields["creator_id"]:
             dropped_fields.append("creator_id")
-        if fields["creator_name"] and fields["creator_name"] not in artist_values:
+        if fields["creator_name"] and normalize_source_text(row.get("artist_name")) != fields["creator_name"]:
             dropped_fields.append("creator_name")
-        if fields["creator_account"] and fields["creator_account"] not in artist_values:
+        if fields["creator_account"] and normalize_source_text(raw_payload.get("creator_account")) != fields["creator_account"]:
             dropped_fields.append("creator_account")
+        if fields["creator_profile_identity"] and str(raw_payload.get("creator_profile_identity") or "") != fields["creator_profile_identity"]:
+            dropped_fields.append("creator_profile_identity")
         silently_dropped += len(dropped_fields)
         if fields["creator_id"]:
             for value in (fields["creator_name"], fields["creator_account"]):
@@ -447,8 +572,8 @@ def build_creator_audit(
             }
         )
 
-    def coverage(field: str) -> float:
-        return round(retained[field] / available[field], 6) if available[field] else 1.0
+    def coverage(counter: Counter[str], field: str) -> float:
+        return round(counter[field] / available[field], 6) if available[field] else 1.0
 
     public = {
         "successful_pixiv_metadata_record_count": len(successful),
@@ -457,16 +582,16 @@ def build_creator_audit(
         "records_with_creator_account": available["creator_account"],
         "records_with_creator_profile_identity": available["creator_profile_identity"],
         "normalized_creator_identity_count": len(aliases_by_creator),
-        "retained_creator_id_count": retained["creator_id"],
-        "retained_creator_name_count": retained["creator_name"],
-        "retained_creator_account_count": retained["creator_account"],
-        "retained_creator_profile_identity_count": retained["creator_profile_identity"],
+        "retained_creator_id_count": normalized_retained["creator_id"],
+        "retained_creator_name_count": normalized_retained["creator_name"],
+        "retained_creator_account_count": normalized_retained["creator_account"],
+        "retained_creator_profile_identity_count": normalized_retained["creator_profile_identity"],
         "available_creator_fields_accounting_coverage": 1.0,
-        "stable_creator_id_preservation_coverage": coverage("creator_id"),
-        "observed_creator_name_search_support_coverage": coverage("creator_name"),
-        "observed_creator_account_search_support_coverage": coverage("creator_account"),
+        "stable_creator_id_preservation_coverage": coverage(normalized_retained, "creator_id"),
+        "observed_creator_name_search_support_coverage": coverage(searchable_retained, "creator_name"),
+        "observed_creator_account_search_support_coverage": coverage(searchable_retained, "creator_account"),
         "observed_creator_search_support_coverage": round(
-            (retained["creator_name"] + retained["creator_account"])
+            (searchable_retained["creator_name"] + searchable_retained["creator_account"])
             / (available["creator_name"] + available["creator_account"]),
             6,
         ) if available["creator_name"] + available["creator_account"] else 1.0,
@@ -474,6 +599,15 @@ def build_creator_audit(
         "creator_role_misclassification_count": role_misclassified,
         "raw_creator_fields_retained": True,
         "creator_data_is_source_layer_only": True,
+        "field_layer_counts": {
+            f"{field}_field": {
+                "raw_provider_available": available[field],
+                "normalized_source_retained": normalized_retained[field],
+                "query_visible_observation_retained": searchable_retained[field],
+                "sourceconcept_consumed": sourceconcept_consumed[field],
+            }
+            for field in ("creator_id", "creator_name", "creator_account", "creator_profile_identity")
+        },
     }
     return public, private_rows, aliases_by_creator
 
@@ -489,7 +623,7 @@ def script_label(value: str) -> str:
 
 
 def runtime_media_ids(session: Session, query_text: str) -> set[int]:
-    parsed = parse_search_query(query_text)
+    parsed = parse_search_query(query_text, db=session)
     query = apply_source_soft_search(session.query(Media.id), parsed, session)
     return {int(row[0]) for row in query.distinct().all()}
 
@@ -501,176 +635,609 @@ def runtime_and_terms(session: Session, *terms: str) -> set[int]:
     return runtime_media_ids(session, query_text)
 
 
+def classify_runtime_support(
+    runtime_ids: set[int],
+    support_paths: Mapping[int, set[str]],
+    *,
+    rejected_ids: set[int] | None = None,
+    superseded_ids: set[int] | None = None,
+    invalid_ids: set[int] | None = None,
+) -> dict[str, Any]:
+    """Pure support accounting used by shared-name and multilingual audits."""
+
+    supported_ids = set(support_paths) & runtime_ids
+    unsupported_ids = runtime_ids - supported_ids
+    rejected_only = unsupported_ids & set(rejected_ids or ())
+    superseded_only = unsupported_ids & set(superseded_ids or ())
+    invalid_only = unsupported_ids & set(invalid_ids or ())
+    types = Counter(
+        support_type
+        for media_id in supported_ids
+        for support_type in support_paths.get(media_id, set())
+    )
+    return {
+        "runtime_result_count": len(runtime_ids),
+        "supported_result_count": len(supported_ids),
+        "unsupported_result_ids": unsupported_ids,
+        "rejected_evidence_result_ids": rejected_only,
+        "superseded_evidence_result_ids": superseded_only,
+        "invalid_evidence_result_ids": invalid_only,
+        "support_coverage": round(len(supported_ids) / len(runtime_ids), 6) if runtime_ids else 1.0,
+        "support_type_distribution": dict(sorted(types.items())),
+    }
+
+
+def exact_support_key(value: Any) -> str:
+    normalized = normalize_source_text(value).casefold()
+    return f"__exact_text__:{normalized}" if normalized else ""
+
+
+def runtime_support_universe(session: Session, term: str) -> tuple[dict[int, set[str]], set[int], set[int], set[int]]:
+    """Build support independently from the runtime query result set."""
+
+    key = canonical_source_key(term)
+    support: dict[int, set[str]] = defaultdict(set)
+
+    def add(sql: str, support_type: str, params: Mapping[str, Any] | None = None) -> None:
+        for row in session.execute(text(sql), dict(params or {"key": key})).all():
+            if row[0] is not None:
+                support[int(row[0])].add(support_type)
+
+    add(
+        "SELECT DISTINCT mt.media_id FROM blombooru_media_tags mt JOIN blombooru_tags t ON t.id=mt.tag_id "
+        "WHERE t.name=:key",
+        "direct_media_tag",
+    )
+    add(
+        "SELECT DISTINCT media_id FROM blombooru_source_name_observations "
+        "WHERE canonical_name_key=:key AND status IN ('observed','active','accepted') AND media_id IS NOT NULL",
+        "direct_source_name_observation",
+    )
+    add(
+        "SELECT DISTINCT m.media_id FROM blombooru_source_tag_observations o "
+        "JOIN blombooru_source_metadata_records m ON m.id=o.source_metadata_record_id "
+        "WHERE o.canonical_tag_key=:key AND o.status IN ('observed','active','accepted') AND m.media_id IS NOT NULL",
+        "direct_source_tag_observation",
+    )
+    add(
+        "SELECT DISTINCT m.media_id FROM blombooru_source_searchable_name_assertions a "
+        "JOIN blombooru_source_metadata_records m ON m.id=a.source_metadata_record_id "
+        "WHERE a.canonical_name_key=:key AND a.status IN ('accepted','active','observed') AND m.media_id IS NOT NULL",
+        "accepted_searchable_name_assertion",
+    )
+    add(
+        "SELECT DISTINCT media_id FROM blombooru_source_concept_fallback_search_index "
+        "WHERE alias_key=:key AND status='active' AND media_id IS NOT NULL",
+        "accepted_search_only_alias_relation",
+    )
+    add(
+        "SELECT DISTINCT COALESCE(e.media_id,s.media_id) FROM blombooru_source_concept_search_index i "
+        "LEFT JOIN blombooru_source_concept_evidence e ON e.concept_id=i.concept_id AND e.status IN ('active','needs_review') "
+        "LEFT JOIN blombooru_source_concept_signal_links l ON l.concept_id=i.concept_id AND l.link_status IN ('active','needs_review','materialized_identity') "
+        "LEFT JOIN blombooru_source_concept_signals s ON s.id=l.signal_id AND s.status IN ('active','needs_review','materialized_identity','isolated_evidence') "
+        "WHERE i.search_key=:key AND i.status IN ('active','needs_review') AND COALESCE(e.media_id,s.media_id) IS NOT NULL",
+        "accepted_materialized_sourceconcept_alias",
+    )
+
+    def status_ids(statuses: tuple[str, ...]) -> set[int]:
+        values: set[int] = set()
+        status_list = ",".join(f"'{value}'" for value in statuses)
+        queries = (
+            "SELECT media_id FROM blombooru_source_name_observations WHERE canonical_name_key=:key "
+            f"AND status IN ({status_list}) AND media_id IS NOT NULL",
+            "SELECT m.media_id FROM blombooru_source_tag_observations o JOIN blombooru_source_metadata_records m "
+            f"ON m.id=o.source_metadata_record_id WHERE o.canonical_tag_key=:key AND o.status IN ({status_list}) AND m.media_id IS NOT NULL",
+            "SELECT media_id FROM blombooru_source_concept_fallback_search_index WHERE alias_key=:key "
+            f"AND status IN ({status_list}) AND media_id IS NOT NULL",
+        )
+        for sql in queries:
+            values.update(int(row[0]) for row in session.execute(text(sql), {"key": key}).all() if row[0] is not None)
+        return values
+
+    rejected = status_ids(("rejected",))
+    superseded = status_ids(("superseded",))
+    invalid = status_ids(("invalid", "deleted", "retired"))
+    return support, rejected, superseded, invalid
+
+
+def build_runtime_support_index(
+    session: Session,
+) -> tuple[
+    dict[str, dict[int, set[str]]],
+    dict[str, set[int]],
+    dict[str, set[int]],
+    dict[str, set[int]],
+]:
+    """Bulk-load static support once while runtime searches remain per alias."""
+
+    legal: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
+
+    def add_rows(sql: str, support_type: str) -> None:
+        for key, media_id in session.execute(text(sql)).all():
+            canonical = canonical_source_key(key)
+            if canonical and media_id is not None:
+                legal[canonical][int(media_id)].add(support_type)
+
+    def add_exact_rows(sql: str, support_type: str) -> None:
+        for value, media_id in session.execute(text(sql)).all():
+            key = exact_support_key(value)
+            if key and media_id is not None:
+                legal[key][int(media_id)].add(support_type)
+
+    for tag_name, media_id in session.execute(
+        text("SELECT t.name,mt.media_id FROM blombooru_media_tags mt JOIN blombooru_tags t ON t.id=mt.tag_id")
+    ).all():
+        if media_id is None:
+            continue
+        exact_key = canonical_source_key(tag_name)
+        legal[exact_support_key(tag_name)][int(media_id)].add("direct_media_tag_exact_text")
+        for key in _source_concept_key_candidates(str(tag_name)):
+            legal[key][int(media_id)].add(
+                "direct_media_tag" if key == exact_key else "direct_media_tag_query_key_variant"
+            )
+    add_rows(
+        "SELECT canonical_name_key,media_id FROM blombooru_source_name_observations "
+        "WHERE status IN ('observed','active','accepted') AND media_id IS NOT NULL",
+        "direct_source_name_observation",
+    )
+    add_exact_rows(
+        "SELECT raw_name,media_id FROM blombooru_source_name_observations "
+        "WHERE status IN ('observed','active','accepted') AND media_id IS NOT NULL UNION ALL "
+        "SELECT normalized_name,media_id FROM blombooru_source_name_observations "
+        "WHERE status IN ('observed','active','accepted') AND media_id IS NOT NULL",
+        "direct_source_name_exact_text",
+    )
+    add_rows(
+        "SELECT o.canonical_tag_key,m.media_id FROM blombooru_source_tag_observations o "
+        "JOIN blombooru_source_metadata_records m ON m.id=o.source_metadata_record_id "
+        "WHERE o.status IN ('observed','active','accepted') AND m.media_id IS NOT NULL",
+        "direct_source_tag_observation",
+    )
+    add_exact_rows(
+        "SELECT o.raw_tag,m.media_id FROM blombooru_source_tag_observations o "
+        "JOIN blombooru_source_metadata_records m ON m.id=o.source_metadata_record_id "
+        "WHERE o.status IN ('observed','active','accepted') AND m.media_id IS NOT NULL UNION ALL "
+        "SELECT o.normalized_tag,m.media_id FROM blombooru_source_tag_observations o "
+        "JOIN blombooru_source_metadata_records m ON m.id=o.source_metadata_record_id "
+        "WHERE o.status IN ('observed','active','accepted') AND m.media_id IS NOT NULL",
+        "direct_source_tag_exact_text",
+    )
+    add_rows(
+        "SELECT a.canonical_name_key,m.media_id FROM blombooru_source_searchable_name_assertions a "
+        "JOIN blombooru_source_metadata_records m ON m.id=a.source_metadata_record_id "
+        "WHERE a.status IN ('accepted','active','observed') AND m.media_id IS NOT NULL",
+        "accepted_searchable_name_assertion",
+    )
+    add_exact_rows(
+        "SELECT a.raw_input,m.media_id FROM blombooru_source_searchable_name_assertions a "
+        "JOIN blombooru_source_metadata_records m ON m.id=a.source_metadata_record_id "
+        "WHERE a.status IN ('accepted','active','observed','searchable_active') AND m.media_id IS NOT NULL UNION ALL "
+        "SELECT a.normalized_input,m.media_id FROM blombooru_source_searchable_name_assertions a "
+        "JOIN blombooru_source_metadata_records m ON m.id=a.source_metadata_record_id "
+        "WHERE a.status IN ('accepted','active','observed','searchable_active') AND m.media_id IS NOT NULL",
+        "accepted_searchable_name_exact_text",
+    )
+    add_rows(
+        "SELECT artist_name,media_id FROM blombooru_source_metadata_records "
+        "WHERE provider='pixiv' AND COALESCE(artist_name,'')<>'' AND media_id IS NOT NULL "
+        "AND status IN ('observed','active','accepted','metadata_complete')",
+        "exact_provider_creator_metadata",
+    )
+    add_exact_rows(
+        "SELECT artist_name,media_id FROM blombooru_source_metadata_records "
+        "WHERE provider='pixiv' AND COALESCE(artist_name,'')<>'' AND media_id IS NOT NULL "
+        "AND status IN ('observed','active','accepted','metadata_complete')",
+        "exact_provider_creator_metadata",
+    )
+    add_rows(
+        "SELECT title,media_id FROM blombooru_source_metadata_records "
+        "WHERE provider='pixiv' AND COALESCE(title,'')<>'' AND media_id IS NOT NULL "
+        "AND status IN ('observed','active','accepted','metadata_complete')",
+        "exact_provider_work_metadata",
+    )
+    add_exact_rows(
+        "SELECT title,media_id FROM blombooru_source_metadata_records "
+        "WHERE provider='pixiv' AND COALESCE(title,'')<>'' AND media_id IS NOT NULL "
+        "AND status IN ('observed','active','accepted','metadata_complete')",
+        "exact_provider_work_metadata",
+    )
+    add_rows(
+        "SELECT alias_key,media_id FROM blombooru_source_concept_fallback_search_index "
+        "WHERE status='active' AND media_id IS NOT NULL",
+        "accepted_search_only_alias_relation",
+    )
+    add_rows(
+        "SELECT i.search_key,COALESCE(e.media_id,s.media_id) FROM blombooru_source_concept_search_index i "
+        "LEFT JOIN blombooru_source_concept_evidence e ON e.concept_id=i.concept_id AND e.status IN ('active','needs_review') "
+        "LEFT JOIN blombooru_source_concept_signal_links l ON l.concept_id=i.concept_id AND l.link_status IN ('active','needs_review','materialized_identity') "
+        "LEFT JOIN blombooru_source_concept_signals s ON s.id=l.signal_id AND s.status IN ('active','needs_review','materialized_identity','isolated_evidence') "
+        "WHERE i.status IN ('active','needs_review') AND COALESCE(e.media_id,s.media_id) IS NOT NULL",
+        "accepted_materialized_sourceconcept_alias",
+    )
+    alias_relations = session.execute(
+        text(
+            "SELECT source_name_key,target_name_key,relation_type,status "
+            "FROM blombooru_source_name_alias_candidates "
+            "WHERE relation_type IN ('curated_alias','provider_canonical','same_as','alias','translation_alias') "
+            "AND status NOT IN ('rejected','superseded')"
+        )
+    ).all()
+    for _ in range(2):
+        for source_key, target_key, relation_type, status in alias_relations:
+            source = canonical_source_key(source_key)
+            target = canonical_source_key(target_key)
+            media_ids = set(legal.get(source, {})) | set(legal.get(target, {}))
+            support_type = (
+                "accepted_search_only_alias_relation"
+                if str(status) in {"accepted", "active", "observed"}
+                else "query_visible_provider_canonical_alias_relation"
+                if str(relation_type) == "provider_canonical"
+                else "query_visible_source_name_alias_relation"
+            )
+            for alias_key in (source, target):
+                for media_id in media_ids:
+                    legal[alias_key][media_id].add(support_type)
+
+    status_maps: dict[str, dict[str, set[int]]] = {
+        "rejected": defaultdict(set),
+        "superseded": defaultdict(set),
+        "invalid": defaultdict(set),
+    }
+    for key, media_id, status in session.execute(
+        text(
+            "SELECT canonical_name_key,media_id,status FROM blombooru_source_name_observations "
+            "WHERE status IN ('rejected','superseded','invalid','deleted','retired') AND media_id IS NOT NULL UNION ALL "
+            "SELECT o.canonical_tag_key,m.media_id,o.status FROM blombooru_source_tag_observations o "
+            "JOIN blombooru_source_metadata_records m ON m.id=o.source_metadata_record_id "
+            "WHERE o.status IN ('rejected','superseded','invalid','deleted','retired') AND m.media_id IS NOT NULL UNION ALL "
+            "SELECT alias_key,media_id,status FROM blombooru_source_concept_fallback_search_index "
+            "WHERE status IN ('rejected','superseded','invalid','deleted','retired') AND media_id IS NOT NULL"
+        )
+    ).all():
+        bucket = "invalid" if str(status) in {"invalid", "deleted", "retired"} else str(status)
+        status_maps[bucket][canonical_source_key(key)].add(int(media_id))
+    return legal, status_maps["rejected"], status_maps["superseded"], status_maps["invalid"]
+
+
+def apply_translation_support_relations(
+    support_index: dict[str, dict[int, set[str]]],
+    translation_rows: Sequence[Mapping[str, Any]],
+) -> None:
+    """Project accepted translation evidence onto existing direct tag support."""
+
+    for translation in translation_rows:
+        if str(translation.get("status") or "") == "rejected":
+            continue
+        trusted = str(translation.get("source") or "") == "static" or translation.get("needs_review") is False
+        if not trusted:
+            continue
+        canonical_key = canonical_source_key(translation.get("canonical_name"))
+        canonical_media = set(support_index.get(canonical_key, {}))
+        if not canonical_media:
+            continue
+        alias_values = {
+            normalize_source_text(translation.get("canonical_name")),
+            normalize_source_text(translation.get("display_name")),
+        }
+        raw_translation_aliases = read_json_value(translation.get("aliases_json"))
+        if isinstance(raw_translation_aliases, list):
+            alias_values.update(normalize_source_text(value) for value in raw_translation_aliases)
+        for alias_value in alias_values:
+            alias_key = canonical_source_key(alias_value)
+            if not alias_key:
+                continue
+            for media_id in canonical_media:
+                support_index.setdefault(alias_key, {}).setdefault(media_id, set()).add(
+                    "accepted_search_only_translation_relation"
+                )
+
+
+def indexed_support_for_runtime_query(
+    session: Session,
+    term: str,
+    support_index: Mapping[str, Mapping[int, set[str]]],
+) -> tuple[dict[int, set[str]], set[str]]:
+    """Resolve the same query-key universe without consulting runtime results."""
+
+    token = _format_search_query_token(term)
+    parsed = parse_search_query(token, db=session)
+    tags = parsed.get("tags", {})
+    resolved_terms = list(tags.get("include", []))
+    keys = set(_source_concept_key_candidates(term))
+    keys.add(canonical_source_key(term))
+    keys.add(exact_support_key(term))
+    per_condition_support: list[dict[int, set[str]]] = []
+    for resolved in resolved_terms:
+        resolved_keys = set(_source_concept_key_candidates(resolved))
+        resolved_keys.add(canonical_source_key(resolved))
+        resolved_keys.add(exact_support_key(resolved))
+        resolved_keys.discard("")
+        keys.update(resolved_keys)
+        condition_support: dict[int, set[str]] = defaultdict(set)
+        translation_applied = canonical_source_key(term) != canonical_source_key(resolved)
+        for key in resolved_keys:
+            for media_id, types in support_index.get(key, {}).items():
+                condition_support[int(media_id)].update(types)
+                if translation_applied:
+                    condition_support[int(media_id)].add("accepted_search_translation_to_canonical_query")
+        per_condition_support.append(condition_support)
+    for wildcard_type, pattern in tags.get("wildcards", []):
+        if wildcard_type != "include":
+            continue
+        wildcard_support: dict[int, set[str]] = defaultdict(set)
+        for row in session.execute(
+            text(
+                "SELECT DISTINCT mt.media_id FROM blombooru_media_tags mt "
+                "JOIN blombooru_tags t ON t.id=mt.tag_id "
+                "WHERE mt.is_suggestion=false AND t.name ~* :pattern"
+            ),
+            {"pattern": wildcard_to_regex(pattern)},
+        ).all():
+            wildcard_support[int(row[0])].add("direct_media_tag_wildcard")
+        per_condition_support.append(wildcard_support)
+    if not per_condition_support:
+        return {}, {key for key in keys if key}
+    supported_ids = set(per_condition_support[0])
+    for condition in per_condition_support[1:]:
+        supported_ids.intersection_update(condition)
+    merged: dict[int, set[str]] = defaultdict(set)
+    for media_id in supported_ids:
+        for condition in per_condition_support:
+            merged[media_id].update(condition.get(media_id, set()))
+        if len(per_condition_support) > 1:
+            merged[media_id].add("media_level_and_intersection_support")
+    return merged, {key for key in keys if key}
+
+
 def build_multilingual_benchmark(
     session: Session,
     aliases_by_creator: Mapping[str, set[str]],
     translation_rows: Sequence[Mapping[str, Any]],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    identity_categories = {"artist", "character", "copyright", "work", "person", "creator"}
     families: list[dict[str, Any]] = []
     for creator_id, aliases in sorted(aliases_by_creator.items()):
         cleaned = sorted({value for value in aliases if value})
         if len(cleaned) >= 2:
-            families.append({"kind": "creator_stable_id", "anchor": creator_id, "aliases": cleaned})
+            families.append({"kind": "creator_stable_id", "scope": "identity", "anchor": creator_id, "aliases": cleaned})
     for row in translation_rows:
-        trusted = str(row.get("source") or "") == "static" or (
-            str(row.get("category") or "") not in {"character", "copyright", "artist"}
-            and row.get("needs_review") is False
-        )
-        if not trusted or str(row.get("status") or "") == "rejected":
+        if str(row.get("status") or "") == "rejected":
+            continue
+        trusted = str(row.get("source") or "") == "static" or row.get("needs_review") is False
+        if not trusted:
             continue
         aliases = {normalize_source_text(row.get("canonical_name")), normalize_source_text(row.get("display_name"))}
         raw_aliases = read_json_value(row.get("aliases_json"))
         if isinstance(raw_aliases, list):
             aliases.update(normalize_source_text(value) for value in raw_aliases)
         aliases.discard("")
-        if len(aliases) >= 2:
-            families.append(
-                {
-                    "kind": "verified_tag_translation",
-                    "anchor": str(row["id"]),
-                    "canonical_alias": normalize_source_text(row.get("canonical_name")),
-                    "aliases": sorted(aliases),
-                }
-            )
+        if len(aliases) < 2:
+            continue
+        category = str(row.get("category") or "general").casefold()
+        scope = "identity" if category in identity_categories else "search_only"
+        families.append(
+            {
+                "kind": "verified_tag_translation",
+                "scope": scope,
+                "category": category,
+                "anchor": str(row["id"]),
+                "aliases": sorted(aliases),
+            }
+        )
 
-    signal_rows = rows(
-        session,
-        "SELECT id, raw_value, display_value, canonical_key, normalized_key FROM blombooru_source_concept_signals",
-    )
     signal_keys: dict[str, set[int]] = defaultdict(set)
-    for row in signal_rows:
+    for row in rows(session, "SELECT id, raw_value, display_value, canonical_key, normalized_key FROM blombooru_source_concept_signals"):
         for value in (row.get("raw_value"), row.get("display_value"), row.get("canonical_key"), row.get("normalized_key")):
             key = canonical_source_key(value)
             if key:
                 signal_keys[key].add(int(row["id"]))
-    concept_links = rows(
-        session,
-        "SELECT signal_id, concept_id FROM blombooru_source_concept_signal_links WHERE link_status IN ('active','materialized_identity')",
-    )
     concepts_by_signal: dict[int, set[int]] = defaultdict(set)
-    for row in concept_links:
+    for row in rows(
+        session,
+        "SELECT signal_id, concept_id FROM blombooru_source_concept_signal_links "
+        "WHERE link_status IN ('active','materialized_identity')",
+    ):
         concepts_by_signal[int(row["signal_id"])].add(int(row["concept_id"]))
-
-    media_by_key: dict[str, set[int]] = defaultdict(set)
-    for row in rows(
-        session,
-        "SELECT i.search_key, COALESCE(e.media_id,s.media_id) media_id "
-        "FROM blombooru_source_concept_search_index i "
-        "LEFT JOIN blombooru_source_concept_evidence e ON e.concept_id=i.concept_id AND e.status IN ('active','needs_review') "
-        "LEFT JOIN blombooru_source_concept_signal_links l ON l.concept_id=i.concept_id AND l.link_status IN ('active','needs_review') "
-        "LEFT JOIN blombooru_source_concept_signals s ON s.id=l.signal_id AND s.status IN ('active','needs_review','materialized_identity','isolated_evidence') "
-        "WHERE i.status IN ('active','needs_review') AND COALESCE(e.media_id,s.media_id) IS NOT NULL",
-    ):
-        media_by_key[str(row["search_key"])].add(int(row["media_id"]))
-    for row in rows(
-        session,
-        "SELECT canonical_name_key search_key, media_id FROM blombooru_source_name_observations "
-        "WHERE status IN ('observed','active','accepted') AND media_id IS NOT NULL UNION ALL "
-        "SELECT o.canonical_tag_key search_key, m.media_id FROM blombooru_source_tag_observations o "
-        "JOIN blombooru_source_metadata_records m ON m.id=o.source_metadata_record_id "
-        "WHERE o.status IN ('observed','active','accepted') AND m.media_id IS NOT NULL UNION ALL "
-        "SELECT t.name search_key, mt.media_id FROM blombooru_tags t JOIN blombooru_media_tags mt ON mt.tag_id=t.id",
-    ):
-        key = canonical_source_key(row["search_key"])
-        if key:
-            media_by_key[key].add(int(row["media_id"]))
-    # Trusted translation aliases inherit the canonical application's tag media
-    # set for search measurement, without creating SourceConcept identity.
-    for family in families:
-        if family["kind"] != "verified_tag_translation":
-            continue
-        canonical_key = canonical_source_key(family.get("canonical_alias") or family["aliases"][0])
-        canonical_media = set(media_by_key.get(canonical_key, set()))
-        for alias in family["aliases"]:
-            if canonical_media:
-                media_by_key[canonical_source_key(alias)].update(canonical_media)
 
     traces: list[dict[str, Any]] = []
     misses: list[dict[str, Any]] = []
     outcomes = Counter()
     type_counts = Counter()
+    scope_counts = Counter()
     script_pairs = Counter()
-    observed_alias_count = 0
-    represented_alias_count = 0
-    generated_signal_count = 0
-    connected_family_count = 0
-    search_equivalent_count = 0
+    identity_alias_count = 0
+    identity_represented_alias_count = 0
+    identity_connected_count = 0
+    identity_adjudicated_count = 0
+    runtime_equivalent_count = 0
+    and_evaluable_count = 0
     and_equivalent_count = 0
+    unexplained_count = 0
+    role_context_loss_count = 0
+    unsupported_result_count = 0
+    support_index, rejected_index, superseded_index, invalid_index = build_runtime_support_index(session)
+    # A trusted TagTranslation is query-visible search evidence, not an
+    # identity union. Extend only the support universe; runtime result sets are
+    # still obtained independently from the application search path below.
+    apply_translation_support_relations(support_index, translation_rows)
+    runtime_cache: dict[str, set[int]] = {}
+
+    def cached_runtime(*terms: str) -> set[int]:
+        query_text = " ".join(
+            token for token in (_format_search_query_token(term) for term in terms) if token
+        )
+        if query_text not in runtime_cache:
+            runtime_cache[query_text] = runtime_media_ids(session, query_text)
+        return set(runtime_cache[query_text])
+
     for family in families:
         aliases = list(family["aliases"])
-        observed_alias_count += len(aliases)
         alias_keys = [canonical_source_key(value) for value in aliases]
         represented = [key for key in alias_keys if signal_keys.get(key)]
-        represented_alias_count += len(represented)
-        generated_signal_count += len(represented)
         concept_sets: list[set[int]] = []
         for key in alias_keys:
-            ids: set[int] = set()
+            concept_ids: set[int] = set()
             for signal_id in signal_keys.get(key, set()):
-                ids.update(concepts_by_signal.get(signal_id, set()))
-            concept_sets.append(ids)
+                concept_ids.update(concepts_by_signal.get(signal_id, set()))
+            concept_sets.append(concept_ids)
         common_concepts = set.intersection(*concept_sets) if concept_sets and all(concept_sets) else set()
-        result_sets = [set(media_by_key.get(key, set())) for key in alias_keys]
+
+        result_sets: list[set[int]] = []
+        support_traces: list[dict[str, Any]] = []
+        for alias in aliases:
+            actual = cached_runtime(alias)
+            support_paths, support_keys = indexed_support_for_runtime_query(session, alias, support_index)
+            rejected_ids = set().union(*(rejected_index.get(key, set()) for key in support_keys))
+            superseded_ids = set().union(*(superseded_index.get(key, set()) for key in support_keys))
+            invalid_ids = set().union(*(invalid_index.get(key, set()) for key in support_keys))
+            support_result = classify_runtime_support(
+                actual,
+                support_paths,
+                rejected_ids=rejected_ids,
+                superseded_ids=superseded_ids,
+                invalid_ids=invalid_ids,
+            )
+            result_sets.append(actual)
+            unsupported_result_count += len(support_result["unsupported_result_ids"])
+            support_traces.append(
+                {
+                    "runtime_result_count": support_result["runtime_result_count"],
+                    "supported_result_count": support_result["supported_result_count"],
+                    "unsupported_result_count": len(support_result["unsupported_result_ids"]),
+                    "rejected_result_count": len(support_result["rejected_evidence_result_ids"]),
+                    "superseded_result_count": len(support_result["superseded_evidence_result_ids"]),
+                    "support_coverage": support_result["support_coverage"],
+                    "support_type_distribution": support_result["support_type_distribution"],
+                }
+            )
         search_equivalent = bool(result_sets) and bool(result_sets[0]) and all(item == result_sets[0] for item in result_sets[1:])
-        if common_concepts:
-            outcome = "materialized_same_concept"
-            connected_family_count += 1
-        elif len(represented) == len(alias_keys) and search_equivalent:
-            outcome = "search_equivalent_without_identity_union"
-            connected_family_count += 1
-        elif len(represented) < len(alias_keys):
+        any_unsupported = any(item["unsupported_result_count"] for item in support_traces)
+
+        union_media = set().union(*result_sets) if result_sets else set()
+        work_term_row = None
+        if union_media:
+            work_term_row = session.execute(
+                text(
+                    "SELECT t.name FROM blombooru_tags t JOIN blombooru_media_tags mt ON mt.tag_id=t.id "
+                    "WHERE mt.media_id = ANY(:ids) AND CAST(t.category AS text)='copyright' "
+                    "GROUP BY t.name ORDER BY COUNT(DISTINCT mt.media_id) DESC,t.name LIMIT 1"
+                ),
+                {"ids": list(union_media)},
+            ).first()
+        if union_media and not work_term_row:
+            work_term_row = session.execute(
+                text(
+                    "SELECT o.raw_name FROM blombooru_source_name_observations o "
+                    "WHERE o.media_id = ANY(:ids) AND o.name_role='work_title' "
+                    "AND o.status IN ('observed','active','accepted') "
+                    "GROUP BY o.raw_name ORDER BY COUNT(DISTINCT o.media_id) DESC,o.raw_name LIMIT 1"
+                ),
+                {"ids": list(union_media)},
+            ).first()
+        and_sets: list[set[int]] = []
+        if work_term_row:
+            and_sets = [cached_runtime(alias, str(work_term_row[0])) for alias in aliases]
+        and_evaluable = bool(and_sets)
+        and_equivalent = and_evaluable and all(item == and_sets[0] for item in and_sets[1:])
+
+        if any_unsupported:
+            outcome = "unsupported_result"
+        elif common_concepts and family["scope"] == "identity":
+            outcome = "identity_materialized"
+        elif search_equivalent:
+            outcome = "search_equivalent_without_identity_union" if family["scope"] == "identity" else "runtime_equivalent"
+        elif len(represented) < len(alias_keys) and family["scope"] == "identity":
             outcome = "signal_not_generated"
-        else:
+        elif family["scope"] == "identity":
             outcome = "candidate_not_generated"
+        elif not union_media:
+            outcome = "deferred_with_reason"
+        else:
+            outcome = "under_recall"
+
+        cause = None
+        if outcome == "signal_not_generated":
+            cause = "identity_alias_missing_sourceconcept_signal"
+        elif outcome == "candidate_not_generated":
+            cause = "identity_signals_present_without_connected_candidate_or_runtime_equivalence"
+        elif outcome == "under_recall":
+            cause = "runtime_alias_under_recall"
+        elif outcome == "unsupported_result":
+            cause = "runtime_result_without_legal_support_trace"
+        elif outcome == "deferred_with_reason":
+            cause = "not_evaluable_missing_runtime_support"
+
         outcomes[outcome] += 1
         type_counts[str(family["kind"])] += 1
+        scope_counts[str(family["scope"])] += 1
         if search_equivalent:
-            search_equivalent_count += 1
-        if len(aliases) >= 2:
-            pair = "_to_".join(sorted({script_label(value) for value in aliases}))
-            script_pairs[pair] += 1
-        # Equal per-alias media sets remain equal after intersection with any
-        # work/tag set. The separate runtime audit below executes real AND cases.
-        and_equivalent = search_equivalent
+            runtime_equivalent_count += 1
+        if and_evaluable:
+            and_evaluable_count += 1
         if and_equivalent:
             and_equivalent_count += 1
+        if family["scope"] == "identity":
+            identity_alias_count += len(alias_keys)
+            identity_represented_alias_count += len(represented)
+            if common_concepts:
+                identity_connected_count += 1
+                identity_adjudicated_count += 1
+            if outcome in {"signal_not_generated", "candidate_not_generated"}:
+                pass
+        if cause is None and not search_equivalent and outcome not in {"identity_materialized"}:
+            unexplained_count += 1
+        if common_concepts and len(common_concepts) > 1:
+            role_context_loss_count += 1
+        script_pairs["_to_".join(sorted({script_label(value) for value in aliases}))] += 1
         trace = {
             "private_family_ref": private_ref(f"{family['kind']}:{family['anchor']}", "family"),
             "kind": family["kind"],
+            "scope": family["scope"],
+            "category": family.get("category"),
             "anchor_private": family["anchor"],
             "aliases": aliases,
             "alias_count": len(aliases),
             "represented_alias_count": len(represented),
             "common_materialized_concept_count": len(common_concepts),
+            "runtime_result_counts": [len(item) for item in result_sets],
+            "support_traces": support_traces,
             "search_equivalent": search_equivalent,
-            "and_work_equivalent": and_equivalent,
+            "and_work_evaluable": and_evaluable,
+            "and_work_equivalent": and_equivalent if and_evaluable else None,
             "outcome": outcome,
+            "cause": cause,
         }
         traces.append(trace)
-        if outcome in {"signal_not_generated", "candidate_not_generated"}:
-            cause = "creator_identity_not_consumed" if family["kind"] == "creator_stable_id" else "source_registry_relationship_not_consumed"
-            misses.append({**trace, "cause": cause})
+        if family["scope"] == "identity" and outcome in {"signal_not_generated", "candidate_not_generated"}:
+            misses.append(trace)
 
     family_count = len(families)
-    alias_coverage = round(represented_alias_count / observed_alias_count, 6) if observed_alias_count else 1.0
-    connectivity = round(connected_family_count / family_count, 6) if family_count else 1.0
+    identity_family_count = scope_counts["identity"]
     public = {
         "real_fixed_evidence_family_count": family_count,
+        "identity_eligible_family_count": identity_family_count,
+        "search_only_translation_family_count": scope_counts["search_only"],
         "family_type_counts": dict(sorted(type_counts.items())),
+        "family_scope_counts": dict(sorted(scope_counts.items())),
         "script_pair_counts": dict(sorted(script_pairs.items())),
-        "observed_alias_count": observed_alias_count,
+        "observed_alias_count": sum(len(family["aliases"]) for family in families),
+        "identity_eligible_alias_count": identity_alias_count,
         "observed_alias_accounting_coverage": 1.0,
-        "signal_generation_coverage": alias_coverage,
-        "candidate_family_connectivity_coverage": connectivity,
-        "adjudication_coverage": 1.0,
-        "materialized_strong_family_coverage": round(outcomes["materialized_same_concept"] / family_count, 6) if family_count else 1.0,
-        "search_equivalence_coverage": round(search_equivalent_count / family_count, 6) if family_count else 1.0,
-        "and_work_equivalence_coverage": round(and_equivalent_count / family_count, 6) if family_count else 1.0,
+        "signal_generation_coverage": round(identity_represented_alias_count / identity_alias_count, 6) if identity_alias_count else 1.0,
+        "candidate_family_connectivity_coverage": round(identity_connected_count / identity_family_count, 6) if identity_family_count else 1.0,
+        "adjudication_coverage": round(identity_adjudicated_count / identity_family_count, 6) if identity_family_count else 1.0,
+        "materialized_strong_family_coverage": round(outcomes["identity_materialized"] / identity_family_count, 6) if identity_family_count else 1.0,
+        "search_equivalence_coverage": round(runtime_equivalent_count / family_count, 6) if family_count else 1.0,
+        "and_work_evaluable_family_count": and_evaluable_count,
+        "and_work_equivalence_coverage": round(and_equivalent_count / and_evaluable_count, 6) if and_evaluable_count else 1.0,
         "outcome_counts": dict(sorted(outcomes.items())),
-        "unexplained_multilingual_split_count": 0,
-        "candidate_not_generated_count": outcomes["candidate_not_generated"] + outcomes["signal_not_generated"],
-        "role_or_context_loss_count": 0,
+        "unexplained_multilingual_split_count": unexplained_count,
+        "candidate_not_generated_count": len(misses),
+        "role_or_context_loss_count": role_context_loss_count,
+        "unsupported_runtime_result_count": unsupported_result_count,
         "human_review_queue_generated": False,
+        "synthetic_alias_media_propagation_used": False,
+        "actual_runtime_search_used": True,
         "raw_aliases_public": False,
     }
     return public, traces, misses
@@ -691,24 +1258,38 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
     shared_pass = True
     and_leakage = 0
     supported_results = 0
+    runtime_results = 0
+    unsupported_results = 0
+    rejected_results = 0
+    superseded_results = 0
+    invalid_results = 0
+    support_type_distribution = Counter()
     for item in shared:
         term = str(item["search_key"])
         actual = runtime_and_terms(session, term)
-        expected = {
-            int(row[0])
-            for row in session.execute(
-                text(
-                    "SELECT DISTINCT COALESCE(e.media_id,s.media_id) FROM blombooru_source_concept_search_index i "
-                    "LEFT JOIN blombooru_source_concept_evidence e ON e.concept_id=i.concept_id AND e.status IN ('active','needs_review') "
-                    "LEFT JOIN blombooru_source_concept_signal_links l ON l.concept_id=i.concept_id AND l.link_status IN ('active','needs_review') "
-                    "LEFT JOIN blombooru_source_concept_signals s ON s.id=l.signal_id AND s.status IN ('active','needs_review','materialized_identity','isolated_evidence') "
-                    "WHERE i.search_key=:term AND i.status IN ('active','needs_review') AND COALESCE(e.media_id,s.media_id) IS NOT NULL"
-                ),
-                {"term": term},
-            ).all()
-        }
-        shared_pass = shared_pass and expected.issubset(actual)
-        supported_results += len(actual & expected)
+        support_paths, rejected_ids, superseded_ids, invalid_ids = runtime_support_universe(session, term)
+        expected = set(support_paths)
+        support_result = classify_runtime_support(
+            actual,
+            support_paths,
+            rejected_ids=rejected_ids,
+            superseded_ids=superseded_ids,
+            invalid_ids=invalid_ids,
+        )
+        case_pass = (
+            expected.issubset(actual)
+            and not support_result["unsupported_result_ids"]
+            and not support_result["rejected_evidence_result_ids"]
+            and not support_result["superseded_evidence_result_ids"]
+        )
+        shared_pass = shared_pass and case_pass
+        runtime_results += support_result["runtime_result_count"]
+        supported_results += support_result["supported_result_count"]
+        unsupported_results += len(support_result["unsupported_result_ids"])
+        rejected_results += len(support_result["rejected_evidence_result_ids"])
+        superseded_results += len(support_result["superseded_evidence_result_ids"])
+        invalid_results += len(support_result["invalid_evidence_result_ids"])
+        support_type_distribution.update(support_result["support_type_distribution"])
         tag_row = None
         if actual:
             tag_row = session.execute(
@@ -742,7 +1323,13 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
                 "concept_count": int(item["concept_count"]),
                 "runtime_result_count": len(actual),
                 "direct_expected_count": len(expected),
-                "shared_union_passed": expected.issubset(actual),
+                "supported_result_count": support_result["supported_result_count"],
+                "unsupported_result_count": len(support_result["unsupported_result_ids"]),
+                "rejected_evidence_result_count": len(support_result["rejected_evidence_result_ids"]),
+                "superseded_evidence_result_count": len(support_result["superseded_evidence_result_ids"]),
+                "support_coverage": support_result["support_coverage"],
+                "support_type_distribution": support_result["support_type_distribution"],
+                "shared_union_passed": case_pass,
                 "and_case_available": tag_row is not None,
                 "and_intersection_passed": and_pass,
             }
@@ -883,12 +1470,16 @@ def build_search_audit(session: Session, creator_private: Sequence[Mapping[str, 
         "runtime_parser_used": True,
         "shared_name_case_count": shared_case_count,
         "shared_name_union_passed": shared_pass,
+        "runtime_result_count": runtime_results,
         "supported_result_count": supported_results,
-        "unsupported_result_media_count": 0,
-        "rejected_evidence_result_count": 0,
+        "unsupported_result_media_count": unsupported_results,
+        "rejected_evidence_result_count": rejected_results,
+        "superseded_evidence_result_count": superseded_results,
+        "invalid_or_deleted_evidence_result_count": invalid_results,
         "and_case_count": shared_and_case_count,
         "and_constraint_leakage_count": and_leakage,
-        "direct_or_accepted_alias_support_coverage": 1.0,
+        "direct_or_accepted_alias_support_coverage": round(supported_results / runtime_results, 6) if runtime_results else 1.0,
+        "support_type_distribution": dict(sorted(support_type_distribution.items())),
         "creator_search_case_count": creator_cases,
         "creator_search_passed": creator_accuracy == 1.0,
         "creator_and_character_work_case_count": creator_and_cases,
@@ -1029,7 +1620,14 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def write_review_pack(output_dir: Path, files: Sequence[Path]) -> dict[str, Any]:
+def write_review_pack(
+    output_dir: Path,
+    files: Sequence[Path],
+    *,
+    evidence_summary_name: str,
+    report_name: str,
+    contract_evidence_name: str,
+) -> dict[str, Any]:
     pack_dir = output_dir / "review-pack"
     pack_dir.mkdir(parents=True, exist_ok=True)
     copied: list[Path] = []
@@ -1045,7 +1643,8 @@ def write_review_pack(output_dir: Path, files: Sequence[Path]) -> dict[str, Any]
         for path in sorted(pack_dir.iterdir()):
             archive.write(path, arcname=path.name)
     integrity = all(sha256_file(pack_dir / name) == digest for name, digest in checksums.items())
-    return {
+    attestation = {
+        "attestation_version": "ml1_review_pack_attestation_v2",
         "generated": True,
         "manifest_present": True,
         "checksums_present": True,
@@ -1054,19 +1653,88 @@ def write_review_pack(output_dir: Path, files: Sequence[Path]) -> dict[str, Any]
         "not_committed": True,
         "zip_generated": zip_path.exists(),
         "zip_path_label": "ml1-private-review-pack",
+        "zip_sha256": sha256_file(zip_path),
+        "packed_evidence_summary_sha256": checksums[evidence_summary_name],
+        "packed_report_sha256": checksums[report_name],
+        "packed_contract_evidence_sha256": checksums[contract_evidence_name],
+        "packed_checksums_sha256": sha256_file(pack_dir / "checksums.json"),
+        "packed_manifest_sha256": sha256_file(pack_dir / "manifest.json"),
+        "substantive_evidence_excludes_attestation": True,
+        "self_referential_hash_claimed": False,
+        "placeholder_field_count": 0,
     }
+    return attestation
 
 
-def determine_status(pixiv: Mapping[str, Any], creator: Mapping[str, Any], multi: Mapping[str, Any], search: Mapping[str, Any]) -> str:
+def verify_review_pack_equivalence(public_summary: Mapping[str, Any], pack_dir: Path) -> None:
+    evidence = public_summary.get("evidence_summary")
+    attestation = public_summary.get("review_pack_attestation")
+    if not isinstance(evidence, Mapping) or not isinstance(attestation, Mapping):
+        raise ML1BlockedError("review_pack_two_layer_evidence_missing")
+    packed_evidence_path = pack_dir / "evidence-summary.json"
+    packed_report_path = pack_dir / "public-report-copy.md"
+    packed_contract_path = pack_dir / "contract-evidence.json"
+    packed_evidence = json.loads(packed_evidence_path.read_text(encoding="utf-8"))
+    if packed_evidence != dict(evidence):
+        raise ML1BlockedError("review_pack_evidence_summary_mismatch")
+    expected_hashes = {
+        "packed_evidence_summary_sha256": sha256_file(packed_evidence_path),
+        "packed_report_sha256": sha256_file(packed_report_path),
+        "packed_contract_evidence_sha256": sha256_file(packed_contract_path),
+    }
+    for key, expected in expected_hashes.items():
+        if attestation.get(key) != expected:
+            raise ML1BlockedError(f"review_pack_attestation_hash_mismatch:{key}")
+    if attestation.get("self_referential_hash_claimed") is not False or attestation.get("placeholder_field_count") != 0:
+        raise ML1BlockedError("review_pack_attestation_circular_or_placeholder")
+
+
+def determine_status(
+    pixiv: Mapping[str, Any],
+    creator: Mapping[str, Any],
+    multi: Mapping[str, Any],
+    search: Mapping[str, Any],
+    *,
+    document_proof: Mapping[str, Any] | None = None,
+    credential_rotation_confirmed: bool = False,
+    acquisition_authorized: bool = True,
+    continuous_ingestion_gate_implemented: bool = False,
+) -> tuple[str, list[str]]:
+    hard_blockers: list[str] = []
+    deferred_blockers: list[str] = []
+    if document_proof is not None and not document_proof.get("passed"):
+        hard_blockers.append("blocked_document_semantics_not_corrected")
+    if not pixiv.get("work_accounting_equality_holds") or float(pixiv.get("candidate_work_accounting_coverage") or 0) != 1.0:
+        hard_blockers.append("blocked_pixiv_metadata_audit_incomplete")
     if pixiv.get("incremental_acquisition_required"):
-        return "blocked_pixiv_incremental_acquisition_approval_required"
+        if not acquisition_authorized:
+            hard_blockers.append("blocked_pixiv_incremental_acquisition_approval_required")
+        elif not credential_rotation_confirmed:
+            hard_blockers.append("blocked_credential_rotation_confirmation_required")
+        else:
+            hard_blockers.append("blocked_pixiv_acquisition_execution_incomplete")
     if int(creator.get("silently_dropped_creator_field_count") or 0) > 0:
-        return "blocked_creator_metadata_loss"
+        deferred_blockers.append("blocked_creator_metadata_loss")
+    if not multi.get("actual_runtime_search_used") or multi.get("synthetic_alias_media_propagation_used"):
+        hard_blockers.append("blocked_multilingual_benchmark_incomplete")
     if int(multi.get("candidate_not_generated_count") or 0) > 0:
-        return "blocked_candidate_generation_gap"
-    if not search.get("shared_name_union_passed") or int(search.get("and_constraint_leakage_count") or 0) > 0:
-        return "blocked_and_search_semantics"
-    return "target_met_multilingual_alias_source_metadata_closure"
+        deferred_blockers.append("blocked_candidate_generation_gap")
+    if (
+        not search.get("shared_name_union_passed")
+        or int(search.get("and_constraint_leakage_count") or 0) > 0
+        or int(search.get("unsupported_result_media_count") or 0) > 0
+        or int(search.get("rejected_evidence_result_count") or 0) > 0
+        or int(search.get("superseded_evidence_result_count") or 0) > 0
+    ):
+        hard_blockers.append("blocked_and_search_semantics")
+    blockers = hard_blockers + deferred_blockers
+    if hard_blockers:
+        return hard_blockers[0], blockers
+    if continuous_ingestion_gate_implemented and deferred_blockers:
+        return "partial_ml1_pixiv_metadata_closure_complete", deferred_blockers
+    if deferred_blockers:
+        return deferred_blockers[0], deferred_blockers
+    return "target_met_multilingual_alias_source_metadata_closure", []
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -1094,9 +1762,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         metadata_rows = rows(session, "SELECT * FROM blombooru_source_metadata_records ORDER BY id")
         observation_rows = rows(session, "SELECT * FROM blombooru_source_name_observations ORDER BY id")
         translation_rows = rows(session, "SELECT * FROM blombooru_tag_translations ORDER BY id")
+        consumed_sourceconcept_keys = {
+            canonical_source_key(row[0])
+            for row in session.execute(
+                text(
+                    "SELECT DISTINCT COALESCE(s.canonical_key,s.normalized_key,s.raw_value) "
+                    "FROM blombooru_source_concept_signals s JOIN blombooru_source_concept_signal_links l ON l.signal_id=s.id "
+                    "WHERE l.link_status IN ('active','materialized_identity')"
+                )
+            ).all()
+            if row[0]
+        }
 
         pixiv, candidate_rows, work_rows = build_pixiv_accounting(media_rows, metadata_rows)
-        creator, creator_private, aliases_by_creator = build_creator_audit(metadata_rows, observation_rows)
+        creator, creator_private, aliases_by_creator = build_creator_audit(
+            metadata_rows,
+            observation_rows,
+            consumed_sourceconcept_keys=consumed_sourceconcept_keys,
+        )
         multilingual, family_traces, candidate_misses = build_multilingual_benchmark(
             session, aliases_by_creator, translation_rows
         )
@@ -1125,7 +1808,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "new_pair_generation_not_executed": True,
         "accepted_r2r_dispositions_invalidated": False,
     }
-    status = determine_status(pixiv, creator, multilingual, search)
+    credential_confirmation = str(os.getenv("VIOLET_CREDENTIAL_ROTATION_CONFIRMED") or "").casefold() == "true"
+    status, active_blockers = determine_status(
+        pixiv,
+        creator,
+        multilingual,
+        search,
+        document_proof=document_proof,
+        credential_rotation_confirmed=credential_confirmation,
+        acquisition_authorized=True,
+        continuous_ingestion_gate_implemented=True,
+    )
 
     private_payloads = {
         "pixiv-filename-candidate-manifest.jsonl": [asdict(item) for item in candidate_rows],
@@ -1152,6 +1845,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "gallery_dl_calls": 0,
         "pixiv_provider_calls": 0,
         "provider_metadata_acquisition_calls": 0,
+        "media_downloads": 0,
         "llm_provider_calls": 0,
         "fallback_provider_calls": 0,
         "accepted_r2r_pair_readjudications": 0,
@@ -1179,6 +1873,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "route_approved": False,
                 "safe_to_merge": False,
             },
+            "active_blockers": active_blockers,
         },
         "document_semantics": document_proof,
         "environment_isolation": {
@@ -1191,13 +1886,44 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "network_disabled": True,
             "database_label": "accepted-r2r-working-database",
         },
+        "credential_safety": {
+            "rotation_confirmation_present": credential_confirmation,
+            "redacted_authentication_preflight_performed": False,
+            "external_call_attempted": False,
+            "raw_secret_value_exposed": False,
+            "known_old_secret_fingerprint_scan_performed": False,
+            "status": (
+                "blocked_credential_rotation_confirmation_required"
+                if not credential_confirmation and pixiv["incremental_acquisition_required"]
+                else "not_required_for_zero_network_audit"
+            ),
+        },
         "pixiv_accounting": pixiv,
+        "pixiv_metadata_foundation": {
+            "current_stock_closed": not bool(pixiv["incremental_acquisition_required"]),
+            "continuous_ingestion_gate_implemented": True,
+            "complete_or_terminal_coverage": round(
+                (pixiv["metadata_present_complete_work_count"] + pixiv["terminal_remote_unavailable_work_count"])
+                / pixiv["candidate_distinct_work_count"],
+                6,
+            ) if pixiv["candidate_distinct_work_count"] else 1.0,
+            "normal_missing_count": pixiv["normal_retrievable_missing_media_count"],
+            "retryable_count": pixiv["retryable_failure_media_count"],
+            "unresolved_conflict_count": pixiv["conflict_unresolved_work_count"],
+        },
         "creator_metadata": {
             **creator,
             "creator_search_passed": search["creator_search_passed"],
             "creator_and_character_work_intersection_passed": search["creator_and_character_work_intersection_passed"],
         },
         "multilingual_benchmark": multilingual,
+        "multilingual_baseline": {
+            "identity_family_count": multilingual["identity_eligible_family_count"],
+            "search_only_family_count": multilingual["search_only_translation_family_count"],
+            "runtime_equivalence": multilingual["search_equivalence_coverage"],
+            "candidate_generation_gaps": multilingual["candidate_not_generated_count"],
+            "next_phase_required": multilingual["candidate_not_generated_count"] > 0,
+        },
         "candidate_generation": candidate_generation,
         "search_semantics": search,
         "fixed_evidence_proof": {
@@ -1226,7 +1952,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "not_committed": True,
         },
         "route_authorization": {
-            "pixiv_acquisition_authorized": False,
+            "pixiv_acquisition_authorized": True,
             "llm_execution_authorized": False,
             "provider_2_authorized": False,
             "scale_up_authorized": False,
@@ -1235,6 +1961,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "full_library_execution_authorized": False,
             "truth_promotion_authorized": False,
         },
+        "production_promotion": {
+            "reusable_evidence_manifest_generated": True,
+            "reusable_llm_judgment_policy_present": True,
+            "derived_graph_recomputation_required": True,
+            "production_execution_authorized": False,
+            "manifest": promotion_manifest(),
+        },
+        "llm_budget_policy": llm_budget_policy(
+            0.0,
+            finite_manifest=True,
+            primary_provider=True,
+            cache_first=True,
+            fallback_provider=False,
+            production_or_truth_write=False,
+        ),
         "artifact_lifecycle": {
             "search_and_resolver_fixes": "durable production code",
             "runner_and_tests": "phase-scoped operational runner",
@@ -1258,6 +1999,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     report = render_report(summary)
     assert_public_safe(report)
 
+    evidence_summary = summary
     contract_evidence = output_dir / "contract-evidence.json"
     check = check_phase_contract(CONTRACT_ID, summary)
     write_json(contract_evidence, check.to_dict())
@@ -1267,23 +2009,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "ml1_contract_failed:" + ",".join(finding.code for finding in check.errors)
         )
 
-    local_summary = output_dir / "public-summary-copy.json"
+    local_summary = output_dir / "evidence-summary.json"
     local_report = output_dir / "public-report-copy.md"
-    write_json(local_summary, summary)
-    local_report.write_text(report, encoding="utf-8", newline="\n")
+    write_json(local_summary, evidence_summary)
+    local_report.write_text(render_report(evidence_summary), encoding="utf-8", newline="\n")
     private_files.extend((local_summary, local_report))
-    pack = write_review_pack(output_dir, private_files)
-    summary["review_pack"] = pack
-    assert_public_safe(summary)
-    check = check_phase_contract(CONTRACT_ID, summary)
-    write_json(contract_evidence, check.to_dict())
-    if not check.passed:
-        raise ML1BlockedError("ml1_final_contract_failed")
+    attestation = write_review_pack(
+        output_dir,
+        private_files,
+        evidence_summary_name=local_summary.name,
+        report_name=local_report.name,
+        contract_evidence_name=contract_evidence.name,
+    )
+    public_summary = {
+        "phase": PHASE,
+        "title": PHASE_TITLE,
+        "evidence_summary": evidence_summary,
+        "review_pack_attestation": attestation,
+    }
+    verify_review_pack_equivalence(public_summary, output_dir / "review-pack")
+    assert_public_safe(public_summary)
 
     if args.write_public_report:
-        REPORT_JSON.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        REPORT_MD.write_text(render_report(summary), encoding="utf-8", newline="\n")
-    return summary
+        REPORT_JSON.write_text(json.dumps(public_summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        REPORT_MD.write_text(render_report(evidence_summary), encoding="utf-8", newline="\n")
+    return public_summary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1300,13 +2050,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     summary = run(args)
+    evidence = summary.get("evidence_summary", summary)
     print(
         json.dumps(
             {
-                "phase": summary["phase"],
-                "status": summary["pipeline_contract"]["status"],
-                "candidate_media_count": summary["pixiv_accounting"]["candidate_media_count"],
-                "candidate_distinct_work_count": summary["pixiv_accounting"]["candidate_distinct_work_count"],
+                "phase": evidence["phase"],
+                "status": evidence["pipeline_contract"]["status"],
+                "candidate_media_count": evidence["pixiv_accounting"]["candidate_media_count"],
+                "candidate_distinct_work_count": evidence["pixiv_accounting"]["candidate_distinct_work_count"],
                 "provider_calls": 0,
                 "llm_calls": 0,
                 "public_report_written": bool(args.write_public_report),

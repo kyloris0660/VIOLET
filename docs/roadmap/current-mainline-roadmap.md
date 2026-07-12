@@ -32,11 +32,12 @@ as generic contamination.
 
 `SCV2-ML1: Multilingual Alias and Source-Metadata Closure`
 
-The initial read-only, zero-network audit has completed with
-`blocked_pixiv_incremental_acquisition_approval_required`. It fully accounted
-`2,285` candidate media/pages and `2,235` distinct works; `1,713` missing-work
-requests require a separate private-manifest approval. This blocked result does
-not authorize gallery-dl, Pixiv, LLM, or another phase.
+The corrected read-only, zero-network audit stops at
+`blocked_credential_rotation_confirmation_required`. It fully accounts `2,285`
+candidate media/pages and `2,235` distinct works. The corrected exact manifest
+contains `1,713` missing/retryable distinct works; PR #136 authorizes only this
+metadata-only manifest after credential rotation, fingerprint scan, and redacted
+authentication gates pass. No provider call has occurred yet.
 
 ML1 owns:
 
@@ -45,7 +46,9 @@ ML1 owns:
 - a real fixed-evidence multilingual alias benchmark;
 - candidate-generation recall and representative-edge/fresh-schema debt;
 - actual application-runtime shared-name union and AND-intersection validation;
-- zero-network execution first, with separate Pixiv acquisition and LLM gates.
+- continuous canonical Pixiv-on-import queue and batch-closure enforcement;
+- exact current-stock Pixiv metadata closure after the mandatory credential gate;
+- production evidence promotion policy and a bounded USD-10 LLM policy.
 
 The primary unresolved quality question is multilingual alias coverage and
 candidate-generation recall, not whether one shared bare name returns media from
@@ -55,6 +58,7 @@ several correctly separated identities.
 
 Do not start PX1-B broad acquisition, Provider-2, general scale-up, Entity bridge,
 production, full-library execution, truth promotion, media import, AI tagging,
-classification, localization, or another phase from ML1. Any incremental Pixiv
-acquisition or new-pair LLM adjudication requires its own exact manifest and
-separate operator approval.
+classification, localization, or another phase from ML1. PR #136's authorization
+is limited to its exact corrected Pixiv manifest. New multilingual candidate
+remediation, creator SourceConcept closure, and broad/full-library work remain a
+separately approved next phase.

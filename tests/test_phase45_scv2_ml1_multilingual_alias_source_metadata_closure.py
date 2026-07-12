@@ -9,8 +9,11 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker
 
-from app.database import migrate_add_source_concept_fallback_search_index
+from app.database import Base, migrate_add_source_concept_fallback_search_index
+from app.models import TagTranslation
+from app.utils.search_parser import parse_search_query
 from scripts.phase_contracts.contract_checks import check_phase_contract
 from scripts.phase_contracts.contract_registry import get_contract
 from scripts import run_phase45_scv2_r2r_autonomous_recall_search_closure as r2r_runner
@@ -23,11 +26,12 @@ CONTRACT_ID = "ml1_multilingual_alias_source_metadata_closure_contract_v1"
 
 def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_closure") -> dict:
     target = status == "target_met_multilingual_alias_source_metadata_closure"
-    return {
+    summary = {
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
             "status": status,
             "claims": {"target_met": target, "route_approved": False, "safe_to_merge": False},
+            "active_blockers": [status] if status.startswith("blocked_") else [],
         },
         "document_semantics": {
             "passed": True,
@@ -50,6 +54,10 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "production_write_attempted": False,
             "network_disabled": True,
         },
+        "credential_safety": {
+            "rotation_confirmation_present": status != "blocked_credential_rotation_confirmation_required",
+            "external_call_attempted": False,
+        },
         "pixiv_accounting": {
             "candidate_media_count": 3,
             "accounted_media_count": 3,
@@ -63,6 +71,13 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "accounted_distinct_work_count": 2,
             "candidate_media_accounting_coverage": 1.0,
             "candidate_work_accounting_coverage": 1.0,
+            "metadata_present_complete_work_count": 1,
+            "terminal_remote_unavailable_work_count": 1,
+            "retryable_work_count": 0,
+            "missing_work_count": 0,
+            "conflict_unresolved_work_count": 0,
+            "no_durable_attempt_or_result_evidence_media_count": 0,
+            "work_accounting_equality_holds": True,
             "normal_retrievable_missing_media_count": 0,
             "work_id_mismatch_media_count": 0,
             "incremental_acquisition_required": False,
@@ -87,6 +102,8 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "candidate_not_generated_count": 0,
             "role_or_context_loss_count": 0,
             "human_review_queue_generated": False,
+            "actual_runtime_search_used": True,
+            "synthetic_alias_media_propagation_used": False,
         },
         "candidate_generation": {
             "all_misses_classified": True,
@@ -101,6 +118,7 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "shared_name_union_passed": True,
             "unsupported_result_media_count": 0,
             "rejected_evidence_result_count": 0,
+            "superseded_evidence_result_count": 0,
             "identity_union_from_search_count": 0,
             "and_constraint_leakage_count": 0,
             "direct_or_accepted_alias_support_coverage": 1.0,
@@ -120,6 +138,7 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             key: 0
             for key in (
                 "gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls",
+                "media_downloads",
                 "llm_provider_calls", "fallback_provider_calls", "accepted_r2r_pair_readjudications",
                 "fixed_evidence_mutations", "truth_path_writes", "production_writes", "media_imports",
                 "ai_tagging_calls", "classification_calls", "localization_calls", "entity_writes",
@@ -138,12 +157,19 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "integrity_passed": True, "not_committed": True,
         },
         "route_authorization": {
-            "pixiv_acquisition_authorized": False, "llm_execution_authorized": False,
+            "pixiv_acquisition_authorized": True, "llm_execution_authorized": False,
             "provider_2_authorized": False, "scale_up_authorized": False,
             "entity_bridge_authorized": False, "production_authorized": False,
             "full_library_execution_authorized": False, "truth_promotion_authorized": False,
         },
+        "pixiv_metadata_foundation": {
+            "current_stock_closed": True,
+            "continuous_ingestion_gate_implemented": True,
+            "complete_or_terminal_coverage": 1.0,
+        },
+        "llm_budget_policy": {"preauthorized": True},
     }
+    return summary
 
 
 def test_ml1_contract_registered_and_target_proof_passes() -> None:
@@ -160,7 +186,7 @@ def test_ml1_contract_registered_and_target_proof_passes() -> None:
         ("creator_metadata", "silently_dropped_creator_field_count", 1, "ml1_creator_target_failed"),
         ("multilingual_benchmark", "candidate_not_generated_count", 1, "ml1_multilingual_target_failed"),
         ("search_semantics", "and_constraint_leakage_count", 1, "ml1_search_semantics_target_failed"),
-        ("operation_counts", "gallery_dl_calls", 1, "ml1_forbidden_operation_nonzero_or_missing"),
+        ("operation_counts", "media_downloads", 1, "ml1_forbidden_operation_nonzero_or_missing"),
     ],
 )
 def test_ml1_contract_fails_closed(section: str, key: str, value: object, code: str) -> None:
@@ -181,10 +207,77 @@ def test_ml1_pixiv_acquisition_block_requires_exact_projection() -> None:
         authentication_requirements_present=True,
         rate_limit_plan_present=True,
         checkpoint_resume_plan_present=True,
+        candidate_distinct_work_count=3,
+        accounted_distinct_work_count=3,
+        retryable_work_count=1,
     )
+    summary["route_authorization"]["pixiv_acquisition_authorized"] = False
     result = check_phase_contract(CONTRACT_ID, summary)
     assert result.passed, [finding.to_dict() for finding in result.errors]
     assert result.target_met_claimed is False
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        "blocked_document_semantics_not_corrected",
+        "blocked_environment_isolation",
+        "blocked_credential_rotation_confirmation_required",
+        "blocked_pixiv_metadata_audit_incomplete",
+        "blocked_pixiv_incremental_acquisition_approval_required",
+        "blocked_pixiv_acquisition_execution_incomplete",
+        "blocked_creator_metadata_loss",
+        "blocked_multilingual_benchmark_incomplete",
+        "blocked_candidate_generation_gap",
+        "blocked_llm_approval_required",
+        "blocked_and_search_semantics",
+    ],
+)
+def test_each_blocked_status_requires_its_own_evidence(status: str) -> None:
+    summary = _summary(status=status)
+    # The default fixture is deliberately healthy, so the selected blocker is
+    # unsupported and must fail even though its string is in active_blockers.
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert "ml1_status_evidence_missing" in {finding.code for finding in result.errors}
+
+
+def test_partial_pixiv_foundation_status_requires_closed_stock_and_continuous_gate() -> None:
+    summary = _summary(status="partial_ml1_pixiv_metadata_closure_complete")
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert result.passed, [finding.to_dict() for finding in result.errors]
+    summary["pixiv_metadata_foundation"]["current_stock_closed"] = False
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert "ml1_status_evidence_missing" in {finding.code for finding in result.errors}
+
+
+def test_partial_pixiv_foundation_may_carry_deferred_creator_and_candidate_gaps() -> None:
+    summary = _summary(status="partial_ml1_pixiv_metadata_closure_complete")
+    summary["creator_metadata"]["silently_dropped_creator_field_count"] = 1
+    summary["multilingual_benchmark"]["candidate_not_generated_count"] = 1
+    summary["candidate_generation"]["unresolved_candidate_generation_count"] = 1
+    summary["pipeline_contract"]["active_blockers"] = [
+        "blocked_creator_metadata_loss",
+        "blocked_candidate_generation_gap",
+    ]
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert result.passed, [finding.to_dict() for finding in result.errors]
+
+
+def test_active_blockers_cannot_hide_later_known_gaps() -> None:
+    summary = _summary(status="blocked_credential_rotation_confirmation_required")
+    summary["pixiv_accounting"].update(
+        incremental_acquisition_required=True,
+        projected_gallery_dl_request_count=1,
+        metadata_present_complete_media_count=1,
+        retryable_failure_media_count=1,
+        metadata_present_complete_work_count=0,
+        retryable_work_count=1,
+    )
+    summary["creator_metadata"]["silently_dropped_creator_field_count"] = 1
+    summary["multilingual_benchmark"]["candidate_not_generated_count"] = 1
+    summary["candidate_generation"]["unresolved_candidate_generation_count"] = 1
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert "ml1_active_blockers_incomplete" in {finding.code for finding in result.errors}
 
 
 def test_durable_documents_encode_corrected_search_semantics() -> None:
@@ -204,6 +297,47 @@ def test_durable_documents_encode_corrected_search_semantics() -> None:
     assert erratum["historical_numeric_fields_preserved"] is True
     assert summary["search_benchmark"]["false_broad_union_indicator_count"] == 9186
     assert summary["search_benchmark"]["cannot_linked_search_contamination_count"] == 8768
+
+
+def test_parse_search_query_uses_explicit_snapshot_session_for_aliases() -> None:
+    engine_a = create_engine("sqlite:///:memory:")
+    engine_b = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine_a, tables=[TagTranslation.__table__])
+    Base.metadata.create_all(engine_b, tables=[TagTranslation.__table__])
+    session_a = sessionmaker(bind=engine_a)()
+    session_b = sessionmaker(bind=engine_b)()
+    try:
+        session_a.add(
+            TagTranslation(
+                canonical_name="canonical_a",
+                language="zh-CN",
+                display_name="snapshot_specific_alias",
+                source="static",
+                status="translated",
+                needs_review=False,
+            )
+        )
+        session_b.add(
+            TagTranslation(
+                canonical_name="canonical_b",
+                language="zh-CN",
+                display_name="snapshot_specific_alias",
+                source="static",
+                status="translated",
+                needs_review=False,
+            )
+        )
+        session_a.commit()
+        session_b.commit()
+        assert parse_search_query("snapshot_specific_alias", db=session_a)["tags"]["include"] == ["canonical_a"]
+        assert parse_search_query("snapshot_specific_alias", db=session_b)["tags"]["include"] == ["canonical_b"]
+        assert "search_parser_translation_alias_map_v1" in session_a.info
+        assert "search_parser_translation_alias_map_v1" in session_b.info
+    finally:
+        session_a.close()
+        session_b.close()
+        engine_a.dispose()
+        engine_b.dispose()
 
 
 def test_old_r2_schema_clone_adds_fallback_index_before_dry_run(tmp_path: Path) -> None:
@@ -243,10 +377,106 @@ def test_pixiv_accounting_handles_prefix_suffix_multipage_and_exact_linkage() ->
     assert public["candidate_distinct_work_count"] == 2
     assert public["metadata_present_complete_media_count"] == 2
     assert public["metadata_present_complete_work_count"] == 1
-    assert public["not_attempted_media_count"] == 1
+    assert public["no_durable_attempt_or_result_evidence_media_count"] == 1
     assert public["projected_gallery_dl_request_count"] == 1
     assert [item.page_index for item in candidates[:2]] == [0, 1]
     assert {item["media_count"] for item in works} == {1, 2}
+
+
+def test_pixiv_conflict_keeps_every_work_and_origin_in_accounting() -> None:
+    media_rows = [
+        {
+            "id": 1,
+            "filename": "123456789_p0__987654321_p2.jpg",
+            "path": "media/original/123456789_p0__987654321_p2.jpg",
+            "thumbnail_path": "thumb/123456789_p0.jpg",
+            "source": "file://source/987654321_p2.jpg",
+        }
+    ]
+    public, candidates, works = ml1_runner.build_pixiv_accounting(media_rows, [])
+
+    assert public["candidate_distinct_work_count"] == 2
+    assert public["accounted_distinct_work_count"] == 2
+    assert public["work_accounting_equality_holds"] is True
+    assert public["filename_identity_conflict_media_count"] == 1
+    assert public["filename_identity_conflict_distinct_work_count"] == 2
+    assert public["conflict_unresolved_work_count"] == 2
+    assert {item["work_id"] for item in works} == {"123456789", "987654321"}
+    assert all(item["status"] == "unresolved_conflict" for item in works)
+    assert public["origin_breakdown"]["filename_origin"]["candidate_media_count"] == 1
+    assert public["origin_breakdown"]["source_field_origin"]["distinct_work_count"] == 1
+    assert candidates[0].match_origins
+
+
+def test_runtime_support_accounting_detects_unsupported_rejected_and_superseded() -> None:
+    result = ml1_runner.classify_runtime_support(
+        {1, 2, 3, 4},
+        {1: {"direct_media_tag"}, 2: {"accepted_search_only_alias_relation"}},
+        rejected_ids={3},
+        superseded_ids={4},
+    )
+    assert result["runtime_result_count"] == 4
+    assert result["supported_result_count"] == 2
+    assert result["unsupported_result_ids"] == {3, 4}
+    assert result["rejected_evidence_result_ids"] == {3}
+    assert result["superseded_evidence_result_ids"] == {4}
+    assert result["support_coverage"] == 0.5
+
+
+def test_exact_text_support_key_preserves_unicode_independently_of_canonical_key() -> None:
+    value = "蓝发"
+    key = ml1_runner.exact_support_key(value)
+    assert key.startswith("__exact_text__:")
+    support = {key: {7: {"direct_media_tag_exact_text"}}}
+    assert support[key][7] == {"direct_media_tag_exact_text"}
+
+
+def test_translation_support_inherits_exact_and_parenthetical_direct_tags() -> None:
+    support = {
+        ml1_runner.canonical_source_key("blue_hair"): {
+            1: {"direct_media_tag"},
+            2: {"direct_media_tag_parenthetical_variant"},
+            3: {"accepted_materialized_sourceconcept_alias"},
+        }
+    }
+    ml1_runner.apply_translation_support_relations(
+        support,
+        [
+            {
+                "canonical_name": "blue_hair",
+                "display_name": "blue hair translated",
+                "aliases_json": [],
+                "source": "static",
+                "status": "active",
+            }
+        ],
+    )
+    inherited = support[ml1_runner.canonical_source_key("blue hair translated")]
+    assert set(inherited) == {1, 2, 3}
+    assert all("accepted_search_only_translation_relation" in types for types in inherited.values())
+
+
+def test_review_pack_equivalence_fails_when_packed_evidence_differs(tmp_path: Path) -> None:
+    pack_dir = tmp_path / "review-pack"
+    pack_dir.mkdir()
+    evidence = {"phase": "test", "value": 1}
+    (pack_dir / "evidence-summary.json").write_text(json.dumps(evidence), encoding="utf-8")
+    (pack_dir / "public-report-copy.md").write_text("report", encoding="utf-8")
+    (pack_dir / "contract-evidence.json").write_text("{}", encoding="utf-8")
+    public = {
+        "evidence_summary": evidence,
+        "review_pack_attestation": {
+            "packed_evidence_summary_sha256": ml1_runner.sha256_file(pack_dir / "evidence-summary.json"),
+            "packed_report_sha256": ml1_runner.sha256_file(pack_dir / "public-report-copy.md"),
+            "packed_contract_evidence_sha256": ml1_runner.sha256_file(pack_dir / "contract-evidence.json"),
+            "self_referential_hash_claimed": False,
+            "placeholder_field_count": 0,
+        },
+    }
+    ml1_runner.verify_review_pack_equivalence(public, pack_dir)
+    (pack_dir / "evidence-summary.json").write_text(json.dumps({"phase": "test", "value": 2}), encoding="utf-8")
+    with pytest.raises(ml1_runner.ML1BlockedError, match="review_pack_evidence_summary_mismatch"):
+        ml1_runner.verify_review_pack_equivalence(public, pack_dir)
 
 
 def test_creator_audit_detects_account_loss_without_destroying_stable_id() -> None:

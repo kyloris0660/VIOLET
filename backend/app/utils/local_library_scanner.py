@@ -448,6 +448,13 @@ def scan_and_import(
     if progress_callback:
         progress_callback(stats)
 
+    if not dry_run:
+        from ..services.pixiv_metadata_ingestion_service import summarize_batch_closure
+
+        stats["pixiv_metadata_closure"] = summarize_batch_closure(
+            db, stats.get("imported_media_ids", [])
+        )
+
     return stats
 
 
@@ -686,7 +693,19 @@ def run_scan_job(job_id: int) -> None:
         job.limit_reached = result.get("limit_reached", False)
         job.failed_files_json = json.dumps(result["failed_files"][:MAX_FAILED_REPORT])
         job.finished_at = datetime.now(timezone.utc)
-        job.status = "cancelled" if was_cancelled else "completed"
+        pixiv_closure = result.get("pixiv_metadata_closure") or {}
+        if was_cancelled:
+            job.status = "cancelled"
+        elif pixiv_closure and not pixiv_closure.get("closed", False):
+            # Import succeeded, but the source-metadata stage is observably
+            # incomplete. Do not trigger downstream AI/classification work.
+            job.status = "metadata_pending"
+            job.error_message = (
+                "Pixiv source metadata is incomplete: "
+                f"{pixiv_closure.get('open_candidate_count', 0)} open candidate state(s)"
+            )
+        else:
+            job.status = "completed"
 
         imported_media_ids = result.get("imported_media_ids", [])
         for mid in imported_media_ids:

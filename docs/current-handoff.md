@@ -45,32 +45,40 @@ candidate-generation recall, and the application runtime's AND-search semantics.
 The primary unresolved quality question is multilingual alias coverage and
 candidate-generation recall.
 
-The initial ML1 audit is complete at evidence SHA
-`838e02d086c1e075205bd702a61adaec5fcd704a` with status
-`blocked_pixiv_incremental_acquisition_approval_required`:
+The corrected ML1 re-audit in PR #136 currently stops at
+`blocked_credential_rotation_confirmation_required`:
 
 - `2,285` canonical candidate media/pages and `2,235` distinct works are fully
   accounted;
 - `527` media / `519` works have complete matching metadata;
-- `1,755` media remain `not_attempted`, representing `1,713` incremental work
-  requests; `3` media have filename/metadata identity conflicts;
+- `1,755` media have no durable attempt/result evidence, representing `1,713`
+  exact deduplicated incremental work requests;
+- `3` conflict media expose `9` field-token memberships across `3` distinct
+  unresolved works; no concrete extracted work ID disappears from accounting;
+- the real multilingual baseline separates `314` identity-eligible families
+  from `3,625` search-only families; unsupported runtime results are `0`, while
+  `303` identity candidate-generation gaps remain deferred;
 - no provider or LLM call occurred, no fixed/forbidden evidence changed, and the
   ML1 contract passed for the honest blocked status.
 
-The next action is an explicit operator decision on the private incremental Pixiv
-manifest. No acquisition is authorized by this handoff.
+The project owner has authorized the exact corrected Pixiv manifest in PR #136,
+but execution remains forbidden until affected credentials are rotated/revoked,
+new values remain only in the user-managed store, old-secret fingerprints scan
+clean, and `VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` is present. The current
+standard test environment does not contain that confirmation.
 
 PX1-B broad acquisition, Provider-2, scale-up, Entity bridge, production,
-full-library execution, metadata acquisition, truth promotion, media import, AI
+full-library execution, broad metadata acquisition, truth promotion, AI
 tagging, classification, and localization remain unauthorized. If existing data
-cannot close normal Pixiv gaps or new pairs need LLM adjudication, stop at the
-separate approval gate stated by the ML1 contract.
+cannot close normal Pixiv gaps, stop at the bounded retry/operator gate. New-pair
+candidate remediation and creator SourceConcept closure remain the next phase.
 
 ## Durable Links
 
 - Tag-search policy: `docs/source-concept-tag-search-semantics.md`.
 - Autonomous resolution policy: `docs/source-concept-autonomous-resolution-policy.md`.
 - Evidence reuse policy: `docs/source-evidence-snapshot-reuse-policy.md`.
+- Pixiv ingestion/promotion policy: `docs/pixiv-metadata-ingestion-and-promotion-policy.md`.
 - Contract catalog: `docs/phase-contracts.md`.
 - Current roadmap: `docs/roadmap/current-mainline-roadmap.md`.
 - R2R report: `docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure.md`.
