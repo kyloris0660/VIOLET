@@ -311,7 +311,7 @@ def build_pixiv_accounting(
         if item.work_id and item.status in retryable_statuses | {"not_attempted", "missing_without_explanation"}
     }
     public = {
-        "canonical_parser_pattern": p0.PIXIV_PRIOR_PATTERN,
+        "canonical_parser_rule": "lowercase_work_id_p_page_token_nonzero_6_to_12_digit_work_id",
         "canonical_parser_version": "phase44p0_pixiv_filename_prior_v1",
         "candidate_media_count": candidate_count,
         "accounted_media_count": candidate_count,
