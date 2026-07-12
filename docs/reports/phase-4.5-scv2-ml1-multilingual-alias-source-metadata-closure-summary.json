@@ -1,5 +1,25 @@
 {
   "evidence_summary": {
+    "acquisition_execution": {
+      "acquisition_manifest_distinct_work_count": 1713,
+      "acquisition_manifest_fingerprint": "3f0487bb25503fb69d2414b7b9c50c348164797af1797790976dbd8b07bac800",
+      "acquisition_route_active": false,
+      "complete_work_reacquisition_count": 0,
+      "duplicate_unexpected_work_attempt_count": 0,
+      "gallery_dl_call_count": 0,
+      "max_attempts_per_work": 3,
+      "max_observed_attempts_for_one_work": 0,
+      "out_of_manifest_work_attempt_count": 0,
+      "provider_request_attempt_count": 0,
+      "resume_only_remaining_open_works": true,
+      "resumed_work_count": 0,
+      "retry_attempts_attributable_to_manifest_work": true,
+      "retryable_work_count": 0,
+      "skipped_complete_work_count": 0,
+      "successful_work_count": 0,
+      "terminal_work_count": 0,
+      "unique_work_ids_attempted_count": 0
+    },
     "artifact_lifecycle": {
       "private_evidence": "one-off local artifact / ignored output",
       "public_report": "public report / handoff",
@@ -102,7 +122,7 @@
       "source_database_immutable": true,
       "violet_env_test": true
     },
-    "evidence_code_sha": "f86f21fc1bd9da9623a32fa800ecfd09b5cb954a",
+    "evidence_code_sha": "e0125f4eade66080f8444fc05415a1418ecf9fa9",
     "fixed_evidence_proof": {
       "accepted_r2r_disposition_count": 3319,
       "accepted_r2r_dispositions_reused": true,
@@ -112,7 +132,7 @@
       "forbidden_truth_content_unchanged": true,
       "present": true
     },
-    "generated_at": "2026-07-12T08:52:55+00:00",
+    "generated_at": "2026-07-12T11:13:18+00:00",
     "graph_invariants": {
       "direct_cannot_violation_count": 0,
       "identity_changes_caused_by_search_count": 0,
@@ -128,6 +148,45 @@
       "projected_cost_usd": 0.0,
       "retries_count_toward_limit": true,
       "split_run_budget_evasion_forbidden": true
+    },
+    "local_distribution_diagnostics": {
+      "complete_work_id_quantiles": {
+        "q0": 66304181,
+        "q100": 144543362,
+        "q25": 101230506,
+        "q50": 114906427,
+        "q75": 129045493
+      },
+      "duplicate_local_page_distribution": {
+        "0": 1713
+      },
+      "filename_layout_distribution": {
+        "exact_token_basename": 20,
+        "suffixed_token": 1693
+      },
+      "local_import_month_distribution": {
+        "2026-05": {
+          "complete_work_count": 510,
+          "missing_complete_ratio": 0.07451,
+          "missing_work_count": 38
+        },
+        "2026-06": {
+          "complete_work_count": 9,
+          "missing_complete_ratio": 186.111111,
+          "missing_work_count": 1675
+        }
+      },
+      "missing_semantics": "no durable complete/terminal/result evidence; not evidence of remote deletion",
+      "missing_work_id_quantiles": {
+        "q0": 88605526,
+        "q100": 141585842,
+        "q25": 128924879,
+        "q50": 132019425,
+        "q75": 137021200
+      },
+      "multi_page_missing_work_count": 34,
+      "multiple_local_media_missing_work_count": 34,
+      "single_page_missing_work_count": 1679
     },
     "multilingual_baseline": {
       "candidate_generation_gaps": 303,
@@ -200,10 +259,50 @@
       "provider_metadata_acquisition_calls": 0,
       "truth_path_writes": 0
     },
+    "owner_review_selection": {
+      "category_counts": {
+        "high_work_id_quantile": 10,
+        "low_work_id_quantile": 10,
+        "multi_page_or_multiple_local_media": 10,
+        "newest_local_import": 10,
+        "nontrivial_filename_layout": 10,
+        "oldest_local_import": 10
+      },
+      "conflict_cases_exported": 3,
+      "deterministic_seed_derivation": "int(first_16_hex_chars_of_manifest_sha256, 16)",
+      "deterministic_seed_hex": "3f0487bb25503fb6",
+      "full_manifest_row_count": 1713,
+      "manifest_fingerprint": "3f0487bb25503fb69d2414b7b9c50c348164797af1797790976dbd8b07bac800",
+      "owner_manual_result_vocabulary": [
+        "exists_public",
+        "exists_authenticated",
+        "private",
+        "deleted_or_not_found",
+        "region_or_age_restricted",
+        "parser_mismatch",
+        "wrong_work_id_for_local_media",
+        "local_filename_ambiguous",
+        "uncertain"
+      ],
+      "sample_size": 60,
+      "sample_unique_work_count": 60,
+      "trustworthy_local_import_timestamp_available": true,
+      "work_id_ordering_semantics": "ID-based archival proxy only; not a verified publication date"
+    },
+    "owner_sample_validation": {
+      "confirmation_env": "VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED",
+      "conflict_cases_exported": 3,
+      "normal_pipeline_human_dependency": false,
+      "sample_generated": true,
+      "sample_manifest_fingerprint": "3f0487bb25503fb69d2414b7b9c50c348164797af1797790976dbd8b07bac800",
+      "sample_size": 60,
+      "validation_confirmed": false
+    },
     "phase": "4.5-SCV2-ML1",
     "pipeline_contract": {
       "active_blockers": [
         "blocked_credential_rotation_confirmation_required",
+        "blocked_owner_pixiv_sample_validation_required",
         "blocked_creator_metadata_loss",
         "blocked_candidate_generation_gap"
       ],
@@ -227,6 +326,12 @@
       "candidate_media_accounting_coverage": 1.0,
       "candidate_media_count": 2285,
       "candidate_work_accounting_coverage": 1.0,
+      "canonical_complete_statuses": [
+        "accepted",
+        "active",
+        "metadata_complete",
+        "observed"
+      ],
       "canonical_parser_rule": "lowercase_work_id_p_page_token_nonzero_6_to_12_digit_work_id",
       "canonical_parser_version": "phase44p0_pixiv_filename_prior_v1",
       "checkpoint_resume_plan": "checkpoint each completed distinct work ID; resume only the remaining manifest; preserve prior raw and normalized metadata",
@@ -416,7 +521,7 @@
       "browser_validation": "not_required_no_ui_change",
       "changed_python_py_compile": "passed",
       "focused_pytest_failed": 0,
-      "focused_pytest_passed": 716,
+      "focused_pytest_passed": 66,
       "focused_test_command_label": "ml1-pixiv-creator-search-contract-doc-focused-suite",
       "json_parse_passed": true,
       "ml1_contract_passed": true,
@@ -428,23 +533,23 @@
   "phase": "4.5-SCV2-ML1",
   "review_pack_attestation": {
     "attestation_version": "ml1_review_pack_attestation_v2",
-    "checksum_count": 14,
+    "checksum_count": 19,
     "checksums_present": true,
     "generated": true,
     "integrity_passed": true,
     "manifest_present": true,
     "not_committed": true,
-    "packed_checksums_sha256": "78e30a5a558c1675b8738447ddeb3bd1f05cfe9f19a31f232df2dda708fb9b69",
+    "packed_checksums_sha256": "f255fa8043846cc8a27b9fc546b92c0f55bcd20f6342c47a86b467826df47c7c",
     "packed_contract_evidence_sha256": "ce05998cbadac7bbb623420d9f87f2a7c4389525fae32747fbce5a217a95816d",
-    "packed_evidence_summary_sha256": "fccb167cd6e5c0381907edff965f0212677e3687e0be3337b394018b4f88ee12",
-    "packed_manifest_sha256": "72dac88f978adbb34882a79295519ecf516ef595eccd7f3f6e87789517f9d9f8",
-    "packed_report_sha256": "01fc217f7d5f362fb78aeec9ee709e2fbef36a05ad51b96a3fb1b66c8f2bec3c",
+    "packed_evidence_summary_sha256": "d9844f06e9b2bf53f98a7713fa2f00d04511f2678922796e9da8e305514f75e8",
+    "packed_manifest_sha256": "0b9f185ae91b872bf81d6bdd174659d85684e56afc6eba15fc4f48db89dd30d0",
+    "packed_report_sha256": "545b69d29a7824e1f9412da350f14f5dcc408bc844362411357f2ab27ecda7ce",
     "placeholder_field_count": 0,
     "self_referential_hash_claimed": false,
     "substantive_evidence_excludes_attestation": true,
     "zip_generated": true,
     "zip_path_label": "ml1-private-review-pack",
-    "zip_sha256": "260558082f7140012cda0e72fb1ce3b43f41c6fc9ade21e9132ff39ed25b734f"
+    "zip_sha256": "cb8896de6ed487082cd6789ee3e2f03f942c9c302c8b944645b7265c6a0f3343"
   },
   "title": "SCV2-ML1: Multilingual Alias and Source-Metadata Closure"
 }

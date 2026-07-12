@@ -3,8 +3,8 @@
 ## Status
 
 - Contract status: `blocked_credential_rotation_confirmation_required`.
-- Active blockers: `['blocked_credential_rotation_confirmation_required', 'blocked_creator_metadata_loss', 'blocked_candidate_generation_gap']`.
-- Evidence code SHA: `f86f21fc1bd9da9623a32fa800ecfd09b5cb954a`.
+- Active blockers: `['blocked_credential_rotation_confirmation_required', 'blocked_owner_pixiv_sample_validation_required', 'blocked_creator_metadata_loss', 'blocked_candidate_generation_gap']`.
+- Evidence code SHA: `e0125f4eade66080f8444fc05415a1418ecf9fa9`.
 - Initial execution: read-only, zero-network, accepted R2R evidence reused.
 
 ## Corrected search semantics
@@ -22,6 +22,14 @@ Search-result union is not identity union. `cannot_link` blocks identity materia
 - Incremental acquisition required: `True`; corrected exact work requests: `1713`.
 - Pixiv acquisition authorized / credential rotation confirmed: `True` / `False`.
 - Continuous import gate implemented / current stock closed: `True` / `False`.
+
+## Owner sample gate
+
+- Sample generated / size / conflicts exported: `True` / `60` / `3`.
+- Sample fingerprint: `3f0487bb25503fb69d2414b7b9c50c348164797af1797790976dbd8b07bac800`.
+- Owner validation confirmed / normal-pipeline human dependency: `False` / `False`.
+- Ignored private artifacts are under `.local_manifests/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure/owner-review/`; no raw work IDs, URLs, or basenames are published here.
+- `missing` means no durable complete/terminal/result evidence; it does not mean remotely deleted.
 
 ## Creator preservation
 
@@ -56,12 +64,13 @@ Search-result union is not identity union. `cannot_link` blocks identity materia
 ## Safety boundary
 
 No gallery-dl, Pixiv, provider, LLM, production, Entity, truth, media-import, AI-tagging, classification, or localization operation occurred. Raw names, IDs, URLs, filenames, and local paths remain only in ignored private artifacts.
+Acquisition manifest / requests / gallery-dl calls: `1713` / `0` / `0`.
 Production evidence manifest generated / derived graph recomputation required: `True` / `True`.
 Default bounded LLM policy / aggregate cap: `bounded_phase_primary_llm_usd10_v1` / `$10.0`.
 
 ## Validation
 
 - Changed Python py_compile: `passed`.
-- Focused pytest passed / failed: `716` / `0`.
+- Focused pytest passed / failed: `66` / `0`.
 - ML1 contract: `True`.
 - Real browser validation: `not_required_no_ui_change`.
