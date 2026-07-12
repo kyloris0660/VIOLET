@@ -29,10 +29,11 @@ from .source_metadata_registry_service import canonical_source_key, normalize_so
 
 
 ROTATION_CONFIRMATION_ENV = "VIOLET_CREDENTIAL_ROTATION_CONFIRMED"
+OWNER_SAMPLE_CONFIRMATION_ENV = "VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED"
 MIN_REQUEST_SPACING_SECONDS = 2.0
 QUEUE_METADATA_KIND = "pixiv_ingestion_gate"
 COMPLETE_METADATA_KINDS = frozenset({"provider_metadata", "pixiv_metadata_acquisition", QUEUE_METADATA_KIND})
-COMPLETE_RECORD_STATUSES = frozenset({"observed", "active", "accepted", "metadata_complete"})
+CANONICAL_COMPLETE_STATUSES = frozenset({"observed", "active", "accepted", "metadata_complete"})
 
 
 class PixivMetadataState(str, Enum):
@@ -47,6 +48,7 @@ class PixivMetadataState(str, Enum):
 
 
 CLOSED_STATES = frozenset({PixivMetadataState.COMPLETE.value, PixivMetadataState.TERMINAL.value})
+OPEN_ACQUISITION_STATES = frozenset({PixivMetadataState.PENDING.value, PixivMetadataState.RETRYABLE.value})
 CANDIDATE_STATES = frozenset(state.value for state in PixivMetadataState if state is not PixivMetadataState.NOT_APPLICABLE)
 
 
@@ -88,6 +90,16 @@ def require_rotation_confirmation(env: Mapping[str, str] | None = None) -> None:
         raise PixivMetadataGateError("blocked_credential_rotation_confirmation_required")
 
 
+def owner_sample_validation_confirmed(env: Mapping[str, str] | None = None) -> bool:
+    values = env if env is not None else os.environ
+    return str(values.get(OWNER_SAMPLE_CONFIRMATION_ENV, "")).strip().casefold() == "true"
+
+
+def require_owner_sample_validation_confirmation(env: Mapping[str, str] | None = None) -> None:
+    if not owner_sample_validation_confirmed(env):
+        raise PixivMetadataGateError("blocked_owner_pixiv_sample_validation_required")
+
+
 def _queue_key(media_id: int, work_id: str | None, page_index: int | None) -> str:
     suffix = "not-applicable" if work_id is None else f"{work_id}:p{int(page_index or 0)}"
     return f"pixiv-ingestion:{media_id}:{suffix}"
@@ -124,7 +136,7 @@ def _compatible_complete_records(
             SourceMetadataRecord.source_work_id == work_id,
             SourceMetadataRecord.source_page_index == page_index,
             SourceMetadataRecord.metadata_kind.in_(tuple(COMPLETE_METADATA_KINDS)),
-            SourceMetadataRecord.status.in_(tuple(COMPLETE_RECORD_STATUSES)),
+            SourceMetadataRecord.status.in_(tuple(CANONICAL_COMPLETE_STATUSES)),
         )
         .order_by(SourceMetadataRecord.id.asc())
         .all()
@@ -174,6 +186,10 @@ def _upsert_queue_record(
             data_type_label="local_runtime_source_prior",
         )
         session.add(record)
+    elif str(record.status) in CLOSED_STATES | {PixivMetadataState.CONFLICT.value}:
+        # Generic import/resume discovery cannot reopen durable closure or
+        # silently select a winner for an unresolved identity conflict.
+        return record
     record.status = state
     record.raw_metadata_json = raw
     record.provenance = provenance
@@ -214,7 +230,7 @@ def queue_media_for_pixiv_metadata(session: Session, media: Media | Mapping[str,
     work_id, page_index = work_pages[0]
     compatible = _compatible_complete_records(session, work_id, page_index)
     state = PixivMetadataState.COMPLETE.value if compatible else PixivMetadataState.PENDING.value
-    _upsert_queue_record(
+    queue_record = _upsert_queue_record(
         session,
         media_id=media_id,
         work_id=work_id,
@@ -223,7 +239,7 @@ def queue_media_for_pixiv_metadata(session: Session, media: Media | Mapping[str,
         priors=priors,
         reused_record_ids=[record.id for record in compatible],
     )
-    return QueueDecision(media_id, state, PARSER_VERSION, work_pages, origins, tuple(record.id for record in compatible))
+    return QueueDecision(media_id, str(queue_record.status), PARSER_VERSION, work_pages, origins, tuple(record.id for record in compatible))
 
 
 def summarize_batch_closure(session: Session, media_ids: Iterable[int]) -> dict[str, Any]:
@@ -253,10 +269,10 @@ def summarize_batch_closure(session: Session, media_ids: Iterable[int]) -> dict[
         state
         for media_states in states_by_media.values()
         for state in media_states
-        if state in CANDIDATE_STATES
+        if state in CANDIDATE_STATES or state in CANONICAL_COMPLETE_STATUSES
     ]
     counts = Counter(candidate_states)
-    complete = counts[PixivMetadataState.COMPLETE.value]
+    complete = sum(counts[state] for state in CANONICAL_COMPLETE_STATUSES)
     terminal = counts[PixivMetadataState.TERMINAL.value]
     candidate_count = len(candidate_states)
     missing_queue_media_count = len(set(ids) - set(states_by_media))
@@ -448,28 +464,76 @@ def _upsert_tag_observation(session: Session, record: SourceMetadataRecord, raw_
         )
 
 
-def persist_complete_work(session: Session, work_id: str, pages: Sequence[Mapping[str, Any]]) -> int:
-    """Persist normalized metadata and link every queued local page idempotently."""
-
-    queued = (
+def _selected_work_records(
+    session: Session,
+    work_id: str,
+    *,
+    attempted_record_ids: Sequence[int] | None = None,
+    attempted_page_indexes: Sequence[int] | None = None,
+) -> tuple[list[SourceMetadataRecord], int]:
+    record_ids = {int(value) for value in attempted_record_ids or ()}
+    page_indexes = {int(value) for value in attempted_page_indexes or ()}
+    if not record_ids and not page_indexes:
+        raise PixivMetadataGateError("exact_attempted_queue_scope_required")
+    records = (
         session.query(SourceMetadataRecord)
         .filter(
             SourceMetadataRecord.provider == "pixiv",
             SourceMetadataRecord.metadata_kind == QUEUE_METADATA_KIND,
             SourceMetadataRecord.source_work_id == str(work_id),
         )
+        .order_by(SourceMetadataRecord.id.asc())
         .all()
     )
+    selected = [
+        record
+        for record in records
+        if (record_ids and int(record.id) in record_ids)
+        or (page_indexes and int(record.source_page_index or 0) in page_indexes)
+    ]
+    requested_keys = len(record_ids) if record_ids else len(page_indexes)
+    matched_keys = len({int(record.id) for record in selected}) if record_ids else len(
+        {int(record.source_page_index or 0) for record in selected}
+    )
+    return selected, max(0, requested_keys - matched_keys)
+
+
+def open_work_records(session: Session, work_id: str) -> tuple[SourceMetadataRecord, ...]:
+    return tuple(
+        session.query(SourceMetadataRecord)
+        .filter(
+            SourceMetadataRecord.provider == "pixiv",
+            SourceMetadataRecord.metadata_kind == QUEUE_METADATA_KIND,
+            SourceMetadataRecord.source_work_id == str(work_id),
+            SourceMetadataRecord.status.in_(tuple(OPEN_ACQUISITION_STATES)),
+        )
+        .order_by(SourceMetadataRecord.id.asc())
+        .all()
+    )
+
+
+def persist_complete_work(
+    session: Session,
+    work_id: str,
+    pages: Sequence[Mapping[str, Any]],
+    *,
+    attempted_record_ids: Sequence[int],
+) -> int:
+    """Persist metadata only for exact open queue rows participating in this attempt."""
+
+    queued, not_found = _selected_work_records(
+        session, work_id, attempted_record_ids=attempted_record_ids
+    )
+    if not_found:
+        raise PixivMetadataGateError("attempted_queue_record_not_found")
     pages_by_index = {int(item["page_index"]): item for item in pages}
     linked = 0
     for record in queued:
+        if str(record.status) not in OPEN_ACQUISITION_STATES:
+            raise PixivMetadataGateError(f"attempted_closed_queue_transition_rejected:{record.status}")
         page = pages_by_index.get(int(record.source_page_index or 0))
         if page is None:
-            record.status = PixivMetadataState.NORMALIZATION_FAILED.value
-            raw = dict(record.raw_metadata_json or {})
-            raw["failure_reason"] = "provider_metadata_missing_local_page"
-            record.raw_metadata_json = raw
-            continue
+            raise PixivMetadataGateError("provider_metadata_missing_attempted_local_page")
         raw = dict(page["raw"])
         raw["creator_account"] = page.get("creator_account")
         raw["creator_profile_identity"] = page.get("creator_profile_identity")
@@ -497,23 +561,52 @@ def persist_complete_work(session: Session, work_id: str, pages: Sequence[Mappin
     return linked
 
 
-def mark_work_state(session: Session, work_id: str, state: str, *, reason: str) -> int:
-    records = (
-        session.query(SourceMetadataRecord)
-        .filter(
-            SourceMetadataRecord.provider == "pixiv",
-            SourceMetadataRecord.metadata_kind == QUEUE_METADATA_KIND,
-            SourceMetadataRecord.source_work_id == str(work_id),
-        )
-        .all()
+def mark_work_state(
+    session: Session,
+    work_id: str,
+    state: str,
+    *,
+    reason: str,
+    attempted_record_ids: Sequence[int] | None = None,
+    attempted_page_indexes: Sequence[int] | None = None,
+) -> dict[str, int]:
+    records, not_found = _selected_work_records(
+        session,
+        work_id,
+        attempted_record_ids=attempted_record_ids,
+        attempted_page_indexes=attempted_page_indexes,
     )
+    counts = {
+        "attempted": len(records),
+        "updated": 0,
+        "preserved_complete": 0,
+        "preserved_terminal": 0,
+        "preserved_conflict": 0,
+        "not_found": not_found,
+    }
     for record in records:
+        current = str(record.status)
+        if current == PixivMetadataState.COMPLETE.value:
+            counts["preserved_complete"] += 1
+            continue
+        if current == PixivMetadataState.TERMINAL.value:
+            counts["preserved_terminal"] += 1
+            continue
+        if current == PixivMetadataState.CONFLICT.value:
+            counts["preserved_conflict"] += 1
+            continue
+        if current not in OPEN_ACQUISITION_STATES:
+            counts["not_found"] += 1
+            continue
         record.status = state
         raw = dict(record.raw_metadata_json or {})
         raw["failure_reason"] = reason
         raw["last_attempt_at"] = utc_now().isoformat()
+        raw["attempted_queue_record_id"] = int(record.id)
+        raw["attempted_page_index"] = int(record.source_page_index or 0)
         record.raw_metadata_json = raw
-    return len(records)
+        counts["updated"] += 1
+    return counts
 
 
 def classify_gallery_dl_failure(stderr: str, *, authentication_passed: bool) -> tuple[str, str]:
@@ -544,6 +637,9 @@ def run_bounded_acquisition(
 ) -> list[AcquisitionResult]:
     """Execute a finite distinct-work manifest with per-work DB checkpoints."""
 
+    # Stage-quality owner sampling is a one-time pre-credential gate. Both
+    # confirmations are non-secret booleans and neither is set by this runner.
+    require_owner_sample_validation_confirmation(env)
     require_rotation_confirmation(env)
     if not authentication_passed:
         raise PixivMetadataGateError("blocked_gallery_dl_redacted_authentication_preflight_failed")
@@ -556,6 +652,11 @@ def run_bounded_acquisition(
     command_count = 0
     stop_remaining_manifest = False
     for work_id in manifest:
+        attempted_records = open_work_records(session, work_id)
+        if not attempted_records:
+            results.append(AcquisitionResult(work_id, "skipped_complete_or_closed", False, 0, attempt_count=0))
+            continue
+        attempted_record_ids = tuple(int(record.id) for record in attempted_records)
         command = build_gallery_dl_metadata_command(entrypoint, work_id)
         for attempt in range(1, max_attempts_per_work + 1):
             if command_count:
@@ -573,7 +674,7 @@ def run_bounded_acquisition(
                 )
             except (subprocess.TimeoutExpired, OSError) as exc:
                 state, reason = PixivMetadataState.RETRYABLE.value, "retryable_network_transport"
-                mark_work_state(session, work_id, state, reason=reason)
+                mark_work_state(session, work_id, state, reason=reason, attempted_record_ids=attempted_record_ids)
                 session.commit()
                 if attempt < max_attempts_per_work:
                     continue
@@ -582,7 +683,7 @@ def run_bounded_acquisition(
                 break
             if completed.returncode != 0:
                 state, reason = classify_gallery_dl_failure(completed.stderr or "", authentication_passed=authentication_passed)
-                mark_work_state(session, work_id, state, reason=reason)
+                mark_work_state(session, work_id, state, reason=reason, attempted_record_ids=attempted_record_ids)
                 session.commit()
                 retryable = state == PixivMetadataState.RETRYABLE.value and reason in {
                     "retryable_rate_limit",
@@ -597,11 +698,20 @@ def run_bounded_acquisition(
                 break
             try:
                 pages = parse_gallery_dl_stdout(completed.stdout or "", work_id)
-                linked = persist_complete_work(session, work_id, pages)
+                linked = persist_complete_work(
+                    session, work_id, pages, attempted_record_ids=attempted_record_ids
+                )
                 if linked == 0:
                     raise PixivMetadataGateError("metadata_normalization_failed_no_local_page_link")
             except (PixivMetadataGateError, ValueError, TypeError, json.JSONDecodeError) as exc:
-                mark_work_state(session, work_id, PixivMetadataState.NORMALIZATION_FAILED.value, reason=exc.__class__.__name__)
+                session.rollback()
+                mark_work_state(
+                    session,
+                    work_id,
+                    PixivMetadataState.RETRYABLE.value,
+                    reason=exc.__class__.__name__,
+                    attempted_record_ids=attempted_record_ids,
+                )
                 session.commit()
                 results.append(AcquisitionResult(work_id, PixivMetadataState.NORMALIZATION_FAILED.value, True, 0, exc.__class__.__name__, attempt))
                 stop_remaining_manifest = True

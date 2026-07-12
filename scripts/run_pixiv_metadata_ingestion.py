@@ -41,6 +41,8 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     persist_complete_work,
     promotion_manifest,
     queue_media_for_pixiv_metadata,
+    open_work_records,
+    require_owner_sample_validation_confirmation,
     require_rotation_confirmation,
     run_bounded_acquisition,
     mark_work_state,
@@ -60,6 +62,12 @@ TOKEN_CANDIDATE_RE = re.compile(r"[A-Za-z0-9._~+\-/]{8,}")
 def _write_private_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+
+
+def _manifest_fingerprint(work_ids: Sequence[str]) -> str:
+    return hashlib.sha256(
+        json.dumps(sorted({str(value) for value in work_ids}), separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def _isolated_database_allowed(database: str) -> bool:
@@ -154,6 +162,9 @@ def _redacted_auth_and_first_acquisition(
     work_id: str,
     timeout_seconds: int,
 ) -> tuple[dict[str, Any], bool]:
+    attempted_record_ids = tuple(int(record.id) for record in open_work_records(session, work_id))
+    if not attempted_record_ids:
+        raise PixivMetadataGateError("blocked_preflight_work_has_no_open_queue_records")
     command = build_gallery_dl_metadata_command(entrypoint, work_id)
     completed = subprocess.run(
         command,
@@ -166,7 +177,7 @@ def _redacted_auth_and_first_acquisition(
     )
     if completed.returncode != 0:
         state, reason = classify_gallery_dl_failure(completed.stderr or "", authentication_passed=False)
-        mark_work_state(session, work_id, state, reason=reason)
+        mark_work_state(session, work_id, state, reason=reason, attempted_record_ids=attempted_record_ids)
         session.commit()
         return {
             "configuration_present": True,
@@ -177,7 +188,7 @@ def _redacted_auth_and_first_acquisition(
         }, False
     try:
         pages = parse_gallery_dl_stdout(completed.stdout or "", work_id)
-        linked = persist_complete_work(session, work_id, pages)
+        linked = persist_complete_work(session, work_id, pages, attempted_record_ids=attempted_record_ids)
         if linked <= 0:
             raise PixivMetadataGateError("metadata_normalization_failed_no_local_page_link")
         session.commit()
@@ -186,8 +197,9 @@ def _redacted_auth_and_first_acquisition(
         mark_work_state(
             session,
             work_id,
-            PixivMetadataState.NORMALIZATION_FAILED.value,
+            PixivMetadataState.RETRYABLE.value,
             reason=exc.__class__.__name__,
+            attempted_record_ids=attempted_record_ids,
         )
         session.commit()
         return {
@@ -236,7 +248,33 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "credential_rotation_confirmation_present": False,
             "redacted_secret_scan": {"performed": False},
             "redacted_authentication_preflight": {"performed": False},
-            "operation_counts": {"gallery_dl_calls": 0, "media_downloads": 0},
+            "operation_counts": {
+                "gallery_dl_calls": 0,
+                "pixiv_provider_calls": 0,
+                "provider_metadata_acquisition_calls": 0,
+                "media_downloads": 0,
+            },
+            "acquisition_execution": {
+                "acquisition_route_active": False,
+                "acquisition_manifest_distinct_work_count": len(manifest),
+                "acquisition_manifest_fingerprint": _manifest_fingerprint(manifest),
+                "max_attempts_per_work": 3,
+                "unique_work_ids_attempted_count": 0,
+                "provider_request_attempt_count": 0,
+                "gallery_dl_call_count": 0,
+                "successful_work_count": 0,
+                "terminal_work_count": 0,
+                "retryable_work_count": 0,
+                "skipped_complete_work_count": 0,
+                "resumed_work_count": 0,
+                "duplicate_unexpected_work_attempt_count": 0,
+                "out_of_manifest_work_attempt_count": 0,
+                "complete_work_reacquisition_count": 0,
+                "max_observed_attempts_for_one_work": 0,
+                "retry_attempts_attributable_to_manifest_work": True,
+                "resume_only_remaining_open_works": True,
+                "attempts_by_work": {},
+            },
             "promotion_manifest": promotion_manifest(),
         }
         _write_private_json(output_dir / "exact-distinct-work-manifest.json", {"work_ids": manifest})
@@ -244,7 +282,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             _write_private_json(output_dir / "queue-summary.json", summary)
             return summary
 
+        require_owner_sample_validation_confirmation()
         require_rotation_confirmation()
+        summary["acquisition_execution"]["acquisition_route_active"] = True
         summary["credential_rotation_confirmation_present"] = True
         scan = redacted_secret_scan(output_dir)
         summary["redacted_secret_scan"] = scan
@@ -263,6 +303,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             timeout_seconds=args.timeout,
         )
         summary["operation_counts"]["gallery_dl_calls"] += 1
+        summary["operation_counts"]["pixiv_provider_calls"] += 1
+        summary["operation_counts"]["provider_metadata_acquisition_calls"] += 1
+        summary["acquisition_execution"]["unique_work_ids_attempted_count"] += 1
+        summary["acquisition_execution"]["provider_request_attempt_count"] += 1
+        summary["acquisition_execution"]["gallery_dl_call_count"] += 1
+        summary["acquisition_execution"]["attempts_by_work"][manifest[0]] = 1
         summary["redacted_authentication_preflight"] = {"performed": True, **preflight}
         if not authenticated:
             _write_private_json(output_dir / "execution-summary.json", summary)
@@ -278,6 +324,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             timeout_seconds=args.timeout,
         )
         summary["operation_counts"]["gallery_dl_calls"] += sum(item.attempt_count for item in results)
+        summary["operation_counts"]["pixiv_provider_calls"] = summary["operation_counts"]["gallery_dl_calls"]
+        summary["operation_counts"]["provider_metadata_acquisition_calls"] = summary["operation_counts"]["gallery_dl_calls"]
+        attempted_results = [item for item in results if item.request_attempted]
+        summary["acquisition_execution"]["unique_work_ids_attempted_count"] += len(attempted_results)
+        summary["acquisition_execution"]["provider_request_attempt_count"] += sum(item.attempt_count for item in attempted_results)
+        summary["acquisition_execution"]["gallery_dl_call_count"] = summary["acquisition_execution"]["provider_request_attempt_count"]
+        summary["acquisition_execution"]["max_observed_attempts_for_one_work"] = max(
+            [1, *(item.attempt_count for item in attempted_results)]
+        )
+        summary["acquisition_execution"]["successful_work_count"] = 1 + sum(item.state == PixivMetadataState.COMPLETE.value for item in attempted_results)
+        summary["acquisition_execution"]["terminal_work_count"] = sum(item.state == PixivMetadataState.TERMINAL.value for item in attempted_results)
+        summary["acquisition_execution"]["retryable_work_count"] = sum(item.state == PixivMetadataState.RETRYABLE.value for item in attempted_results)
+        summary["acquisition_execution"]["skipped_complete_work_count"] = sum(not item.request_attempted for item in results)
+        for item in results:
+            if item.request_attempted:
+                summary["acquisition_execution"]["attempts_by_work"][item.work_id] = item.attempt_count
         summary["result_state_counts"] = dict(sorted(Counter(item.state for item in results).items()))
         summary["remaining_distinct_work_count"] = len(pending_distinct_work_ids(session))
         summary["fixed_point_reached"] = summary["remaining_distinct_work_count"] == 0

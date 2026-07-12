@@ -999,6 +999,7 @@ This reference preserves older backlog items. The active near-term route is the 
 
 ### Future Ideas (unscheduled)
 
+- `PX-REC1: Archived Source Metadata Recovery` may be considered only after authenticated Pixiv acquisition measures the actual terminal deleted/private/unavailable population. Candidate evidence routes include an exact Pixiv work ID preserved in a Danbooru source URL, exact cryptographic hash, high-confidence perceptual hash, or another independently verified image correspondence. Any recovered Danbooru metadata remains Danbooru-provenance evidence and must not be represented as original Pixiv metadata. Do not define a fixed trigger threshold before terminal-rate evidence exists.
 - Reverse image search (SauceNAO / IQDB integration) only after explicit provider policy, privacy approval, image/thumbnail/hash upload approval, cache/audit/rate-limit design, and small opt-in batch approval
 - Source completion (for example Pixiv/source URLs) from exact source metadata first; no login/cookie/private APIs or scraping without separate policy review
 - Similar image / near-duplicate detection (perceptual hashing) as supplementary recall, not identity truth

@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
+import csv
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
+import random
 import re
 import sys
 from typing import Any, Iterable, Mapping, Sequence
@@ -40,7 +42,12 @@ from app.services.source_metadata_registry_service import (  # noqa: E402
     normalize_source_text,
 )
 from app.services.pixiv_filename_prior_service import PARSER_VERSION  # noqa: E402
-from app.services.pixiv_metadata_ingestion_service import llm_budget_policy, promotion_manifest  # noqa: E402
+from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
+    CANONICAL_COMPLETE_STATUSES,
+    OWNER_SAMPLE_CONFIRMATION_ENV,
+    llm_budget_policy,
+    promotion_manifest,
+)
 from app.services.source_concept_search_service import _format_search_query_token  # noqa: E402
 from app.utils.search_parser import parse_search_query, wildcard_to_regex  # noqa: E402
 from scripts import run_phase44p0_pixiv_source_prior_auto_verify as p0  # noqa: E402
@@ -114,6 +121,10 @@ class PixivCandidate:
     page_index: int | None
     all_matches: tuple[tuple[str, int], ...]
     match_origins: tuple[tuple[str, str, int], ...]
+    matched_tokens: tuple[tuple[str, str, int, str], ...]
+    local_basename: str
+    local_import_timestamp: str | None
+    layout_classes: tuple[str, ...]
     status: str
     metadata_record_ids: tuple[int, ...]
     matching_metadata_record_ids: tuple[int, ...]
@@ -233,6 +244,43 @@ def canonical_pixiv_matches_by_field(
     return tuple(sorted(found))
 
 
+def canonical_pixiv_token_matches_by_field(
+    fields: Sequence[tuple[str, Any]],
+) -> tuple[tuple[str, str, int, str], ...]:
+    found: set[tuple[str, str, int, str]] = set()
+    for source_field, value in fields:
+        for match in p0.extract_pixiv_filename_prior_from_text(str(value or "")):
+            found.add(
+                (
+                    str(source_field),
+                    str(match["pixiv_work_id"]),
+                    int(match["page_index"]),
+                    str(match["token"]),
+                )
+            )
+    return tuple(sorted(found))
+
+
+def classify_filename_layout(basename: str, token: str) -> str:
+    stem = Path(basename).stem
+    index = stem.casefold().find(token.casefold())
+    if index < 0:
+        return "token_not_in_basename"
+    prefix = stem[:index]
+    suffix = stem[index + len(token) :]
+    if not prefix and not suffix:
+        return "exact_token_basename"
+    if prefix and suffix:
+        return "prefix_and_suffix"
+    if prefix:
+        return "prefixed_token"
+    return "suffixed_token"
+
+
+def basename_only(value: Any) -> str:
+    return re.split(r"[\\/]", str(value or ""))[-1]
+
+
 def build_pixiv_accounting(
     media_rows: Sequence[Mapping[str, Any]],
     metadata_rows: Sequence[Mapping[str, Any]],
@@ -248,14 +296,14 @@ def build_pixiv_accounting(
     agreement_counts = Counter()
     for media in media_rows:
         media_id = int(media["id"])
-        match_origins = canonical_pixiv_matches_by_field(
-            (
+        approved_fields = (
                 ("filename", media.get("filename")),
                 ("stored_path", media.get("path")),
                 ("thumbnail_path", media.get("thumbnail_path")),
                 ("source_field", media.get("source")),
-            )
         )
+        token_matches = canonical_pixiv_token_matches_by_field(approved_fields)
+        match_origins = tuple((field, work_id, page) for field, work_id, page, _ in token_matches)
         matches = tuple(sorted({(work_id, page_index) for _, work_id, page_index in match_origins}))
         if not matches:
             continue
@@ -289,7 +337,7 @@ def build_pixiv_accounting(
                 if (
                     str(item.get("source_work_id") or "") == work_id
                     and int(item.get("source_page_index") or 0) == page_index
-                    and str(item.get("status") or "") in {"observed", "active", "accepted"}
+                    and str(item.get("status") or "") in CANONICAL_COMPLETE_STATUSES
                 ):
                     matching.append(int(item["id"]))
             if matching:
@@ -323,6 +371,18 @@ def build_pixiv_accounting(
                 page_index=page_index,
                 all_matches=matches,
                 match_origins=match_origins,
+                matched_tokens=token_matches,
+                local_basename=basename_only(media.get("filename")),
+                local_import_timestamp=(str(media.get("uploaded_at")) if media.get("uploaded_at") else None),
+                layout_classes=tuple(
+                    sorted(
+                        {
+                            classify_filename_layout(basename_only(media.get("filename")), token)
+                            for field, _, _, token in token_matches
+                            if field == "filename"
+                        }
+                    )
+                ),
                 status=status,
                 metadata_record_ids=metadata_ids,
                 matching_metadata_record_ids=tuple(sorted(matching)),
@@ -404,6 +464,7 @@ def build_pixiv_accounting(
         "source_field": "source_field_origin",
     }
     public = {
+        "canonical_complete_statuses": sorted(CANONICAL_COMPLETE_STATUSES),
         "canonical_parser_rule": "lowercase_work_id_p_page_token_nonzero_6_to_12_digit_work_id",
         "canonical_parser_version": PARSER_VERSION,
         "candidate_media_count": candidate_count,
@@ -469,6 +530,260 @@ def build_pixiv_accounting(
         "filename_path_candidate_distinct_work_count": len(origin_works["filename"] | origin_works["stored_path"]),
     }
     return public, candidates, work_rows
+
+
+OWNER_REVIEW_FIELDS = (
+    "sample_index", "sample_category", "pixiv_work_id", "artwork_url",
+    "local_basenames", "local_media_count", "observed_local_page_indexes",
+    "parser_version", "exact_matched_tokens", "parser_origin_fields",
+    "layout_classification", "local_import_timestamp",
+    "existing_pixiv_metadata_row_count", "exact_compatible_metadata_row_count",
+    "mismatched_metadata_row_count", "current_work_status", "current_reason",
+    "complete_record_exclusion_proof", "manifest_fingerprint",
+    "owner_manual_result", "owner_notes",
+)
+
+
+def _csv_join(values: Iterable[Any]) -> str:
+    return ";".join(str(value) for value in values)
+
+
+def _work_quantiles(work_ids: Sequence[str]) -> dict[str, int | None]:
+    values = sorted(int(value) for value in work_ids)
+    if not values:
+        return {key: None for key in ("q0", "q25", "q50", "q75", "q100")}
+    def pick(fraction: float) -> int:
+        return values[round((len(values) - 1) * fraction)]
+    return {"q0": pick(0), "q25": pick(.25), "q50": pick(.5), "q75": pick(.75), "q100": pick(1)}
+
+
+def _write_owner_csv(path: Path, fieldnames: Sequence[str], values: Sequence[Mapping[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(values)
+
+
+def build_owner_review_artifacts(
+    output_dir: Path,
+    candidates: Sequence[PixivCandidate],
+    work_rows: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], list[Path]]:
+    owner_dir = output_dir / "owner-review"
+    by_work: dict[str, list[PixivCandidate]] = defaultdict(list)
+    for candidate in candidates:
+        for work_id, _ in candidate.all_matches:
+            by_work[work_id].append(candidate)
+    status_by_work = {str(row["work_id"]): str(row["status"]) for row in work_rows}
+    eligible_work_ids = sorted(
+        work_id for work_id, status in status_by_work.items()
+        if status in {"missing", "retryable"} and re.fullmatch(r"[1-9]\d{5,11}", work_id)
+    )
+    base_rows: list[dict[str, Any]] = []
+    for work_id in eligible_work_ids:
+        items = by_work[work_id]
+        basenames = sorted({item.local_basename for item in items})
+        pages = sorted({page for item in items for candidate_work, page in item.all_matches if candidate_work == work_id})
+        tokens = sorted({token for item in items for _, candidate_work, _, token in item.matched_tokens if candidate_work == work_id})
+        origins = sorted({field for item in items for field, candidate_work, _ in item.match_origins if candidate_work == work_id})
+        layouts = sorted({layout for item in items for layout in item.layout_classes}) or ["layout_unavailable"]
+        timestamps = sorted({item.local_import_timestamp for item in items if item.local_import_timestamp})
+        existing_ids = {record_id for item in items for record_id in item.metadata_record_ids}
+        compatible_ids = {record_id for item in items for record_id in item.matching_metadata_record_ids}
+        base_rows.append({
+            "sample_index": "",
+            "sample_category": "",
+            "pixiv_work_id": work_id,
+            "artwork_url": f"https://www.pixiv.net/artworks/{work_id}",
+            "local_basenames": _csv_join(basenames),
+            "local_media_count": len({item.media_id for item in items}),
+            "observed_local_page_indexes": _csv_join(pages),
+            "parser_version": PARSER_VERSION,
+            "exact_matched_tokens": _csv_join(tokens),
+            "parser_origin_fields": _csv_join(origins),
+            "layout_classification": _csv_join(layouts),
+            "local_import_timestamp": _csv_join(timestamps),
+            "existing_pixiv_metadata_row_count": len(existing_ids),
+            "exact_compatible_metadata_row_count": len(compatible_ids),
+            "mismatched_metadata_row_count": len(existing_ids - compatible_ids),
+            "current_work_status": status_by_work[work_id],
+            "current_reason": _csv_join(sorted({item.reason for item in items})),
+            "complete_record_exclusion_proof": "no_compatible_complete_record_for_any_observed_local_page",
+            "manifest_fingerprint": "",
+            "owner_manual_result": "",
+            "owner_notes": "",
+        })
+    for index, row in enumerate(base_rows, start=1):
+        row["sample_index"] = index
+        row["sample_category"] = "full_missing_manifest"
+    fingerprint_payload = [
+        {key: row[key] for key in OWNER_REVIEW_FIELDS if key not in {"sample_index", "sample_category", "manifest_fingerprint", "owner_manual_result", "owner_notes"}}
+        for row in base_rows
+    ]
+    manifest_fingerprint = hashlib.sha256(
+        json.dumps(fingerprint_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    for row in base_rows:
+        row["manifest_fingerprint"] = manifest_fingerprint
+
+    selected: dict[str, set[str]] = defaultdict(set)
+    row_by_id = {str(row["pixiv_work_id"]): row for row in base_rows}
+    remaining = set(row_by_id)
+    timestamped = [row for row in base_rows if row["local_import_timestamp"]]
+
+    def take(category: str, ordered: Sequence[Mapping[str, Any]], count: int = 10) -> None:
+        for row in ordered:
+            work_id = str(row["pixiv_work_id"])
+            if work_id not in remaining:
+                continue
+            selected[work_id].add(category)
+            remaining.remove(work_id)
+            if sum(category in categories for categories in selected.values()) >= count:
+                break
+
+    timestamp_available = bool(timestamped)
+    if timestamp_available:
+        take("oldest_local_import", sorted(timestamped, key=lambda row: (str(row["local_import_timestamp"]), int(row["pixiv_work_id"]))))
+        take("newest_local_import", sorted(timestamped, key=lambda row: (str(row["local_import_timestamp"]), int(row["pixiv_work_id"])), reverse=True))
+    numeric_rows = sorted(base_rows, key=lambda row: int(row["pixiv_work_id"]))
+    midpoint = max(1, len(numeric_rows) // 2)
+    take("low_work_id_quantile", numeric_rows[:midpoint])
+    take("high_work_id_quantile", list(reversed(numeric_rows[midpoint:])))
+    take("multi_page_or_multiple_local_media", [row for row in numeric_rows if ";" in str(row["observed_local_page_indexes"]) or int(row["local_media_count"]) > 1])
+    take("nontrivial_filename_layout", [row for row in numeric_rows if row["layout_classification"] != "exact_token_basename"])
+
+    target_size = 60
+    seed_hex = manifest_fingerprint[:16]
+    rng = random.Random(int(seed_hex, 16))
+    random_fill = sorted(remaining, key=lambda value: int(value))
+    rng.shuffle(random_fill)
+    for work_id in random_fill:
+        if len(selected) >= target_size:
+            break
+        selected[work_id].add("deterministic_manifest_fingerprint_fill")
+    if len(selected) != target_size:
+        raise ML1BlockedError(f"owner_sample_size_unavailable:{len(selected)}")
+
+    sample_rows: list[dict[str, Any]] = []
+    for index, work_id in enumerate(sorted(selected, key=lambda value: int(value)), start=1):
+        row = dict(row_by_id[work_id])
+        row["sample_index"] = index
+        row["sample_category"] = _csv_join(sorted(selected[work_id]))
+        sample_rows.append(row)
+
+    conflict_fields = (
+        "conflict_index", "local_basename", "extracted_work_page_tokens", "origin_fields",
+        "parser_version", "conflict_reason", "automatically_selected_winner", "owner_manual_result", "owner_notes",
+    )
+    conflict_rows = []
+    for index, item in enumerate(sorted((item for item in candidates if item.status == "filename_identity_conflict"), key=lambda item: item.media_id), start=1):
+        conflict_rows.append({
+            "conflict_index": index,
+            "local_basename": item.local_basename,
+            "extracted_work_page_tokens": _csv_join(f"{work_id}_p{page}" for work_id, page in item.all_matches),
+            "origin_fields": _csv_join(f"{field}:{work_id}_p{page}" for field, work_id, page in item.match_origins),
+            "parser_version": PARSER_VERSION,
+            "conflict_reason": item.reason,
+            "automatically_selected_winner": "",
+            "owner_manual_result": "",
+            "owner_notes": "",
+        })
+
+    full_path = owner_dir / "pixiv-missing-work-owner-review-full.csv"
+    sample_path = owner_dir / "pixiv-missing-work-owner-review-sample.csv"
+    markdown_path = owner_dir / "pixiv-missing-work-owner-review-sample.md"
+    conflict_path = owner_dir / "pixiv-conflict-owner-review.csv"
+    selection_path = owner_dir / "pixiv-owner-review-selection.json"
+    _write_owner_csv(full_path, OWNER_REVIEW_FIELDS, base_rows)
+    _write_owner_csv(sample_path, OWNER_REVIEW_FIELDS, sample_rows)
+    _write_owner_csv(conflict_path, conflict_fields, conflict_rows)
+    markdown_lines = [
+        "# Private Pixiv owner-review sample", "",
+        f"Manifest fingerprint: `{manifest_fingerprint}`", "",
+        "`missing` means no durable complete/terminal/result evidence; it does not mean remotely deleted.", "",
+        "| # | Categories | Work ID | Artwork URL | Local basenames |",
+        "|---:|---|---:|---|---|",
+    ]
+    markdown_lines.extend(
+        f"| {row['sample_index']} | {row['sample_category']} | {row['pixiv_work_id']} | {row['artwork_url']} | {row['local_basenames']} |"
+        for row in sample_rows
+    )
+    markdown_path.write_text("\n".join(markdown_lines) + "\n", encoding="utf-8")
+
+    def bucket_counts(statuses: set[str]) -> Counter[str]:
+        counts: Counter[str] = Counter()
+        for work_id, status in status_by_work.items():
+            if status not in statuses:
+                continue
+            timestamps = sorted({item.local_import_timestamp for item in by_work[work_id] if item.local_import_timestamp})
+            counts[timestamps[0][:7] if timestamps else "unavailable"] += 1
+        return counts
+    missing_buckets = bucket_counts({"missing", "retryable"})
+    complete_buckets = bucket_counts({"complete"})
+    all_buckets = sorted(set(missing_buckets) | set(complete_buckets))
+    time_distribution = {
+        bucket: {
+            "missing_work_count": missing_buckets[bucket],
+            "complete_work_count": complete_buckets[bucket],
+            "missing_complete_ratio": (
+                round(missing_buckets[bucket] / complete_buckets[bucket], 6)
+                if complete_buckets[bucket] else None
+            ),
+        }
+        for bucket in all_buckets
+    }
+    layout_distribution = Counter(
+        layout for row in base_rows for layout in str(row["layout_classification"]).split(";") if layout
+    )
+    duplicate_page_distribution = Counter()
+    for work_id in eligible_work_ids:
+        pages = [page for item in by_work[work_id] for candidate_work, page in item.all_matches if candidate_work == work_id]
+        duplicate_page_distribution[str(len(pages) - len(set(pages)))] += 1
+    category_counts = Counter(category for categories in selected.values() for category in categories)
+    selection_evidence = {
+        "manifest_fingerprint": manifest_fingerprint,
+        "deterministic_seed_derivation": "int(first_16_hex_chars_of_manifest_sha256, 16)",
+        "deterministic_seed_hex": seed_hex,
+        "full_manifest_row_count": len(base_rows),
+        "sample_size": len(sample_rows),
+        "sample_unique_work_count": len({row["pixiv_work_id"] for row in sample_rows}),
+        "category_counts": dict(sorted(category_counts.items())),
+        "trustworthy_local_import_timestamp_available": timestamp_available,
+        "work_id_ordering_semantics": "ID-based archival proxy only; not a verified publication date",
+        "conflict_cases_exported": len(conflict_rows),
+        "owner_manual_result_vocabulary": [
+            "exists_public", "exists_authenticated", "private", "deleted_or_not_found",
+            "region_or_age_restricted", "parser_mismatch", "wrong_work_id_for_local_media",
+            "local_filename_ambiguous", "uncertain",
+        ],
+    }
+    write_json(selection_path, selection_evidence)
+    diagnostics = {
+        "local_import_month_distribution": time_distribution,
+        "missing_work_id_quantiles": _work_quantiles(eligible_work_ids),
+        "complete_work_id_quantiles": _work_quantiles([work_id for work_id, status in status_by_work.items() if status == "complete"]),
+        "multi_page_missing_work_count": sum(";" in str(row["observed_local_page_indexes"]) for row in base_rows),
+        "single_page_missing_work_count": sum(";" not in str(row["observed_local_page_indexes"]) for row in base_rows),
+        "multiple_local_media_missing_work_count": sum(int(row["local_media_count"]) > 1 for row in base_rows),
+        "filename_layout_distribution": dict(sorted(layout_distribution.items())),
+        "duplicate_local_page_distribution": dict(sorted(duplicate_page_distribution.items(), key=lambda item: int(item[0]))),
+        "missing_semantics": "no durable complete/terminal/result evidence; not evidence of remote deletion",
+    }
+    public = {
+        "owner_sample_validation": {
+            "sample_generated": True,
+            "sample_size": len(sample_rows),
+            "conflict_cases_exported": len(conflict_rows),
+            "sample_manifest_fingerprint": manifest_fingerprint,
+            "validation_confirmed": False,
+            "confirmation_env": OWNER_SAMPLE_CONFIRMATION_ENV,
+            "normal_pipeline_human_dependency": False,
+        },
+        "selection": selection_evidence,
+        "diagnostics": diagnostics,
+    }
+    return public, [full_path, sample_path, markdown_path, conflict_path, selection_path]
 
 
 def creator_fields(raw: Any, row: Mapping[str, Any]) -> dict[str, Any]:
@@ -817,28 +1132,29 @@ def build_runtime_support_index(
         "WHERE a.status IN ('accepted','active','observed','searchable_active') AND m.media_id IS NOT NULL",
         "accepted_searchable_name_exact_text",
     )
+    canonical_complete_sql = ",".join(f"'{status}'" for status in sorted(CANONICAL_COMPLETE_STATUSES))
     add_rows(
         "SELECT artist_name,media_id FROM blombooru_source_metadata_records "
         "WHERE provider='pixiv' AND COALESCE(artist_name,'')<>'' AND media_id IS NOT NULL "
-        "AND status IN ('observed','active','accepted','metadata_complete')",
+        f"AND status IN ({canonical_complete_sql})",
         "exact_provider_creator_metadata",
     )
     add_exact_rows(
         "SELECT artist_name,media_id FROM blombooru_source_metadata_records "
         "WHERE provider='pixiv' AND COALESCE(artist_name,'')<>'' AND media_id IS NOT NULL "
-        "AND status IN ('observed','active','accepted','metadata_complete')",
+        f"AND status IN ({canonical_complete_sql})",
         "exact_provider_creator_metadata",
     )
     add_rows(
         "SELECT title,media_id FROM blombooru_source_metadata_records "
         "WHERE provider='pixiv' AND COALESCE(title,'')<>'' AND media_id IS NOT NULL "
-        "AND status IN ('observed','active','accepted','metadata_complete')",
+        f"AND status IN ({canonical_complete_sql})",
         "exact_provider_work_metadata",
     )
     add_exact_rows(
         "SELECT title,media_id FROM blombooru_source_metadata_records "
         "WHERE provider='pixiv' AND COALESCE(title,'')<>'' AND media_id IS NOT NULL "
-        "AND status IN ('observed','active','accepted','metadata_complete')",
+        f"AND status IN ({canonical_complete_sql})",
         "exact_provider_work_metadata",
     )
     add_rows(
@@ -1551,6 +1867,19 @@ def render_report(summary: Mapping[str, Any]) -> str:
     multi = summary["multilingual_benchmark"]
     search = summary["search_semantics"]
     candidate = summary["candidate_generation"]
+    owner_sample = summary.get("owner_sample_validation", {
+        "sample_generated": False,
+        "sample_size": 0,
+        "conflict_cases_exported": 0,
+        "sample_manifest_fingerprint": "not_generated",
+        "validation_confirmed": False,
+        "normal_pipeline_human_dependency": False,
+    })
+    acquisition = summary.get("acquisition_execution", {
+        "acquisition_manifest_distinct_work_count": pixiv.get("projected_gallery_dl_request_count", 0),
+        "provider_request_attempt_count": 0,
+        "gallery_dl_call_count": 0,
+    })
     return "\n".join(
         [
             f"# {PHASE_TITLE}",
@@ -1577,6 +1906,14 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Incremental acquisition required: `{pixiv['incremental_acquisition_required']}`; corrected exact work requests: `{pixiv['projected_gallery_dl_request_count']}`.",
             f"- Pixiv acquisition authorized / credential rotation confirmed: `{summary['route_authorization']['pixiv_acquisition_authorized']}` / `{summary['credential_safety']['rotation_confirmation_present']}`.",
             f"- Continuous import gate implemented / current stock closed: `{summary['pixiv_metadata_foundation']['continuous_ingestion_gate_implemented']}` / `{summary['pixiv_metadata_foundation']['current_stock_closed']}`.",
+            "",
+            "## Owner sample gate",
+            "",
+            f"- Sample generated / size / conflicts exported: `{owner_sample['sample_generated']}` / `{owner_sample['sample_size']}` / `{owner_sample['conflict_cases_exported']}`.",
+            f"- Sample fingerprint: `{owner_sample['sample_manifest_fingerprint']}`.",
+            f"- Owner validation confirmed / normal-pipeline human dependency: `{owner_sample['validation_confirmed']}` / `{owner_sample['normal_pipeline_human_dependency']}`.",
+            "- Ignored private artifacts are under `.local_manifests/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure/owner-review/`; no raw work IDs, URLs, or basenames are published here.",
+            "- `missing` means no durable complete/terminal/result evidence; it does not mean remotely deleted.",
             "",
             "## Creator preservation",
             "",
@@ -1611,6 +1948,7 @@ def render_report(summary: Mapping[str, Any]) -> str:
             "## Safety boundary",
             "",
             "No gallery-dl, Pixiv, provider, LLM, production, Entity, truth, media-import, AI-tagging, classification, or localization operation occurred. Raw names, IDs, URLs, filenames, and local paths remain only in ignored private artifacts.",
+            f"Acquisition manifest / requests / gallery-dl calls: `{acquisition['acquisition_manifest_distinct_work_count']}` / `{acquisition['provider_request_attempt_count']}` / `{acquisition['gallery_dl_call_count']}`.",
             f"Production evidence manifest generated / derived graph recomputation required: `{summary['production_promotion']['reusable_evidence_manifest_generated']}` / `{summary['production_promotion']['derived_graph_recomputation_required']}`.",
             f"Default bounded LLM policy / aggregate cap: `{summary['llm_budget_policy']['policy_version']}` / `${summary['llm_budget_policy']['aggregate_execution_limit_usd']}`.",
             "",
@@ -1710,6 +2048,7 @@ def determine_status(
     *,
     document_proof: Mapping[str, Any] | None = None,
     credential_rotation_confirmed: bool = False,
+    owner_sample_validation_confirmed: bool = False,
     acquisition_authorized: bool = True,
     continuous_ingestion_gate_implemented: bool = False,
 ) -> tuple[str, list[str]]:
@@ -1722,10 +2061,13 @@ def determine_status(
     if pixiv.get("incremental_acquisition_required"):
         if not acquisition_authorized:
             hard_blockers.append("blocked_pixiv_incremental_acquisition_approval_required")
-        elif not credential_rotation_confirmed:
-            hard_blockers.append("blocked_credential_rotation_confirmation_required")
         else:
-            hard_blockers.append("blocked_pixiv_acquisition_execution_incomplete")
+            if not credential_rotation_confirmed:
+                hard_blockers.append("blocked_credential_rotation_confirmation_required")
+            if not owner_sample_validation_confirmed:
+                hard_blockers.append("blocked_owner_pixiv_sample_validation_required")
+            if credential_rotation_confirmed and owner_sample_validation_confirmed:
+                hard_blockers.append("blocked_pixiv_acquisition_execution_incomplete")
     if int(creator.get("silently_dropped_creator_field_count") or 0) > 0:
         deferred_blockers.append("blocked_creator_metadata_loss")
     if not multi.get("actual_runtime_search_used") or multi.get("synthetic_alias_media_propagation_used"):
@@ -1771,7 +2113,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             raise ML1BlockedError("blocked_environment_isolation:database_identity_mismatch")
         fixed_before = fast_fingerprint_tables(session, FIXED_TABLES)
         forbidden_before = fast_fingerprint_tables(session, FORBIDDEN_TRUTH_TABLES)
-        media_rows = rows(session, "SELECT id, filename, path, thumbnail_path, source FROM blombooru_media ORDER BY id")
+        media_rows = rows(session, "SELECT id, filename, path, thumbnail_path, source, uploaded_at FROM blombooru_media ORDER BY id")
         metadata_rows = rows(session, "SELECT * FROM blombooru_source_metadata_records ORDER BY id")
         observation_rows = rows(session, "SELECT * FROM blombooru_source_name_observations ORDER BY id")
         translation_rows = rows(session, "SELECT * FROM blombooru_tag_translations ORDER BY id")
@@ -1821,7 +2163,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "new_pair_generation_not_executed": True,
         "accepted_r2r_dispositions_invalidated": False,
     }
+    owner_review, owner_private_files = build_owner_review_artifacts(output_dir, candidate_rows, work_rows)
+    private_files.extend(owner_private_files)
     credential_confirmation = str(os.getenv("VIOLET_CREDENTIAL_ROTATION_CONFIRMED") or "").casefold() == "true"
+    owner_sample_confirmation = str(os.getenv(OWNER_SAMPLE_CONFIRMATION_ENV) or "").casefold() == "true"
     status, active_blockers = determine_status(
         pixiv,
         creator,
@@ -1829,6 +2174,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         search,
         document_proof=document_proof,
         credential_rotation_confirmed=credential_confirmation,
+        owner_sample_validation_confirmed=owner_sample_confirmation,
         acquisition_authorized=True,
         continuous_ingestion_gate_implemented=True,
     )
@@ -1871,6 +2217,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "localization_calls": 0,
         "entity_writes": 0,
     }
+    acquisition_manifest_fingerprint = owner_review["owner_sample_validation"]["sample_manifest_fingerprint"]
+    acquisition_execution = {
+        "acquisition_route_active": False,
+        "acquisition_manifest_distinct_work_count": pixiv["missing_work_count"] + pixiv["retryable_work_count"],
+        "acquisition_manifest_fingerprint": acquisition_manifest_fingerprint,
+        "max_attempts_per_work": 3,
+        "unique_work_ids_attempted_count": 0,
+        "provider_request_attempt_count": 0,
+        "gallery_dl_call_count": 0,
+        "successful_work_count": 0,
+        "terminal_work_count": 0,
+        "retryable_work_count": 0,
+        "skipped_complete_work_count": 0,
+        "resumed_work_count": 0,
+        "duplicate_unexpected_work_attempt_count": 0,
+        "out_of_manifest_work_attempt_count": 0,
+        "complete_work_reacquisition_count": 0,
+        "max_observed_attempts_for_one_work": 0,
+        "retry_attempts_attributable_to_manifest_work": True,
+        "resume_only_remaining_open_works": True,
+    }
     summary: dict[str, Any] = {
         "phase": PHASE,
         "title": PHASE_TITLE,
@@ -1911,6 +2278,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else "not_required_for_zero_network_audit"
             ),
         },
+        "owner_sample_validation": {
+            **owner_review["owner_sample_validation"],
+            "validation_confirmed": owner_sample_confirmation,
+        },
+        "owner_review_selection": owner_review["selection"],
+        "local_distribution_diagnostics": owner_review["diagnostics"],
         "pixiv_accounting": pixiv,
         "pixiv_metadata_foundation": {
             "current_stock_closed": not bool(pixiv["incremental_acquisition_required"]),
@@ -1949,6 +2322,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "changed_forbidden_truth_tables": forbidden_comparison.get("changed_tables", []),
         },
         "operation_counts": operation_counts,
+        "acquisition_execution": acquisition_execution,
         "graph_invariants": {
             "review_or_deferred_identity_union_count": 0,
             "direct_cannot_violation_count": 0,

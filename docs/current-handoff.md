@@ -62,10 +62,23 @@ The corrected ML1 re-audit in PR #136 currently stops at
   ML1 contract passed for the honest blocked status.
 
 The project owner has authorized the exact corrected Pixiv manifest in PR #136,
-but execution remains forbidden until affected credentials are rotated/revoked,
-new values remain only in the user-managed store, old-secret fingerprints scan
-clean, and `VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` is present. The current
-standard test environment does not contain that confirmation.
+but execution remains forbidden until both one-time stage gates pass: the private
+60-work owner sample is manually validated and
+`VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED=true` is present; affected
+credentials are rotated/revoked, new values remain only in the user-managed
+store, old-secret fingerprints scan clean, and
+`VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` is present. The owner sample is a
+stage-outcome quality check, not a per-item dependency in normal ingestion. The
+current standard test environment contains neither confirmation.
+
+Potential future phase `PX-REC1: Archived Source Metadata Recovery` remains
+deferred until authenticated Pixiv acquisition measures the actual terminal
+deleted/private/unavailable population. Future evidence may use an exact Pixiv
+work ID preserved in a Danbooru source URL, exact cryptographic hash,
+high-confidence perceptual hash, or another independently verified image
+correspondence. Recovered metadata must retain Danbooru provenance and must not
+be represented as original Pixiv metadata. No fixed trigger threshold is set
+before terminal-rate evidence exists.
 
 PX1-B broad acquisition, Provider-2, scale-up, Entity bridge, production,
 full-library execution, broad metadata acquisition, truth promotion, AI

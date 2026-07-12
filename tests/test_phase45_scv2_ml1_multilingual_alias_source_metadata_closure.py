@@ -58,7 +58,17 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "rotation_confirmation_present": status != "blocked_credential_rotation_confirmation_required",
             "external_call_attempted": False,
         },
+        "owner_sample_validation": {
+            "sample_generated": True,
+            "sample_size": 60,
+            "conflict_cases_exported": 0,
+            "sample_manifest_fingerprint": "a" * 64,
+            "validation_confirmed": status != "blocked_owner_pixiv_sample_validation_required",
+            "confirmation_env": "VIOLET_PIXIV_OWNER_SAMPLE_VALIDATION_CONFIRMED",
+            "normal_pipeline_human_dependency": False,
+        },
         "pixiv_accounting": {
+            "canonical_complete_statuses": ["accepted", "active", "metadata_complete", "observed"],
             "candidate_media_count": 3,
             "accounted_media_count": 3,
             "metadata_present_complete_media_count": 2,
@@ -144,6 +154,26 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
                 "ai_tagging_calls", "classification_calls", "localization_calls", "entity_writes",
             )
         },
+        "acquisition_execution": {
+            "acquisition_route_active": False,
+            "acquisition_manifest_distinct_work_count": 0,
+            "acquisition_manifest_fingerprint": "",
+            "max_attempts_per_work": 3,
+            "unique_work_ids_attempted_count": 0,
+            "provider_request_attempt_count": 0,
+            "gallery_dl_call_count": 0,
+            "successful_work_count": 0,
+            "terminal_work_count": 0,
+            "retryable_work_count": 0,
+            "skipped_complete_work_count": 0,
+            "resumed_work_count": 0,
+            "duplicate_unexpected_work_attempt_count": 0,
+            "out_of_manifest_work_attempt_count": 0,
+            "complete_work_reacquisition_count": 0,
+            "max_observed_attempts_for_one_work": 0,
+            "retry_attempts_attributable_to_manifest_work": True,
+            "resume_only_remaining_open_works": True,
+        },
         "graph_invariants": {
             "review_or_deferred_identity_union_count": 0,
             "direct_cannot_violation_count": 0,
@@ -176,6 +206,176 @@ def test_ml1_contract_registered_and_target_proof_passes() -> None:
     assert get_contract(CONTRACT_ID).contract_id == CONTRACT_ID
     result = check_phase_contract(CONTRACT_ID, _summary())
     assert result.passed, [finding.to_dict() for finding in result.errors]
+
+
+def _configure_acquisition(summary: dict, *, manifest: int, attempts: int, unique: int, max_attempts: int = 3) -> None:
+    summary["acquisition_execution"].update(
+        acquisition_route_active=True,
+        acquisition_manifest_distinct_work_count=manifest,
+        acquisition_manifest_fingerprint="b" * 64,
+        max_attempts_per_work=max_attempts,
+        unique_work_ids_attempted_count=unique,
+        provider_request_attempt_count=attempts,
+        gallery_dl_call_count=attempts,
+        max_observed_attempts_for_one_work=min(attempts, max_attempts),
+    )
+    for key in ("gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls"):
+        summary["operation_counts"][key] = attempts
+    summary["environment_isolation"]["network_disabled"] = attempts == 0
+
+
+def test_provider_call_exact_upper_bound_passes() -> None:
+    summary = _summary()
+    _configure_acquisition(summary, manifest=2, attempts=6, unique=2)
+    summary["acquisition_execution"]["max_observed_attempts_for_one_work"] = 3
+    assert check_phase_contract(CONTRACT_ID, summary).passed
+
+
+def test_provider_call_one_over_bound_fails() -> None:
+    summary = _summary()
+    _configure_acquisition(summary, manifest=2, attempts=7, unique=2)
+    summary["acquisition_execution"]["max_observed_attempts_for_one_work"] = 3
+    assert "ml1_acquisition_request_bound_exceeded" in {item.code for item in check_phase_contract(CONTRACT_ID, summary).errors}
+
+
+def test_duplicate_retry_within_allowance_passes_but_beyond_fails() -> None:
+    within = _summary()
+    _configure_acquisition(within, manifest=1, attempts=3, unique=1)
+    assert check_phase_contract(CONTRACT_ID, within).passed
+    beyond = deepcopy(within)
+    beyond["acquisition_execution"]["provider_request_attempt_count"] = 4
+    beyond["acquisition_execution"]["gallery_dl_call_count"] = 4
+    for key in ("gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls"):
+        beyond["operation_counts"][key] = 4
+    assert "ml1_acquisition_request_bound_exceeded" in {item.code for item in check_phase_contract(CONTRACT_ID, beyond).errors}
+
+
+@pytest.mark.parametrize("key", ["out_of_manifest_work_attempt_count", "complete_work_reacquisition_count", "duplicate_unexpected_work_attempt_count"])
+def test_provider_scope_violation_fails(key: str) -> None:
+    summary = _summary()
+    _configure_acquisition(summary, manifest=1, attempts=1, unique=1)
+    summary["acquisition_execution"][key] = 1
+    assert "ml1_acquisition_scope_violation" in {item.code for item in check_phase_contract(CONTRACT_ID, summary).errors}
+
+
+def test_interrupted_checkpoint_resume_requires_remaining_open_proof() -> None:
+    summary = _summary()
+    _configure_acquisition(summary, manifest=3, attempts=1, unique=1)
+    summary["acquisition_execution"]["resumed_work_count"] = 1
+    summary["acquisition_execution"]["resume_only_remaining_open_works"] = False
+    assert "ml1_acquisition_resume_or_retry_proof_missing" in {item.code for item in check_phase_contract(CONTRACT_ID, summary).errors}
+
+
+def test_zero_call_owner_sample_block_passes() -> None:
+    summary = _summary(status="blocked_owner_pixiv_sample_validation_required")
+    summary["pixiv_accounting"].update(incremental_acquisition_required=True, missing_work_count=1, candidate_distinct_work_count=3, accounted_distinct_work_count=3)
+    summary["credential_safety"]["rotation_confirmation_present"] = True
+    summary["acquisition_execution"].update(acquisition_manifest_distinct_work_count=1, acquisition_manifest_fingerprint="c" * 64)
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert result.passed, [item.to_dict() for item in result.errors]
+
+
+def test_blocked_fixed_evidence_requires_positive_change_proof() -> None:
+    changed = _summary(status="blocked_fixed_evidence_changed")
+    changed["fixed_evidence_proof"]["before_after_match"] = False
+    changed["fixed_evidence_proof"]["changed_fixed_tables"] = ["blombooru_media"]
+    assert check_phase_contract(CONTRACT_ID, changed).passed
+
+    unchanged = _summary(status="blocked_fixed_evidence_changed")
+    result = check_phase_contract(CONTRACT_ID, unchanged)
+    assert "ml1_fixed_evidence_block_unproven" in {item.code for item in result.errors}
+
+    missing = _summary(status="blocked_fixed_evidence_changed")
+    missing["fixed_evidence_proof"].pop("before_after_match")
+    result = check_phase_contract(CONTRACT_ID, missing)
+    assert "ml1_fixed_evidence_block_unproven" in {item.code for item in result.errors}
+
+    forbidden = _summary(status="blocked_fixed_evidence_changed")
+    forbidden["fixed_evidence_proof"]["before_after_match"] = False
+    forbidden["fixed_evidence_proof"]["changed_forbidden_truth_tables"] = ["blombooru_entities"]
+    assert check_phase_contract(CONTRACT_ID, forbidden).passed
+
+
+def test_metadata_complete_is_canonical_complete_and_audit_is_idempotent() -> None:
+    media = [
+        {"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": "2026-01-01T00:00:00+00:00"},
+        {"id": 2, "filename": "123456789_p1.jpg", "path": "media/123456789_p1.jpg", "thumbnail_path": None, "source": None, "uploaded_at": "2026-01-02T00:00:00+00:00"},
+    ]
+    metadata = [
+        {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "status": "metadata_complete"},
+        {"id": 11, "provider": "pixiv", "media_id": 2, "source_work_id": "123456789", "source_page_index": 1, "status": "metadata_complete"},
+    ]
+    first = ml1_runner.build_pixiv_accounting(media, metadata)
+    second = ml1_runner.build_pixiv_accounting(media, metadata)
+    assert first == second
+    public, candidates, work_rows = first
+    assert public["metadata_present_complete_media_count"] == 2
+    assert public["metadata_present_complete_work_count"] == 1
+    assert public["filename_identity_conflict_media_count"] == 0
+    assert all(item.status == "metadata_present_complete" for item in candidates)
+    assert work_rows[0]["page_indexes"] == [0, 1]
+
+
+def test_wrong_page_metadata_complete_remains_mismatch_and_terminal_retryable_distinct() -> None:
+    media = [
+        {"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None},
+        {"id": 2, "filename": "223456789_p0.jpg", "path": "media/223456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None},
+        {"id": 3, "filename": "323456789_p0.jpg", "path": "media/323456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None},
+    ]
+    metadata = [
+        {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 1, "status": "metadata_complete"},
+        {"id": 11, "provider": "pixiv", "media_id": 2, "source_work_id": "223456789", "source_page_index": 0, "status": "terminal_remote_unavailable"},
+        {"id": 12, "provider": "pixiv", "media_id": 3, "source_work_id": "323456789", "source_page_index": 0, "status": "metadata_retryable"},
+    ]
+    public, candidates, _ = ml1_runner.build_pixiv_accounting(media, metadata)
+    assert candidates[0].status == "filename_identity_conflict"
+    assert public["terminal_remote_unavailable_media_count"] == 1
+    assert public["retryable_failure_media_count"] == 1
+
+
+def test_owner_review_sample_is_deterministic_exact_unique_private_and_conflicts_exported(tmp_path: Path) -> None:
+    media = []
+    for index in range(80):
+        work_id = str(600000 + index)
+        basename = f"prefix-{work_id}_p0-suffix.jpg" if index % 3 == 0 else f"{work_id}_p0.jpg"
+        media.append({
+            "id": index + 1, "filename": (f"C:\\private\\root\\{basename}" if index == 0 else basename), "path": f"private/root/{basename}",
+            "thumbnail_path": None, "source": None,
+            "uploaded_at": f"2026-{(index % 12) + 1:02d}-{(index % 27) + 1:02d}T00:00:00+00:00",
+        })
+        if index < 40:
+            page_one = f"{work_id}_p1.jpg"
+            media.append({
+                "id": 300 + index, "filename": page_one, "path": f"private/root/{page_one}",
+                "thumbnail_path": None, "source": None,
+                "uploaded_at": f"2026-{(index % 12) + 1:02d}-{(index % 27) + 1:02d}T00:00:00+00:00",
+            })
+    for offset in range(3):
+        left, right = 700000 + offset * 2, 700001 + offset * 2
+        basename = f"{left}_p0__{right}_p1.jpg"
+        media.append({"id": 100 + offset, "filename": basename, "path": f"private/root/{basename}", "thumbnail_path": None, "source": None, "uploaded_at": None})
+    _, candidates, work_rows = ml1_runner.build_pixiv_accounting(media, [])
+    first, paths = ml1_runner.build_owner_review_artifacts(tmp_path / "first", candidates, work_rows)
+    second, _ = ml1_runner.build_owner_review_artifacts(tmp_path / "second", candidates, work_rows)
+    assert first == second
+    assert first["owner_sample_validation"]["sample_size"] == 60
+    assert first["owner_sample_validation"]["conflict_cases_exported"] == 3
+    for category in (
+        "oldest_local_import", "newest_local_import", "low_work_id_quantile",
+        "high_work_id_quantile", "multi_page_or_multiple_local_media", "nontrivial_filename_layout",
+    ):
+        assert first["selection"]["category_counts"][category] == 10
+    full_rows = list(__import__("csv").DictReader(paths[0].open(encoding="utf-8-sig")))
+    assert all("private/root" not in row["local_basenames"] and "private\\root" not in row["local_basenames"] for row in full_rows)
+    sample_rows = list(__import__("csv").DictReader(paths[1].open(encoding="utf-8-sig")))
+    assert len(sample_rows) == 60
+    assert len({row["pixiv_work_id"] for row in sample_rows}) == 60
+    assert all("private/root" not in row["local_basenames"] and "private\\root" not in row["local_basenames"] for row in sample_rows)
+    assert all(row["exact_compatible_metadata_row_count"] == "0" for row in sample_rows)
+    conflict_rows = list(__import__("csv").DictReader(paths[3].open(encoding="utf-8-sig")))
+    assert len(conflict_rows) == 3
+    assert all(row["automatically_selected_winner"] == "" for row in conflict_rows)
+    assert all(path.is_file() for path in paths)
 
 
 @pytest.mark.parametrize(
@@ -223,6 +423,8 @@ def test_ml1_pixiv_acquisition_block_requires_exact_projection() -> None:
         "blocked_document_semantics_not_corrected",
         "blocked_environment_isolation",
         "blocked_credential_rotation_confirmation_required",
+        "blocked_owner_pixiv_sample_validation_required",
+        "blocked_fixed_evidence_changed",
         "blocked_pixiv_metadata_audit_incomplete",
         "blocked_pixiv_incremental_acquisition_approval_required",
         "blocked_pixiv_acquisition_execution_incomplete",
