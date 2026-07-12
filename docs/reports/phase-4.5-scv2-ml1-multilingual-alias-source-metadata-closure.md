@@ -2,8 +2,9 @@
 
 ## Status
 
-- Contract status: `blocked_pixiv_incremental_acquisition_approval_required`.
-- Evidence code SHA: `838e02d086c1e075205bd702a61adaec5fcd704a`.
+- Contract status: `blocked_credential_rotation_confirmation_required`.
+- Active blockers: `['blocked_credential_rotation_confirmation_required', 'blocked_creator_metadata_loss', 'blocked_candidate_generation_gap']`.
+- Evidence code SHA: `f86f21fc1bd9da9623a32fa800ecfd09b5cb954a`.
 - Initial execution: read-only, zero-network, accepted R2R evidence reused.
 
 ## Corrected search semantics
@@ -15,14 +16,20 @@ Search-result union is not identity union. `cannot_link` blocks identity materia
 - Candidate media / distinct works: `2285` / `2235`.
 - Metadata-complete media / works: `527` / `519`.
 - Terminal-unavailable media / works: `0` / `0`.
-- Retryable / parse-or-identity / not-attempted / unexplained: `0` / `3` / `1755` / `0`.
-- Incremental acquisition approval required: `True`; projected work requests: `1713`.
+- Retryable / parse-or-identity / no-durable-result / unexplained media: `0` / `3` / `1755` / `0`.
+- Conflict media / field-token memberships / distinct works / unresolved works: `3` / `9` / `3` / `3`.
+- Origin breakdown: `{'filename_origin': {'candidate_media_count': 2285, 'distinct_work_count': 2235}, 'stored_path_origin': {'candidate_media_count': 2285, 'distinct_work_count': 2235}, 'thumbnail_origin': {'candidate_media_count': 2285, 'distinct_work_count': 2235}, 'source_field_origin': {'candidate_media_count': 0, 'distinct_work_count': 0}}`; agreement: `{'filename_path_agreement': 2285, 'multi_field_agreement': 2285}`.
+- Incremental acquisition required: `True`; corrected exact work requests: `1713`.
+- Pixiv acquisition authorized / credential rotation confirmed: `True` / `False`.
+- Continuous import gate implemented / current stock closed: `True` / `False`.
 
 ## Creator preservation
 
 - Records with creator ID / name / account: `536` / `545` / `459`.
-- Retained ID / name / account: `536` / `545` / `24`.
-- Silently dropped creator fields / role misclassifications: `435` / `0`.
+- Retained ID / name / account: `536` / `545` / `0`.
+- Creator profile available / retained: `0` / `0`.
+- Creator name/account search support: `1.0` / `0.052288`.
+- Silently dropped creator fields / role misclassifications: `459` / `0`.
 - Creator search cases / pass: `50` / `True`.
 - Creator AND character/work cases / accuracy / leakage: `94` / `0.62766` / `0`.
 - Creator AND failure causes: `{'source_work_observation_missing': 17, 'work_title_runtime_under_recall': 18}`.
@@ -30,25 +37,31 @@ Search-result union is not identity union. `cannot_link` blocks identity materia
 ## Real multilingual benchmark
 
 - Families / observed aliases: `3939` / `11229`.
-- Signal / candidate-connectivity / search-equivalence coverage: `0.036958` / `0.002793` / `0.773547`.
-- Candidate-not-generated / unexplained split: `3928` / `0`.
-- Candidate miss causes: `{'creator_identity_not_consumed': 303, 'source_registry_relationship_not_consumed': 3625}`.
+- Identity-eligible / search-only families: `314` / `3625`.
+- Signal / candidate-connectivity / search-equivalence coverage: `0.515924` / `0.035032` / `0.821274`.
+- Real AND-work evaluable families / equivalence coverage: `2629` / `0.78585`.
+- Unsupported runtime result occurrences: `0`.
+- Candidate-not-generated / unexplained split: `303` / `0`.
+- Candidate miss causes: `{'identity_alias_missing_sourceconcept_signal': 303}`.
 - New pair manifest / LLM approval required: `0` / `False`.
 
 ## Runtime search
 
 - Shared-name cases / union passed: `25` / `True`.
 - AND cases / leakage: `8` / `0`.
-- Unsupported / rejected results: `0` / `0`.
+- Runtime / supported results and coverage: `209` / `209` / `1.0`.
+- Unsupported / rejected / superseded results: `0` / `0` / `0`.
 - Search-caused identity union: `0`.
 
 ## Safety boundary
 
 No gallery-dl, Pixiv, provider, LLM, production, Entity, truth, media-import, AI-tagging, classification, or localization operation occurred. Raw names, IDs, URLs, filenames, and local paths remain only in ignored private artifacts.
+Production evidence manifest generated / derived graph recomputation required: `True` / `True`.
+Default bounded LLM policy / aggregate cap: `bounded_phase_primary_llm_usd10_v1` / `$10.0`.
 
 ## Validation
 
 - Changed Python py_compile: `passed`.
-- Focused pytest passed / failed: `630` / `0`.
+- Focused pytest passed / failed: `716` / `0`.
 - ML1 contract: `True`.
 - Real browser validation: `not_required_no_ui_change`.

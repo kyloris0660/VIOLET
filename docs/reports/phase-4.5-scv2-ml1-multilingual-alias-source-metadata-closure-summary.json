@@ -1,255 +1,450 @@
 {
-  "artifact_lifecycle": {
-    "private_evidence": "one-off local artifact / ignored output",
-    "public_report": "public report / handoff",
-    "runner_and_tests": "phase-scoped operational runner",
-    "search_and_resolver_fixes": "durable production code"
-  },
-  "baseline_sha": "5bbbb8ff13b140ea77a839757603714bfdd87181",
-  "branch": "codex/scv2-ml1-multilingual-alias-source-metadata-closure",
-  "candidate_generation": {
-    "accepted_r2r_dispositions_invalidated": false,
-    "all_misses_classified": true,
-    "candidate_algorithm_version": "ml1_unique_pair_representative_v3_semantic_evidence_priority",
-    "candidate_miss_count": 3928,
-    "fresh_old_schema_migration_passed": true,
-    "llm_approval_required": false,
-    "miss_cause_counts": {
-      "creator_identity_not_consumed": 303,
-      "source_registry_relationship_not_consumed": 3625
+  "evidence_summary": {
+    "artifact_lifecycle": {
+      "private_evidence": "one-off local artifact / ignored output",
+      "public_report": "public report / handoff",
+      "runner_and_tests": "phase-scoped operational runner",
+      "search_and_resolver_fixes": "durable production code"
     },
-    "new_pair_generation_not_executed": true,
-    "new_pair_manifest_count": 0,
-    "representative_edge_semantic_ranking_passed": true,
-    "unresolved_candidate_generation_count": 3928
-  },
-  "creator_metadata": {
-    "available_creator_fields_accounting_coverage": 1.0,
-    "creator_and_character_work_intersection_passed": false,
-    "creator_data_is_source_layer_only": true,
-    "creator_role_misclassification_count": 0,
-    "creator_search_passed": true,
-    "normalized_creator_identity_count": 362,
-    "observed_creator_account_search_support_coverage": 0.052288,
-    "observed_creator_name_search_support_coverage": 1.0,
-    "observed_creator_search_support_coverage": 0.566733,
-    "raw_creator_fields_retained": true,
-    "records_with_creator_account": 459,
-    "records_with_creator_display_name": 545,
-    "records_with_creator_id": 536,
-    "records_with_creator_profile_identity": 536,
-    "retained_creator_account_count": 24,
-    "retained_creator_id_count": 536,
-    "retained_creator_name_count": 545,
-    "retained_creator_profile_identity_count": 471,
-    "silently_dropped_creator_field_count": 435,
-    "stable_creator_id_preservation_coverage": 1.0,
-    "successful_pixiv_metadata_record_count": 568
-  },
-  "document_semantics": {
-    "and_search_is_media_level_intersection": true,
-    "cannot_link_globally_suppresses_direct_matches": false,
-    "contradictory_statement_count": 0,
-    "current_phase_is_ml1": true,
-    "durable_policy_created": true,
-    "identity_union_is_search_result_union": false,
-    "old_one_name_one_family_interpretation_superseded": true,
-    "passed": true,
-    "r2r_interpretation_erratum_present": true,
-    "shared_bare_name_results_are_legitimate_when_supported": true
-  },
-  "environment_isolation": {
-    "accepted_r2r_database_immutable": true,
-    "database_label": "accepted-r2r-working-database",
-    "network_disabled": true,
-    "passed": true,
-    "production_profile_active": false,
-    "production_write_attempted": false,
-    "source_database_immutable": true,
-    "violet_env_test": true
-  },
-  "evidence_code_sha": "838e02d086c1e075205bd702a61adaec5fcd704a",
-  "fixed_evidence_proof": {
-    "accepted_r2r_disposition_count": 3319,
-    "accepted_r2r_dispositions_reused": true,
-    "before_after_match": true,
-    "changed_fixed_tables": [],
-    "changed_forbidden_truth_tables": [],
-    "forbidden_truth_content_unchanged": true,
-    "present": true
-  },
-  "generated_at": "2026-07-12T06:05:21+00:00",
-  "graph_invariants": {
-    "direct_cannot_violation_count": 0,
-    "identity_changes_caused_by_search_count": 0,
-    "review_or_deferred_identity_union_count": 0,
-    "transitive_cannot_violation_count": 0,
-    "unauthorized_unknown_role_materialization_count": 0
-  },
-  "multilingual_benchmark": {
-    "adjudication_coverage": 1.0,
-    "and_work_equivalence_coverage": 0.773547,
-    "candidate_family_connectivity_coverage": 0.002793,
-    "candidate_not_generated_count": 3928,
-    "family_type_counts": {
-      "creator_stable_id": 314,
-      "verified_tag_translation": 3625
+    "baseline_sha": "5bbbb8ff13b140ea77a839757603714bfdd87181",
+    "branch": "codex/scv2-ml1-multilingual-alias-source-metadata-closure",
+    "candidate_generation": {
+      "accepted_r2r_dispositions_invalidated": false,
+      "all_misses_classified": true,
+      "candidate_algorithm_version": "ml1_unique_pair_representative_v3_semantic_evidence_priority",
+      "candidate_miss_count": 303,
+      "fresh_old_schema_migration_passed": true,
+      "llm_approval_required": false,
+      "miss_cause_counts": {
+        "identity_alias_missing_sourceconcept_signal": 303
+      },
+      "new_pair_generation_not_executed": true,
+      "new_pair_manifest_count": 0,
+      "representative_edge_semantic_ranking_passed": true,
+      "unresolved_candidate_generation_count": 303
     },
-    "human_review_queue_generated": false,
-    "materialized_strong_family_coverage": 0.002793,
-    "observed_alias_accounting_coverage": 1.0,
-    "observed_alias_count": 11229,
-    "outcome_counts": {
-      "candidate_not_generated": 1,
-      "materialized_same_concept": 11,
-      "signal_not_generated": 3927
+    "creator_metadata": {
+      "available_creator_fields_accounting_coverage": 1.0,
+      "creator_and_character_work_intersection_passed": false,
+      "creator_data_is_source_layer_only": true,
+      "creator_role_misclassification_count": 0,
+      "creator_search_passed": true,
+      "field_layer_counts": {
+        "creator_account_field": {
+          "normalized_source_retained": 0,
+          "query_visible_observation_retained": 24,
+          "raw_provider_available": 459,
+          "sourceconcept_consumed": 35
+        },
+        "creator_id_field": {
+          "normalized_source_retained": 536,
+          "query_visible_observation_retained": 0,
+          "raw_provider_available": 536,
+          "sourceconcept_consumed": 0
+        },
+        "creator_name_field": {
+          "normalized_source_retained": 545,
+          "query_visible_observation_retained": 545,
+          "raw_provider_available": 545,
+          "sourceconcept_consumed": 544
+        },
+        "creator_profile_identity_field": {
+          "normalized_source_retained": 0,
+          "query_visible_observation_retained": 0,
+          "raw_provider_available": 0,
+          "sourceconcept_consumed": 0
+        }
+      },
+      "normalized_creator_identity_count": 362,
+      "observed_creator_account_search_support_coverage": 0.052288,
+      "observed_creator_name_search_support_coverage": 1.0,
+      "observed_creator_search_support_coverage": 0.566733,
+      "raw_creator_fields_retained": true,
+      "records_with_creator_account": 459,
+      "records_with_creator_display_name": 545,
+      "records_with_creator_id": 536,
+      "records_with_creator_profile_identity": 0,
+      "retained_creator_account_count": 0,
+      "retained_creator_id_count": 536,
+      "retained_creator_name_count": 545,
+      "retained_creator_profile_identity_count": 0,
+      "silently_dropped_creator_field_count": 459,
+      "stable_creator_id_preservation_coverage": 1.0,
+      "successful_pixiv_metadata_record_count": 568
     },
-    "raw_aliases_public": false,
-    "real_fixed_evidence_family_count": 3939,
-    "role_or_context_loss_count": 0,
-    "script_pair_counts": {
-      "cjk_han_to_japanese_kana_to_latin": 3,
-      "cjk_han_to_latin": 3664,
-      "cjk_han_to_mixed_or_other": 27,
-      "japanese_kana_to_latin": 95,
-      "japanese_kana_to_mixed_or_other": 7,
-      "latin": 123,
-      "latin_to_mixed_or_other": 20
+    "credential_safety": {
+      "external_call_attempted": false,
+      "known_old_secret_fingerprint_scan_performed": false,
+      "raw_secret_value_exposed": false,
+      "redacted_authentication_preflight_performed": false,
+      "rotation_confirmation_present": false,
+      "status": "blocked_credential_rotation_confirmation_required"
     },
-    "search_equivalence_coverage": 0.773547,
-    "signal_generation_coverage": 0.036958,
-    "unexplained_multilingual_split_count": 0
-  },
-  "operation_counts": {
-    "accepted_r2r_pair_readjudications": 0,
-    "ai_tagging_calls": 0,
-    "classification_calls": 0,
-    "entity_writes": 0,
-    "fallback_provider_calls": 0,
-    "fixed_evidence_mutations": 0,
-    "gallery_dl_calls": 0,
-    "llm_provider_calls": 0,
-    "localization_calls": 0,
-    "media_imports": 0,
-    "pixiv_provider_calls": 0,
-    "production_writes": 0,
-    "provider_metadata_acquisition_calls": 0,
-    "truth_path_writes": 0
+    "document_semantics": {
+      "and_search_is_media_level_intersection": true,
+      "cannot_link_globally_suppresses_direct_matches": false,
+      "contradictory_statement_count": 0,
+      "current_phase_is_ml1": true,
+      "durable_policy_created": true,
+      "identity_union_is_search_result_union": false,
+      "old_one_name_one_family_interpretation_superseded": true,
+      "passed": true,
+      "r2r_interpretation_erratum_present": true,
+      "shared_bare_name_results_are_legitimate_when_supported": true
+    },
+    "environment_isolation": {
+      "accepted_r2r_database_immutable": true,
+      "database_label": "accepted-r2r-working-database",
+      "network_disabled": true,
+      "passed": true,
+      "production_profile_active": false,
+      "production_write_attempted": false,
+      "source_database_immutable": true,
+      "violet_env_test": true
+    },
+    "evidence_code_sha": "f86f21fc1bd9da9623a32fa800ecfd09b5cb954a",
+    "fixed_evidence_proof": {
+      "accepted_r2r_disposition_count": 3319,
+      "accepted_r2r_dispositions_reused": true,
+      "before_after_match": true,
+      "changed_fixed_tables": [],
+      "changed_forbidden_truth_tables": [],
+      "forbidden_truth_content_unchanged": true,
+      "present": true
+    },
+    "generated_at": "2026-07-12T08:52:55+00:00",
+    "graph_invariants": {
+      "direct_cannot_violation_count": 0,
+      "identity_changes_caused_by_search_count": 0,
+      "review_or_deferred_identity_union_count": 0,
+      "transitive_cannot_violation_count": 0,
+      "unauthorized_unknown_role_materialization_count": 0
+    },
+    "llm_budget_policy": {
+      "aggregate_execution_limit_usd": 10.0,
+      "approval_required": false,
+      "policy_version": "bounded_phase_primary_llm_usd10_v1",
+      "preauthorized": true,
+      "projected_cost_usd": 0.0,
+      "retries_count_toward_limit": true,
+      "split_run_budget_evasion_forbidden": true
+    },
+    "multilingual_baseline": {
+      "candidate_generation_gaps": 303,
+      "identity_family_count": 314,
+      "next_phase_required": true,
+      "runtime_equivalence": 0.821274,
+      "search_only_family_count": 3625
+    },
+    "multilingual_benchmark": {
+      "actual_runtime_search_used": true,
+      "adjudication_coverage": 0.035032,
+      "and_work_equivalence_coverage": 0.78585,
+      "and_work_evaluable_family_count": 2629,
+      "candidate_family_connectivity_coverage": 0.035032,
+      "candidate_not_generated_count": 303,
+      "family_scope_counts": {
+        "identity": 314,
+        "search_only": 3625
+      },
+      "family_type_counts": {
+        "creator_stable_id": 314,
+        "verified_tag_translation": 3625
+      },
+      "human_review_queue_generated": false,
+      "identity_eligible_alias_count": 628,
+      "identity_eligible_family_count": 314,
+      "materialized_strong_family_coverage": 0.035032,
+      "observed_alias_accounting_coverage": 1.0,
+      "observed_alias_count": 11229,
+      "outcome_counts": {
+        "deferred_with_reason": 72,
+        "identity_materialized": 11,
+        "runtime_equivalent": 3224,
+        "signal_not_generated": 303,
+        "under_recall": 329
+      },
+      "raw_aliases_public": false,
+      "real_fixed_evidence_family_count": 3939,
+      "role_or_context_loss_count": 0,
+      "script_pair_counts": {
+        "cjk_han_to_japanese_kana_to_latin": 3,
+        "cjk_han_to_latin": 3664,
+        "cjk_han_to_mixed_or_other": 27,
+        "japanese_kana_to_latin": 95,
+        "japanese_kana_to_mixed_or_other": 7,
+        "latin": 123,
+        "latin_to_mixed_or_other": 20
+      },
+      "search_equivalence_coverage": 0.821274,
+      "search_only_translation_family_count": 3625,
+      "signal_generation_coverage": 0.515924,
+      "synthetic_alias_media_propagation_used": false,
+      "unexplained_multilingual_split_count": 0,
+      "unsupported_runtime_result_count": 0
+    },
+    "operation_counts": {
+      "accepted_r2r_pair_readjudications": 0,
+      "ai_tagging_calls": 0,
+      "classification_calls": 0,
+      "entity_writes": 0,
+      "fallback_provider_calls": 0,
+      "fixed_evidence_mutations": 0,
+      "gallery_dl_calls": 0,
+      "llm_provider_calls": 0,
+      "localization_calls": 0,
+      "media_downloads": 0,
+      "media_imports": 0,
+      "pixiv_provider_calls": 0,
+      "production_writes": 0,
+      "provider_metadata_acquisition_calls": 0,
+      "truth_path_writes": 0
+    },
+    "phase": "4.5-SCV2-ML1",
+    "pipeline_contract": {
+      "active_blockers": [
+        "blocked_credential_rotation_confirmation_required",
+        "blocked_creator_metadata_loss",
+        "blocked_candidate_generation_gap"
+      ],
+      "claims": {
+        "route_approved": false,
+        "safe_to_merge": false,
+        "target_met": false
+      },
+      "contract_id": "ml1_multilingual_alias_source_metadata_closure_contract_v1",
+      "status": "blocked_credential_rotation_confirmation_required"
+    },
+    "pixiv_accounting": {
+      "accounted_distinct_work_count": 2235,
+      "accounted_media_count": 2285,
+      "all_eligible_media_count": 3750,
+      "all_eligible_media_metadata_coverage": 0.1416,
+      "all_eligible_media_with_pixiv_metadata_count": 531,
+      "authentication_requirements": "user-managed authenticated gallery-dl Pixiv profile outside the repository; no secret stored or echoed by V.I.O.L.E.T.",
+      "authentication_requirements_present": true,
+      "candidate_distinct_work_count": 2235,
+      "candidate_media_accounting_coverage": 1.0,
+      "candidate_media_count": 2285,
+      "candidate_work_accounting_coverage": 1.0,
+      "canonical_parser_rule": "lowercase_work_id_p_page_token_nonzero_6_to_12_digit_work_id",
+      "canonical_parser_version": "phase44p0_pixiv_filename_prior_v1",
+      "checkpoint_resume_plan": "checkpoint each completed distinct work ID; resume only the remaining manifest; preserve prior raw and normalized metadata",
+      "checkpoint_resume_plan_present": true,
+      "complete_records_reacquisition_count": 0,
+      "conflict_resolved_work_count": 0,
+      "conflict_unresolved_work_count": 3,
+      "exact_work_ids_public": false,
+      "filename_identity_conflict_distinct_work_count": 3,
+      "filename_identity_conflict_media_count": 3,
+      "filename_identity_conflict_source_field_counts": {
+        "filename_origin": 3,
+        "stored_path_origin": 3,
+        "thumbnail_origin": 3
+      },
+      "filename_identity_conflict_token_count": 9,
+      "filename_path_candidate_distinct_work_count": 2235,
+      "filename_path_candidate_media_count": 2285,
+      "incremental_acquisition_required": true,
+      "metadata_parse_or_normalization_failure_media_count": 0,
+      "metadata_present_complete_media_count": 527,
+      "metadata_present_complete_work_count": 519,
+      "missing_work_count": 1713,
+      "no_durable_attempt_or_result_evidence_media_count": 1755,
+      "normal_retrievable_missing_media_count": 1755,
+      "not_attempted_media_count": 0,
+      "origin_agreement_counts": {
+        "filename_path_agreement": 2285,
+        "multi_field_agreement": 2285
+      },
+      "origin_breakdown": {
+        "filename_origin": {
+          "candidate_media_count": 2285,
+          "distinct_work_count": 2235
+        },
+        "source_field_origin": {
+          "candidate_media_count": 0,
+          "distinct_work_count": 0
+        },
+        "stored_path_origin": {
+          "candidate_media_count": 2285,
+          "distinct_work_count": 2235
+        },
+        "thumbnail_origin": {
+          "candidate_media_count": 2285,
+          "distinct_work_count": 2235
+        }
+      },
+      "parse_or_identity_failure_media_count": 3,
+      "projected_gallery_dl_request_count": 1713,
+      "rate_limit_plan": "incremental missing/retryable work IDs only; minimum two-second request spacing; bounded auth/rate/network failure budgets; no retry storm",
+      "rate_limit_plan_present": true,
+      "retryable_authentication_failure_media_count": 0,
+      "retryable_failure_media_count": 0,
+      "retryable_network_or_transport_failure_media_count": 0,
+      "retryable_rate_limit_failure_media_count": 0,
+      "retryable_work_count": 0,
+      "successful_metadata_linked_to_every_relevant_page": true,
+      "terminal_exception_evidence_coverage": 1.0,
+      "terminal_remote_unavailable_media_count": 0,
+      "terminal_remote_unavailable_work_count": 0,
+      "unexplained_missing_media_count": 0,
+      "work_accounting_equality_holds": true,
+      "work_id_mismatch_media_count": 3,
+      "work_status_counts": {
+        "complete": 519,
+        "missing": 1713,
+        "unresolved_conflict": 3
+      }
+    },
+    "pixiv_metadata_foundation": {
+      "complete_or_terminal_coverage": 0.232215,
+      "continuous_ingestion_gate_implemented": true,
+      "current_stock_closed": false,
+      "normal_missing_count": 1755,
+      "retryable_count": 0,
+      "unresolved_conflict_count": 3
+    },
+    "production_promotion": {
+      "derived_graph_recomputation_required": true,
+      "manifest": {
+        "copy_development_database_row_ids": false,
+        "manifest_version": "pixiv_source_evidence_promotion_v1",
+        "production_execution_authorized": false,
+        "required_recomputation_targets": [
+          "SourceConcept_component_membership",
+          "SourceConcept_ids",
+          "union_find_and_cluster_outputs",
+          "candidate_blocks_and_partitions",
+          "signal_links",
+          "materialized_concepts_and_aliases",
+          "fallback_and_search_indexes",
+          "graph_route_confidence_and_benchmark_metrics"
+        ],
+        "reusable_artifacts": [
+          "raw_provider_metadata",
+          "normalized_provider_metadata",
+          "provider_work_id",
+          "page_index",
+          "creator_id_name_account_profile_identity",
+          "work_title",
+          "source_tags_and_names",
+          "filename_parser_result_and_version",
+          "provenance",
+          "acquisition_or_terminal_status",
+          "immutable_content_fingerprints"
+        ],
+        "reusable_llm_judgment_requirements": [
+          "stable_pair_identity",
+          "compatible_evidence_fingerprint",
+          "prompt_schema_model_provider_policy_versions",
+          "successful_checkpoint",
+          "no_source_contradiction"
+        ],
+        "stable_identity_keys": [
+          "provider",
+          "source_work_id",
+          "source_page_index",
+          "evidence_fingerprint"
+        ]
+      },
+      "production_execution_authorized": false,
+      "reusable_evidence_manifest_generated": true,
+      "reusable_llm_judgment_policy_present": true
+    },
+    "public_redaction": {
+      "passed": true,
+      "raw_names_ids_paths_public": false
+    },
+    "review_pack": {
+      "checksums_present": true,
+      "generated": true,
+      "integrity_passed": true,
+      "manifest_present": true,
+      "not_committed": true
+    },
+    "route_authorization": {
+      "entity_bridge_authorized": false,
+      "full_library_execution_authorized": false,
+      "llm_execution_authorized": false,
+      "pixiv_acquisition_authorized": true,
+      "production_authorized": false,
+      "provider_2_authorized": false,
+      "scale_up_authorized": false,
+      "truth_promotion_authorized": false
+    },
+    "search_semantics": {
+      "and_case_count": 8,
+      "and_constraint_leakage_count": 0,
+      "creator_and_category_counts": {
+        "character": 44,
+        "work_title": 50
+      },
+      "creator_and_character_work_accuracy": 0.62766,
+      "creator_and_character_work_case_count": 94,
+      "creator_and_character_work_intersection_passed": false,
+      "creator_and_character_work_leakage_count": 0,
+      "creator_and_failure_cause_counts": {
+        "source_work_observation_missing": 17,
+        "work_title_runtime_under_recall": 18
+      },
+      "creator_search_case_count": 50,
+      "creator_search_passed": true,
+      "direct_or_accepted_alias_support_coverage": 1.0,
+      "identity_before_after_match": true,
+      "identity_union_from_search_count": 0,
+      "invalid_or_deleted_evidence_result_count": 0,
+      "multilingual_and_work_equivalence_coverage": 1.0,
+      "rejected_evidence_result_count": 0,
+      "runtime_application_path_used": true,
+      "runtime_parser_used": true,
+      "runtime_result_count": 209,
+      "shared_name_case_count": 25,
+      "shared_name_union_passed": true,
+      "superseded_evidence_result_count": 0,
+      "support_type_distribution": {
+        "accepted_materialized_sourceconcept_alias": 42,
+        "accepted_search_only_alias_relation": 2,
+        "direct_source_name_observation": 41,
+        "direct_source_tag_observation": 200
+      },
+      "supported_result_count": 209,
+      "unsupported_result_media_count": 0
+    },
+    "title": "SCV2-ML1: Multilingual Alias and Source-Metadata Closure",
+    "validation": {
+      "browser_validation": "not_required_no_ui_change",
+      "changed_python_py_compile": "passed",
+      "focused_pytest_failed": 0,
+      "focused_pytest_passed": 716,
+      "focused_test_command_label": "ml1-pixiv-creator-search-contract-doc-focused-suite",
+      "json_parse_passed": true,
+      "ml1_contract_passed": true,
+      "public_redaction_passed": true,
+      "python_executable": "repo-local-venv-python",
+      "review_pack_integrity_passed": true
+    }
   },
   "phase": "4.5-SCV2-ML1",
-  "pipeline_contract": {
-    "claims": {
-      "route_approved": false,
-      "safe_to_merge": false,
-      "target_met": false
-    },
-    "contract_id": "ml1_multilingual_alias_source_metadata_closure_contract_v1",
-    "status": "blocked_pixiv_incremental_acquisition_approval_required"
-  },
-  "pixiv_accounting": {
-    "accounted_distinct_work_count": 2235,
-    "accounted_media_count": 2285,
-    "all_eligible_media_count": 3750,
-    "all_eligible_media_metadata_coverage": 0.1416,
-    "all_eligible_media_with_pixiv_metadata_count": 531,
-    "authentication_requirements": "user-managed authenticated gallery-dl Pixiv profile outside the repository; no secret stored or echoed by V.I.O.L.E.T.",
-    "authentication_requirements_present": true,
-    "candidate_distinct_work_count": 2235,
-    "candidate_media_accounting_coverage": 1.0,
-    "candidate_media_count": 2285,
-    "candidate_work_accounting_coverage": 1.0,
-    "canonical_parser_rule": "lowercase_work_id_p_page_token_nonzero_6_to_12_digit_work_id",
-    "canonical_parser_version": "phase44p0_pixiv_filename_prior_v1",
-    "checkpoint_resume_plan": "checkpoint each completed distinct work ID; resume only the remaining manifest; preserve prior raw and normalized metadata",
-    "checkpoint_resume_plan_present": true,
-    "complete_records_reacquisition_count": 0,
-    "exact_work_ids_public": false,
-    "filename_identity_conflict_media_count": 3,
-    "incremental_acquisition_required": true,
-    "metadata_parse_or_normalization_failure_media_count": 0,
-    "metadata_present_complete_media_count": 527,
-    "metadata_present_complete_work_count": 519,
-    "normal_retrievable_missing_media_count": 1755,
-    "not_attempted_media_count": 1755,
-    "parse_or_identity_failure_media_count": 3,
-    "projected_gallery_dl_request_count": 1713,
-    "rate_limit_plan": "incremental missing/retryable work IDs only; minimum two-second request spacing; bounded auth/rate/network failure budgets; no retry storm",
-    "rate_limit_plan_present": true,
-    "retryable_authentication_failure_media_count": 0,
-    "retryable_failure_media_count": 0,
-    "retryable_network_or_transport_failure_media_count": 0,
-    "retryable_rate_limit_failure_media_count": 0,
-    "successful_metadata_linked_to_every_relevant_page": true,
-    "terminal_exception_evidence_coverage": 1.0,
-    "terminal_remote_unavailable_media_count": 0,
-    "terminal_remote_unavailable_work_count": 0,
-    "unexplained_missing_media_count": 0,
-    "work_id_mismatch_media_count": 3
-  },
-  "public_redaction": {
-    "passed": true,
-    "raw_names_ids_paths_public": false
-  },
-  "review_pack": {
+  "review_pack_attestation": {
+    "attestation_version": "ml1_review_pack_attestation_v2",
     "checksum_count": 14,
     "checksums_present": true,
     "generated": true,
     "integrity_passed": true,
     "manifest_present": true,
     "not_committed": true,
+    "packed_checksums_sha256": "78e30a5a558c1675b8738447ddeb3bd1f05cfe9f19a31f232df2dda708fb9b69",
+    "packed_contract_evidence_sha256": "ce05998cbadac7bbb623420d9f87f2a7c4389525fae32747fbce5a217a95816d",
+    "packed_evidence_summary_sha256": "fccb167cd6e5c0381907edff965f0212677e3687e0be3337b394018b4f88ee12",
+    "packed_manifest_sha256": "72dac88f978adbb34882a79295519ecf516ef595eccd7f3f6e87789517f9d9f8",
+    "packed_report_sha256": "01fc217f7d5f362fb78aeec9ee709e2fbef36a05ad51b96a3fb1b66c8f2bec3c",
+    "placeholder_field_count": 0,
+    "self_referential_hash_claimed": false,
+    "substantive_evidence_excludes_attestation": true,
     "zip_generated": true,
-    "zip_path_label": "ml1-private-review-pack"
+    "zip_path_label": "ml1-private-review-pack",
+    "zip_sha256": "260558082f7140012cda0e72fb1ce3b43f41c6fc9ade21e9132ff39ed25b734f"
   },
-  "route_authorization": {
-    "entity_bridge_authorized": false,
-    "full_library_execution_authorized": false,
-    "llm_execution_authorized": false,
-    "pixiv_acquisition_authorized": false,
-    "production_authorized": false,
-    "provider_2_authorized": false,
-    "scale_up_authorized": false,
-    "truth_promotion_authorized": false
-  },
-  "search_semantics": {
-    "and_case_count": 8,
-    "and_constraint_leakage_count": 0,
-    "creator_and_category_counts": {
-      "character": 44,
-      "work_title": 50
-    },
-    "creator_and_character_work_accuracy": 0.62766,
-    "creator_and_character_work_case_count": 94,
-    "creator_and_character_work_intersection_passed": false,
-    "creator_and_character_work_leakage_count": 0,
-    "creator_and_failure_cause_counts": {
-      "source_work_observation_missing": 17,
-      "work_title_runtime_under_recall": 18
-    },
-    "creator_search_case_count": 50,
-    "creator_search_passed": true,
-    "direct_or_accepted_alias_support_coverage": 1.0,
-    "identity_before_after_match": true,
-    "identity_union_from_search_count": 0,
-    "multilingual_and_work_equivalence_coverage": 1.0,
-    "rejected_evidence_result_count": 0,
-    "runtime_application_path_used": true,
-    "runtime_parser_used": true,
-    "shared_name_case_count": 25,
-    "shared_name_union_passed": true,
-    "supported_result_count": 42,
-    "unsupported_result_media_count": 0
-  },
-  "title": "SCV2-ML1: Multilingual Alias and Source-Metadata Closure",
-  "validation": {
-    "browser_validation": "not_required_no_ui_change",
-    "changed_python_py_compile": "passed",
-    "focused_pytest_failed": 0,
-    "focused_pytest_passed": 630,
-    "focused_test_command_label": "ml1-pixiv-creator-search-contract-doc-focused-suite",
-    "json_parse_passed": true,
-    "ml1_contract_passed": true,
-    "public_redaction_passed": true,
-    "python_executable": "repo-local-venv-python",
-    "review_pack_integrity_passed": true
-  }
+  "title": "SCV2-ML1: Multilingual Alias and Source-Metadata Closure"
 }
