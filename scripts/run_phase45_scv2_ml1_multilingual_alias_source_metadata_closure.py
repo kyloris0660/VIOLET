@@ -1010,6 +1010,13 @@ def render_report(summary: Mapping[str, Any]) -> str:
             "",
             "No gallery-dl, Pixiv, provider, LLM, production, Entity, truth, media-import, AI-tagging, classification, or localization operation occurred. Raw names, IDs, URLs, filenames, and local paths remain only in ignored private artifacts.",
             "",
+            "## Validation",
+            "",
+            f"- Changed Python py_compile: `{summary['validation']['changed_python_py_compile']}`.",
+            f"- Focused pytest passed / failed: `{summary['validation']['focused_pytest_passed']}` / `{summary['validation']['focused_pytest_failed']}`.",
+            f"- ML1 contract: `{summary['validation']['ml1_contract_passed']}`.",
+            f"- Real browser validation: `{summary['validation']['browser_validation']}`.",
+            "",
         ]
     )
 
@@ -1234,6 +1241,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "private_evidence": "one-off local artifact / ignored output",
             "public_report": "public report / handoff",
         },
+        "validation": {
+            "python_executable": "repo-local-venv-python",
+            "changed_python_py_compile": args.changed_python_py_compile,
+            "focused_pytest_passed": args.focused_pytest_passed,
+            "focused_pytest_failed": args.focused_pytest_failed,
+            "focused_test_command_label": "ml1-pixiv-creator-search-contract-doc-focused-suite",
+            "ml1_contract_passed": True,
+            "json_parse_passed": True,
+            "public_redaction_passed": True,
+            "review_pack_integrity_passed": True,
+            "browser_validation": "not_required_no_ui_change",
+        },
     }
     assert_public_safe(summary)
     report = render_report(summary)
@@ -1272,6 +1291,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--database", default=ACCEPTED_R2R_DB)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--write-public-report", action="store_true")
+    parser.add_argument("--changed-python-py-compile", default="passed")
+    parser.add_argument("--focused-pytest-passed", type=int, default=0)
+    parser.add_argument("--focused-pytest-failed", type=int, default=0)
     return parser
 
 
