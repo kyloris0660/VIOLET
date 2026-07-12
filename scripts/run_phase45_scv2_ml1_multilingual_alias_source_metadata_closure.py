@@ -2406,7 +2406,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "json_parse_passed": True,
             "public_redaction_passed": True,
             "review_pack_integrity_passed": True,
-            "browser_validation": "not_required_no_ui_change",
+            "browser_validation": args.browser_validation,
         },
     }
     assert_public_safe(summary)
@@ -2458,6 +2458,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--changed-python-py-compile", default="passed")
     parser.add_argument("--focused-pytest-passed", type=int, default=0)
     parser.add_argument("--focused-pytest-failed", type=int, default=0)
+    parser.add_argument(
+        "--browser-validation",
+        choices=("passed", "not_run"),
+        default="not_run",
+        help="Explicit result of the required real-browser scan-status validation.",
+    )
     return parser
 
 
