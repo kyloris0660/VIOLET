@@ -30,15 +30,18 @@ for candidate in (ROOT, BACKEND_ROOT):
     if str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from app.models import SourceMetadataEvidence, SourceMetadataRecord  # noqa: E402
+from app.models import SourceMetadataEvidence, SourceMetadataRecord, SourceNameObservation  # noqa: E402
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
     DEFERRED_PAGE_MISMATCH_REASON,
+    PAGE_OBSERVED_COMPLETION_EVIDENCE_KIND,
     QUEUE_METADATA_KIND,
     PixivMetadataGateError,
     PixivMetadataState,
     defer_proven_source_page_mismatch,
+    supersede_untrusted_pixiv_creator_observations,
 )
+from app.utils.cache import invalidate_source_metadata_search_cache  # noqa: E402
 from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2  # noqa: E402
 from scripts.run_pixiv_metadata_ingestion import executable_manifest_fingerprint  # noqa: E402
 
@@ -165,6 +168,16 @@ def _input_evidence(output_dir: Path) -> dict[str, Any]:
         str(row.get("work_id")) for row in ledger_rows
     }:
         raise PixivMetadataGateError("governance_outcome_membership_mismatch")
+    prior_governance_ledger = _read_json(GOVERNANCE_LEDGER) if GOVERNANCE_LEDGER.is_file() else []
+    if prior_governance_ledger and (
+        not isinstance(prior_governance_ledger, list)
+        or len(prior_governance_ledger) != EXPECTED_TOTAL_COUNT
+    ):
+        raise PixivMetadataGateError("governance_prior_ledger_invalid")
+    governed_record_ids_by_work = {
+        str(row["work_id"]): tuple(int(value) for value in row["attempted_queue_record_ids"])
+        for row in prior_governance_ledger
+    }
     return {
         "paths": paths,
         "file_sha256": {name: _file_sha256(path) for name, path in paths.items()},
@@ -176,6 +189,7 @@ def _input_evidence(output_dir: Path) -> dict[str, Any]:
         "replay_outcomes": replay_outcomes,
         "execution_summary": execution_summary,
         "original_ledger_fingerprint": expected_ledger_fingerprint,
+        "governed_record_ids_by_work": governed_record_ids_by_work,
     }
 
 
@@ -186,6 +200,7 @@ def select_governed_works(
     ledger_rows: Sequence[Mapping[str, Any]],
     replay_outcomes: Mapping[str, Mapping[str, Any]],
     queue_rows: Sequence[Mapping[str, Any]],
+    governed_record_ids_by_work: Mapping[str, Sequence[int]] | None = None,
 ) -> tuple[GovernedWork, ...]:
     """Select only exact manifest-bound, exhausted, same-work page mismatches."""
 
@@ -209,6 +224,12 @@ def select_governed_works(
         )
         replay = dict(replay_outcomes.get(work_id) or {})
         records = rows_by_work.get(work_id, [])
+        expected_record_ids = {
+            int(value)
+            for value in (governed_record_ids_by_work or {}).get(work_id, ())
+        }
+        if expected_record_ids:
+            records = [record for record in records if int(record["id"]) in expected_record_ids]
         if (
             manifest_kind not in {"main", "conflict"}
             or work_id not in expected_manifest
@@ -227,6 +248,7 @@ def select_governed_works(
             in {
                 PixivMetadataState.NORMALIZATION_FAILED.value,
                 PixivMetadataState.DEFERRED_PAGE_MISMATCH.value,
+                PixivMetadataState.COMPLETE.value,
             }
         ]
         if not eligible_records:
@@ -270,7 +292,9 @@ def select_governed_works(
                 manifest_kind=manifest_kind,
                 original_final_outcome=expected_outcome,
                 attempted_record_ids=tuple(sorted(int(row["id"]) for row in eligible_records)),
-                requested_page_indexes=tuple(sorted(requested_pages)),
+                requested_page_indexes=tuple(
+                    sorted(int(row.get("source_page_index") or 0) for row in eligible_records)
+                ),
                 observed_page_indexes=OBSERVED_PROVIDER_PAGE_INDEXES,
                 evidence_fingerprint=evidence_fingerprint,
             )
@@ -351,6 +375,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ledger_rows=evidence["ledger_rows"],
             replay_outcomes=evidence["replay_outcomes"],
             queue_rows=before_rows,
+            governed_record_ids_by_work=evidence["governed_record_ids_by_work"],
         )
         raw_history_before = _raw_history_fingerprint(before_rows)
         preexisting_deferred_at = session.execute(
@@ -377,7 +402,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     governed_route_exhausted=True,
                 )
             )
+        first_lineage_counts = Counter(
+            supersede_untrusted_pixiv_creator_observations(session)
+        )
         session.commit()
+        if first_counts["updated"] or first_lineage_counts["superseded_observation_count"]:
+            invalidate_source_metadata_search_cache()
 
         second_counts = Counter()
         for item in selected:
@@ -394,18 +424,49 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     governed_route_exhausted=True,
                 )
             )
+        second_lineage_counts = Counter(
+            supersede_untrusted_pixiv_creator_observations(session)
+        )
         session.commit()
 
         after_rows = _queue_rows(session, governed_ids)
         raw_history_after = _raw_history_fingerprint(after_rows)
+        selected_record_ids = {
+            record_id for item in selected for record_id in item.attempted_record_ids
+        }
+        selected_after_rows = [
+            row for row in after_rows if int(row["id"]) in selected_record_ids
+        ]
         deferred_record_count = sum(
             str(row.get("status")) == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
-            for row in after_rows
+            for row in selected_after_rows
         )
-        evidence_row_count = session.query(SourceMetadataEvidence).filter(
+        deferred_evidence_row_count = session.query(SourceMetadataEvidence).filter(
             SourceMetadataEvidence.evidence_kind == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value,
             SourceMetadataEvidence.status == "active",
         ).count()
+        page_complete_record_count = sum(
+            str(row.get("status")) == PixivMetadataState.COMPLETE.value
+            and int(row.get("source_page_index") or 0) in OBSERVED_PROVIDER_PAGE_INDEXES
+            for row in selected_after_rows
+        )
+        page_complete_evidence_row_count = session.query(SourceMetadataEvidence).filter(
+            SourceMetadataEvidence.evidence_kind == PAGE_OBSERVED_COMPLETION_EVIDENCE_KIND,
+            SourceMetadataEvidence.status == "active",
+        ).count()
+        lineage_superseded_rows = session.query(SourceNameObservation).filter(
+            SourceNameObservation.provider == "pixiv",
+            SourceNameObservation.status == "superseded",
+        ).all()
+        lineage_superseded_rows = [
+            row
+            for row in lineage_superseded_rows
+            if str((row.provenance or {}).get("lineage_disposition") or "")
+            == "superseded_untrusted_pixiv_parent_v1"
+        ]
+        lineage_superseded_field_counts = Counter(
+            str(row.source_field) for row in lineage_superseded_rows
+        )
     finally:
         session.close()
         engine.dispose()
@@ -414,10 +475,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if after_file_sha256 != evidence["file_sha256"]:
         raise PixivMetadataGateError("governance_authoritative_private_evidence_mutated")
     expected_record_count = sum(len(item.attempted_record_ids) for item in selected)
-    if deferred_record_count != expected_record_count or evidence_row_count != expected_record_count:
-        raise PixivMetadataGateError("governance_deferred_record_or_evidence_count_mismatch")
+    expected_returned_record_count = sum(
+        page in set(item.observed_page_indexes)
+        for item in selected
+        for page in item.requested_page_indexes
+    )
+    expected_absent_record_count = expected_record_count - expected_returned_record_count
+    if (
+        deferred_record_count != expected_absent_record_count
+        or deferred_evidence_row_count != expected_absent_record_count
+        or page_complete_record_count != expected_returned_record_count
+        or page_complete_evidence_row_count != expected_returned_record_count
+    ):
+        raise PixivMetadataGateError("governance_page_local_record_or_evidence_count_mismatch")
     if second_counts["updated"] != 0 or second_counts["evidence_created"] != 0:
         raise PixivMetadataGateError("governance_transition_not_idempotent")
+    if second_lineage_counts["superseded_observation_count"] != 0:
+        raise PixivMetadataGateError("creator_lineage_transition_not_idempotent")
     if raw_history_before != raw_history_after:
         raise PixivMetadataGateError("governance_raw_or_historical_queue_evidence_changed")
 
@@ -448,6 +522,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "main_manifest_work_count": sum(item.manifest_kind == "main" for item in selected),
             "conflict_manifest_work_count": sum(item.manifest_kind == "conflict" for item in selected),
             "queue_record_count": expected_record_count,
+            "deferred_requested_page_absent_row_count": expected_absent_record_count,
+            "deferred_returned_page_row_count_before": expected_returned_record_count,
+            "deferred_returned_page_row_count_after": 0,
             "reason_code": DEFERRED_PAGE_MISMATCH_REASON,
             "observed_provider_page_indexes": list(OBSERVED_PROVIDER_PAGE_INDEXES),
             "exact_predicate_passed": True,
@@ -456,6 +533,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "transition": {
             "first_pass_updated_record_count": int(first_counts["updated"]),
             "first_pass_created_evidence_count": int(first_counts["evidence_created"]),
+            "first_pass_completed_returned_page_record_count": int(first_counts["completed_returned"]),
+            "cumulative_corrected_returned_page_record_count": expected_returned_record_count,
+            "first_pass_superseded_deferred_evidence_count": int(first_counts["superseded_deferred_evidence"]),
             "second_pass_updated_record_count": int(second_counts["updated"]),
             "second_pass_created_evidence_count": int(second_counts["evidence_created"]),
             "second_pass_preserved_deferred_record_count": int(second_counts["preserved_deferred"]),
@@ -465,6 +545,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "raw_history_fingerprint_after": raw_history_after,
             "unsupported_page_link_created": False,
             "conflict_winner_selected": False,
+        },
+        "creator_lineage_transition": {
+            "untrusted_parent_query_visible_creator_observation_count_before": max(
+                int(first_lineage_counts["untrusted_parent_query_visible_creator_observation_count"]),
+                len(lineage_superseded_rows),
+            ),
+            "untrusted_parent_query_visible_creator_observation_count_after": int(second_lineage_counts["untrusted_parent_query_visible_creator_observation_count"]),
+            "creator_name_count_before": int(lineage_superseded_field_counts["pixiv_user_metadata"]),
+            "creator_account_count_before": int(lineage_superseded_field_counts["pixiv_user_account"]),
+            "superseded_observation_count": len(lineage_superseded_rows),
+            "preserved_out_of_scope_historical_or_manual_static_count": int(first_lineage_counts["preserved_out_of_scope_historical_or_manual_static_count"]),
+            "second_pass_superseded_observation_count": int(second_lineage_counts["superseded_observation_count"]),
+            "idempotent": True,
         },
         "authoritative_evidence": {
             "main_manifest_fingerprint": evidence["main_manifest_fingerprint"],

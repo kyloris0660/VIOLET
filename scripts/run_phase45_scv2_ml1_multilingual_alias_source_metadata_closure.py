@@ -46,7 +46,10 @@ from app.services.source_metadata_registry_service import (  # noqa: E402
 from app.services.pixiv_filename_prior_service import PARSER_VERSION  # noqa: E402
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     CANONICAL_COMPLETE_STATUSES,
+    QUEUE_METADATA_KIND,
     classify_pixiv_metadata_lifecycle,
+    is_pixiv_creator_observation_compatible_with_parent,
+    is_trusted_complete_pixiv_metadata_record,
     llm_budget_policy,
     promotion_manifest,
 )
@@ -353,7 +356,12 @@ def build_pixiv_accounting(
                 if str(item.get("source_work_id") or "") == work_id
                 and int(item.get("source_page_index") or 0) == page_index
             ]
-            mismatched_rows = [item for item in metadata if item not in exact_rows]
+            mismatched_rows = [
+                item
+                for item in metadata
+                if item not in exact_rows
+                and is_trusted_complete_pixiv_metadata_record(item)
+            ]
             lifecycle_classes = {
                 classify_pixiv_metadata_lifecycle(item.get("status")) for item in exact_rows
             }
@@ -914,7 +922,12 @@ def creator_fields(raw: Any, row: Mapping[str, Any]) -> dict[str, Any]:
     user = payload.get("user") if isinstance(payload.get("user"), Mapping) else {}
     creator_id = row.get("artist_id") or payload.get("user_id") or payload.get("artist_id") or user.get("id")
     creator_name = row.get("artist_name") or payload.get("user_name") or payload.get("artist_name") or user.get("name")
-    account = payload.get("user_account") or payload.get("artist_account") or user.get("account")
+    account = (
+        payload.get("creator_account")
+        or payload.get("user_account")
+        or payload.get("artist_account")
+        or user.get("account")
+    )
     profile_identity = (
         payload.get("creator_profile_identity")
         or payload.get("artist_profile_url")
@@ -936,6 +949,7 @@ def build_creator_audit(
     *,
     consumed_sourceconcept_keys: set[str] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, set[str]]]:
+    metadata_by_id = {int(row["id"]): row for row in metadata_rows}
     observations_by_metadata: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
     for observation in observation_rows:
         observations_by_metadata[int(observation["source_metadata_record_id"])].append(observation)
@@ -947,10 +961,74 @@ def build_creator_audit(
     sourceconcept_consumed = Counter()
     silently_dropped = 0
     role_misclassified = 0
-    successful = [row for row in metadata_rows if str(row.get("provider") or "").casefold() == "pixiv"]
+    successful = [
+        row for row in metadata_rows if is_trusted_complete_pixiv_metadata_record(row)
+    ]
+    lineage = Counter()
+    semantic_lineage: dict[tuple[Any, ...], set[str]] = defaultdict(set)
+    for observation in observation_rows:
+        if (
+            str(observation.get("provider") or "").casefold() != "pixiv"
+            or str(observation.get("name_role") or "") != "artist"
+            or str(observation.get("source_field") or "")
+            not in {"pixiv_user_metadata", "pixiv_user_account"}
+            or str(observation.get("status") or "") not in {"observed", "active", "accepted"}
+        ):
+            continue
+        parent = metadata_by_id.get(int(observation["source_metadata_record_id"]))
+        if parent is None:
+            trusted = False
+        else:
+            trusted = is_pixiv_creator_observation_compatible_with_parent(
+                observation, parent
+            )
+        provenance = observation.get("provenance") or {}
+        provenance = provenance if isinstance(provenance, Mapping) else {}
+        in_scope = (
+            str(provenance.get("source") or "") == "gallery_dl_authenticated_metadata"
+            or provenance.get("reused_from_source_metadata_record_id") is not None
+        )
+        if trusted:
+            lineage["trusted_parent_query_visible_creator_observation_count"] += 1
+            lineage_class = "trusted"
+        elif in_scope:
+            lineage["untrusted_parent_query_visible_creator_observation_count"] += 1
+            lineage[
+                "untrusted_parent_creator_account_observation_count"
+                if observation.get("source_field") == "pixiv_user_account"
+                else "untrusted_parent_creator_name_observation_count"
+            ] += 1
+            lineage_class = "untrusted"
+        else:
+            lineage["out_of_scope_historical_or_manual_static_observation_count"] += 1
+            continue
+        semantic_key = (
+            observation.get("media_id"),
+            str(observation.get("source_work_id") or ""),
+            int(observation.get("source_page_index") or 0),
+            str(observation.get("canonical_name_key") or ""),
+            str(observation.get("source_field") or ""),
+        )
+        semantic_lineage[semantic_key].add(lineage_class)
+    lineage["duplicate_trusted_and_untrusted_semantic_observation_count"] = sum(
+        classes == {"trusted", "untrusted"} for classes in semantic_lineage.values()
+    )
+    for key in (
+        "trusted_parent_query_visible_creator_observation_count",
+        "untrusted_parent_query_visible_creator_observation_count",
+        "untrusted_parent_creator_name_observation_count",
+        "untrusted_parent_creator_account_observation_count",
+        "out_of_scope_historical_or_manual_static_observation_count",
+        "duplicate_trusted_and_untrusted_semantic_observation_count",
+    ):
+        lineage.setdefault(key, 0)
     for row in successful:
         fields = creator_fields(row.get("raw_metadata_json"), row)
-        record_observations = observations_by_metadata.get(int(row["id"]), [])
+        record_observations = [
+            item
+            for item in observations_by_metadata.get(int(row["id"]), [])
+            if is_pixiv_creator_observation_compatible_with_parent(item, row)
+        ]
         artist_values = {
             normalize_source_text(item.get("raw_name"))
             for item in record_observations
@@ -1015,20 +1093,32 @@ def build_creator_audit(
     public = {
         "pixiv_registry_record_count": len(successful),
         "pixiv_queue_decision_record_count": sum(
-            str(row.get("metadata_kind") or "") == "pixiv_ingestion_gate" for row in successful
+            str(row.get("metadata_kind") or "") == QUEUE_METADATA_KIND for row in metadata_rows
         ),
-        "pixiv_provider_metadata_record_count": sum(
-            str(row.get("metadata_kind") or "") != "pixiv_ingestion_gate"
-            and classify_pixiv_metadata_lifecycle(row.get("status")) == "complete"
+        "provider_metadata_record_count": sum(
+            str(row.get("metadata_kind") or "") != QUEUE_METADATA_KIND
             for row in successful
         ),
-        "pixiv_successful_acquisition_record_count": sum(
-            str(row.get("metadata_kind") or "") == "pixiv_metadata_acquisition"
-            and classify_pixiv_metadata_lifecycle(row.get("status")) == "complete"
+        "successful_acquisition_media_or_page_count": sum(
+            str(row.get("metadata_kind") or "") == QUEUE_METADATA_KIND
+            and str(row.get("data_type_label") or "") == "authenticated_provider_metadata"
             for row in successful
         ),
-        "pixiv_terminal_evidence_record_count": sum(
-            classify_pixiv_metadata_lifecycle(row.get("status")) == "terminal" for row in successful
+        "queue_records_carrying_acquired_provider_payload_count": sum(
+            str(row.get("metadata_kind") or "") == QUEUE_METADATA_KIND
+            and str(row.get("data_type_label") or "") == "authenticated_provider_metadata"
+            for row in successful
+        ),
+        "terminal_evidence_record_count": sum(
+            classify_pixiv_metadata_lifecycle(row.get("status")) == "terminal"
+            for row in metadata_rows
+            if str(row.get("provider") or "").casefold() == "pixiv"
+        ),
+        "deferred_page_mismatch_record_count": sum(
+            classify_pixiv_metadata_lifecycle(row.get("status"))
+            == "deferred_nonblocking_source_page_mismatch"
+            for row in metadata_rows
+            if str(row.get("provider") or "").casefold() == "pixiv"
         ),
         "records_with_creator_id": available["creator_id"],
         "records_with_creator_display_name": available["creator_name"],
@@ -1052,6 +1142,7 @@ def build_creator_audit(
         "creator_role_misclassification_count": role_misclassified,
         "raw_creator_fields_retained": True,
         "creator_data_is_source_layer_only": True,
+        **dict(sorted(lineage.items())),
         "field_layer_counts": {
             f"{field}_field": {
                 "raw_provider_available": available[field],
@@ -2035,6 +2126,11 @@ def render_report(summary: Mapping[str, Any]) -> str:
     claims = summary["pipeline_contract"]["claims"]
     governance = summary.get("governance_transition", {})
     operation_delta = governance.get("operation_delta", {})
+    governance_selection = governance.get("selection", {})
+    governance_transition = governance.get("transition", {})
+    creator_lineage = governance.get("creator_lineage_transition", {})
+    debt = summary.get("bounded_debt_handoff", {})
+    debt_proof = debt.get("current_data_nonblocking_proof", {})
     return "\n".join(
         [
             f"# {PHASE_TITLE}",
@@ -2070,6 +2166,13 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Pixiv acquisition authorized / credential rotation confirmed / local-risk waiver: `{summary['route_authorization']['pixiv_acquisition_authorized']}` / `{summary['credential_safety']['rotation_confirmation_present']}` / `{summary['credential_safety'].get('policy') == 'operator_accepted_local_credential_risk_v1'}`.",
             f"- Continuous import gate implemented / current stock closed: `{summary['pixiv_metadata_foundation']['continuous_ingestion_gate_implemented']}` / `{summary['pixiv_metadata_foundation']['current_stock_closed']}`.",
             "",
+            "## Final page-local governance",
+            "",
+            f"- Deferred rows whose requested page was provider-observed, before / after: `{governance_selection.get('deferred_returned_page_row_count_before', 0)}` / `{governance_selection.get('deferred_returned_page_row_count_after', 0)}`.",
+            f"- Exact rows completed without acquisition: `{governance_transition.get('cumulative_corrected_returned_page_record_count', 0)}`; truly absent-page rows retained: `{governance_selection.get('deferred_requested_page_absent_row_count', 0)}` across `{governance_selection.get('distinct_work_count', 0)}` works.",
+            f"- Raw queue-history fingerprint before / after: `{governance_transition.get('raw_history_fingerprint_before')}` / `{governance_transition.get('raw_history_fingerprint_after')}`.",
+            f"- Governance rerun idempotent / unsupported page link / conflict winner: `{governance_transition.get('idempotent')}` / `{governance_transition.get('unsupported_page_link_created')}` / `{governance_transition.get('conflict_winner_selected')}`.",
+            "",
             "## Optional owner sample evidence",
             "",
             f"- Sample generated / size / conflicts exported: `{owner_sample['sample_generated']}` / `{owner_sample['sample_size']}` / `{owner_sample['conflict_cases_exported']}`.",
@@ -2088,6 +2191,11 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Creator search cases / pass: `{search['creator_search_case_count']}` / `{search['creator_search_passed']}`.",
             f"- Creator AND character/work cases / accuracy / leakage: `{search['creator_and_character_work_case_count']}` / `{search['creator_and_character_work_accuracy']}` / `{search['creator_and_character_work_leakage_count']}`.",
             f"- Creator AND failure causes: `{search['creator_and_failure_cause_counts']}`.",
+            f"- Trusted-parent creator observations: `{creator['trusted_parent_query_visible_creator_observation_count']}`.",
+            f"- Untrusted-parent creator observations before / after: `{creator_lineage.get('untrusted_parent_query_visible_creator_observation_count_before', 0)}` / `{creator_lineage.get('untrusted_parent_query_visible_creator_observation_count_after', creator['untrusted_parent_query_visible_creator_observation_count'])}` (`{creator_lineage.get('creator_name_count_before', 0)}` names, `{creator_lineage.get('creator_account_count_before', 0)}` accounts).",
+            f"- Affected observations superseded / out-of-scope historical or manual-static preserved: `{creator_lineage.get('superseded_observation_count', 0)}` / `{creator_lineage.get('preserved_out_of_scope_historical_or_manual_static_count', 0)}`.",
+            f"- Provider metadata records / queue records carrying acquired payload / successful acquisition works / pages: `{creator['provider_metadata_record_count']}` / `{creator['queue_records_carrying_acquired_provider_payload_count']}` / `{creator['successful_acquisition_work_count']}` / `{creator['successful_acquisition_media_or_page_count']}`.",
+            f"- Terminal evidence records / deferred page-mismatch records: `{creator['terminal_evidence_record_count']}` / `{creator['deferred_page_mismatch_record_count']}`.",
             "",
             "## Real multilingual benchmark",
             "",
@@ -2107,6 +2215,15 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Runtime / supported results and coverage: `{search['runtime_result_count']}` / `{search['supported_result_count']}` / `{search['direct_or_accepted_alias_support_coverage']}`.",
             f"- Unsupported / rejected / superseded results: `{search['unsupported_result_media_count']}` / `{search['rejected_evidence_result_count']}` / `{search['superseded_evidence_result_count']}`.",
             f"- Search-caused identity union: `{search['identity_union_from_search_count']}`.",
+            "",
+            "Search semantic completeness is not an ML1 requirement. The measured creator + character/work recall debt, multilingual under-recall, and candidate-generation gaps are ML2 inputs; the ML1 gate is supported-only results, zero rejected/superseded-only results, no AND leakage, and no search-caused identity mutation.",
+            "",
+            "## Deferred hardening",
+            "",
+            f"- `PRE-NEXT-PROVIDER-EXECUTION-HARDENING`: {', '.join(debt.get('PRE-NEXT-PROVIDER-EXECUTION-HARDENING', []))}.",
+            f"- `CONTROLLED-SCALE-AUDIT-DEBT`: {', '.join(debt.get('CONTROLLED-SCALE-AUDIT-DEBT', []))}.",
+            f"- `PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING`: {', '.join(debt.get('PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING', []))}.",
+            f"- Current-data proof: main/conflict work overlap `{debt_proof.get('main_conflict_work_id_overlap_count', 0)}`; provider mismatch `{debt_proof.get('provider_identity_mismatch_count', 0)}`; systemic stop `{debt_proof.get('systemic_stop')}`; pending/retryable/missing `{debt_proof.get('pending_retryable_missing_count', 0)}`; mandatory candidate population filename/path anchored `{debt_proof.get('mandatory_candidate_population_filename_path_anchored')}`; no provider call is authorized in this closeout or ML2 `{not debt_proof.get('provider_calls_authorized_in_closeout_or_ml2', False)}`.",
             "",
             "## Safety boundary",
             "",
@@ -2366,6 +2483,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     credential_confirmation = str(os.getenv("VIOLET_CREDENTIAL_ROTATION_CONFIRMED") or "").casefold() == "true"
     acquisition_evidence: dict[str, Any] = {}
     governance_evidence: dict[str, Any] = {}
+    main_conflict_overlap_count = 0
     if args.database == ACQUISITION_DB and ACQUISITION_EXECUTION_SUMMARY.is_file():
         loaded_execution = json.loads(ACQUISITION_EXECUTION_SUMMARY.read_text(encoding="utf-8"))
         if isinstance(loaded_execution, Mapping):
@@ -2380,6 +2498,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     raise ML1BlockedError(f"acquisition_private_evidence_missing:{required_path.name}")
             main_manifest_evidence = json.loads(main_manifest_path.read_text(encoding="utf-8"))
             conflict_manifest_evidence = json.loads(conflict_manifest_path.read_text(encoding="utf-8"))
+            main_conflict_overlap_count = len(
+                set(str(value) for value in main_manifest_evidence.get("work_ids") or ())
+                & set(
+                    str(value)
+                    for value in conflict_manifest_evidence.get("work_ids") or ()
+                )
+            )
             checkpoint_evidence = json.loads(checkpoint_path.read_text(encoding="utf-8"))
             expected_main_fingerprint = executable_manifest_fingerprint(main_manifest_evidence)
             expected_conflict_fingerprint = executable_manifest_fingerprint(conflict_manifest_evidence)
@@ -2420,11 +2545,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 and governance_selection.get("distinct_work_count") == 14
                 and governance_selection.get("main_manifest_work_count") == 11
                 and governance_selection.get("conflict_manifest_work_count") == 3
+                and governance_selection.get("deferred_returned_page_row_count_after") == 0
                 and len(governance_ledger) == 14
                 and governance_transition.get("idempotent") is True
                 and governance_transition.get("raw_and_historical_queue_evidence_preserved") is True
                 and governance_transition.get("unsupported_page_link_created") is False
                 and governance_transition.get("conflict_winner_selected") is False
+                and (governance_evidence.get("creator_lineage_transition") or {}).get(
+                    "untrusted_parent_query_visible_creator_observation_count_after"
+                ) == 0
                 and all(int(value or 0) == 0 for value in governance_operation_delta.values())
                 and governance_authoritative.get("main_manifest_fingerprint") == expected_main_fingerprint
                 and governance_authoritative.get("conflict_manifest_fingerprint") == expected_conflict_fingerprint
@@ -2537,6 +2666,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         acquisition_evidence.get("acquisition_execution") or default_acquisition_execution
     )
     acquisition_execution.pop("attempts_by_work", None)
+    creator["successful_acquisition_work_count"] = int(
+        acquisition_execution.get("successful_work_count") or 0
+    )
     if governance_evidence:
         historical_outcomes = dict(acquisition_execution.get("final_outcome_counts") or {})
         effective_outcomes = dict(historical_outcomes)
@@ -2560,6 +2692,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and int(pixiv["retryable_work_count"]) == 0
         and int(pixiv["missing_work_count"]) == 0
         and int(pixiv.get("provider_identity_mismatch_work_count") or 0) == 0
+        and int(
+            creator.get(
+                "untrusted_parent_query_visible_creator_observation_count"
+            )
+            or 0
+        )
+        == 0
+        and int(
+            (governance_evidence.get("selection") or {}).get(
+                "deferred_returned_page_row_count_after"
+            )
+            or 0
+        )
+        == 0
         and float(pixiv.get("complete_terminal_or_deferred_work_coverage") or 0) == 1.0
     )
     safe_to_merge = status == "partial_ml1_pixiv_metadata_foundation_complete" and current_stock_fixed_point
@@ -2671,8 +2817,49 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "policy_version": governance_evidence.get("policy_version"),
             "selection": governance_evidence.get("selection"),
             "transition": governance_evidence.get("transition"),
+            "creator_lineage_transition": governance_evidence.get(
+                "creator_lineage_transition"
+            ),
             "operation_delta": governance_evidence.get("operation_delta"),
             "private_membership_public": False,
+        },
+        "bounded_debt_handoff": {
+            "PRE-NEXT-PROVIDER-EXECUTION-HARDENING": [
+                "cross-pass request spacing",
+                "manifest-scope outcome keys",
+                "conflict mismatch persistence",
+                "terminal/private classifier ordering",
+            ],
+            "CONTROLLED-SCALE-AUDIT-DEBT": [
+                "filename/path denominator versus source/thumbnail supplemental evidence"
+            ],
+            "PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING": [
+                "secret-token delimiter scanning"
+            ],
+            "current_data_nonblocking_proof": {
+                "provider_calls_authorized_in_closeout_or_ml2": False,
+                "historical_execution_finished": True,
+                "provider_identity_mismatch_count": pixiv[
+                    "provider_identity_mismatch_work_count"
+                ],
+                "systemic_stop": bool(acquisition_execution.get("systemic_stop")),
+                "pending_retryable_missing_count": (
+                    pixiv["pending_work_count"]
+                    + pixiv["retryable_work_count"]
+                    + pixiv["missing_work_count"]
+                ),
+                "mandatory_candidate_population_filename_path_anchored": True,
+                "accepted_local_risk_waiver_used": waiver_authorized,
+                "main_conflict_work_id_overlap_count": main_conflict_overlap_count,
+            },
+        },
+        "acceptance_policy": {
+            "semantic_completeness_required": False,
+            "universal_recall_required": False,
+            "under_recall_is_next_phase_input": True,
+            "unsupported_or_untrusted_only_results_allowed": False,
+            "and_constraint_leakage_allowed": False,
+            "search_caused_identity_mutation_allowed": False,
         },
         "graph_invariants": {
             "review_or_deferred_identity_union_count": 0,

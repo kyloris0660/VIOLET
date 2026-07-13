@@ -125,9 +125,13 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
         "creator_metadata": {
             "pixiv_registry_record_count": 3,
             "pixiv_queue_decision_record_count": 0,
-            "pixiv_provider_metadata_record_count": 3,
-            "pixiv_successful_acquisition_record_count": 0,
-            "pixiv_terminal_evidence_record_count": 1,
+            "provider_metadata_record_count": 3,
+            "successful_acquisition_work_count": 0,
+            "successful_acquisition_media_or_page_count": 0,
+            "queue_records_carrying_acquired_provider_payload_count": 0,
+            "terminal_evidence_record_count": 1,
+            "deferred_page_mismatch_record_count": 0,
+            "untrusted_parent_query_visible_creator_observation_count": 0,
             "available_creator_fields_accounting_coverage": 1.0,
             "stable_creator_id_preservation_coverage": 1.0,
             "observed_creator_search_support_coverage": 1.0,
@@ -253,6 +257,7 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
                 "distinct_work_count": 14,
                 "main_manifest_work_count": 11,
                 "conflict_manifest_work_count": 3,
+                "deferred_returned_page_row_count_after": 0,
                 "exact_predicate_passed": True,
                 "broader_normalization_or_conflict_population_converted": False,
             },
@@ -740,11 +745,23 @@ def test_all_governed_conflict_memberships_are_deferred_not_blocking_conflict() 
     assert public["complete_terminal_or_deferred_work_coverage"] == 1.0
 
 
-def test_matching_pending_queue_does_not_hide_historical_work_page_mismatch() -> None:
+def test_matching_pending_queue_ignores_stale_incomplete_work_page_mismatch() -> None:
     media = [{"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None}]
     metadata = [
-        {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "status": "metadata_pending"},
-        {"id": 11, "provider": "pixiv", "media_id": 1, "source_work_id": "999999999", "source_page_index": 1, "status": "observed"},
+        {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "metadata_kind": "pixiv_ingestion_gate", "status": "metadata_pending"},
+        {"id": 11, "provider": "pixiv", "media_id": 1, "source_work_id": "999999999", "source_page_index": 1, "metadata_kind": "gallery_dl_pixiv_metadata_fixture", "status": "observed"},
+    ]
+    public, candidates, work_rows = ml1_runner.build_pixiv_accounting(media, metadata)
+    assert candidates[0].status == "metadata_pending"
+    assert work_rows[0]["status"] == "pending"
+    assert public["projected_gallery_dl_request_count"] == 1
+
+
+def test_matching_pending_queue_yields_to_trusted_complete_contradiction() -> None:
+    media = [{"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None}]
+    metadata = [
+        {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "metadata_kind": "pixiv_ingestion_gate", "status": "metadata_pending"},
+        {"id": 11, "provider": "pixiv", "media_id": 1, "source_work_id": "999999999", "source_page_index": 1, "metadata_kind": "provider_metadata", "data_type_label": "authenticated_provider_metadata", "status": "metadata_complete"},
     ]
     public, candidates, work_rows = ml1_runner.build_pixiv_accounting(media, metadata)
     assert candidates[0].status == "filename_identity_conflict"
@@ -884,6 +901,26 @@ def test_partial_pixiv_foundation_fails_safe_to_merge_for_any_open_state() -> No
     summary["pixiv_accounting"]["pending_work_count"] = 1
     result = check_phase_contract(CONTRACT_ID, summary)
     assert "ml1_partial_foundation_open_or_blocking_state_nonzero" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_partial_pixiv_foundation_requires_page_local_and_trusted_lineage_zero_counts() -> None:
+    summary = _summary(status="partial_ml1_pixiv_metadata_foundation_complete")
+    summary["governance_transition"]["selection"][
+        "deferred_returned_page_row_count_after"
+    ] = 1
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert "ml1_deferred_returned_page_row_nonzero" in {
+        finding.code for finding in result.errors
+    }
+
+    summary = _summary(status="partial_ml1_pixiv_metadata_foundation_complete")
+    summary["creator_metadata"][
+        "untrusted_parent_query_visible_creator_observation_count"
+    ] = 1
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert "ml1_untrusted_parent_creator_observation_nonzero" in {
         finding.code for finding in result.errors
     }
 
@@ -1228,6 +1265,11 @@ def test_creator_audit_detects_account_loss_without_destroying_stable_id() -> No
         {
             "id": 1,
             "provider": "pixiv",
+            "metadata_kind": "provider_metadata",
+            "status": "metadata_complete",
+            "source_work_id": "123456789",
+            "source_page_index": 0,
+            "media_id": 1,
             "artist_id": "42",
             "artist_name": "Display",
             "raw_metadata_json": {"user": {"id": 42, "name": "Display", "account": "handle"}},
@@ -1236,7 +1278,13 @@ def test_creator_audit_detects_account_loss_without_destroying_stable_id() -> No
     observations = [
         {
             "source_metadata_record_id": 1,
+            "provider": "pixiv",
+            "status": "observed",
+            "media_id": 1,
+            "source_work_id": "123456789",
+            "source_page_index": 0,
             "raw_name": "Display",
+            "canonical_name_key": "display",
             "name_role": "artist",
             "source_field": "pixiv_user_metadata",
         }
@@ -1250,6 +1298,87 @@ def test_creator_audit_detects_account_loss_without_destroying_stable_id() -> No
     assert public["silently_dropped_creator_field_count"] == 1
     assert private[0]["dropped_fields"] == ["creator_account"]
     assert aliases["42"] == {"Display", "handle"}
+
+
+def test_creator_audit_counts_creator_account_first_and_deduplicates_compatible_fields() -> None:
+    metadata = [
+        {
+            "id": 1,
+            "provider": "pixiv",
+            "metadata_kind": "provider_metadata",
+            "status": "metadata_complete",
+            "source_work_id": "123456789",
+            "source_page_index": 0,
+            "media_id": 1,
+            "artist_id": "42",
+            "artist_name": "Display",
+            "raw_metadata_json": {
+                "creator_account": "handle",
+                "user_account": "handle",
+                "artist_account": "handle",
+                "user": {"account": "handle"},
+            },
+        }
+    ]
+    observations = [
+        {
+            "source_metadata_record_id": 1,
+            "provider": "pixiv",
+            "status": "observed",
+            "media_id": 1,
+            "source_work_id": "123456789",
+            "source_page_index": 0,
+            "raw_name": "handle",
+            "canonical_name_key": "handle",
+            "name_role": "artist",
+            "source_field": "pixiv_user_account",
+            "provenance": {"source": "gallery_dl_authenticated_metadata"},
+        }
+    ]
+
+    public, _, _ = ml1_runner.build_creator_audit(metadata, observations)
+
+    assert public["records_with_creator_account"] == 1
+    assert public["retained_creator_account_count"] == 1
+    assert public["observed_creator_account_search_support_coverage"] == 1.0
+    assert public["silently_dropped_creator_field_count"] == 0
+    assert public["untrusted_parent_query_visible_creator_observation_count"] == 0
+
+
+def test_creator_audit_does_not_claim_untrusted_account_retention() -> None:
+    metadata = [
+        {
+            "id": 1,
+            "provider": "pixiv",
+            "metadata_kind": "gallery_dl_pixiv_metadata_fixture",
+            "status": "observed",
+            "source_work_id": "123456789",
+            "source_page_index": 0,
+            "media_id": 1,
+            "raw_metadata_json": {"creator_account": "untrusted"},
+        }
+    ]
+    observations = [
+        {
+            "source_metadata_record_id": 1,
+            "provider": "pixiv",
+            "status": "observed",
+            "media_id": 1,
+            "source_work_id": "123456789",
+            "source_page_index": 0,
+            "raw_name": "untrusted",
+            "canonical_name_key": "untrusted",
+            "name_role": "artist",
+            "source_field": "pixiv_user_account",
+            "provenance": {"source": "gallery_dl_authenticated_metadata"},
+        }
+    ]
+
+    public, _, _ = ml1_runner.build_creator_audit(metadata, observations)
+
+    assert public["records_with_creator_account"] == 0
+    assert public["retained_creator_account_count"] == 0
+    assert public["untrusted_parent_query_visible_creator_observation_count"] == 1
 
 
 def test_public_redaction_rejects_paths_secrets_and_private_name_keys() -> None:

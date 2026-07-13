@@ -27,15 +27,18 @@ from app.services.pixiv_metadata_ingestion_service import (
     build_gallery_dl_metadata_command,
     classify_gallery_dl_failure,
     defer_proven_source_page_mismatch,
+    is_trusted_complete_pixiv_metadata_record,
     mark_work_state,
     llm_budget_policy,
     pending_distinct_work_ids,
     persist_complete_work,
+    persist_page_local_work_disposition,
     promotion_manifest,
     queue_media_for_pixiv_metadata,
     require_rotation_confirmation,
     run_bounded_acquisition,
     summarize_batch_closure,
+    supersede_untrusted_pixiv_creator_observations,
 )
 from scripts import run_pixiv_metadata_ingestion as ingestion_runner
 from scripts.run_pixiv_metadata_ingestion import scan_text_for_fingerprints
@@ -696,12 +699,11 @@ def test_exact_p1_requested_p0_returned_becomes_deferred_nonblocking(db) -> None
     result = _defer_page_mismatch(db, row)
     db.commit()
 
-    assert result == {
-        "attempted": 1,
-        "updated": 1,
-        "preserved_deferred": 0,
-        "evidence_created": 1,
-    }
+    assert result["attempted"] == 1
+    assert result["updated"] == 1
+    assert result["preserved_deferred"] == 0
+    assert result["completed_returned"] == 0
+    assert result["evidence_created"] == 1
     assert row.status == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
     assert row.raw_metadata_json == raw_before
     assert row.provenance == provenance_before
@@ -721,6 +723,103 @@ def test_exact_p1_requested_p0_returned_becomes_deferred_nonblocking(db) -> None
     assert acquisition_work_lifecycle_counts(db) == {
         "deferred_nonblocking_source_page_mismatch": 1
     }
+
+
+def _normalized_page(page_index: int) -> dict[str, object]:
+    return {
+        "work_id": "123456789",
+        "page_index": page_index,
+        "title": f"Page {page_index}",
+        "creator_id": "42",
+        "creator_name": "Creator",
+        "creator_account": "handle",
+        "creator_profile_identity": None,
+        "creator_profile_identity_source": None,
+        "tags": ("tag_a",),
+        "raw": {"id": 123456789, "num": page_index},
+    }
+
+
+def _queue_two_pages(db):
+    for media_id, page_index in ((220, 0), (221, 1)):
+        queue_media_for_pixiv_metadata(
+            db,
+            {
+                "id": media_id,
+                "filename": f"123456789_p{page_index}.jpg",
+                "path": f"media/{media_id}.jpg",
+            },
+        )
+    db.flush()
+    return tuple(
+        db.query(SourceMetadataRecord)
+        .filter(SourceMetadataRecord.media_id.in_((220, 221)))
+        .order_by(SourceMetadataRecord.source_page_index)
+        .all()
+    )
+
+
+def test_page_local_p0_p1_with_provider_p0_completes_p0_and_defers_only_p1(db) -> None:
+    p0, p1 = _queue_two_pages(db)
+    disposition = persist_page_local_work_disposition(
+        db,
+        "123456789",
+        [_normalized_page(0)],
+        attempted_record_ids=[p0.id, p1.id],
+    )
+    mark_work_state(
+        db,
+        "123456789",
+        PixivMetadataState.NORMALIZATION_FAILED.value,
+        reason="provider_metadata_missing_attempted_local_page",
+        attempted_record_ids=disposition.missing_record_ids,
+        structural_diagnostics={
+            "work_id": "123456789",
+            "failure_code": "provider_metadata_missing_attempted_local_page",
+            "provider_output_returned": True,
+            "normalizer_version": "gallery_dl_pixiv_normalizer_v1",
+        },
+    )
+    result = defer_proven_source_page_mismatch(
+        db,
+        "123456789",
+        attempted_record_ids=[p0.id, p1.id],
+        observed_page_indexes=[0],
+        original_final_outcome="normalization_failed",
+        manifest_kind="main",
+        evidence_fingerprint="b" * 64,
+        deferred_at="2026-07-13T12:00:00+00:00",
+        governed_route_exhausted=True,
+    )
+
+    assert disposition.linked_record_ids == (p0.id,)
+    assert disposition.missing_record_ids == (p1.id,)
+    assert p0.status == PixivMetadataState.COMPLETE.value
+    assert p1.status == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+    assert result["preserved_complete"] == 1
+    assert result["completed_returned"] == 0
+    assert db.query(SourceNameObservation).filter_by(media_id=220).count() == 3
+    assert db.query(SourceNameObservation).filter_by(media_id=221).count() == 0
+
+
+def test_page_local_p1_only_with_provider_p0_defers_p1(db) -> None:
+    row = _proven_page_mismatch_queue(db, media_id=222, page_index=1)
+    result = _defer_page_mismatch(db, row)
+    assert row.status == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+    assert result["completed_returned"] == 0
+
+
+def test_page_local_p0_p1_with_provider_p0_p1_completes_both(db) -> None:
+    p0, p1 = _queue_two_pages(db)
+    result = persist_page_local_work_disposition(
+        db,
+        "123456789",
+        [_normalized_page(0), _normalized_page(1)],
+        attempted_record_ids=[p0.id, p1.id],
+    )
+    assert result.linked_count == 2
+    assert result.missing_record_ids == ()
+    assert {p0.status, p1.status} == {PixivMetadataState.COMPLETE.value}
 
 
 def test_deferred_transition_is_idempotent_and_generic_paths_do_not_reopen(db) -> None:
@@ -1150,3 +1249,105 @@ def test_creator_source_backfill_is_additive_query_visible_and_role_safe(db) -> 
     assert proof["query_visible_creator_account_count"] == 1
     assert proof["explicit_creator_role_misclassification_count"] == 0
     assert record.raw_metadata_json["creator_profile_identity_source"] == "derived_from_stable_creator_id"
+
+
+@pytest.mark.parametrize(
+    ("status", "metadata_kind"),
+    [
+        ("metadata_pending", "pixiv_ingestion_gate"),
+        ("metadata_retryable", "pixiv_ingestion_gate"),
+        ("rejected", "provider_metadata"),
+        ("superseded", "provider_metadata"),
+        ("deferred_nonblocking_source_page_mismatch", "pixiv_ingestion_gate"),
+    ],
+)
+def test_creator_backfill_rejects_untrusted_parent_categories(db, status, metadata_kind) -> None:
+    record = SourceMetadataRecord(
+        provider="pixiv",
+        provider_record_key=f"untrusted:{status}:{metadata_kind}",
+        media_id=301,
+        source_work_id="123456789",
+        source_page_index=0,
+        metadata_kind=metadata_kind,
+        data_type_label="authenticated_provider_metadata",
+        status=status,
+        artist_name="Untrusted",
+        raw_metadata_json={"creator_account": "untrusted_account"},
+    )
+    db.add(record)
+    db.commit()
+
+    proof = backfill_creator_source_observations(db)
+
+    assert proof["skipped_untrusted_parent_record_count"] == 1
+    assert db.query(SourceNameObservation).count() == 0
+    assert is_trusted_complete_pixiv_metadata_record(record) is False
+
+
+def test_lineage_cleanup_supersedes_only_pr136_untrusted_rows_and_preserves_other_support(db) -> None:
+    trusted_parent = SourceMetadataRecord(
+        provider="pixiv",
+        provider_record_key="trusted:lineage",
+        media_id=302,
+        source_work_id="123456789",
+        source_page_index=0,
+        metadata_kind="provider_metadata",
+        data_type_label="authenticated_provider_metadata",
+        status="metadata_complete",
+    )
+    untrusted_parent = SourceMetadataRecord(
+        provider="pixiv",
+        provider_record_key="untrusted:lineage",
+        media_id=302,
+        source_work_id="123456789",
+        source_page_index=0,
+        metadata_kind="gallery_dl_pixiv_metadata_fixture",
+        data_type_label="fixture_or_mock",
+        status="observed",
+    )
+    db.add_all((trusted_parent, untrusted_parent))
+    db.flush()
+    common = {
+        "provider": "pixiv",
+        "media_id": 302,
+        "source_work_id": "123456789",
+        "source_page_index": 0,
+        "raw_name": "Creator",
+        "normalized_name": "Creator",
+        "canonical_name_key": "creator",
+        "name_role": "artist",
+        "source_field": "pixiv_user_metadata",
+        "requires_review": True,
+        "status": "observed",
+    }
+    trusted = SourceNameObservation(
+        source_metadata_record_id=trusted_parent.id,
+        observation_key="trusted-lineage",
+        provenance={"source": "gallery_dl_authenticated_metadata"},
+        **common,
+    )
+    generated_untrusted = SourceNameObservation(
+        source_metadata_record_id=untrusted_parent.id,
+        observation_key="generated-untrusted-lineage",
+        provenance={"source": "gallery_dl_authenticated_metadata"},
+        **common,
+    )
+    historical = SourceNameObservation(
+        source_metadata_record_id=untrusted_parent.id,
+        observation_key="historical-static-lineage",
+        provenance={"source": "manual_static_import"},
+        **common,
+    )
+    db.add_all((trusted, generated_untrusted, historical))
+    db.flush()
+
+    first = supersede_untrusted_pixiv_creator_observations(db)
+    second = supersede_untrusted_pixiv_creator_observations(db)
+
+    assert first["superseded_observation_count"] == 1
+    assert first["trusted_parent_query_visible_creator_observation_count"] == 1
+    assert first["preserved_out_of_scope_historical_or_manual_static_count"] == 1
+    assert second.get("superseded_observation_count", 0) == 0
+    assert trusted.status == "observed"
+    assert generated_untrusted.status == "superseded"
+    assert historical.status == "observed"

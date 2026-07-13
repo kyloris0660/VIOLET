@@ -47,6 +47,8 @@ COMPLETE_METADATA_KINDS = frozenset({
 CANONICAL_COMPLETE_STATUSES = frozenset({"observed", "active", "accepted", "metadata_complete"})
 DEFERRED_PAGE_MISMATCH_POLICY_VERSION = "source_page_mismatch_deferred_nonblocking_v1"
 DEFERRED_PAGE_MISMATCH_REASON = "provider_metadata_missing_attempted_local_page"
+PAGE_OBSERVED_COMPLETION_EVIDENCE_KIND = "provider_page_observed_complete"
+QUERY_VISIBLE_OBSERVATION_STATUSES = frozenset({"observed", "active", "accepted"})
 
 
 class PixivMetadataState(str, Enum):
@@ -71,6 +73,80 @@ OPEN_ACQUISITION_STATES = frozenset({PixivMetadataState.PENDING.value, PixivMeta
 CANONICAL_PENDING_STATUSES = frozenset({PixivMetadataState.CANDIDATE_DETECTED.value, PixivMetadataState.PENDING.value})
 CANONICAL_RETRYABLE_STATUSES = frozenset({PixivMetadataState.RETRYABLE.value})
 CANDIDATE_STATES = frozenset(state.value for state in PixivMetadataState if state is not PixivMetadataState.NOT_APPLICABLE)
+
+
+def _record_value(record: SourceMetadataRecord | Mapping[str, Any], field: str) -> Any:
+    return record.get(field) if isinstance(record, Mapping) else getattr(record, field, None)
+
+
+def is_trusted_complete_pixiv_metadata_record(
+    record: SourceMetadataRecord | Mapping[str, Any],
+) -> bool:
+    """Return whether one record may support Pixiv identity/search evidence.
+
+    This is intentionally Pixiv/ML1-specific. Queue rows are trusted only after
+    exact completion with provider payload or separately governed exact-page
+    presence evidence; creator-like fields on an open/deferred queue row are
+    never sufficient by themselves.
+    """
+
+    provider = str(_record_value(record, "provider") or "").strip().casefold()
+    metadata_kind = str(_record_value(record, "metadata_kind") or "").strip()
+    status = str(_record_value(record, "status") or "").strip()
+    work_id = str(_record_value(record, "source_work_id") or "").strip()
+    if (
+        provider != "pixiv"
+        or metadata_kind not in COMPLETE_METADATA_KINDS
+        or status not in CANONICAL_COMPLETE_STATUSES
+        or not work_id
+    ):
+        return False
+    if metadata_kind != QUEUE_METADATA_KIND:
+        return True
+    data_type = str(_record_value(record, "data_type_label") or "").strip()
+    provenance = _record_value(record, "provenance") or {}
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+    return status == PixivMetadataState.COMPLETE.value and (
+        data_type in {
+            "authenticated_provider_metadata",
+            "authenticated_provider_page_presence_evidence",
+        }
+        or str(provenance.get("source") or "") == "compatible_complete_record_reuse"
+    )
+
+
+def is_pixiv_creator_observation_compatible_with_parent(
+    observation: SourceNameObservation | Mapping[str, Any],
+    parent: SourceMetadataRecord | Mapping[str, Any],
+) -> bool:
+    """Require one query-visible creator observation to match its trusted parent."""
+
+    if not is_trusted_complete_pixiv_metadata_record(parent):
+        return False
+    if str(_record_value(observation, "provider") or "").casefold() != "pixiv":
+        return False
+    if str(_record_value(observation, "source_field") or "") not in {
+        "pixiv_user_metadata",
+        "pixiv_user_account",
+    }:
+        return False
+    if str(_record_value(observation, "status") or "") not in QUERY_VISIBLE_OBSERVATION_STATUSES:
+        return False
+    observation_work = str(_record_value(observation, "source_work_id") or "").strip()
+    parent_work = str(_record_value(parent, "source_work_id") or "").strip()
+    if observation_work and observation_work != parent_work:
+        return False
+    observation_page = _record_value(observation, "source_page_index")
+    parent_page = _record_value(parent, "source_page_index")
+    if observation_page is not None and int(observation_page or 0) != int(parent_page or 0):
+        return False
+    observation_media = _record_value(observation, "media_id")
+    parent_media = _record_value(parent, "media_id")
+    return not (
+        observation_media is not None
+        and parent_media is not None
+        and int(observation_media) != int(parent_media)
+    )
 
 
 class PixivMetadataGateError(RuntimeError):
@@ -130,6 +206,16 @@ class AcquisitionResult:
     systemic_stop: bool = False
 
 
+@dataclass(frozen=True)
+class PageLocalDispositionResult:
+    linked_record_ids: tuple[int, ...]
+    missing_record_ids: tuple[int, ...]
+
+    @property
+    def linked_count(self) -> int:
+        return len(self.linked_record_ids)
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -173,7 +259,7 @@ def _compatible_complete_records(
     work_id: str,
     page_index: int,
 ) -> list[SourceMetadataRecord]:
-    return (
+    records = (
         session.query(SourceMetadataRecord)
         .filter(
             SourceMetadataRecord.provider == "pixiv",
@@ -185,6 +271,7 @@ def _compatible_complete_records(
         .order_by(SourceMetadataRecord.id.asc())
         .all()
     )
+    return [record for record in records if is_trusted_complete_pixiv_metadata_record(record)]
 
 
 def _has_mismatched_pixiv_identity(
@@ -196,8 +283,6 @@ def _has_mismatched_pixiv_identity(
             SourceMetadataRecord.provider == "pixiv",
             SourceMetadataRecord.media_id == int(media_id),
             SourceMetadataRecord.metadata_kind != QUEUE_METADATA_KIND,
-            SourceMetadataRecord.metadata_kind.in_(tuple(COMPLETE_METADATA_KINDS)),
-            SourceMetadataRecord.status.in_(tuple(CANONICAL_COMPLETE_STATUSES)),
         )
         .all()
     )
@@ -206,6 +291,7 @@ def _has_mismatched_pixiv_identity(
         or int(record.source_page_index or 0) != int(page_index)
         for record in records
         if record.source_work_id is not None
+        and is_trusted_complete_pixiv_metadata_record(record)
     )
 
 
@@ -274,6 +360,9 @@ def _materialize_reused_complete_evidence(
 ) -> None:
     """Copy compatible provider evidence onto the newly linked media row."""
 
+    if not is_trusted_complete_pixiv_metadata_record(source_record):
+        raise PixivMetadataGateError("untrusted_complete_record_reuse_rejected")
+
     source_raw = dict(source_record.raw_metadata_json or {})
     source_raw["_pixiv_ingestion_reuse"] = {
         "source_metadata_record_id": int(source_record.id),
@@ -311,6 +400,8 @@ def _materialize_reused_complete_evidence(
         .all()
     )
     for row in name_rows:
+        if row.source_field in {"pixiv_user_metadata", "pixiv_user_account"} and not is_pixiv_creator_observation_compatible_with_parent(row, source_record):
+            continue
         existing = (
             session.query(SourceNameObservation.id)
             .filter(
@@ -818,6 +909,101 @@ def open_work_records(
     )
 
 
+def _persist_complete_queue_record(
+    session: Session,
+    record: SourceMetadataRecord,
+    work_id: str,
+    page: Mapping[str, Any],
+) -> None:
+    raw = dict(page["raw"])
+    raw["creator_account"] = page.get("creator_account")
+    raw["creator_profile_identity"] = page.get("creator_profile_identity")
+    raw["creator_profile_identity_source"] = page.get("creator_profile_identity_source")
+    record.data_type_label = "authenticated_provider_metadata"
+    record.title = page.get("title")
+    record.artist_id = page.get("creator_id")
+    record.artist_name = page.get("creator_name")
+    record.raw_metadata_json = raw
+    record.provenance = {
+        "source": "gallery_dl_authenticated_metadata",
+        "parser_version": PARSER_VERSION,
+        "stable_identity_key": {
+            "provider": "pixiv",
+            "work_id": str(work_id),
+            "page_index": int(record.source_page_index or 0),
+        },
+    }
+    record.status = PixivMetadataState.COMPLETE.value
+    record.retrieved_at = utc_now()
+    session.flush()
+    _upsert_name_observation(
+        session,
+        record,
+        raw_name=page.get("creator_name"),
+        role="artist",
+        source_field="pixiv_user_metadata",
+    )
+    _upsert_name_observation(
+        session,
+        record,
+        raw_name=page.get("creator_account"),
+        role="artist",
+        source_field="pixiv_user_account",
+    )
+    _upsert_name_observation(
+        session,
+        record,
+        raw_name=page.get("title"),
+        role="work_title",
+        source_field="pixiv_title",
+    )
+    for index, tag in enumerate(page.get("tags") or ()):
+        _upsert_tag_observation(session, record, str(tag), index)
+
+
+def persist_page_local_work_disposition(
+    session: Session,
+    work_id: str,
+    pages: Sequence[Mapping[str, Any]],
+    *,
+    attempted_record_ids: Sequence[int],
+    allow_conflict_resolution: bool = False,
+    allow_normalization_replay: bool = False,
+    allow_deferred_reopen: bool = False,
+) -> PageLocalDispositionResult:
+    """Persist returned pages and identify missing rows independently."""
+
+    queued, not_found = _selected_work_records(
+        session, work_id, attempted_record_ids=attempted_record_ids
+    )
+    if not_found:
+        raise PixivMetadataGateError("attempted_queue_record_not_found")
+    pages_by_index = {int(item["page_index"]): item for item in pages}
+    eligible_states = set(OPEN_ACQUISITION_STATES)
+    if allow_conflict_resolution:
+        eligible_states.add(PixivMetadataState.CONFLICT.value)
+    if allow_normalization_replay:
+        eligible_states.add(PixivMetadataState.NORMALIZATION_FAILED.value)
+    if allow_deferred_reopen:
+        eligible_states.add(PixivMetadataState.DEFERRED_PAGE_MISMATCH.value)
+    for record in queued:
+        if str(record.status) not in eligible_states:
+            raise PixivMetadataGateError(f"attempted_closed_queue_transition_rejected:{record.status}")
+    linked_record_ids: list[int] = []
+    missing_record_ids: list[int] = []
+    for record in queued:
+        page = pages_by_index.get(int(record.source_page_index or 0))
+        if page is None:
+            missing_record_ids.append(int(record.id))
+            continue
+        _persist_complete_queue_record(session, record, work_id, page)
+        linked_record_ids.append(int(record.id))
+    return PageLocalDispositionResult(
+        linked_record_ids=tuple(linked_record_ids),
+        missing_record_ids=tuple(missing_record_ids),
+    )
+
+
 def persist_complete_work(
     session: Session,
     work_id: str,
@@ -828,54 +1014,20 @@ def persist_complete_work(
     allow_normalization_replay: bool = False,
     allow_deferred_reopen: bool = False,
 ) -> int:
-    """Persist metadata only for exact open queue rows participating in this attempt."""
+    """Compatibility wrapper requiring every attempted local page to be present."""
 
-    queued, not_found = _selected_work_records(
-        session, work_id, attempted_record_ids=attempted_record_ids
+    result = persist_page_local_work_disposition(
+        session,
+        work_id,
+        pages,
+        attempted_record_ids=attempted_record_ids,
+        allow_conflict_resolution=allow_conflict_resolution,
+        allow_normalization_replay=allow_normalization_replay,
+        allow_deferred_reopen=allow_deferred_reopen,
     )
-    if not_found:
-        raise PixivMetadataGateError("attempted_queue_record_not_found")
-    pages_by_index = {int(item["page_index"]): item for item in pages}
-    linked = 0
-    for record in queued:
-        eligible_states = set(OPEN_ACQUISITION_STATES)
-        if allow_conflict_resolution:
-            eligible_states.add(PixivMetadataState.CONFLICT.value)
-        if allow_normalization_replay:
-            eligible_states.add(PixivMetadataState.NORMALIZATION_FAILED.value)
-        if allow_deferred_reopen:
-            eligible_states.add(PixivMetadataState.DEFERRED_PAGE_MISMATCH.value)
-        if str(record.status) not in eligible_states:
-            raise PixivMetadataGateError(f"attempted_closed_queue_transition_rejected:{record.status}")
-        page = pages_by_index.get(int(record.source_page_index or 0))
-        if page is None:
-            raise PixivMetadataGateError("provider_metadata_missing_attempted_local_page")
-        raw = dict(page["raw"])
-        raw["creator_account"] = page.get("creator_account")
-        raw["creator_profile_identity"] = page.get("creator_profile_identity")
-        raw["creator_profile_identity_source"] = page.get("creator_profile_identity_source")
-        record.data_type_label = "authenticated_provider_metadata"
-        record.title = page.get("title")
-        record.artist_id = page.get("creator_id")
-        record.artist_name = page.get("creator_name")
-        record.raw_metadata_json = raw
-        record.provenance = {
-            "source": "gallery_dl_authenticated_metadata",
-            "parser_version": PARSER_VERSION,
-            "stable_identity_key": {"provider": "pixiv", "work_id": str(work_id), "page_index": int(record.source_page_index or 0)},
-        }
-        record.status = PixivMetadataState.COMPLETE.value
-        record.retrieved_at = utc_now()
-        session.flush()
-        _upsert_name_observation(session, record, raw_name=page.get("creator_name"), role="artist", source_field="pixiv_user_metadata")
-        _upsert_name_observation(session, record, raw_name=page.get("creator_account"), role="artist", source_field="pixiv_user_account")
-        _upsert_name_observation(session, record, raw_name=page.get("title"), role="work_title", source_field="pixiv_title")
-        for index, tag in enumerate(page.get("tags") or ()):
-            _upsert_tag_observation(session, record, str(tag), index)
-        linked += 1
-    if linked != len(queued):
+    if result.missing_record_ids:
         raise PixivMetadataGateError("metadata_normalization_failed_missing_local_pages")
-    return linked
+    return result.linked_count
 
 
 def backfill_creator_source_observations(session: Session) -> dict[str, int]:
@@ -889,6 +1041,9 @@ def backfill_creator_source_observations(session: Session) -> dict[str, int]:
     )
     counts = Counter()
     for record in records:
+        if not is_trusted_complete_pixiv_metadata_record(record):
+            counts["skipped_untrusted_parent_record_count"] += 1
+            continue
         raw = dict(record.raw_metadata_json or {})
         user = raw.get("user") if isinstance(raw.get("user"), Mapping) else {}
         creator_id = record.artist_id or raw.get("user_id") or raw.get("artist_id") or user.get("id")
@@ -925,6 +1080,58 @@ def backfill_creator_source_observations(session: Session) -> dict[str, int]:
     session.flush()
     counts["explicit_creator_role_misclassification_count"] = 0
     counts["silently_dropped_available_creator_field_count"] = 0
+    return dict(sorted(counts.items()))
+
+
+def _created_by_pr136_pixiv_observation_path(observation: SourceNameObservation) -> bool:
+    provenance = observation.provenance or {}
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+    return (
+        str(provenance.get("source") or "") == "gallery_dl_authenticated_metadata"
+        or provenance.get("reused_from_source_metadata_record_id") is not None
+    )
+
+
+def supersede_untrusted_pixiv_creator_observations(session: Session) -> dict[str, int]:
+    """Hide only PR #136 creator observations whose sole parent is untrusted."""
+
+    rows = (
+        session.query(SourceNameObservation, SourceMetadataRecord)
+        .join(
+            SourceMetadataRecord,
+            SourceNameObservation.source_metadata_record_id == SourceMetadataRecord.id,
+        )
+        .filter(
+            SourceNameObservation.provider == "pixiv",
+            SourceNameObservation.name_role == "artist",
+            SourceNameObservation.source_field.in_(
+                ("pixiv_user_metadata", "pixiv_user_account")
+            ),
+            SourceNameObservation.status.in_(tuple(QUERY_VISIBLE_OBSERVATION_STATUSES)),
+        )
+        .order_by(SourceNameObservation.id.asc())
+        .all()
+    )
+    counts = Counter()
+    for observation, parent in rows:
+        if is_pixiv_creator_observation_compatible_with_parent(observation, parent):
+            counts["trusted_parent_query_visible_creator_observation_count"] += 1
+            continue
+        if not _created_by_pr136_pixiv_observation_path(observation):
+            counts["preserved_out_of_scope_historical_or_manual_static_count"] += 1
+            continue
+        counts["untrusted_parent_query_visible_creator_observation_count"] += 1
+        counts[
+            "untrusted_creator_account_count"
+            if observation.source_field == "pixiv_user_account"
+            else "untrusted_creator_name_count"
+        ] += 1
+        provenance = dict(observation.provenance or {})
+        provenance["lineage_disposition"] = "superseded_untrusted_pixiv_parent_v1"
+        observation.provenance = provenance
+        observation.status = "superseded"
+        counts["superseded_observation_count"] += 1
+    session.flush()
     return dict(sorted(counts.items()))
 
 
@@ -1043,13 +1250,17 @@ def defer_proven_source_page_mismatch(
     if not_found or not records:
         raise PixivMetadataGateError("deferred_page_mismatch_attempted_queue_scope_invalid")
     requested_pages = {int(record.source_page_index or 0) for record in records}
-    if requested_pages <= set(observed_pages):
+    absent_pages = requested_pages - set(observed_pages)
+    if not absent_pages:
         raise PixivMetadataGateError("deferred_page_mismatch_requested_page_was_present")
 
     counts = {
         "attempted": len(records),
         "updated": 0,
         "preserved_deferred": 0,
+        "completed_returned": 0,
+        "preserved_complete": 0,
+        "superseded_deferred_evidence": 0,
         "evidence_created": 0,
     }
     for record in records:
@@ -1071,6 +1282,75 @@ def defer_proven_source_page_mismatch(
             )
             .one_or_none()
         )
+        requested_page = int(record.source_page_index or 0)
+        if requested_page in set(observed_pages):
+            completion_key = hashlib.sha256(
+                "|".join(
+                    (
+                        PAGE_OBSERVED_COMPLETION_EVIDENCE_KIND,
+                        str(record.id),
+                        evidence_fingerprint,
+                    )
+                ).encode("utf-8")
+            ).hexdigest()
+            completion_evidence = (
+                session.query(SourceMetadataEvidence)
+                .filter(
+                    SourceMetadataEvidence.source_metadata_record_id == int(record.id),
+                    SourceMetadataEvidence.evidence_key == completion_key,
+                )
+                .one_or_none()
+            )
+            if current == PixivMetadataState.COMPLETE.value:
+                if completion_evidence is None and not is_trusted_complete_pixiv_metadata_record(record):
+                    raise PixivMetadataGateError(
+                        "page_local_complete_state_missing_observed_page_evidence"
+                    )
+                counts["preserved_complete"] += 1
+                continue
+            if current not in {
+                PixivMetadataState.NORMALIZATION_FAILED.value,
+                PixivMetadataState.CONFLICT.value,
+                PixivMetadataState.DEFERRED_PAGE_MISMATCH.value,
+            }:
+                raise PixivMetadataGateError(
+                    f"page_local_returned_page_ineligible_current_state:{current}"
+                )
+            if current == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value and existing is None:
+                raise PixivMetadataGateError(
+                    "deferred_page_mismatch_existing_state_missing_evidence"
+                )
+            if existing is not None and existing.status == "active":
+                existing.status = "superseded_by_page_local_completion"
+                counts["superseded_deferred_evidence"] += 1
+            if completion_evidence is None:
+                session.add(
+                    SourceMetadataEvidence(
+                        source_metadata_record_id=int(record.id),
+                        evidence_key=completion_key,
+                        observation_type="provider_page_presence",
+                        evidence_kind=PAGE_OBSERVED_COMPLETION_EVIDENCE_KIND,
+                        evidence_strength="authenticated_normalized_exact_page",
+                        provenance={
+                            "provider": "pixiv",
+                            "source_work_id": str(work_id),
+                            "source_page_index": requested_page,
+                            "provider_observed_page_indexes": list(observed_pages),
+                            "provider_response_evidence_fingerprint": evidence_fingerprint,
+                            "governance_policy_version": DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
+                            "raw_provider_payload_retained": False,
+                            "creator_title_tag_observations_materialized": False,
+                            "unsupported_page_link_created": False,
+                        },
+                        status="active",
+                    )
+                )
+                counts["evidence_created"] += 1
+            record.data_type_label = "authenticated_provider_page_presence_evidence"
+            record.status = PixivMetadataState.COMPLETE.value
+            counts["updated"] += 1
+            counts["completed_returned"] += 1
+            continue
         if current == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value:
             if existing is None:
                 raise PixivMetadataGateError("deferred_page_mismatch_existing_state_missing_evidence")
@@ -1237,13 +1517,38 @@ def run_bounded_acquisition(
                 break
             try:
                 pages = parse_gallery_dl_stdout(completed.stdout or "", work_id)
-                linked = persist_complete_work(
+                page_disposition = persist_page_local_work_disposition(
                     session, work_id, pages, attempted_record_ids=attempted_record_ids,
                     allow_conflict_resolution=allow_conflict_resolution,
                     allow_normalization_replay=allow_normalization_replay,
                 )
-                if linked == 0:
+                if page_disposition.linked_count == 0 and not page_disposition.missing_record_ids:
                     raise PixivMetadataGateError("metadata_normalization_failed_no_local_page_link")
+                if page_disposition.missing_record_ids:
+                    mark_work_state(
+                        session,
+                        work_id,
+                        PixivMetadataState.NORMALIZATION_FAILED.value,
+                        reason=DEFERRED_PAGE_MISMATCH_REASON,
+                        attempted_record_ids=page_disposition.missing_record_ids,
+                        structural_diagnostics={
+                            "work_id": str(work_id),
+                            "attempted_page_set": sorted(
+                                {int(record.source_page_index or 0) for record in attempted_records}
+                            ),
+                            "observed_page_set": sorted(
+                                {int(page["page_index"]) for page in pages}
+                            ),
+                            "parser_version": PARSER_VERSION,
+                            "normalizer_version": "gallery_dl_pixiv_normalizer_v1",
+                            "failure_class": "PageLocalSourceDisposition",
+                            "failure_code": DEFERRED_PAGE_MISMATCH_REASON,
+                            "provider_output_returned": True,
+                            "raw_provider_output_retained_in_diagnostic": False,
+                        },
+                        allow_conflict_resolution=allow_conflict_resolution,
+                        allow_normalization_replay=allow_normalization_replay,
+                    )
             except GalleryDlReportedFailure as exc:
                 session.rollback()
                 mark_work_state(
@@ -1317,7 +1622,19 @@ def run_bounded_acquisition(
             # SourceNameObservation and SourceTagObservation become visible to
             # endpoint-equivalent search only after this transaction commits.
             invalidate_source_metadata_search_cache()
-            result = AcquisitionResult(work_id, PixivMetadataState.COMPLETE.value, True, len(pages), attempt_count=attempt)
+            final_state = (
+                PixivMetadataState.NORMALIZATION_FAILED.value
+                if page_disposition.missing_record_ids
+                else PixivMetadataState.COMPLETE.value
+            )
+            result = AcquisitionResult(
+                work_id,
+                final_state,
+                True,
+                page_disposition.linked_count,
+                DEFERRED_PAGE_MISMATCH_REASON if page_disposition.missing_record_ids else None,
+                attempt_count=attempt,
+            )
             results.append(result)
             if result_callback:
                 result_callback(result)

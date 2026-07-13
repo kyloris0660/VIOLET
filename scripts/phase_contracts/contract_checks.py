@@ -3554,12 +3554,45 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
         for key in (
             "pixiv_registry_record_count",
             "pixiv_queue_decision_record_count",
-            "pixiv_provider_metadata_record_count",
-            "pixiv_successful_acquisition_record_count",
-            "pixiv_terminal_evidence_record_count",
+            "provider_metadata_record_count",
+            "successful_acquisition_work_count",
+            "successful_acquisition_media_or_page_count",
+            "queue_records_carrying_acquired_provider_payload_count",
+            "terminal_evidence_record_count",
+            "deferred_page_mismatch_record_count",
         ):
             if type(creator_metrics.get(key)) is not int or creator_metrics.get(key) < 0:
                 result.fail("ml1_pixiv_metric_semantics_regressed", "Pixiv registry/provider outcome counters must be explicit nonnegative integers.", path=f"creator_metadata.{key}")
+        if _as_int(
+            creator_metrics.get(
+                "untrusted_parent_query_visible_creator_observation_count"
+            ),
+            default=-1,
+        ) != 0:
+            result.fail(
+                "ml1_untrusted_parent_creator_observation_nonzero",
+                "Query-visible PR #136 creator observations require a trusted complete Pixiv parent.",
+                path="creator_metadata.untrusted_parent_query_visible_creator_observation_count",
+                expected=0,
+                actual=creator_metrics.get(
+                    "untrusted_parent_query_visible_creator_observation_count"
+                ),
+            )
+
+    governance_transition = _get(summary, "governance_transition", {})
+    if isinstance(governance_transition, Mapping):
+        governance_selection = governance_transition.get("selection") or {}
+        if _as_int(
+            governance_selection.get("deferred_returned_page_row_count_after"),
+            default=-1,
+        ) != 0:
+            result.fail(
+                "ml1_deferred_returned_page_row_nonzero",
+                "Only provider-absent page rows may remain governed deferred.",
+                path="governance_transition.selection.deferred_returned_page_row_count_after",
+                expected=0,
+                actual=governance_selection.get("deferred_returned_page_row_count_after"),
+            )
 
     if status == "blocked_pixiv_incremental_acquisition_approval_required":
         if pixiv.get("incremental_acquisition_required") is not True or (
