@@ -4,7 +4,7 @@
 
 - Contract status: `blocked_pixiv_acquisition_execution_incomplete`.
 - Active blockers: `['blocked_pixiv_acquisition_execution_incomplete', 'blocked_candidate_generation_gap']`.
-- Evidence code SHA: `bdaaab6d4c82ea85622a60f9a54d8f2bb70615cf`.
+- Evidence code SHA: `e19c0b64faf39e27398fbed3d765b0f0c6859a4d`.
 - Provider execution requests: `1817`; accepted R2R evidence remained immutable.
 
 ## Corrected search semantics
@@ -71,6 +71,6 @@ Default bounded LLM policy / aggregate cap: `bounded_phase_primary_llm_usd10_v1`
 ## Validation
 
 - Changed Python py_compile: `true`.
-- Focused pytest passed / failed: `128` / `0`.
+- Focused pytest passed / failed: `134` / `0`.
 - ML1 contract: `True`.
 - Real browser validation: `passed`.

@@ -170,7 +170,7 @@
       "source_database_immutable": true,
       "violet_env_test": true
     },
-    "evidence_code_sha": "bdaaab6d4c82ea85622a60f9a54d8f2bb70615cf",
+    "evidence_code_sha": "e19c0b64faf39e27398fbed3d765b0f0c6859a4d",
     "fixed_evidence_proof": {
       "accepted_r2r_disposition_count": 3319,
       "accepted_r2r_dispositions_reused": true,
@@ -180,7 +180,7 @@
       "forbidden_truth_content_unchanged": true,
       "present": true
     },
-    "generated_at": "2026-07-13T05:39:45+00:00",
+    "generated_at": "2026-07-13T08:23:54+00:00",
     "graph_invariants": {
       "direct_cannot_violation_count": 0,
       "identity_changes_caused_by_search_count": 0,
@@ -572,7 +572,7 @@
       "browser_validation": "passed",
       "changed_python_py_compile": "true",
       "focused_pytest_failed": 0,
-      "focused_pytest_passed": 128,
+      "focused_pytest_passed": 134,
       "focused_test_command_label": "ml1-pixiv-creator-search-contract-doc-focused-suite",
       "json_parse_passed": true,
       "ml1_contract_passed": true,
@@ -590,11 +590,11 @@
     "integrity_passed": true,
     "manifest_present": true,
     "not_committed": true,
-    "packed_checksums_sha256": "1f0e53ee71cde23bf4a6649e71fc4e90741ebc951b54eddfa4e9ea1e450b01f9",
+    "packed_checksums_sha256": "5c05969b359312f11f17ccf8151c1b203ad4ab98df06a4839b6751c77da6d4c4",
     "packed_contract_evidence_sha256": "181f5afa12ee4c2e8e1400e5c87b5861469cad46fd44a53b82d17b4c4ef41189",
-    "packed_evidence_summary_sha256": "7e401f74b428dccc1174a686f80f2455731be77df5f394e271adaccf70fde830",
+    "packed_evidence_summary_sha256": "f67d6ee354e4918cd86dde55c8db4d60976d905e0aaa1e786036914b55662112",
     "packed_manifest_sha256": "52e53a0425cacd29f939fe422735ed2876e92ce6df4cde0720a6d75c3e70ae0e",
-    "packed_report_sha256": "00c326d12e9297437421eeffa7147e8acae2434661afca4f43f03135b4f8b369",
+    "packed_report_sha256": "f9273fae840b86607cdd3a2225d0d3cbc2917faa4314cc91df3c6939ad3b4d80",
     "placeholder_field_count": 0,
     "self_referential_hash_claimed": false,
     "substantive_evidence_excludes_attestation": true,
@@ -603,11 +603,11 @@
       "acquisition-checkpoint.json": "441cfc17cc897621ba92b57f29fbcd9e617816ce4ef5e68819f3a3fcab2fe1e0",
       "and-search-runtime-cases.jsonl": "48a846e0c78501b216d95100d92208c86601668fb36b44a32b872356eb273f45",
       "candidate-generation-miss-ledger.jsonl": "7b0f013b2402877f54d67d406288f45d1c221d0c808f58332349510055ea0c8b",
-      "checksums.json": "1f0e53ee71cde23bf4a6649e71fc4e90741ebc951b54eddfa4e9ea1e450b01f9",
+      "checksums.json": "5c05969b359312f11f17ccf8151c1b203ad4ab98df06a4839b6751c77da6d4c4",
       "contract-evidence.json": "181f5afa12ee4c2e8e1400e5c87b5861469cad46fd44a53b82d17b4c4ef41189",
       "creator-field-inventory.jsonl": "d4984f68ac5d38d9cd42a233582c8b397c6e5da8871ae255d48fa89afcdcea73",
       "creator-retention-audit.json": "1a9e4aa8f00e594e7af22b8c066362e3c3f3114d1ac336425aeca18e31c3e73a",
-      "evidence-summary.json": "7e401f74b428dccc1174a686f80f2455731be77df5f394e271adaccf70fde830",
+      "evidence-summary.json": "f67d6ee354e4918cd86dde55c8db4d60976d905e0aaa1e786036914b55662112",
       "exact-conflict-resolution-manifest.json": "149aa31f3aba4aece6afd69a8b6d7d58925b084e7fb5cdc4fb5a95baec29f234",
       "exact-distinct-work-manifest.json": "01994e5bbb18bb0d652e0280475ed8910b975053fba05e87e1ac08137da45d6b",
       "execution-summary.json": "7445f9abc8d58e908b4d27a8e0957e7e98a0ab1449f00a153e2b73ee292c759b",
@@ -622,7 +622,7 @@
       "pixiv-missing-work-owner-review-sample.csv": "ac28177f2a66a39c69eb681c8b3ffc29224a15ce6f22d5f830630166a4904255",
       "pixiv-missing-work-owner-review-sample.md": "19264e16188735abc70a03cc7ceafb756b72c2cc5691796280d4165f4ba22410",
       "pixiv-owner-review-selection.json": "de531ed5949f42e32d75d297a53902d7c06530a6486bc056e2df3ac271eee7d2",
-      "public-report-copy.md": "00c326d12e9297437421eeffa7147e8acae2434661afca4f43f03135b4f8b369",
+      "public-report-copy.md": "f9273fae840b86607cdd3a2225d0d3cbc2917faa4314cc91df3c6939ad3b4d80",
       "retryable-pixiv-gap-ledger.jsonl": "7b01cfca2ea252439f0bf66b2fcc109fdbc6ccc9b18cde86e4db71e34db6cbdf",
       "search-support-traces.jsonl": "48a846e0c78501b216d95100d92208c86601668fb36b44a32b872356eb273f45",
       "terminal-unavailable-evidence-ledger.jsonl": "f93c26534b85be5f9e857008499a322933a1f9f66a2655152b39fa28ad0031dd"
@@ -630,7 +630,7 @@
     "zip_member_count": 26,
     "zip_members_equal_current_manifest": true,
     "zip_path_label": "ml1-private-review-pack",
-    "zip_sha256": "fd5b6a8775fa73af6cc482e3112d4d09f1dd5e25f56c0ccd311e025f037c90e8"
+    "zip_sha256": "bcacb666321127792e1fd8e322cc947c1cc186939a5227d7c194ff758c24c656"
   },
   "title": "SCV2-ML1: Multilingual Alias and Source-Metadata Closure"
 }
