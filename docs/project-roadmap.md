@@ -33,12 +33,15 @@ additional terms disambiguate by media-level AND intersection. The primary ML1
 quality question is multilingual alias coverage and candidate-generation recall.
 See `docs/source-concept-tag-search-semantics.md`.
 
-PR #136 currently stops at
-`blocked_credential_rotation_confirmation_required`. Its corrected audit covers
-`2,285` canonical Pixiv candidate media and `2,235` works, with an exact
-`1,713`-work metadata-only manifest. That manifest is authorized only after the
-credential-rotation, old-secret fingerprint, and redacted authentication gates;
-no Pixiv/gallery-dl call has occurred. Continuous Pixiv-on-import completeness,
+PR #136 executed its exact `1,713`-work main and 3-work conflict metadata-only
+manifests in the isolated ML1 database under the explicit project-owner local
+credential-risk waiver. The final actual-data result is `2,155` complete works,
+`66` authenticated terminal works, and 14 exact local-p1/provider-p0 page
+mismatches; pending/retryable/missing are zero. Current status is
+`blocked_pixiv_acquisition_execution_incomplete`, with `target_met=false`,
+`safe_to_merge=false`, and `route_approved=false` until those 14 mismatches are
+governed without invented page links. No LLM, media download, production,
+Entity, or truth execution occurred. Continuous Pixiv-on-import completeness,
 production evidence promotion, and the bounded USD-10 LLM policy are defined in
 `docs/pixiv-metadata-ingestion-and-promotion-policy.md`.
 

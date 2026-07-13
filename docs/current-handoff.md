@@ -39,46 +39,43 @@ They are not generic proof of product-search failure.
 
 ## Current Boundary
 
-ML1 owns a read-only, zero-network audit of canonical Pixiv filename candidates,
-existing metadata and creator-field retention, real multilingual alias families,
-candidate-generation recall, and the application runtime's AND-search semantics.
-The primary unresolved quality question is multilingual alias coverage and
-candidate-generation recall.
+ML1 executed the exact Pixiv metadata-only route in the isolated
+`blombooru_scv2_ml1_acquisition_test_20260712` database under the project-owner
+`operator_accepted_local_credential_risk_v1` waiver. Credential rotation and
+old-secret fingerprint scanning were explicitly waived, not claimed complete.
+The default non-waived provider gate remains unchanged. gallery-dl 1.32.1 used
+the user-managed profile, `--dump-json --no-download`, argument-safe subprocess
+execution, checkpointing, and at least two-second spacing.
 
-The corrected ML1 re-audit in PR #136 currently stops at
-`blocked_credential_rotation_confirmation_required`:
+The final actual-data audit in PR #136 stops at
+`blocked_pixiv_acquisition_execution_incomplete`:
 
-- `2,285` canonical candidate media/pages and `2,235` distinct works are fully
-  accounted;
-- `527` media / `519` works have complete matching metadata;
-- `1,755` media have no durable attempt/result evidence, representing `1,713`
-  exact deduplicated incremental work requests;
-- `3` conflict media expose `9` field-token memberships across `3` distinct
-  unresolved works; no concrete extracted work ID disappears from accounting;
-- the real multilingual baseline separates `314` identity-eligible families
-  from `3,625` search-only families; unsupported runtime results are `0`, while
-  `303` identity candidate-generation gaps remain deferred;
-- no provider or LLM call occurred, no fixed/forbidden evidence changed, and the
-  ML1 contract passed for the honest blocked status.
+- all `2,285` candidate media / `2,235` works are accounted;
+- `2,196` media / `2,155` works are metadata complete;
+- `66` media / works have authenticated terminal-unavailable evidence;
+- pending, retryable, unexplained missing, auth, rate, and network final counts
+  are zero;
+- `11` normal-manifest works and all `3` conflict works remain exact
+  `provider_metadata_missing_attempted_local_page` cases: Pixiv returned the
+  correct work's p0 metadata while the local queue requires p1, so ML1 did not
+  invent a page link or winner;
+- `1,817` provider/gallery-dl requests are attributable to the exact governed
+  manifests, diagnostics, and corrected replay cycles; every attempted work has
+  exactly one final outcome and no systemic stop occurred;
+- main/conflict executable fingerprints are
+  `b7d5ba037ecd174cb727e1fc9a03a80d2f903301c2ad5f0eb2407725c2082516` and
+  `9c8a038b4e07930a6d75fc52dd33f2764630be275d1d2af81f2913df8b3bd17c`;
+- the real multilingual baseline is now `606` identity-eligible and `3,625`
+  search-only families, runtime equivalence `0.898133`, with `30` remaining ML2
+  candidate-generation gaps;
+- fixed/forbidden evidence remained unchanged, the executable ML1 contract
+  passed with zero errors/warnings, and the clean review pack has exact member
+  and checksum equality.
 
-The project owner has authorized the exact corrected Pixiv manifest in PR #136,
-but execution remains forbidden until affected credentials are rotated/revoked,
-new values remain only in the user-managed store, old-secret fingerprints scan
-clean, and `VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` is present. The private
-60-work owner sample remains optional deterministic diagnostic evidence; it is
-not a runtime gate, does not require row-by-row owner adjudication, and is not a
-human dependency in normal ingestion. The current environment does not contain
-the credential confirmation or compromised-secret fingerprint input, so no
-profile check, canary, or external request has run.
-
-The isolated acquisition database is
-`blombooru_scv2_ml1_acquisition_test_20260712`, cloned once from the accepted
-R2R snapshot. Pre-credential preparation records 1,713 pending acquisition
-works plus 3 separately governed conflicts. Deterministic creator backfill
-accounts for 536 stable IDs, 545 display names, 459 accounts, and 536 raw or
-derived profile identities; name/account search support is 1.0 and silent field
-drop is zero. Current status remains
-`blocked_credential_rotation_confirmation_required`.
+The optional owner sample remains historical stage evidence, not a runtime or
+merge gate. Current claims are `target_met=false`, `safe_to_merge=false`, and
+`route_approved=false`. Project-lead adjudication must decide how to correct or
+explicitly govern the 14 local p1/provider p0 mismatches before merge or ML2.
 
 Potential future phase `PX-REC1: Archived Source Metadata Recovery` remains
 deferred until authenticated Pixiv acquisition measures the actual terminal

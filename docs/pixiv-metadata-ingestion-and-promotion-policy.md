@@ -19,12 +19,15 @@ checkpoint/resume; no hidden daemon is allowed.
 
 ## Acquisition Safety
 
-External execution requires rotated credentials, the non-secret
-`VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` confirmation. The deterministic
-owner sample remains optional stage evidence and is not a runtime gate or a
-per-item human dependency in normal ingestion. After credential confirmation,
-execution still requires a clean scan against known compromised-secret SHA-256 fingerprints and
-a redacted authentication preflight. gallery-dl execution is metadata-only (`--dump-json --no-download`),
+External execution normally requires rotated credentials, the non-secret
+`VIOLET_CREDENTIAL_ROTATION_CONFIRMED=true` confirmation, a clean known-secret
+fingerprint scan, and a redacted authentication preflight. PR #136 additionally
+permits the explicit `operator_accepted_local_credential_risk_v1` waiver only
+for the exact isolated ML1 test database, with production/Entity/truth writes
+and downloads disabled. The waiver does not claim rotation occurred and does
+not weaken the default future-provider gate. The deterministic owner sample
+remains optional stage evidence and is not a runtime gate or a per-item human
+dependency in normal ingestion. gallery-dl execution is metadata-only (`--dump-json --no-download`),
 uses at least two-second request spacing, at most three bounded attempts per
 work, stops after exhausted retryable/systemic failures, has no fallback
 provider, and never downloads/imports media.
