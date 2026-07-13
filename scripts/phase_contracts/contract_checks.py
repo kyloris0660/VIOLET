@@ -3634,6 +3634,8 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
                 _as_int(pixiv.get("retryable_work_count"), default=0)
                 + _as_int(pixiv.get("missing_work_count"), default=0)
                 + _as_int(pixiv.get("conflict_unresolved_work_count"), default=0)
+                + _as_int(pixiv.get("normalization_failed_work_count"), default=0)
+                + _as_int(pixiv.get("provider_identity_mismatch_work_count"), default=0)
             ) > 0
         )
     elif status == "blocked_creator_metadata_loss":
@@ -3690,6 +3692,13 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
                 known_blockers.add("blocked_credential_rotation_confirmation_required")
             if waiver_active or rotation_active:
                 known_blockers.add("blocked_pixiv_acquisition_execution_incomplete")
+    if (
+        _as_int(pixiv.get("normalization_failed_work_count"), default=0)
+        + _as_int(pixiv.get("provider_identity_mismatch_work_count"), default=0)
+        + _as_int(pixiv.get("conflict_unresolved_work_count"), default=0)
+        > 0
+    ):
+        known_blockers.add("blocked_pixiv_acquisition_execution_incomplete")
     if _as_int(creator.get("silently_dropped_creator_field_count"), default=0) > 0:
         known_blockers.add("blocked_creator_metadata_loss")
     if multilingual.get("actual_runtime_search_used") is not True or multilingual.get("synthetic_alias_media_propagation_used") is not False:

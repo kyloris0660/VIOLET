@@ -1946,7 +1946,7 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Contract status: `{summary['pipeline_contract']['status']}`.",
             f"- Active blockers: `{summary['pipeline_contract']['active_blockers']}`.",
             f"- Evidence code SHA: `{summary['evidence_code_sha']}`.",
-            "- Initial execution: read-only, zero-network, accepted R2R evidence reused.",
+            f"- Provider execution requests: `{summary.get('operation_counts', {}).get('gallery_dl_calls', 0)}`; accepted R2R evidence remained immutable.",
             "",
             "## Corrected search semantics",
             "",
@@ -1961,10 +1961,10 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Conflict media / field-token memberships / distinct works / unresolved works: `{pixiv['filename_identity_conflict_media_count']}` / `{pixiv['filename_identity_conflict_token_count']}` / `{pixiv['filename_identity_conflict_distinct_work_count']}` / `{pixiv['conflict_unresolved_work_count']}`.",
             f"- Origin breakdown: `{pixiv['origin_breakdown']}`; agreement: `{pixiv['origin_agreement_counts']}`.",
             f"- Incremental acquisition required: `{pixiv['incremental_acquisition_required']}`; corrected exact work requests: `{pixiv['projected_gallery_dl_request_count']}`.",
-            f"- Pixiv acquisition authorized / credential rotation confirmed: `{summary['route_authorization']['pixiv_acquisition_authorized']}` / `{summary['credential_safety']['rotation_confirmation_present']}`.",
+            f"- Pixiv acquisition authorized / credential rotation confirmed / local-risk waiver: `{summary['route_authorization']['pixiv_acquisition_authorized']}` / `{summary['credential_safety']['rotation_confirmation_present']}` / `{summary['credential_safety'].get('policy') == 'operator_accepted_local_credential_risk_v1'}`.",
             f"- Continuous import gate implemented / current stock closed: `{summary['pixiv_metadata_foundation']['continuous_ingestion_gate_implemented']}` / `{summary['pixiv_metadata_foundation']['current_stock_closed']}`.",
             "",
-            "## Owner sample gate",
+            "## Optional owner sample evidence",
             "",
             f"- Sample generated / size / conflicts exported: `{owner_sample['sample_generated']}` / `{owner_sample['sample_size']}` / `{owner_sample['conflict_cases_exported']}`.",
             f"- Owner-review manifest fingerprint: `{owner_sample.get('owner_review_manifest_fingerprint', owner_sample.get('sample_manifest_fingerprint', 'not_generated'))}`.",
@@ -2004,7 +2004,7 @@ def render_report(summary: Mapping[str, Any]) -> str:
             "",
             "## Safety boundary",
             "",
-            "No gallery-dl, Pixiv, provider, LLM, production, Entity, truth, media-import, AI-tagging, classification, or localization operation occurred. Raw names, IDs, URLs, filenames, and local paths remain only in ignored private artifacts.",
+            "Pixiv/gallery-dl execution was metadata-only in the isolated ML1 database. No media download, LLM, production, Entity, truth, media-import, AI-tagging, classification, or localization operation occurred. Raw names, IDs, URLs, filenames, and local paths remain only in ignored private artifacts.",
             f"Acquisition manifest / requests / gallery-dl calls: `{acquisition['acquisition_manifest_distinct_work_count']}` / `{acquisition['provider_request_attempt_count']}` / `{acquisition['gallery_dl_call_count']}`.",
             f"Production evidence manifest generated / derived graph recomputation required: `{summary['production_promotion']['reusable_evidence_manifest_generated']}` / `{summary['production_promotion']['derived_graph_recomputation_required']}`.",
             f"Default bounded LLM policy / aggregate cap: `{summary['llm_budget_policy']['policy_version']}` / `${summary['llm_budget_policy']['aggregate_execution_limit_usd']}`.",
@@ -2158,6 +2158,14 @@ def determine_status(
                 hard_blockers.append("blocked_credential_rotation_confirmation_required")
             if credential_safety_gate_satisfied:
                 hard_blockers.append("blocked_pixiv_acquisition_execution_incomplete")
+    if (
+        int(pixiv.get("normalization_failed_work_count") or 0)
+        + int(pixiv.get("provider_identity_mismatch_work_count") or 0)
+        + int(pixiv.get("conflict_unresolved_work_count") or 0)
+        > 0
+        and "blocked_pixiv_acquisition_execution_incomplete" not in hard_blockers
+    ):
+        hard_blockers.append("blocked_pixiv_acquisition_execution_incomplete")
     if int(creator.get("silently_dropped_creator_field_count") or 0) > 0:
         deferred_blockers.append("blocked_creator_metadata_loss")
     if not multi.get("actual_runtime_search_used") or multi.get("synthetic_alias_media_propagation_used"):
