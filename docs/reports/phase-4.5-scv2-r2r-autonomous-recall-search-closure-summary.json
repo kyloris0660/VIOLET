@@ -12227,6 +12227,17 @@
     "truth_promotion_authorized": false
   },
   "run_id": "r2r-20260711-zero-provider-closeout-final",
+  "search_semantics_interpretation_erratum": {
+    "and_search_is_media_level_intersection": true,
+    "cannot_link_blocks_direct_supported_matches": false,
+    "cannot_linked_search_contamination_count_classification": "historical_overly_restrictive_one_name_one_family_diagnostic",
+    "false_broad_union_indicator_count_classification": "historical_overly_restrictive_one_name_one_family_diagnostic",
+    "historical_numeric_fields_preserved": true,
+    "identity_union_is_search_result_union": false,
+    "next_phase": "SCV2-ML1",
+    "old_interpretation_superseded": true,
+    "shared_bare_name_results_are_legitimate_when_supported": true
+  },
   "search_benchmark": {
     "benchmark_uses_persisted_runtime_index": true,
     "benchmark_version": "r2r_automated_search_benchmark_v2_independent_universe_complete_cannot",

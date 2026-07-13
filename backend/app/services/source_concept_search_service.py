@@ -55,7 +55,10 @@ FORBIDDEN_TRUTH_PATHS = (
 MAX_SEARCH_EXPANSIONS_PER_TERM = 8
 MAX_ALIASES_PER_CONCEPT = 18
 MAX_EVIDENCE_ITEMS_PER_CONCEPT = 12
-R2R_FALLBACK_INDEX_VERSION = "source_concept_deferred_overlay_v1"
+# V2 keeps cannot-link diagnostics but no longer globally suppresses direct
+# same-name evidence. Rebuild only on an isolated ML1 clone; accepted R2R rows
+# remain immutable historical evidence.
+R2R_FALLBACK_INDEX_VERSION = "source_concept_deferred_overlay_v2_shared_name_union"
 R2R_FALLBACK_DISPOSITION_VERSION = "r2r_machine_disposition_v1"
 REDACTED_TEXT = "[redacted source value]"
 MEDIA_EXTENSION_PARTS = (
@@ -252,9 +255,9 @@ def _query_search_index_concept_ids(
         .distinct()
         .all()
     )
-    # Identity search may only return concepts directly matched by their own
-    # materialized alias rows. Shared surface text must not recursively union
-    # sibling concepts because those siblings may be cannot-linked.
+    # Identity search returns every concept directly matched by its own
+    # materialized alias row. A shared surface key may therefore return media
+    # from several cannot-linked concepts; result union is not identity union.
     return sorted({int(row[0]) for row in rows})
 
 
@@ -406,8 +409,6 @@ def rebuild_source_concept_fallback_search_index(
                 if value
             }
         ):
-            if alias_key in blocked_alias_pairs:
-                continue
             key = (
                 alias_key,
                 int(signal.media_id),
@@ -461,8 +462,6 @@ def rebuild_source_concept_fallback_search_index(
                     if value
                 }
             ):
-                if alias_key in blocked_alias_pairs:
-                    continue
                 key = (
                     alias_key,
                     int(target_signal.media_id),
@@ -642,31 +641,18 @@ def source_concept_media_condition_for_term(
     """Return a read-only Media condition for SourceConcept expansion."""
 
     keys = _search_keys_for_term(term)
-    blocked_keys = _blocked_cannot_alias_keys(db, keys)
-    safe_keys = keys - blocked_keys
     concept_ids = _query_search_index_concept_ids(
         db,
         term,
         include_needs_review=include_needs_review,
     )
-    if blocked_keys:
-        concept_ids = [
-            int(row[0])
-            for row in (
-                db.query(SourceConceptSearchIndex.concept_id)
-                .filter(SourceConceptSearchIndex.concept_id.in_(concept_ids or [-1]))
-                .filter(SourceConceptSearchIndex.search_key.in_(sorted(safe_keys or {"__blocked__"})))
-                .distinct()
-                .all()
-            )
-        ]
     identity_condition = _source_concept_media_condition(
         concept_ids,
         include_needs_review=include_needs_review,
     )
-    if not include_evidence_fallback or not safe_keys:
+    if not include_evidence_fallback or not keys:
         return identity_condition
-    overlay_media_ids = _overlay_fallback_media_ids(db, safe_keys)
+    overlay_media_ids = _overlay_fallback_media_ids(db, keys)
     evidence_fallback_condition = Media.id.in_(sorted(overlay_media_ids)) if overlay_media_ids else None
     if identity_condition is None:
         return evidence_fallback_condition
@@ -690,24 +676,11 @@ def source_layer_search_path_media_ids(
     """
 
     keys = _search_keys_for_term(term)
-    blocked_keys = _blocked_cannot_alias_keys(db, keys)
-    safe_keys = keys - blocked_keys
     concept_ids = _query_search_index_concept_ids(
         db,
         term,
         include_needs_review=include_needs_review,
     )
-    if blocked_keys:
-        concept_ids = [
-            int(row[0])
-            for row in (
-                db.query(SourceConceptSearchIndex.concept_id)
-                .filter(SourceConceptSearchIndex.concept_id.in_(concept_ids or [-1]))
-                .filter(SourceConceptSearchIndex.search_key.in_(sorted(safe_keys or {"__blocked__"})))
-                .distinct()
-                .all()
-            )
-        ]
     identity_ids: set[int] = set()
     if concept_ids:
         statuses = _status_scope(include_needs_review)
@@ -740,9 +713,9 @@ def source_layer_search_path_media_ids(
         )
 
     fallback_ids: set[int] = set()
-    if include_evidence_fallback and safe_keys:
+    if include_evidence_fallback and keys:
         fallback_ids.update(
-            _overlay_fallback_media_ids(db, safe_keys)
+            _overlay_fallback_media_ids(db, keys)
         )
     return {
         "identity": identity_ids,

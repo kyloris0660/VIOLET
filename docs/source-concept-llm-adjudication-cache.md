@@ -91,3 +91,8 @@ versions. Each successful judgment is atomically persisted immediately.
 Provider failures go only to the failure ledger, do not overwrite successful
 records, and remain unaccounted until retry or an explicitly contracted
 machine-defer policy. Final evidence regeneration must be cache-only.
+
+SCV2-ML1 reuses all 3,319 accepted R2R dispositions. Its initial audit must not
+initialize or call an LLM. Only genuinely new candidate pairs discovered by the
+multilingual recall audit may enter a new exact manifest, cost projection, and
+`blocked_llm_approval_required` gate. A Pixiv metadata gap is not an LLM gap.

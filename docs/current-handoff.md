@@ -1,35 +1,75 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> SCV2-R2R zero-provider closeout in PR #135.
+> PR #136 closes SCV2-ML1 as a project-lead-governed partial Pixiv metadata
+> foundation. Final merge adjudication remains with the project lead.
 
 ## Canonical State
 
 | Item | Value |
 |------|-------|
-| Phase | `SCV2-R2R: Autonomous Recall and Search Closure` |
-| Status | `partial_autonomous_closure` |
-| Source DB | `blombooru_scv2_r2_review4_test_20260710` |
-| Working DB | `blombooru_scv2_r2r_dryrun_test_20260710` |
-| Candidate accounting | `3319 = 1522 must_link + 1791 cannot_link + 6 deferred_nonblocking` |
-| Materialized SourceConcept / needs_review | `1083 / 0` |
+| Accepted baseline | PR #135 / `5bbbb8ff13b140ea77a839757603714bfdd87181` |
+| Current phase | `SCV2-ML1: Multilingual Alias and Source-Metadata Closure` |
+| Accepted R2R DB | `blombooru_scv2_r2r_dryrun_test_20260710` (immutable) |
+| Isolated ML1 DB | `blombooru_scv2_ml1_acquisition_test_20260712` |
+| R2R dispositions | `3319 = 1522 must_link + 1791 cannot_link + 6 deferred_nonblocking` |
+| SourceConcept / needs_review | `1083 / 0` |
 
-Candidate closure, autonomous materialization, and graph safety are accepted.
-All 12,249 signals remain retained; no human review queue exists. The source-layer
-evidence fallback is experimental, persisted/indexed, and disabled by default.
-PR #135 must not claim search closure or production/full-library readiness.
+R2R's 3,319 dispositions and 12,249 signals remain immutable.
+Search-result union is not identity union; additional query terms use
+media-level AND intersection.
 
-## Stop Boundary And Next Route
+## ML1 Final Evidence
 
-- Complete PR #135 only as an honest partial foundation; do not merge automatically.
-- The sole recommended next phase is `SCV2-SR1: Context-Aware Disambiguated Source Search`.
-- SR1 is documentation-only here and has not started.
-- PX1-B, Provider-2, scale-up, Entity bridge, production, full-library execution,
-  metadata reacquisition, and truth promotion remain unauthorized.
+PR #136 executed the exact 1,713-work main and 3-work conflict metadata-only
+manifests under `operator_accepted_local_credential_risk_v1`. Historical
+Pixiv/gallery-dl requests remain 1,817; no downloads/imports occurred.
+
+- candidate media / works: `2,285 / 2,235`;
+- complete media / works: `2,201 / 2,155`;
+- terminal media / works: `66 / 66`;
+- deferred absent-page rows / works: `18 / 14`;
+- work equation: `2,235 = 2,155 complete + 66 terminal + 14 deferred`;
+- pending, retryable, missing, normalization failure, provider mismatch, and
+  blocking conflict: all `0`;
+- closeout external-call delta: `0`.
+
+Page-local governance completed 5 of the original 23 deferred rows because the
+exact provider page was present; only 18 absent-page rows remain deferred. It
+created no unsupported page link or conflict winner and preserved raw history.
+
+Trusted-parent governance superseded 26 affected creator-name observations with
+only an untrusted Pixiv parent, preserved 26 out-of-scope historical/manual-static
+observations, and finished at 0 untrusted-parent observations. The persisted
+`creator_account` audit reports 2,108 raw, retained, and trusted query-visible
+values with 0 silent drops.
+
+Final contract: `partial_ml1_pixiv_metadata_foundation_complete`,
+`target_met=false`, `safe_to_merge=true`, `route_approved=true`,
+`active_blockers=[]`. Keep the ignored manifests, checkpoints, ledgers,
+owner-review artifacts, and review pack as required provenance.
+
+## Next Boundary
+
+Only separately governed `SCV2-ML2: Multilingual Identity Candidate Closure` is
+route-approved: 606 identity-eligible families, 3,642 search-only families,
+runtime equivalence 0.897363, and 30 candidate-generation gaps. SourceConcept
+remains source-layer only; semantic completeness is not an ML1 requirement.
+
+Future gates own the six deferred hardening items:
+`PRE-NEXT-PROVIDER-EXECUTION-HARDENING` (spacing, scope keys, conflict mismatch,
+terminal ordering), `CONTROLLED-SCALE-AUDIT-DEBT` (denominator), and
+`PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING` (delimiter scanning). Current
+overlap/provider mismatch/systemic stop are 0 and no provider call is authorized
+in this closeout or ML2.
+
+Further metadata acquisition, PX1-B, Provider-2/PX-REC1, scale/full-library,
+Entity/truth, production, import, AI tagging, classification, and localization
+remain unauthorized. The terminal category `66 / 1,716` is not a pure deletion
+rate.
 
 ## Durable Links
 
-- Policy: `docs/source-concept-autonomous-resolution-policy.md`.
-- Contract: `docs/phase-contracts.md`.
-- Roadmap: `docs/roadmap/current-mainline-roadmap.md`.
-- Report: `docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure.md`.
-- Summary: `docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure-summary.json`.
+- [Current roadmap](roadmap/current-mainline-roadmap.md)
+- [Pixiv policy](pixiv-metadata-ingestion-and-promotion-policy.md)
+- [Phase contracts](phase-contracts.md)
+- [ML1 report](reports/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure.md)

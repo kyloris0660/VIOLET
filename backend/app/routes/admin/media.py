@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from ...auth import get_current_admin_user, require_admin_mode
 from ...config import settings
 from ...database import get_db
-from ...models import Media, ScanJob, User
+from ...models import Media, ScanJob, ScanJobMedia, User
+from ...services.pixiv_metadata_ingestion_service import summarize_batch_closure
 from ...utils.file_scanner import find_untracked_media
 from ...utils.local_library_scanner import (
     is_job_active,
@@ -99,7 +100,33 @@ async def scan_local_library(
     return result
 
 
-def _serialize_job(job: ScanJob) -> dict:
+def _source_metadata_job_status(job: ScanJob, db: Session | None) -> dict:
+    if db is None or job.id is None or job.status not in {"completed", "failed", "cancelled", "interrupted"}:
+        return {"source_metadata_status": "not_evaluated", "source_metadata_open_count": 0, "source_metadata_blocked": False}
+    media_ids = [int(row[0]) for row in db.query(ScanJobMedia.media_id).filter(ScanJobMedia.scan_job_id == job.id).all()]
+    closure = summarize_batch_closure(db, media_ids)
+    lifecycle = closure.get("lifecycle_counts") or {}
+    if not closure.get("pixiv_candidate_count"):
+        status = "not_applicable"
+    elif closure.get("closed"):
+        status = "complete"
+    elif int(lifecycle.get("normalization_failed", 0)):
+        status = "normalization_failed"
+    elif int(lifecycle.get("conflict", 0)):
+        status = "conflict"
+    elif int(lifecycle.get("retryable", 0)):
+        status = "retryable"
+    else:
+        status = "pending"
+    return {
+        "source_metadata_status": status,
+        "source_metadata_open_count": int(closure.get("open_candidate_count", 0)),
+        "source_metadata_blocked": bool(closure.get("pixiv_candidate_count", 0))
+        and not bool(closure.get("closed", False)),
+    }
+
+
+def _serialize_job(job: ScanJob, db: Session | None = None) -> dict:
     """Convert a ScanJob ORM object to a JSON-safe dict."""
     failed_files = []
     if job.failed_files_json:
@@ -142,6 +169,7 @@ def _serialize_job(job: ScanJob) -> dict:
         "limit_reached": job.limit_reached,
         "failed_files": failed_files,
         "error_message": job.error_message,
+        **_source_metadata_job_status(job, db),
     }
 
 
@@ -179,7 +207,7 @@ async def create_scan_job(
     t = threading.Thread(target=run_scan_job, args=(job.id,), daemon=True)
     t.start()
 
-    return _serialize_job(job)
+    return _serialize_job(job, db)
 
 
 @router.get("/scan-local-library/jobs")
@@ -199,7 +227,7 @@ async def list_scan_jobs(
         .limit(20)
         .all()
     )
-    return [_serialize_job(j) for j in jobs]
+    return [_serialize_job(j, db) for j in jobs]
 
 
 @router.get("/scan-local-library/jobs/{job_id}")
@@ -212,7 +240,7 @@ async def get_scan_job(
     job = db.query(ScanJob).get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Scan job not found")
-    return _serialize_job(job)
+    return _serialize_job(job, db)
 
 
 @router.post("/scan-local-library/jobs/{job_id}/cancel")
@@ -240,7 +268,7 @@ async def cancel_scan_job(
 
     request_cancel(job_id)
 
-    return _serialize_job(job)
+    return _serialize_job(job, db)
 
 
 @router.post("/scan-local-library/preflight")
@@ -286,7 +314,7 @@ async def preflight_scan(
     db.commit()
     db.refresh(job)
 
-    serialized = _serialize_job(job)
+    serialized = _serialize_job(job, db)
     serialized["estimated_size_bytes"] = result.get("estimated_size_bytes", 0)
     serialized["largest_file_bytes"] = result.get("largest_file_bytes", 0)
     serialized["extensions"] = result.get("extensions", {})

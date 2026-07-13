@@ -210,6 +210,14 @@ def _summary(*, target: bool = True) -> dict:
                 "identity_union_allowed": False,
             },
         },
+        "search_semantics_interpretation_erratum": {
+            "old_interpretation_superseded": True,
+            "historical_numeric_fields_preserved": True,
+            "identity_union_is_search_result_union": False,
+            "shared_bare_name_results_are_legitimate_when_supported": True,
+            "and_search_is_media_level_intersection": True,
+            "cannot_link_blocks_direct_supported_matches": False,
+        },
         "checkpoint_proof": {
             "durable_checkpoint_passed": True,
             "atomic_per_success_persistence": True,
@@ -264,8 +272,7 @@ def test_r2r_cache_only_approval_block_is_truthful_and_noncompleting() -> None:
         (("automation_invariants", "manual_review_queue_generated"), True, "r2r_human_review_dependency_present"),
         (("materialization_projection", "materialized_needs_review_count"), 1, "r2r_materialization_projection_failed"),
         (("graph_invariants", "transitive_cannot_violation_count"), 1, "r2r_constraint_regression"),
-        (("search_benchmark", "cannot_linked_search_contamination_count"), 1, "r2r_search_target_failed"),
-        (("search_benchmark", "false_broad_union_indicator_count"), 1, "r2r_search_target_failed"),
+        (("search_semantics_interpretation_erratum", "identity_union_is_search_result_union"), True, "r2r_search_semantics_erratum_missing"),
         (("checkpoint_proof", "final_regeneration_cache_only"), False, "r2r_llm_checkpoint_incomplete"),
     ],
 )
@@ -826,6 +833,43 @@ def test_candidate_manifest_deduplicates_before_emergency_ceiling() -> None:
         "duplicate-stronger",
         "later-unique",
     }
+
+
+def test_representative_edge_prefers_stronger_semantics_over_non_union_flag() -> None:
+    signals = [_signal("left", "Alias Name"), _signal("right", "Alias Name")]
+    edges = [
+        SourceConceptEdgeDraft(
+            edge_key="weak-non-union-cooccurrence",
+            left_signal_key="left",
+            right_signal_key="right",
+            edge_type="cooccurrence_context",
+            weight=0.95,
+            evidence_source="same_media_weak",
+            status="needs_review",
+            resolution_reason_code="cooccurrence_only",
+            negative_reason_code=None,
+            union_allowed=False,
+            payload={},
+        ),
+        SourceConceptEdgeDraft(
+            edge_key="strong-exact-source-backed",
+            left_signal_key="right",
+            right_signal_key="left",
+            edge_type="exact_canonical_key",
+            weight=0.7,
+            evidence_source="provider_exact",
+            status="needs_review",
+            resolution_reason_code="exact_source_key",
+            negative_reason_code=None,
+            union_allowed=True,
+            payload={},
+        ),
+    ]
+
+    candidates = build_candidate_pair_manifest(edges, signals=signals)
+
+    assert len(candidates) == 1
+    assert candidates[0].edge_key == "strong-exact-source-backed"
 
 
 def test_projection_eliminates_materialized_needs_review_without_dropping_signals() -> None:
@@ -1530,7 +1574,7 @@ def test_fallback_index_uses_one_endpoint_eligibility_policy(db_session) -> None
     assert rejected_paths["evidence_fallback"] == set()
 
 
-def test_cannot_ambiguous_alias_guard_blocks_identity_and_fallback_paths(db_session) -> None:
+def test_cannot_ambiguous_alias_guard_preserves_direct_shared_name_results(db_session) -> None:
     left_draft = replace(_signal("guard-left", "Shared Guard"), media_id=None)
     right_draft = replace(_signal("guard-right", "Shared Guard"), media_id=None)
     left = _persist_benchmark_signal(db_session, left_draft, "guard-left")
@@ -1547,12 +1591,16 @@ def test_cannot_ambiguous_alias_guard_blocks_identity_and_fallback_paths(db_sess
     )
     db_session.commit()
 
-    paths = source_layer_search_path_media_ids(db_session, "Shared Guard")
+    paths = source_layer_search_path_media_ids(
+        db_session,
+        "Shared Guard",
+        include_evidence_fallback=True,
+    )
 
     assert proof["blocked_cannot_alias_key_count"] == 1
     assert paths["identity"] == set()
-    assert paths["evidence_fallback"] == set()
-    assert paths["combined"] == set()
+    assert paths["evidence_fallback"] == {left.media_id, right.media_id}
+    assert paths["combined"] == {left.media_id, right.media_id}
 
 
 def _persist_benchmark_signal(db_session, draft: SourceConceptSignalDraft, suffix: str) -> SourceConceptSignal:
@@ -1592,7 +1640,7 @@ def _persist_benchmark_signal(db_session, draft: SourceConceptSignalDraft, suffi
     return row
 
 
-def test_broad_union_metric_uses_independent_allowed_family_universe(db_session) -> None:
+def test_historical_broad_union_metric_is_not_a_product_failure_gate(db_session) -> None:
     left = replace(
         _signal("broad-left", "Alias One"),
         canonical_key="family_alias",
@@ -1679,11 +1727,10 @@ def test_broad_union_metric_uses_independent_allowed_family_universe(db_session)
         "false_broad_union_indicator_count"
     ]
     contract = check_phase_contract(CONTRACT_ID, summary)
-    assert not contract.passed
-    assert "r2r_search_target_failed" in {finding.code for finding in contract.errors}
+    assert contract.passed, [finding.to_dict() for finding in contract.errors]
 
 
-def test_new_current_cannot_disposition_contaminates_fallback_benchmark(db_session) -> None:
+def test_current_cannot_disposition_does_not_suppress_direct_shared_name_results(db_session) -> None:
     left = replace(_signal("cannot-left", "Shared Name"), media_id=None)
     right = replace(_signal("cannot-right", "Shared Name"), media_id=None)
     left_row = _persist_benchmark_signal(db_session, left, "cannot-left")
@@ -1741,4 +1788,6 @@ def test_new_current_cannot_disposition_contaminates_fallback_benchmark(db_sessi
         legacy_seed_groups_override={},
     )
     assert guarded["blocked_cannot_ambiguous_alias_key_count"] == 1
-    assert guarded["cannot_linked_search_contamination_count"] == 0
+    # This historical metric still counts supported cross-component union, but
+    # ML1 no longer treats the count as product-search contamination.
+    assert guarded["cannot_linked_search_contamination_count"] > 0

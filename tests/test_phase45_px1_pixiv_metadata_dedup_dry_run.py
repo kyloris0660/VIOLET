@@ -58,6 +58,29 @@ def test_pixiv_id_extraction_from_filename() -> None:
     assert [(match.work_id, match.page_index) for match in matches] == [("123456789", 12)]
 
 
+def test_gallery_dl_normalization_preserves_creator_id_name_account_and_profile() -> None:
+    item = candidate(1, filename="123456789_p0.png")
+    normalized = px1.normalize_gallery_dl_metadata(
+        [
+            {
+                "id": 123456789,
+                "num": 0,
+                "title": "fixture",
+                "user": {"id": 456, "name": "Display Name", "account": "creator_handle"},
+            }
+        ],
+        candidate=item,
+        raw_stdout_path=None,
+    )
+
+    assert normalized is not None
+    assert normalized["artist_id"] == "456"
+    assert normalized["artist_name"] == "Display Name"
+    assert normalized["artist_account"] == "creator_handle"
+    assert normalized["artist_profile_url"] == "https://www.pixiv.net/users/456"
+    assert normalized["raw_metadata_json"]["user"]["account"] == "creator_handle"
+
+
 def test_pixiv_like_candidate_classification_from_mock_row() -> None:
     row = {
         "id": 10,

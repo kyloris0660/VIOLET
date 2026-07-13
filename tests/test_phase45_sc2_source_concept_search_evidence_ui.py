@@ -32,9 +32,12 @@ from app.models import (  # noqa: E402
     SourceConcept,
     SourceConceptAlias,
     SourceConceptEvidence,
+    SourceConceptFallbackSearchIndex,
     SourceConceptSearchIndex,
     SourceConceptSignal,
     SourceConceptSignalLink,
+    SourceMetadataRecord,
+    SourceNameObservation,
     Tag,
     TagTranslation,
     blombooru_media_tags,
@@ -337,6 +340,126 @@ def test_source_concept_alias_expands_search_and_reports_reason(client, db):
     assert expansion["truth_writes_allowed"] is False
     assert expansion["source_layer_label"] == "unconfirmed source-layer"
     assert {alias["search_key"] for alias in expansion["matched_aliases"]} == {canonical_source_key(AYAKA_JA)}
+
+
+def test_runtime_shared_name_union_and_media_level_and_disambiguation(client, db):
+    media_a = create_media(db, "shared-a", [("work_a", TagCategoryEnum.copyright)])
+    media_b = create_media(db, "shared-b", [("work_b", TagCategoryEnum.copyright)])
+    concept_a = add_source_concept(
+        db,
+        [media_a],
+        display_name="Identity A",
+        concept_key="character:identity-a",
+        aliases=["temp001"],
+    )
+    concept_b = add_source_concept(
+        db,
+        [media_b],
+        display_name="Identity B",
+        concept_key="character:identity-b",
+        aliases=["temp001"],
+    )
+    signal_a = db.query(SourceConceptSignal).filter(SourceConceptSignal.media_id == media_a.id).one()
+    signal_b = db.query(SourceConceptSignal).filter(SourceConceptSignal.media_id == media_b.id).one()
+    db.add(
+        SourceConceptFallbackSearchIndex(
+            alias_key=canonical_source_key("temp001"),
+            media_id=media_a.id,
+            source_signal_id=signal_a.id,
+            neighbor_signal_id=signal_b.id,
+            pair_id="c" * 64,
+            relation="cannot_link",
+            overlay_version=concept_search_service.R2R_FALLBACK_INDEX_VERSION,
+            disposition_version=concept_search_service.R2R_FALLBACK_DISPOSITION_VERSION,
+            role_hint="constraint_guard",
+            work_context_key=None,
+            provenance_payload={"identity_union_allowed": False},
+            status="blocked",
+            run_id="ml1-shared-name-fixture",
+        )
+    )
+    db.commit()
+    identity_before = {
+        "concepts": db.query(SourceConcept).count(),
+        "links": db.query(SourceConceptSignalLink).count(),
+    }
+
+    bare = client.get("/api/search", params={"q": "temp001", "limit": 100})
+    work_a = client.get("/api/search", params={"q": "temp001 work_a", "limit": 100})
+    work_b = client.get("/api/search", params={"q": "temp001 work_b", "limit": 100})
+
+    assert result_ids(bare) == {media_a.id, media_b.id}
+    assert result_ids(work_a) == {media_a.id}
+    assert result_ids(work_b) == {media_b.id}
+    assert concept_a.id != concept_b.id
+    assert db.query(SourceConcept).count() == identity_before["concepts"]
+    assert db.query(SourceConceptSignalLink).count() == identity_before["links"]
+
+
+def test_exact_pixiv_creator_and_work_title_are_default_search_support(client, db):
+    media = create_media(db, "exact-pixiv-creator-work")
+    record = SourceMetadataRecord(
+        provider="pixiv",
+        provider_record_key="pixiv-fixture:creator-work",
+        media_id=media.id,
+        source_work_id="123456789",
+        source_page_index=0,
+        title="Fixture Work Title",
+        artist_name="Fixture Creator",
+        artist_id="42",
+        raw_metadata_json={"user": {"id": 42, "name": "Fixture Creator"}},
+        status="observed",
+    )
+    db.add(record)
+    db.flush()
+    observations = [
+        SourceNameObservation(
+            source_metadata_record_id=record.id,
+            provider="pixiv",
+            observation_key="pixiv-fixture:creator",
+            media_id=media.id,
+            source_work_id="123456789",
+            source_page_index=0,
+            raw_name="Fixture Creator",
+            normalized_name="Fixture Creator",
+            canonical_name_key=canonical_source_key("Fixture Creator"),
+            name_role="artist",
+            source_field="pixiv_user_metadata",
+            requires_review=True,
+            status="observed",
+        ),
+        SourceNameObservation(
+            source_metadata_record_id=record.id,
+            provider="pixiv",
+            observation_key="pixiv-fixture:work",
+            media_id=media.id,
+            source_work_id="123456789",
+            source_page_index=0,
+            raw_name="Fixture Work Title",
+            normalized_name="Fixture Work Title",
+            canonical_name_key=canonical_source_key("Fixture Work Title"),
+            name_role="work_title",
+            source_field="pixiv_title",
+            requires_review=True,
+            status="observed",
+        ),
+    ]
+    db.add_all(observations)
+    db.commit()
+
+    response = client.get(
+        "/api/search",
+        params={"q": '"Fixture Creator" "Fixture Work Title"'},
+    )
+    assert result_ids(response) == {media.id}
+
+    observations[1].status = "rejected"
+    db.commit()
+    rejected = client.get(
+        "/api/search",
+        params={"q": '"Fixture Creator" "Fixture Work Title"'},
+    )
+    assert result_ids(rejected) == set()
 
 
 def test_normal_tag_results_are_preserved_when_alias_also_matches(client, db):

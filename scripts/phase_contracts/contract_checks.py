@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .contract_registry import (
+    ML1_MULTILINGUAL_ALIAS_SOURCE_METADATA_CLOSURE_STATUSES,
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES,
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
     R2R_AUTONOMOUS_RECALL_SEARCH_CLOSURE_STATUSES,
@@ -2979,12 +2980,6 @@ def _check_r2r_autonomous_recall_search_closure(
             "symmetry_improved_vs_r2": True,
             "unmatched_seeds_decreased_vs_r2": True,
             "average_overlap_improved_vs_r2": True,
-            "cannot_linked_search_contamination_count": 0,
-            "false_broad_union_indicator_count": 0,
-            "seeds_with_false_broad_union": 0,
-            "unexpected_media_count": 0,
-            "identity_path_cannot_contamination_count": 0,
-            "evidence_fallback_cannot_contamination_count": 0,
             "giant_component_recurrence": False,
         }.items():
             actual = search.get(key, MISSING)
@@ -2992,11 +2987,28 @@ def _check_r2r_autonomous_recall_search_closure(
             if not valid:
                 result.fail(
                     "r2r_search_target_failed",
-                    "R2R target requires improved dual-path search without contamination or giant components.",
+                    "R2R target requires reproducible dual-path search evidence without giant-component recurrence.",
                     path=f"search_benchmark.{key}",
                     expected=expected,
                     actual="<missing>" if actual is MISSING else actual,
                 )
+        erratum = _get(summary, "search_semantics_interpretation_erratum", {})
+        if not isinstance(erratum, Mapping) or any(
+            erratum.get(key, MISSING) is not expected
+            for key, expected in {
+                "old_interpretation_superseded": True,
+                "historical_numeric_fields_preserved": True,
+                "identity_union_is_search_result_union": False,
+                "shared_bare_name_results_are_legitimate_when_supported": True,
+                "and_search_is_media_level_intersection": True,
+                "cannot_link_blocks_direct_supported_matches": False,
+            }.items()
+        ):
+            result.fail(
+                "r2r_search_semantics_erratum_missing",
+                "R2R search evidence must carry the corrected identity-union versus search-union interpretation.",
+                path="search_semantics_interpretation_erratum",
+            )
         fallback_index = search.get("indexed_fallback")
         if not isinstance(fallback_index, Mapping) or not all(
             fallback_index.get(key) is expected
@@ -3063,6 +3075,893 @@ def _check_r2r_autonomous_recall_search_closure(
                 "R2R cannot authorize downstream, production, or truth work.",
                 path="route_authorization",
                 actual=forbidden_true,
+            )
+
+
+def _check_ml1_multilingual_alias_source_metadata_closure(
+    _contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    """Fail-closed SCV2-ML1 gate for read-only multilingual/source closure."""
+
+    status = str(_get(summary, "pipeline_contract.status", "") or "")
+    target = status == "target_met_multilingual_alias_source_metadata_closure"
+    partial_foundation = status == "partial_ml1_pixiv_metadata_foundation_complete"
+    if status not in ML1_MULTILINGUAL_ALIAS_SOURCE_METADATA_CLOSURE_STATUSES:
+        result.fail(
+            "ml1_status_invalid",
+            "ML1 status must use the registered closure vocabulary.",
+            path="pipeline_contract.status",
+            expected=list(ML1_MULTILINGUAL_ALIAS_SOURCE_METADATA_CLOSURE_STATUSES),
+            actual=status,
+        )
+        return
+    if not target and not partial_foundation and _completion_or_approval_claimed(result):
+        result.fail(
+            "ml1_non_target_status_claims_completion",
+            "Only target_met_multilingual_alias_source_metadata_closure may claim completion.",
+            path="pipeline_contract.claims",
+        )
+    claims = _get(summary, "pipeline_contract.claims", {})
+    if partial_foundation:
+        expected_partial_claims = {
+            "target_met": False,
+            "safe_to_merge": True,
+            "route_approved": True,
+        }
+        if not isinstance(claims, Mapping) or any(
+            claims.get(key, MISSING) is not expected
+            for key, expected in expected_partial_claims.items()
+        ):
+            result.fail(
+                "ml1_partial_foundation_claims_invalid",
+                "Project-lead-approved partial ML1 foundation requires exact non-target merge/ML2-route claims.",
+                path="pipeline_contract.claims",
+                expected=expected_partial_claims,
+                actual=claims,
+            )
+
+    documents = _get(summary, "document_semantics", {})
+    if not isinstance(documents, Mapping):
+        result.fail("ml1_document_semantics_not_object", "ML1 requires structured durable-policy proof.", path="document_semantics")
+        documents = {}
+    if status != "blocked_document_semantics_not_corrected":
+        expected_document_flags = {
+            "passed": True,
+            "durable_policy_created": True,
+            "r2r_interpretation_erratum_present": True,
+            "old_one_name_one_family_interpretation_superseded": True,
+            "identity_union_is_search_result_union": False,
+            "shared_bare_name_results_are_legitimate_when_supported": True,
+            "cannot_link_globally_suppresses_direct_matches": False,
+            "and_search_is_media_level_intersection": True,
+            "current_phase_is_ml1": True,
+        }
+        for key, expected in expected_document_flags.items():
+            if documents.get(key, MISSING) is not expected:
+                result.fail(
+                    "ml1_document_semantics_incomplete",
+                    "ML1 cannot continue while durable search semantics remain stale or contradictory.",
+                    path=f"document_semantics.{key}",
+                    expected=expected,
+                    actual=documents.get(key, "<missing>"),
+                )
+        if _as_int(documents.get("contradictory_statement_count"), default=-1) != 0:
+            result.fail(
+                "ml1_document_semantics_contradictory",
+                "Current guidance must contain zero contradictory search-semantics statements.",
+                path="document_semantics.contradictory_statement_count",
+                expected=0,
+                actual=documents.get("contradictory_statement_count"),
+            )
+
+    isolation = _get(summary, "environment_isolation", {})
+    if not isinstance(isolation, Mapping):
+        result.fail("ml1_isolation_not_object", "ML1 requires structured isolation proof.", path="environment_isolation")
+        isolation = {}
+    if status != "blocked_environment_isolation":
+        expected_network_disabled = _as_int(
+            _get(summary, "acquisition_execution.provider_request_attempt_count", 0), default=0
+        ) == 0
+        for key, expected in {
+            "passed": True,
+            "violet_env_test": True,
+            "accepted_r2r_database_immutable": True,
+            "source_database_immutable": True,
+            "production_profile_active": False,
+            "production_write_attempted": False,
+            "network_disabled": expected_network_disabled,
+        }.items():
+            if isolation.get(key, MISSING) is not expected:
+                result.fail(
+                    "ml1_isolation_proof_missing_or_invalid",
+                    "ML1 initial execution requires immutable dev/test evidence and zero network.",
+                    path=f"environment_isolation.{key}",
+                    expected=expected,
+                    actual=isolation.get(key, "<missing>"),
+                )
+
+    operations = _get(summary, "operation_counts", {})
+    if not isinstance(operations, Mapping):
+        result.fail("ml1_operation_counts_not_object", "ML1 requires forbidden-operation accounting.", path="operation_counts")
+        operations = {}
+    authorized_external_keys = {
+        "gallery_dl_calls",
+        "pixiv_provider_calls",
+        "provider_metadata_acquisition_calls",
+    }
+    for key in (
+        "gallery_dl_calls",
+        "pixiv_provider_calls",
+        "provider_metadata_acquisition_calls",
+        "media_downloads",
+        "llm_provider_calls",
+        "fallback_provider_calls",
+        "accepted_r2r_pair_readjudications",
+        "fixed_evidence_mutations",
+        "truth_path_writes",
+        "production_writes",
+        "media_imports",
+        "ai_tagging_calls",
+        "classification_calls",
+        "localization_calls",
+        "entity_writes",
+    ):
+        actual_operation = operations.get(key, MISSING)
+        valid = type(actual_operation) is int and actual_operation >= 0
+        if key not in authorized_external_keys:
+            valid = valid and actual_operation == 0
+        if not valid:
+            result.fail(
+                "ml1_forbidden_operation_nonzero_or_missing",
+                "ML1 permits only explicitly bounded Pixiv metadata calls; every other operation must remain zero.",
+                path=f"operation_counts.{key}",
+                expected="nonnegative bounded external count or zero forbidden count",
+                actual=operations.get(key, "<missing>"),
+            )
+    if status == "blocked_credential_rotation_confirmation_required":
+        for key in authorized_external_keys:
+            if _as_int(operations.get(key), default=-1) != 0:
+                result.fail(
+                    "ml1_credential_block_external_call_occurred",
+                    "Credential-rotation blocking status requires zero external Pixiv/gallery-dl calls.",
+                    path=f"operation_counts.{key}",
+                    expected=0,
+                    actual=operations.get(key),
+                )
+
+    credential_safety = _get(summary, "credential_safety", {})
+    if not isinstance(credential_safety, Mapping):
+        result.fail("ml1_credential_safety_not_object", "ML1 requires structured credential-safety evidence.", path="credential_safety")
+        credential_safety = {}
+    if credential_safety.get("policy") == "operator_accepted_local_credential_risk_v1":
+        for key, expected in {
+            "project_owner_authorized": True,
+            "credential_rotation_required": False,
+            "fingerprint_scan_required": False,
+            "existing_profile_use_authorized": True,
+            "scope": "isolated_ml1_pixiv_metadata_only_execution",
+            "production_allowed": False,
+            "raw_secret_exposure_allowed": False,
+            "rotation_confirmation_present": False,
+            "known_old_secret_fingerprint_scan_performed": False,
+            "raw_secret_value_exposed": False,
+        }.items():
+            if credential_safety.get(key, MISSING) != expected:
+                result.fail("ml1_local_credential_risk_waiver_invalid", "The owner waiver must remain explicit, isolated, and non-production.", path=f"credential_safety.{key}", expected=expected, actual=credential_safety.get(key, "<missing>"))
+        environment = _get(summary, "environment_isolation", {})
+        if not isinstance(environment, Mapping) or (
+            environment.get("violet_env_test") is not True
+            or environment.get("database_identity") != "blombooru_scv2_ml1_acquisition_test_20260712"
+            or environment.get("accepted_r2r_database_immutable") is not True
+            or environment.get("production_profile_active") is not False
+            or environment.get("production_write_attempted") is not False
+        ):
+            result.fail("ml1_local_credential_risk_waiver_environment_invalid", "The credential waiver is valid only for the exact isolated ML1 test database.", path="environment_isolation")
+
+    acquisition = _get(summary, "acquisition_execution", {})
+    if not isinstance(acquisition, Mapping):
+        result.fail("ml1_acquisition_accounting_not_object", "ML1 requires bounded manifest execution accounting.", path="acquisition_execution")
+        acquisition = {}
+    integer_fields = (
+        "acquisition_manifest_distinct_work_count", "max_attempts_per_work",
+        "unique_work_ids_attempted_count", "normal_manifest_work_ids_attempted_count",
+        "conflict_manifest_work_ids_attempted_count", "provider_request_attempt_count",
+        "gallery_dl_call_count", "successful_work_count", "terminal_work_count",
+        "retryable_work_count", "normalization_failed_work_count",
+        "provider_identity_mismatch_work_count", "skipped_complete_work_count", "resumed_work_count",
+        "duplicate_unexpected_work_attempt_count", "out_of_manifest_work_attempt_count",
+        "complete_work_reacquisition_count", "max_observed_attempts_for_one_work",
+    )
+    for key in integer_fields:
+        value = acquisition.get(key, MISSING)
+        if type(value) is not int or value < 0:
+            result.fail("ml1_acquisition_accounting_invalid", "Acquisition execution counters must be explicit nonnegative integers.", path=f"acquisition_execution.{key}", actual=value)
+    manifest_count = _as_int(acquisition.get("acquisition_manifest_distinct_work_count"), default=-1)
+    conflict_manifest_count = _as_int(acquisition.get("conflict_resolution_manifest_count"), default=0)
+    total_governed_manifest_count = manifest_count + max(conflict_manifest_count, 0)
+    max_attempts = _as_int(acquisition.get("max_attempts_per_work"), default=-1)
+    unique_attempted = _as_int(acquisition.get("unique_work_ids_attempted_count"), default=-1)
+    request_attempts = _as_int(acquisition.get("provider_request_attempt_count"), default=-1)
+    fingerprint = acquisition.get("acquisition_manifest_fingerprint")
+    conflict_fingerprint = acquisition.get("conflict_resolution_manifest_fingerprint")
+    for key, value in (
+        ("acquisition_manifest_fingerprint", fingerprint),
+        ("conflict_resolution_manifest_fingerprint", conflict_fingerprint),
+    ):
+        if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            result.fail("ml1_acquisition_manifest_fingerprint_invalid", "Executable manifests require reproducible SHA-256 fingerprints, including empty fixed-point manifests.", path=f"acquisition_execution.{key}")
+    if max_attempts < 1 or max_attempts > 3:
+        result.fail("ml1_acquisition_retry_budget_invalid", "ML1 allows one to three attempts per manifest work.", path="acquisition_execution.max_attempts_per_work", actual=max_attempts)
+    if unique_attempted > total_governed_manifest_count:
+        result.fail("ml1_acquisition_unique_work_bound_exceeded", "Attempted work IDs cannot exceed the acquisition plus separately governed conflict manifest.", path="acquisition_execution.unique_work_ids_attempted_count", expected=f"<= {total_governed_manifest_count}", actual=unique_attempted)
+    if request_attempts > total_governed_manifest_count * max(max_attempts, 0):
+        result.fail("ml1_acquisition_request_bound_exceeded", "Provider requests exceeded governed manifest size times retry allowance.", path="acquisition_execution.provider_request_attempt_count", expected=f"<= {total_governed_manifest_count * max(max_attempts, 0)}", actual=request_attempts)
+    if request_attempts < unique_attempted:
+        result.fail("ml1_acquisition_attempt_attribution_invalid", "Every attempted unique work requires at least one attributable request.", path="acquisition_execution.provider_request_attempt_count")
+    final_outcomes = acquisition.get("final_outcome_counts")
+    allowed_final_outcomes = {
+        "metadata_complete",
+        "terminal_remote_unavailable",
+        "retryable_exhausted_or_systemically_stopped",
+        "normalization_failed",
+        "provider_identity_mismatch",
+        "conflict_resolved_metadata_complete",
+        "conflict_resolved_terminal_unavailable",
+        "conflict_unresolved_after_exact_provider_evidence",
+        "conflict_normalization_failed",
+        "conflict_retryable_exhausted",
+    }
+    if not isinstance(final_outcomes, Mapping):
+        result.fail("ml1_acquisition_final_outcomes_missing", "Every attempted work requires one exhaustive final outcome.", path="acquisition_execution.final_outcome_counts")
+        final_outcomes = {}
+    unknown_outcomes = sorted(set(final_outcomes) - allowed_final_outcomes)
+    invalid_outcome_counts = {
+        key: value for key, value in final_outcomes.items()
+        if type(value) is not int or value < 0
+    }
+    outcome_sum = sum(value for value in final_outcomes.values() if type(value) is int and value >= 0)
+    if unknown_outcomes or invalid_outcome_counts or outcome_sum != unique_attempted:
+        result.fail(
+            "ml1_acquisition_final_outcome_accounting_invalid",
+            "Final outcome buckets must be valid, mutually exclusive, and exhaustive for attempted works.",
+            path="acquisition_execution.final_outcome_counts",
+            expected=unique_attempted,
+            actual={"sum": outcome_sum, "unknown": unknown_outcomes, "invalid": invalid_outcome_counts},
+        )
+    normal_outcome_sum = sum(
+        _as_int(final_outcomes.get(key), default=0)
+        for key in (
+            "metadata_complete",
+            "terminal_remote_unavailable",
+            "retryable_exhausted_or_systemically_stopped",
+            "normalization_failed",
+            "provider_identity_mismatch",
+        )
+    )
+    conflict_outcome_sum = sum(
+        _as_int(final_outcomes.get(key), default=0)
+        for key in (
+            "conflict_resolved_metadata_complete",
+            "conflict_resolved_terminal_unavailable",
+            "conflict_unresolved_after_exact_provider_evidence",
+            "conflict_normalization_failed",
+            "conflict_retryable_exhausted",
+        )
+    )
+    normal_attempted = _as_int(acquisition.get("normal_manifest_work_ids_attempted_count"), default=-1)
+    conflict_attempted = _as_int(acquisition.get("conflict_manifest_work_ids_attempted_count"), default=-1)
+    if (
+        normal_outcome_sum != normal_attempted
+        or conflict_outcome_sum != conflict_attempted
+        or normal_attempted > manifest_count
+        or conflict_attempted > conflict_manifest_count
+        or normal_attempted + conflict_attempted != unique_attempted
+    ):
+        result.fail("ml1_acquisition_manifest_outcome_attribution_invalid", "Main/conflict outcomes must belong to their executable manifests and cover every attempted work exactly once.", path="acquisition_execution", actual={"normal_outcomes": normal_outcome_sum, "normal_attempted": normal_attempted, "conflict_outcomes": conflict_outcome_sum, "conflict_attempted": conflict_attempted})
+    ledger_fingerprint = acquisition.get("final_outcome_ledger_fingerprint")
+    if unique_attempted > 0 and re.fullmatch(r"[0-9a-f]{64}", str(ledger_fingerprint or "")) is None:
+        result.fail("ml1_acquisition_outcome_ledger_fingerprint_invalid", "Attempted-work outcome ledger requires a reproducible private fingerprint.", path="acquisition_execution.final_outcome_ledger_fingerprint")
+    for key in ("gallery_dl_call_count",):
+        if _as_int(acquisition.get(key), default=-1) != request_attempts:
+            result.fail("ml1_acquisition_external_count_mismatch", "gallery-dl calls must equal provider request attempts.", path=f"acquisition_execution.{key}", expected=request_attempts, actual=acquisition.get(key))
+    for key in ("gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls"):
+        if _as_int(operations.get(key), default=-1) != request_attempts:
+            result.fail("ml1_acquisition_external_count_mismatch", "All external Pixiv counters must equal provider request attempts.", path=f"operation_counts.{key}", expected=request_attempts, actual=operations.get(key))
+    for key in ("duplicate_unexpected_work_attempt_count", "out_of_manifest_work_attempt_count", "complete_work_reacquisition_count"):
+        if _as_int(acquisition.get(key), default=-1) != 0:
+            result.fail("ml1_acquisition_scope_violation", "Out-of-manifest, unexpected duplicate, and complete-work attempts are forbidden.", path=f"acquisition_execution.{key}", expected=0, actual=acquisition.get(key))
+    if _as_int(acquisition.get("max_observed_attempts_for_one_work"), default=-1) > max_attempts:
+        result.fail("ml1_acquisition_per_work_retry_bound_exceeded", "No manifest work may exceed max_attempts_per_work.", path="acquisition_execution.max_observed_attempts_for_one_work", expected=f"<= {max_attempts}", actual=acquisition.get("max_observed_attempts_for_one_work"))
+    average_interval = acquisition.get("average_request_interval_seconds")
+    if request_attempts > 1 and _as_float(average_interval, default=-1.0) < 2.0:
+        result.fail("ml1_acquisition_request_spacing_invalid", "Observed average provider request interval must be at least two seconds.", path="acquisition_execution.average_request_interval_seconds", expected=">= 2.0", actual=average_interval)
+    if (
+        acquisition.get("systemic_stop") is True
+        and acquisition.get("systemic_stop_stage") in {"canary", "main_manifest"}
+        and acquisition.get("conflict_manifest_started") is True
+    ):
+        result.fail("ml1_systemic_stop_conflict_call_suppression_failed", "A canary/main systemic stop must suppress all conflict-manifest execution.", path="acquisition_execution.conflict_manifest_started", expected=False, actual=True)
+    for key in ("retry_attempts_attributable_to_manifest_work", "resume_only_remaining_open_works"):
+        if acquisition.get(key) is not True:
+            result.fail("ml1_acquisition_resume_or_retry_proof_missing", "Retries and resume attempts must be attributable to remaining manifest work.", path=f"acquisition_execution.{key}", expected=True, actual=acquisition.get(key))
+    for manifest_key, checkpoint_key in (
+        ("acquisition_manifest_fingerprint", "checkpoint_main_manifest_fingerprint"),
+        ("conflict_resolution_manifest_fingerprint", "checkpoint_conflict_manifest_fingerprint"),
+    ):
+        manifest_fingerprint = acquisition.get(manifest_key)
+        checkpoint_fingerprint = acquisition.get(checkpoint_key)
+        if manifest_fingerprint != checkpoint_fingerprint:
+            result.fail("ml1_manifest_checkpoint_fingerprint_mismatch", "Executable manifest and checkpoint fingerprints must match exactly.", path=f"acquisition_execution.{checkpoint_key}", expected=manifest_fingerprint, actual=checkpoint_fingerprint)
+    route_active = acquisition.get("acquisition_route_active") is True
+    blocker_values = _get(summary, "pipeline_contract.active_blockers", [])
+    blocked_zero_call = bool(
+        {"blocked_credential_rotation_confirmation_required"}
+        & set(blocker_values if isinstance(blocker_values, list) else [])
+    )
+    if (not route_active or blocked_zero_call) and request_attempts != 0:
+        result.fail("ml1_acquisition_inactive_or_blocked_call_nonzero", "Inactive or credential/sample-blocked acquisition requires zero external calls.", path="acquisition_execution.provider_request_attempt_count", expected=0, actual=request_attempts)
+
+    fixed = _get(summary, "fixed_evidence_proof", {})
+    if not isinstance(fixed, Mapping):
+        result.fail("ml1_fixed_evidence_not_object", "ML1 requires fixed-evidence proof.", path="fixed_evidence_proof")
+        fixed = {}
+    if status != "blocked_fixed_evidence_changed":
+        for key, expected in {
+            "present": True,
+            "before_after_match": True,
+            "accepted_r2r_dispositions_reused": True,
+            "accepted_r2r_disposition_count": 3319,
+            "forbidden_truth_content_unchanged": True,
+            "changed_fixed_tables": [],
+            "changed_forbidden_truth_tables": [],
+        }.items():
+            if fixed.get(key, MISSING) != expected:
+                result.fail(
+                    "ml1_fixed_evidence_changed_or_unproven",
+                    "ML1 requires unchanged accepted R2R and forbidden truth evidence.",
+                    path=f"fixed_evidence_proof.{key}",
+                    expected=expected,
+                    actual=fixed.get(key, "<missing>"),
+                )
+    else:
+        changed_fixed = fixed.get("changed_fixed_tables")
+        changed_forbidden = fixed.get("changed_forbidden_truth_tables")
+        positive_change_proof = (
+            fixed.get("before_after_match") is False
+            or (isinstance(changed_fixed, list) and bool(changed_fixed))
+            or (isinstance(changed_forbidden, list) and bool(changed_forbidden))
+            or bool(fixed.get("missing_required_fixed_table_fingerprints"))
+            or bool(fixed.get("missing_required_forbidden_table_fingerprints"))
+            or bool(fixed.get("mismatched_required_fixed_table_fingerprints"))
+            or bool(fixed.get("mismatched_required_forbidden_table_fingerprints"))
+        )
+        if not positive_change_proof:
+            result.fail("ml1_fixed_evidence_block_unproven", "blocked_fixed_evidence_changed requires positive fixed/forbidden fingerprint change evidence.", path="fixed_evidence_proof")
+
+    pixiv = _get(summary, "pixiv_accounting", {})
+    if not isinstance(pixiv, Mapping):
+        result.fail("ml1_pixiv_accounting_not_object", "ML1 requires media- and work-level Pixiv accounting.", path="pixiv_accounting")
+        pixiv = {}
+    if pixiv.get("canonical_complete_statuses") != ["accepted", "active", "metadata_complete", "observed"]:
+        result.fail("ml1_canonical_complete_status_policy_mismatch", "Audit, ingestion, runner, closure, tests, and contract must share the canonical complete-status policy.", path="pixiv_accounting.canonical_complete_statuses")
+    owner_sample = _get(summary, "owner_sample_validation", {})
+    if not isinstance(owner_sample, Mapping):
+        result.fail("ml1_owner_sample_not_object", "ML1 requires structured one-time owner sample proof.", path="owner_sample_validation")
+        owner_sample = {}
+    current_eligible_manifest_count = _as_int(
+        owner_sample.get("current_eligible_manifest_count"), default=-1
+    )
+    required_sample_size = min(60, max(0, current_eligible_manifest_count))
+    for key, expected in {
+        "sample_generated": True,
+        "sample_size": required_sample_size,
+        "required_sample_size": required_sample_size,
+        "normal_pipeline_human_dependency": False,
+        "confirmation_env": None,
+        "optional_stage_evidence": True,
+        "runtime_gate_required": False,
+    }.items():
+        if owner_sample.get(key, MISSING) != expected:
+            result.fail("ml1_owner_sample_proof_invalid", "Owner sample must be exact, deterministic, and non-runtime.", path=f"owner_sample_validation.{key}", expected=expected, actual=owner_sample.get(key, "<missing>"))
+    if _as_int(owner_sample.get("conflict_cases_exported"), default=-1) < 0:
+        result.fail("ml1_owner_sample_proof_invalid", "Conflict export count must be explicit.", path="owner_sample_validation.conflict_cases_exported")
+    if current_eligible_manifest_count < 0:
+        result.fail("ml1_owner_sample_proof_invalid", "Current eligible owner-review manifest size must be explicit.", path="owner_sample_validation.current_eligible_manifest_count")
+    if re.fullmatch(r"[0-9a-f]{64}", str(owner_sample.get("owner_review_manifest_fingerprint") or "")) is None:
+        result.fail("ml1_owner_sample_proof_invalid", "Owner sample requires a reproducible manifest fingerprint.", path="owner_sample_validation.sample_manifest_fingerprint")
+    if status not in {
+        "blocked_document_semantics_not_corrected",
+        "blocked_environment_isolation",
+        "blocked_pixiv_metadata_audit_incomplete",
+    }:
+        candidate_media = _as_int(pixiv.get("candidate_media_count"), default=-1)
+        accounted_media = _as_int(pixiv.get("accounted_media_count"), default=-2)
+        status_sum = sum(
+            _as_int(pixiv.get(key), default=-10**9)
+            for key in (
+                "metadata_present_complete_media_count",
+                "terminal_remote_unavailable_media_count",
+                "deferred_nonblocking_source_page_mismatch_media_count",
+                "metadata_pending_media_count",
+                "retryable_failure_media_count",
+                "provider_identity_mismatch_media_count",
+                "parse_or_identity_failure_media_count",
+                "unexplained_missing_media_count",
+            )
+        )
+        status_sum += _as_int(
+            pixiv.get("no_durable_attempt_or_result_evidence_media_count", pixiv.get("not_attempted_media_count")),
+            default=-10**9,
+        )
+        if candidate_media < 0 or accounted_media != candidate_media or status_sum != candidate_media:
+            result.fail(
+                "ml1_pixiv_media_accounting_incomplete",
+                "Every canonical Pixiv filename candidate media/page must have exactly one status.",
+                path="pixiv_accounting",
+                expected=candidate_media,
+                actual={"accounted": accounted_media, "status_sum": status_sum},
+            )
+        candidate_work = _as_int(pixiv.get("candidate_distinct_work_count"), default=-1)
+        work_status_sum = sum(
+            _as_int(pixiv.get(key), default=-10**9)
+            for key in (
+                "metadata_present_complete_work_count",
+                "terminal_remote_unavailable_work_count",
+                "deferred_nonblocking_source_page_mismatch_work_count",
+                "pending_work_count",
+                "retryable_work_count",
+                "normalization_failed_work_count",
+                "provider_identity_mismatch_work_count",
+                "missing_work_count",
+                "conflict_unresolved_work_count",
+            )
+        )
+        if (
+            candidate_work < 0
+            or _as_int(pixiv.get("accounted_distinct_work_count"), default=-2) != candidate_work
+            or work_status_sum != candidate_work
+        ):
+            result.fail(
+                "ml1_pixiv_work_accounting_incomplete",
+                "Every distinct canonical Pixiv work ID must be accounted.",
+                path="pixiv_accounting.accounted_distinct_work_count",
+                expected=candidate_work,
+                actual={"accounted": pixiv.get("accounted_distinct_work_count"), "status_sum": work_status_sum},
+            )
+        for key in ("candidate_media_accounting_coverage", "candidate_work_accounting_coverage"):
+            if _as_float(pixiv.get(key), default=-1.0) != 1.0:
+                result.fail("ml1_pixiv_accounting_coverage_failed", "Pixiv accounting coverage must equal 1.0.", path=f"pixiv_accounting.{key}")
+        if "all_eligible_media_metadata_coverage" in pixiv:
+            result.fail("ml1_pixiv_metric_semantics_regressed", "Queue/decision coverage must not be labeled provider metadata coverage.", path="pixiv_accounting.all_eligible_media_metadata_coverage")
+        metric_pairs = (
+            ("pixiv_candidate_complete_media_count", "pixiv_candidate_media_count", "pixiv_candidate_complete_media_coverage"),
+            ("pixiv_candidate_complete_work_count", "pixiv_candidate_work_count", "pixiv_candidate_complete_work_coverage"),
+            ("pixiv_ingestion_decision_media_count", "all_eligible_media_count", "pixiv_ingestion_decision_coverage"),
+        )
+        for numerator_key, denominator_key, coverage_key in metric_pairs:
+            numerator = _as_int(pixiv.get(numerator_key), default=-1)
+            denominator = _as_int(pixiv.get(denominator_key), default=-1)
+            expected_coverage = round(numerator / denominator, 6) if denominator > 0 and numerator >= 0 else 1.0 if denominator == 0 and numerator == 0 else -1.0
+            if numerator < 0 or denominator < 0 or _as_float(pixiv.get(coverage_key), default=-2.0) != expected_coverage:
+                result.fail("ml1_pixiv_metric_semantics_regressed", "Pixiv decision and provider-completeness metrics require truthful numerators, denominators, and coverage.", path=f"pixiv_accounting.{coverage_key}", expected=expected_coverage, actual=pixiv.get(coverage_key))
+
+    creator_metrics = _get(summary, "creator_metadata", {})
+    if isinstance(creator_metrics, Mapping):
+        if "successful_pixiv_metadata_record_count" in creator_metrics:
+            result.fail("ml1_pixiv_metric_semantics_regressed", "Registry/queue records must not be labeled successful provider metadata.", path="creator_metadata.successful_pixiv_metadata_record_count")
+        for key in (
+            "pixiv_registry_record_count",
+            "pixiv_queue_decision_record_count",
+            "provider_metadata_record_count",
+            "successful_acquisition_work_count",
+            "successful_acquisition_media_or_page_count",
+            "queue_records_carrying_acquired_provider_payload_count",
+            "terminal_evidence_record_count",
+            "deferred_page_mismatch_record_count",
+        ):
+            if type(creator_metrics.get(key)) is not int or creator_metrics.get(key) < 0:
+                result.fail("ml1_pixiv_metric_semantics_regressed", "Pixiv registry/provider outcome counters must be explicit nonnegative integers.", path=f"creator_metadata.{key}")
+        if _as_int(
+            creator_metrics.get(
+                "untrusted_parent_query_visible_creator_observation_count"
+            ),
+            default=-1,
+        ) != 0:
+            result.fail(
+                "ml1_untrusted_parent_creator_observation_nonzero",
+                "Query-visible PR #136 creator observations require a trusted complete Pixiv parent.",
+                path="creator_metadata.untrusted_parent_query_visible_creator_observation_count",
+                expected=0,
+                actual=creator_metrics.get(
+                    "untrusted_parent_query_visible_creator_observation_count"
+                ),
+            )
+
+    governance_transition = _get(summary, "governance_transition", {})
+    if isinstance(governance_transition, Mapping):
+        governance_selection = governance_transition.get("selection") or {}
+        if _as_int(
+            governance_selection.get("deferred_returned_page_row_count_after"),
+            default=-1,
+        ) != 0:
+            result.fail(
+                "ml1_deferred_returned_page_row_nonzero",
+                "Only provider-absent page rows may remain governed deferred.",
+                path="governance_transition.selection.deferred_returned_page_row_count_after",
+                expected=0,
+                actual=governance_selection.get("deferred_returned_page_row_count_after"),
+            )
+
+    if status == "blocked_pixiv_incremental_acquisition_approval_required":
+        if pixiv.get("incremental_acquisition_required") is not True or (
+            _as_int(pixiv.get("retryable_failure_media_count"), default=0)
+            + _as_int(pixiv.get("not_attempted_media_count"), default=0)
+            + _as_int(pixiv.get("unexplained_missing_media_count"), default=0)
+            <= 0
+        ):
+            result.fail(
+                "ml1_pixiv_acquisition_block_unproven",
+                "Pixiv acquisition block requires an exact non-empty retryable/missing scope.",
+                path="pixiv_accounting",
+            )
+        for key in ("projected_gallery_dl_request_count", "authentication_requirements_present", "rate_limit_plan_present", "checkpoint_resume_plan_present"):
+            value = pixiv.get(key, MISSING)
+            valid = type(value) is int and value > 0 if key.endswith("count") else value is True
+            if not valid:
+                result.fail("ml1_pixiv_acquisition_manifest_incomplete", "Blocked acquisition requires request/auth/rate/checkpoint projection.", path=f"pixiv_accounting.{key}")
+
+    creator = _get(summary, "creator_metadata", {})
+    multilingual = _get(summary, "multilingual_benchmark", {})
+    candidate = _get(summary, "candidate_generation", {})
+    search = _get(summary, "search_semantics", {})
+    for name, value in (("creator_metadata", creator), ("multilingual_benchmark", multilingual), ("candidate_generation", candidate), ("search_semantics", search)):
+        if not isinstance(value, Mapping):
+            result.fail(f"ml1_{name}_not_object", f"ML1 requires structured {name} proof.", path=name)
+
+    active_blockers = _get(summary, "pipeline_contract.active_blockers", [])
+    if not isinstance(active_blockers, list) or any(not isinstance(item, str) for item in active_blockers):
+        result.fail("ml1_active_blockers_invalid", "ML1 summaries must expose every active blocker as a string list.", path="pipeline_contract.active_blockers")
+        active_blockers = []
+
+    status_proven = True
+    if status == "blocked_document_semantics_not_corrected":
+        status_proven = documents.get("passed") is not True or _as_int(documents.get("contradictory_statement_count"), default=0) > 0
+    elif status == "blocked_environment_isolation":
+        status_proven = any(
+            isolation.get(key, MISSING) is not expected
+            for key, expected in {
+                "passed": True,
+                "violet_env_test": True,
+                "accepted_r2r_database_immutable": True,
+                "source_database_immutable": True,
+                "production_profile_active": False,
+                "production_write_attempted": False,
+            }.items()
+        )
+    elif status == "blocked_credential_rotation_confirmation_required":
+        credential = _get(summary, "credential_safety", {})
+        status_proven = (
+            isinstance(credential, Mapping)
+            and credential.get("rotation_confirmation_present") is False
+            and credential.get("policy") != "operator_accepted_local_credential_risk_v1"
+            and credential.get("external_call_attempted") is False
+            and bool(pixiv.get("incremental_acquisition_required"))
+        )
+    elif status == "blocked_fixed_evidence_changed":
+        status_proven = (
+            fixed.get("before_after_match") is False
+            or bool(fixed.get("changed_fixed_tables"))
+            or bool(fixed.get("changed_forbidden_truth_tables"))
+            or bool(fixed.get("missing_required_fixed_table_fingerprints"))
+            or bool(fixed.get("missing_required_forbidden_table_fingerprints"))
+            or bool(fixed.get("mismatched_required_fixed_table_fingerprints"))
+            or bool(fixed.get("mismatched_required_forbidden_table_fingerprints"))
+        )
+    elif status == "blocked_pixiv_metadata_audit_incomplete":
+        status_proven = (
+            pixiv.get("work_accounting_equality_holds") is False
+            or _as_float(pixiv.get("candidate_work_accounting_coverage"), default=0.0) != 1.0
+            or _as_float(pixiv.get("candidate_media_accounting_coverage"), default=0.0) != 1.0
+        )
+    elif status == "blocked_pixiv_incremental_acquisition_approval_required":
+        route = _get(summary, "route_authorization", {})
+        status_proven = (
+            bool(pixiv.get("incremental_acquisition_required"))
+            and _as_int(pixiv.get("projected_gallery_dl_request_count"), default=0) > 0
+            and isinstance(route, Mapping)
+            and route.get("pixiv_acquisition_authorized") is False
+        )
+    elif status == "blocked_pixiv_acquisition_execution_incomplete":
+        credential = _get(summary, "credential_safety", {})
+        credential_gate_satisfied = isinstance(credential, Mapping) and (
+            credential.get("rotation_confirmation_present") is True
+            or (
+                credential.get("policy") == "operator_accepted_local_credential_risk_v1"
+                and credential.get("project_owner_authorized") is True
+            )
+        )
+        status_proven = (
+            credential_gate_satisfied
+            and (
+                _as_int(pixiv.get("retryable_work_count"), default=0)
+                + _as_int(pixiv.get("missing_work_count"), default=0)
+                + _as_int(pixiv.get("conflict_unresolved_work_count"), default=0)
+                + _as_int(pixiv.get("normalization_failed_work_count"), default=0)
+                + _as_int(pixiv.get("provider_identity_mismatch_work_count"), default=0)
+            ) > 0
+        )
+    elif status == "blocked_creator_metadata_loss":
+        status_proven = _as_int(creator.get("silently_dropped_creator_field_count"), default=0) > 0
+    elif status == "blocked_multilingual_benchmark_incomplete":
+        status_proven = multilingual.get("actual_runtime_search_used") is not True or multilingual.get("synthetic_alias_media_propagation_used") is not False
+    elif status == "blocked_candidate_generation_gap":
+        status_proven = _as_int(multilingual.get("candidate_not_generated_count"), default=0) > 0 or _as_int(candidate.get("unresolved_candidate_generation_count"), default=0) > 0
+    elif status == "blocked_llm_approval_required":
+        budget = _get(summary, "llm_budget_policy", {})
+        status_proven = (
+            _as_int(candidate.get("new_pair_manifest_count"), default=0) > 0
+            and candidate.get("llm_approval_required") is True
+            and (not isinstance(budget, Mapping) or budget.get("preauthorized") is not True)
+        )
+    elif status == "blocked_and_search_semantics":
+        status_proven = (
+            search.get("shared_name_union_passed") is not True
+            or _as_int(search.get("and_constraint_leakage_count"), default=0) > 0
+            or _as_int(search.get("unsupported_result_media_count"), default=0) > 0
+            or _as_int(search.get("rejected_evidence_result_count"), default=0) > 0
+            or _as_int(search.get("superseded_evidence_result_count"), default=0) > 0
+        )
+    elif status in {"partial_ml1_pixiv_metadata_closure_complete", "partial_ml1_pixiv_metadata_foundation_complete"}:
+        foundation = _get(summary, "pixiv_metadata_foundation", {})
+        status_proven = (
+            isinstance(foundation, Mapping)
+            and foundation.get("current_stock_closed") is True
+            and foundation.get("continuous_ingestion_gate_implemented") is True
+            and _as_float(
+                foundation.get("complete_terminal_or_deferred_coverage"), default=0.0
+            ) == 1.0
+            and _as_int(
+                foundation.get("deferred_nonblocking_source_page_mismatch_work_count"),
+                default=-1,
+            ) >= 0
+        )
+    if status.startswith("blocked_") and status not in active_blockers:
+        result.fail("ml1_primary_blocker_missing_from_active_blockers", "The primary blocked status must appear in active_blockers.", path="pipeline_contract.active_blockers", actual=active_blockers)
+    if not status_proven:
+        result.fail("ml1_status_evidence_missing", "The selected ML1 status lacks its required executable evidence.", path="pipeline_contract.status", actual=status)
+
+    known_blockers: set[str] = set()
+    if documents.get("passed") is not True or _as_int(documents.get("contradictory_statement_count"), default=0) > 0:
+        known_blockers.add("blocked_document_semantics_not_corrected")
+    if pixiv.get("work_accounting_equality_holds") is False or _as_float(pixiv.get("candidate_work_accounting_coverage"), default=1.0) != 1.0:
+        known_blockers.add("blocked_pixiv_metadata_audit_incomplete")
+    if pixiv.get("incremental_acquisition_required") is True:
+        route_state = _get(summary, "route_authorization", {})
+        credential_state = _get(summary, "credential_safety", {})
+        if isinstance(route_state, Mapping) and route_state.get("pixiv_acquisition_authorized") is False:
+            known_blockers.add("blocked_pixiv_incremental_acquisition_approval_required")
+        else:
+            waiver_active = isinstance(credential_state, Mapping) and (
+                credential_state.get("policy") == "operator_accepted_local_credential_risk_v1"
+                and credential_state.get("project_owner_authorized") is True
+            )
+            rotation_active = isinstance(credential_state, Mapping) and credential_state.get("rotation_confirmation_present") is True
+            if not (waiver_active or rotation_active):
+                known_blockers.add("blocked_credential_rotation_confirmation_required")
+            if waiver_active or rotation_active:
+                known_blockers.add("blocked_pixiv_acquisition_execution_incomplete")
+    if (
+        _as_int(pixiv.get("normalization_failed_work_count"), default=0)
+        + _as_int(pixiv.get("provider_identity_mismatch_work_count"), default=0)
+        + _as_int(pixiv.get("conflict_unresolved_work_count"), default=0)
+        > 0
+    ):
+        known_blockers.add("blocked_pixiv_acquisition_execution_incomplete")
+    if _as_int(creator.get("silently_dropped_creator_field_count"), default=0) > 0:
+        known_blockers.add("blocked_creator_metadata_loss")
+    if multilingual.get("actual_runtime_search_used") is not True or multilingual.get("synthetic_alias_media_propagation_used") is not False:
+        known_blockers.add("blocked_multilingual_benchmark_incomplete")
+    if (
+        not partial_foundation
+        and (
+            _as_int(multilingual.get("candidate_not_generated_count"), default=0) > 0
+            or _as_int(candidate.get("unresolved_candidate_generation_count"), default=0) > 0
+        )
+    ):
+        known_blockers.add("blocked_candidate_generation_gap")
+    if (
+        search.get("shared_name_union_passed") is not True
+        or _as_int(search.get("and_constraint_leakage_count"), default=0) > 0
+        or _as_int(search.get("unsupported_result_media_count"), default=0) > 0
+        or _as_int(search.get("rejected_evidence_result_count"), default=0) > 0
+        or _as_int(search.get("superseded_evidence_result_count"), default=0) > 0
+    ):
+        known_blockers.add("blocked_and_search_semantics")
+    missing_active_blockers = sorted(known_blockers - set(active_blockers))
+    if missing_active_blockers:
+        result.fail(
+            "ml1_active_blockers_incomplete",
+            "ML1 active_blockers must expose every blocker derivable from current evidence.",
+            path="pipeline_contract.active_blockers",
+            expected=sorted(known_blockers),
+            actual=active_blockers,
+        )
+
+    if target:
+        for key, expected in {
+            "available_creator_fields_accounting_coverage": 1.0,
+            "stable_creator_id_preservation_coverage": 1.0,
+            "observed_creator_search_support_coverage": 1.0,
+            "silently_dropped_creator_field_count": 0,
+            "creator_role_misclassification_count": 0,
+            "creator_search_passed": True,
+            "creator_and_character_work_intersection_passed": True,
+        }.items():
+            actual = creator.get(key, MISSING) if isinstance(creator, Mapping) else MISSING
+            if actual != expected:
+                result.fail("ml1_creator_target_failed", "ML1 target requires complete creator retention and search support.", path=f"creator_metadata.{key}", expected=expected, actual=actual)
+
+        for key, expected in {
+            "observed_alias_accounting_coverage": 1.0,
+            "signal_generation_coverage": 1.0,
+            "candidate_family_connectivity_coverage": 1.0,
+            "adjudication_coverage": 1.0,
+            "search_equivalence_coverage": 1.0,
+            "and_work_equivalence_coverage": 1.0,
+            "unexplained_multilingual_split_count": 0,
+            "candidate_not_generated_count": 0,
+            "role_or_context_loss_count": 0,
+            "human_review_queue_generated": False,
+        }.items():
+            actual = multilingual.get(key, MISSING) if isinstance(multilingual, Mapping) else MISSING
+            if actual != expected:
+                result.fail("ml1_multilingual_target_failed", "ML1 target requires complete observed multilingual-family accounting.", path=f"multilingual_benchmark.{key}", expected=expected, actual=actual)
+
+        for key, expected in {
+            "all_misses_classified": True,
+            "unresolved_candidate_generation_count": 0,
+            "representative_edge_semantic_ranking_passed": True,
+            "fresh_old_schema_migration_passed": True,
+        }.items():
+            actual = candidate.get(key, MISSING) if isinstance(candidate, Mapping) else MISSING
+            if actual != expected:
+                result.fail("ml1_candidate_generation_target_failed", "ML1 target requires closed candidate-generation accounting.", path=f"candidate_generation.{key}", expected=expected, actual=actual)
+
+        for key, expected in {
+            "runtime_application_path_used": True,
+            "shared_name_union_passed": True,
+            "unsupported_result_media_count": 0,
+            "rejected_evidence_result_count": 0,
+            "identity_union_from_search_count": 0,
+            "and_constraint_leakage_count": 0,
+            "direct_or_accepted_alias_support_coverage": 1.0,
+            "multilingual_and_work_equivalence_coverage": 1.0,
+            "creator_and_character_work_accuracy": 1.0,
+        }.items():
+            actual = search.get(key, MISSING) if isinstance(search, Mapping) else MISSING
+            if actual != expected:
+                result.fail("ml1_search_semantics_target_failed", "ML1 target requires supported shared-name union and leak-free AND search.", path=f"search_semantics.{key}", expected=expected, actual=actual)
+
+        for key in (
+            "normal_retrievable_missing_media_count",
+            "not_attempted_media_count",
+            "unexplained_missing_media_count",
+            "work_id_mismatch_media_count",
+        ):
+            if _as_int(pixiv.get(key), default=-1) != 0:
+                result.fail("ml1_pixiv_target_gap", "ML1 target requires zero retrievable/unattempted/unexplained/mismatched Pixiv gaps.", path=f"pixiv_accounting.{key}", expected=0, actual=pixiv.get(key))
+
+    if status == "blocked_llm_approval_required":
+        if _as_int(candidate.get("new_pair_manifest_count"), default=0) <= 0 or candidate.get("llm_approval_required") is not True:
+            result.fail("ml1_llm_block_unproven", "LLM block requires an exact non-empty new-pair manifest.", path="candidate_generation")
+
+    graph = _get(summary, "graph_invariants", {})
+    if not isinstance(graph, Mapping):
+        result.fail("ml1_graph_invariants_not_object", "ML1 requires graph-invariant proof.", path="graph_invariants")
+        graph = {}
+    for key in (
+        "review_or_deferred_identity_union_count",
+        "direct_cannot_violation_count",
+        "transitive_cannot_violation_count",
+        "unauthorized_unknown_role_materialization_count",
+        "identity_changes_caused_by_search_count",
+    ):
+        if _as_int(graph.get(key), default=-1) != 0:
+            result.fail("ml1_graph_invariant_failed", "ML1 must preserve identity/cannot/unknown-role invariants.", path=f"graph_invariants.{key}", expected=0, actual=graph.get(key))
+
+    if _get(summary, "public_redaction.passed", False) is not True:
+        result.fail("ml1_public_redaction_failed", "ML1 public artifacts must pass redaction.", path="public_redaction.passed")
+    pack = _get(summary, "review_pack", {})
+    if not isinstance(pack, Mapping) or not all(pack.get(key) is True for key in ("generated", "manifest_present", "checksums_present", "integrity_passed", "not_committed")):
+        result.fail("ml1_review_pack_incomplete", "ML1 requires an integrity-checked private review pack.", path="review_pack")
+
+    route = _get(summary, "route_authorization", {})
+    if not isinstance(route, Mapping):
+        result.fail("ml1_route_authorization_not_object", "ML1 requires explicit downstream non-authorization.", path="route_authorization")
+    else:
+        forbidden_true = sorted(
+            key for key, value in route.items()
+            if value is True and key != "pixiv_acquisition_authorized"
+        )
+        if forbidden_true:
+            result.fail("ml1_forbidden_route_authorization", "ML1 may authorize only the exact bounded Pixiv metadata route, never downstream/production/truth work.", path="route_authorization", actual=forbidden_true)
+        if partial_foundation and (
+            route.get("route_approved_scope") != "SCV2-ML2_next_phase_only"
+            or route.get("next_phase") != "SCV2-ML2: Multilingual Identity Candidate Closure"
+            or route.get("production_authorized") is not False
+            or route.get("scale_up_authorized") is not False
+            or route.get("entity_bridge_authorized") is not False
+            or route.get("truth_promotion_authorized") is not False
+            or route.get("provider_2_authorized") is not False
+            or route.get("full_library_execution_authorized") is not False
+        ):
+            result.fail(
+                "ml1_partial_foundation_route_scope_invalid",
+                "route_approved is limited to the separately governed SCV2-ML2 phase, never production, scale, Entity/truth, Provider-2, or full-library execution.",
+                path="route_authorization",
+            )
+
+    if partial_foundation:
+        governance = _get(summary, "governance_transition", {})
+        selection = governance.get("selection", {}) if isinstance(governance, Mapping) else {}
+        transition = governance.get("transition", {}) if isinstance(governance, Mapping) else {}
+        operation_delta = governance.get("operation_delta", {}) if isinstance(governance, Mapping) else {}
+        if not (
+            isinstance(governance, Mapping)
+            and governance.get("state") == "deferred_nonblocking_source_page_mismatch"
+            and governance.get("policy_version") == "source_page_mismatch_deferred_nonblocking_v1"
+            and isinstance(selection, Mapping)
+            and _as_int(selection.get("distinct_work_count"), default=-1) == 14
+            and _as_int(selection.get("main_manifest_work_count"), default=-1) == 11
+            and _as_int(selection.get("conflict_manifest_work_count"), default=-1) == 3
+            and _as_int(selection.get("distinct_work_count"), default=-1)
+            == _as_int(
+                pixiv.get("deferred_nonblocking_source_page_mismatch_work_count"),
+                default=-2,
+            )
+            and selection.get("exact_predicate_passed") is True
+            and selection.get("broader_normalization_or_conflict_population_converted") is False
+            and isinstance(transition, Mapping)
+            and transition.get("idempotent") is True
+            and transition.get("raw_and_historical_queue_evidence_preserved") is True
+            and transition.get("unsupported_page_link_created") is False
+            and transition.get("conflict_winner_selected") is False
+            and isinstance(operation_delta, Mapping)
+            and operation_delta
+            and all(type(value) is int and value == 0 for value in operation_delta.values())
+        ):
+            result.fail(
+                "ml1_deferred_page_mismatch_governance_unproven",
+                "Partial ML1 closure requires exact, idempotent, zero-network 11+3 page-mismatch governance evidence.",
+                path="governance_transition",
+            )
+        for key in (
+            "pending_work_count",
+            "retryable_work_count",
+            "missing_work_count",
+            "normalization_failed_work_count",
+            "provider_identity_mismatch_work_count",
+            "conflict_unresolved_work_count",
+        ):
+            if _as_int(pixiv.get(key), default=-1) != 0:
+                result.fail(
+                    "ml1_partial_foundation_open_or_blocking_state_nonzero",
+                    "safe_to_merge requires zero pending, retryable, missing, normalization, identity-mismatch, and blocking-conflict works.",
+                    path=f"pixiv_accounting.{key}",
+                    expected=0,
+                    actual=pixiv.get(key),
+                )
+        if _as_float(
+            pixiv.get("complete_terminal_or_deferred_work_coverage"), default=0.0
+        ) != 1.0:
+            result.fail(
+                "ml1_partial_foundation_governed_coverage_incomplete",
+                "Complete/terminal/governed-deferred work coverage must equal 1.0.",
+                path="pixiv_accounting.complete_terminal_or_deferred_work_coverage",
+                expected=1.0,
+                actual=pixiv.get("complete_terminal_or_deferred_work_coverage"),
             )
 
 
@@ -10737,6 +11636,7 @@ CUSTOM_CHECKS = {
     "r1r_full_source_concept_pipeline": _check_r1r_full_source_concept_pipeline,
     "r2_source_concept_graph_remediation": _check_r2_source_concept_graph_remediation,
     "r2r_autonomous_recall_search_closure": _check_r2r_autonomous_recall_search_closure,
+    "ml1_multilingual_alias_source_metadata_closure": _check_ml1_multilingual_alias_source_metadata_closure,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,

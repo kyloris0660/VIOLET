@@ -34,6 +34,7 @@ extend a contract first.
 - `r1r_full_source_concept_pipeline_contract_v1`
 - `r2_source_concept_graph_remediation_contract_v1`
 - `r2r_autonomous_recall_search_closure_contract_v1`
+- `ml1_multilingual_alias_source_metadata_closure_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`
@@ -141,10 +142,18 @@ never count as successful judgments. Final target evidence must regenerate
 cache-only with zero provider calls.
 
 The contract also fails on fixed-evidence mutation, production profile/DB use,
-truth writes, acquisition/import/AI/localization calls, review/deferred union,
-cannot-link or unknown-role regression, fallback-provider use, search
-contamination, missing checkpoints, public redaction failure, or downstream
-authorization.
+truth writes, acquisition/import/AI/localization calls, review/deferred identity
+union, cannot-link or unknown-role identity regression, fallback-provider use,
+missing checkpoints, public redaction failure, or downstream authorization.
+
+R2R's historical `false_broad_union_indicator_count` and
+`cannot_linked_search_contamination_count` were measured under an overly
+restrictive one-name/one-family interpretation. Their numeric values remain
+preserved diagnostics, but they are not generic product-search failure gates.
+The corrected rule is defined in
+`docs/source-concept-tag-search-semantics.md`: shared supported bare-name results
+are valid, while unsupported/rejected results, AND leakage, and identity mutation
+are failures.
 
 For the honest `partial_autonomous_closure` foundation, the contract also
 requires zero-provider closeout proof, complete overlay lifecycle proof, the
@@ -155,6 +164,77 @@ retained honestly and does not become fabricated actual cost.
 
 See `docs/source-concept-autonomous-resolution-policy.md` for the durable
 no-human-review and evidence-fallback policy.
+
+## ML1 Multilingual Alias And Source-Metadata Gate
+
+`ml1_multilingual_alias_source_metadata_closure_contract_v1` is the focused
+SCV2-ML1 gate. Audit execution is read-only over the immutable accepted R2R
+evidence database. It requires corrected durable search
+semantics, complete canonical Pixiv filename-candidate accounting at media/page
+and distinct-work levels, creator-field retention, a real fixed-evidence
+multilingual-family benchmark, candidate-generation recall accounting, actual
+runtime AND-search proof, public redaction, and an integrity-checked review pack.
+
+The contract does not require one bare name to resolve to one identity and does
+not use the historical R2R broad-union/cannot-contamination counts as target
+gates. It fails on unsupported or rejected results, AND leakage, search-caused
+identity mutation, silently lost aliases/creator fields, unexplained candidate
+misses, human-review dependency, fixed/forbidden evidence mutation, unauthorized
+provider/LLM/gallery-dl calls outside the exact authorization, redaction gaps,
+or downstream authorization.
+
+Semantic completeness, universal recall, perfect creator/character/work
+intersection, and universal multilingual identity materialization are not ML1
+gates. Under-recall and candidate-generation gaps remain explicit evidence for
+ML2. ML1 does require every runtime result to have direct or accepted support,
+zero rejected-only or superseded-only results, media-level AND semantics, and
+zero search-caused identity mutation.
+
+PR #136 executed only the exact deduplicated current-stock Pixiv metadata
+manifests under the project-owner `operator_accepted_local_credential_risk_v1`
+waiver. Execution was metadata-only, used at least two-second request spacing,
+bounded retry/backoff, per-work checkpoints, one isolated ML1 dev/test database,
+and no fallback provider or media download. The final closeout retains the
+historical `1,817` calls but requires a zero external-call delta. The accepted
+R2R database remains immutable.
+
+New imports use the canonical `phase44p0_pixiv_filename_prior_v1` parser and a
+durable source-metadata queue record. Normal complete/terminal closure remains
+the preferred rule. The separately governed
+`deferred_nonblocking_source_page_mismatch` state is closed but neither complete
+nor terminal: it requires positive exact-work/page attempt evidence, preserved
+raw history, no unsupported page link or conflict winner, and explicit
+`source_page_mismatch_deferred_nonblocking_v1` policy evidence. Generic retry or
+resume cannot reopen it. The final PR #136 contract may therefore prove the
+exhaustive equation `candidate = complete + terminal + deferred`, zero open or
+blocking-conflict works, status
+`partial_ml1_pixiv_metadata_foundation_complete`, `target_met=false`,
+`safe_to_merge=true`, `route_approved=true`, and no active blockers. Its route
+approval is limited to separately governed SCV2-ML2 work and does not authorize
+production, scale, another provider, Entity/truth writes, or acquisition replay.
+
+The final gate additionally requires page-local disposition and trusted creator
+lineage: `deferred_returned_page_row_count_after=0` and
+`untrusted_parent_query_visible_creator_observation_count=0`. A returned exact
+page must be complete even when another page for the work is absent. Creator
+backfill, creator-field audit, trusted mismatch precedence, and runtime mismatch
+detection must use the same canonical complete Pixiv-parent predicate. The
+creator audit must inspect `creator_account` before compatible historical fields
+and report non-overlapping work, media/page, metadata-record, payload-queue,
+terminal-evidence, and deferred-row metrics.
+
+Deferred execution hardening is gated by named future milestones:
+`PRE-NEXT-PROVIDER-EXECUTION-HARDENING` for cross-pass spacing, manifest-scope
+outcome keys, conflict mismatch persistence, and terminal/private classifier
+ordering; `CONTROLLED-SCALE-AUDIT-DEBT` for denominator treatment; and
+`PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING` for secret-token delimiter
+scanning. None authorizes work in ML1 or ML2.
+
+The default primary-provider LLM policy pre-authorizes only one finite,
+reproducible, cache-first execution whose projected aggregate cost including
+retries is at most USD 10.00, with no fallback, image upload, production/truth
+write, or semantic scope expansion. No ML1 LLM call is expected while candidate
+remediation is deferred.
 
 ## Route Gate
 

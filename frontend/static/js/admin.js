@@ -1832,9 +1832,12 @@ class AdminPanel {
         } else {
             const label = job.dry_run ? 'would import' : 'imported';
             const statusLabel = job.status === 'completed' ? 'complete' : job.status;
+            const metadataSuffix = job.source_metadata_blocked
+                ? `; Pixiv metadata ${job.source_metadata_status} (${job.source_metadata_open_count} open)`
+                : '';
             app.showNotification(
-                `Scan ${statusLabel}: ${job.imported} ${label}, ${job.skipped_duplicate} dup skipped, ${job.failed} failed`,
-                job.status === 'completed' ? (job.failed > 0 ? 'warning' : 'success') : 'warning'
+                `Scan ${statusLabel}: ${job.imported} ${label}, ${job.skipped_duplicate} dup skipped, ${job.failed} failed${metadataSuffix}`,
+                job.status === 'completed' ? (job.failed > 0 || job.source_metadata_blocked ? 'warning' : 'success') : 'warning'
             );
         }
         if (!job.dry_run && !job.is_preflight && job.imported > 0) this.loadMediaStats();

@@ -21,9 +21,53 @@ The finished system should:
 
 ## Current Active Roadmap
 
-The active route is now the post-PR #129 return to SourceConcept route
-remediation. The canonical current sequence lives in
-`docs/roadmap/current-mainline-roadmap.md`.
+PR #135 is merged at `5bbbb8ff13b140ea77a839757603714bfdd87181`.
+SCV2-R2R autonomous closure is accepted, and the current approved phase is
+`SCV2-ML1: Multilingual Alias and Source-Metadata Closure`. The canonical current
+sequence lives in `docs/roadmap/current-mainline-roadmap.md`.
+
+The former SR1 interpretation is superseded: identity union and search-result
+union are different. `cannot_link` blocks identity union, but a bare name returns
+the union of every media item with legitimate direct or accepted-alias support;
+additional terms disambiguate by media-level AND intersection. The primary ML1
+quality question is multilingual alias coverage and candidate-generation recall.
+See `docs/source-concept-tag-search-semantics.md`.
+
+PR #136 executed its exact `1,713`-work main and 3-work conflict metadata-only
+manifests in the isolated ML1 database under the explicit project-owner local
+credential-risk waiver. Its final project-lead-directed closeout accounts
+`2,235 = 2,155 complete + 66 authenticated terminal + 14
+deferred_nonblocking_source_page_mismatch` works; pending, retryable, missing,
+normalization failure, provider mismatch, and unresolved blocking conflict are
+zero. Page-local governance corrected 5 previously deferred rows whose exact
+provider page was already present, producing `2,201` complete media rows and 18
+truly absent-page deferred rows across the same 14 governed works. The remaining
+deferred cases preserve the observed local/provider page mismatch without
+inventing page links, substitutions, or conflict winners. Trusted-parent
+governance also superseded 26 affected creator-name observations with only an
+untrusted Pixiv parent and left the current untrusted-parent count at 0; the
+actual persisted `creator_account` field has `2,108` raw, retained, and trusted
+query-visible values with no silent drops. Current
+status is `partial_ml1_pixiv_metadata_foundation_complete`, with
+`target_met=false`, `safe_to_merge=true`, `route_approved=true`, and
+`active_blockers=[]`; route approval is limited to a separately governed
+SCV2-ML2 phase. Historical Pixiv/gallery-dl calls remain `1,817`, while this
+closeout added zero external calls. No LLM, media download, production, Entity,
+or truth execution occurred. Continuous Pixiv-on-import completeness, production
+evidence promotion, and the bounded USD-10 LLM policy are defined in
+`docs/pixiv-metadata-ingestion-and-promotion-policy.md`.
+
+ML1 does not require semantic perfection, universal recall, or complete alias
+materialization. Its accepted search boundary is direct/accepted support only,
+no rejected-only or superseded-only result, media-level AND constraints, and no
+search-caused identity mutation. The remaining creator/character/work recall,
+multilingual equivalence, and 30 candidate-generation gaps are measured ML2
+inputs. Six future hardening items remain outside PR #136:
+`PRE-NEXT-PROVIDER-EXECUTION-HARDENING` owns cross-pass request spacing,
+manifest-scope outcome keys, conflict mismatch persistence, and terminal/private
+classifier ordering; `CONTROLLED-SCALE-AUDIT-DEBT` owns denominator treatment;
+`PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING` owns secret-token delimiter
+scanning.
 
 PR #113 / Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline
 library, PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows
@@ -982,6 +1026,7 @@ This reference preserves older backlog items. The active near-term route is the 
 
 ### Future Ideas (unscheduled)
 
+- `PX-REC1: Archived Source Metadata Recovery` may be considered only after authenticated Pixiv acquisition measures the actual terminal deleted/private/unavailable population. Candidate evidence routes include an exact Pixiv work ID preserved in a Danbooru source URL, exact cryptographic hash, high-confidence perceptual hash, or another independently verified image correspondence. Any recovered Danbooru metadata remains Danbooru-provenance evidence and must not be represented as original Pixiv metadata. Do not define a fixed trigger threshold before terminal-rate evidence exists.
 - Reverse image search (SauceNAO / IQDB integration) only after explicit provider policy, privacy approval, image/thumbnail/hash upload approval, cache/audit/rate-limit design, and small opt-in batch approval
 - Source completion (for example Pixiv/source URLs) from exact source metadata first; no login/cookie/private APIs or scraping without separate policy review
 - Similar image / near-duplicate detection (perceptual hashing) as supplementary recall, not identity truth

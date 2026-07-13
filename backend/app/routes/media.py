@@ -181,6 +181,18 @@ def process_and_save_media(
         db.add(media)
         db.flush()
 
+        # Every import path funnels through this helper. Persist the canonical
+        # filename/path Pixiv decision in the same transaction so a newly
+        # imported candidate can never silently bypass metadata accounting.
+        from ..services.pixiv_metadata_ingestion_service import queue_media_for_pixiv_metadata
+
+        # Some isolated unit tests use a MagicMock in place of SQLAlchemy and
+        # therefore cannot emulate primary-key assignment on flush. Real
+        # sessions must always pass through the gate (and fail closed if the
+        # flushed row somehow has no id).
+        if isinstance(db, Session) or media.id is not None:
+            queue_media_for_pixiv_metadata(db, media)
+
         tag_ids_to_update = []
         if tags:
             tag_list = [t.strip() for t in tags.split() if t.strip()]

@@ -1,4 +1,4 @@
-"""Freshness guard for the post-PR #133 SCV2-R2 handoff and roadmap state."""
+"""Freshness guards for the PR #136 SCV2-ML1 canonical closeout state."""
 
 from __future__ import annotations
 
@@ -7,44 +7,79 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+MERGED_R2R_SHA = "5bbbb8ff13b140ea77a839757603714bfdd87181"
 
 
 def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_current_handoff_is_post_pr133_and_points_to_r2() -> None:
+def test_current_handoff_is_post_pr135_and_points_to_ml1() -> None:
     text = _read("docs/current-handoff.md")
-    summary = json.loads(
-        _read("docs/reports/phase-4.5-scv2-r2-constraint-aware-graph-remediation-summary.json")
-    )
-    final_working_db = summary["environment_isolation"]["working_db"]
+    summary = json.loads(_read("docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure-summary.json"))
 
-    assert "Last updated for SCV2-R2 after PR #133" in text
-    assert "Current phase | `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation`" in text
-    assert "4a44d5809c9ec567bf59474cc3e20df62a0e97de" in text
-    assert "blombooru_r1r_restored_test_20260618` (preserved)" in text
-    assert final_working_db == "blombooru_scv2_r2_review4_test_20260710"
-    assert final_working_db in text
-    assert "target_met_constraint_aware_r2" in text
-    assert "2,284 genuinely new/missing pairs" in text
-    assert "blocked_llm_approval_required" in text
-    assert "no downstream route approved" in text
+    assert "PR #135" in text
+    assert MERGED_R2R_SHA in text
+    assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in text
+    assert summary["environment_isolation"]["working_db"] in text
+    assert "3319 = 1522 must_link + 1791 cannot_link + 6 deferred_nonblocking" in text
+    assert "Search-result union is not identity union" in text
+    assert "metadata acquisition" in text and "remain unauthorized" in text
 
 
-def test_roadmap_keeps_r2_after_a1r_and_blocks_route_promotion() -> None:
+def test_roadmap_supersedes_sr1_and_keeps_ml1_boundary() -> None:
     roadmap = _read("docs/roadmap/current-mainline-roadmap.md")
-    post_s2 = _read("docs/roadmap/post-s2-production-roadmap.md")
     project = _read("docs/project-roadmap.md")
 
-    assert "5. `R1R: Full SourceConcept Pipeline Replay / Remediation`" in roadmap
-    assert "6. `SCV2-A1R: Route Audit Rerun After R1R`" in roadmap
-    assert "7. `SCV2-R2: Constraint-Aware SourceConcept Graph Remediation`" in roadmap
-    assert "R1R evidence DB is read-only input" in roadmap
-    assert "A1R: Route Audit Rerun After R1R" in post_s2
-    assert "R2, PX1-B, Provider-2, scale-up, Entity bridge, SourceConcept truth promotion" in project
-    assert "remain blocked until R1R and A1R produce valid route evidence" in project
-    assert "route_approved=true" not in roadmap
-    assert "PX1-B approved" not in roadmap
-    assert "Provider-2 approved" not in roadmap
-    assert "Entity bridge approved" not in roadmap
+    assert MERGED_R2R_SHA in roadmap
+    assert "former `SCV2-SR1" in roadmap
+    assert "superseded" in roadmap
+    assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in roadmap
+    assert "media-level AND intersection" in roadmap
+    assert "SCV2-ML1" in project
+    assert "PX1-B broad acquisition" in roadmap
+    assert "Entity bridge" in roadmap
+
+
+def test_ml1_closeout_handoff_roadmaps_report_and_contract_are_consistent() -> None:
+    handoff = _read("docs/current-handoff.md")
+    roadmap = _read("docs/roadmap/current-mainline-roadmap.md")
+    project = _read("docs/project-roadmap.md")
+    policy = _read("docs/pixiv-metadata-ingestion-and-promotion-policy.md")
+    contracts = _read("docs/phase-contracts.md")
+    report = _read("docs/reports/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure.md")
+    wrapper = json.loads(
+        _read("docs/reports/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure-summary.json")
+    )
+    summary = wrapper["evidence_summary"]
+
+    for text in (handoff, roadmap, project, report):
+        assert "partial_ml1_pixiv_metadata_foundation_complete" in text
+        assert "safe_to_merge=true" in text or "safe_to_merge: `True`" in text
+        assert "route_approved=true" in text or "route_approved: `True`" in text
+
+    canonical = "\n".join((handoff, roadmap, project, policy, contracts, report))
+    assert "deferred_nonblocking_source_page_mismatch" in canonical
+    assert "source_page_mismatch_deferred_nonblocking_v1" in canonical
+    assert "SCV2-ML2" in canonical
+    assert "No provider call has occurred yet" not in canonical
+    assert "safe_to_merge=false" not in canonical
+    assert "route_approved=false" not in canonical
+
+    contract = summary["pipeline_contract"]
+    accounting = summary["pixiv_accounting"]
+    route = summary["route_authorization"]
+    assert contract["status"] == "partial_ml1_pixiv_metadata_foundation_complete"
+    assert contract["claims"] == {
+        "target_met": False,
+        "route_approved": True,
+        "safe_to_merge": True,
+    }
+    assert contract["active_blockers"] == []
+    assert accounting["candidate_distinct_work_count"] == 2235
+    assert accounting["metadata_present_complete_work_count"] == 2155
+    assert accounting["terminal_remote_unavailable_work_count"] == 66
+    assert accounting["deferred_nonblocking_source_page_mismatch_work_count"] == 14
+    assert accounting["work_accounting_equality_holds"] is True
+    assert route["route_approved_scope"] == "SCV2-ML2_next_phase_only"
+    assert route["production_authorized"] is False

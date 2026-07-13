@@ -42,6 +42,24 @@
 - runtime_benchmark_equality_passed = `True`.
 - persisted_fallback_index = `{'index_version': 'source_concept_deferred_overlay_v1', 'row_count': 6596, 'active_row_count': 4947, 'blocked_row_count': 1649, 'relation_counts': {'cannot_link': 1649, 'deferred_nonblocking': 5, 'direct_evidence': 3942, 'must_link': 1000}, 'deterministic_content_fingerprint': 'b100ba9f93bdb242f41916454a2013f87d74baa984a2c4de091409fa690c544b'}`.
 
+## Interpretation erratum (SCV2-ML1)
+
+The numeric fields above are preserved exactly as measured, but their original
+one-name/one-family interpretation is superseded. Search-result union is not
+identity union. `cannot_link` prevents identity materialization and unsupported
+alias propagation; it does not make independently supported same-name media an
+invalid bare-name result.
+
+Consequently, `false_broad_union_indicator_count`,
+`cannot_linked_search_contamination_count`, the two path-specific cannot
+contamination counts, `seeds_with_false_broad_union`, and their derived
+`unexpected_media_count` are historical diagnostics under an overly restrictive
+interpretation. They must not be used as generic proof of product-search failure
+until ML1 reclassifies each result by direct/accepted-alias support, rejected
+evidence, AND leakage, role/source constraints, and identity mutation. Shared
+bare-name results across distinct identities are legitimate; additional terms
+disambiguate through media-level AND intersection.
+
 ## Mutation and lifecycle proof
 
 - R2R output mutation proof: `{'r2r_output_table_count': 8, 'tables': ['blombooru_source_concept_resolution_runs', 'blombooru_source_concept_signals', 'blombooru_source_concepts', 'blombooru_source_concept_aliases', 'blombooru_source_concept_evidence', 'blombooru_source_concept_signal_links', 'blombooru_source_concept_search_index', 'blombooru_source_concept_fallback_search_index'], 'changed_allowed_output_tables': [], 'unexpected_changed_tables': [], 'fallback_index_table_included': True, 'accepted_execution_before_row_count': 2654, 'closeout_run_before_row_count': 6596, 'fallback_index_before_row_count': 6596, 'fallback_index_after_row_count': 6596, 'fallback_index_first_fingerprint': 'e060ac072d74f57801b3a91037341ca890e030112df2ba7077c0d40b66525e7d', 'fallback_index_second_fingerprint': 'e060ac072d74f57801b3a91037341ca890e030112df2ba7077c0d40b66525e7d', 'fallback_index_second_fingerprint_match': True}`.
@@ -52,4 +70,4 @@
 
 ## Boundary
 
-SCV2-R2R is an autonomous pair-closure and non-human materialization foundation with experimental source-layer fallback infrastructure. It does not claim autonomous search closure, context-free fallback safety, production search readiness, or full-library readiness.
+SCV2-R2R is an autonomous pair-closure and non-human materialization foundation with experimental source-layer fallback infrastructure. It does not claim ML1 multilingual/source-metadata closure, production search readiness, or full-library readiness. The next approved phase is SCV2-ML1, not the superseded SR1 route.

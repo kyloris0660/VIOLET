@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from sqlalchemy import (Date, Float, and_, asc, case, cast, desc, exists, func,
                         literal, not_, or_, text)
@@ -23,10 +23,13 @@ TRUSTED_PROPER_NOUN_TRANSLATION_SOURCES = {"manual", "static"}
 def _translation_alias_trusted_for_search(row) -> bool:
     """Return whether a translation row may contribute zh search aliases."""
 
-    category = getattr(row, "category", None)
-    source = getattr(row, "source", None)
-    status = getattr(row, "status", None)
-    needs_review = bool(getattr(row, "needs_review", False))
+    def value(name: str):
+        return row.get(name) if isinstance(row, Mapping) else getattr(row, name, None)
+
+    category = str(value("category") or "").casefold()
+    source = str(value("source") or "").casefold()
+    status = str(value("status") or "").casefold()
+    needs_review = bool(value("needs_review"))
     if category not in PROPER_NOUN_CATEGORIES:
         return True
     if source in TRUSTED_PROPER_NOUN_TRANSLATION_SOURCES:
@@ -50,10 +53,50 @@ def _load_zh_tag_reverse():
     return _TAG_ZH_REVERSE
 
 
-def _load_db_alias_cache():
+def _translation_alias_map(rows) -> dict[str, str]:
+    cache = {}
+    source_priority = {"manual": 0, "static": 1, "llm": 2, "imported": 3}
+    for row in rows:
+        if not _translation_alias_trusted_for_search(row):
+            continue
+        key = row.display_name
+        existing_priority = source_priority.get(cache.get(key, {}).get("_source", ""), 99)
+        new_priority = source_priority.get(row.source, 99)
+        if key not in cache or new_priority < existing_priority:
+            cache[key] = {"canonical": row.canonical_name, "_source": row.source}
+        if row.aliases_json:
+            try:
+                aliases = json.loads(row.aliases_json) if isinstance(row.aliases_json, str) else row.aliases_json
+                for alias in aliases or ():
+                    if not alias:
+                        continue
+                    alias_existing = source_priority.get(cache.get(alias, {}).get("_source", ""), 99)
+                    if alias not in cache or new_priority < alias_existing:
+                        cache[alias] = {"canonical": row.canonical_name, "_source": row.source}
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return {key: value["canonical"] for key, value in cache.items()}
+
+
+def _load_db_alias_cache(db: Session | None = None):
     """Load translation aliases from DB into a cache. Refreshes every 5 minutes."""
     import time
     global _DB_ALIAS_CACHE, _DB_ALIAS_CACHE_TIME
+
+    if db is not None:
+        session_cache_key = "search_parser_translation_alias_map_v1"
+        if session_cache_key in db.info:
+            return db.info[session_cache_key]
+        from ..models import TagTranslation
+
+        rows = (
+            db.query(TagTranslation)
+            .filter(TagTranslation.language == "zh-CN", TagTranslation.status != "rejected")
+            .all()
+        )
+        alias_map = _translation_alias_map(rows)
+        db.info[session_cache_key] = alias_map
+        return alias_map
 
     now = time.time()
     if _DB_ALIAS_CACHE is not None and _DB_ALIAS_CACHE_TIME and (now - _DB_ALIAS_CACHE_TIME) < 300:
@@ -76,33 +119,7 @@ def _load_db_alias_cache():
                 .all()
             )
 
-            cache = {}
-            source_priority = {"manual": 0, "static": 1, "llm": 2, "imported": 3}
-
-            for row in rows:
-                if not _translation_alias_trusted_for_search(row):
-                    continue
-
-                key = row.display_name
-                existing_priority = source_priority.get(cache.get(key, {}).get("_source", ""), 99)
-                new_priority = source_priority.get(row.source, 99)
-
-                if key not in cache or new_priority < existing_priority:
-                    cache[key] = {"canonical": row.canonical_name, "_source": row.source}
-
-                if row.aliases_json:
-                    try:
-                        aliases = json.loads(row.aliases_json)
-                        for alias in aliases:
-                            if not alias:
-                                continue
-                            alias_existing = source_priority.get(cache.get(alias, {}).get("_source", ""), 99)
-                            if alias not in cache or new_priority < alias_existing:
-                                cache[alias] = {"canonical": row.canonical_name, "_source": row.source}
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-            _DB_ALIAS_CACHE = {k: v["canonical"] for k, v in cache.items()}
+            _DB_ALIAS_CACHE = _translation_alias_map(rows)
             _DB_ALIAS_CACHE_TIME = now
         finally:
             db.close()
@@ -113,10 +130,10 @@ def _load_db_alias_cache():
     return _DB_ALIAS_CACHE
 
 
-def resolve_zh_alias(tag_name: str) -> str:
+def resolve_zh_alias(tag_name: str, db: Session | None = None) -> str:
     """Resolve a Chinese tag alias to its canonical English tag name.
     Priority: DB translations > static dict > original name."""
-    db_cache = _load_db_alias_cache()
+    db_cache = _load_db_alias_cache(db)
     if tag_name in db_cache:
         return db_cache[tag_name]
 
@@ -132,7 +149,7 @@ def invalidate_translation_cache():
 
 TOKEN_PATTERN = re.compile(r'(-?)(?:([a-zA-Z0-9_]+):)?("[^"]*"|[^\s"]+)')
 
-def parse_search_query(query_string: str) -> Dict[str, Any]:
+def parse_search_query(query_string: str, db: Session | None = None) -> Dict[str, Any]:
     """
     Parses a Danbooru-style search query string into a structured dictionary.
     """
@@ -161,7 +178,7 @@ def parse_search_query(query_string: str) -> Dict[str, Any]:
                 result['meta'][key] = []
             result['meta'][key].append({'value': value, 'negated': is_negated})
         else:
-            resolved = resolve_zh_alias(value)
+            resolved = resolve_zh_alias(value, db=db)
             if not was_quoted and ('*' in resolved or '?' in resolved):
                 if is_negated:
                     result['tags']['wildcards'].append(('exclude', resolved))

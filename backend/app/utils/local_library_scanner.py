@@ -448,6 +448,13 @@ def scan_and_import(
     if progress_callback:
         progress_callback(stats)
 
+    if not dry_run:
+        from ..services.pixiv_metadata_ingestion_service import summarize_batch_closure
+
+        stats["pixiv_metadata_closure"] = summarize_batch_closure(
+            db, stats.get("imported_media_ids", [])
+        )
+
     return stats
 
 
@@ -686,7 +693,20 @@ def run_scan_job(job_id: int) -> None:
         job.limit_reached = result.get("limit_reached", False)
         job.failed_files_json = json.dumps(result["failed_files"][:MAX_FAILED_REPORT])
         job.finished_at = datetime.now(timezone.utc)
-        job.status = "cancelled" if was_cancelled else "completed"
+        pixiv_closure = result.get("pixiv_metadata_closure") or {}
+        source_metadata_blocked = bool(pixiv_closure and not pixiv_closure.get("closed", False))
+        if was_cancelled:
+            job.status = "cancelled"
+        else:
+            # Scan execution and source-metadata completion are separate
+            # lifecycles. The API derives structured metadata status from the
+            # linked imported media rows.
+            job.status = "completed"
+        if source_metadata_blocked:
+            job.error_message = (
+                "Scan completed; Pixiv source metadata acquisition remains pending: "
+                f"{pixiv_closure.get('open_candidate_count', 0)} open candidate state(s)"
+            )
 
         imported_media_ids = result.get("imported_media_ids", [])
         for mid in imported_media_ids:
@@ -694,6 +714,9 @@ def run_scan_job(job_id: int) -> None:
 
         db.commit()
 
+        # Source-metadata closure has its own durable lifecycle.  Do not strand
+        # otherwise enabled after-scan automation when that lifecycle remains
+        # pending; each downstream service keeps its own enablement/safety gate.
         if job.status == "completed" and imported_media_ids and not job.dry_run:
             try:
                 from ..services.ai_tagging_job_service import create_auto_tag_job_after_scan

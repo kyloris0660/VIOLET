@@ -49,18 +49,25 @@ Source-layer search has two distinct paths:
 
 Evidence fallback improves retrieval without changing identity membership. It
 must preserve provenance, role, work context, confidence, and cannot-link
-boundaries. Fallback traversal is not Entity truth and must not create broad
-media unions across constrained components.
+identity boundaries. A `cannot_link` relation blocks identity materialization
+and unsupported alias propagation; it does not globally suppress direct media
+that independently carry the same observed name. A supported shared-name result
+union across constrained components is valid and does not imply identity union.
 
 The canonical fallback-eligible signal states are `materialized_identity`,
 `isolated_evidence`, `active`, and the query-visible legacy compatibility state
 `needs_review`. The latter is evidence compatibility only, never a human work
 queue; no final materialized SourceConcept may remain in that state. Rejected,
 `rejected_evidence`, superseded, invalid, and deleted signals are excluded.
-Both endpoints of a relation must be eligible before an active fallback-index
-row is written. Ordinary gallery search remains identity-only; fallback is
-diagnostic/experimental and disabled by default until context-aware search is
-implemented.
+Both endpoints of a propagated relation must be eligible before an active
+fallback-index row is written. Direct evidence remains query-visible on the
+media that owns it. Each positive query term is applied as a media-level AND
+constraint. Ordinary gallery search keeps the fallback disabled by default until
+ML1 validates the full runtime path; direct and materialized identity support
+still obey the corrected shared-name semantics.
+
+See `docs/source-concept-tag-search-semantics.md` for the durable identity-union,
+search-union, multilingual-alias, creator, and AND-intersection rules.
 
 ## Optional Manual Overrides
 

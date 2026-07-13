@@ -3377,19 +3377,19 @@ def select_llm_adjudication_edges(
         pair = _pair_id(edge)
         previous = representative_by_pair.get(pair)
         rank = (
-            int(not edge.union_allowed),
-            status_priority.get(edge.status, 0),
             edge_type_priority.get(edge.edge_type, 0),
+            status_priority.get(edge.status, 0),
             float(edge.weight),
+            int(edge.union_allowed),
             str(edge.evidence_source),
             str(edge.resolution_reason_code),
             str(edge.edge_key),
         )
         previous_rank = (
-            int(not previous.union_allowed),
-            status_priority.get(previous.status, 0),
             edge_type_priority.get(previous.edge_type, 0),
+            status_priority.get(previous.status, 0),
             float(previous.weight),
+            int(previous.union_allowed),
             str(previous.evidence_source),
             str(previous.resolution_reason_code),
             str(previous.edge_key),
