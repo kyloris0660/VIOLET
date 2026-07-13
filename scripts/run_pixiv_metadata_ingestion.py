@@ -372,10 +372,20 @@ def run_normalization_replay(
 
     ledger = {str(row["work_id"]): dict(row) for row in ledger_rows}
     main_ids = tuple(
-        row["work_id"] for row in ledger_rows if row["final_outcome"] == "normalization_failed"
+        row["work_id"]
+        for row in ledger_rows
+        if row["final_outcome"] in {
+            "normalization_failed",
+            "retryable_exhausted_or_systemically_stopped",
+        }
     )
     conflict_ids = tuple(
-        row["work_id"] for row in ledger_rows if row["final_outcome"] == "conflict_normalization_failed"
+        row["work_id"]
+        for row in ledger_rows
+        if row["final_outcome"] in {
+            "conflict_normalization_failed",
+            "conflict_retryable_exhausted",
+        }
     )
     if not main_ids and not conflict_ids:
         return summary
@@ -395,6 +405,8 @@ def run_normalization_replay(
         if not prior or prior.get("final_outcome") not in {
             "normalization_failed",
             "conflict_normalization_failed",
+            "retryable_exhausted_or_systemically_stopped",
+            "conflict_retryable_exhausted",
         }:
             raise PixivMetadataGateError("normalization_replay_outside_prior_failed_manifest")
         replay_attempts += int(item.attempt_count)
@@ -455,8 +467,9 @@ def run_normalization_replay(
     ).hexdigest()
     outcome_counts = Counter(row["final_outcome"] for row in final_ledger_rows)
     acquisition = summary["acquisition_execution"]
-    diagnostic_calls = 2
-    total_requests = int(acquisition.get("provider_request_attempt_count") or 0) + diagnostic_calls + replay_attempts
+    additional_diagnostic_calls = int(getattr(args, "additional_diagnostic_calls", 0) or 0)
+    total_diagnostic_calls = int(acquisition.get("diagnostic_provider_request_count") or 0) + additional_diagnostic_calls
+    total_requests = int(acquisition.get("provider_request_attempt_count") or 0) + additional_diagnostic_calls + replay_attempts
     acquisition.update(
         provider_request_attempt_count=total_requests,
         gallery_dl_call_count=total_requests,
@@ -469,7 +482,7 @@ def run_normalization_replay(
         provider_identity_mismatch_work_count=sum(outcome_counts[key] for key in ("provider_identity_mismatch", "conflict_unresolved_after_exact_provider_evidence")),
         systemic_stop=main_stop is not None or systemic_stop_result(conflict_results) is not None,
         systemic_stop_stage="normalization_replay_main" if main_stop is not None else "normalization_replay_conflict" if systemic_stop_result(conflict_results) is not None else None,
-        diagnostic_provider_request_count=diagnostic_calls,
+        diagnostic_provider_request_count=total_diagnostic_calls,
         diagnostic_private_work_ref="76c0ee4cadc1a00a",
         normalization_replay_main_work_count=len(main_ids),
         normalization_replay_conflict_work_count=len(conflict_ids),
@@ -808,6 +821,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--replay-normalization-failures",
         action="store_true",
         help="Explicit corrected replay of only prior normalization final outcomes.",
+    )
+    parser.add_argument(
+        "--additional-diagnostic-calls",
+        type=int,
+        default=0,
+        help="Additional redacted diagnostic provider calls to include when resuming corrected replay.",
     )
     parser.add_argument("--gallery-dl-command", default=os.getenv("VIOLET_GALLERY_DL_COMMAND", ""))
     parser.add_argument("--timeout", type=int, default=120)

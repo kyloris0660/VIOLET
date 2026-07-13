@@ -830,7 +830,7 @@ def classify_gallery_dl_failure(stderr: str, *, authentication_passed: bool) -> 
         return PixivMetadataState.RETRYABLE.value, "retryable_rate_limit"
     if re.search(r"(?i)(timeout|timed out|connection|network|dns|temporar)", value):
         return PixivMetadataState.RETRYABLE.value, "retryable_network_transport"
-    if authentication_passed and re.search(r"(?i)(404|deleted|private|not found|unavailable)", value):
+    if authentication_passed and re.search(r"(?i)(404|deleted|private|not\s*found|unavailable|does\s+not\s+exist|removed)", value):
         return PixivMetadataState.TERMINAL.value, "authenticated_remote_deleted_private_unavailable"
     return PixivMetadataState.RETRYABLE.value, "retryable_provider_failure"
 

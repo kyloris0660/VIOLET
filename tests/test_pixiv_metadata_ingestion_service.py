@@ -364,7 +364,7 @@ def test_terminal_and_normalization_failures_do_not_stop_unrelated_works(db) -> 
 def test_gallery_dl_zero_exit_error_event_is_classified_terminal_not_normalization(db) -> None:
     queue_media_for_pixiv_metadata(db, {"id": 26, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg"})
     db.commit()
-    payload = [[1, {"error": "HttpError", "message": "404 not found"}]]
+    payload = [[1, {"error": "NotFoundError", "message": "provider item unavailable"}]]
     results = run_bounded_acquisition(
         db,
         ["123456789"],
