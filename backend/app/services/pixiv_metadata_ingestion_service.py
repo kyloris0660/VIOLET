@@ -959,7 +959,8 @@ def run_bounded_acquisition(
                 break
             except (PixivMetadataGateError, ValueError, TypeError, json.JSONDecodeError) as exc:
                 session.rollback()
-                identity_mismatch = "identity_mismatch" in str(exc)
+                failure_code = str(exc).split(":", 1)[0] or exc.__class__.__name__
+                identity_mismatch = "identity_mismatch" in failure_code
                 failure_state = (
                     PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value
                     if identity_mismatch
@@ -982,7 +983,7 @@ def run_bounded_acquisition(
                     session,
                     work_id,
                     failure_state,
-                    reason=exc.__class__.__name__,
+                    reason=failure_code,
                     attempted_record_ids=attempted_record_ids,
                     structural_diagnostics={
                         "work_id": str(work_id),
@@ -990,6 +991,7 @@ def run_bounded_acquisition(
                         "parser_version": PARSER_VERSION,
                         "normalizer_version": "gallery_dl_pixiv_normalizer_v1",
                         "failure_class": exc.__class__.__name__,
+                        "failure_code": failure_code,
                         "provider_output_returned": bool(completed.stdout),
                         "raw_provider_output_retained_in_diagnostic": False,
                     },
@@ -997,7 +999,7 @@ def run_bounded_acquisition(
                     allow_normalization_replay=allow_normalization_replay,
                 )
                 session.commit()
-                result = AcquisitionResult(work_id, failure_state, True, 0, exc.__class__.__name__, attempt)
+                result = AcquisitionResult(work_id, failure_state, True, 0, failure_code, attempt)
                 results.append(result)
                 if result_callback:
                     result_callback(result)
