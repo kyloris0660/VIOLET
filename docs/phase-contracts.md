@@ -183,20 +183,28 @@ misses, human-review dependency, fixed/forbidden evidence mutation, unauthorized
 provider/LLM/gallery-dl calls outside the exact authorization, redaction gaps,
 or downstream authorization.
 
-PR #136 authorizes only the exact deduplicated current-stock Pixiv metadata
-manifest after credential rotation, old-secret fingerprint scanning, and a
-redacted authenticated gallery-dl preflight. Execution is metadata-only, uses at
-least two-second request spacing, bounded retry/backoff, per-work checkpoints,
-one isolated ML1 dev/test database, and no fallback provider or media download.
-`blocked_credential_rotation_confirmation_required` and
-`blocked_pixiv_acquisition_execution_incomplete` require executable evidence and
-must expose all active blockers. The accepted R2R database remains immutable.
+PR #136 executed only the exact deduplicated current-stock Pixiv metadata
+manifests under the project-owner `operator_accepted_local_credential_risk_v1`
+waiver. Execution was metadata-only, used at least two-second request spacing,
+bounded retry/backoff, per-work checkpoints, one isolated ML1 dev/test database,
+and no fallback provider or media download. The final closeout retains the
+historical `1,817` calls but requires a zero external-call delta. The accepted
+R2R database remains immutable.
 
 New imports use the canonical `phase44p0_pixiv_filename_prior_v1` parser and a
-durable source-metadata queue record. A Pixiv candidate batch closes only when
-every candidate is `metadata_complete` or `terminal_remote_unavailable`; pending,
-retryable, conflict, authentication/rate/network, parser, or normalization states
-remain incomplete and suppress downstream scan automation.
+durable source-metadata queue record. Normal complete/terminal closure remains
+the preferred rule. The separately governed
+`deferred_nonblocking_source_page_mismatch` state is closed but neither complete
+nor terminal: it requires positive exact-work/page attempt evidence, preserved
+raw history, no unsupported page link or conflict winner, and explicit
+`source_page_mismatch_deferred_nonblocking_v1` policy evidence. Generic retry or
+resume cannot reopen it. The final PR #136 contract may therefore prove the
+exhaustive equation `candidate = complete + terminal + deferred`, zero open or
+blocking-conflict works, status
+`partial_ml1_pixiv_metadata_foundation_complete`, `target_met=false`,
+`safe_to_merge=true`, `route_approved=true`, and no active blockers. Its route
+approval is limited to separately governed SCV2-ML2 work and does not authorize
+production, scale, another provider, Entity/truth writes, or acquisition replay.
 
 The default primary-provider LLM policy pre-authorizes only one finite,
 reproducible, cache-first execution whose projected aggregate cost including

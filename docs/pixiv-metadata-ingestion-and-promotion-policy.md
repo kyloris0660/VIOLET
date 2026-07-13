@@ -7,7 +7,7 @@ filename/path evidence. Non-Pixiv rows are `not_applicable_non_pixiv`. Every
 canonical Pixiv work/page is persisted in the provider-neutral source metadata
 registry and deduplicated by distinct work ID.
 
-An import batch is source-metadata complete only when:
+An ordinary import batch is source-metadata complete only when:
 
 `pixiv_candidate_count = metadata_complete_count + terminal_remote_unavailable_count`
 
@@ -16,6 +16,22 @@ or normalization failures keep the batch incomplete. Terminal unavailable is
 valid only with durable authenticated deleted/private/permanently-unavailable
 evidence. The workflow is an explicit observable CLI/run entrypoint with
 checkpoint/resume; no hidden daemon is allowed.
+
+The project-lead-governed state
+`deferred_nonblocking_source_page_mismatch` is closed but is neither complete nor
+terminal. It is valid only for an exact, durably attempted work/page where the
+provider returned the correct work but did not provide the requested local page,
+after the governed acquisition/replay route is exhausted. It must preserve raw
+provider and queue provenance, select no conflict winner, create no unsupported
+page link, and use policy `source_page_mismatch_deferred_nonblocking_v1`.
+Batch governance may account it separately as:
+
+`candidate_work_count = complete_work_count + terminal_work_count + deferred_nonblocking_work_count`
+
+Generic retry, restart, resume, cache reuse, or unchanged provider metadata may
+not reopen this state. Reopening requires separately governed materially stronger
+exact-page/source evidence, a corrected filename/page identity, or an explicit
+operator identity correction.
 
 ## Acquisition Safety
 
@@ -37,6 +53,8 @@ runner, closure, tests, and contract. It includes `observed`, `active`,
 `accepted`, and `metadata_complete`. Generic retry/failure transitions may only
 update the exact attempted open queue rows; `metadata_complete`,
 `terminal_remote_unavailable`, and `filename_identity_conflict` are preserved.
+`deferred_nonblocking_source_page_mismatch` is also preserved by generic state
+transitions and excluded from ordinary pending/retry acquisition.
 
 ## Creator Retention
 

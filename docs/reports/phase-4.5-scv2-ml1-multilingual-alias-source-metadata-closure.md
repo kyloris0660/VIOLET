@@ -2,10 +2,13 @@
 
 ## Status
 
-- Contract status: `blocked_pixiv_acquisition_execution_incomplete`.
-- Active blockers: `['blocked_pixiv_acquisition_execution_incomplete', 'blocked_candidate_generation_gap']`.
-- Evidence code SHA: `df545779f7a685dd222588167762f6295b68a9c8`.
+- Contract status: `partial_ml1_pixiv_metadata_foundation_complete`.
+- Claims: `target_met=false`; `safe_to_merge=true`; `route_approved=true`.
+- Active blockers: `[]`.
+- Approved route scope / next phase: `SCV2-ML2_next_phase_only` / `SCV2-ML2: Multilingual Identity Candidate Closure`.
+- Evidence code SHA: `88a157688929d13d85eba09789b462de0f882ceb`.
 - Provider execution requests: `1817`; accepted R2R evidence remained immutable.
+- Closeout external-call delta: `0`.
 
 ## Corrected search semantics
 
@@ -16,16 +19,18 @@ Search-result union is not identity union. `cannot_link` blocks identity materia
 - Candidate media / distinct works: `2285` / `2235`.
 - Metadata-complete media / works: `2196` / `2155`.
 - Terminal-unavailable media / works: `66` / `66`.
-- Retryable / parse-or-identity / no-durable-result / unexplained media: `0` / `23` / `0` / `0`.
-- Conflict media / field-token memberships / distinct works / unresolved works: `3` / `9` / `3` / `3`.
+- Deferred nonblocking source-page-mismatch media / works: `23` / `14`.
+- Exhaustive work equation: `2235 = 2155 complete + 66 terminal + 14 deferred`; equality holds: `True`.
+- Retryable / parse-or-identity / no-durable-result / unexplained media: `0` / `0` / `0` / `0`.
+- Conflict media / field-token memberships / distinct works / unresolved works: `0` / `0` / `0` / `0`.
 - Origin breakdown: `{'filename_origin': {'candidate_media_count': 2285, 'distinct_work_count': 2235}, 'stored_path_origin': {'candidate_media_count': 2285, 'distinct_work_count': 2235}, 'thumbnail_origin': {'candidate_media_count': 2285, 'distinct_work_count': 2235}, 'source_field_origin': {'candidate_media_count': 0, 'distinct_work_count': 0}}`; agreement: `{'filename_path_agreement': 2285, 'multi_field_agreement': 2285}`.
 - Incremental acquisition required: `False`; corrected exact work requests: `0`.
-- Pixiv acquisition authorized / credential rotation confirmed / local-risk waiver: `True` / `False` / `True`.
-- Continuous import gate implemented / current stock closed: `True` / `False`.
+- Pixiv acquisition authorized / credential rotation confirmed / local-risk waiver: `False` / `False` / `True`.
+- Continuous import gate implemented / current stock closed: `True` / `True`.
 
 ## Optional owner sample evidence
 
-- Sample generated / size / conflicts exported: `True` / `0` / `3`.
+- Sample generated / size / conflicts exported: `True` / `0` / `0`.
 - Owner-review manifest fingerprint: `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
 - Owner validation confirmed / normal-pipeline human dependency: `False` / `False`.
 - Ignored private artifacts are under `.local_manifests/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure/owner-review/`; no raw work IDs, URLs, or basenames are published here.
@@ -70,7 +75,7 @@ Default bounded LLM policy / aggregate cap: `bounded_phase_primary_llm_usd10_v1`
 
 ## Validation
 
-- Changed Python py_compile: `true`.
-- Focused pytest passed / failed: `143` / `0`.
+- Changed Python py_compile: `passed`.
+- Focused pytest passed / failed: `172` / `0`.
 - ML1 contract: `True`.
-- Real browser validation: `passed`.
+- Real browser validation: `not_run`.

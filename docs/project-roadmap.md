@@ -35,14 +35,19 @@ See `docs/source-concept-tag-search-semantics.md`.
 
 PR #136 executed its exact `1,713`-work main and 3-work conflict metadata-only
 manifests in the isolated ML1 database under the explicit project-owner local
-credential-risk waiver. The final actual-data result is `2,155` complete works,
-`66` authenticated terminal works, and 14 exact local-p1/provider-p0 page
-mismatches; pending/retryable/missing are zero. Current status is
-`blocked_pixiv_acquisition_execution_incomplete`, with `target_met=false`,
-`safe_to_merge=false`, and `route_approved=false` until those 14 mismatches are
-governed without invented page links. No LLM, media download, production,
-Entity, or truth execution occurred. Continuous Pixiv-on-import completeness,
-production evidence promotion, and the bounded USD-10 LLM policy are defined in
+credential-risk waiver. Its final project-lead-directed closeout accounts
+`2,235 = 2,155 complete + 66 authenticated terminal + 14
+deferred_nonblocking_source_page_mismatch` works; pending, retryable, missing,
+normalization failure, provider mismatch, and unresolved blocking conflict are
+zero. The 14 deferred cases preserve the observed local-p1/provider-p0 mismatch
+without inventing page links, p0 substitutions, or conflict winners. Current
+status is `partial_ml1_pixiv_metadata_foundation_complete`, with
+`target_met=false`, `safe_to_merge=true`, `route_approved=true`, and
+`active_blockers=[]`; route approval is limited to a separately governed
+SCV2-ML2 phase. Historical Pixiv/gallery-dl calls remain `1,817`, while this
+closeout added zero external calls. No LLM, media download, production, Entity,
+or truth execution occurred. Continuous Pixiv-on-import completeness, production
+evidence promotion, and the bounded USD-10 LLM policy are defined in
 `docs/pixiv-metadata-ingestion-and-promotion-policy.md`.
 
 PR #113 / Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline
