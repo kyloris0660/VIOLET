@@ -181,6 +181,8 @@ def _has_mismatched_pixiv_identity(
             SourceMetadataRecord.provider == "pixiv",
             SourceMetadataRecord.media_id == int(media_id),
             SourceMetadataRecord.metadata_kind != QUEUE_METADATA_KIND,
+            SourceMetadataRecord.metadata_kind.in_(tuple(COMPLETE_METADATA_KINDS)),
+            SourceMetadataRecord.status.in_(tuple(CANONICAL_COMPLETE_STATUSES)),
         )
         .all()
     )

@@ -188,11 +188,14 @@ def run_deterministic_auth_canary(
     batch_size: int = CANARY_BATCH_SIZE,
     accept_local_credential_risk: bool = False,
     result_callback=None,
+    sleeper=time.sleep,
 ) -> tuple[list[Any], dict[str, Any]]:
     selected = tuple(dict.fromkeys(str(value) for value in work_ids))[:MAX_CANARY_WORKS]
     all_results: list[Any] = []
     for offset in range(0, len(selected), batch_size):
         batch = selected[offset : offset + batch_size]
+        if offset and any(item.request_attempted for item in all_results):
+            sleeper(MIN_REQUEST_SPACING_SECONDS)
         results = acquire(
             session,
             batch,

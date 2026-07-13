@@ -231,6 +231,30 @@ def test_historical_wrong_work_or_page_is_queued_as_conflict_not_acquisition(db)
     assert pending_distinct_work_ids(db) == ()
 
 
+@pytest.mark.parametrize("status", ["rejected", "metadata_pending", "metadata_retryable"])
+def test_stale_or_incomplete_pixiv_metadata_does_not_create_identity_conflict(db, status) -> None:
+    db.add(
+        SourceMetadataRecord(
+            provider="pixiv",
+            provider_record_key=f"historical:stale:{status}",
+            media_id=172,
+            source_work_id="999999999",
+            source_page_index=1,
+            metadata_kind="gallery_dl_real_pixiv_metadata",
+            data_type_label="authenticated_provider_metadata",
+            status=status,
+        )
+    )
+    db.commit()
+
+    decision = queue_media_for_pixiv_metadata(
+        db, {"id": 172, "filename": "123456789_p0.jpg", "path": "media/172.jpg"}
+    )
+
+    assert decision.state == PixivMetadataState.PENDING.value
+    assert pending_distinct_work_ids(db) == ("123456789",)
+
+
 def test_current_media_mismatch_wins_over_compatible_record_on_other_media(db) -> None:
     db.add_all(
         [
@@ -920,15 +944,18 @@ def test_deleted_first_canary_does_not_block_later_success(db) -> None:
 
 def test_terminal_only_canary_advances_to_next_bounded_batch(db) -> None:
     calls = []
+    sleeps = []
     def acquire(_session, work_ids, **_kwargs):
         calls.append(tuple(work_ids))
         state = PixivMetadataState.TERMINAL.value if len(calls) == 1 else PixivMetadataState.COMPLETE.value
         return [type("R", (), {"work_id": work_ids[0], "state": state, "request_attempted": True, "attempt_count": 1, "error_class": None})()]
     _, proof = ingestion_runner.run_deterministic_auth_canary(
         db, ["123456789", "223456789"], entrypoint=("gallery-dl",),
-        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, acquire=acquire, batch_size=1,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, acquire=acquire,
+        batch_size=1, sleeper=sleeps.append,
     )
     assert calls == [("123456789",), ("223456789",)]
+    assert sleeps == [ingestion_runner.MIN_REQUEST_SPACING_SECONDS]
     assert proof["passed"] is True
 
 
