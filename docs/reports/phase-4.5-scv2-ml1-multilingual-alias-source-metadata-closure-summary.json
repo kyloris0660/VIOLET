@@ -1,5 +1,13 @@
 {
   "evidence_summary": {
+    "acceptance_policy": {
+      "and_constraint_leakage_allowed": false,
+      "search_caused_identity_mutation_allowed": false,
+      "semantic_completeness_required": false,
+      "under_recall_is_next_phase_input": true,
+      "universal_recall_required": false,
+      "unsupported_or_untrusted_only_results_allowed": false
+    },
     "acquisition_execution": {
       "acquisition_manifest_distinct_work_count": 1713,
       "acquisition_manifest_fingerprint": "b7d5ba037ecd174cb727e1fc9a03a80d2f903301c2ad5f0eb2407725c2082516",
@@ -76,6 +84,30 @@
       "search_and_resolver_fixes": "durable production code"
     },
     "baseline_sha": "5bbbb8ff13b140ea77a839757603714bfdd87181",
+    "bounded_debt_handoff": {
+      "CONTROLLED-SCALE-AUDIT-DEBT": [
+        "filename/path denominator versus source/thumbnail supplemental evidence"
+      ],
+      "PRE-NEXT-PROVIDER-EXECUTION-HARDENING": [
+        "cross-pass request spacing",
+        "manifest-scope outcome keys",
+        "conflict mismatch persistence",
+        "terminal/private classifier ordering"
+      ],
+      "PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING": [
+        "secret-token delimiter scanning"
+      ],
+      "current_data_nonblocking_proof": {
+        "accepted_local_risk_waiver_used": true,
+        "historical_execution_finished": true,
+        "main_conflict_work_id_overlap_count": 0,
+        "mandatory_candidate_population_filename_path_anchored": true,
+        "pending_retryable_missing_count": 0,
+        "provider_calls_authorized_in_closeout_or_ml2": false,
+        "provider_identity_mismatch_count": 0,
+        "systemic_stop": false
+      }
+    },
     "branch": "codex/scv2-ml1-multilingual-alias-source-metadata-closure",
     "candidate_generation": {
       "accepted_r2r_dispositions_invalidated": false,
@@ -98,6 +130,8 @@
       "creator_data_is_source_layer_only": true,
       "creator_role_misclassification_count": 0,
       "creator_search_passed": true,
+      "deferred_page_mismatch_record_count": 18,
+      "duplicate_trusted_and_untrusted_semantic_observation_count": 0,
       "field_layer_counts": {
         "creator_account_field": {
           "normalized_source_retained": 2108,
@@ -106,44 +140,51 @@
           "sourceconcept_consumed": 142
         },
         "creator_id_field": {
-          "normalized_source_retained": 2205,
+          "normalized_source_retained": 2200,
           "query_visible_observation_retained": 0,
-          "raw_provider_available": 2205,
+          "raw_provider_available": 2200,
           "sourceconcept_consumed": 0
         },
         "creator_name_field": {
-          "normalized_source_retained": 2194,
-          "query_visible_observation_retained": 2194,
-          "raw_provider_available": 2194,
-          "sourceconcept_consumed": 1446
+          "normalized_source_retained": 2168,
+          "query_visible_observation_retained": 2168,
+          "raw_provider_available": 2168,
+          "sourceconcept_consumed": 1420
         },
         "creator_profile_identity_field": {
-          "normalized_source_retained": 2205,
+          "normalized_source_retained": 2200,
           "query_visible_observation_retained": 0,
-          "raw_provider_available": 2205,
+          "raw_provider_available": 2200,
           "sourceconcept_consumed": 0
         }
       },
-      "normalized_creator_identity_count": 650,
+      "normalized_creator_identity_count": 646,
       "observed_creator_account_search_support_coverage": 1.0,
       "observed_creator_name_search_support_coverage": 1.0,
       "observed_creator_search_support_coverage": 1.0,
-      "pixiv_provider_metadata_record_count": 568,
+      "out_of_scope_historical_or_manual_static_observation_count": 26,
       "pixiv_queue_decision_record_count": 3750,
-      "pixiv_registry_record_count": 4318,
-      "pixiv_successful_acquisition_record_count": 0,
-      "pixiv_terminal_evidence_record_count": 66,
+      "pixiv_registry_record_count": 2205,
+      "provider_metadata_record_count": 531,
+      "queue_records_carrying_acquired_provider_payload_count": 1669,
       "raw_creator_fields_retained": true,
       "records_with_creator_account": 2108,
-      "records_with_creator_display_name": 2194,
-      "records_with_creator_id": 2205,
-      "records_with_creator_profile_identity": 2205,
+      "records_with_creator_display_name": 2168,
+      "records_with_creator_id": 2200,
+      "records_with_creator_profile_identity": 2200,
       "retained_creator_account_count": 2108,
-      "retained_creator_id_count": 2205,
-      "retained_creator_name_count": 2194,
-      "retained_creator_profile_identity_count": 2205,
+      "retained_creator_id_count": 2200,
+      "retained_creator_name_count": 2168,
+      "retained_creator_profile_identity_count": 2200,
       "silently_dropped_creator_field_count": 0,
-      "stable_creator_id_preservation_coverage": 1.0
+      "stable_creator_id_preservation_coverage": 1.0,
+      "successful_acquisition_media_or_page_count": 1669,
+      "successful_acquisition_work_count": 1636,
+      "terminal_evidence_record_count": 66,
+      "trusted_parent_query_visible_creator_observation_count": 4795,
+      "untrusted_parent_creator_account_observation_count": 0,
+      "untrusted_parent_creator_name_observation_count": 0,
+      "untrusted_parent_query_visible_creator_observation_count": 0
     },
     "credential_safety": {
       "credential_rotation_required": false,
@@ -186,7 +227,7 @@
       "source_database_immutable": true,
       "violet_env_test": true
     },
-    "evidence_code_sha": "88a157688929d13d85eba09789b462de0f882ceb",
+    "evidence_code_sha": "64949da9b804adf400f5b5a0f99a808ff318115b",
     "fixed_evidence_proof": {
       "accepted_r2r_disposition_count": 3319,
       "accepted_r2r_dispositions_reused": true,
@@ -196,8 +237,18 @@
       "forbidden_truth_content_unchanged": true,
       "present": true
     },
-    "generated_at": "2026-07-13T11:02:30+00:00",
+    "generated_at": "2026-07-13T13:56:01+00:00",
     "governance_transition": {
+      "creator_lineage_transition": {
+        "creator_account_count_before": 0,
+        "creator_name_count_before": 26,
+        "idempotent": true,
+        "preserved_out_of_scope_historical_or_manual_static_count": 26,
+        "second_pass_superseded_observation_count": 0,
+        "superseded_observation_count": 26,
+        "untrusted_parent_query_visible_creator_observation_count_after": 0,
+        "untrusted_parent_query_visible_creator_observation_count_before": 26
+      },
       "operation_delta": {
         "diagnostic_provider_calls": 0,
         "gallery_dl_calls": 0,
@@ -212,6 +263,9 @@
       "selection": {
         "broader_normalization_or_conflict_population_converted": false,
         "conflict_manifest_work_count": 3,
+        "deferred_requested_page_absent_row_count": 18,
+        "deferred_returned_page_row_count_after": 0,
+        "deferred_returned_page_row_count_before": 5,
         "distinct_work_count": 14,
         "exact_predicate_passed": true,
         "main_manifest_work_count": 11,
@@ -224,14 +278,17 @@
       "state": "deferred_nonblocking_source_page_mismatch",
       "transition": {
         "conflict_winner_selected": false,
-        "first_pass_created_evidence_count": 23,
-        "first_pass_updated_record_count": 23,
+        "cumulative_corrected_returned_page_record_count": 5,
+        "first_pass_completed_returned_page_record_count": 0,
+        "first_pass_created_evidence_count": 0,
+        "first_pass_superseded_deferred_evidence_count": 0,
+        "first_pass_updated_record_count": 0,
         "idempotent": true,
         "raw_and_historical_queue_evidence_preserved": true,
         "raw_history_fingerprint_after": "a9f666b6a3cab6b4c59dc3c31afa5bf35efddd96a99f3425256ed041077b2532",
         "raw_history_fingerprint_before": "a9f666b6a3cab6b4c59dc3c31afa5bf35efddd96a99f3425256ed041077b2532",
         "second_pass_created_evidence_count": 0,
-        "second_pass_preserved_deferred_record_count": 23,
+        "second_pass_preserved_deferred_record_count": 18,
         "second_pass_updated_record_count": 0,
         "unsupported_page_link_created": false
       }
@@ -431,7 +488,7 @@
       "complete_work_coverage": 0.964206,
       "conflict_resolved_work_count": 0,
       "conflict_unresolved_work_count": 0,
-      "deferred_nonblocking_source_page_mismatch_media_count": 23,
+      "deferred_nonblocking_source_page_mismatch_media_count": 18,
       "deferred_nonblocking_source_page_mismatch_work_count": 14,
       "exact_work_ids_public": false,
       "filename_identity_conflict_distinct_work_count": 0,
@@ -444,7 +501,7 @@
       "incremental_acquisition_required": false,
       "metadata_parse_or_normalization_failure_media_count": 0,
       "metadata_pending_media_count": 0,
-      "metadata_present_complete_media_count": 2196,
+      "metadata_present_complete_media_count": 2201,
       "metadata_present_complete_work_count": 2155,
       "missing_work_count": 0,
       "no_durable_attempt_or_result_evidence_media_count": 0,
@@ -475,8 +532,8 @@
       },
       "parse_or_identity_failure_media_count": 0,
       "pending_work_count": 0,
-      "pixiv_candidate_complete_media_count": 2196,
-      "pixiv_candidate_complete_media_coverage": 0.96105,
+      "pixiv_candidate_complete_media_count": 2201,
+      "pixiv_candidate_complete_media_coverage": 0.963239,
       "pixiv_candidate_complete_work_count": 2155,
       "pixiv_candidate_complete_work_coverage": 0.964206,
       "pixiv_candidate_media_count": 2285,
@@ -629,7 +686,7 @@
       "browser_validation": "not_run",
       "changed_python_py_compile": "passed",
       "focused_pytest_failed": 0,
-      "focused_pytest_passed": 172,
+      "focused_pytest_passed": 174,
       "focused_test_command_label": "ml1-pixiv-creator-search-contract-doc-focused-suite",
       "json_parse_passed": true,
       "ml1_contract_passed": true,
@@ -647,11 +704,11 @@
     "integrity_passed": true,
     "manifest_present": true,
     "not_committed": true,
-    "packed_checksums_sha256": "7508be71e81a14e0988bfcb13273cb02a15702f08fb365052e635982c1987f4e",
+    "packed_checksums_sha256": "aaf2721eb91d537bd0766e5192a0af4c9032c9a1f90f231d898cbc82c539a256",
     "packed_contract_evidence_sha256": "cb2161497c89b8495b0bb67359fd4b5a801fd03067a51d69f7cf72c06ea9754a",
-    "packed_evidence_summary_sha256": "508851606dcd980a2ebd3cee905aa830dbd56cb2a5dc89f6ccc66b6c1f4c26a4",
+    "packed_evidence_summary_sha256": "6eed9f44b84961b5e9add8637b955a44dd863466adf0faf91d71af3ba1732c43",
     "packed_manifest_sha256": "da4f859f8224932f222f6d3d6196498d93f5167a6c7a60577772b996c2b92f20",
-    "packed_report_sha256": "48c3138240016ce31c0b3c5d5a8cf2499649a81b0a4af7bc33105ace52c05f35",
+    "packed_report_sha256": "4c0292f14f103531b60a374f611dbe2035cc845a8b9c1e459a2c9975b1122162",
     "placeholder_field_count": 0,
     "self_referential_hash_claimed": false,
     "substantive_evidence_excludes_attestation": true,
@@ -660,11 +717,11 @@
       "acquisition-checkpoint.json": "441cfc17cc897621ba92b57f29fbcd9e617816ce4ef5e68819f3a3fcab2fe1e0",
       "and-search-runtime-cases.jsonl": "fceb83c5f0747db06a1e5c83527d173496348bd35399ef20c317591dd79d8e21",
       "candidate-generation-miss-ledger.jsonl": "7b0f013b2402877f54d67d406288f45d1c221d0c808f58332349510055ea0c8b",
-      "checksums.json": "7508be71e81a14e0988bfcb13273cb02a15702f08fb365052e635982c1987f4e",
+      "checksums.json": "aaf2721eb91d537bd0766e5192a0af4c9032c9a1f90f231d898cbc82c539a256",
       "contract-evidence.json": "cb2161497c89b8495b0bb67359fd4b5a801fd03067a51d69f7cf72c06ea9754a",
-      "creator-field-inventory.jsonl": "d4984f68ac5d38d9cd42a233582c8b397c6e5da8871ae255d48fa89afcdcea73",
-      "creator-retention-audit.json": "1a9e4aa8f00e594e7af22b8c066362e3c3f3114d1ac336425aeca18e31c3e73a",
-      "evidence-summary.json": "508851606dcd980a2ebd3cee905aa830dbd56cb2a5dc89f6ccc66b6c1f4c26a4",
+      "creator-field-inventory.jsonl": "b4a83bc395f792cd25f6fcd934b864caa25e72b3ff9559684d2fe0d822f71ec0",
+      "creator-retention-audit.json": "875f2f601f65eb8af4d03f498904e2a7f0b8e1f70de67b56995d9b115f661b1b",
+      "evidence-summary.json": "6eed9f44b84961b5e9add8637b955a44dd863466adf0faf91d71af3ba1732c43",
       "exact-conflict-resolution-manifest.json": "149aa31f3aba4aece6afd69a8b6d7d58925b084e7fb5cdc4fb5a95baec29f234",
       "exact-distinct-work-manifest.json": "01994e5bbb18bb0d652e0280475ed8910b975053fba05e87e1ac08137da45d6b",
       "execution-summary.json": "7445f9abc8d58e908b4d27a8e0957e7e98a0ab1449f00a153e2b73ee292c759b",
@@ -674,22 +731,22 @@
       "per-family-pipeline-trace.jsonl": "67a83416966686588baf1542a5d73b857dc1c8858710e31ff13bf476fbda3351",
       "pixiv-conflict-owner-review.csv": "e07907fbd368defd5301488ce070c760ebca1e0945370bbafd48974fd195c98a",
       "pixiv-distinct-work-accounting.jsonl": "83d5af484aae949e53212f305edf8653d006b07ee712d9a36e778a1909040203",
-      "pixiv-filename-candidate-manifest.jsonl": "6453fcf0dfdddf7b7a1163be54ccc648c19ccbe48f348264a23806e51a0eb52f",
+      "pixiv-filename-candidate-manifest.jsonl": "dd63996a452419747ecb0535005831b935cb98d60451c942c18b7d05c8b0421e",
       "pixiv-missing-work-owner-review-full.csv": "ac28177f2a66a39c69eb681c8b3ffc29224a15ce6f22d5f830630166a4904255",
       "pixiv-missing-work-owner-review-sample.csv": "ac28177f2a66a39c69eb681c8b3ffc29224a15ce6f22d5f830630166a4904255",
       "pixiv-missing-work-owner-review-sample.md": "19264e16188735abc70a03cc7ceafb756b72c2cc5691796280d4165f4ba22410",
       "pixiv-owner-review-selection.json": "36a87e1e6e3c8839415c3d417aca241da0eaeeb9b898223143e76a858331c016",
-      "public-report-copy.md": "48c3138240016ce31c0b3c5d5a8cf2499649a81b0a4af7bc33105ace52c05f35",
-      "retryable-pixiv-gap-ledger.jsonl": "50ad118870dde6ca2c1f61b01c7650cc7a467324f3d8e5e32c70b7c11a4ce4aa",
+      "public-report-copy.md": "4c0292f14f103531b60a374f611dbe2035cc845a8b9c1e459a2c9975b1122162",
+      "retryable-pixiv-gap-ledger.jsonl": "17f795a575fbc8933a2ce2be340ca11c665f0202e063f33c6ad082e4c5742329",
       "search-support-traces.jsonl": "fceb83c5f0747db06a1e5c83527d173496348bd35399ef20c317591dd79d8e21",
       "source-page-mismatch-governance-ledger.json": "96d66a97f3d9bfdc6a6b32876633ca788e0eed2ec6b40432d2580ea818b622a6",
-      "source-page-mismatch-governance-summary.json": "05c4af8d90554dae8b0b318fbeb653a445205c011fc92109692ac2e46acf88c7",
+      "source-page-mismatch-governance-summary.json": "05d77399e38baba0d3cf76bbd601ce90534051f22af5ff57d500ca59a4da7780",
       "terminal-unavailable-evidence-ledger.jsonl": "f93c26534b85be5f9e857008499a322933a1f9f66a2655152b39fa28ad0031dd"
     },
     "zip_member_count": 28,
     "zip_members_equal_current_manifest": true,
     "zip_path_label": "ml1-private-review-pack",
-    "zip_sha256": "9019ab44b364328c2790c2679760a49cb977125c3ed4e25ba38115bdef0093f7"
+    "zip_sha256": "23cd0d1bae8bed36913152a5115212c1e6b45fcbd2a6b48bd67066a9d06048df"
   },
   "title": "SCV2-ML1: Multilingual Alias and Source-Metadata Closure"
 }

@@ -33,6 +33,14 @@ not reopen this state. Reopening requires separately governed materially stronge
 exact-page/source evidence, a corrected filename/page identity, or an explicit
 operator identity correction.
 
+Disposition is page-local. For every attempted queue record, a requested page
+present in valid normalized metadata is linked and completed independently; only
+an absent requested page may be deferred when other valid pages for the same
+exact work exist. A different work is an identity mismatch, an invalid shape is
+a normalization failure, authenticated unavailability is terminal, and
+auth/rate/network failure is retryable under systemic policy. A work-level
+summary must never copy one missing-page outcome onto returned pages.
+
 ## Acquisition Safety
 
 External execution normally requires rotated credentials, the non-secret
@@ -62,6 +70,21 @@ Raw provider metadata, normalized work/page facts, creator stable ID, display
 name, account/handle, profile/provider identity, title, tags, and provenance are
 retained. Display/account observations remain source-layer/search evidence and
 do not create Entity truth or confirmed assignments.
+
+Creator backfill, trusted-field audit accounting, mismatch precedence, and
+runtime mismatch detection share one trusted-complete Pixiv-parent predicate.
+The parent must be canonical complete Pixiv metadata with stable provider work
+identity and compatible provenance; rejected, invalid, superseded, pending,
+retryable, normalization-failed, deferred-page-only, conflict-only, or stale
+incomplete records are not trusted. A trusted complete contradiction may
+override the filename prior; an incomplete contradiction may not. Manual/static
+observations and observations with independent trusted support remain preserved.
+
+Creator-account extraction is deterministic: `creator_account`, then compatible
+`user_account`, `artist_account`, and nested `user.account`, followed by
+normalization and value deduplication. Audit retention claims must exclude
+untrusted-parent values and must report raw, normalized, query-visible, and
+silently dropped counts separately.
 
 ## Production Promotion
 

@@ -183,6 +183,13 @@ misses, human-review dependency, fixed/forbidden evidence mutation, unauthorized
 provider/LLM/gallery-dl calls outside the exact authorization, redaction gaps,
 or downstream authorization.
 
+Semantic completeness, universal recall, perfect creator/character/work
+intersection, and universal multilingual identity materialization are not ML1
+gates. Under-recall and candidate-generation gaps remain explicit evidence for
+ML2. ML1 does require every runtime result to have direct or accepted support,
+zero rejected-only or superseded-only results, media-level AND semantics, and
+zero search-caused identity mutation.
+
 PR #136 executed only the exact deduplicated current-stock Pixiv metadata
 manifests under the project-owner `operator_accepted_local_credential_risk_v1`
 waiver. Execution was metadata-only, used at least two-second request spacing,
@@ -205,6 +212,23 @@ blocking-conflict works, status
 `safe_to_merge=true`, `route_approved=true`, and no active blockers. Its route
 approval is limited to separately governed SCV2-ML2 work and does not authorize
 production, scale, another provider, Entity/truth writes, or acquisition replay.
+
+The final gate additionally requires page-local disposition and trusted creator
+lineage: `deferred_returned_page_row_count_after=0` and
+`untrusted_parent_query_visible_creator_observation_count=0`. A returned exact
+page must be complete even when another page for the work is absent. Creator
+backfill, creator-field audit, trusted mismatch precedence, and runtime mismatch
+detection must use the same canonical complete Pixiv-parent predicate. The
+creator audit must inspect `creator_account` before compatible historical fields
+and report non-overlapping work, media/page, metadata-record, payload-queue,
+terminal-evidence, and deferred-row metrics.
+
+Deferred execution hardening is gated by named future milestones:
+`PRE-NEXT-PROVIDER-EXECUTION-HARDENING` for cross-pass spacing, manifest-scope
+outcome keys, conflict mismatch persistence, and terminal/private classifier
+ordering; `CONTROLLED-SCALE-AUDIT-DEBT` for denominator treatment; and
+`PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING` for secret-token delimiter
+scanning. None authorizes work in ML1 or ML2.
 
 The default primary-provider LLM policy pre-authorizes only one finite,
 reproducible, cache-first execution whose projected aggregate cost including

@@ -36,11 +36,21 @@ PR #136 executed the exact `1,713`-work main and 3-work conflict metadata-only
 manifests in the isolated ML1 database under the project-owner local-risk waiver.
 Historical execution totaled `1,817` attributable Pixiv/gallery-dl metadata
 requests, with no media download or import. The final zero-network closeout
-accounts `2,285` candidate media/pages and `2,235` distinct works as `2,155`
-complete, `66` authenticated terminal, and `14`
+accounts `2,285` candidate media/pages and `2,235` distinct works as `2,201`
+complete media / `2,155` complete works, `66` authenticated terminal, and `18`
+deferred media rows / `14` works in
 `deferred_nonblocking_source_page_mismatch`; there are no pending, retryable,
 missing, normalization-failed, provider-mismatch, or unresolved blocking-conflict
 works.
+
+The final page-local audit corrected 5 of the formerly deferred 23 queue rows
+because their exact provider page was already present; only the 18 absent-page
+rows remain deferred. The trusted-lineage audit superseded 26 affected
+query-visible creator-name observations with only an untrusted Pixiv parent,
+preserved manual/static and independently trusted evidence, and finished with 0
+untrusted-parent creator observations. The actual persisted `creator_account`
+audit reports `2,108` raw, normalized, and trusted query-visible values with 0
+silent drops.
 
 The final contract status is
 `partial_ml1_pixiv_metadata_foundation_complete`, with `target_met=false`,
@@ -87,6 +97,16 @@ ML2 priorities are:
 
 This closeout creates no ML2 branch, implementation, provider run, or production
 authorization.
+
+Six reviewer hardening items are deliberately bounded debt, not ML1 fixes:
+cross-pass spacing, manifest-scope outcome keys, conflict mismatch persistence,
+and terminal/private classifier ordering are
+`PRE-NEXT-PROVIDER-EXECUTION-HARDENING`; filename/path denominator treatment is
+`CONTROLLED-SCALE-AUDIT-DEBT`; secret-token delimiter scanning is
+`PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING`. Current evidence is unaffected:
+main/conflict work overlap is 0, provider mismatch and systemic stop are 0,
+pending/retryable/missing are 0, the mandatory population is filename/path
+anchored, and neither this closeout nor ML2 authorizes provider calls.
 
 ## Provider-2 Deferral
 

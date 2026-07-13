@@ -39,8 +39,15 @@ credential-risk waiver. Its final project-lead-directed closeout accounts
 `2,235 = 2,155 complete + 66 authenticated terminal + 14
 deferred_nonblocking_source_page_mismatch` works; pending, retryable, missing,
 normalization failure, provider mismatch, and unresolved blocking conflict are
-zero. The 14 deferred cases preserve the observed local-p1/provider-p0 mismatch
-without inventing page links, p0 substitutions, or conflict winners. Current
+zero. Page-local governance corrected 5 previously deferred rows whose exact
+provider page was already present, producing `2,201` complete media rows and 18
+truly absent-page deferred rows across the same 14 governed works. The remaining
+deferred cases preserve the observed local/provider page mismatch without
+inventing page links, substitutions, or conflict winners. Trusted-parent
+governance also superseded 26 affected creator-name observations with only an
+untrusted Pixiv parent and left the current untrusted-parent count at 0; the
+actual persisted `creator_account` field has `2,108` raw, retained, and trusted
+query-visible values with no silent drops. Current
 status is `partial_ml1_pixiv_metadata_foundation_complete`, with
 `target_met=false`, `safe_to_merge=true`, `route_approved=true`, and
 `active_blockers=[]`; route approval is limited to a separately governed
@@ -49,6 +56,18 @@ closeout added zero external calls. No LLM, media download, production, Entity,
 or truth execution occurred. Continuous Pixiv-on-import completeness, production
 evidence promotion, and the bounded USD-10 LLM policy are defined in
 `docs/pixiv-metadata-ingestion-and-promotion-policy.md`.
+
+ML1 does not require semantic perfection, universal recall, or complete alias
+materialization. Its accepted search boundary is direct/accepted support only,
+no rejected-only or superseded-only result, media-level AND constraints, and no
+search-caused identity mutation. The remaining creator/character/work recall,
+multilingual equivalence, and 30 candidate-generation gaps are measured ML2
+inputs. Six future hardening items remain outside PR #136:
+`PRE-NEXT-PROVIDER-EXECUTION-HARDENING` owns cross-pass request spacing,
+manifest-scope outcome keys, conflict mismatch persistence, and terminal/private
+classifier ordering; `CONTROLLED-SCALE-AUDIT-DEBT` owns denominator treatment;
+`PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING` owns secret-token delimiter
+scanning.
 
 PR #113 / Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline
 library, PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows
