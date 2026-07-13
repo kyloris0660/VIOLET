@@ -69,6 +69,31 @@ def test_completed_scan_without_pixiv_candidates_is_completed_cleanly() -> None:
     assert not job.error_message
 
 
+def test_governed_deferred_page_mismatch_does_not_block_scan_or_batch_closure(monkeypatch) -> None:
+    job = _job()
+    job.status = "completed"
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [(9,)]
+    monkeypatch.setattr(
+        admin_media,
+        "summarize_batch_closure",
+        lambda _db, _ids: {
+            "pixiv_candidate_count": 1,
+            "closed": True,
+            "open_candidate_count": 0,
+            "deferred_nonblocking_source_page_mismatch_count": 1,
+            "lifecycle_counts": {"deferred_nonblocking_source_page_mismatch": 1},
+        },
+    )
+
+    payload = admin_media._serialize_job(job, db)
+
+    assert payload["status"] == "completed"
+    assert payload["source_metadata_status"] == "complete"
+    assert payload["source_metadata_open_count"] == 0
+    assert payload["source_metadata_blocked"] is False
+
+
 def test_failed_scan_remains_failed() -> None:
     job = _job()
     db = MagicMock()

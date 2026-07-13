@@ -23,7 +23,13 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from sqlalchemy.orm import Session
 
-from ..models import Media, SourceMetadataRecord, SourceNameObservation, SourceTagObservation
+from ..models import (
+    Media,
+    SourceMetadataEvidence,
+    SourceMetadataRecord,
+    SourceNameObservation,
+    SourceTagObservation,
+)
 from ..utils.cache import invalidate_source_metadata_search_cache
 from .pixiv_filename_prior_service import PARSER_VERSION, PixivFilenamePrior, distinct_work_pages, parse_approved_fields
 from .source_metadata_registry_service import canonical_source_key, normalize_source_text
@@ -39,6 +45,8 @@ COMPLETE_METADATA_KINDS = frozenset({
     QUEUE_METADATA_KIND,
 })
 CANONICAL_COMPLETE_STATUSES = frozenset({"observed", "active", "accepted", "metadata_complete"})
+DEFERRED_PAGE_MISMATCH_POLICY_VERSION = "source_page_mismatch_deferred_nonblocking_v1"
+DEFERRED_PAGE_MISMATCH_REASON = "provider_metadata_missing_attempted_local_page"
 
 
 class PixivMetadataState(str, Enum):
@@ -51,9 +59,14 @@ class PixivMetadataState(str, Enum):
     CONFLICT = "filename_identity_conflict"
     NORMALIZATION_FAILED = "normalization_failed"
     PROVIDER_IDENTITY_MISMATCH = "provider_identity_mismatch"
+    DEFERRED_PAGE_MISMATCH = "deferred_nonblocking_source_page_mismatch"
 
 
-CLOSED_STATES = frozenset({PixivMetadataState.COMPLETE.value, PixivMetadataState.TERMINAL.value})
+CLOSED_STATES = frozenset({
+    PixivMetadataState.COMPLETE.value,
+    PixivMetadataState.TERMINAL.value,
+    PixivMetadataState.DEFERRED_PAGE_MISMATCH.value,
+})
 OPEN_ACQUISITION_STATES = frozenset({PixivMetadataState.PENDING.value, PixivMetadataState.RETRYABLE.value})
 CANONICAL_PENDING_STATUSES = frozenset({PixivMetadataState.CANDIDATE_DETECTED.value, PixivMetadataState.PENDING.value})
 CANONICAL_RETRYABLE_STATUSES = frozenset({PixivMetadataState.RETRYABLE.value})
@@ -87,6 +100,8 @@ def classify_pixiv_metadata_lifecycle(status: Any) -> str:
         return "normalization_failed"
     if value == PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value:
         return "provider_identity_mismatch"
+    if value == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value:
+        return "deferred_nonblocking_source_page_mismatch"
     if value == PixivMetadataState.CONFLICT.value:
         return "conflict"
     if value == PixivMetadataState.NOT_APPLICABLE.value:
@@ -443,6 +458,7 @@ def summarize_batch_closure(session: Session, media_ids: Iterable[int]) -> dict[
             "pixiv_candidate_count": 0,
             "metadata_complete_count": 0,
             "terminal_remote_unavailable_count": 0,
+            "deferred_nonblocking_source_page_mismatch_count": 0,
             "open_candidate_count": 0,
             "closed": True,
         }
@@ -468,15 +484,21 @@ def summarize_batch_closure(session: Session, media_ids: Iterable[int]) -> dict[
     lifecycle_counts = Counter(classify_pixiv_metadata_lifecycle(state) for state in candidate_states)
     complete = lifecycle_counts["complete"]
     terminal = lifecycle_counts["terminal"]
+    deferred = lifecycle_counts["deferred_nonblocking_source_page_mismatch"]
     candidate_count = len(candidate_states)
     missing_queue_media_count = len(set(ids) - set(states_by_media))
-    open_count = candidate_count - complete - terminal
-    closed = missing_queue_media_count == 0 and candidate_count == complete + terminal and open_count == 0
+    open_count = candidate_count - complete - terminal - deferred
+    closed = (
+        missing_queue_media_count == 0
+        and candidate_count == complete + terminal + deferred
+        and open_count == 0
+    )
     return {
         "media_count": len(ids),
         "pixiv_candidate_count": candidate_count,
         "metadata_complete_count": complete,
         "terminal_remote_unavailable_count": terminal,
+        "deferred_nonblocking_source_page_mismatch_count": deferred,
         "open_candidate_count": open_count,
         "missing_queue_media_count": missing_queue_media_count,
         "state_counts": dict(sorted(counts.items())),
@@ -537,6 +559,7 @@ def acquisition_work_lifecycle_counts(session: Session) -> dict[str, int]:
         "normalization_failed",
         "retryable",
         "pending",
+        "deferred_nonblocking_source_page_mismatch",
         "terminal",
         "complete",
     )
@@ -803,6 +826,7 @@ def persist_complete_work(
     attempted_record_ids: Sequence[int],
     allow_conflict_resolution: bool = False,
     allow_normalization_replay: bool = False,
+    allow_deferred_reopen: bool = False,
 ) -> int:
     """Persist metadata only for exact open queue rows participating in this attempt."""
 
@@ -819,6 +843,8 @@ def persist_complete_work(
             eligible_states.add(PixivMetadataState.CONFLICT.value)
         if allow_normalization_replay:
             eligible_states.add(PixivMetadataState.NORMALIZATION_FAILED.value)
+        if allow_deferred_reopen:
+            eligible_states.add(PixivMetadataState.DEFERRED_PAGE_MISMATCH.value)
         if str(record.status) not in eligible_states:
             raise PixivMetadataGateError(f"attempted_closed_queue_transition_rejected:{record.status}")
         page = pages_by_index.get(int(record.source_page_index or 0))
@@ -926,6 +952,7 @@ def mark_work_state(
         "preserved_complete": 0,
         "preserved_terminal": 0,
         "preserved_conflict": 0,
+        "preserved_deferred": 0,
         "not_found": not_found,
     }
     for record in records:
@@ -935,6 +962,9 @@ def mark_work_state(
             continue
         if current == PixivMetadataState.TERMINAL.value:
             counts["preserved_terminal"] += 1
+            continue
+        if current == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value:
+            counts["preserved_deferred"] += 1
             continue
         if current == PixivMetadataState.CONFLICT.value:
             if allow_conflict_resolution and state in {
@@ -963,6 +993,141 @@ def mark_work_state(
             raw["structural_diagnostics"] = dict(structural_diagnostics)
         record.raw_metadata_json = raw
         counts["updated"] += 1
+    return counts
+
+
+def defer_proven_source_page_mismatch(
+    session: Session,
+    work_id: str,
+    *,
+    attempted_record_ids: Sequence[int],
+    observed_page_indexes: Sequence[int],
+    original_final_outcome: str,
+    manifest_kind: str,
+    evidence_fingerprint: str,
+    deferred_at: str,
+    governed_route_exhausted: bool,
+) -> dict[str, int]:
+    """Close one exactly proven page mismatch without inventing a page link.
+
+    This transition is deliberately narrower than generic normalization or
+    conflict handling. It requires the durable error emitted only after
+    authenticated metadata for the exact work parsed successfully but did not
+    contain every attempted local page. The original queue payload and
+    provenance remain untouched; a separate idempotent evidence row records
+    the project-lead governance disposition.
+    """
+
+    if manifest_kind not in {"main", "conflict"}:
+        raise PixivMetadataGateError("deferred_page_mismatch_manifest_kind_invalid")
+    expected_outcome = (
+        "normalization_failed" if manifest_kind == "main" else "conflict_normalization_failed"
+    )
+    if original_final_outcome != expected_outcome:
+        raise PixivMetadataGateError("deferred_page_mismatch_final_outcome_invalid")
+    if not governed_route_exhausted:
+        raise PixivMetadataGateError("deferred_page_mismatch_route_not_exhausted")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(evidence_fingerprint or "")):
+        raise PixivMetadataGateError("deferred_page_mismatch_evidence_fingerprint_invalid")
+    if not str(deferred_at or "").strip():
+        raise PixivMetadataGateError("deferred_page_mismatch_timestamp_required")
+
+    observed_pages = tuple(sorted({int(value) for value in observed_page_indexes}))
+    if not observed_pages:
+        raise PixivMetadataGateError("deferred_page_mismatch_observed_pages_required")
+    records, not_found = _selected_work_records(
+        session,
+        work_id,
+        attempted_record_ids=attempted_record_ids,
+    )
+    if not_found or not records:
+        raise PixivMetadataGateError("deferred_page_mismatch_attempted_queue_scope_invalid")
+    requested_pages = {int(record.source_page_index or 0) for record in records}
+    if requested_pages <= set(observed_pages):
+        raise PixivMetadataGateError("deferred_page_mismatch_requested_page_was_present")
+
+    counts = {
+        "attempted": len(records),
+        "updated": 0,
+        "preserved_deferred": 0,
+        "evidence_created": 0,
+    }
+    for record in records:
+        current = str(record.status)
+        evidence_key = hashlib.sha256(
+            "|".join(
+                (
+                    DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
+                    str(record.id),
+                    evidence_fingerprint,
+                )
+            ).encode("utf-8")
+        ).hexdigest()
+        existing = (
+            session.query(SourceMetadataEvidence)
+            .filter(
+                SourceMetadataEvidence.source_metadata_record_id == int(record.id),
+                SourceMetadataEvidence.evidence_key == evidence_key,
+            )
+            .one_or_none()
+        )
+        if current == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value:
+            if existing is None:
+                raise PixivMetadataGateError("deferred_page_mismatch_existing_state_missing_evidence")
+            counts["preserved_deferred"] += 1
+            continue
+        if current not in {
+            PixivMetadataState.NORMALIZATION_FAILED.value,
+            PixivMetadataState.CONFLICT.value,
+        }:
+            raise PixivMetadataGateError(
+                f"deferred_page_mismatch_ineligible_current_state:{current}"
+            )
+        raw = dict(record.raw_metadata_json or {})
+        diagnostics = dict(raw.get("structural_diagnostics") or {})
+        if diagnostics.get("failure_code") != DEFERRED_PAGE_MISMATCH_REASON:
+            raise PixivMetadataGateError("deferred_page_mismatch_reason_not_proven")
+        if diagnostics.get("provider_output_returned") is not True:
+            raise PixivMetadataGateError("deferred_page_mismatch_provider_output_not_proven")
+        if str(diagnostics.get("work_id") or "") != str(work_id):
+            raise PixivMetadataGateError("deferred_page_mismatch_provider_work_identity_not_proven")
+        if str(diagnostics.get("normalizer_version") or "") != "gallery_dl_pixiv_normalizer_v1":
+            raise PixivMetadataGateError("deferred_page_mismatch_normalizer_not_supported")
+
+        if existing is None:
+            session.add(
+                SourceMetadataEvidence(
+                    source_metadata_record_id=int(record.id),
+                    evidence_key=evidence_key,
+                    observation_type="governance_disposition",
+                    evidence_kind=PixivMetadataState.DEFERRED_PAGE_MISMATCH.value,
+                    evidence_strength="project_lead_governed_exact",
+                    provenance={
+                        "provider": "pixiv",
+                        "source_work_id": str(work_id),
+                        "requested_local_page_index": int(record.source_page_index or 0),
+                        "provider_observed_page_indexes": list(observed_pages),
+                        "provider_response_evidence_fingerprint": evidence_fingerprint,
+                        "parser_version": diagnostics.get("parser_version") or PARSER_VERSION,
+                        "normalizer_version": diagnostics.get("normalizer_version"),
+                        "original_final_outcome": original_final_outcome,
+                        "manifest_kind": manifest_kind,
+                        "historical_conflict_evidence_preserved": manifest_kind == "conflict",
+                        "reason_code": DEFERRED_PAGE_MISMATCH_REASON,
+                        "governance_policy_version": DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
+                        "deferred_at": deferred_at,
+                        "governed_route_exhausted": True,
+                        "unsupported_page_link_created": False,
+                        "conflict_winner_selected": False,
+                        "p0_to_requested_page_substitution_authorized": False,
+                    },
+                    status="active",
+                )
+            )
+            counts["evidence_created"] += 1
+        record.status = PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+        counts["updated"] += 1
+    session.flush()
     return counts
 
 

@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, migrate_add_source_concept_fallback_search_index
 from app.models import TagTranslation
+from app.services.pixiv_metadata_ingestion_service import PixivMetadataGateError
 from app.services import source_assertion_search_service as source_search
 from app.utils.search_parser import parse_search_query
 from scripts.phase_contracts.contract_checks import check_phase_contract
@@ -20,6 +21,7 @@ from scripts.phase_contracts.contract_registry import get_contract
 from scripts import run_phase45_scv2_r2r_autonomous_recall_search_closure as r2r_runner
 from scripts import run_phase45_scv2_ml1_multilingual_alias_source_metadata_closure as ml1_runner
 from scripts import run_pixiv_metadata_ingestion as ingestion_runner
+from scripts import apply_ml1_source_page_mismatch_governance as governance_runner
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,11 +30,16 @@ CONTRACT_ID = "ml1_multilingual_alias_source_metadata_closure_contract_v1"
 
 def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_closure") -> dict:
     target = status == "target_met_multilingual_alias_source_metadata_closure"
+    partial = status == "partial_ml1_pixiv_metadata_foundation_complete"
     summary = {
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
             "status": status,
-            "claims": {"target_met": target, "route_approved": False, "safe_to_merge": False},
+            "claims": {
+                "target_met": target,
+                "route_approved": partial,
+                "safe_to_merge": partial,
+            },
             "active_blockers": [status] if status.startswith("blocked_") else [],
         },
         "document_semantics": {
@@ -80,6 +87,7 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "metadata_present_complete_media_count": 2,
             "metadata_pending_media_count": 0,
             "terminal_remote_unavailable_media_count": 1,
+            "deferred_nonblocking_source_page_mismatch_media_count": 0,
             "retryable_failure_media_count": 0,
             "parse_or_identity_failure_media_count": 0,
             "not_attempted_media_count": 0,
@@ -90,6 +98,7 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "candidate_work_accounting_coverage": 1.0,
             "metadata_present_complete_work_count": 1,
             "terminal_remote_unavailable_work_count": 1,
+            "deferred_nonblocking_source_page_mismatch_work_count": 0,
             "pending_work_count": 0,
             "retryable_work_count": 0,
             "normalization_failed_work_count": 0,
@@ -111,6 +120,7 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "pixiv_candidate_work_count": 2,
             "pixiv_candidate_complete_work_count": 1,
             "pixiv_candidate_complete_work_coverage": 0.5,
+            "complete_terminal_or_deferred_work_coverage": 1.0,
         },
         "creator_metadata": {
             "pixiv_registry_record_count": 3,
@@ -226,14 +236,68 @@ def _summary(*, status: str = "target_met_multilingual_alias_source_metadata_clo
             "provider_2_authorized": False, "scale_up_authorized": False,
             "entity_bridge_authorized": False, "production_authorized": False,
             "full_library_execution_authorized": False, "truth_promotion_authorized": False,
+            "route_approved_scope": "SCV2-ML2_next_phase_only" if partial else None,
+            "next_phase": "SCV2-ML2: Multilingual Identity Candidate Closure" if partial else None,
         },
         "pixiv_metadata_foundation": {
             "current_stock_closed": True,
             "continuous_ingestion_gate_implemented": True,
             "complete_or_terminal_coverage": 1.0,
+            "complete_terminal_or_deferred_coverage": 1.0,
+            "deferred_nonblocking_source_page_mismatch_work_count": 0,
+        },
+        "governance_transition": {
+            "state": "deferred_nonblocking_source_page_mismatch",
+            "policy_version": "source_page_mismatch_deferred_nonblocking_v1",
+            "selection": {
+                "distinct_work_count": 14,
+                "main_manifest_work_count": 11,
+                "conflict_manifest_work_count": 3,
+                "exact_predicate_passed": True,
+                "broader_normalization_or_conflict_population_converted": False,
+            },
+            "transition": {
+                "idempotent": True,
+                "raw_and_historical_queue_evidence_preserved": True,
+                "unsupported_page_link_created": False,
+                "conflict_winner_selected": False,
+            },
+            "operation_delta": {
+                "gallery_dl_calls": 0,
+                "pixiv_provider_calls": 0,
+                "provider_metadata_acquisition_calls": 0,
+                "diagnostic_provider_calls": 0,
+                "llm_calls": 0,
+            },
         },
         "llm_budget_policy": {"preauthorized": True},
     }
+    if partial:
+        summary["pixiv_accounting"].update(
+            candidate_media_count=16,
+            accounted_media_count=16,
+            metadata_present_complete_media_count=1,
+            terminal_remote_unavailable_media_count=1,
+            deferred_nonblocking_source_page_mismatch_media_count=14,
+            candidate_distinct_work_count=16,
+            accounted_distinct_work_count=16,
+            metadata_present_complete_work_count=1,
+            terminal_remote_unavailable_work_count=1,
+            deferred_nonblocking_source_page_mismatch_work_count=14,
+            all_eligible_media_count=16,
+            pixiv_ingestion_decision_media_count=16,
+            pixiv_ingestion_decision_coverage=1.0,
+            pixiv_candidate_media_count=16,
+            pixiv_candidate_complete_media_count=1,
+            pixiv_candidate_complete_media_coverage=0.0625,
+            pixiv_candidate_work_count=16,
+            pixiv_candidate_complete_work_count=1,
+            pixiv_candidate_complete_work_coverage=0.0625,
+            complete_terminal_or_deferred_work_coverage=1.0,
+        )
+        summary["pixiv_metadata_foundation"][
+            "deferred_nonblocking_source_page_mismatch_work_count"
+        ] = 14
     return summary
 
 
@@ -403,6 +467,98 @@ def test_executable_manifest_fingerprint_is_membership_only_and_order_normalized
     assert "basename" not in first and "review_notes" not in first
 
 
+def _synthetic_governance_inputs(count: int = 14):
+    work_ids = [str(100000001 + index) for index in range(count)]
+    main_ids = work_ids[: min(11, count)]
+    conflict_ids = work_ids[min(11, count) :]
+    ledger = []
+    replay = {}
+    queue_rows = []
+    for index, work_id in enumerate(work_ids, start=1):
+        manifest_kind = "main" if work_id in main_ids else "conflict"
+        outcome = "normalization_failed" if manifest_kind == "main" else "conflict_normalization_failed"
+        row = {
+            "work_id": work_id,
+            "manifest_kind": manifest_kind,
+            "final_outcome": outcome,
+            "attempt_count": 1,
+            "systemic_stop": False,
+            "error_class": "provider_metadata_missing_attempted_local_page",
+        }
+        ledger.append(row)
+        replay[work_id] = {**row, "corrected_replay": True}
+        queue_rows.append(
+            {
+                "id": index,
+                "source_work_id": work_id,
+                "source_page_index": 1,
+                "status": "normalization_failed",
+                "raw_metadata_json": {
+                    "structural_diagnostics": {
+                        "work_id": work_id,
+                        "failure_code": "provider_metadata_missing_attempted_local_page",
+                        "provider_output_returned": True,
+                        "normalizer_version": "gallery_dl_pixiv_normalizer_v1",
+                    }
+                },
+                "provenance": {"parser_version": "pixiv_filename_prior_v3"},
+            }
+        )
+    return main_ids, conflict_ids, ledger, replay, queue_rows
+
+
+def test_exact_fourteen_governance_rows_are_selected_deterministically() -> None:
+    inputs = _synthetic_governance_inputs()
+    first = governance_runner.select_governed_works(
+        main_work_ids=inputs[0],
+        conflict_work_ids=inputs[1],
+        ledger_rows=inputs[2],
+        replay_outcomes=inputs[3],
+        queue_rows=inputs[4],
+    )
+    second = governance_runner.select_governed_works(
+        main_work_ids=reversed(inputs[0]),
+        conflict_work_ids=reversed(inputs[1]),
+        ledger_rows=reversed(inputs[2]),
+        replay_outcomes=inputs[3],
+        queue_rows=reversed(inputs[4]),
+    )
+    assert first == second
+    assert len(first) == 14
+    assert sum(item.manifest_kind == "main" for item in first) == 11
+    assert sum(item.manifest_kind == "conflict" for item in first) == 3
+    assert all(item.observed_page_indexes == (0,) for item in first)
+
+
+def test_governance_selection_count_other_than_fourteen_fails_closed() -> None:
+    inputs = _synthetic_governance_inputs(13)
+    with pytest.raises(PixivMetadataGateError, match="exact_selection_count_mismatch"):
+        governance_runner.select_governed_works(
+            main_work_ids=inputs[0],
+            conflict_work_ids=inputs[1],
+            ledger_rows=inputs[2],
+            replay_outcomes=inputs[3],
+            queue_rows=inputs[4],
+        )
+
+
+def test_governance_selection_rejects_identity_retry_shape_and_stale_evidence() -> None:
+    inputs = list(_synthetic_governance_inputs())
+    for mutation in (
+        lambda rows: rows[0]["raw_metadata_json"]["structural_diagnostics"].update(work_id="999999999"),
+        lambda rows: rows[0]["raw_metadata_json"]["structural_diagnostics"].update(failure_code="retryable_network_transport"),
+        lambda rows: rows[0].update(status="terminal_remote_unavailable"),
+    ):
+        mutated = json.loads(json.dumps(inputs[4]))
+        mutation(mutated)
+        with pytest.raises(PixivMetadataGateError):
+            governance_runner.select_governed_works(
+                main_work_ids=inputs[0],
+                conflict_work_ids=inputs[1],
+                ledger_rows=inputs[2],
+                replay_outcomes=inputs[3],
+                queue_rows=mutated,
+            )
 def test_endpoint_equivalent_search_helper_enables_needs_review_sourceconcept(monkeypatch) -> None:
     captured = {}
     sentinel_query = object()
@@ -520,6 +676,12 @@ def test_wrong_page_metadata_complete_remains_mismatch_and_terminal_retryable_di
         ("metadata_retryable", "retryable_provider_failure", "retryable", True),
         ("metadata_complete", "metadata_present_complete", "complete", False),
         ("terminal_remote_unavailable", "terminal_remote_unavailable", "terminal", False),
+        (
+            "deferred_nonblocking_source_page_mismatch",
+            "deferred_nonblocking_source_page_mismatch",
+            "deferred_nonblocking_source_page_mismatch",
+            False,
+        ),
         ("normalization_failed", "metadata_parse_or_normalization_failure", "normalization_failed", False),
     ],
 )
@@ -544,6 +706,38 @@ def test_pending_to_complete_post_acquisition_audit_transition() -> None:
     after = ml1_runner.build_pixiv_accounting(media, [row])
     assert after[2][0]["status"] == "complete"
     assert after[0]["projected_gallery_dl_request_count"] == 0
+
+
+def test_all_governed_conflict_memberships_are_deferred_not_blocking_conflict() -> None:
+    media = [
+        {
+            "id": 1,
+            "filename": "123456789_p1__223456789_p1.jpg",
+            "path": "media/conflict.jpg",
+            "thumbnail_path": None,
+            "source": None,
+            "uploaded_at": None,
+        }
+    ]
+    metadata = [
+        {
+            "id": 10,
+            "provider": "pixiv",
+            "media_id": 1,
+            "source_work_id": work_id,
+            "source_page_index": 1,
+            "status": "deferred_nonblocking_source_page_mismatch",
+        }
+        for work_id in ("123456789", "223456789")
+    ]
+    public, candidates, work_rows = ml1_runner.build_pixiv_accounting(media, metadata)
+    assert candidates[0].status == "deferred_nonblocking_source_page_mismatch"
+    assert {row["status"] for row in work_rows} == {
+        "deferred_nonblocking_source_page_mismatch"
+    }
+    assert public["conflict_unresolved_work_count"] == 0
+    assert public["deferred_nonblocking_source_page_mismatch_work_count"] == 2
+    assert public["complete_terminal_or_deferred_work_coverage"] == 1.0
 
 
 def test_matching_pending_queue_does_not_hide_historical_work_page_mismatch() -> None:
@@ -667,8 +861,8 @@ def test_each_blocked_status_requires_its_own_evidence(status: str) -> None:
     assert "ml1_status_evidence_missing" in {finding.code for finding in result.errors}
 
 
-def test_partial_pixiv_foundation_status_requires_closed_stock_and_continuous_gate() -> None:
-    summary = _summary(status="partial_ml1_pixiv_metadata_closure_complete")
+def test_partial_pixiv_foundation_status_requires_closed_stock_and_governed_coverage() -> None:
+    summary = _summary(status="partial_ml1_pixiv_metadata_foundation_complete")
     result = check_phase_contract(CONTRACT_ID, summary)
     assert result.passed, [finding.to_dict() for finding in result.errors]
     summary["pixiv_metadata_foundation"]["current_stock_closed"] = False
@@ -676,17 +870,31 @@ def test_partial_pixiv_foundation_status_requires_closed_stock_and_continuous_ga
     assert "ml1_status_evidence_missing" in {finding.code for finding in result.errors}
 
 
-def test_partial_pixiv_foundation_may_carry_deferred_creator_and_candidate_gaps() -> None:
-    summary = _summary(status="partial_ml1_pixiv_metadata_closure_complete")
-    summary["creator_metadata"]["silently_dropped_creator_field_count"] = 1
+def test_partial_pixiv_foundation_moves_candidate_gaps_to_next_phase_input() -> None:
+    summary = _summary(status="partial_ml1_pixiv_metadata_foundation_complete")
     summary["multilingual_benchmark"]["candidate_not_generated_count"] = 1
     summary["candidate_generation"]["unresolved_candidate_generation_count"] = 1
-    summary["pipeline_contract"]["active_blockers"] = [
-        "blocked_creator_metadata_loss",
-        "blocked_candidate_generation_gap",
-    ]
+    summary["pipeline_contract"]["active_blockers"] = []
     result = check_phase_contract(CONTRACT_ID, summary)
     assert result.passed, [finding.to_dict() for finding in result.errors]
+
+
+def test_partial_pixiv_foundation_fails_safe_to_merge_for_any_open_state() -> None:
+    summary = _summary(status="partial_ml1_pixiv_metadata_foundation_complete")
+    summary["pixiv_accounting"]["pending_work_count"] = 1
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert "ml1_partial_foundation_open_or_blocking_state_nonzero" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_partial_pixiv_foundation_route_is_ml2_only() -> None:
+    summary = _summary(status="partial_ml1_pixiv_metadata_foundation_complete")
+    summary["route_authorization"]["production_authorized"] = True
+    result = check_phase_contract(CONTRACT_ID, summary)
+    codes = {finding.code for finding in result.errors}
+    assert "ml1_forbidden_route_authorization" in codes
+    assert "ml1_partial_foundation_route_scope_invalid" in codes
 
 
 def test_active_blockers_cannot_hide_later_known_gaps() -> None:

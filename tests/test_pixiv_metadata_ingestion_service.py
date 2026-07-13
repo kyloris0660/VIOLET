@@ -12,14 +12,21 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models import SourceMetadataRecord, SourceNameObservation, SourceTagObservation
+from app.models import (
+    SourceMetadataEvidence,
+    SourceMetadataRecord,
+    SourceNameObservation,
+    SourceTagObservation,
+)
 from app.services.pixiv_metadata_ingestion_service import (
+    DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
     PixivMetadataGateError,
     PixivMetadataState,
     acquisition_work_lifecycle_counts,
     backfill_creator_source_observations,
     build_gallery_dl_metadata_command,
     classify_gallery_dl_failure,
+    defer_proven_source_page_mismatch,
     mark_work_state,
     llm_budget_policy,
     pending_distinct_work_ids,
@@ -41,6 +48,7 @@ def db():
         engine,
         tables=[
             SourceMetadataRecord.__table__,
+            SourceMetadataEvidence.__table__,
             SourceNameObservation.__table__,
             SourceTagObservation.__table__,
         ],
@@ -570,7 +578,7 @@ def test_page_failure_preserves_complete_page_and_updates_only_attempted_pending
     db.flush()
     assert p0.status == PixivMetadataState.COMPLETE.value
     assert p1.status == PixivMetadataState.RETRYABLE.value
-    assert result == {"attempted": 1, "updated": 1, "preserved_complete": 0, "preserved_terminal": 0, "preserved_conflict": 0, "not_found": 0}
+    assert result == {"attempted": 1, "updated": 1, "preserved_complete": 0, "preserved_terminal": 0, "preserved_conflict": 0, "preserved_deferred": 0, "not_found": 0}
 
 
 def test_page_failure_preserves_terminal_page(db) -> None:
@@ -633,6 +641,174 @@ def test_mixed_page_work_closes_only_when_every_page_complete_or_terminal(db) ->
     assert summarize_batch_closure(db, [109, 110])["closed"] is False
     p1.status = PixivMetadataState.TERMINAL.value
     assert summarize_batch_closure(db, [109, 110])["closed"] is True
+
+
+def _proven_page_mismatch_queue(db, *, media_id: int = 120, page_index: int = 1):
+    queue_media_for_pixiv_metadata(
+        db,
+        {
+            "id": media_id,
+            "filename": f"123456789_p{page_index}.jpg",
+            "path": f"media/{media_id}.jpg",
+        },
+    )
+    db.flush()
+    row = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == media_id).one()
+    mark_work_state(
+        db,
+        "123456789",
+        PixivMetadataState.NORMALIZATION_FAILED.value,
+        reason="provider_metadata_missing_attempted_local_page",
+        attempted_record_ids=[row.id],
+        structural_diagnostics={
+            "work_id": "123456789",
+            "attempted_page_set": [page_index],
+            "parser_version": "pixiv_filename_prior_v3",
+            "normalizer_version": "gallery_dl_pixiv_normalizer_v1",
+            "failure_class": "PixivMetadataGateError",
+            "failure_code": "provider_metadata_missing_attempted_local_page",
+            "provider_output_returned": True,
+        },
+    )
+    db.flush()
+    return row
+
+
+def _defer_page_mismatch(db, row, **overrides):
+    values = {
+        "attempted_record_ids": [row.id],
+        "observed_page_indexes": [0],
+        "original_final_outcome": "normalization_failed",
+        "manifest_kind": "main",
+        "evidence_fingerprint": "a" * 64,
+        "deferred_at": "2026-07-13T12:00:00+00:00",
+        "governed_route_exhausted": True,
+    }
+    values.update(overrides)
+    return defer_proven_source_page_mismatch(db, "123456789", **values)
+
+
+def test_exact_p1_requested_p0_returned_becomes_deferred_nonblocking(db) -> None:
+    row = _proven_page_mismatch_queue(db)
+    raw_before = json.loads(json.dumps(row.raw_metadata_json, sort_keys=True))
+    provenance_before = json.loads(json.dumps(row.provenance, sort_keys=True))
+
+    result = _defer_page_mismatch(db, row)
+    db.commit()
+
+    assert result == {
+        "attempted": 1,
+        "updated": 1,
+        "preserved_deferred": 0,
+        "evidence_created": 1,
+    }
+    assert row.status == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+    assert row.raw_metadata_json == raw_before
+    assert row.provenance == provenance_before
+    evidence = db.query(SourceMetadataEvidence).one()
+    assert evidence.evidence_kind == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+    assert evidence.provenance["governance_policy_version"] == DEFERRED_PAGE_MISMATCH_POLICY_VERSION
+    assert evidence.provenance["provider_observed_page_indexes"] == [0]
+    assert evidence.provenance["unsupported_page_link_created"] is False
+    assert evidence.provenance["conflict_winner_selected"] is False
+    assert db.query(SourceNameObservation).count() == 0
+    assert db.query(SourceTagObservation).count() == 0
+    closure = summarize_batch_closure(db, [120])
+    assert closure["closed"] is True
+    assert closure["open_candidate_count"] == 0
+    assert closure["deferred_nonblocking_source_page_mismatch_count"] == 1
+    assert pending_distinct_work_ids(db) == ()
+    assert acquisition_work_lifecycle_counts(db) == {
+        "deferred_nonblocking_source_page_mismatch": 1
+    }
+
+
+def test_deferred_transition_is_idempotent_and_generic_paths_do_not_reopen(db) -> None:
+    row = _proven_page_mismatch_queue(db)
+    _defer_page_mismatch(db, row)
+    db.commit()
+    evidence_count = db.query(SourceMetadataEvidence).count()
+
+    second = _defer_page_mismatch(db, row)
+    decision = queue_media_for_pixiv_metadata(
+        db,
+        {"id": 120, "filename": "123456789_p1.jpg", "path": "media/120.jpg"},
+    )
+    generic = mark_work_state(
+        db,
+        "123456789",
+        PixivMetadataState.RETRYABLE.value,
+        reason="unchanged_provider_metadata",
+        attempted_record_ids=[row.id],
+    )
+    calls = []
+    results = run_bounded_acquisition(
+        db,
+        ["123456789"],
+        entrypoint=("gallery-dl",),
+        authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        command_runner=lambda *args, **kwargs: calls.append(args),
+        sleeper=lambda _seconds: None,
+    )
+
+    assert second["updated"] == 0
+    assert second["evidence_created"] == 0
+    assert second["preserved_deferred"] == 1
+    assert db.query(SourceMetadataEvidence).count() == evidence_count
+    assert decision.state == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+    assert generic["preserved_deferred"] == 1 and generic["updated"] == 0
+    assert calls == []
+    assert results[0].state == "skipped_complete_or_closed"
+
+
+@pytest.mark.parametrize(
+    ("mutate", "overrides", "error"),
+    [
+        (lambda row: setattr(row, "status", PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value), {}, "ineligible_current_state"),
+        (lambda row: row.raw_metadata_json["structural_diagnostics"].update(failure_code="metadata_normalization_failed_unsupported_shape"), {}, "reason_not_proven"),
+        (lambda row: row.raw_metadata_json["structural_diagnostics"].update(failure_code="retryable_authentication"), {}, "reason_not_proven"),
+        (lambda row: setattr(row, "status", PixivMetadataState.TERMINAL.value), {}, "ineligible_current_state"),
+        (lambda row: row.raw_metadata_json["structural_diagnostics"].update(work_id="987654321"), {}, "provider_work_identity_not_proven"),
+        (lambda row: None, {"observed_page_indexes": [1]}, "requested_page_was_present"),
+        (lambda row: None, {"governed_route_exhausted": False}, "route_not_exhausted"),
+    ],
+)
+def test_false_or_premature_deferred_page_mismatch_is_rejected(db, mutate, overrides, error) -> None:
+    row = _proven_page_mismatch_queue(db)
+    mutate(row)
+    with pytest.raises(PixivMetadataGateError, match=error):
+        _defer_page_mismatch(db, row, **overrides)
+
+
+def test_materially_new_correct_page_evidence_may_supersede_deferred(db) -> None:
+    row = _proven_page_mismatch_queue(db)
+    _defer_page_mismatch(db, row)
+    db.commit()
+
+    linked = persist_complete_work(
+        db,
+        "123456789",
+        [
+            {
+                "work_id": "123456789",
+                "page_index": 1,
+                "title": "New exact page evidence",
+                "creator_id": None,
+                "creator_name": None,
+                "creator_account": None,
+                "creator_profile_identity": None,
+                "tags": (),
+                "raw": {"id": 123456789, "num": 1},
+            }
+        ],
+        attempted_record_ids=[row.id],
+        allow_deferred_reopen=True,
+    )
+
+    assert linked == 1
+    assert row.status == PixivMetadataState.COMPLETE.value
+    assert db.query(SourceMetadataEvidence).count() == 1
 
 
 def test_provider_identity_mismatch_is_counted_as_unfinished_work(db) -> None:

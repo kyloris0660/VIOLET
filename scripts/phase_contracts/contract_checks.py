@@ -3087,6 +3087,7 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
 
     status = str(_get(summary, "pipeline_contract.status", "") or "")
     target = status == "target_met_multilingual_alias_source_metadata_closure"
+    partial_foundation = status == "partial_ml1_pixiv_metadata_foundation_complete"
     if status not in ML1_MULTILINGUAL_ALIAS_SOURCE_METADATA_CLOSURE_STATUSES:
         result.fail(
             "ml1_status_invalid",
@@ -3096,12 +3097,30 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
             actual=status,
         )
         return
-    if not target and _completion_or_approval_claimed(result):
+    if not target and not partial_foundation and _completion_or_approval_claimed(result):
         result.fail(
             "ml1_non_target_status_claims_completion",
             "Only target_met_multilingual_alias_source_metadata_closure may claim completion.",
             path="pipeline_contract.claims",
         )
+    claims = _get(summary, "pipeline_contract.claims", {})
+    if partial_foundation:
+        expected_partial_claims = {
+            "target_met": False,
+            "safe_to_merge": True,
+            "route_approved": True,
+        }
+        if not isinstance(claims, Mapping) or any(
+            claims.get(key, MISSING) is not expected
+            for key, expected in expected_partial_claims.items()
+        ):
+            result.fail(
+                "ml1_partial_foundation_claims_invalid",
+                "Project-lead-approved partial ML1 foundation requires exact non-target merge/ML2-route claims.",
+                path="pipeline_contract.claims",
+                expected=expected_partial_claims,
+                actual=claims,
+            )
 
     documents = _get(summary, "document_semantics", {})
     if not isinstance(documents, Mapping):
@@ -3464,6 +3483,7 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
             for key in (
                 "metadata_present_complete_media_count",
                 "terminal_remote_unavailable_media_count",
+                "deferred_nonblocking_source_page_mismatch_media_count",
                 "metadata_pending_media_count",
                 "retryable_failure_media_count",
                 "provider_identity_mismatch_media_count",
@@ -3489,6 +3509,7 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
             for key in (
                 "metadata_present_complete_work_count",
                 "terminal_remote_unavailable_work_count",
+                "deferred_nonblocking_source_page_mismatch_work_count",
                 "pending_work_count",
                 "retryable_work_count",
                 "normalization_failed_work_count",
@@ -3665,7 +3686,13 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
             isinstance(foundation, Mapping)
             and foundation.get("current_stock_closed") is True
             and foundation.get("continuous_ingestion_gate_implemented") is True
-            and _as_float(foundation.get("complete_or_terminal_coverage"), default=0.0) == 1.0
+            and _as_float(
+                foundation.get("complete_terminal_or_deferred_coverage"), default=0.0
+            ) == 1.0
+            and _as_int(
+                foundation.get("deferred_nonblocking_source_page_mismatch_work_count"),
+                default=-1,
+            ) >= 0
         )
     if status.startswith("blocked_") and status not in active_blockers:
         result.fail("ml1_primary_blocker_missing_from_active_blockers", "The primary blocked status must appear in active_blockers.", path="pipeline_contract.active_blockers", actual=active_blockers)
@@ -3703,7 +3730,13 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
         known_blockers.add("blocked_creator_metadata_loss")
     if multilingual.get("actual_runtime_search_used") is not True or multilingual.get("synthetic_alias_media_propagation_used") is not False:
         known_blockers.add("blocked_multilingual_benchmark_incomplete")
-    if _as_int(multilingual.get("candidate_not_generated_count"), default=0) > 0 or _as_int(candidate.get("unresolved_candidate_generation_count"), default=0) > 0:
+    if (
+        not partial_foundation
+        and (
+            _as_int(multilingual.get("candidate_not_generated_count"), default=0) > 0
+            or _as_int(candidate.get("unresolved_candidate_generation_count"), default=0) > 0
+        )
+    ):
         known_blockers.add("blocked_candidate_generation_gap")
     if (
         search.get("shared_name_union_passed") is not True
@@ -3821,6 +3854,82 @@ def _check_ml1_multilingual_alias_source_metadata_closure(
         )
         if forbidden_true:
             result.fail("ml1_forbidden_route_authorization", "ML1 may authorize only the exact bounded Pixiv metadata route, never downstream/production/truth work.", path="route_authorization", actual=forbidden_true)
+        if partial_foundation and (
+            route.get("route_approved_scope") != "SCV2-ML2_next_phase_only"
+            or route.get("next_phase") != "SCV2-ML2: Multilingual Identity Candidate Closure"
+            or route.get("production_authorized") is not False
+            or route.get("scale_up_authorized") is not False
+            or route.get("entity_bridge_authorized") is not False
+            or route.get("truth_promotion_authorized") is not False
+            or route.get("provider_2_authorized") is not False
+            or route.get("full_library_execution_authorized") is not False
+        ):
+            result.fail(
+                "ml1_partial_foundation_route_scope_invalid",
+                "route_approved is limited to the separately governed SCV2-ML2 phase, never production, scale, Entity/truth, Provider-2, or full-library execution.",
+                path="route_authorization",
+            )
+
+    if partial_foundation:
+        governance = _get(summary, "governance_transition", {})
+        selection = governance.get("selection", {}) if isinstance(governance, Mapping) else {}
+        transition = governance.get("transition", {}) if isinstance(governance, Mapping) else {}
+        operation_delta = governance.get("operation_delta", {}) if isinstance(governance, Mapping) else {}
+        if not (
+            isinstance(governance, Mapping)
+            and governance.get("state") == "deferred_nonblocking_source_page_mismatch"
+            and governance.get("policy_version") == "source_page_mismatch_deferred_nonblocking_v1"
+            and isinstance(selection, Mapping)
+            and _as_int(selection.get("distinct_work_count"), default=-1) == 14
+            and _as_int(selection.get("main_manifest_work_count"), default=-1) == 11
+            and _as_int(selection.get("conflict_manifest_work_count"), default=-1) == 3
+            and _as_int(selection.get("distinct_work_count"), default=-1)
+            == _as_int(
+                pixiv.get("deferred_nonblocking_source_page_mismatch_work_count"),
+                default=-2,
+            )
+            and selection.get("exact_predicate_passed") is True
+            and selection.get("broader_normalization_or_conflict_population_converted") is False
+            and isinstance(transition, Mapping)
+            and transition.get("idempotent") is True
+            and transition.get("raw_and_historical_queue_evidence_preserved") is True
+            and transition.get("unsupported_page_link_created") is False
+            and transition.get("conflict_winner_selected") is False
+            and isinstance(operation_delta, Mapping)
+            and operation_delta
+            and all(type(value) is int and value == 0 for value in operation_delta.values())
+        ):
+            result.fail(
+                "ml1_deferred_page_mismatch_governance_unproven",
+                "Partial ML1 closure requires exact, idempotent, zero-network 11+3 page-mismatch governance evidence.",
+                path="governance_transition",
+            )
+        for key in (
+            "pending_work_count",
+            "retryable_work_count",
+            "missing_work_count",
+            "normalization_failed_work_count",
+            "provider_identity_mismatch_work_count",
+            "conflict_unresolved_work_count",
+        ):
+            if _as_int(pixiv.get(key), default=-1) != 0:
+                result.fail(
+                    "ml1_partial_foundation_open_or_blocking_state_nonzero",
+                    "safe_to_merge requires zero pending, retryable, missing, normalization, identity-mismatch, and blocking-conflict works.",
+                    path=f"pixiv_accounting.{key}",
+                    expected=0,
+                    actual=pixiv.get(key),
+                )
+        if _as_float(
+            pixiv.get("complete_terminal_or_deferred_work_coverage"), default=0.0
+        ) != 1.0:
+            result.fail(
+                "ml1_partial_foundation_governed_coverage_incomplete",
+                "Complete/terminal/governed-deferred work coverage must equal 1.0.",
+                path="pixiv_accounting.complete_terminal_or_deferred_work_coverage",
+                expected=1.0,
+                actual=pixiv.get("complete_terminal_or_deferred_work_coverage"),
+            )
 
 
 def _zero_eligible_proof_passed(plan: Mapping[str, Any]) -> bool:

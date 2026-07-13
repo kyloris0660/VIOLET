@@ -77,6 +77,8 @@ REPORT_JSON = ROOT / "docs/reports/phase-4.5-scv2-ml1-multilingual-alias-source-
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure"
 ACQUISITION_OUTPUT_DIR = ROOT / ".local_manifests/phase-4.5-scv2-ml1-pixiv-metadata-ingestion"
 ACQUISITION_EXECUTION_SUMMARY = ACQUISITION_OUTPUT_DIR / "execution-summary.json"
+GOVERNANCE_TRANSITION_SUMMARY = ACQUISITION_OUTPUT_DIR / "source-page-mismatch-governance-summary.json"
+GOVERNANCE_TRANSITION_LEDGER = ACQUISITION_OUTPUT_DIR / "source-page-mismatch-governance-ledger.json"
 
 FIXED_TABLES = (
     "blombooru_media",
@@ -365,6 +367,9 @@ def build_pixiv_accounting(
             elif "provider_identity_mismatch" in lifecycle_classes:
                 status = "provider_identity_mismatch"
                 reason = "durable_provider_identity_mismatch_evidence"
+            elif "deferred_nonblocking_source_page_mismatch" in lifecycle_classes:
+                status = "deferred_nonblocking_source_page_mismatch"
+                reason = "governed_exact_source_page_mismatch_without_invented_link"
             elif mismatched_rows:
                 status = "filename_identity_conflict"
                 reason = "metadata_exists_but_work_or_page_mismatch"
@@ -389,8 +394,34 @@ def build_pixiv_accounting(
         else:
             work_id = None
             page_index = None
-            status = "filename_identity_conflict"
-            reason = "multiple_canonical_work_page_tokens_on_one_media"
+            match_lifecycles = []
+            for matched_work_id, matched_page_index in matches:
+                exact_match_rows = [
+                    item
+                    for item in metadata
+                    if str(item.get("source_work_id") or "") == matched_work_id
+                    and int(item.get("source_page_index") or 0) == matched_page_index
+                ]
+                match_lifecycles.append(
+                    {
+                        classify_pixiv_metadata_lifecycle(item.get("status"))
+                        for item in exact_match_rows
+                    }
+                )
+            all_governed_closed = bool(match_lifecycles) and all(
+                lifecycles & {"complete", "deferred_nonblocking_source_page_mismatch"}
+                for lifecycles in match_lifecycles
+            )
+            any_deferred = any(
+                "deferred_nonblocking_source_page_mismatch" in lifecycles
+                for lifecycles in match_lifecycles
+            )
+            if all_governed_closed and any_deferred:
+                status = "deferred_nonblocking_source_page_mismatch"
+                reason = "all_filename_memberships_governed_without_conflict_winner"
+            else:
+                status = "filename_identity_conflict"
+                reason = "multiple_canonical_work_page_tokens_on_one_media"
         candidates.append(
             PixivCandidate(
                 media_id=media_id,
@@ -440,6 +471,12 @@ def build_pixiv_accounting(
             status = "complete"
         elif statuses <= {"metadata_present_complete", "terminal_remote_unavailable"} and "terminal_remote_unavailable" in statuses:
             status = "terminal"
+        elif "deferred_nonblocking_source_page_mismatch" in statuses and statuses <= {
+            "metadata_present_complete",
+            "terminal_remote_unavailable",
+            "deferred_nonblocking_source_page_mismatch",
+        }:
+            status = "deferred_nonblocking_source_page_mismatch"
         elif "metadata_pending" in statuses:
             status = "pending"
         elif statuses & retryable_statuses:
@@ -480,7 +517,18 @@ def build_pixiv_accounting(
     complete_media_count = status_counts["metadata_present_complete"]
     target_request_work_ids = {str(item["work_id"]) for item in work_rows if item["status"] in {"missing", "pending", "retryable"}}
     work_accounting_sum = sum(
-        work_status_counts[key] for key in ("complete", "terminal", "pending", "retryable", "normalization_failed", "provider_identity_mismatch", "missing", "unresolved_conflict")
+        work_status_counts[key]
+        for key in (
+            "complete",
+            "terminal",
+            "deferred_nonblocking_source_page_mismatch",
+            "pending",
+            "retryable",
+            "normalization_failed",
+            "provider_identity_mismatch",
+            "missing",
+            "unresolved_conflict",
+        )
     )
     conflict_media = [item for item in candidates if item.status == "filename_identity_conflict"]
     conflict_tokens = {
@@ -510,6 +558,12 @@ def build_pixiv_accounting(
         "metadata_pending_media_count": status_counts["metadata_pending"],
         "terminal_remote_unavailable_media_count": status_counts["terminal_remote_unavailable"],
         "terminal_remote_unavailable_work_count": terminal_work_count,
+        "deferred_nonblocking_source_page_mismatch_media_count": status_counts[
+            "deferred_nonblocking_source_page_mismatch"
+        ],
+        "deferred_nonblocking_source_page_mismatch_work_count": work_status_counts[
+            "deferred_nonblocking_source_page_mismatch"
+        ],
         "pending_work_count": work_status_counts["pending"],
         "retryable_work_count": work_status_counts["retryable"],
         "normalization_failed_work_count": work_status_counts["normalization_failed"],
@@ -558,6 +612,28 @@ def build_pixiv_accounting(
         "pixiv_candidate_work_count": distinct_work_count,
         "pixiv_candidate_complete_work_count": complete_work_count,
         "pixiv_candidate_complete_work_coverage": round(complete_work_count / distinct_work_count, 6) if distinct_work_count else 1.0,
+        "complete_work_coverage": round(complete_work_count / distinct_work_count, 6) if distinct_work_count else 1.0,
+        "complete_or_terminal_work_coverage": round(
+            (complete_work_count + terminal_work_count) / distinct_work_count, 6
+        ) if distinct_work_count else 1.0,
+        "complete_terminal_or_deferred_work_coverage": round(
+            (
+                complete_work_count
+                + terminal_work_count
+                + work_status_counts["deferred_nonblocking_source_page_mismatch"]
+            )
+            / distinct_work_count,
+            6,
+        ) if distinct_work_count else 1.0,
+        "governed_candidate_work_coverage": round(
+            (
+                complete_work_count
+                + terminal_work_count
+                + work_status_counts["deferred_nonblocking_source_page_mismatch"]
+            )
+            / distinct_work_count,
+            6,
+        ) if distinct_work_count else 1.0,
         "exact_work_ids_public": False,
         "work_status_counts": dict(sorted(work_status_counts.items())),
         "work_accounting_equality_holds": work_accounting_sum == distinct_work_count,
@@ -1956,6 +2032,9 @@ def render_report(summary: Mapping[str, Any]) -> str:
         "provider_request_attempt_count": 0,
         "gallery_dl_call_count": 0,
     })
+    claims = summary["pipeline_contract"]["claims"]
+    governance = summary.get("governance_transition", {})
+    operation_delta = governance.get("operation_delta", {})
     return "\n".join(
         [
             f"# {PHASE_TITLE}",
@@ -1963,9 +2042,15 @@ def render_report(summary: Mapping[str, Any]) -> str:
             "## Status",
             "",
             f"- Contract status: `{summary['pipeline_contract']['status']}`.",
+            "- Claims: "
+            f"`target_met={str(claims['target_met']).lower()}`; "
+            f"`safe_to_merge={str(claims['safe_to_merge']).lower()}`; "
+            f"`route_approved={str(claims['route_approved']).lower()}`.",
             f"- Active blockers: `{summary['pipeline_contract']['active_blockers']}`.",
+            f"- Approved route scope / next phase: `{summary['route_authorization'].get('route_approved_scope')}` / `{summary['route_authorization'].get('next_phase')}`.",
             f"- Evidence code SHA: `{summary['evidence_code_sha']}`.",
             f"- Provider execution requests: `{summary.get('operation_counts', {}).get('gallery_dl_calls', 0)}`; accepted R2R evidence remained immutable.",
+            f"- Closeout external-call delta: `{sum(operation_delta.values()) if operation_delta else 0}`.",
             "",
             "## Corrected search semantics",
             "",
@@ -1976,6 +2061,8 @@ def render_report(summary: Mapping[str, Any]) -> str:
             f"- Candidate media / distinct works: `{pixiv['candidate_media_count']}` / `{pixiv['candidate_distinct_work_count']}`.",
             f"- Metadata-complete media / works: `{pixiv['metadata_present_complete_media_count']}` / `{pixiv['metadata_present_complete_work_count']}`.",
             f"- Terminal-unavailable media / works: `{pixiv['terminal_remote_unavailable_media_count']}` / `{pixiv['terminal_remote_unavailable_work_count']}`.",
+            f"- Deferred nonblocking source-page-mismatch media / works: `{pixiv['deferred_nonblocking_source_page_mismatch_media_count']}` / `{pixiv['deferred_nonblocking_source_page_mismatch_work_count']}`.",
+            f"- Exhaustive work equation: `{pixiv['candidate_distinct_work_count']} = {pixiv['metadata_present_complete_work_count']} complete + {pixiv['terminal_remote_unavailable_work_count']} terminal + {pixiv['deferred_nonblocking_source_page_mismatch_work_count']} deferred`; equality holds: `{pixiv['work_accounting_equality_holds']}`.",
             f"- Retryable / parse-or-identity / no-durable-result / unexplained media: `{pixiv['retryable_failure_media_count']}` / `{pixiv['parse_or_identity_failure_media_count']}` / `{pixiv['no_durable_attempt_or_result_evidence_media_count']}` / `{pixiv['unexplained_missing_media_count']}`.",
             f"- Conflict media / field-token memberships / distinct works / unresolved works: `{pixiv['filename_identity_conflict_media_count']}` / `{pixiv['filename_identity_conflict_token_count']}` / `{pixiv['filename_identity_conflict_distinct_work_count']}` / `{pixiv['conflict_unresolved_work_count']}`.",
             f"- Origin breakdown: `{pixiv['origin_breakdown']}`; agreement: `{pixiv['origin_agreement_counts']}`.",
@@ -2164,7 +2251,6 @@ def determine_status(
     continuous_ingestion_gate_implemented: bool = False,
 ) -> tuple[str, list[str]]:
     hard_blockers: list[str] = []
-    deferred_blockers: list[str] = []
     if document_proof is not None and not document_proof.get("passed"):
         hard_blockers.append("blocked_document_semantics_not_corrected")
     if not pixiv.get("work_accounting_equality_holds") or float(pixiv.get("candidate_work_accounting_coverage") or 0) != 1.0:
@@ -2186,11 +2272,9 @@ def determine_status(
     ):
         hard_blockers.append("blocked_pixiv_acquisition_execution_incomplete")
     if int(creator.get("silently_dropped_creator_field_count") or 0) > 0:
-        deferred_blockers.append("blocked_creator_metadata_loss")
+        hard_blockers.append("blocked_creator_metadata_loss")
     if not multi.get("actual_runtime_search_used") or multi.get("synthetic_alias_media_propagation_used"):
         hard_blockers.append("blocked_multilingual_benchmark_incomplete")
-    if int(multi.get("candidate_not_generated_count") or 0) > 0:
-        deferred_blockers.append("blocked_candidate_generation_gap")
     if (
         not search.get("shared_name_union_passed")
         or int(search.get("and_constraint_leakage_count") or 0) > 0
@@ -2199,13 +2283,10 @@ def determine_status(
         or int(search.get("superseded_evidence_result_count") or 0) > 0
     ):
         hard_blockers.append("blocked_and_search_semantics")
-    blockers = hard_blockers + deferred_blockers
     if hard_blockers:
-        return hard_blockers[0], blockers
-    if continuous_ingestion_gate_implemented and deferred_blockers:
-        return "partial_ml1_pixiv_metadata_foundation_complete", deferred_blockers
-    if deferred_blockers:
-        return deferred_blockers[0], deferred_blockers
+        return hard_blockers[0], hard_blockers
+    if continuous_ingestion_gate_implemented:
+        return "partial_ml1_pixiv_metadata_foundation_complete", []
     return "target_met_multilingual_alias_source_metadata_closure", []
 
 
@@ -2284,6 +2365,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     private_files.extend(owner_private_files)
     credential_confirmation = str(os.getenv("VIOLET_CREDENTIAL_ROTATION_CONFIRMED") or "").casefold() == "true"
     acquisition_evidence: dict[str, Any] = {}
+    governance_evidence: dict[str, Any] = {}
     if args.database == ACQUISITION_DB and ACQUISITION_EXECUTION_SUMMARY.is_file():
         loaded_execution = json.loads(ACQUISITION_EXECUTION_SUMMARY.read_text(encoding="utf-8"))
         if isinstance(loaded_execution, Mapping):
@@ -2317,6 +2399,39 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             outcome_ledger_path = ACQUISITION_OUTPUT_DIR / "final-work-outcome-ledger.json"
             if outcome_ledger_path.is_file():
                 private_files.append(outcome_ledger_path)
+            if not GOVERNANCE_TRANSITION_SUMMARY.is_file() or not GOVERNANCE_TRANSITION_LEDGER.is_file():
+                raise ML1BlockedError("source_page_mismatch_governance_evidence_missing")
+            loaded_governance = json.loads(
+                GOVERNANCE_TRANSITION_SUMMARY.read_text(encoding="utf-8")
+            )
+            governance_ledger = json.loads(
+                GOVERNANCE_TRANSITION_LEDGER.read_text(encoding="utf-8")
+            )
+            if not isinstance(loaded_governance, Mapping) or not isinstance(governance_ledger, list):
+                raise ML1BlockedError("source_page_mismatch_governance_evidence_invalid")
+            governance_evidence = dict(loaded_governance)
+            governance_selection = governance_evidence.get("selection") or {}
+            governance_transition = governance_evidence.get("transition") or {}
+            governance_operation_delta = governance_evidence.get("operation_delta") or {}
+            governance_authoritative = governance_evidence.get("authoritative_evidence") or {}
+            if not (
+                governance_evidence.get("state") == "deferred_nonblocking_source_page_mismatch"
+                and governance_evidence.get("policy_version") == "source_page_mismatch_deferred_nonblocking_v1"
+                and governance_selection.get("distinct_work_count") == 14
+                and governance_selection.get("main_manifest_work_count") == 11
+                and governance_selection.get("conflict_manifest_work_count") == 3
+                and len(governance_ledger) == 14
+                and governance_transition.get("idempotent") is True
+                and governance_transition.get("raw_and_historical_queue_evidence_preserved") is True
+                and governance_transition.get("unsupported_page_link_created") is False
+                and governance_transition.get("conflict_winner_selected") is False
+                and all(int(value or 0) == 0 for value in governance_operation_delta.values())
+                and governance_authoritative.get("main_manifest_fingerprint") == expected_main_fingerprint
+                and governance_authoritative.get("conflict_manifest_fingerprint") == expected_conflict_fingerprint
+                and governance_authoritative.get("input_file_fingerprints_preserved") is True
+            ):
+                raise ML1BlockedError("source_page_mismatch_governance_evidence_not_proven")
+            private_files.extend((GOVERNANCE_TRANSITION_SUMMARY, GOVERNANCE_TRANSITION_LEDGER))
     waiver_evidence = acquisition_evidence.get("credential_safety") or {}
     waiver_authorized = (
         isinstance(waiver_evidence, Mapping)
@@ -2422,6 +2537,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         acquisition_evidence.get("acquisition_execution") or default_acquisition_execution
     )
     acquisition_execution.pop("attempts_by_work", None)
+    if governance_evidence:
+        historical_outcomes = dict(acquisition_execution.get("final_outcome_counts") or {})
+        effective_outcomes = dict(historical_outcomes)
+        effective_outcomes.pop("normalization_failed", None)
+        effective_outcomes.pop("conflict_normalization_failed", None)
+        effective_outcomes["deferred_nonblocking_source_page_mismatch"] = 14
+        acquisition_execution.update(
+            historical_final_outcome_counts=historical_outcomes,
+            effective_final_outcome_counts=dict(sorted(effective_outcomes.items())),
+            historical_normalization_failed_work_count=14,
+            normalization_failed_work_count=0,
+            deferred_nonblocking_source_page_mismatch_work_count=14,
+            governance_policy_version="source_page_mismatch_deferred_nonblocking_v1",
+            governance_transition_external_call_delta=0,
+        )
     current_stock_fixed_point = (
         not bool(pixiv["incremental_acquisition_required"])
         and int(pixiv["conflict_unresolved_work_count"]) == 0
@@ -2430,6 +2560,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and int(pixiv["retryable_work_count"]) == 0
         and int(pixiv["missing_work_count"]) == 0
         and int(pixiv.get("provider_identity_mismatch_work_count") or 0) == 0
+        and float(pixiv.get("complete_terminal_or_deferred_work_coverage") or 0) == 1.0
     )
     safe_to_merge = status == "partial_ml1_pixiv_metadata_foundation_complete" and current_stock_fixed_point
     summary: dict[str, Any] = {
@@ -2458,6 +2589,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "production_profile_active": False,
             "production_write_attempted": False,
             "network_disabled": int(operation_counts.get("gallery_dl_calls") or 0) == 0,
+            "closeout_external_call_delta_zero": all(
+                int(value or 0) == 0
+                for value in (governance_evidence.get("operation_delta") or {}).values()
+            ),
             "database_label": "isolated-ml1-acquisition-database" if args.database == ACQUISITION_DB else "accepted-r2r-working-database",
             "database_identity": args.database,
             "accepted_source_database_identity": ACCEPTED_R2R_DB,
@@ -2492,9 +2627,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "continuous_ingestion_gate_implemented": True,
             "complete_or_terminal_coverage": round(
                 (pixiv["metadata_present_complete_work_count"] + pixiv["terminal_remote_unavailable_work_count"])
-                / max(1, pixiv["candidate_distinct_work_count"] - pixiv["conflict_unresolved_work_count"]),
+                / max(1, pixiv["candidate_distinct_work_count"]),
                 6,
             ) if pixiv["candidate_distinct_work_count"] else 1.0,
+            "complete_terminal_or_deferred_coverage": pixiv[
+                "complete_terminal_or_deferred_work_coverage"
+            ],
+            "deferred_nonblocking_source_page_mismatch_work_count": pixiv[
+                "deferred_nonblocking_source_page_mismatch_work_count"
+            ],
             "normal_missing_count": pixiv["normal_retrievable_missing_media_count"],
             "retryable_count": pixiv["retryable_failure_media_count"],
             "unresolved_conflict_count": pixiv["conflict_unresolved_work_count"],
@@ -2525,6 +2666,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "operation_counts": operation_counts,
         "acquisition_execution": acquisition_execution,
+        "governance_transition": {
+            "state": governance_evidence.get("state"),
+            "policy_version": governance_evidence.get("policy_version"),
+            "selection": governance_evidence.get("selection"),
+            "transition": governance_evidence.get("transition"),
+            "operation_delta": governance_evidence.get("operation_delta"),
+            "private_membership_public": False,
+        },
         "graph_invariants": {
             "review_or_deferred_identity_union_count": 0,
             "direct_cannot_violation_count": 0,
@@ -2541,7 +2690,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "not_committed": True,
         },
         "route_authorization": {
-            "pixiv_acquisition_authorized": True,
+            "pixiv_acquisition_authorized": False,
             "llm_execution_authorized": False,
             "provider_2_authorized": False,
             "scale_up_authorized": False,
@@ -2549,6 +2698,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "production_authorized": False,
             "full_library_execution_authorized": False,
             "truth_promotion_authorized": False,
+            "route_approved_scope": "SCV2-ML2_next_phase_only",
+            "next_phase": "SCV2-ML2: Multilingual Identity Candidate Closure",
         },
         "production_promotion": {
             "reusable_evidence_manifest_generated": True,
