@@ -15,6 +15,7 @@ from app.models import SourceMetadataRecord, SourceNameObservation, SourceTagObs
 from app.services.pixiv_metadata_ingestion_service import (
     PixivMetadataGateError,
     PixivMetadataState,
+    acquisition_work_lifecycle_counts,
     backfill_creator_source_observations,
     build_gallery_dl_metadata_command,
     classify_gallery_dl_failure,
@@ -158,6 +159,42 @@ def test_historical_wrong_work_or_page_is_queued_as_conflict_not_acquisition(db)
     decision = queue_media_for_pixiv_metadata(db, {"id": 17, "filename": "123456789_p0.jpg", "path": "media/17.jpg"})
     db.commit()
     assert decision.state == PixivMetadataState.CONFLICT.value
+    assert pending_distinct_work_ids(db) == ()
+
+
+def test_current_media_mismatch_wins_over_compatible_record_on_other_media(db) -> None:
+    db.add_all(
+        [
+            SourceMetadataRecord(
+                provider="pixiv",
+                provider_record_key="historical:compatible:other-media",
+                media_id=170,
+                source_work_id="123456789",
+                source_page_index=0,
+                metadata_kind="gallery_dl_real_pixiv_metadata",
+                data_type_label="authenticated_provider_metadata",
+                status="metadata_complete",
+            ),
+            SourceMetadataRecord(
+                provider="pixiv",
+                provider_record_key="historical:mismatch:current-media",
+                media_id=171,
+                source_work_id="999999999",
+                source_page_index=1,
+                metadata_kind="gallery_dl_real_pixiv_metadata",
+                data_type_label="authenticated_provider_metadata",
+                status="observed",
+            ),
+        ]
+    )
+    db.commit()
+
+    decision = queue_media_for_pixiv_metadata(
+        db, {"id": 171, "filename": "123456789_p0.jpg", "path": "media/171.jpg"}
+    )
+
+    assert decision.state == PixivMetadataState.CONFLICT.value
+    assert decision.reused_complete_record_ids == ()
     assert pending_distinct_work_ids(db) == ()
 
 
@@ -480,6 +517,61 @@ def test_mixed_page_work_closes_only_when_every_page_complete_or_terminal(db) ->
     assert summarize_batch_closure(db, [109, 110])["closed"] is False
     p1.status = PixivMetadataState.TERMINAL.value
     assert summarize_batch_closure(db, [109, 110])["closed"] is True
+
+
+def test_provider_identity_mismatch_is_counted_as_unfinished_work(db) -> None:
+    queue_media_for_pixiv_metadata(
+        db, {"id": 111, "filename": "123456789_p0.jpg", "path": "media/111.jpg"}
+    )
+    db.flush()
+    row = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 111).one()
+    row.status = PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value
+
+    assert acquisition_work_lifecycle_counts(db) == {"provider_identity_mismatch": 1}
+
+
+def test_success_invalidates_source_metadata_search_cache_after_commit(db, monkeypatch) -> None:
+    queue_media_for_pixiv_metadata(
+        db, {"id": 112, "filename": "123456789_p0.jpg", "path": "media/112.jpg"}
+    )
+    db.commit()
+    events: list[str] = []
+    original_commit = db.commit
+
+    def recording_commit() -> None:
+        original_commit()
+        events.append("commit")
+
+    monkeypatch.setattr(db, "commit", recording_commit)
+    monkeypatch.setattr(
+        "app.services.pixiv_metadata_ingestion_service.invalidate_source_metadata_search_cache",
+        lambda: events.append("invalidate"),
+    )
+    payload = [[3, "url", {"id": 123456789, "num": 0, "title": "Work", "tags": ["tag"]}]]
+
+    run_bounded_acquisition(
+        db,
+        ["123456789"],
+        entrypoint=("gallery-dl",),
+        authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        command_runner=lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, stdout=json.dumps(payload), stderr=""
+        ),
+        sleeper=lambda _seconds: None,
+        max_attempts_per_work=1,
+    )
+
+    assert events[-2:] == ["commit", "invalidate"]
+
+
+def test_negative_additional_diagnostic_calls_fail_before_replay_io(tmp_path) -> None:
+    args = ingestion_runner.argparse.Namespace(additional_diagnostic_calls=-1)
+
+    with pytest.raises(PixivMetadataGateError, match="blocked_negative_additional_diagnostic_calls"):
+        ingestion_runner.run_normalization_replay(
+            args, None, tmp_path, waiver_accepted=True
+        )
 
 
 def test_terminal_classification_requires_authenticated_evidence() -> None:

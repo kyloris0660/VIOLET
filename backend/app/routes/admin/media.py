@@ -121,7 +121,8 @@ def _source_metadata_job_status(job: ScanJob, db: Session | None) -> dict:
     return {
         "source_metadata_status": status,
         "source_metadata_open_count": int(closure.get("open_candidate_count", 0)),
-        "source_metadata_blocked": not bool(closure.get("closed", False)),
+        "source_metadata_blocked": bool(closure.get("pixiv_candidate_count", 0))
+        and not bool(closure.get("closed", False)),
     }
 
 

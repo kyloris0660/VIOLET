@@ -714,7 +714,10 @@ def run_scan_job(job_id: int) -> None:
 
         db.commit()
 
-        if job.status == "completed" and not source_metadata_blocked and imported_media_ids and not job.dry_run:
+        # Source-metadata closure has its own durable lifecycle.  Do not strand
+        # otherwise enabled after-scan automation when that lifecycle remains
+        # pending; each downstream service keeps its own enablement/safety gate.
+        if job.status == "completed" and imported_media_ids and not job.dry_run:
             try:
                 from ..services.ai_tagging_job_service import create_auto_tag_job_after_scan
                 create_auto_tag_job_after_scan(job_id, imported_media_ids)

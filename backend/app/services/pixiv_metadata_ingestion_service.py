@@ -24,6 +24,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from sqlalchemy.orm import Session
 
 from ..models import Media, SourceMetadataRecord, SourceNameObservation, SourceTagObservation
+from ..utils.cache import invalidate_source_metadata_search_cache
 from .pixiv_filename_prior_service import PARSER_VERSION, PixivFilenamePrior, distinct_work_pages, parse_approved_fields
 from .source_metadata_registry_service import canonical_source_key, normalize_source_text
 
@@ -280,11 +281,19 @@ def queue_media_for_pixiv_metadata(session: Session, media: Media | Mapping[str,
         return QueueDecision(media_id, PixivMetadataState.CONFLICT.value, PARSER_VERSION, work_pages, origins)
 
     work_id, page_index = work_pages[0]
-    compatible = _compatible_complete_records(session, work_id, page_index)
-    if compatible:
-        state = PixivMetadataState.COMPLETE.value
-    elif _has_mismatched_pixiv_identity(session, media_id, work_id, page_index):
+    # A mismatch already attached to this media is stronger evidence than a
+    # compatible record attached elsewhere.  Never hide that conflict through
+    # cross-media complete-record reuse.
+    has_mismatched_identity = _has_mismatched_pixiv_identity(
+        session, media_id, work_id, page_index
+    )
+    compatible = [] if has_mismatched_identity else _compatible_complete_records(
+        session, work_id, page_index
+    )
+    if has_mismatched_identity:
         state = PixivMetadataState.CONFLICT.value
+    elif compatible:
+        state = PixivMetadataState.COMPLETE.value
     else:
         state = PixivMetadataState.PENDING.value
     queue_record = _upsert_queue_record(
@@ -395,7 +404,15 @@ def acquisition_work_lifecycle_counts(session: Session) -> dict[str, int]:
     for work_id, status in rows:
         by_work[str(work_id)].add(classify_pixiv_metadata_lifecycle(status))
     counts = Counter()
-    priority = ("conflict", "normalization_failed", "retryable", "pending", "terminal", "complete")
+    priority = (
+        "conflict",
+        "provider_identity_mismatch",
+        "normalization_failed",
+        "retryable",
+        "pending",
+        "terminal",
+        "complete",
+    )
     for states in by_work.values():
         selected = next((state for state in priority if state in states), "unknown")
         counts[selected] += 1
@@ -1005,6 +1022,9 @@ def run_bounded_acquisition(
                     result_callback(result)
                 break
             session.commit()
+            # SourceNameObservation and SourceTagObservation become visible to
+            # endpoint-equivalent search only after this transaction commits.
+            invalidate_source_metadata_search_cache()
             result = AcquisitionResult(work_id, PixivMetadataState.COMPLETE.value, True, len(pages), attempt_count=attempt)
             results.append(result)
             if result_callback:

@@ -80,6 +80,11 @@ def invalidate_source_concept_search_cache():
     """Invalidate search responses that depend on SourceConcept rows."""
     invalidate_cache("search")
 
+def invalidate_source_metadata_search_cache():
+    """Invalidate search responses that depend on committed source metadata."""
+    invalidate_cache("search")
+
+
 def invalidate_album_cache():
     """Invalidate all album-related caches"""
     invalidate_cache("album_list", "album_contents", "danbooru")

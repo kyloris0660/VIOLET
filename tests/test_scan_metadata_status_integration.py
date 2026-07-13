@@ -36,6 +36,25 @@ def test_completed_scan_with_pending_metadata_uses_terminal_scan_status() -> Non
     assert "metadata acquisition remains pending" in job.error_message
 
 
+def test_pending_metadata_does_not_strand_enabled_after_scan_automation() -> None:
+    job = _job()
+    db = MagicMock()
+    db.query.return_value.get.return_value = job
+    closure = {"closed": False, "open_candidate_count": 1, "pixiv_candidate_count": 1}
+    with patch("app.database.SessionLocal", return_value=db), patch(
+        "app.utils.local_library_scanner.scan_and_import",
+        return_value=_scan_result(closure, imported_ids=[9]),
+    ), patch(
+        "app.services.ai_tagging_job_service.create_auto_tag_job_after_scan"
+    ) as auto_tag, patch(
+        "app.services.classification_job_service.create_auto_classification_job_after_scan"
+    ) as auto_classify:
+        run_scan_job(job.id)
+
+    auto_tag.assert_called_once_with(job.id, [9])
+    auto_classify.assert_called_once_with(job.id, [9])
+
+
 def test_completed_scan_without_pixiv_candidates_is_completed_cleanly() -> None:
     job = _job()
     db = MagicMock()
@@ -80,6 +99,28 @@ def test_scan_api_separates_execution_and_metadata_status(monkeypatch) -> None:
     assert payload["source_metadata_status"] == "pending"
     assert payload["source_metadata_open_count"] == 1
     assert payload["source_metadata_blocked"] is True
+
+
+def test_legacy_job_without_pixiv_candidates_is_not_falsely_blocked(monkeypatch) -> None:
+    job = _job()
+    job.status = "completed"
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [(9,)]
+    monkeypatch.setattr(
+        admin_media,
+        "summarize_batch_closure",
+        lambda _db, _ids: {
+            "pixiv_candidate_count": 0,
+            "closed": False,
+            "open_candidate_count": 0,
+            "lifecycle_counts": {},
+        },
+    )
+
+    payload = admin_media._serialize_job(job, db)
+
+    assert payload["source_metadata_status"] == "not_applicable"
+    assert payload["source_metadata_blocked"] is False
 
 
 def test_frontend_poller_terminates_completed_scan_and_shows_metadata_warning() -> None:

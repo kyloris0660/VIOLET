@@ -45,6 +45,7 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     run_bounded_acquisition,
 )
 from app.services.pixiv_filename_prior_service import PARSER_VERSION  # noqa: E402
+from app.utils.cache import invalidate_source_metadata_search_cache  # noqa: E402
 from scripts import run_phase44p2r_f2_gallery_dl_external_adapter_pilot as gallery_adapter  # noqa: E402
 from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2  # noqa: E402
 
@@ -349,6 +350,10 @@ def run_normalization_replay(
 ) -> dict[str, Any]:
     """Explicit corrected replay for previously final normalization outcomes only."""
 
+    additional_diagnostic_calls = int(getattr(args, "additional_diagnostic_calls", 0) or 0)
+    if additional_diagnostic_calls < 0:
+        raise PixivMetadataGateError("blocked_negative_additional_diagnostic_calls")
+
     summary_path = output_dir / "execution-summary.json"
     ledger_path = output_dir / "final-work-outcome-ledger.json"
     checkpoint_path = output_dir / "acquisition-checkpoint.json"
@@ -467,7 +472,6 @@ def run_normalization_replay(
     ).hexdigest()
     outcome_counts = Counter(row["final_outcome"] for row in final_ledger_rows)
     acquisition = summary["acquisition_execution"]
-    additional_diagnostic_calls = int(getattr(args, "additional_diagnostic_calls", 0) or 0)
     total_diagnostic_calls = int(acquisition.get("diagnostic_provider_request_count") or 0) + additional_diagnostic_calls
     total_requests = int(acquisition.get("provider_request_attempt_count") or 0) + additional_diagnostic_calls + replay_attempts
     acquisition.update(
@@ -525,6 +529,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         decisions = [queue_media_for_pixiv_metadata(session, item) for item in media]
         creator_backfill = backfill_creator_source_observations(session)
         session.commit()
+        invalidate_source_metadata_search_cache()
         manifest = pending_distinct_work_ids(session)
         conflict_manifest = conflicted_distinct_work_ids(session)
         main_manifest_payload = build_executable_manifest(manifest, manifest_kind="main")
