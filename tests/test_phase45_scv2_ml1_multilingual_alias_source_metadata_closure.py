@@ -882,6 +882,68 @@ def test_translation_support_inherits_exact_and_parenthetical_direct_tags() -> N
     assert all("accepted_search_only_translation_relation" in types for types in inherited.values())
 
 
+def test_runtime_support_sql_mirrors_endpoint_source_name_review_gate() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE observations (id INTEGER, provider TEXT, source_field TEXT, "
+                "requires_review BOOLEAN)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO observations VALUES "
+                "(1,'other','review_only',true),"
+                "(2,'other','accepted',false),"
+                "(3,'pixiv','pixiv_title',true)"
+            )
+        )
+        visible = {
+            int(row[0])
+            for row in conn.execute(
+                text(
+                    "SELECT id FROM observations o WHERE "
+                    + ml1_runner.source_name_visibility_sql("o")
+                )
+            ).all()
+        }
+    engine.dispose()
+
+    assert visible == {2, 3}
+    inspect_module = __import__("inspect")
+    assert "source_name_visibility_sql()" in inspect_module.getsource(
+        ml1_runner.runtime_support_universe
+    )
+    assert inspect_module.getsource(ml1_runner.build_runtime_support_index).count(
+        "source_name_visibility_sql()"
+    ) >= 3
+
+
+def test_ml1_translation_support_uses_runtime_proper_noun_trust_policy() -> None:
+    unreviewed = {
+        "canonical_name": "character_name",
+        "display_name": "translated character",
+        "aliases_json": [],
+        "category": "character",
+        "source": "llm",
+        "status": "active",
+        "needs_review": False,
+    }
+    reviewed = {**unreviewed, "status": "reviewed"}
+    support = {
+        ml1_runner.canonical_source_key("character_name"): {1: {"direct_media_tag"}}
+    }
+
+    ml1_runner.apply_translation_support_relations(support, [unreviewed])
+    assert ml1_runner.canonical_source_key("translated character") not in support
+    ml1_runner.apply_translation_support_relations(support, [reviewed])
+    assert 1 in support[ml1_runner.canonical_source_key("translated character")]
+    assert "_translation_alias_trusted_for_search(row)" in __import__("inspect").getsource(
+        ml1_runner.build_multilingual_benchmark
+    )
+
+
 def test_review_pack_equivalence_fails_when_packed_evidence_differs(tmp_path: Path) -> None:
     evidence = {"phase": "test", "value": 1}
     evidence_path = tmp_path / "evidence-summary.json"

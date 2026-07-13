@@ -35,6 +35,7 @@ for candidate in (ROOT, BACKEND_ROOT):
 
 from app.models import Media, SourceConcept, SourceConceptSignalLink  # noqa: E402
 from app.services.source_assertion_search_service import (  # noqa: E402
+    DEFAULT_QUERY_VISIBLE_EXACT_PIXIV_NAME_FIELDS,
     _source_concept_key_candidates,
     apply_endpoint_equivalent_text_search,
 )
@@ -50,7 +51,11 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     promotion_manifest,
 )
 from app.services.source_concept_search_service import _format_search_query_token  # noqa: E402
-from app.utils.search_parser import parse_search_query, wildcard_to_regex  # noqa: E402
+from app.utils.search_parser import (  # noqa: E402
+    _translation_alias_trusted_for_search,
+    parse_search_query,
+    wildcard_to_regex,
+)
 from scripts import run_phase44p0_pixiv_source_prior_auto_verify as p0  # noqa: E402
 from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2  # noqa: E402
 from scripts.run_pixiv_metadata_ingestion import (  # noqa: E402
@@ -1044,6 +1049,17 @@ def exact_support_key(value: Any) -> str:
     return f"__exact_text__:{normalized}" if normalized else ""
 
 
+def source_name_visibility_sql(alias: str = "") -> str:
+    """Return the endpoint-equivalent default visibility predicate for raw SQL audits."""
+
+    prefix = f"{alias}." if alias else ""
+    fields = ",".join(f"'{value}'" for value in DEFAULT_QUERY_VISIBLE_EXACT_PIXIV_NAME_FIELDS)
+    return (
+        f"({prefix}requires_review=false OR "
+        f"({prefix}provider='pixiv' AND {prefix}source_field IN ({fields})))"
+    )
+
+
 def runtime_support_universe(session: Session, term: str) -> tuple[dict[int, set[str]], set[int], set[int], set[int]]:
     """Build support independently from the runtime query result set."""
 
@@ -1062,7 +1078,8 @@ def runtime_support_universe(session: Session, term: str) -> tuple[dict[int, set
     )
     add(
         "SELECT DISTINCT media_id FROM blombooru_source_name_observations "
-        "WHERE canonical_name_key=:key AND status IN ('observed','active','accepted') AND media_id IS NOT NULL",
+        "WHERE canonical_name_key=:key AND status IN ('observed','active','accepted') "
+        f"AND {source_name_visibility_sql()} AND media_id IS NOT NULL",
         "direct_source_name_observation",
     )
     add(
@@ -1149,14 +1166,17 @@ def build_runtime_support_index(
             )
     add_rows(
         "SELECT canonical_name_key,media_id FROM blombooru_source_name_observations "
-        "WHERE status IN ('observed','active','accepted') AND media_id IS NOT NULL",
+        "WHERE status IN ('observed','active','accepted') "
+        f"AND {source_name_visibility_sql()} AND media_id IS NOT NULL",
         "direct_source_name_observation",
     )
     add_exact_rows(
         "SELECT raw_name,media_id FROM blombooru_source_name_observations "
-        "WHERE status IN ('observed','active','accepted') AND media_id IS NOT NULL UNION ALL "
+        "WHERE status IN ('observed','active','accepted') "
+        f"AND {source_name_visibility_sql()} AND media_id IS NOT NULL UNION ALL "
         "SELECT normalized_name,media_id FROM blombooru_source_name_observations "
-        "WHERE status IN ('observed','active','accepted') AND media_id IS NOT NULL",
+        "WHERE status IN ('observed','active','accepted') "
+        f"AND {source_name_visibility_sql()} AND media_id IS NOT NULL",
         "direct_source_name_exact_text",
     )
     add_rows(
@@ -1281,8 +1301,7 @@ def apply_translation_support_relations(
     for translation in translation_rows:
         if str(translation.get("status") or "") == "rejected":
             continue
-        trusted = str(translation.get("source") or "") == "static" or translation.get("needs_review") is False
-        if not trusted:
+        if not _translation_alias_trusted_for_search(translation):
             continue
         canonical_key = canonical_source_key(translation.get("canonical_name"))
         canonical_media = set(support_index.get(canonical_key, {}))
@@ -1376,8 +1395,7 @@ def build_multilingual_benchmark(
     for row in translation_rows:
         if str(row.get("status") or "") == "rejected":
             continue
-        trusted = str(row.get("source") or "") == "static" or row.get("needs_review") is False
-        if not trusted:
+        if not _translation_alias_trusted_for_search(row):
             continue
         aliases = {normalize_source_text(row.get("canonical_name")), normalize_source_text(row.get("display_name"))}
         raw_aliases = read_json_value(row.get("aliases_json"))
@@ -1503,6 +1521,7 @@ def build_multilingual_benchmark(
                     "SELECT o.raw_name FROM blombooru_source_name_observations o "
                     "WHERE o.media_id = ANY(:ids) AND o.name_role='work_title' "
                     "AND o.status IN ('observed','active','accepted') "
+                    f"AND {source_name_visibility_sql('o')} "
                     "GROUP BY o.raw_name ORDER BY COUNT(DISTINCT o.media_id) DESC,o.raw_name LIMIT 1"
                 ),
                 {"ids": list(union_media)},

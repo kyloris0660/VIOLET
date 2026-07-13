@@ -272,6 +272,77 @@ def scan_text_fingerprint_ids(text_value: str, fingerprints: set[str]) -> set[st
     return matches
 
 
+def record_attempt_accounting(
+    summary: dict[str, Any],
+    outcome_ledger: Mapping[str, Mapping[str, Any]],
+    all_results: Sequence[Any],
+    output_dir: Path,
+) -> tuple[int, Counter]:
+    """Persist truthful provider-call accounting for success and early-stop paths."""
+
+    attempted_results = [item for item in all_results if item.request_attempted]
+    request_attempt_count = sum(int(item.attempt_count) for item in attempted_results)
+    for key in ("gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls"):
+        summary["operation_counts"][key] = request_attempt_count
+
+    acquisition = summary["acquisition_execution"]
+    acquisition["unique_work_ids_attempted_count"] = len(outcome_ledger)
+    acquisition["normal_manifest_work_ids_attempted_count"] = sum(
+        value["manifest_kind"] == "main" for value in outcome_ledger.values()
+    )
+    acquisition["conflict_manifest_work_ids_attempted_count"] = sum(
+        value["manifest_kind"] == "conflict" for value in outcome_ledger.values()
+    )
+    acquisition["provider_request_attempt_count"] = request_attempt_count
+    acquisition["gallery_dl_call_count"] = request_attempt_count
+    acquisition["max_observed_attempts_for_one_work"] = max(
+        [0, *(int(item.attempt_count) for item in attempted_results)]
+    )
+
+    outcome_counts = Counter(value["final_outcome"] for value in outcome_ledger.values())
+    acquisition["final_outcome_counts"] = dict(sorted(outcome_counts.items()))
+    ledger_payload = [
+        {"work_id": work_id, **value}
+        for work_id, value in sorted(outcome_ledger.items(), key=lambda item: int(item[0]))
+    ]
+    _write_private_json(output_dir / "final-work-outcome-ledger.json", ledger_payload)
+    acquisition["final_outcome_ledger_fingerprint"] = hashlib.sha256(
+        json.dumps(ledger_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    acquisition["checkpoint_write_count"] = len(outcome_ledger)
+    acquisition["retry_distribution"] = dict(
+        sorted(
+            Counter(str(value["attempt_count"]) for value in outcome_ledger.values()).items(),
+            key=lambda item: int(item[0]),
+        )
+    )
+    acquisition["successful_work_count"] = sum(
+        outcome_counts[key] for key in ("metadata_complete", "conflict_resolved_metadata_complete")
+    )
+    acquisition["terminal_work_count"] = sum(
+        outcome_counts[key]
+        for key in ("terminal_remote_unavailable", "conflict_resolved_terminal_unavailable")
+    )
+    acquisition["retryable_work_count"] = sum(
+        outcome_counts[key]
+        for key in ("retryable_exhausted_or_systemically_stopped", "conflict_retryable_exhausted")
+    )
+    acquisition["normalization_failed_work_count"] = sum(
+        outcome_counts[key] for key in ("normalization_failed", "conflict_normalization_failed")
+    )
+    acquisition["provider_identity_mismatch_work_count"] = sum(
+        outcome_counts[key]
+        for key in ("provider_identity_mismatch", "conflict_unresolved_after_exact_provider_evidence")
+    )
+    acquisition["attempts_by_work"] = {
+        item.work_id: int(item.attempt_count) for item in attempted_results
+    }
+    summary["result_state_counts"] = dict(
+        sorted(Counter(item.state for item in all_results).items())
+    )
+    return request_attempt_count, outcome_counts
+
+
 def scan_paths_for_fingerprints(paths: Iterable[Path], fingerprints: set[str]) -> dict[str, Any]:
     scanned = 0
     unreadable = 0
@@ -379,18 +450,12 @@ def run_normalization_replay(
     main_ids = tuple(
         row["work_id"]
         for row in ledger_rows
-        if row["final_outcome"] in {
-            "normalization_failed",
-            "retryable_exhausted_or_systemically_stopped",
-        }
+        if row["final_outcome"] == "normalization_failed"
     )
     conflict_ids = tuple(
         row["work_id"]
         for row in ledger_rows
-        if row["final_outcome"] in {
-            "conflict_normalization_failed",
-            "conflict_retryable_exhausted",
-        }
+        if row["final_outcome"] == "conflict_normalization_failed"
     )
     if not main_ids and not conflict_ids:
         return summary
@@ -410,8 +475,6 @@ def run_normalization_replay(
         if not prior or prior.get("final_outcome") not in {
             "normalization_failed",
             "conflict_normalization_failed",
-            "retryable_exhausted_or_systemically_stopped",
-            "conflict_retryable_exhausted",
         }:
             raise PixivMetadataGateError("normalization_replay_outside_prior_failed_manifest")
         replay_attempts += int(item.attempt_count)
@@ -678,6 +741,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 summary["acquisition_execution"]["systemic_stop"] = bool(canary.get("systemic_stop"))
                 summary["acquisition_execution"]["systemic_stop_class"] = canary.get("systemic_stop_class")
                 summary["acquisition_execution"]["systemic_stop_stage"] = "canary" if canary.get("systemic_stop") else None
+                record_attempt_accounting(summary, outcome_ledger, canary_results, output_dir)
                 _write_private_json(output_dir / "execution-summary.json", summary)
                 raise PixivMetadataGateError(
                     "blocked_gallery_dl_canary_systemic_stop"
@@ -723,37 +787,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             summary["acquisition_execution"]["systemic_stop_class"] = main_stop.error_class
             summary["acquisition_execution"]["systemic_stop_stage"] = "main_manifest"
         all_results = [*canary_results, *results, *conflict_results]
-        attempted_results = [item for item in all_results if item.request_attempted]
-        request_attempt_count = sum(item.attempt_count for item in attempted_results)
-        for key in ("gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls"):
-            summary["operation_counts"][key] = request_attempt_count
-        summary["acquisition_execution"]["unique_work_ids_attempted_count"] = len(outcome_ledger)
-        summary["acquisition_execution"]["normal_manifest_work_ids_attempted_count"] = sum(
-            value["manifest_kind"] == "main" for value in outcome_ledger.values()
+        request_attempt_count, outcome_counts = record_attempt_accounting(
+            summary, outcome_ledger, all_results, output_dir
         )
-        summary["acquisition_execution"]["conflict_manifest_work_ids_attempted_count"] = sum(
-            value["manifest_kind"] == "conflict" for value in outcome_ledger.values()
-        )
-        summary["acquisition_execution"]["provider_request_attempt_count"] = request_attempt_count
-        summary["acquisition_execution"]["gallery_dl_call_count"] = request_attempt_count
-        summary["acquisition_execution"]["max_observed_attempts_for_one_work"] = max(
-            [0, *(item.attempt_count for item in all_results if item.request_attempted)]
-        )
-        outcome_counts = Counter(value["final_outcome"] for value in outcome_ledger.values())
-        summary["acquisition_execution"]["final_outcome_counts"] = dict(sorted(outcome_counts.items()))
-        ledger_payload = [
-            {"work_id": work_id, **value}
-            for work_id, value in sorted(outcome_ledger.items(), key=lambda item: int(item[0]))
-        ]
-        ledger_fingerprint = hashlib.sha256(
-            json.dumps(ledger_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-        _write_private_json(output_dir / "final-work-outcome-ledger.json", ledger_payload)
-        summary["acquisition_execution"]["final_outcome_ledger_fingerprint"] = ledger_fingerprint
-        summary["acquisition_execution"]["checkpoint_write_count"] = len(outcome_ledger)
-        summary["acquisition_execution"]["retry_distribution"] = dict(sorted(Counter(
-            str(value["attempt_count"]) for value in outcome_ledger.values()
-        ).items(), key=lambda item: int(item[0])))
         elapsed_seconds = round(time.monotonic() - run_started_monotonic, 6)
         summary["acquisition_execution"]["elapsed_seconds"] = elapsed_seconds
         summary["acquisition_execution"]["average_request_interval_seconds"] = (
@@ -769,31 +805,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "conflict_resolved_terminal_unavailable",
             }
         ).items()))
-        summary["acquisition_execution"]["successful_work_count"] = sum(
-            outcome_counts[key]
-            for key in ("metadata_complete", "conflict_resolved_metadata_complete")
-        )
-        summary["acquisition_execution"]["terminal_work_count"] = sum(
-            outcome_counts[key]
-            for key in ("terminal_remote_unavailable", "conflict_resolved_terminal_unavailable")
-        )
-        summary["acquisition_execution"]["retryable_work_count"] = sum(
-            outcome_counts[key]
-            for key in ("retryable_exhausted_or_systemically_stopped", "conflict_retryable_exhausted")
-        )
-        summary["acquisition_execution"]["normalization_failed_work_count"] = sum(
-            outcome_counts[key]
-            for key in ("normalization_failed", "conflict_normalization_failed")
-        )
-        summary["acquisition_execution"]["provider_identity_mismatch_work_count"] = sum(
-            outcome_counts[key]
-            for key in ("provider_identity_mismatch", "conflict_unresolved_after_exact_provider_evidence")
-        )
         summary["acquisition_execution"]["skipped_complete_work_count"] = sum(not item.request_attempted for item in [*results, *conflict_results])
-        for item in all_results:
-            if item.request_attempted:
-                summary["acquisition_execution"]["attempts_by_work"][item.work_id] = item.attempt_count
-        summary["result_state_counts"] = dict(sorted(Counter(item.state for item in all_results).items()))
         lifecycle_counts = acquisition_work_lifecycle_counts(session)
         summary["final_work_lifecycle_counts"] = lifecycle_counts
         summary["remaining_distinct_work_count"] = sum(

@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from sqlalchemy import (Date, Float, and_, asc, case, cast, desc, exists, func,
                         literal, not_, or_, text)
@@ -23,10 +23,13 @@ TRUSTED_PROPER_NOUN_TRANSLATION_SOURCES = {"manual", "static"}
 def _translation_alias_trusted_for_search(row) -> bool:
     """Return whether a translation row may contribute zh search aliases."""
 
-    category = getattr(row, "category", None)
-    source = getattr(row, "source", None)
-    status = getattr(row, "status", None)
-    needs_review = bool(getattr(row, "needs_review", False))
+    def value(name: str):
+        return row.get(name) if isinstance(row, Mapping) else getattr(row, name, None)
+
+    category = str(value("category") or "").casefold()
+    source = str(value("source") or "").casefold()
+    status = str(value("status") or "").casefold()
+    needs_review = bool(value("needs_review"))
     if category not in PROPER_NOUN_CATEGORIES:
         return True
     if source in TRUSTED_PROPER_NOUN_TRANSLATION_SOURCES:

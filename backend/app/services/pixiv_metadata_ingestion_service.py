@@ -236,6 +236,7 @@ def _upsert_queue_record(
         )
         session.add(record)
     elif str(record.status) in CLOSED_STATES | {
+        PixivMetadataState.RETRYABLE.value,
         PixivMetadataState.CONFLICT.value,
         PixivMetadataState.NORMALIZATION_FAILED.value,
         PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value,
@@ -247,6 +248,122 @@ def _upsert_queue_record(
     record.raw_metadata_json = raw
     record.provenance = provenance
     return record
+
+
+def _materialize_reused_complete_evidence(
+    session: Session,
+    queue_record: SourceMetadataRecord,
+    source_record: SourceMetadataRecord,
+) -> None:
+    """Copy compatible provider evidence onto the newly linked media row."""
+
+    source_raw = dict(source_record.raw_metadata_json or {})
+    source_raw["_pixiv_ingestion_reuse"] = {
+        "source_metadata_record_id": int(source_record.id),
+        "stable_identity_key": {
+            "provider": "pixiv",
+            "work_id": str(queue_record.source_work_id),
+            "page_index": int(queue_record.source_page_index or 0),
+        },
+    }
+    queue_record.data_type_label = source_record.data_type_label
+    queue_record.title = source_record.title
+    queue_record.artist_id = source_record.artist_id
+    queue_record.artist_name = source_record.artist_name
+    queue_record.raw_metadata_json = source_raw
+    queue_record.provenance = {
+        "source": "compatible_complete_record_reuse",
+        "source_metadata_record_id": int(source_record.id),
+        "parser_version": PARSER_VERSION,
+        "stable_identity_key": {
+            "provider": "pixiv",
+            "work_id": str(queue_record.source_work_id),
+            "page_index": int(queue_record.source_page_index or 0),
+        },
+    }
+    queue_record.retrieved_at = source_record.retrieved_at
+    session.flush()
+
+    name_rows = (
+        session.query(SourceNameObservation)
+        .filter(
+            SourceNameObservation.source_metadata_record_id == int(source_record.id),
+            SourceNameObservation.status.in_(("observed", "active", "accepted")),
+        )
+        .order_by(SourceNameObservation.id.asc())
+        .all()
+    )
+    for row in name_rows:
+        existing = (
+            session.query(SourceNameObservation.id)
+            .filter(
+                SourceNameObservation.source_metadata_record_id == int(queue_record.id),
+                SourceNameObservation.observation_key == row.observation_key,
+            )
+            .one_or_none()
+        )
+        if existing is None:
+            session.add(
+                SourceNameObservation(
+                    source_metadata_record_id=int(queue_record.id),
+                    provider=row.provider,
+                    observation_key=row.observation_key,
+                    media_id=int(queue_record.media_id),
+                    source_work_id=queue_record.source_work_id,
+                    source_page_index=queue_record.source_page_index,
+                    raw_name=row.raw_name,
+                    normalized_name=row.normalized_name,
+                    canonical_name_key=row.canonical_name_key,
+                    name_role=row.name_role,
+                    source_field=row.source_field,
+                    language_hint=row.language_hint,
+                    script_hint=row.script_hint,
+                    confidence=row.confidence,
+                    provenance={
+                        **dict(row.provenance or {}),
+                        "reused_from_source_metadata_record_id": int(source_record.id),
+                    },
+                    requires_review=bool(row.requires_review),
+                    status=row.status,
+                )
+            )
+
+    tag_rows = (
+        session.query(SourceTagObservation)
+        .filter(
+            SourceTagObservation.source_metadata_record_id == int(source_record.id),
+            SourceTagObservation.status.in_(("observed", "active", "accepted")),
+        )
+        .order_by(SourceTagObservation.id.asc())
+        .all()
+    )
+    for row in tag_rows:
+        existing = (
+            session.query(SourceTagObservation.id)
+            .filter(
+                SourceTagObservation.source_metadata_record_id == int(queue_record.id),
+                SourceTagObservation.observation_key == row.observation_key,
+            )
+            .one_or_none()
+        )
+        if existing is None:
+            session.add(
+                SourceTagObservation(
+                    source_metadata_record_id=int(queue_record.id),
+                    provider=row.provider,
+                    observation_key=row.observation_key,
+                    raw_tag=row.raw_tag,
+                    normalized_tag=row.normalized_tag,
+                    canonical_tag_key=row.canonical_tag_key,
+                    source_tag_kind=row.source_tag_kind,
+                    source_category_raw=row.source_category_raw,
+                    language_hint=row.language_hint,
+                    confidence=row.confidence,
+                    order_index=row.order_index,
+                    taxonomy_kb_id=row.taxonomy_kb_id,
+                    status=row.status,
+                )
+            )
 
 
 def queue_media_for_pixiv_metadata(session: Session, media: Media | Mapping[str, Any]) -> QueueDecision:
@@ -287,9 +404,15 @@ def queue_media_for_pixiv_metadata(session: Session, media: Media | Mapping[str,
     has_mismatched_identity = _has_mismatched_pixiv_identity(
         session, media_id, work_id, page_index
     )
-    compatible = [] if has_mismatched_identity else _compatible_complete_records(
-        session, work_id, page_index
-    )
+    compatible = [] if has_mismatched_identity else [
+        record
+        for record in _compatible_complete_records(session, work_id, page_index)
+        if not (
+            int(record.media_id or 0) == media_id
+            and record.metadata_kind == QUEUE_METADATA_KIND
+            and record.provider_record_key == _queue_key(media_id, work_id, page_index)
+        )
+    ]
     if has_mismatched_identity:
         state = PixivMetadataState.CONFLICT.value
     elif compatible:
@@ -305,6 +428,8 @@ def queue_media_for_pixiv_metadata(session: Session, media: Media | Mapping[str,
         priors=priors,
         reused_record_ids=[record.id for record in compatible],
     )
+    if state == PixivMetadataState.COMPLETE.value and compatible:
+        _materialize_reused_complete_evidence(session, queue_record, compatible[0])
     return QueueDecision(media_id, str(queue_record.status), PARSER_VERSION, work_pages, origins, tuple(record.id for record in compatible))
 
 

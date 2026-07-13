@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -132,6 +133,74 @@ def test_complete_compatible_record_is_reused_without_reacquisition(db) -> None:
     assert decision.reused_complete_record_ids
     assert pending_distinct_work_ids(db) == ()
     assert summarize_batch_closure(db, [9])["closed"] is True
+
+
+def test_complete_reuse_materializes_search_evidence_for_new_media(db) -> None:
+    source = SourceMetadataRecord(
+        provider="pixiv",
+        provider_record_key="existing:123456789:p0:searchable",
+        media_id=90,
+        source_work_id="123456789",
+        source_page_index=0,
+        metadata_kind="provider_metadata",
+        data_type_label="authenticated_provider_metadata",
+        title="Work title",
+        artist_id="42",
+        artist_name="Creator",
+        status="metadata_complete",
+        raw_metadata_json={"creator_account": "creator_account"},
+    )
+    db.add(source)
+    db.flush()
+    db.add_all(
+        [
+            SourceNameObservation(
+                source_metadata_record_id=source.id,
+                provider="pixiv",
+                observation_key="creator-key",
+                media_id=90,
+                source_work_id="123456789",
+                source_page_index=0,
+                raw_name="Creator",
+                normalized_name="Creator",
+                canonical_name_key="creator",
+                name_role="artist",
+                source_field="pixiv_user_metadata",
+                requires_review=True,
+                status="observed",
+            ),
+            SourceTagObservation(
+                source_metadata_record_id=source.id,
+                provider="pixiv",
+                observation_key="tag-key",
+                raw_tag="blue_hair",
+                normalized_tag="blue_hair",
+                canonical_tag_key="blue_hair",
+                source_tag_kind="provider_tag",
+                status="observed",
+            ),
+        ]
+    )
+    db.commit()
+
+    decision = queue_media_for_pixiv_metadata(
+        db, {"id": 91, "filename": "123456789_p0.jpg", "path": "media/91.jpg"}
+    )
+    db.commit()
+    queue = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 91).one()
+
+    assert decision.state == PixivMetadataState.COMPLETE.value
+    assert queue.title == "Work title" and queue.artist_name == "Creator"
+    assert db.query(SourceNameObservation).filter(SourceNameObservation.media_id == 91).count() == 1
+    assert db.query(SourceTagObservation).filter(
+        SourceTagObservation.source_metadata_record_id == queue.id
+    ).count() == 1
+    assert queue.raw_metadata_json["_pixiv_ingestion_reuse"]["source_metadata_record_id"] == source.id
+    assert queue_media_for_pixiv_metadata(
+        db, {"id": 91, "filename": "123456789_p0.jpg", "path": "media/91.jpg"}
+    ).state == PixivMetadataState.COMPLETE.value
+    db.commit()
+    assert db.query(SourceNameObservation).filter(SourceNameObservation.media_id == 91).count() == 1
 
 
 def test_historical_gallery_dl_complete_kind_is_reused(db) -> None:
@@ -440,6 +509,29 @@ def test_generic_queue_does_not_reopen_normalization_but_explicit_replay_can(db)
     assert result.state == PixivMetadataState.COMPLETE.value
 
 
+def test_generic_queue_preserves_retryable_state_and_failure_evidence(db) -> None:
+    queue_media_for_pixiv_metadata(
+        db, {"id": 28, "filename": "123456789_p0.jpg", "path": "media/28.jpg"}
+    )
+    db.flush()
+    row = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 28).one()
+    mark_work_state(
+        db,
+        "123456789",
+        PixivMetadataState.RETRYABLE.value,
+        reason="retryable_network_transport",
+        attempted_record_ids=[row.id],
+    )
+    previous_raw = dict(row.raw_metadata_json)
+
+    decision = queue_media_for_pixiv_metadata(
+        db, {"id": 28, "filename": "123456789_p0.jpg", "path": "media/28.jpg"}
+    )
+
+    assert decision.state == PixivMetadataState.RETRYABLE.value
+    assert row.raw_metadata_json == previous_raw
+
+
 def test_page_failure_preserves_complete_page_and_updates_only_attempted_pending(db) -> None:
     for media_id, page in ((101, 0), (102, 1)):
         queue_media_for_pixiv_metadata(db, {"id": media_id, "filename": f"123456789_p{page}.jpg", "path": f"media/{media_id}.jpg"})
@@ -572,6 +664,91 @@ def test_negative_additional_diagnostic_calls_fail_before_replay_io(tmp_path) ->
         ingestion_runner.run_normalization_replay(
             args, None, tmp_path, waiver_accepted=True
         )
+
+
+def test_normalization_replay_excludes_retryable_outcomes_without_provider_probe(
+    tmp_path, monkeypatch
+) -> None:
+    main = ingestion_runner.build_executable_manifest(["123456789"], manifest_kind="main")
+    conflict = ingestion_runner.build_executable_manifest(["987654321"], manifest_kind="conflict")
+    summary = {"sentinel": "unchanged"}
+    ledger = [
+        {
+            "work_id": "123456789",
+            "final_outcome": "retryable_exhausted_or_systemically_stopped",
+        },
+        {"work_id": "987654321", "final_outcome": "conflict_retryable_exhausted"},
+    ]
+    (tmp_path / "execution-summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (tmp_path / "final-work-outcome-ledger.json").write_text(json.dumps(ledger), encoding="utf-8")
+    (tmp_path / "exact-distinct-work-manifest.json").write_text(json.dumps(main), encoding="utf-8")
+    (tmp_path / "exact-conflict-resolution-manifest.json").write_text(
+        json.dumps(conflict), encoding="utf-8"
+    )
+    (tmp_path / "acquisition-checkpoint.json").write_text(
+        json.dumps(
+            {
+                "main_manifest_fingerprint": ingestion_runner.executable_manifest_fingerprint(main),
+                "conflict_manifest_fingerprint": ingestion_runner.executable_manifest_fingerprint(conflict),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ingestion_runner.gallery_adapter,
+        "probe_gallery_dl_entrypoint",
+        lambda *_args, **_kwargs: pytest.fail(
+            "retryable outcome reached normalization provider replay"
+        ),
+    )
+
+    result = ingestion_runner.run_normalization_replay(
+        ingestion_runner.argparse.Namespace(additional_diagnostic_calls=0),
+        None,
+        tmp_path,
+        waiver_accepted=True,
+    )
+
+    assert result == summary
+
+
+def test_early_canary_accounting_records_every_provider_attempt(tmp_path) -> None:
+    summary = {
+        "operation_counts": {
+            "gallery_dl_calls": 0,
+            "pixiv_provider_calls": 0,
+            "provider_metadata_acquisition_calls": 0,
+        },
+        "acquisition_execution": {},
+    }
+    ledger = {
+        "123456789": {
+            "manifest_kind": "main",
+            "final_outcome": "retryable_exhausted_or_systemically_stopped",
+            "attempt_count": 2,
+        }
+    }
+    result = SimpleNamespace(
+        work_id="123456789",
+        state=PixivMetadataState.RETRYABLE.value,
+        request_attempted=True,
+        attempt_count=2,
+    )
+
+    request_count, outcome_counts = ingestion_runner.record_attempt_accounting(
+        summary, ledger, [result], tmp_path
+    )
+
+    assert request_count == 2
+    assert outcome_counts["retryable_exhausted_or_systemically_stopped"] == 1
+    assert summary["operation_counts"] == {
+        "gallery_dl_calls": 2,
+        "pixiv_provider_calls": 2,
+        "provider_metadata_acquisition_calls": 2,
+    }
+    assert summary["acquisition_execution"]["unique_work_ids_attempted_count"] == 1
+    assert summary["acquisition_execution"]["provider_request_attempt_count"] == 2
+    assert (tmp_path / "final-work-outcome-ledger.json").is_file()
 
 
 def test_terminal_classification_requires_authenticated_evidence() -> None:
