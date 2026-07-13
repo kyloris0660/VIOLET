@@ -340,6 +340,157 @@ def redacted_secret_scan(output_dir: Path, *, env: Mapping[str, str] | None = No
     return result
 
 
+def run_normalization_replay(
+    args: argparse.Namespace,
+    session,
+    output_dir: Path,
+    *,
+    waiver_accepted: bool,
+) -> dict[str, Any]:
+    """Explicit corrected replay for previously final normalization outcomes only."""
+
+    summary_path = output_dir / "execution-summary.json"
+    ledger_path = output_dir / "final-work-outcome-ledger.json"
+    checkpoint_path = output_dir / "acquisition-checkpoint.json"
+    main_manifest_path = output_dir / "exact-distinct-work-manifest.json"
+    conflict_manifest_path = output_dir / "exact-conflict-resolution-manifest.json"
+    required = (summary_path, ledger_path, checkpoint_path, main_manifest_path, conflict_manifest_path)
+    if any(not path.is_file() for path in required):
+        raise PixivMetadataGateError("blocked_normalization_replay_missing_prior_evidence")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    ledger_rows = json.loads(ledger_path.read_text(encoding="utf-8"))
+    prior_checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    main_manifest_payload = json.loads(main_manifest_path.read_text(encoding="utf-8"))
+    conflict_manifest_payload = json.loads(conflict_manifest_path.read_text(encoding="utf-8"))
+    main_fingerprint = executable_manifest_fingerprint(main_manifest_payload)
+    conflict_fingerprint = executable_manifest_fingerprint(conflict_manifest_payload)
+    if not (
+        prior_checkpoint.get("main_manifest_fingerprint") == main_fingerprint
+        and prior_checkpoint.get("conflict_manifest_fingerprint") == conflict_fingerprint
+    ):
+        raise PixivMetadataGateError("blocked_normalization_replay_manifest_checkpoint_mismatch")
+
+    ledger = {str(row["work_id"]): dict(row) for row in ledger_rows}
+    main_ids = tuple(
+        row["work_id"] for row in ledger_rows if row["final_outcome"] == "normalization_failed"
+    )
+    conflict_ids = tuple(
+        row["work_id"] for row in ledger_rows if row["final_outcome"] == "conflict_normalization_failed"
+    )
+    if not main_ids and not conflict_ids:
+        return summary
+
+    entrypoint = gallery_adapter.probe_gallery_dl_entrypoint(args.gallery_dl_command or None)
+    profile = validate_gallery_dl_profile(entrypoint.command, timeout_seconds=min(args.timeout, 30))
+    if not profile["provider_profile_available"]:
+        raise PixivMetadataGateError("blocked_gallery_dl_profile_unavailable")
+    replay_checkpoint_path = output_dir / "normalization-replay-checkpoint.json"
+    replay_attempts = 0
+
+    def replace_outcome(item: Any, *, conflict: bool) -> None:
+        nonlocal replay_attempts
+        if not item.request_attempted:
+            return
+        prior = ledger.get(item.work_id)
+        if not prior or prior.get("final_outcome") not in {
+            "normalization_failed",
+            "conflict_normalization_failed",
+        }:
+            raise PixivMetadataGateError("normalization_replay_outside_prior_failed_manifest")
+        replay_attempts += int(item.attempt_count)
+        ledger[item.work_id] = {
+            "manifest_kind": "conflict" if conflict else "main",
+            "final_outcome": final_outcome_for_result(item, conflict=conflict),
+            "attempt_count": int(item.attempt_count),
+            "systemic_stop": bool(item.systemic_stop),
+            "error_class": item.error_class,
+            "corrected_replay": True,
+        }
+        _write_private_json(
+            replay_checkpoint_path,
+            {
+                "checkpoint_version": "ml1_pixiv_normalization_replay_v1",
+                "main_manifest_fingerprint": main_fingerprint,
+                "conflict_manifest_fingerprint": conflict_fingerprint,
+                "replay_main_count": len(main_ids),
+                "replay_conflict_count": len(conflict_ids),
+                "replay_provider_request_attempt_count": replay_attempts,
+                "final_outcomes": ledger,
+            },
+        )
+
+    replay_started = time.monotonic()
+    main_results = run_bounded_acquisition(
+        session,
+        main_ids,
+        entrypoint=entrypoint.command,
+        authentication_passed=True,
+        timeout_seconds=args.timeout,
+        accept_local_credential_risk=waiver_accepted,
+        allow_normalization_replay=True,
+        result_callback=lambda item: replace_outcome(item, conflict=False),
+    )
+    main_stop = systemic_stop_result(main_results)
+    conflict_results: list[Any] = []
+    if main_stop is None:
+        conflict_results = run_bounded_acquisition(
+            session,
+            conflict_ids,
+            entrypoint=entrypoint.command,
+            authentication_passed=True,
+            timeout_seconds=args.timeout,
+            accept_local_credential_risk=waiver_accepted,
+            allow_conflict_resolution=True,
+            allow_normalization_replay=True,
+            result_callback=lambda item: replace_outcome(item, conflict=True),
+        )
+
+    final_ledger_rows = [
+        {"work_id": work_id, **value}
+        for work_id, value in sorted(ledger.items(), key=lambda item: int(item[0]))
+    ]
+    _write_private_json(ledger_path, final_ledger_rows)
+    ledger_fingerprint = hashlib.sha256(
+        json.dumps(final_ledger_rows, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    outcome_counts = Counter(row["final_outcome"] for row in final_ledger_rows)
+    acquisition = summary["acquisition_execution"]
+    diagnostic_calls = 2
+    total_requests = int(acquisition.get("provider_request_attempt_count") or 0) + diagnostic_calls + replay_attempts
+    acquisition.update(
+        provider_request_attempt_count=total_requests,
+        gallery_dl_call_count=total_requests,
+        final_outcome_counts=dict(sorted(outcome_counts.items())),
+        final_outcome_ledger_fingerprint=ledger_fingerprint,
+        successful_work_count=sum(outcome_counts[key] for key in ("metadata_complete", "conflict_resolved_metadata_complete")),
+        terminal_work_count=sum(outcome_counts[key] for key in ("terminal_remote_unavailable", "conflict_resolved_terminal_unavailable")),
+        retryable_work_count=sum(outcome_counts[key] for key in ("retryable_exhausted_or_systemically_stopped", "conflict_retryable_exhausted")),
+        normalization_failed_work_count=sum(outcome_counts[key] for key in ("normalization_failed", "conflict_normalization_failed")),
+        provider_identity_mismatch_work_count=sum(outcome_counts[key] for key in ("provider_identity_mismatch", "conflict_unresolved_after_exact_provider_evidence")),
+        systemic_stop=main_stop is not None or systemic_stop_result(conflict_results) is not None,
+        systemic_stop_stage="normalization_replay_main" if main_stop is not None else "normalization_replay_conflict" if systemic_stop_result(conflict_results) is not None else None,
+        diagnostic_provider_request_count=diagnostic_calls,
+        diagnostic_private_work_ref="76c0ee4cadc1a00a",
+        normalization_replay_main_work_count=len(main_ids),
+        normalization_replay_conflict_work_count=len(conflict_ids),
+        normalization_replay_request_count=replay_attempts,
+        normalization_replay_elapsed_seconds=round(time.monotonic() - replay_started, 6),
+    )
+    for key in ("gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls"):
+        summary["operation_counts"][key] = total_requests
+    summary["gallery_dl_configuration_check"] = {"performed": True, **profile}
+    lifecycle_counts = acquisition_work_lifecycle_counts(session)
+    summary["final_work_lifecycle_counts"] = lifecycle_counts
+    summary["remaining_distinct_work_count"] = sum(
+        int(lifecycle_counts.get(key, 0))
+        for key in ("pending", "retryable", "normalization_failed", "provider_identity_mismatch", "conflict")
+    )
+    summary["metadata_fixed_point_reached"] = summary["remaining_distinct_work_count"] == 0
+    summary["fixed_point_reached"] = summary["metadata_fixed_point_reached"]
+    _write_private_json(summary_path, summary)
+    return summary
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     run_started_monotonic = time.monotonic()
     if str(os.getenv("VIOLET_ENV", "")).casefold() != "test":
@@ -368,6 +519,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         main_manifest_fingerprint = executable_manifest_fingerprint(main_manifest_payload)
         conflict_manifest_fingerprint = executable_manifest_fingerprint(conflict_manifest_payload)
         waiver_accepted = _local_credential_risk_accepted(args)
+        if getattr(args, "replay_normalization_failures", False):
+            if not args.execute:
+                raise PixivMetadataGateError("normalization_replay_requires_execute")
+            if not waiver_accepted:
+                require_rotation_confirmation()
+            return run_normalization_replay(
+                args,
+                session,
+                output_dir,
+                waiver_accepted=waiver_accepted,
+            )
         summary: dict[str, Any] = {
             "database_label": "isolated-ml1-dev-test",
             "queued_media_count": len(decisions),
@@ -641,6 +803,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--accept-local-credential-risk",
         action="store_true",
         help="Owner-authorized waiver valid only for the explicitly isolated ML1 metadata-only test execution.",
+    )
+    parser.add_argument(
+        "--replay-normalization-failures",
+        action="store_true",
+        help="Explicit corrected replay of only prior normalization final outcomes.",
     )
     parser.add_argument("--gallery-dl-command", default=os.getenv("VIOLET_GALLERY_DL_COMMAND", ""))
     parser.add_argument("--timeout", type=int, default=120)

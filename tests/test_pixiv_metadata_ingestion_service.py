@@ -361,6 +361,48 @@ def test_terminal_and_normalization_failures_do_not_stop_unrelated_works(db) -> 
     assert ingestion_runner.conflict_manifest_may_start(results) is True
 
 
+def test_gallery_dl_zero_exit_error_event_is_classified_terminal_not_normalization(db) -> None:
+    queue_media_for_pixiv_metadata(db, {"id": 26, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg"})
+    db.commit()
+    payload = [[1, {"error": "HttpError", "message": "404 not found"}]]
+    results = run_bounded_acquisition(
+        db,
+        ["123456789"],
+        entrypoint=("gallery-dl",),
+        authentication_passed=True,
+        accept_local_credential_risk=True,
+        command_runner=lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr=""),
+        sleeper=lambda _seconds: None,
+        max_attempts_per_work=1,
+    )
+    queue = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.metadata_kind == "pixiv_ingestion_gate").one()
+    assert results[0].state == PixivMetadataState.TERMINAL.value
+    assert results[0].systemic_stop is False
+    assert queue.status == PixivMetadataState.TERMINAL.value
+
+
+def test_generic_queue_does_not_reopen_normalization_but_explicit_replay_can(db) -> None:
+    queue_media_for_pixiv_metadata(db, {"id": 27, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg"})
+    db.commit()
+    queue = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.metadata_kind == "pixiv_ingestion_gate").one()
+    queue.status = PixivMetadataState.NORMALIZATION_FAILED.value
+    db.commit()
+    assert queue_media_for_pixiv_metadata(db, {"id": 27, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg"}).state == PixivMetadataState.NORMALIZATION_FAILED.value
+    payload = [[3, "url", {"id": 123456789, "num": 0, "title": "fixed"}]]
+    result = run_bounded_acquisition(
+        db,
+        ["123456789"],
+        entrypoint=("gallery-dl",),
+        authentication_passed=True,
+        accept_local_credential_risk=True,
+        allow_normalization_replay=True,
+        command_runner=lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr=""),
+        sleeper=lambda _seconds: None,
+        max_attempts_per_work=1,
+    )[0]
+    assert result.state == PixivMetadataState.COMPLETE.value
+
+
 def test_page_failure_preserves_complete_page_and_updates_only_attempted_pending(db) -> None:
     for media_id, page in ((101, 0), (102, 1)):
         queue_media_for_pixiv_metadata(db, {"id": media_id, "filename": f"123456789_p{page}.jpg", "path": f"media/{media_id}.jpg"})
