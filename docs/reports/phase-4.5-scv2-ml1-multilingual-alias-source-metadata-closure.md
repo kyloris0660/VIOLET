@@ -4,7 +4,7 @@
 
 - Contract status: `blocked_pixiv_acquisition_execution_incomplete`.
 - Active blockers: `['blocked_pixiv_acquisition_execution_incomplete', 'blocked_candidate_generation_gap']`.
-- Evidence code SHA: `e19c0b64faf39e27398fbed3d765b0f0c6859a4d`.
+- Evidence code SHA: `c562dc63d8d3d28fa2685c548dfde109a2609af7`.
 - Provider execution requests: `1817`; accepted R2R evidence remained immutable.
 
 ## Corrected search semantics
@@ -44,10 +44,10 @@ Search-result union is not identity union. `cannot_link` blocks identity materia
 
 ## Real multilingual benchmark
 
-- Families / observed aliases: `4231` / `11815`.
-- Identity-eligible / search-only families: `606` / `3625`.
-- Signal / candidate-connectivity / search-equivalence coverage: `0.275124` / `0.019802` / `0.898133`.
-- Real AND-work evaluable families / equivalence coverage: `3668` / `0.916576`.
+- Families / observed aliases: `4248` / `11860`.
+- Identity-eligible / search-only families: `606` / `3642`.
+- Signal / candidate-connectivity / search-equivalence coverage: `0.275124` / `0.019802` / `0.897363`.
+- Real AND-work evaluable families / equivalence coverage: `3677` / `0.915692`.
 - Unsupported runtime result occurrences: `0`.
 - Candidate-not-generated / unexplained split: `30` / `0`.
 - Candidate miss causes: `{'identity_alias_missing_sourceconcept_signal': 30}`.
@@ -71,6 +71,6 @@ Default bounded LLM policy / aggregate cap: `bounded_phase_primary_llm_usd10_v1`
 ## Validation
 
 - Changed Python py_compile: `true`.
-- Focused pytest passed / failed: `134` / `0`.
+- Focused pytest passed / failed: `140` / `0`.
 - ML1 contract: `True`.
 - Real browser validation: `passed`.

@@ -170,7 +170,7 @@
       "source_database_immutable": true,
       "violet_env_test": true
     },
-    "evidence_code_sha": "e19c0b64faf39e27398fbed3d765b0f0c6859a4d",
+    "evidence_code_sha": "c562dc63d8d3d28fa2685c548dfde109a2609af7",
     "fixed_evidence_proof": {
       "accepted_r2r_disposition_count": 3319,
       "accepted_r2r_dispositions_reused": true,
@@ -180,7 +180,7 @@
       "forbidden_truth_content_unchanged": true,
       "present": true
     },
-    "generated_at": "2026-07-13T08:23:54+00:00",
+    "generated_at": "2026-07-13T08:52:13+00:00",
     "graph_invariants": {
       "direct_cannot_violation_count": 0,
       "identity_changes_caused_by_search_count": 0,
@@ -235,52 +235,52 @@
       "candidate_generation_gaps": 30,
       "identity_family_count": 606,
       "next_phase_required": true,
-      "runtime_equivalence": 0.898133,
-      "search_only_family_count": 3625
+      "runtime_equivalence": 0.897363,
+      "search_only_family_count": 3642
     },
     "multilingual_benchmark": {
       "actual_runtime_search_used": true,
       "adjudication_coverage": 0.019802,
-      "and_work_equivalence_coverage": 0.916576,
-      "and_work_evaluable_family_count": 3668,
+      "and_work_equivalence_coverage": 0.915692,
+      "and_work_evaluable_family_count": 3677,
       "candidate_family_connectivity_coverage": 0.019802,
       "candidate_not_generated_count": 30,
       "family_scope_counts": {
         "identity": 606,
-        "search_only": 3625
+        "search_only": 3642
       },
       "family_type_counts": {
         "creator_stable_id": 606,
-        "verified_tag_translation": 3625
+        "verified_tag_translation": 3642
       },
       "human_review_queue_generated": false,
       "identity_eligible_alias_count": 1214,
       "identity_eligible_family_count": 606,
       "materialized_strong_family_coverage": 0.019802,
       "observed_alias_accounting_coverage": 1.0,
-      "observed_alias_count": 11815,
+      "observed_alias_count": 11860,
       "outcome_counts": {
-        "deferred_with_reason": 72,
+        "deferred_with_reason": 73,
         "identity_materialized": 12,
-        "runtime_equivalent": 3224,
+        "runtime_equivalent": 3236,
         "search_equivalent_without_identity_union": 564,
         "signal_not_generated": 30,
-        "under_recall": 329
+        "under_recall": 333
       },
       "raw_aliases_public": false,
-      "real_fixed_evidence_family_count": 4231,
+      "real_fixed_evidence_family_count": 4248,
       "role_or_context_loss_count": 0,
       "script_pair_counts": {
         "cjk_han_to_japanese_kana_to_latin": 5,
-        "cjk_han_to_latin": 3731,
+        "cjk_han_to_latin": 3747,
         "cjk_han_to_mixed_or_other": 39,
         "japanese_kana_to_latin": 175,
         "japanese_kana_to_mixed_or_other": 9,
-        "latin": 244,
+        "latin": 245,
         "latin_to_mixed_or_other": 28
       },
-      "search_equivalence_coverage": 0.898133,
-      "search_only_translation_family_count": 3625,
+      "search_equivalence_coverage": 0.897363,
+      "search_only_translation_family_count": 3642,
       "signal_generation_coverage": 0.275124,
       "synthetic_alias_media_propagation_used": false,
       "unexplained_multilingual_split_count": 0,
@@ -561,7 +561,7 @@
       "support_type_distribution": {
         "accepted_materialized_sourceconcept_alias": 42,
         "accepted_search_only_alias_relation": 2,
-        "direct_source_name_observation": 44,
+        "direct_source_name_observation": 35,
         "direct_source_tag_observation": 455
       },
       "supported_result_count": 465,
@@ -572,7 +572,7 @@
       "browser_validation": "passed",
       "changed_python_py_compile": "true",
       "focused_pytest_failed": 0,
-      "focused_pytest_passed": 134,
+      "focused_pytest_passed": 140,
       "focused_test_command_label": "ml1-pixiv-creator-search-contract-doc-focused-suite",
       "json_parse_passed": true,
       "ml1_contract_passed": true,
@@ -590,31 +590,31 @@
     "integrity_passed": true,
     "manifest_present": true,
     "not_committed": true,
-    "packed_checksums_sha256": "5c05969b359312f11f17ccf8151c1b203ad4ab98df06a4839b6751c77da6d4c4",
+    "packed_checksums_sha256": "492db5188a4e1cdea88e15d13a038bb331216c201fcf6cb76eaa212b20a4a353",
     "packed_contract_evidence_sha256": "181f5afa12ee4c2e8e1400e5c87b5861469cad46fd44a53b82d17b4c4ef41189",
-    "packed_evidence_summary_sha256": "f67d6ee354e4918cd86dde55c8db4d60976d905e0aaa1e786036914b55662112",
+    "packed_evidence_summary_sha256": "590b41058ff30378e860b2a6898e1bef661daf211b1c6cd2319854175bdce558",
     "packed_manifest_sha256": "52e53a0425cacd29f939fe422735ed2876e92ce6df4cde0720a6d75c3e70ae0e",
-    "packed_report_sha256": "f9273fae840b86607cdd3a2225d0d3cbc2917faa4314cc91df3c6939ad3b4d80",
+    "packed_report_sha256": "2dcc43bdc19952c5930bf32be077526b49c7f2df471104a9e57356485e45f0f4",
     "placeholder_field_count": 0,
     "self_referential_hash_claimed": false,
     "substantive_evidence_excludes_attestation": true,
     "zip_generated": true,
     "zip_member_checksums": {
       "acquisition-checkpoint.json": "441cfc17cc897621ba92b57f29fbcd9e617816ce4ef5e68819f3a3fcab2fe1e0",
-      "and-search-runtime-cases.jsonl": "48a846e0c78501b216d95100d92208c86601668fb36b44a32b872356eb273f45",
+      "and-search-runtime-cases.jsonl": "fceb83c5f0747db06a1e5c83527d173496348bd35399ef20c317591dd79d8e21",
       "candidate-generation-miss-ledger.jsonl": "7b0f013b2402877f54d67d406288f45d1c221d0c808f58332349510055ea0c8b",
-      "checksums.json": "5c05969b359312f11f17ccf8151c1b203ad4ab98df06a4839b6751c77da6d4c4",
+      "checksums.json": "492db5188a4e1cdea88e15d13a038bb331216c201fcf6cb76eaa212b20a4a353",
       "contract-evidence.json": "181f5afa12ee4c2e8e1400e5c87b5861469cad46fd44a53b82d17b4c4ef41189",
       "creator-field-inventory.jsonl": "d4984f68ac5d38d9cd42a233582c8b397c6e5da8871ae255d48fa89afcdcea73",
       "creator-retention-audit.json": "1a9e4aa8f00e594e7af22b8c066362e3c3f3114d1ac336425aeca18e31c3e73a",
-      "evidence-summary.json": "f67d6ee354e4918cd86dde55c8db4d60976d905e0aaa1e786036914b55662112",
+      "evidence-summary.json": "590b41058ff30378e860b2a6898e1bef661daf211b1c6cd2319854175bdce558",
       "exact-conflict-resolution-manifest.json": "149aa31f3aba4aece6afd69a8b6d7d58925b084e7fb5cdc4fb5a95baec29f234",
       "exact-distinct-work-manifest.json": "01994e5bbb18bb0d652e0280475ed8910b975053fba05e87e1ac08137da45d6b",
       "execution-summary.json": "7445f9abc8d58e908b4d27a8e0957e7e98a0ab1449f00a153e2b73ee292c759b",
       "final-work-outcome-ledger.json": "4f94b288322ca3577b91b43a23826b0aae64888b5014a398cf484c5246d36c05",
       "manifest.json": "52e53a0425cacd29f939fe422735ed2876e92ce6df4cde0720a6d75c3e70ae0e",
-      "multilingual-family-manifest.jsonl": "02eb16cd16a889f701a63bb5edaf7f6737c6df65c55b9d46d58cd0842cfba291",
-      "per-family-pipeline-trace.jsonl": "02eb16cd16a889f701a63bb5edaf7f6737c6df65c55b9d46d58cd0842cfba291",
+      "multilingual-family-manifest.jsonl": "67a83416966686588baf1542a5d73b857dc1c8858710e31ff13bf476fbda3351",
+      "per-family-pipeline-trace.jsonl": "67a83416966686588baf1542a5d73b857dc1c8858710e31ff13bf476fbda3351",
       "pixiv-conflict-owner-review.csv": "1e432c11d2296e29b5123ec66aad7f3cd6de5f6592e25b4ea8b65f2e0a59f38d",
       "pixiv-distinct-work-accounting.jsonl": "be02dc7ef2514d7f7b254850e3a8c5c11efcefd2f36d730f869300b40db0f005",
       "pixiv-filename-candidate-manifest.jsonl": "ea77e13aa0af8c7a8c21481c833ea557e38c177cea802fff9c78fdd1117e2985",
@@ -622,15 +622,15 @@
       "pixiv-missing-work-owner-review-sample.csv": "ac28177f2a66a39c69eb681c8b3ffc29224a15ce6f22d5f830630166a4904255",
       "pixiv-missing-work-owner-review-sample.md": "19264e16188735abc70a03cc7ceafb756b72c2cc5691796280d4165f4ba22410",
       "pixiv-owner-review-selection.json": "de531ed5949f42e32d75d297a53902d7c06530a6486bc056e2df3ac271eee7d2",
-      "public-report-copy.md": "f9273fae840b86607cdd3a2225d0d3cbc2917faa4314cc91df3c6939ad3b4d80",
+      "public-report-copy.md": "2dcc43bdc19952c5930bf32be077526b49c7f2df471104a9e57356485e45f0f4",
       "retryable-pixiv-gap-ledger.jsonl": "7b01cfca2ea252439f0bf66b2fcc109fdbc6ccc9b18cde86e4db71e34db6cbdf",
-      "search-support-traces.jsonl": "48a846e0c78501b216d95100d92208c86601668fb36b44a32b872356eb273f45",
+      "search-support-traces.jsonl": "fceb83c5f0747db06a1e5c83527d173496348bd35399ef20c317591dd79d8e21",
       "terminal-unavailable-evidence-ledger.jsonl": "f93c26534b85be5f9e857008499a322933a1f9f66a2655152b39fa28ad0031dd"
     },
     "zip_member_count": 26,
     "zip_members_equal_current_manifest": true,
     "zip_path_label": "ml1-private-review-pack",
-    "zip_sha256": "bcacb666321127792e1fd8e322cc947c1cc186939a5227d7c194ff758c24c656"
+    "zip_sha256": "96506aa3cd536e38505e542c26f36ab92b0095062d115f5e765b795901bdd4e6"
   },
   "title": "SCV2-ML1: Multilingual Alias and Source-Metadata Closure"
 }

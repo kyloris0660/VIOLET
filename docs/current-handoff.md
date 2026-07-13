@@ -65,8 +65,8 @@ The final actual-data audit in PR #136 stops at
 - main/conflict executable fingerprints are
   `b7d5ba037ecd174cb727e1fc9a03a80d2f903301c2ad5f0eb2407725c2082516` and
   `9c8a038b4e07930a6d75fc52dd33f2764630be275d1d2af81f2913df8b3bd17c`;
-- the real multilingual baseline is now `606` identity-eligible and `3,625`
-  search-only families, runtime equivalence `0.898133`, with `30` remaining ML2
+- the real multilingual baseline is now `606` identity-eligible and `3,642`
+  search-only families, runtime equivalence `0.897363`, with `30` remaining ML2
   candidate-generation gaps;
 - fixed/forbidden evidence remained unchanged, the executable ML1 contract
   passed with zero errors/warnings, and the clean review pack has exact member
