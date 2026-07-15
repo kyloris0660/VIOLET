@@ -111,6 +111,7 @@ class CreatorIdentityFamily:
     work_context_distribution: Mapping[str, int]
     evidence_fingerprint: str
     existing_concept_id: int | None = None
+    preexisting_active_concept_ids: tuple[int, ...] = ()
 
     @property
     def identity_fingerprint(self) -> str:
@@ -145,6 +146,12 @@ def build_star_candidates(
             raise CreatorIdentityClosureError("invalid_creator_identity_family")
         seen_alias_signals: set[str] = set()
         for alias in family.aliases:
+            alias_key = canonical_source_key(alias.value)
+            if not alias_key:
+                # Private provenance may retain the observation, but an empty
+                # surface is not an identity/search candidate and cannot
+                # create collision adjacency.
+                continue
             signal_key = alias_signal_key(
                 family.provider,
                 family.stable_creator_id,
@@ -171,7 +178,7 @@ def build_star_candidates(
                 ),
                 union_allowed=True,
             )
-            alias_to_families[canonical_source_key(alias.value)].append(family)
+            alias_to_families[alias_key].append(family)
 
     # A negative edge exists only when a real normalized alias surface creates
     # candidate adjacency.  We intentionally do not pair unrelated IDs.
@@ -215,6 +222,7 @@ def candidate_growth_accounting(
         )
         for family in families
         for alias in family.aliases
+        if canonical_source_key(alias.value)
     }
     positives = [row for row in candidates if row.disposition == "must_link"]
     negatives = [row for row in candidates if row.disposition == "cannot_link"]
@@ -272,6 +280,7 @@ def family_accounting(
         "deterministic_cannot_link_preserved",
         "deferred_nonblocking_stable_identity_contradiction",
         "deferred_nonblocking_insufficient_trusted_alias_evidence",
+        "deferred_nonblocking_existing_component_fragmentation",
     }
     duplicate = sum(value - 1 for value in counts.values() if value > 1)
     missing = expected - set(counts)
@@ -287,6 +296,9 @@ def family_accounting(
         "newly_materialized_family_count": outcome_counts["deterministic_must_link_materialized"],
         "cannot_link_closed_family_count": cannot_closed,
         "deferred_nonblocking_family_count": deferred,
+        "fragmented_deferred_family_count": outcome_counts[
+            "deferred_nonblocking_existing_component_fragmentation"
+        ],
         "duplicate_family_count": duplicate,
         "missing_family_count": len(missing),
         "outside_manifest_family_count": len(outside),
@@ -353,4 +365,176 @@ def component_purity(
         "direct_cannot_violation_count": direct_cannot,
         "transitive_cannot_violation_count": direct_cannot,
         "deferred_identity_union_count": 0,
+    }
+
+
+def audit_touched_identity_components(
+    component_rows: Iterable[Mapping[str, Any]],
+    cannot_pairs: Iterable[tuple[str, str]] = (),
+    *,
+    existing_concept_ids: Iterable[int] = (),
+) -> dict[str, Any]:
+    """Audit every active link on touched concepts, including legacy links.
+
+    Components are the connected components of the signal/concept bipartite
+    graph.  This distinguishes a direct cannot conflict (both endpoints link
+    to one concept) from a transitive conflict (different concepts connected
+    through another shared signal).
+    """
+
+    rows = [dict(row) for row in component_rows]
+    concept_ids = {int(row["concept_id"]) for row in rows if row.get("concept_id") is not None}
+    parent = {concept_id: concept_id for concept_id in concept_ids}
+
+    def find(value: int) -> int:
+        while parent[value] != value:
+            parent[value] = parent[parent[value]]
+            value = parent[value]
+        return value
+
+    def union(left: int, right: int) -> None:
+        lroot, rroot = find(left), find(right)
+        if lroot != rroot:
+            parent[rroot] = lroot
+
+    concepts_by_signal: dict[str, set[int]] = defaultdict(set)
+    for row in rows:
+        signal_key = str(row.get("signal_key") or "")
+        concept_id = row.get("concept_id")
+        if signal_key and concept_id is not None:
+            concepts_by_signal[signal_key].add(int(concept_id))
+    for values in concepts_by_signal.values():
+        ordered = sorted(values)
+        for concept_id in ordered[1:]:
+            union(ordered[0], concept_id)
+
+    component_by_concept = {concept_id: find(concept_id) for concept_id in concept_ids}
+    rows_by_component: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        concept_id = row.get("concept_id")
+        if concept_id is not None:
+            rows_by_component[component_by_concept[int(concept_id)]].append(row)
+
+    multi_stable = 0
+    incompatible_role = 0
+    unknown_role = 0
+    character_work_contamination = 0
+    trusted_parent_lineage_failure = 0
+    distribution: Counter[int] = Counter()
+    largest = 0
+    for values in rows_by_component.values():
+        signals = {str(row.get("signal_key") or "") for row in values if row.get("signal_key")}
+        stable = {
+            str(row.get("stable_identity_key"))
+            for row in values
+            if row.get("stable_identity_key")
+        }
+        roles = {str(row.get("role") or "unknown").casefold() for row in values}
+        distribution[len(signals)] += 1
+        largest = max(largest, len(signals))
+        multi_stable += int(len(stable) > 1)
+        unknown_role += int("unknown" in roles)
+        bad_roles = roles - CREATOR_COMPATIBLE_ROLES
+        incompatible_role += int(bool(bad_roles))
+        character_work_contamination += int(
+            bool(bad_roles & {"character", "work", "copyright"})
+        )
+        trusted_parent_lineage_failure += sum(
+            1
+            for row in values
+            if row.get("source_kind") == "trusted_creator_alias"
+            and not row.get("trusted_parent_lineage")
+        )
+
+    direct_cannot = 0
+    transitive_cannot = 0
+    cannot = {
+        tuple(sorted((str(left), str(right))))
+        for left, right in cannot_pairs
+        if left and right and left != right
+    }
+    concepts_by_signal = {
+        signal: set(values) for signal, values in concepts_by_signal.items()
+    }
+    for left, right in cannot:
+        left_concepts = concepts_by_signal.get(left, set())
+        right_concepts = concepts_by_signal.get(right, set())
+        if left_concepts & right_concepts:
+            direct_cannot += 1
+            continue
+        if any(
+            component_by_concept.get(left_id) == component_by_concept.get(right_id)
+            for left_id in left_concepts
+            for right_id in right_concepts
+        ):
+            transitive_cannot += 1
+
+    media_support_by_concept: dict[int, int] = defaultdict(int)
+    identity_concepts: dict[str, set[int]] = defaultdict(set)
+    for row in rows:
+        concept_id = row.get("concept_id")
+        if concept_id is None:
+            continue
+        concept_id = int(concept_id)
+        media_support_by_concept[concept_id] = max(
+            media_support_by_concept[concept_id],
+            int(row.get("active_media_support_count") or 0),
+        )
+        stable_key = str(row.get("stable_identity_key") or "")
+        if stable_key:
+            identity_concepts[stable_key].add(concept_id)
+    search_inert = sum(media_support_by_concept.get(concept_id, 0) == 0 for concept_id in concept_ids)
+    duplicate_identity_concepts = sum(
+        max(0, len(values) - 1) for values in identity_concepts.values()
+    )
+
+    existing_set = {int(value) for value in existing_concept_ids}
+    existing_rows = [row for row in rows if int(row.get("concept_id") or -1) in existing_set]
+    existing_signal_count = len(
+        {str(row.get("signal_key")) for row in existing_rows if row.get("signal_key")}
+    )
+    existing_passed = bool(existing_set) and existing_set.issubset(concept_ids)
+    existing_passed = bool(
+        existing_passed
+        and not multi_stable
+        and not incompatible_role
+        and not trusted_parent_lineage_failure
+        and not direct_cannot
+        and not transitive_cannot
+        and all(media_support_by_concept.get(value, 0) > 0 for value in existing_set)
+    )
+    passed = not any(
+        (
+            multi_stable,
+            incompatible_role,
+            trusted_parent_lineage_failure,
+            direct_cannot,
+            transitive_cannot,
+            search_inert,
+            duplicate_identity_concepts,
+        )
+    )
+    return {
+        "full_touched_component_audit_passed": passed,
+        "existing_12_full_component_audit_passed": existing_passed,
+        "touched_active_concept_count": len(concept_ids),
+        "component_count": len(rows_by_component),
+        "component_size_distribution": {
+            str(key): value for key, value in sorted(distribution.items())
+        },
+        "largest_component": largest,
+        "full_touched_signal_count": len(concepts_by_signal),
+        "existing_component_signal_count": existing_signal_count,
+        "multi_stable_id_creator_component_count": multi_stable,
+        "unauthorized_cross_role_component_count": incompatible_role,
+        "unknown_role_materialization_count": unknown_role,
+        "character_work_copyright_contamination_count": character_work_contamination,
+        "trusted_parent_lineage_failure_count": trusted_parent_lineage_failure,
+        "graph_audit_cannot_pair_count": len(cannot),
+        "direct_disposition_conflict_count": direct_cannot,
+        "cannot_endpoints_same_component_count": direct_cannot + transitive_cannot,
+        "direct_cannot_violation_count": direct_cannot,
+        "transitive_cannot_violation_count": transitive_cannot,
+        "search_inert_materialized_concept_count": search_inert,
+        "postclosure_duplicate_active_identity_concept_count": duplicate_identity_concepts,
     }

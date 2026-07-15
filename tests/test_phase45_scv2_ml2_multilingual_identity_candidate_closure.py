@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from backend.app.services.multilingual_creator_identity_closure_service import (
     IdentityCandidate,
     TrustedCreatorAlias,
     alias_signal_key,
+    audit_touched_identity_components,
     build_star_candidates,
     candidate_growth_accounting,
     component_purity,
@@ -183,6 +185,189 @@ def valid_summary() -> dict:
     }
 
 
+def valid_summary() -> dict:
+    manifest = lambda count: {"count": count, "sha256": "a" * 64}
+    zero_accounting = {
+        "accounting_equality_passed": True,
+        "duplicate_pair_count": 0,
+        "missing_pair_count": 0,
+        "outside_manifest_pair_count": 0,
+        "invalid_disposition_count": 0,
+        "cannot_link_count": 2,
+    }
+    return {
+        "pipeline_contract": {
+            "contract_id": CONTRACT_ID,
+            "status": "target_met_multilingual_identity_candidate_closure",
+            "target_met": True,
+            "safe_to_merge": True,
+            "route_approved": False,
+            "active_blockers": [],
+            "semantic_completeness_claimed": False,
+            "production_readiness_claimed": False,
+            "scale_readiness_claimed": False,
+        },
+        "repository_sync_preflight": {
+            "status": "passed_synchronization_preflight",
+            "evidence_source": "actual_git_subprocess",
+            "repository_root_verified": True,
+            "current_branch": runner.TASK_BRANCH,
+            "current_head": "b" * 40,
+            "remote_tracking_branch": f"origin/{runner.TASK_BRANCH}",
+            "remote_head": "b" * 40,
+            "ahead": 0,
+            "behind": 0,
+            "accepted_base": runner.BASE_SHA,
+            "actual_merge_base": runner.BASE_SHA,
+            "base_is_ancestor": True,
+            "tracked_change_count": 0,
+            "staged_change_count": 0,
+            "preexisting_untracked_path_count": 3,
+            "preexisting_untracked_path_list_sha256": "c" * 64,
+            "preexisting_ignored_path_count": 4,
+            "preexisting_ignored_path_list_sha256": "d" * 64,
+            "preexisting_user_owned_path_missing_count": 0,
+            "preexisting_user_owned_paths_preserved": True,
+        },
+        "environment_isolation": {
+            "passed": True,
+            "production_profile_active": False,
+            "working_database_is_fresh_separate_clone": True,
+            "source_database_immutable": True,
+            "superseded_ml2_database_immutable": True,
+            "source_database_fingerprint": "e" * 64,
+            "superseded_ml2_database_fingerprint": "f" * 64,
+        },
+        "baseline": {
+            "family_count": 20,
+            "observed_alias_count": 40,
+            "identity_family_count_before": 10,
+            "identity_family_count_after": 10,
+            "search_only_family_count_before": 10,
+            "search_only_family_count_after": 10,
+            "accepted_r2r_disposition_count": 3319,
+        },
+        "manifest_fingerprints": {
+            "creator-identity-family-manifest.jsonl": manifest(10),
+            "creator-identity-alias-observation-manifest.jsonl": manifest(20),
+            "candidate-generation-gap-manifest.jsonl": manifest(2),
+            "creator-context-search-case-manifest.jsonl": manifest(4),
+            "search-only-family-regression-manifest.jsonl": manifest(10),
+            "candidate-pair-ledger.jsonl": manifest(12),
+            "family-closure-ledger.jsonl": manifest(10),
+            "creator-context-closure-ledger.jsonl": manifest(4),
+        },
+        "candidate_growth": {"linear_bound_passed": True, "all_pairs_alias_expansion_used": False},
+        "pair_accounting": zero_accounting,
+        "family_accounting": {
+            "accounting_equality_passed": True,
+            "identity_eligible_family_count": 10,
+            "already_materialized_family_count": 2,
+            "newly_materialized_family_count": 7,
+            "cannot_link_closed_family_count": 0,
+            "deferred_nonblocking_family_count": 1,
+            "fragmented_deferred_family_count": 1,
+            "duplicate_family_count": 0,
+            "missing_family_count": 0,
+            "outside_manifest_family_count": 0,
+            "invalid_outcome_count": 0,
+        },
+        "candidate_gap_closure": {"initial_gap_count": 2, "remaining_gap_count": 0, "unexplained_gap_count": 0},
+        "active_concept_audit": {
+            "inactive_concept_candidate_reference_count": 1,
+            "inactive_concept_reuse_count": 0,
+            "preexisting_partial_concept_fragmentation_family_count": 1,
+        },
+        "preexisting_component_audit": {"existing_12_full_component_audit_passed": True},
+        "graph_safety": {
+            "full_touched_component_audit_passed": True,
+            "existing_12_full_component_audit_passed": True,
+            "graph_audit_cannot_pair_count": 2,
+            "graph_audit_cannot_pair_count_equality_passed": True,
+            "multi_stable_id_creator_component_count": 0,
+            "unauthorized_cross_role_component_count": 0,
+            "unknown_role_materialization_count": 0,
+            "character_work_copyright_contamination_count": 0,
+            "trusted_parent_lineage_failure_count": 0,
+            "direct_disposition_conflict_count": 0,
+            "cannot_endpoints_same_component_count": 0,
+            "direct_cannot_violation_count": 0,
+            "transitive_cannot_violation_count": 0,
+            "postclosure_duplicate_active_identity_concept_count": 0,
+        },
+        "concept_media_support": {
+            "passed": True,
+            "per_media_evidence_linear_bound_passed": True,
+            "concept_media_support_row_count": 25,
+            "expected_concept_media_support_row_count": 25,
+            "duplicate_concept_media_support_count": 0,
+            "missing_sourceconcept_media_count": 0,
+            "unsupported_sourceconcept_media_count": 0,
+            "media_count_mismatch_count": 0,
+            "support_provenance_failure_count": 0,
+        },
+        "sourceconcept_only_runtime": {
+            "passed": True,
+            "sourceconcept_alias_family_count": 9,
+            "sourceconcept_alias_expected_media_coverage": 1.0,
+            "media_detail_sourceconcept_visibility_passed": True,
+            "direct_source_name_or_tag_fallback_used": False,
+            "search_inert_materialized_concept_count": 0,
+            "missing_sourceconcept_media_count": 0,
+            "unsupported_sourceconcept_media_count": 0,
+            "media_detail_sample_failure_count": 0,
+        },
+        "creator_context": {
+            "case_count": 4,
+            "classification_count": 4,
+            "supported_evidence_runtime_success_coverage": 1.0,
+            "implementation_failure_with_sufficient_evidence_count": 0,
+            "unexplained_failure_count": 0,
+        },
+        "search_validation": {
+            "search_only_regression_count": 0,
+            "unsupported_result_count": 0,
+            "rejected_only_result_count": 0,
+            "superseded_only_result_count": 0,
+            "invalid_or_deleted_only_result_count": 0,
+            "and_leakage_count": 0,
+            "search_caused_identity_mutation_count": 0,
+        },
+        "r2r_reuse": {
+            "accepted_pair_count": 3319,
+            "accepted_must_link_count": 1522,
+            "accepted_cannot_link_count": 1791,
+            "accepted_deferred_nonblocking_count": 6,
+            "candidate_disposition_coverage": 1.0,
+            "snapshot_fingerprint": "1" * 64,
+            "database_snapshot_crosscheck_passed": True,
+            "private_pair_manifest_crosscheck_passed": True,
+            "cache_only_rebuild_passed": True,
+            "provider_attempt_count": 0,
+            "reused_accepted_pair_count": 0,
+            "disposition_conflict_count": 0,
+            "accepted_dispositions_mutated": False,
+            "preserved_r2r_artifacts_mutated": False,
+            "preserved_r2r_artifact_fingerprint": "2" * 64,
+        },
+        "llm": {"projected_cost_usd": 0.0, "actual_cost_usd": 0.0, "deterministic_stable_id_pairs_excluded": True},
+        "mutation_proof": {
+            "fixed_tables_unchanged": True,
+            "forbidden_truth_tables_unchanged": True,
+            "changed_fixed_tables": [],
+            "changed_forbidden_truth_tables": [],
+            "production_write_count": 0,
+            "entity_truth_write_count": 0,
+            "media_tags_truth_write_count": 0,
+            "source_or_icloud_write_count": 0,
+        },
+        "idempotency": {"passed": True, "fingerprints_equal": True, "second_run_duplicate_media_support": 0},
+        "operation_counts": {"external_metadata_provider_calls": 0, "pixiv_calls": 0, "gallery_dl_calls": 0, "entity_truth_writes": 0},
+        "route_decision": {"route_approved": False, "next_phase_started": False},
+        "validation": {"public_redaction_passed": True},
+    }
+
+
 def test_same_pixiv_id_two_display_names_must_link():
     pairs = build_star_candidates((family("1", "Name A", "Name B"),))
     assert len(pairs) == 2
@@ -228,7 +413,7 @@ def test_search_only_translation_is_not_a_creator_family_input():
 
 def test_empty_canonical_creator_alias_remains_identity_evidence_but_not_search_index():
     source = Path(runner.__file__).read_text(encoding="utf-8")
-    assert "if not alias_key:" in source
+    assert "if not alias_key or alias_key in collision_alias_keys:" in source
     assert 'SourceConceptSearchIndex.search_key == ""' in source
 
 
@@ -476,3 +661,242 @@ def test_contract_fails_when_summary_omits_known_graph_blocker():
     result = check_phase_contract(CONTRACT_ID, summary)
     assert not result.passed
     assert "ml2_active_blockers_incomplete" in {error.code for error in result.errors}
+
+
+def test_reviewfix_redaction_failure_writes_only_private_diagnostic(tmp_path, monkeypatch):
+    summary = valid_summary()
+    monkeypatch.setattr(runner, "render_report", lambda _summary: "safe report")
+    pack_called = False
+
+    def forbidden_pack(*_args, **_kwargs):
+        nonlocal pack_called
+        pack_called = True
+
+    monkeypatch.setattr(runner, "write_review_pack", forbidden_pack)
+    public_md = tmp_path / "public.md"
+    public_json = tmp_path / "public.json"
+    result = runner.fail_closed_publication(
+        summary=summary,
+        output_dir=tmp_path,
+        public_report_path=public_md,
+        public_summary_path=public_json,
+        private_artifacts=(),
+        redactor=lambda _value: (_ for _ in ()).throw(ValueError("raw alias")),
+    )
+    assert result == {"published": False, "blocker": "blocked_ml2_public_redaction"}
+    assert not public_md.exists() and not public_json.exists() and not pack_called
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["private-public-redaction-diagnostic.json"]
+
+
+def test_reviewfix_missing_r2r_private_proof_blocks(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "R2R_PAIR_MANIFEST", tmp_path / "missing.json")
+    with pytest.raises(runner.ML2BlockedError, match="blocked_ml2_r2r_reuse_evidence"):
+        runner.load_exact_r2r_disposition_snapshot()
+
+
+def test_reviewfix_r2r_distribution_mismatch_blocks():
+    pairs = [{"pair_id": f"p{index}"} for index in range(3319)]
+    dispositions = [
+        {"pair_id": row["pair_id"], "disposition": "must_link"} for row in pairs
+    ]
+    execution = {
+        "candidate_dispositions": {
+            "total_candidate_pairs": 3319,
+            "must_link_count": 1522,
+            "cannot_link_count": 1791,
+            "deferred_nonblocking_count": 6,
+            "candidate_disposition_coverage": 1.0,
+        }
+    }
+    with pytest.raises(runner.ML2BlockedError, match="count_or_distribution_mismatch"):
+        runner.validate_r2r_disposition_snapshot(
+            database_summary={"llm_usage": {"judgment_count": 3319}},
+            execution_summary=execution,
+            pair_manifest={"pairs": pairs},
+            dispositions=dispositions,
+        )
+
+
+def test_reviewfix_active_concept_lookup_joins_concept_status():
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    assert "JOIN blombooru_source_concepts c ON c.id=l.concept_id" in source
+    assert "AND c.status='active'" in source
+
+
+def test_reviewfix_existing_active_concept_requires_prewrite_full_audit():
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    assert "preexisting_audit = audit_touched_identity_components" in source
+    assert "accepted_component_impure" in source
+
+
+def test_reviewfix_single_partial_alias_overlap_is_not_identity_reuse():
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    assert "complete_active_alias_concepts = (" in source
+    assert "active_concepts = active_anchor_concepts | complete_active_alias_concepts" in source
+    assert '"preexisting_partial_concept_reference_family_count"' in source
+
+
+def test_reviewfix_historical_links_participate_in_full_component_purity():
+    rows = (
+        {"concept_id": 7, "signal_key": "current", "role": "creator", "stable_identity_key": "one", "active_media_support_count": 1},
+        {"concept_id": 7, "signal_key": "historical", "role": "character", "stable_identity_key": "one", "active_media_support_count": 1},
+    )
+    result = audit_touched_identity_components(rows, existing_concept_ids=(7,))
+    assert not result["full_touched_component_audit_passed"]
+    assert result["character_work_copyright_contamination_count"] == 1
+
+
+def test_reviewfix_cannot_pairs_reach_full_graph_audit():
+    result = audit_touched_identity_components(
+        (
+            {"concept_id": 1, "signal_key": "a", "role": "creator", "stable_identity_key": "one", "active_media_support_count": 1},
+            {"concept_id": 2, "signal_key": "b", "role": "creator", "stable_identity_key": "two", "active_media_support_count": 1},
+        ),
+        (("a", "b"),),
+        existing_concept_ids=(1,),
+    )
+    assert result["graph_audit_cannot_pair_count"] == 1
+    assert result["cannot_endpoints_same_component_count"] == 0
+
+
+def test_reviewfix_cannot_endpoints_in_one_component_fail():
+    result = audit_touched_identity_components(
+        (
+            {"concept_id": 1, "signal_key": "a", "role": "creator", "stable_identity_key": "one", "active_media_support_count": 1},
+            {"concept_id": 1, "signal_key": "b", "role": "creator", "stable_identity_key": "one", "active_media_support_count": 1},
+        ),
+        (("a", "b"),),
+        existing_concept_ids=(1,),
+    )
+    assert not result["full_touched_component_audit_passed"]
+    assert result["direct_cannot_violation_count"] == 1
+
+
+def test_reviewfix_empty_aliases_create_no_candidates_or_growth():
+    first = replace(family("1", "A"), aliases=(alias(""), alias("   "), alias("A")))
+    second = replace(family("2", "B"), aliases=(alias(""), alias("\t"), alias("B")))
+    pairs = build_star_candidates((first, second))
+    growth = candidate_growth_accounting((first, second), pairs)
+    assert len(pairs) == 2
+    assert growth["unique_alias_signal_count"] == 2
+    assert not any(row.disposition == "cannot_link" for row in pairs)
+
+
+def test_reviewfix_concept_media_evidence_is_persisted_per_media_record():
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    assert 'evidence_type="trusted_creator_media_support"' in source
+    assert "source_metadata_record_id=source_metadata_record_id" in source
+
+
+def test_reviewfix_sourceconcept_only_alias_coverage_is_contract_gate():
+    summary = valid_summary()
+    summary["sourceconcept_only_runtime"]["sourceconcept_alias_expected_media_coverage"] = 0.9
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert "ml2_active_blockers_incomplete" in {error.code for error in result.errors}
+
+
+def test_reviewfix_search_alias_with_zero_media_support_blocks():
+    summary = valid_summary()
+    summary["concept_media_support"]["concept_media_support_row_count"] = 0
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert not result.passed
+
+
+def test_reviewfix_per_media_evidence_is_linear_not_alias_cross_product():
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    media_loop = source.index("for media_id, source_metadata_record_id in support_rows:")
+    alias_loop = source.index("for alias in family.aliases:", media_loop)
+    assert media_loop < alias_loop
+    assert "alias × media" not in source[media_loop:alias_loop]
+
+
+def test_reviewfix_duplicate_media_support_blocks_contract():
+    summary = valid_summary()
+    summary["concept_media_support"]["duplicate_concept_media_support_count"] = 1
+    assert not check_phase_contract(CONTRACT_ID, summary).passed
+
+
+def test_reviewfix_media_count_must_match_exact_distinct_support():
+    summary = valid_summary()
+    summary["concept_media_support"]["media_count_mismatch_count"] = 1
+    assert not check_phase_contract(CONTRACT_ID, summary).passed
+
+
+def test_reviewfix_multiple_preexisting_concepts_do_not_create_third():
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    fragment_branch = source.index("if len(family.preexisting_active_concept_ids) > 1:")
+    create_branch = source.index("concept, _ = _get_or_create", fragment_branch)
+    assert "continue" in source[fragment_branch:create_branch]
+
+
+def test_reviewfix_fragmented_family_is_exact_deferred_outcome():
+    result = family_accounting(
+        ("f",),
+        ({"family_id": "f", "outcome": "deferred_nonblocking_existing_component_fragmentation"},),
+    )
+    assert result["accounting_equality_passed"]
+    assert result["fragmented_deferred_family_count"] == 1
+
+
+def test_reviewfix_postclosure_duplicate_active_identity_blocks():
+    summary = valid_summary()
+    summary["graph_safety"]["postclosure_duplicate_active_identity_concept_count"] = 1
+    assert not check_phase_contract(CONTRACT_ID, summary).passed
+
+
+def test_reviewfix_existing_component_audit_requires_historical_signal_count():
+    result = audit_touched_identity_components(
+        (
+            {"concept_id": 3, "signal_key": "old-a", "role": "creator", "stable_identity_key": "id", "active_media_support_count": 2},
+            {"concept_id": 3, "signal_key": "old-b", "role": "creator", "stable_identity_key": "id", "active_media_support_count": 2},
+        ),
+        existing_concept_ids=(3,),
+    )
+    assert result["existing_12_full_component_audit_passed"]
+    assert result["existing_component_signal_count"] == 2
+
+
+def test_reviewfix_git_contract_cannot_be_satisfied_by_historical_constants():
+    summary = valid_summary()
+    summary["repository_sync_preflight"].update(
+        evidence_source="operator_constants",
+        current_head=runner.BASE_SHA,
+        remote_head=runner.BASE_SHA,
+    )
+    assert not check_phase_contract(CONTRACT_ID, summary).passed
+
+
+def test_reviewfix_preedit_path_fingerprint_preserves_original_git_order():
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    assert 'preexisting_untracked = untracked_manifest.read_text(encoding="utf-8").splitlines()' in source
+    assert 'preexisting_ignored = ignored_manifest.read_text(encoding="utf-8").splitlines()' in source
+
+
+def test_reviewfix_git_octal_utf8_path_is_decoded_before_existence_check():
+    assert runner.decode_git_path('"media/original/\\345\\217\\254\\344\\275\\277.jpeg"') == "media/original/召使.jpeg"
+    assert runner.decode_git_path("plain/path.txt") == "plain/path.txt"
+
+
+def test_reviewfix_media_detail_visibility_is_contract_gate():
+    summary = valid_summary()
+    summary["sourceconcept_only_runtime"]["media_detail_sourceconcept_visibility_passed"] = False
+    assert not check_phase_contract(CONTRACT_ID, summary).passed
+
+
+def test_reviewfix_database_fingerprint_excludes_capture_timestamp():
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    assert 'if key != "captured_at"' in source
+    assert '"fingerprint": fingerprint(stable_snapshot)' in source
+
+
+def test_reviewfix_source_or_superseded_db_change_is_fixed_evidence_blocker():
+    summary = valid_summary()
+    summary["environment_isolation"]["source_database_immutable"] = False
+    summary["pipeline_contract"].update(
+        status="blocked_ml2_fixed_evidence_changed",
+        target_met=False,
+        safe_to_merge=False,
+        active_blockers=["blocked_ml2_fixed_evidence_changed"],
+    )
+    result = check_phase_contract(CONTRACT_ID, summary)
+    assert result.passed, [error.code for error in result.errors]
