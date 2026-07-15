@@ -1,0 +1,507 @@
+{
+  "accepted_ml1_code_sha": "64949da9b804adf400f5b5a0f99a808ff318115b",
+  "accepted_r2r_sha": "5bbbb8ff13b140ea77a839757603714bfdd87181",
+  "artifact_lifecycle": {
+    "private_manifests_and_review_pack": "one_off_local_artifact_ignored_output",
+    "report_and_docs": "public_report_handoff_roadmap_update",
+    "runner_and_tests": "phase_scoped_operational_runner",
+    "service": "durable_production_code"
+  },
+  "base_sha": "f6cae3483f4cf75974746a4cc82222f28e399b96",
+  "baseline": {
+    "accepted_r2r_disposition_count": 3319,
+    "accepted_r2r_signal_count": 12249,
+    "family_count": 4248,
+    "identity_family_count_after": 606,
+    "identity_family_count_before": 606,
+    "observed_alias_count": 11860,
+    "search_only_family_count_after": 3642,
+    "search_only_family_count_before": 3642
+  },
+  "branch": "codex/scv2-ml2-multilingual-identity-candidate-closure",
+  "candidate_gap_closure": {
+    "denominator_corrected": false,
+    "family_specific_hardcoding_used": false,
+    "initial_gap_count": 30,
+    "legacy_benchmark_miss_count_after": 1,
+    "legacy_benchmark_misses_resolved_by_stable_anchor": 1,
+    "remaining_gap_count": 0,
+    "root_cause_distribution": {
+      "trusted_creator_name_signal_missing": 30
+    },
+    "unexplained_gap_count": 0
+  },
+  "candidate_growth": {
+    "all_pairs_alias_expansion_used": false,
+    "candidate_pair_count": 1214,
+    "collision_local_cannot_link_count": 0,
+    "family_count": 606,
+    "linear_bound": 1214,
+    "linear_bound_passed": true,
+    "must_link_candidate_count": 1214,
+    "unique_alias_signal_count": 1214
+  },
+  "contract_evidence": {
+    "family_accounting": {
+      "accounting_equality_passed": true,
+      "already_materialized_family_count": 12,
+      "cannot_link_closed_family_count": 0,
+      "deferred_nonblocking_family_count": 0,
+      "duplicate_family_count": 0,
+      "identity_eligible_family_count": 606,
+      "invalid_outcome_count": 0,
+      "missing_family_count": 0,
+      "newly_materialized_family_count": 594,
+      "outside_manifest_family_count": 0
+    },
+    "graph_safety": {
+      "component_count": 606,
+      "component_size_distribution": {
+        "3": 604,
+        "4": 2
+      },
+      "deferred_identity_union_count": 0,
+      "direct_cannot_violation_count": 0,
+      "giant_component_recurrence": false,
+      "giant_component_threshold": 176,
+      "largest_component": 4,
+      "multi_stable_id_creator_component_count": 0,
+      "transitive_cannot_violation_count": 0,
+      "unauthorized_cross_role_component_count": 0,
+      "unknown_role_materialization_count": 0
+    },
+    "mutation_proof": {
+      "allowed_tables": [
+        "blombooru_source_name_observations",
+        "blombooru_source_concept_resolution_runs",
+        "blombooru_source_concept_signals",
+        "blombooru_source_concepts",
+        "blombooru_source_concept_aliases",
+        "blombooru_source_concept_evidence",
+        "blombooru_source_concept_signal_links",
+        "blombooru_source_concept_search_index"
+      ],
+      "changed_fixed_tables": [],
+      "changed_forbidden_truth_tables": [],
+      "entity_truth_write_count": 0,
+      "fixed_tables_unchanged": true,
+      "forbidden_truth_tables_unchanged": true,
+      "media_tags_truth_write_count": 0,
+      "mutation_counts": {
+        "blombooru_source_concept_aliases": 1191,
+        "blombooru_source_concept_evidence": 1820,
+        "blombooru_source_concept_resolution_runs": 1,
+        "blombooru_source_concept_search_index": 1191,
+        "blombooru_source_concept_signal_links": 1820,
+        "blombooru_source_concept_signals": 1820,
+        "blombooru_source_concepts": 594,
+        "blombooru_source_name_observations": 60,
+        "trusted_work_title_observation_backfill_count": 60
+      },
+      "production_write_count": 0,
+      "second_execution_mutation_counts": {
+        "blombooru_source_concept_aliases": 0,
+        "blombooru_source_concept_evidence": 0,
+        "blombooru_source_concept_resolution_runs": 0,
+        "blombooru_source_concept_search_index": 0,
+        "blombooru_source_concept_signal_links": 0,
+        "blombooru_source_concept_signals": 0,
+        "blombooru_source_concepts": 0,
+        "blombooru_source_name_observations": 0,
+        "trusted_work_title_observation_backfill_count": 0
+      },
+      "source_or_icloud_write_count": 0
+    },
+    "pair_accounting": {
+      "accounting_equality_passed": true,
+      "candidate_pair_count": 1214,
+      "cannot_link_count": 0,
+      "deferred_nonblocking_count": 0,
+      "duplicate_pair_count": 0,
+      "invalid_disposition_count": 0,
+      "missing_pair_count": 0,
+      "must_link_count": 1214,
+      "outside_manifest_pair_count": 0
+    },
+    "pipeline_contract": {
+      "active_blockers": [],
+      "contract_id": "ml2_multilingual_identity_candidate_closure_contract_v1",
+      "production_readiness_claimed": false,
+      "route_approved": false,
+      "safe_to_merge": true,
+      "scale_readiness_claimed": false,
+      "semantic_completeness_claimed": false,
+      "status": "target_met_multilingual_identity_candidate_closure",
+      "target_met": true
+    },
+    "search_validation": {
+      "and_leakage_count": 0,
+      "creator_context_accuracy_after": 1.0,
+      "creator_context_accuracy_before": 0.62766,
+      "evidence_absent_deferred_count": 1,
+      "invalid_or_deleted_only_result_count": 0,
+      "rejected_only_result_count": 0,
+      "runtime_result_count": 512,
+      "search_caused_identity_mutation_count": 0,
+      "search_only": {
+        "family_count_after": 3642,
+        "family_count_before": 3642,
+        "passed": true,
+        "regression_count": 0,
+        "rejected_only_result_count": 0,
+        "superseded_only_result_count": 0,
+        "unsupported_result_count": 0
+      },
+      "search_only_regression_count": 0,
+      "superseded_only_result_count": 0,
+      "supported_evidence_runtime_success_coverage": 1.0,
+      "supported_result_count": 512,
+      "unsupported_result_count": 0
+    }
+  },
+  "creator_context": {
+    "case_count": 94,
+    "classification_count": 94,
+    "classification_counts": {
+      "deferred_nonblocking_evidence_absent": 1,
+      "supported_evidence_runtime_success": 93
+    },
+    "deferred_nonblocking_evidence_absent_count": 1,
+    "implementation_failure_with_sufficient_evidence_count": 0,
+    "leakage_count": 0,
+    "supported_evidence_expected_case_count": 93,
+    "supported_evidence_runtime_success_count": 93,
+    "supported_evidence_runtime_success_coverage": 1.0,
+    "unexplained_failure_count": 0
+  },
+  "environment_isolation": {
+    "passed": true,
+    "production_flags_checked": [
+      "VIOLET_LAUNCH_PRODUCTION",
+      "VIOLET_PRODUCTION_MODE",
+      "VIOLET_PRODUCTION_PROFILE",
+      "VIOLET_PRODUCTION_PROFILE_ACTIVE"
+    ],
+    "production_profile_active": false,
+    "production_write_route": false,
+    "r2r_database": "blombooru_scv2_r2r_dryrun_test_20260710",
+    "source_database": "blombooru_scv2_ml1_acquisition_test_20260712",
+    "source_or_icloud_route": false,
+    "test_storage_configured": true,
+    "violet_env": "test",
+    "working_database": "blombooru_scv2_ml2_identity_closure_test_20260714",
+    "working_database_is_fresh_separate_clone": true
+  },
+  "existing_family_audit": {
+    "accepted_ids_preserved": true,
+    "cannot_link_passed": true,
+    "family_count": 12,
+    "passed": true,
+    "role_purity_passed": true,
+    "stable_id_purity_passed": true
+  },
+  "family_accounting": {
+    "accounting_equality_passed": true,
+    "already_materialized_family_count": 12,
+    "cannot_link_closed_family_count": 0,
+    "deferred_nonblocking_family_count": 0,
+    "duplicate_family_count": 0,
+    "identity_eligible_family_count": 606,
+    "invalid_outcome_count": 0,
+    "missing_family_count": 0,
+    "newly_materialized_family_count": 594,
+    "outside_manifest_family_count": 0
+  },
+  "generated_at": "2026-07-15T12:18:41+00:00",
+  "graph_after": {
+    "component_count": 1677,
+    "component_size_distribution": {
+      "1": 2,
+      "10": 3,
+      "11": 4,
+      "12": 11,
+      "13": 2,
+      "14": 5,
+      "15": 5,
+      "16": 1,
+      "17": 1,
+      "2": 614,
+      "20": 1,
+      "22": 1,
+      "23": 1,
+      "27": 1,
+      "3": 853,
+      "38": 1,
+      "4": 35,
+      "5": 27,
+      "6": 69,
+      "7": 2,
+      "8": 16,
+      "88": 1,
+      "9": 21
+    },
+    "largest_component": 88,
+    "needs_review_count": 0,
+    "sourceconcept_count": 1677
+  },
+  "graph_before": {
+    "component_count": 1083,
+    "component_size_distribution": {
+      "1": 2,
+      "10": 3,
+      "11": 4,
+      "12": 11,
+      "13": 2,
+      "14": 5,
+      "15": 5,
+      "16": 1,
+      "17": 1,
+      "2": 614,
+      "20": 1,
+      "22": 1,
+      "23": 1,
+      "27": 1,
+      "3": 272,
+      "38": 1,
+      "4": 33,
+      "5": 28,
+      "6": 58,
+      "7": 2,
+      "8": 15,
+      "88": 1,
+      "9": 21
+    },
+    "largest_component": 88,
+    "needs_review_count": 0,
+    "sourceconcept_count": 1083
+  },
+  "graph_safety": {
+    "component_count": 606,
+    "component_size_distribution": {
+      "3": 604,
+      "4": 2
+    },
+    "deferred_identity_union_count": 0,
+    "direct_cannot_violation_count": 0,
+    "giant_component_recurrence": false,
+    "giant_component_threshold": 176,
+    "largest_component": 4,
+    "multi_stable_id_creator_component_count": 0,
+    "transitive_cannot_violation_count": 0,
+    "unauthorized_cross_role_component_count": 0,
+    "unknown_role_materialization_count": 0
+  },
+  "idempotency": {
+    "fingerprints_equal": true,
+    "passed": true,
+    "second_run_component_membership_changes": 0,
+    "second_run_disposition_changes": 0,
+    "second_run_duplicate_aliases": 0,
+    "second_run_duplicate_concepts": 0
+  },
+  "llm": {
+    "actual_cost_usd": 0.0,
+    "cache_reuse": 0,
+    "calls": 0,
+    "deterministic_stable_id_pairs_excluded": true,
+    "failures": 0,
+    "manifest_count": 0,
+    "model": null,
+    "policy_version": "bounded_phase_primary_llm_usd10_v1",
+    "projected_cost_usd": 0.0,
+    "prompt_schema": null,
+    "provider": "primary_openai_compatible",
+    "resolver_version": "ml2_stable_creator_identity_closure_v1",
+    "retries": 0,
+    "successful_judgments": 0
+  },
+  "manifest_fingerprints": {
+    "candidate-generation-gap-manifest.jsonl": {
+      "count": 30,
+      "sha256": "00adb376ea217b2a3757d8663b7599be37a5494e1f4e08d2bb92fc7533795233"
+    },
+    "candidate-pair-ledger.jsonl": {
+      "count": 1214,
+      "sha256": "c7bcec9c2997091a901b4eb26fe01b7a796cacac205b2792392eda4d743c633b"
+    },
+    "creator-context-closure-ledger.jsonl": {
+      "count": 94,
+      "sha256": "d2a96a1f36612f256292f6d41ea2732a1d587a268cdf7145bfba3a23b311506c"
+    },
+    "creator-context-search-case-manifest.jsonl": {
+      "count": 94,
+      "sha256": "c030c6da72cbbf52ff05d59620a6dc82313e1d2956fbe26fbe5dcff76c58ad0c"
+    },
+    "creator-identity-alias-observation-manifest.jsonl": {
+      "count": 4527,
+      "sha256": "20767778a600afe8f9e0d8f88cee9146355907d2a71eb3136c48056e62261f95"
+    },
+    "creator-identity-family-manifest.jsonl": {
+      "count": 606,
+      "sha256": "f4e549972d4b41d75d998496cbcac8ef0ff27f572682187bdcd3d6c9d916dbb5"
+    },
+    "family-closure-ledger.jsonl": {
+      "count": 606,
+      "sha256": "676ea59c36125eb92d8699e82a3ff8f978ba4e91a2c457cca9cd712d7850f26f"
+    },
+    "search-only-family-regression-manifest.jsonl": {
+      "count": 3642,
+      "sha256": "d406658d2e30ce4ddfd7db111e43664e228cedaeafbe2de0389acd22d9193f61"
+    }
+  },
+  "mutation_proof": {
+    "allowed_tables": [
+      "blombooru_source_name_observations",
+      "blombooru_source_concept_resolution_runs",
+      "blombooru_source_concept_signals",
+      "blombooru_source_concepts",
+      "blombooru_source_concept_aliases",
+      "blombooru_source_concept_evidence",
+      "blombooru_source_concept_signal_links",
+      "blombooru_source_concept_search_index"
+    ],
+    "changed_fixed_tables": [],
+    "changed_forbidden_truth_tables": [],
+    "entity_truth_write_count": 0,
+    "fixed_tables_unchanged": true,
+    "forbidden_truth_tables_unchanged": true,
+    "media_tags_truth_write_count": 0,
+    "mutation_counts": {
+      "blombooru_source_concept_aliases": 1191,
+      "blombooru_source_concept_evidence": 1820,
+      "blombooru_source_concept_resolution_runs": 1,
+      "blombooru_source_concept_search_index": 1191,
+      "blombooru_source_concept_signal_links": 1820,
+      "blombooru_source_concept_signals": 1820,
+      "blombooru_source_concepts": 594,
+      "blombooru_source_name_observations": 60,
+      "trusted_work_title_observation_backfill_count": 60
+    },
+    "production_write_count": 0,
+    "second_execution_mutation_counts": {
+      "blombooru_source_concept_aliases": 0,
+      "blombooru_source_concept_evidence": 0,
+      "blombooru_source_concept_resolution_runs": 0,
+      "blombooru_source_concept_search_index": 0,
+      "blombooru_source_concept_signal_links": 0,
+      "blombooru_source_concept_signals": 0,
+      "blombooru_source_concepts": 0,
+      "blombooru_source_name_observations": 0,
+      "trusted_work_title_observation_backfill_count": 0
+    },
+    "source_or_icloud_write_count": 0
+  },
+  "operation_counts": {
+    "ai_tagging": 0,
+    "classification": 0,
+    "entity_truth_writes": 0,
+    "external_metadata_provider_calls": 0,
+    "gallery_dl_calls": 0,
+    "localization": 0,
+    "media_downloads": 0,
+    "media_imports": 0,
+    "pixiv_calls": 0,
+    "production_writes": 0
+  },
+  "pair_accounting": {
+    "accounting_equality_passed": true,
+    "candidate_pair_count": 1214,
+    "cannot_link_count": 0,
+    "deferred_nonblocking_count": 0,
+    "duplicate_pair_count": 0,
+    "invalid_disposition_count": 0,
+    "missing_pair_count": 0,
+    "must_link_count": 1214,
+    "outside_manifest_pair_count": 0
+  },
+  "phase": "4.5-SCV2-ML2",
+  "pipeline_contract": {
+    "active_blockers": [],
+    "contract_id": "ml2_multilingual_identity_candidate_closure_contract_v1",
+    "production_readiness_claimed": false,
+    "route_approved": false,
+    "safe_to_merge": true,
+    "scale_readiness_claimed": false,
+    "semantic_completeness_claimed": false,
+    "status": "target_met_multilingual_identity_candidate_closure",
+    "target_met": true
+  },
+  "r2r_reuse": {
+    "accepted_dispositions_mutated": false,
+    "accepted_pair_count": 3319,
+    "disposition_conflict_count": 0,
+    "invalidated_incompatible_cache_count": 0,
+    "new_deterministic_pair_count": 1214,
+    "new_llm_pair_count": 0,
+    "reused_accepted_pair_count": 0,
+    "semantic_prior_only_count": 0
+  },
+  "repository_sync_preflight": {
+    "ignored_path_count": 115640,
+    "ignored_path_list_sha256": "6fe26aab21074d83bc0e500fa6e54b76901609badc5e20d351edf02861a8bd59",
+    "origin_main_sha": "f6cae3483f4cf75974746a4cc82222f28e399b96",
+    "previous_branch": "codex/scv2-ml1-multilingual-alias-source-metadata-closure",
+    "previous_head": "0a068c6ed29892c82d25fc5264258b78250fcf92",
+    "remote_tracking_branch": "origin/main",
+    "staged_change_count_after_switch": 0,
+    "status": "passed_synchronization_preflight",
+    "task_branch": "codex/scv2-ml2-multilingual-identity-candidate-closure",
+    "task_branch_starting_sha": "f6cae3483f4cf75974746a4cc82222f28e399b96",
+    "tracked_change_count_after_switch": 0,
+    "tracked_tree_identical_across_transition": true,
+    "untracked_path_count": 367,
+    "untracked_path_list_sha256": "3b8043444f1d4c6f9fb45ddc794c5ae621f4da3825436ecbc40cba580df0cc0a",
+    "user_owned_untracked_and_ignored_preserved": true
+  },
+  "review_pack": {
+    "checksum_member_count": 13,
+    "checksum_payload_equality": true,
+    "declared_member_count": 15,
+    "declared_zip_equality": true,
+    "passed": true,
+    "zip_member_count": 15
+  },
+  "route_decision": {
+    "next_phase_started": false,
+    "recommended_next_route": "controlled_scale_validation_10k_to_15k_media",
+    "route_approved": false
+  },
+  "search_validation": {
+    "and_leakage_count": 0,
+    "creator_context_accuracy_after": 1.0,
+    "creator_context_accuracy_before": 0.62766,
+    "evidence_absent_deferred_count": 1,
+    "invalid_or_deleted_only_result_count": 0,
+    "rejected_only_result_count": 0,
+    "runtime_result_count": 512,
+    "search_caused_identity_mutation_count": 0,
+    "search_only": {
+      "family_count_after": 3642,
+      "family_count_before": 3642,
+      "passed": true,
+      "regression_count": 0,
+      "rejected_only_result_count": 0,
+      "superseded_only_result_count": 0,
+      "unsupported_result_count": 0
+    },
+    "search_only_regression_count": 0,
+    "superseded_only_result_count": 0,
+    "supported_evidence_runtime_success_coverage": 1.0,
+    "supported_result_count": 512,
+    "unsupported_result_count": 0
+  },
+  "title": "SCV2-ML2: Multilingual Identity Candidate Closure",
+  "validation": {
+    "browser_validation": "not_required_no_ui_changes",
+    "changed_python_py_compile": "passed",
+    "focused_pytest_failed": 0,
+    "focused_pytest_passed": 56,
+    "fresh_schema_passed": true,
+    "json_parse_passed": true,
+    "ml2_contract_error_count": 0,
+    "ml2_contract_errors": [],
+    "ml2_contract_passed": true,
+    "public_redaction_passed": true,
+    "review_pack_integrity_passed": true
+  }
+}

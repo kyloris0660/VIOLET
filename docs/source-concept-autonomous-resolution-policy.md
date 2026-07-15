@@ -25,6 +25,14 @@ total_candidate_pairs
 
 Missing, duplicate, or silently discarded relations fail the phase contract.
 
+For multilingual creator closure, `(provider, stable_creator_id, creator_role)`
+is the deterministic source-layer identity anchor. Canonical display names,
+account handles, and trusted historical names are observations of that anchor,
+not independent identities. Candidate generation connects each unique alias to
+the anchor in linear star topology; it must not create an all-pairs alias graph.
+Shared surface strings across different anchors stay component-local and cannot
+authorize a cross-stable-ID union.
+
 ## Materialization And Evidence Retention
 
 Materialized `SourceConcept` rows contain only identity components that pass

@@ -93,6 +93,12 @@ local media item supported by exact creator metadata, including separate creator
 sharing a display name. Creator-name/account plus character/work terms intersect
 at media level. Creator evidence remains source-layer evidence, not Entity truth.
 
+SCV2-ML2 validates creator-context recall conditionally on trusted evidence. A
+case with sufficient creator and character/work evidence must succeed through
+the real runtime search path. A genuinely evidence-absent case may be retained as
+`deferred_nonblocking_evidence_absent`; it must not be counted as an implementation
+success or repaired by copying an expected result set into an alias index.
+
 ## Invalid Results
 
 A result is invalid when its queried term lacks legitimate support, rejected or

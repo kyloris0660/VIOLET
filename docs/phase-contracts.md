@@ -35,6 +35,7 @@ extend a contract first.
 - `r2_source_concept_graph_remediation_contract_v1`
 - `r2r_autonomous_recall_search_closure_contract_v1`
 - `ml1_multilingual_alias_source_metadata_closure_contract_v1`
+- `ml2_multilingual_identity_candidate_closure_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`
@@ -235,6 +236,46 @@ reproducible, cache-first execution whose projected aggregate cost including
 retries is at most USD 10.00, with no fallback, image upload, production/truth
 write, or semantic scope expansion. No ML1 LLM call is expected while candidate
 remediation is deferred.
+
+## ML2 Multilingual Identity Candidate Closure Gate
+
+`ml2_multilingual_identity_candidate_closure_contract_v1` is the focused
+SCV2-ML2 gate. It requires a fresh isolated ML2 dev/test clone, immutable
+accepted ML1/R2R inputs, exact creator-family and alias-observation manifests,
+stable `(provider, stable_creator_id, creator_role)` anchors, and complete
+candidate-pair and family accounting. Candidate growth must remain linear by
+using one stable anchor per family rather than all-pairs alias expansion.
+
+Target completion requires all 606 identity-eligible creator families to have
+exactly one terminal outcome, all candidate pairs to be `must_link`,
+`cannot_link`, or `deferred_nonblocking`, all 30 ML1 candidate-generation gaps
+to be explained and closed, and the accepted 12 existing identity families to
+retain their IDs and constraint safety. It also requires zero multi-stable-ID,
+direct/transitive cannot-link, cross-role, unknown-role, or giant-component
+violations; zero materialized `needs_review`; and a mutation-free idempotent
+second execution with identical component and disposition fingerprints.
+
+Search completion is evidence-conditioned rather than denominator-tuned. Every
+creator-context case with sufficient trusted evidence must succeed through the
+real runtime path; evidence-absent cases may only be explicitly
+`deferred_nonblocking_evidence_absent`. Search-only families must remain
+unchanged, and unsupported, rejected-only, superseded-only, AND-leaking, or
+search-caused identity mutations fail the contract.
+
+The ML2 write allowlist is limited to source-name observations and
+SourceConcept-owned concepts, signals, links, aliases, evidence, search-index,
+and run-ledger rows in the isolated clone. Provider/Pixiv/gallery-dl calls,
+production writes, Entity or `media_tags` truth writes, import, AI tagging,
+classification, localization, source/iCloud mutation, and downstream route
+authorization are forbidden. LLM adjudication is allowed only for a finite
+evidence-insufficient manifest under the existing USD-10 policy; a zero-item
+manifest must initialize no provider and make zero calls.
+
+The target claim additionally requires fixed/forbidden table fingerprints,
+public redaction, exact JSON parsing, an integrity-checked private review pack,
+and independent contract blocker derivation. Its terminal status is
+`target_met_multilingual_identity_candidate_closure` with `target_met=true`,
+`safe_to_merge=true`, `route_approved=false`, and no active blockers.
 
 ## Route Gate
 

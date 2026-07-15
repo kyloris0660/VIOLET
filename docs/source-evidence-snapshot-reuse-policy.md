@@ -48,6 +48,13 @@ candidate accounting is recomputed from current rows; already complete metadata
 is never reacquired. Missing/retryable Pixiv work IDs and genuinely new alias
 pairs produce separate acquisition and LLM approval manifests.
 
+For SCV2-ML2, both the accepted R2R database and accepted ML1 database are
+immutable inputs. ML2 clones the ML1 database into a fresh isolated dev/test
+database, verifies fixed and forbidden table fingerprints, and writes only
+allowlisted source-name observation and SourceConcept-owned output tables.
+Metadata acquisition, accepted R2R disposition mutation, and production/source
+mutation are separate approvals and are not implied by creator identity closure.
+
 Reusable Pixiv evidence is promoted by stable provider/work/page identity and
 content fingerprint, never development row IDs. Raw/normalized provider facts,
 creator ID/name/account/profile identity, titles, source tags, parser version,
