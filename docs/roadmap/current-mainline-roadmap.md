@@ -82,21 +82,36 @@ inputs; identity closure does not authorize acquisition replay.
 `SCV2-ML2: Multilingual Identity Candidate Closure` consumed `606`
 identity-eligible families, `3,642` search-only translation families, and `30`
 candidate-generation gaps from the immutable ML1 snapshot. It materialized the
-creator families in a separate ML2 clone through deterministic stable-provider
-anchors, without provider acquisition or Entity/truth promotion.
+creator families in the fresh review-fix clone
+`blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` through
+deterministic stable-provider anchors, without provider acquisition or
+Entity/truth promotion. The first ML2 database remains immutable, preserved,
+and superseded rather than patched in place.
 
 ML2 completed:
 
-1. `606 = 12 already materialized + 594 new + 0 cannot-link + 0 deferred`
+1. `606 = 12 already materialized + 594 new + 0 cannot-link + 0 deferred + 0 fragmented deferred`
    creator identity families;
-2. `1214 = 1214 must_link + 0 cannot_link + 0 deferred` candidate pairs under
+2. `1213 = 1213 must_link + 0 cannot_link + 0 deferred` candidate pairs under
    linear star-topology generation;
-3. all 30 candidate-generation gaps closed with zero unexplained remainder;
-4. creator historical display/account aliases retained under stable provider IDs;
-5. `93 / 93` evidence-supported creator + character/work runtime cases passed,
+3. exact immutable R2R reuse evidence passed as
+   `3319 = 1522 must_link + 1791 cannot_link + 6 deferred_nonblocking`, with
+   zero reused-pair conflicts and no accepted-disposition mutation;
+4. active-only concept lookup found zero inactive reuse and zero fragmented
+   active families; 310 partial historical references were diagnostics, not reuse;
+5. all 12 existing concepts and every touched active component passed full
+   historical-link purity and graph-safety audit;
+6. `2065 / 2065` exact concept-media support rows bind every materialized
+   identity to its trusted distinct media set without alias-by-media expansion;
+7. SourceConcept-only retrieval passed for `606` families and `1213` aliases at
+   `1.0` expected-media coverage, with zero inert, missing, or unsupported media;
+8. all 30 candidate-generation gaps closed with zero unexplained remainder;
+9. creator historical display/account aliases retained under stable provider IDs;
+10. `93 / 93` evidence-supported creator + character/work runtime cases passed,
    with one evidence-absent case explicitly deferred nonblocking;
-6. 3,642 search-only families preserved with zero regression or AND leakage;
-7. zero LLM/provider calls because the evidence-insufficient pair manifest was empty.
+11. 3,642 search-only families preserved with zero regression or AND leakage;
+12. public redaction, contract, idempotency, fixed/forbidden comparison, and
+    review-pack integrity passed; provider, Pixiv, gallery-dl, and LLM calls were zero.
 
 The executable contract reports
 `target_met_multilingual_identity_candidate_closure`, `target_met=true`,

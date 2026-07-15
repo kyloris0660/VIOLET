@@ -59,13 +59,24 @@ evidence promotion, and the bounded USD-10 LLM policy are defined in
 `docs/pixiv-metadata-ingestion-and-promotion-policy.md`.
 
 ML1 did not require semantic perfection, universal recall, or complete alias
-materialization. ML2 closed the measured creator identity scope as
-`606 = 12 existing + 594 new`, accounted all `1214` candidate pairs as
-`must_link`, closed all 30 candidate-generation gaps, and achieved `93 / 93`
-success for creator-context cases with sufficient evidence. One evidence-absent
-case is explicitly nonblocking. The 3,642 search-only families remained
-unchanged, with zero unsupported/rejected/superseded result, AND leakage, or
-search mutation. The ML2 contract status is
+materialization. The fresh ML2 review-fix execution closed the measured creator
+identity scope as `606 = 12 existing + 594 new`, accounted all `1213` candidate
+pairs as `must_link`, and bound the materialized concepts to `2065 / 2065`
+distinct trusted media support rows. SourceConcept-only retrieval covered all
+606 families and 1213 aliases at `1.0` expected-media coverage with zero inert,
+missing, or unsupported media. All 12 accepted historical components passed
+full-component audit; inactive reuse, active fragmentation, cannot-component
+violations, and postclosure duplicate active identities were zero. Exact R2R
+reuse evidence remained `3319 = 1522 must_link + 1791 cannot_link + 6
+deferred_nonblocking`. ML2 also closed all 30 candidate-generation gaps and
+achieved `93 / 93` success for creator-context cases with sufficient evidence.
+One evidence-absent case is explicitly nonblocking. The 3,642 search-only
+families remained unchanged, with zero unsupported/rejected/superseded result,
+AND leakage, or search mutation. The initial ML2 database is preserved as
+superseded evidence; the repair ran only on the fresh
+`blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` clone. Public
+redaction, idempotency, fixed/forbidden comparison, and review-pack integrity
+passed. The ML2 contract status is
 `target_met_multilingual_identity_candidate_closure`, with `target_met=true`,
 `safe_to_merge=true`, `route_approved=false`, and no active blockers. Six future
 hardening items remain outside ML2:

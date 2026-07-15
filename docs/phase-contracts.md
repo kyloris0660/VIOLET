@@ -246,14 +246,40 @@ stable `(provider, stable_creator_id, creator_role)` anchors, and complete
 candidate-pair and family accounting. Candidate growth must remain linear by
 using one stable anchor per family rather than all-pairs alias expansion.
 
-Target completion requires all 606 identity-eligible creator families to have
-exactly one terminal outcome, all candidate pairs to be `must_link`,
-`cannot_link`, or `deferred_nonblocking`, all 30 ML1 candidate-generation gaps
-to be explained and closed, and the accepted 12 existing identity families to
-retain their IDs and constraint safety. It also requires zero multi-stable-ID,
-direct/transitive cannot-link, cross-role, unknown-role, or giant-component
-violations; zero materialized `needs_review`; and a mutation-free idempotent
-second execution with identical component and disposition fingerprints.
+Target completion requires every identity-eligible creator family to have
+exactly one terminal outcome and every candidate pair to be `must_link`,
+`cannot_link`, or `deferred_nonblocking`. A family with multiple active
+pre-existing components must be safely deferred as
+`deferred_nonblocking_existing_component_fragmentation`; the runner may not
+create a third component or silently merge accepted history. All ML1
+candidate-generation gaps must be explained and closed. Existing concepts may
+be reused only when active and after auditing the complete historical component.
+The contract requires zero inactive reuse and zero duplicate active identity
+concepts among materialized families.
+
+R2R reuse proof is exact and fail-closed: the immutable database snapshot and a
+compatible private manifest, when present, must agree on
+`3319 = 1522 must_link + 1791 cannot_link + 6 deferred_nonblocking`, the
+snapshot fingerprint, actual reused-pair count, conflict count, and immutable
+accepted dispositions. Missing or disagreeing proof activates
+`blocked_ml2_r2r_reuse_evidence`; no fixed-count fallback is permitted.
+
+Every touched active concept is audited with all active/materialized historical
+links and signals, not only the current run. The graph audit consumes the exact
+final-ledger cannot-link pairs and distinguishes direct disposition conflicts,
+cannot endpoints in one component, and transitive violations. Both
+`full_touched_component_audit_passed` and
+`existing_12_full_component_audit_passed` are required. Empty canonical alias
+keys cannot become candidates, collision keys, aliases, signals, or search rows.
+
+Runtime membership requires exact trusted concept-media evidence, one active
+row per distinct concept/media/source-metadata-record tuple, linear in media
+rather than alias-by-media. `SourceConcept.media_count` must equal the distinct
+supported media set. The SourceConcept-only audit disables direct source-name
+and tag fallback, requires all materialized families and non-empty aliases to
+retrieve exactly their trusted media, rejects search-inert concepts and
+missing/unsupported media, and samples media-detail SourceConcept visibility.
+The second execution must be mutation-free and create no duplicate support.
 
 Search completion is evidence-conditioned rather than denominator-tuned. Every
 creator-context case with sufficient trusted evidence must succeed through the
@@ -272,8 +298,16 @@ evidence-insufficient manifest under the existing USD-10 policy; a zero-item
 manifest must initialize no provider and make zero calls.
 
 The target claim additionally requires fixed/forbidden table fingerprints,
-public redaction, exact JSON parsing, an integrity-checked private review pack,
-and independent contract blocker derivation. Its terminal status is
+actual argument-safe Git synchronization evidence, preservation of every
+pre-edit user-owned path, exact JSON parsing, and independent contract blocker
+derivation. Public publication is fail-closed: the complete proposed public
+payload must pass redaction before any public report, summary, handoff, roadmap,
+or review pack is written. A failure activates
+`blocked_ml2_public_redaction` and permits only a private safe-code diagnostic.
+The contract also derives `blocked_ml2_runtime_media_binding`,
+`blocked_ml2_existing_component_fragmentation`,
+`blocked_ml2_environment_isolation`, and `blocked_ml2_graph_safety` from their
+independent evidence. Its terminal status is
 `target_met_multilingual_identity_candidate_closure` with `target_met=true`,
 `safe_to_merge=true`, `route_approved=false`, and no active blockers.
 
