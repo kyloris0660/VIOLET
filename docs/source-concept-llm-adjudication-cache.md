@@ -96,3 +96,9 @@ SCV2-ML1 reuses all 3,319 accepted R2R dispositions. Its initial audit must not
 initialize or call an LLM. Only genuinely new candidate pairs discovered by the
 multilingual recall audit may enter a new exact manifest, cost projection, and
 `blocked_llm_approval_required` gate. A Pixiv metadata gap is not an LLM gap.
+
+SCV2-ML2 first resolves creator candidates deterministically from stable provider
+creator IDs. Only evidence-insufficient ambiguous pairs may enter a new finite
+LLM manifest under the existing primary-provider USD-10 policy. When that
+manifest is empty, provider initialization, calls, retries, and spend must all
+remain zero; deterministic stable-ID pairs are never sent for LLM adjudication.

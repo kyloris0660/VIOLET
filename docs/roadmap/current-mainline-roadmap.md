@@ -1,8 +1,8 @@
 # Current Mainline Roadmap
 
-Status: PR #135 is merged at `5bbbb8ff13b140ea77a839757603714bfdd87181`.
-PR #136 has completed its project-lead-directed SCV2-ML1 closeout on its existing
-branch and awaits the project lead's final merge decision.
+Status: PR #136 is merged in `origin/main` at
+`f6cae3483f4cf75974746a4cc82222f28e399b96`. SCV2-ML2 has completed its
+separately governed isolated execution and awaits project-lead PR adjudication.
 
 ## Accepted Mainline
 
@@ -13,6 +13,9 @@ branch and awaits the project lead's final merge decision.
    It accepted complete autonomous pair disposition, constraint-safe non-human
    materialization, immutable-evidence proof, and a disabled-by-default source
    evidence fallback. It did not authorize production or full-library work.
+5. SCV2-ML1 merged in PR #136 at
+   `f6cae3483f4cf75974746a4cc82222f28e399b96`. Its accepted isolated database is
+   an immutable input to ML2; ML2 did not replay acquisition.
 
 ## Corrected Route Semantics
 
@@ -28,7 +31,7 @@ as generic contamination.
 - R2R broad-union/cannot-contamination counts remain historical diagnostics and
   are not product-failure gates under the corrected policy.
 
-## Current Closeout
+## Accepted ML1 Foundation
 
 `SCV2-ML1: Multilingual Alias and Source-Metadata Closure`
 
@@ -57,7 +60,7 @@ The final contract status is
 `safe_to_merge=true`, `route_approved=true`, and `active_blockers=[]`. Route
 approval is only for a separately governed `SCV2-ML2` phase; it does not authorize
 production, scale, Provider-2, Entity/truth promotion, or another acquisition
-replay. Final merge adjudication remains with the project lead.
+replay. PR #136 is merged and its accepted evidence is now immutable input.
 
 ML1 owns:
 
@@ -71,32 +74,50 @@ ML1 owns:
   links or conflict winners;
 - production evidence promotion policy and a bounded USD-10 LLM policy.
 
-The remaining next-phase quality question is multilingual alias
-candidate-generation recall (`30` known gaps) and creator SourceConcept closure,
-not Pixiv acquisition replay and not whether one shared bare name returns media
-from several correctly separated identities.
+PR #136 is merged. Its ML1 database and accepted R2R evidence are immutable ML2
+inputs; identity closure does not authorize acquisition replay.
 
-## Next Approved Phase
+## Current ML2 Closeout
 
-`SCV2-ML2: Multilingual Identity Candidate Closure` is the only approved next
-route. Its accepted inputs are `606` identity-eligible families, `3,642`
-search-only translation families, runtime equivalence `0.897363`, `30` remaining
-candidate-generation gaps, complete creator name/account source preservation,
-and creator + character/work intersection below acceptance. SourceConcept remains
-source-layer only; no Entity or truth promotion is authorized.
+`SCV2-ML2: Multilingual Identity Candidate Closure` consumed `606`
+identity-eligible families, `3,642` search-only translation families, and `30`
+candidate-generation gaps from the immutable ML1 snapshot. It materialized the
+creator families in the fresh review-fix clone
+`blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` through
+deterministic stable-provider anchors, without provider acquisition or
+Entity/truth promotion. The first ML2 database remains immutable, preserved,
+and superseded rather than patched in place.
 
-ML2 priorities are:
+ML2 completed:
 
-1. deterministic stable-provider-identity materialization before LLM use;
-2. close the 30 signal/candidate-generation gaps;
-3. creator historical name/account alias closure;
-4. character/work/copyright multilingual family closure;
-5. creator + character/work AND-search recall;
-6. bounded LLM only for evidence-insufficient ambiguous pairs under the existing
-   finite-manifest primary-provider USD-10 policy.
+1. `606 = 12 already materialized + 594 new + 0 cannot-link + 0 deferred + 0 fragmented deferred`
+   creator identity families;
+2. `1213 = 1213 must_link + 0 cannot_link + 0 deferred` candidate pairs under
+   linear star-topology generation;
+3. exact immutable R2R reuse evidence passed as
+   `3319 = 1522 must_link + 1791 cannot_link + 6 deferred_nonblocking`, with
+   zero reused-pair conflicts and no accepted-disposition mutation;
+4. active-only concept lookup found zero inactive reuse and zero fragmented
+   active families; 310 partial historical references were diagnostics, not reuse;
+5. all 12 existing concepts and every touched active component passed full
+   historical-link purity and graph-safety audit;
+6. `2065 / 2065` exact concept-media support rows bind every materialized
+   identity to its trusted distinct media set without alias-by-media expansion;
+7. SourceConcept-only retrieval passed for `606` families and `1213` aliases at
+   `1.0` expected-media coverage, with zero inert, missing, or unsupported media;
+8. all 30 candidate-generation gaps closed with zero unexplained remainder;
+9. creator historical display/account aliases retained under stable provider IDs;
+10. `93 / 93` evidence-supported creator + character/work runtime cases passed,
+   with one evidence-absent case explicitly deferred nonblocking;
+11. 3,642 search-only families preserved with zero regression or AND leakage;
+12. public redaction, contract, idempotency, fixed/forbidden comparison, and
+    review-pack integrity passed; provider, Pixiv, gallery-dl, and LLM calls were zero.
 
-This closeout creates no ML2 branch, implementation, provider run, or production
-authorization.
+The executable contract reports
+`target_met_multilingual_identity_candidate_closure`, `target_met=true`,
+`safe_to_merge=true`, `route_approved=false`, and `active_blockers=[]`. This
+closeout creates no production/full-library/provider authorization and starts no
+next phase.
 
 Six reviewer hardening items are deliberately bounded debt, not ML1 fixes:
 cross-pass spacing, manifest-scope outcome keys, conflict mismatch persistence,
@@ -106,7 +127,8 @@ and terminal/private classifier ordering are
 `PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING`. Current evidence is unaffected:
 main/conflict work overlap is 0, provider mismatch and systemic stop are 0,
 pending/retryable/missing are 0, the mandatory population is filename/path
-anchored, and neither this closeout nor ML2 authorizes provider calls.
+anchored. ML2 made no provider calls, so the provider-execution gates remain
+deferred.
 
 ## Provider-2 Deferral
 
@@ -120,9 +142,8 @@ it must never represent recovered Danbooru metadata as original Pixiv metadata.
 
 ## Stop Boundary
 
-Do not start PX1-B broad acquisition, Provider-2, general scale-up, Entity bridge,
-production, full-library execution, truth promotion, media import, AI tagging,
-classification, localization, or another phase from ML1. PR #136's authorization
-is limited to its exact corrected Pixiv manifest. New multilingual candidate
-remediation, creator SourceConcept closure, and broad/full-library work remain a
-separately approved next phase.
+Do not start PX1-B broad acquisition, Provider-2, Controlled Scale Validation,
+general scale-up, Entity bridge, production, full-library execution, truth
+promotion, media import, AI tagging, classification, localization, or another
+phase from ML2. The recommended 10k-15k Controlled Scale Validation remains a
+project-lead decision and requires a separate approved phase.

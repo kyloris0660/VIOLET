@@ -21,16 +21,17 @@ The finished system should:
 
 ## Current Active Roadmap
 
-PR #135 is merged at `5bbbb8ff13b140ea77a839757603714bfdd87181`.
-SCV2-R2R autonomous closure is accepted, and the current approved phase is
-`SCV2-ML1: Multilingual Alias and Source-Metadata Closure`. The canonical current
-sequence lives in `docs/roadmap/current-mainline-roadmap.md`.
+PR #136 is merged in `origin/main` at
+`f6cae3483f4cf75974746a4cc82222f28e399b96`. SCV2-ML2 has completed its isolated
+SourceConcept-only execution and is the current reviewable phase. The canonical
+current sequence lives in `docs/roadmap/current-mainline-roadmap.md`.
 
 The former SR1 interpretation is superseded: identity union and search-result
 union are different. `cannot_link` blocks identity union, but a bare name returns
 the union of every media item with legitimate direct or accepted-alias support;
-additional terms disambiguate by media-level AND intersection. The primary ML1
-quality question is multilingual alias coverage and candidate-generation recall.
+additional terms disambiguate by media-level AND intersection. The accepted
+retrieval rule is the basis for ML2's multilingual creator identity closure and
+evidence-conditioned search validation.
 See `docs/source-concept-tag-search-semantics.md`.
 
 PR #136 executed its exact `1,713`-work main and 3-work conflict metadata-only
@@ -51,18 +52,34 @@ query-visible values with no silent drops. Current
 status is `partial_ml1_pixiv_metadata_foundation_complete`, with
 `target_met=false`, `safe_to_merge=true`, `route_approved=true`, and
 `active_blockers=[]`; route approval is limited to a separately governed
-SCV2-ML2 phase. Historical Pixiv/gallery-dl calls remain `1,817`, while this
-closeout added zero external calls. No LLM, media download, production, Entity,
-or truth execution occurred. Continuous Pixiv-on-import completeness, production
+SCV2-ML2 phase. Historical Pixiv/gallery-dl calls remain `1,817`; ML2 added zero
+external calls and performed no LLM, media download, production, Entity, or truth
+execution. Continuous Pixiv-on-import completeness, production
 evidence promotion, and the bounded USD-10 LLM policy are defined in
 `docs/pixiv-metadata-ingestion-and-promotion-policy.md`.
 
-ML1 does not require semantic perfection, universal recall, or complete alias
-materialization. Its accepted search boundary is direct/accepted support only,
-no rejected-only or superseded-only result, media-level AND constraints, and no
-search-caused identity mutation. The remaining creator/character/work recall,
-multilingual equivalence, and 30 candidate-generation gaps are measured ML2
-inputs. Six future hardening items remain outside PR #136:
+ML1 did not require semantic perfection, universal recall, or complete alias
+materialization. The fresh ML2 review-fix execution closed the measured creator
+identity scope as `606 = 12 existing + 594 new`, accounted all `1213` candidate
+pairs as `must_link`, and bound the materialized concepts to `2065 / 2065`
+distinct trusted media support rows. SourceConcept-only retrieval covered all
+606 families and 1213 aliases at `1.0` expected-media coverage with zero inert,
+missing, or unsupported media. All 12 accepted historical components passed
+full-component audit; inactive reuse, active fragmentation, cannot-component
+violations, and postclosure duplicate active identities were zero. Exact R2R
+reuse evidence remained `3319 = 1522 must_link + 1791 cannot_link + 6
+deferred_nonblocking`. ML2 also closed all 30 candidate-generation gaps and
+achieved `93 / 93` success for creator-context cases with sufficient evidence.
+One evidence-absent case is explicitly nonblocking. The 3,642 search-only
+families remained unchanged, with zero unsupported/rejected/superseded result,
+AND leakage, or search mutation. The initial ML2 database is preserved as
+superseded evidence; the repair ran only on the fresh
+`blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` clone. Public
+redaction, idempotency, fixed/forbidden comparison, and review-pack integrity
+passed. The ML2 contract status is
+`target_met_multilingual_identity_candidate_closure`, with `target_met=true`,
+`safe_to_merge=true`, `route_approved=false`, and no active blockers. Six future
+hardening items remain outside ML2:
 `PRE-NEXT-PROVIDER-EXECUTION-HARDENING` owns cross-pass request spacing,
 manifest-scope outcome keys, conflict mismatch persistence, and terminal/private
 classifier ordering; `CONTROLLED-SCALE-AUDIT-DEBT` owns denominator treatment;

@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .contract_registry import (
     ML1_MULTILINGUAL_ALIAS_SOURCE_METADATA_CLOSURE_STATUSES,
+    ML2_MULTILINGUAL_IDENTITY_CANDIDATE_CLOSURE_STATUSES,
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STATUSES,
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
     R2R_AUTONOMOUS_RECALL_SEARCH_CLOSURE_STATUSES,
@@ -11624,6 +11625,327 @@ def _check_s3a_m2_r_operator_validation(_contract: PhaseContract, summary: Mappi
         )
 
 
+def _check_ml2_multilingual_identity_candidate_closure(
+    contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    """Independently validate current-state ML2 repair evidence."""
+
+    pipeline = _get(summary, "pipeline_contract", {})
+    status = pipeline.get("status") if isinstance(pipeline, Mapping) else None
+    if status not in ML2_MULTILINGUAL_IDENTITY_CANDIDATE_CLOSURE_STATUSES:
+        result.fail(
+            "ml2_status_invalid",
+            "ML2 status must use the registered closure vocabulary.",
+            path="pipeline_contract.status",
+            actual=status,
+        )
+    blockers: list[str] = []
+
+    sync = _get(summary, "repository_sync_preflight", {})
+    sync_ok = bool(
+        isinstance(sync, Mapping)
+        and sync.get("status") == "passed_synchronization_preflight"
+        and sync.get("evidence_source") == "actual_git_subprocess"
+        and sync.get("repository_root_verified") is True
+        and sync.get("current_branch") == "codex/scv2-ml2-multilingual-identity-candidate-closure"
+        and sync.get("base_is_ancestor") is True
+        and sync.get("actual_merge_base") == "f6cae3483f4cf75974746a4cc82222f28e399b96"
+        and _as_int(sync.get("tracked_change_count"), default=-1) == 0
+        and _as_int(sync.get("staged_change_count"), default=-1) == 0
+        and _as_int(sync.get("behind"), default=-1) == 0
+        and sync.get("preexisting_user_owned_paths_preserved") is True
+        and _as_int(sync.get("preexisting_user_owned_path_missing_count"), default=-1) == 0
+        and all(
+            isinstance(sync.get(key), str) and len(sync.get(key)) == length
+            for key, length in (
+                ("current_head", 40),
+                ("remote_head", 40),
+                ("actual_merge_base", 40),
+                ("preexisting_untracked_path_list_sha256", 64),
+                ("preexisting_ignored_path_list_sha256", 64),
+            )
+        )
+    )
+    if not sync_ok:
+        blockers.append("blocked_ml2_environment_isolation")
+    isolation = _get(summary, "environment_isolation", {})
+    if not (
+        isinstance(isolation, Mapping)
+        and isolation.get("passed") is True
+        and isolation.get("production_profile_active") is False
+        and isolation.get("working_database_is_fresh_separate_clone") is True
+        and all(
+            isinstance(isolation.get(key), str) and len(isolation.get(key)) == 64
+            for key in (
+                "source_database_fingerprint",
+                "superseded_ml2_database_fingerprint",
+            )
+        )
+    ):
+        blockers.append("blocked_ml2_environment_isolation")
+
+    manifests = _get(summary, "manifest_fingerprints", {})
+    required_manifests = (
+        "creator-identity-family-manifest.jsonl",
+        "creator-identity-alias-observation-manifest.jsonl",
+        "candidate-generation-gap-manifest.jsonl",
+        "creator-context-search-case-manifest.jsonl",
+        "search-only-family-regression-manifest.jsonl",
+        "candidate-pair-ledger.jsonl",
+        "family-closure-ledger.jsonl",
+        "creator-context-closure-ledger.jsonl",
+    )
+    if not isinstance(manifests, Mapping) or any(
+        not isinstance(manifests.get(name), Mapping)
+        or type(manifests[name].get("count")) is not int
+        or manifests[name]["count"] < 0
+        or not isinstance(manifests[name].get("sha256"), str)
+        or len(manifests[name]["sha256"]) != 64
+        for name in required_manifests
+    ):
+        blockers.append("blocked_ml2_input_manifest_invalid")
+
+    baseline = _get(summary, "baseline", {})
+    if not (
+        isinstance(baseline, Mapping)
+        and baseline.get("identity_family_count_before") == baseline.get("identity_family_count_after")
+        and baseline.get("search_only_family_count_before") == baseline.get("search_only_family_count_after")
+        and _as_int(baseline.get("accepted_r2r_disposition_count"), default=-1) == 3319
+    ):
+        blockers.append("blocked_ml2_baseline_drift")
+
+    r2r = _get(summary, "r2r_reuse", {})
+    if not (
+        isinstance(r2r, Mapping)
+        and _as_int(r2r.get("accepted_pair_count"), default=-1) == 3319
+        and _as_int(r2r.get("accepted_must_link_count"), default=-1) == 1522
+        and _as_int(r2r.get("accepted_cannot_link_count"), default=-1) == 1791
+        and _as_int(r2r.get("accepted_deferred_nonblocking_count"), default=-1) == 6
+        and _as_float(r2r.get("candidate_disposition_coverage"), default=0.0) == 1.0
+        and isinstance(r2r.get("snapshot_fingerprint"), str)
+        and len(r2r.get("snapshot_fingerprint")) == 64
+        and r2r.get("database_snapshot_crosscheck_passed") is True
+        and r2r.get("private_pair_manifest_crosscheck_passed") is True
+        and r2r.get("cache_only_rebuild_passed") is True
+        and _as_int(r2r.get("provider_attempt_count"), default=-1) == 0
+        and _as_int(r2r.get("disposition_conflict_count"), default=-1) == 0
+        and r2r.get("accepted_dispositions_mutated") is False
+        and r2r.get("preserved_r2r_artifacts_mutated") is False
+        and isinstance(r2r.get("preserved_r2r_artifact_fingerprint"), str)
+        and len(r2r.get("preserved_r2r_artifact_fingerprint")) == 64
+        and type(r2r.get("reused_accepted_pair_count")) is int
+    ):
+        blockers.append("blocked_ml2_r2r_reuse_evidence")
+
+    pair = _get(summary, "pair_accounting", {})
+    if not (
+        isinstance(pair, Mapping)
+        and pair.get("accounting_equality_passed") is True
+        and not any(
+            _as_int(pair.get(key), default=-1)
+            for key in (
+                "duplicate_pair_count",
+                "missing_pair_count",
+                "outside_manifest_pair_count",
+                "invalid_disposition_count",
+            )
+        )
+    ):
+        blockers.append("blocked_ml2_pair_accounting")
+    family = _get(summary, "family_accounting", {})
+    if not (
+        isinstance(family, Mapping)
+        and family.get("accounting_equality_passed") is True
+        and not any(
+            _as_int(family.get(key), default=-1)
+            for key in (
+                "duplicate_family_count",
+                "missing_family_count",
+                "outside_manifest_family_count",
+                "invalid_outcome_count",
+            )
+        )
+    ):
+        blockers.append("blocked_ml2_pair_accounting")
+    growth = _get(summary, "candidate_growth", {})
+    if not (
+        isinstance(growth, Mapping)
+        and growth.get("linear_bound_passed") is True
+        and growth.get("all_pairs_alias_expansion_used") is False
+    ):
+        blockers.append("blocked_ml2_pair_accounting")
+    gaps = _get(summary, "candidate_gap_closure", {})
+    if not isinstance(gaps, Mapping) or any(
+        _as_int(gaps.get(key), default=-1)
+        for key in ("remaining_gap_count", "unexplained_gap_count")
+    ):
+        blockers.append("blocked_ml2_candidate_generation_gap")
+
+    active = _get(summary, "active_concept_audit", {})
+    if not isinstance(active, Mapping) or _as_int(active.get("inactive_concept_reuse_count"), default=-1) != 0:
+        blockers.append("blocked_ml2_existing_component_fragmentation")
+    graph = _get(summary, "graph_safety", {})
+    graph_zero_keys = (
+        "multi_stable_id_creator_component_count",
+        "unauthorized_cross_role_component_count",
+        "unknown_role_materialization_count",
+        "character_work_copyright_contamination_count",
+        "trusted_parent_lineage_failure_count",
+        "direct_disposition_conflict_count",
+        "cannot_endpoints_same_component_count",
+        "direct_cannot_violation_count",
+        "transitive_cannot_violation_count",
+        "postclosure_duplicate_active_identity_concept_count",
+    )
+    if not (
+        isinstance(graph, Mapping)
+        and graph.get("full_touched_component_audit_passed") is True
+        and graph.get("existing_12_full_component_audit_passed") is True
+        and graph.get("graph_audit_cannot_pair_count_equality_passed") is True
+        and _as_int(graph.get("graph_audit_cannot_pair_count"), default=-1)
+        == _as_int(pair.get("cannot_link_count"), default=-2)
+        and not any(_as_int(graph.get(key), default=-1) for key in graph_zero_keys)
+    ):
+        blockers.append("blocked_ml2_graph_safety")
+
+    support = _get(summary, "concept_media_support", {})
+    if not (
+        isinstance(support, Mapping)
+        and support.get("passed") is True
+        and support.get("per_media_evidence_linear_bound_passed") is True
+        and support.get("concept_media_support_row_count")
+        == support.get("expected_concept_media_support_row_count")
+        and not any(
+            _as_int(support.get(key), default=-1)
+            for key in (
+                "duplicate_concept_media_support_count",
+                "missing_sourceconcept_media_count",
+                "unsupported_sourceconcept_media_count",
+                "media_count_mismatch_count",
+                "support_provenance_failure_count",
+            )
+        )
+    ):
+        blockers.append("blocked_ml2_runtime_media_binding")
+    runtime = _get(summary, "sourceconcept_only_runtime", {})
+    materialized_family_count = (
+        _as_int(family.get("already_materialized_family_count"), default=0)
+        + _as_int(family.get("newly_materialized_family_count"), default=0)
+        + _as_int(family.get("cannot_link_closed_family_count"), default=0)
+    )
+    if not (
+        isinstance(runtime, Mapping)
+        and runtime.get("passed") is True
+        and runtime.get("sourceconcept_alias_family_count") == materialized_family_count
+        and _as_float(runtime.get("sourceconcept_alias_expected_media_coverage"), default=0.0) == 1.0
+        and runtime.get("media_detail_sourceconcept_visibility_passed") is True
+        and runtime.get("direct_source_name_or_tag_fallback_used") is False
+        and not any(
+            _as_int(runtime.get(key), default=-1)
+            for key in (
+                "search_inert_materialized_concept_count",
+                "missing_sourceconcept_media_count",
+                "unsupported_sourceconcept_media_count",
+                "media_detail_sample_failure_count",
+            )
+        )
+    ):
+        blockers.append("blocked_ml2_runtime_media_binding")
+
+    creator_context = _get(summary, "creator_context", {})
+    if not (
+        isinstance(creator_context, Mapping)
+        and creator_context.get("case_count") == creator_context.get("classification_count")
+        and _as_float(creator_context.get("supported_evidence_runtime_success_coverage"), default=0.0) == 1.0
+        and _as_int(creator_context.get("implementation_failure_with_sufficient_evidence_count"), default=-1) == 0
+        and _as_int(creator_context.get("unexplained_failure_count"), default=-1) == 0
+    ):
+        blockers.append("blocked_ml2_creator_context_recall")
+    search = _get(summary, "search_validation", {})
+    if not isinstance(search, Mapping) or any(
+        _as_int(search.get(key), default=-1)
+        for key in (
+            "search_only_regression_count",
+            "unsupported_result_count",
+            "rejected_only_result_count",
+            "superseded_only_result_count",
+            "invalid_or_deleted_only_result_count",
+            "and_leakage_count",
+            "search_caused_identity_mutation_count",
+        )
+    ):
+        blockers.append("blocked_ml2_search_safety")
+    mutation = _get(summary, "mutation_proof", {})
+    if not (
+        isinstance(mutation, Mapping)
+        and isolation.get("source_database_immutable") is True
+        and isolation.get("superseded_ml2_database_immutable") is True
+        and mutation.get("fixed_tables_unchanged") is True
+        and mutation.get("forbidden_truth_tables_unchanged") is True
+        and not mutation.get("changed_fixed_tables")
+        and not mutation.get("changed_forbidden_truth_tables")
+        and not any(
+            _as_int(mutation.get(key), default=-1)
+            for key in (
+                "production_write_count",
+                "entity_truth_write_count",
+                "media_tags_truth_write_count",
+                "source_or_icloud_write_count",
+            )
+        )
+    ):
+        blockers.append("blocked_ml2_fixed_evidence_changed")
+    idempotency = _get(summary, "idempotency", {})
+    if not (
+        isinstance(idempotency, Mapping)
+        and idempotency.get("passed") is True
+        and idempotency.get("fingerprints_equal") is True
+        and _as_int(idempotency.get("second_run_duplicate_media_support"), default=-1) == 0
+    ):
+        blockers.append("blocked_ml2_graph_safety")
+    operations = _get(summary, "operation_counts", {})
+    if not isinstance(operations, Mapping) or any(_as_int(value, default=-1) for value in operations.values()):
+        blockers.append("blocked_ml2_fixed_evidence_changed")
+    validation = _get(summary, "validation", {})
+    if not isinstance(validation, Mapping) or validation.get("public_redaction_passed") is not True:
+        blockers.append("blocked_ml2_public_redaction")
+
+    route = _get(summary, "route_decision", {})
+    if not isinstance(route, Mapping) or route.get("route_approved") is not False or route.get("next_phase_started") is not False:
+        result.fail(
+            "ml2_route_boundary_failed",
+            "ML2 cannot authorize or start Controlled Scale Validation.",
+            path="route_decision",
+        )
+    derived = sorted(set(blockers))
+    declared = sorted(set(pipeline.get("active_blockers") or ())) if isinstance(pipeline, Mapping) else []
+    if derived != declared:
+        result.fail(
+            "ml2_active_blockers_incomplete",
+            "ML2 active_blockers must exactly expose independently derived blockers.",
+            path="pipeline_contract.active_blockers",
+            expected=derived,
+            actual=declared,
+        )
+    target = bool(pipeline.get("target_met")) if isinstance(pipeline, Mapping) else False
+    safe = bool(pipeline.get("safe_to_merge")) if isinstance(pipeline, Mapping) else False
+    if derived:
+        if target or safe or status == "target_met_multilingual_identity_candidate_closure":
+            result.fail("ml2_target_overclaimed", "ML2 cannot claim target/safe with blockers.", path="pipeline_contract")
+    elif not (
+        target
+        and safe
+        and status == "target_met_multilingual_identity_candidate_closure"
+        and pipeline.get("route_approved") is False
+        and pipeline.get("semantic_completeness_claimed") is False
+        and pipeline.get("production_readiness_claimed") is False
+        and pipeline.get("scale_readiness_claimed") is False
+    ):
+        result.fail("ml2_target_claim_incomplete", "Blocker-free evidence requires the exact bounded ML2 claim.", path="pipeline_contract")
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -11637,6 +11959,7 @@ CUSTOM_CHECKS = {
     "r2_source_concept_graph_remediation": _check_r2_source_concept_graph_remediation,
     "r2r_autonomous_recall_search_closure": _check_r2r_autonomous_recall_search_closure,
     "ml1_multilingual_alias_source_metadata_closure": _check_ml1_multilingual_alias_source_metadata_closure,
+    "ml2_multilingual_identity_candidate_closure": _check_ml2_multilingual_identity_candidate_closure,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,
