@@ -12033,6 +12033,9 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and _as_int(media_import.get("out_of_manifest_import_count"), -1) == 0
         and _as_int(media_import.get("source_mutation_count"), -1) == 0
         and 10000 <= _as_int(media_import.get("eligible_media_after"), -1) <= 15000
+        and _as_int(media_import.get("current_invocation_new_import_count"), -1) == 0
+        and _as_int(media_import.get("current_invocation_storage_write_count"), -1) == 0
+        and _as_int(media_import.get("cumulative_import_count"), -1) == eligible
     ):
         blockers.append("blocked_sv1_import_accounting")
 
@@ -12044,6 +12047,8 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and _as_int(ai.get("fingerprint_mismatch_reuse_count"), -1) == 0
         and ai.get("external_provider_calls") == 0
         and ai.get("model_download_count") == 0
+        and _as_int(ai.get("ai_coverage_ledger_count"), -1) == eligible
+        and bool(ai.get("ai_coverage_ledger_fingerprint"))
     ):
         blockers.append("blocked_sv1_ai_tag_coverage")
 
@@ -12073,6 +12078,10 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and _as_int(denominator.get("unclassified_count"), -1) == 0
         and _as_int(denominator.get("unexplained_count"), -1) == 0
         and denominator.get("canonical_runtime_denominator_changed") is False
+        and denominator.get("independent_stored_path_parser_executed") is True
+        and denominator.get("stored_path_population_derived_independently") is True
+        and _as_float(denominator.get("selected_media_classification_coverage"), -1.0) == 1.0
+        and bool(denominator.get("denominator_classification_fingerprint"))
     ):
         blockers.append("blocked_sv1_denominator_audit")
 
@@ -12111,10 +12120,54 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and pair.get("candidate_equation_passed") is True
         and pair.get("all_pairs_creator_alias_expansion_used") is False
         and isinstance(graph, Mapping)
+        and graph.get("graph_audit_algorithm_version") == "active_bipartite_connected_components_v2"
+        and bool(graph.get("component_membership_fingerprint"))
+        and bool(graph.get("pair_membership_fingerprint"))
         and graph.get("giant_component_recurrence") is False
         and not any(_as_int(graph.get(key), -1) for key in graph_zero)
     ):
         blockers.append("blocked_sv1_graph_safety")
+
+    rebuild = _get(summary, "actual_rebuild_verification", {})
+    media_equality = _get(summary, "media_count_equality", {})
+    new_media = _get(summary, "true_new_media_search_benchmark", {})
+    python = _get(summary, "python_identity", {})
+    if not (
+        isinstance(rebuild, Mapping)
+        and _as_int(rebuild.get("derived_row_import_count"), -1) == 0
+        and _as_float(rebuild.get("accepted_r2r_disposition_compatibility"), -1.0) == 1.0
+        and _as_float(rebuild.get("accepted_creator_family_traceability"), -1.0) == 1.0
+        and _as_int(rebuild.get("blocking_creator_gap_count"), -1) == 0
+        and rebuild.get("actual_r2r_ml2_derivation_replayed") is True
+        and _as_int((rebuild.get("logical_subset_comparison") or {}).get("graph_logical_mismatch_count"), -1) == 0
+        and _as_int((rebuild.get("logical_subset_comparison") or {}).get("search_logical_mismatch_count"), -1) == 0
+        and (rebuild.get("logical_subset_comparison") or {}).get("numeric_row_id_equality_claimed") is False
+    ):
+        blockers.append("blocked_sv1_evidence_import")
+    if not (
+        isinstance(media_equality, Mapping)
+        and media_equality.get("passed") is True
+        and len(set(_as_int(media_equality.get(key), -1) for key in ("manifest_count", "database_count", "import_ledger_count", "ai_ledger_count"))) == 1
+    ):
+        blockers.append("blocked_sv1_import_accounting")
+    if not (
+        isinstance(new_media, Mapping)
+        and _as_int(new_media.get("case_count"), -1) == 40
+        and _as_int(new_media.get("scale_unsupported_result_count"), -1) == 0
+        and _as_int(new_media.get("promotion_unsupported_result_count"), -1) == 0
+        and _as_int(new_media.get("rebuild_unsupported_result_count"), -1) == 0
+        and _as_int(new_media.get("leakage_count"), -1) == 0
+        and bool(new_media.get("deterministic_selection_fingerprint"))
+    ):
+        blockers.append("blocked_sv1_search_correctness")
+    if not (
+        isinstance(python, Mapping)
+        and str(python.get("sys_executable") or "").casefold().endswith("venv\\scripts\\python.exe")
+        and str(python.get("sys_version") or "").startswith("3.12.0")
+        and bool(python.get("architecture"))
+        and bool(python.get("code_root"))
+    ):
+        blockers.append("blocked_sv1_environment_isolation")
 
     search = _get(summary, "search_benchmark", {})
     search_zero = (
@@ -12158,6 +12211,7 @@ def _check_sv1_controlled_scale_promotion_readiness(
         "confirmed_assignment_operations",
         "truth_promotion_operations",
         "source_mutations",
+        "localization_operations",
     )
     if not (
         isinstance(mutation, Mapping)
@@ -12178,6 +12232,8 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and isinstance(pack, Mapping)
         and pack.get("integrity_passed") is True
         and pack.get("member_checksum_equality_passed") is True
+        and pack.get("canonical_final_pack") is True
+        and bool(pack.get("review_pack_fingerprint"))
     ):
         blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
 
@@ -12185,10 +12241,10 @@ def _check_sv1_controlled_scale_promotion_readiness(
     if not (
         isinstance(route, Mapping)
         and route.get("route_approved") is False
-        and route.get("recommended_next_phase") == "SCV2-FL1"
+        and route.get("recommended_next_phase") == "SCV2-SV1B"
         and route.get("next_phase_started") is False
     ):
-        result.fail("sv1_route_boundary_failed", "SV1 may only recommend SCV2-FL1 with route_approved=false.", path="route_decision")
+        result.fail("sv1_route_boundary_failed", "SV1-A must recommend SCV2-SV1B with route_approved=false.", path="route_decision")
 
     derived = sorted(set(blockers))
     declared = sorted(set(pipeline.get("active_blockers") or ())) if isinstance(pipeline, Mapping) else []
@@ -12197,11 +12253,11 @@ def _check_sv1_controlled_scale_promotion_readiness(
     target = bool(pipeline.get("target_met")) if isinstance(pipeline, Mapping) else False
     safe = bool(pipeline.get("safe_to_merge")) if isinstance(pipeline, Mapping) else False
     if derived:
-        if target or safe or status == "target_met_controlled_scale_promotion_readiness":
+        if target or safe or status == "partial_sv1_media_ai_scale_and_stable_key_promotion_complete":
             result.fail("sv1_target_overclaimed", "SV1 cannot claim target/safe with blockers.", path="pipeline_contract")
     elif not (
-        status == "target_met_controlled_scale_promotion_readiness"
-        and target is True
+        status == "partial_sv1_media_ai_scale_and_stable_key_promotion_complete"
+        and target is False
         and safe is True
         and pipeline.get("route_approved") is False
         and pipeline.get("semantic_completeness_claimed") is False
@@ -12209,8 +12265,9 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and pipeline.get("production_readiness_claimed") is False
         and pipeline.get("provider_readiness_claimed") is False
         and pipeline.get("entity_readiness_claimed") is False
+        and pipeline.get("full_pipeline_completion_claimed") is False
     ):
-        result.fail("sv1_target_claim_incomplete", "Blocker-free SV1 evidence requires the exact bounded claim.", path="pipeline_contract")
+        result.fail("sv1_target_claim_incomplete", "Blocker-free SV1-A evidence requires the exact partial bounded claim.", path="pipeline_contract")
 
 
 CUSTOM_CHECKS = {

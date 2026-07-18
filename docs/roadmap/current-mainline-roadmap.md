@@ -160,7 +160,7 @@ production, Entity, confirmed-assignment, truth-promotion, and source-mutation
 operation counts were all zero.
 
 The executable status is
-`target_met_controlled_scale_promotion_readiness`, with `target_met=true`,
+`partial_sv1_media_ai_scale_and_stable_key_promotion_complete`, with `target_met=false`,
 `safe_to_merge=true`, `route_approved=false`, and `active_blockers=[]`. This is
 a bounded dev/test promotion-readiness result, not semantic, full-library,
 production, provider, or Entity readiness. See the committed SV1 report and
@@ -168,8 +168,10 @@ public summary for exact aggregate evidence.
 
 ## Stop Boundary
 
-SCV2-SV1 is complete on its feature branch but remains unmerged. It may recommend
-`SCV2-FL1: Full-Library Dev/Test Replay`; it does not approve or start FL1. Do
+SCV2-SV1-A is merge-safe partial work on its feature branch but remains unmerged.
+Its immediate recommendation is `SCV2-SV1B: Controlled Pixiv Metadata,
+Localization, and Source-Graph Closure`; it does not approve or start SV1B or
+FL1. Do
 not start PX1-B broad acquisition, Provider-2, production, full-library
 execution, Entity bridge, confirmed assignment, truth promotion, or another
 later phase. Provider/Pixiv/gallery-dl/LLM calls and production/Entity/truth

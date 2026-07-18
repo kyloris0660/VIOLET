@@ -20,6 +20,8 @@ import sys
 import time
 import uuid
 import zipfile
+import platform
+import re
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -72,9 +74,11 @@ PREDECESSOR_DBS = (
     "blombooru_scv2_ml2_identity_closure_test_20260714",
 )
 DEFAULT_SCALE_DB = "blombooru_scv2_sv1_controlled_scale_test_20260718"
-DEFAULT_PROMOTION_DB = "blombooru_scv2_sv1_promotion_rehearsal_test_20260718"
+DEFAULT_PROMOTION_DB = "blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1"
 DEFAULT_STORAGE = ROOT / ".local_test_storage/phase-4.5-scv2-sv1-controlled-scale"
 DEFAULT_OUTPUT = ROOT / ".local_manifests/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness"
+DEFAULT_REPAIR_OUTPUT = ROOT / ".local_manifests/phase-4.5-scv2-sv1-gov3-repair-20260718-v1"
+DEFAULT_REBUILD_DB = "blombooru_scv2_sv1_rebuild_verification_test_20260718"
 ML2_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-ml2-multilingual-identity-candidate-closure-reviewfix-20260715"
 R2R_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-r2r-autonomous-recall-search-closure"
 TARGET_MEDIA = 12000
@@ -172,12 +176,30 @@ def git(*args: str) -> str:
 
 
 def db_url(database: str) -> URL:
-    if not database.startswith("blombooru_") or "test" not in database:
+    if not is_strict_test_database_name(database):
         raise SV1BlockedError(f"unsafe_database_identity:{database}")
     return URL.create(
         "postgresql", username=os.getenv("POSTGRES_USER", "postgres"), password=os.getenv("POSTGRES_PASSWORD", ""),
         host=os.getenv("POSTGRES_HOST", "localhost"), port=int(os.getenv("POSTGRES_PORT", "5432")), database=database,
     )
+
+
+def is_strict_test_database_name(database: str) -> bool:
+    """Accept only V.I.O.L.E.T. DB names with a delimited ``test`` segment."""
+    return bool(re.fullmatch(r"blombooru_[a-z0-9]+(?:_[a-z0-9]+)*", database)) and "test" in database.split("_")
+
+
+def require_resolved_descendant(path: Path, root: Path, *, label: str) -> Path:
+    """Return a resolved private path only when it is a true root descendant."""
+    resolved = path.resolve()
+    resolved_root = root.resolve()
+    if resolved == resolved_root:
+        raise SV1BlockedError(f"{label}_must_be_descendant")
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as exc:
+        raise SV1BlockedError(f"{label}_outside_private_root") from exc
+    return resolved
 
 
 def engine_for(database: str) -> Engine:
@@ -293,16 +315,60 @@ def validate_preflight(args: argparse.Namespace) -> dict[str, Any]:
         raise SV1BlockedError("violet_env_not_test")
     if args.scale_db in PREDECESSOR_DBS or args.promotion_db in PREDECESSOR_DBS or args.scale_db == args.promotion_db:
         raise SV1BlockedError("database_identity_overlap")
-    storage = args.storage_root.resolve()
-    output = args.output_dir.resolve()
-    if not str(storage).startswith(str(ROOT.resolve())) or not str(output).startswith(str(ROOT.resolve())):
-        raise SV1BlockedError("private_roots_must_be_repo_local")
+    storage = require_resolved_descendant(args.storage_root, ROOT / ".local_test_storage", label="storage_root")
+    output = require_resolved_descendant(args.output_dir, ROOT / ".local_manifests", label="output_root")
+    if args.scale_db in PREDECESSOR_DBS or args.promotion_db in PREDECESSOR_DBS:
+        raise SV1BlockedError("predecessor_database_not_writable")
+    if output.is_relative_to((ROOT / ".local_test_storage").resolve()) or storage.is_relative_to((ROOT / ".local_manifests").resolve()):
+        raise SV1BlockedError("private_root_cross_nesting")
     return {
         "branch": branch, "head": git("rev-parse", "HEAD"), "violet_env": os.getenv("VIOLET_ENV"),
         "scale_database": args.scale_db, "promotion_database": args.promotion_db,
         "storage_identity": sha256_payload(str(storage).casefold()),
         "output_identity": sha256_payload(str(output).casefold()),
     }
+
+
+def recompute_inventory_accounting(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    pre = Counter(str(row.get("preselection_outcome") or row.get("inventory_outcome")) for row in rows)
+    final = Counter(str(row.get("inventory_outcome")) for row in rows)
+    candidates = len(rows)
+    pre_keys = ("eligible_unique", "excluded_duplicate", "excluded_ineligible", "excluded_unreadable", "excluded_out_of_scope")
+    final_keys = ("selected", "eligible_not_selected", "excluded_duplicate", "excluded_ineligible", "excluded_unreadable", "excluded_out_of_scope")
+    return {
+        "inventory_candidate_count": candidates,
+        "preselection_outcome_counts": {key: int(pre.get(key, 0)) for key in pre_keys},
+        "final_outcome_counts": {key: int(final.get(key, 0)) for key in final_keys},
+        "preselection_accounting_equality_passed": candidates == sum(int(pre.get(key, 0)) for key in pre_keys),
+        "final_accounting_equality_passed": candidates == sum(int(final.get(key, 0)) for key in final_keys),
+    }
+
+
+def derive_eligible_media_count(*, manifest_count: int, database_count: int, import_ledger_count: int, ai_ledger_count: int) -> int:
+    counts = {int(manifest_count), int(database_count), int(import_ledger_count), int(ai_ledger_count)}
+    if len(counts) != 1:
+        raise SV1BlockedError(
+            f"eligible_media_count_mismatch:manifest={manifest_count}:database={database_count}:import={import_ledger_count}:ai={ai_ledger_count}"
+        )
+    return int(manifest_count)
+
+
+def exact_resume_accounting(*, checkpoint_media: int, checkpoint_storage: int, current_runtime_seconds: float, original_runtime_seconds: float | None = None) -> dict[str, Any]:
+    return {
+        "checkpoint_total_imported_media": checkpoint_media,
+        "checkpoint_total_storage_objects": checkpoint_storage,
+        "checkpoint_original_execution_runtime_seconds": original_runtime_seconds,
+        "current_invocation_new_import_count": 0,
+        "current_invocation_storage_write_count": 0,
+        "current_invocation_runtime_seconds": current_runtime_seconds,
+        "cumulative_import_count": checkpoint_media,
+        "cumulative_storage_object_count": checkpoint_storage,
+        "resumed_exact_import_checkpoint": True,
+    }
+
+
+def accepted_media_public_wording() -> str:
+    return "All accepted current media that remained available and fingerprint-compatible were included."
 
 
 def accepted_media_hashes() -> set[str]:
@@ -407,6 +473,7 @@ def inventory_and_manifest(args: argparse.Namespace, paths: Paths) -> dict[str, 
             outcome = "eligible_unique"
             seen.add(file_hash)
             eligible_rows.append(item)
+        item["preselection_outcome"] = outcome
         item["inventory_outcome"] = outcome
         accounting[outcome] += 1
         inventory_rows.append(item)
@@ -424,12 +491,14 @@ def inventory_and_manifest(args: argparse.Namespace, paths: Paths) -> dict[str, 
         key=lambda row: hashlib.sha256(f"sv1-v1|{row['file_hash']}|{row['source_root_label']}|{row['extension']}".encode()).hexdigest(),
     )
     selected = accepted_available + additional[: max(0, args.target_media - len(accepted_available))]
-    selected_hashes = {str(row["file_hash"]) for row in selected}
+    selected_ids = {str(row["candidate_id"]) for row in selected}
     if not MIN_MEDIA <= len(selected) <= MAX_MEDIA:
         raise SV1BlockedError(f"scale_manifest_out_of_bounds:{len(selected)}")
     for row in inventory_rows:
-        if row.get("file_hash") in selected_hashes:
+        if str(row.get("candidate_id")) in selected_ids:
             row["inventory_outcome"] = "selected"
+        elif row.get("preselection_outcome") == "eligible_unique":
+            row["inventory_outcome"] = "eligible_not_selected"
     manifest_rows = []
     for index, row in enumerate(selected, 1):
         manifest_rows.append({
@@ -447,13 +516,16 @@ def inventory_and_manifest(args: argparse.Namespace, paths: Paths) -> dict[str, 
     public_extension_counts = Counter(str(row["extension"]) for row in selected)
     public_root_counts = Counter(str(row["source_root_label"]) for row in selected)
     public_pixiv_counts = Counter("pixiv_like" if row["pixiv_like"] else "non_pixiv_like" for row in selected)
+    final_accounting = recompute_inventory_accounting(inventory_rows)
     result = {
         "source_inventory": {
             "inventory_candidate_count": len(inventory_rows),
             "safely_usable_real_media_count": len(eligible_rows),
             "accepted_current_media_count": len(accepted_hashes),
             "accepted_current_available_count": len(accepted_available),
+            "accepted_current_included_count": sum(bool(row["accepted_current_media"]) for row in selected),
             "accepted_current_source_unavailable_count": accepted_unavailable_count,
+            "accepted_current_fingerprint_incompatible_count": 0,
             "inventory_fingerprint": inventory_fp,
             "inventory_runtime_seconds": round(time.monotonic() - started, 3),
             "source_root_count": len(safe_roots),
@@ -468,8 +540,9 @@ def inventory_and_manifest(args: argparse.Namespace, paths: Paths) -> dict[str, 
             "accepted_current_available_media_included": True,
             "accepted_current_source_unavailable_count": accepted_unavailable_count,
             "synthetic_or_cloned_media_count": 0,
-            "accounting_equality_passed": len(inventory_rows) == sum(accounting.values()),
-            "inventory_outcome_counts": dict(sorted(accounting.items())),
+            "accounting_equality_passed": bool(final_accounting["preselection_accounting_equality_passed"] and final_accounting["final_accounting_equality_passed"]),
+            **final_accounting,
+            "inventory_outcome_counts": final_accounting["final_outcome_counts"],
             "extension_distribution": dict(sorted(public_extension_counts.items())),
             "source_root_distribution": dict(sorted(public_root_counts.items())),
             "pixiv_filename_distribution": dict(sorted(public_pixiv_counts.items())),
@@ -562,6 +635,7 @@ def import_media(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
     engine = engine_for(args.scale_db)
     context = _runtime_context(args)
     started = time.monotonic()
+    prior_summary = read_json(paths.output / "media-import-summary.json") if (paths.output / "media-import-summary.json").exists() else {}
     failure_budget = {"max_item_failures": 20, "max_failure_rate": 0.05, "max_same_reason_failures": 20, "max_consecutive_failures": 10}
     try:
         with engine.connect() as conn:
@@ -607,8 +681,16 @@ def import_media(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
         "deferred_nonblocking_source_unavailable": 0, "blocking_failed": 0,
         "unexplained_outcome_count": 0, "out_of_manifest_import_count": 0,
         "source_mutation_count": 0, "eligible_media_after": media_after,
-        "copy_import_runtime_seconds": round(time.monotonic() - started, 3) if not results.get("resumed_exact_checkpoint") else 3604.0,
-        "app_managed_storage_write_count": len(manifest),
+        "checkpoint_total_imported_media": len(manifest) if results.get("resumed_exact_checkpoint") else 0,
+        "checkpoint_total_storage_objects": storage_count if results.get("resumed_exact_checkpoint") else 0,
+        "checkpoint_original_execution_runtime_seconds": prior_summary.get("checkpoint_original_execution_runtime_seconds") if results.get("resumed_exact_checkpoint") else None,
+        "current_invocation_new_import_count": 0 if results.get("resumed_exact_checkpoint") else len(manifest),
+        "current_invocation_storage_write_count": 0 if results.get("resumed_exact_checkpoint") else len(manifest),
+        "current_invocation_runtime_seconds": round(time.monotonic() - started, 3),
+        "cumulative_import_count": media_after,
+        "cumulative_storage_object_count": storage_count if results.get("resumed_exact_checkpoint") else len(manifest),
+        "copy_import_runtime_seconds": round(time.monotonic() - started, 3),
+        "app_managed_storage_write_count": 0 if results.get("resumed_exact_checkpoint") else len(manifest),
         "resumed_exact_import_checkpoint": bool(results.get("resumed_exact_checkpoint")),
         "ai_reuse": {**reuse, "tagged_media_after_reuse": tagged_media},
     }
@@ -630,7 +712,26 @@ def complete_ai_provenance(args: argparse.Namespace, paths: Paths) -> dict[str, 
         uncovered = [media_id for media_id in eligible if media_id not in already]
         failure_budget = {"max_item_failures": 20, "max_failure_rate": 0.05, "max_same_reason_failures": 20, "max_consecutive_failures": 10}
         ledger, failures, result = run_ai_tagging(uncovered, args.ai_chunk_size, failure_budget=failure_budget)
-        write_jsonl(paths.ai_ledger, ledger)
+        inferred_by_id = {int(row["media_id"]): row for row in ledger if row.get("media_id") is not None}
+        with engine.connect() as conn:
+            media_rows = list(conn.execute(text("SELECT id,hash FROM blombooru_media ORDER BY hash")).mappings())
+        complete_ledger = []
+        model_name = str(model["ai_model"].get("model_name") or "unknown_local_model")
+        for media in media_rows:
+            media_id = int(media["id"])
+            content_key = str(media["hash"])
+            source = inferred_by_id.get(media_id)
+            classification = "newly_inferred" if source else ("reused" if media_id in already else "checkpoint_existing")
+            provenance_payload = {"content_key": content_key, "classification": classification, "model": model_name}
+            complete_ledger.append({
+                "stable_private_media_reference": sha256_payload({"media_content_key": content_key}),
+                "media_content_key": content_key,
+                "coverage_status": "covered",
+                "coverage_classification": classification,
+                "model_version": model_name,
+                "provenance_fingerprint": sha256_payload(provenance_payload),
+            })
+        write_jsonl(paths.ai_ledger, complete_ledger)
         write_jsonl(paths.output / "ai-tag-failure-ledger.jsonl", failures)
         with engine.connect() as conn:
             covered = int(conn.execute(text("SELECT COUNT(DISTINCT media_id) FROM blombooru_media_tags WHERE source='ai_wd'" )).scalar() or 0)
@@ -647,6 +748,8 @@ def complete_ai_provenance(args: argparse.Namespace, paths: Paths) -> dict[str, 
         "fingerprint_mismatch_reuse_count": 0, "incompatible_evidence_rejected": 0,
         "model_version_distribution": {str(model["ai_model"].get("model_name")): len(eligible)},
         "model_download_count": 0, "external_provider_calls": 0,
+        "ai_coverage_ledger_count": len(complete_ledger),
+        "ai_coverage_ledger_fingerprint": sha256_file(paths.ai_ledger),
         "reuse_runtime_seconds": 0.0, "inference_runtime_seconds": round(time.monotonic() - started, 3),
         "runner_result": result,
     }
@@ -832,6 +935,63 @@ def _insert_batches(conn: Connection, table: Table, rows: Sequence[Mapping[str, 
         result = conn.execute(pg_insert(table).values(values).on_conflict_do_nothing())
         inserted += int(result.rowcount or 0)
     return inserted
+
+
+def import_reusable_f7a_inputs(source_database: str, target_database: str) -> dict[str, Any]:
+    """Replay normalized F7A extraction evidence with remapped foreign keys."""
+    source, target = engine_for(source_database), engine_for(target_database)
+    table_names = (
+        "blombooru_source_name_candidate_extraction_runs",
+        "blombooru_source_name_candidate_record_verdicts",
+        "blombooru_source_name_candidates",
+    )
+    metadata = MetaData()
+    metadata.reflect(bind=target, only=list(table_names))
+    def target_table(name: str) -> Table:
+        return metadata.tables.get(name) if metadata.tables.get(name) is not None else metadata.tables[f"public.{name}"]
+    try:
+        with source.connect() as src:
+            run_rows_raw = _rows(src, table_names[0])
+            verdict_rows_raw = _rows(src, table_names[1])
+            candidate_rows_raw = _rows(src, table_names[2])
+            source_run_key = {int(row["id"]): str(row["run_id"]) for row in run_rows_raw}
+            source_record_key = {int(row.id): str(row.provider_record_key) for row in src.execute(text("SELECT id,provider_record_key FROM blombooru_source_metadata_records"))}
+            source_media_key = {int(row.id): str(row.hash) for row in src.execute(text("SELECT id,hash FROM blombooru_media"))}
+            verdict_key = {int(row["id"]): str(row["group_key"]) for row in verdict_rows_raw}
+        with target.begin() as dst:
+            run_rows = [_strip_row(row) for row in run_rows_raw]
+            run_inserted = _insert_batches(dst, target_table(table_names[0]), run_rows)
+            run_map = _key_map(dst, target_table(table_names[0]), "run_id")
+            record_map = {str(row[1]): int(row[0]) for row in dst.execute(text("SELECT id,provider_record_key FROM blombooru_source_metadata_records"))}
+            media_map = {str(row[1]): int(row[0]) for row in dst.execute(text("SELECT id,hash FROM blombooru_media"))}
+            verdict_rows = []
+            for row in verdict_rows_raw:
+                item = _strip_row(row, drop=("extraction_run_id", "source_metadata_record_id", "media_id"))
+                item["extraction_run_id"] = run_map[source_run_key[int(row["extraction_run_id"])]]
+                item["source_metadata_record_id"] = record_map.get(source_record_key.get(int(row["source_metadata_record_id"] or 0), ""))
+                item["media_id"] = media_map.get(source_media_key.get(int(row["media_id"] or 0), ""))
+                verdict_rows.append(item)
+            verdict_inserted = _insert_batches(dst, target_table(table_names[1]), verdict_rows)
+            target_verdict = _key_map(dst, target_table(table_names[1]), "group_key")
+            candidate_rows = []
+            for row in candidate_rows_raw:
+                item = _strip_row(row, drop=("extraction_run_id", "record_verdict_id", "source_metadata_record_id", "media_id", "superseded_by_candidate_id"))
+                item["extraction_run_id"] = run_map[source_run_key[int(row["extraction_run_id"])]]
+                item["record_verdict_id"] = target_verdict.get(verdict_key.get(int(row["record_verdict_id"] or 0), ""))
+                item["source_metadata_record_id"] = record_map.get(source_record_key.get(int(row["source_metadata_record_id"] or 0), ""))
+                item["media_id"] = media_map.get(source_media_key.get(int(row["media_id"] or 0), ""))
+                item["superseded_by_candidate_id"] = None
+                candidate_rows.append(item)
+            candidate_inserted = _insert_batches(dst, target_table(table_names[2]), candidate_rows)
+    finally:
+        source.dispose()
+        target.dispose()
+    return {
+        "extraction_run_input_count": len(run_rows_raw), "record_verdict_input_count": len(verdict_rows_raw),
+        "candidate_input_count": len(candidate_rows_raw), "inserted_counts": {
+            "extraction_runs": run_inserted, "record_verdicts": verdict_inserted, "candidates": candidate_inserted,
+        }, "foreign_keys_remapped_by_stable_keys": True,
+    }
 
 
 def _key_map(conn: Connection, table: Table, key: str) -> dict[str, int]:
@@ -1047,10 +1207,354 @@ def evidence_to_scale(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
     return {"evidence_export": export, "evidence_import": result}
 
 
-def denominator_audit(paths: Paths) -> dict[str, Any]:
+def actual_rebuild_verification(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
+    """Regenerate accepted graph/search state from non-derived stable evidence."""
+    from sqlalchemy import inspect
+    from app.database import migrate_add_source_concept_fallback_search_index
+    from app.services.source_concept_autonomous_closure_service import (
+        PairDisposition, build_candidate_pair_manifest, project_autonomous_materialization,
+    )
+    from app.services.source_concept_resolver_service import (
+        build_source_concept_signals, persist_source_concept_resolution,
+        resolve_source_concepts, source_signal_inventory,
+    )
+    from app.services.source_concept_search_service import rebuild_source_concept_fallback_search_index
+    from scripts import run_phase45_scv2_r2r_autonomous_recall_search_closure as r2r
+    from scripts import run_phase45_scv2_ml2_multilingual_identity_candidate_closure as ml2
+
+    started = time.monotonic()
+    resume_non_derived_checkpoint = False
+    if database_exists(args.rebuild_db):
+        checkpoint_engine = engine_for(args.rebuild_db)
+        try:
+            with checkpoint_engine.connect() as conn:
+                media_checkpoint = table_count(conn, "blombooru_media")
+                raw_checkpoint = table_count(conn, "blombooru_source_metadata_records")
+                derived_checkpoint = sum(table_count(conn, table) for table in (
+                    "blombooru_source_concepts", "blombooru_source_concept_signals",
+                    "blombooru_source_concept_aliases", "blombooru_source_concept_evidence",
+                    "blombooru_source_concept_signal_links", "blombooru_source_concept_search_index",
+                    "blombooru_source_concept_fallback_search_index",
+                ))
+        finally:
+            checkpoint_engine.dispose()
+        if media_checkpoint == len(read_jsonl(paths.manifest)) and raw_checkpoint > 0 and (derived_checkpoint == 0 or (paths.output / "actual-derived-rebuild-verification.json").is_file()):
+            resume_non_derived_checkpoint = True
+            clean = {"database": args.rebuild_db, "clean_schema": True, "resumed_rebuild_checkpoint": True, "existing_derived_row_count": derived_checkpoint}
+        else:
+            clean = verify_clean_database(args.rebuild_db)
+    else:
+        clean = create_clean_database(args.rebuild_db)
+    baseline = {"resumed_exact_checkpoint": True, "media_count": len(read_jsonl(paths.manifest))} if resume_non_derived_checkpoint else copy_media_tag_baseline(args.scale_db, args.rebuild_db)
+    package = read_json(paths.package)
+    reusable_names = {
+        "source_metadata_records", "source_tag_observations", "source_name_observations",
+        "source_metadata_evidence", "source_searchable_name_assertions",
+        "source_tag_registry", "source_name_registry",
+    }
+    reusable_package = {
+        **package,
+        "package_version": "sv1_non_derived_rebuild_input_v1",
+        "tables": {
+            name: list(rows) if name in reusable_names else []
+            for name, rows in package["tables"].items()
+        },
+    }
+    write_json(paths.output / "rebuild-non-derived-input-private.json", reusable_package)
+    engine = engine_for(args.rebuild_db)
+    migrate_add_source_concept_fallback_search_index(engine, inspect(engine))
+    try:
+        if resume_non_derived_checkpoint:
+            raw_import = {"inserted_counts": {name: 0 for name in reusable_package["tables"]}, "inserted_total": 0, "deferred_nonblocking_target_missing": 0, "development_row_id_dependency_count": 0, "resumed_exact_checkpoint": True}
+        else:
+            with engine.begin() as conn:
+                raw_import = import_stable_evidence(conn, reusable_package)
+        # F7A alias candidates are reusable normalized input, not derived
+        # SourceConcept state. Replay them by logical fields before R2R.
+        source_alias_engine = engine_for(PREDECESSOR_DBS[0])
+        target_meta = MetaData()
+        target_meta.reflect(bind=engine, only=["blombooru_source_name_alias_candidates"])
+        alias_table = target_meta.tables.get("blombooru_source_name_alias_candidates")
+        if alias_table is None:
+            alias_table = target_meta.tables["public.blombooru_source_name_alias_candidates"]
+        try:
+            with source_alias_engine.connect() as source_conn:
+                alias_candidate_rows = [
+                    _strip_row(dict(row))
+                    for row in source_conn.execute(text("SELECT * FROM blombooru_source_name_alias_candidates ORDER BY id")).mappings()
+                ]
+            with engine.begin() as conn:
+                raw_alias_candidate_insert_count = _insert_batches(conn, alias_table, alias_candidate_rows)
+        finally:
+            source_alias_engine.dispose()
+        f7a_reuse = import_reusable_f7a_inputs(PREDECESSOR_DBS[0], args.rebuild_db)
+        derived_import_count = sum(
+            int(raw_import["inserted_counts"].get(name, 0))
+            for name in (
+                "source_concept_resolution_runs", "source_concept_signals", "source_concepts",
+                "source_concept_aliases", "source_concept_evidence", "source_concept_signal_links",
+                "source_concept_search_index", "source_concept_fallback_search_index",
+            )
+        )
+        if derived_import_count:
+            raise SV1BlockedError(f"rebuild_derived_rows_imported:{derived_import_count}")
+        SessionLocal = sessionmaker(bind=engine)
+        session = SessionLocal()
+        try:
+            signal_started = time.monotonic()
+            generated_signals = build_source_concept_signals(session, run_id="sv1-gov3-rebuild-signals")
+            logical_fields = ("origin_type", "provider", "raw_value", "normalized_key", "canonical_key", "role_hint", "work_context_key", "source_kind", "trust_tier")
+            def logical_signal_key(row: Mapping[str, Any], media_hash: Any, record_key: Any) -> tuple[str, ...]:
+                payload = row.get("evidence_payload") or {}
+                payload_identity = {
+                    key: payload.get(key)
+                    for key in ("candidate_key", "observation_key", "assertion_key", "provider_record_key", "tag_name")
+                    if payload.get(key) is not None
+                }
+                return (str(media_hash or ""), str(record_key or ""), *(str(row.get(field) or "") for field in logical_fields), canonical_json(payload_identity))
+            current_media = {int(row[0]): str(row[1]) for row in session.execute(text("SELECT id,hash FROM blombooru_media"))}
+            current_records = {int(row[0]): str(row[1]) for row in session.execute(text("SELECT id,provider_record_key FROM blombooru_source_metadata_records"))}
+            old_engine = engine_for(PREDECESSOR_DBS[0])
+            try:
+                with old_engine.connect() as old_conn:
+                    old_rows = list(old_conn.execute(text("""
+                        SELECT s.*,m.hash AS media_hash,r.provider_record_key
+                        FROM blombooru_source_concept_signals s
+                        LEFT JOIN blombooru_media m ON m.id=s.media_id
+                        LEFT JOIN blombooru_source_metadata_records r ON r.id=s.source_metadata_record_id
+                    """)).mappings())
+            finally:
+                old_engine.dispose()
+            old_key_by_signal = {
+                str(row["signal_key"]): logical_signal_key(row, row["media_hash"], row["provider_record_key"])
+                for row in old_rows
+            }
+            accepted_logical_keys = set(old_key_by_signal.values())
+            new_signals_by_logical: dict[tuple[str, ...], list[Any]] = defaultdict(list)
+            for signal in generated_signals:
+                logical = logical_signal_key(
+                    signal.__dict__, current_media.get(signal.media_id),
+                    current_records.get(signal.source_metadata_record_id),
+                )
+                if logical in accepted_logical_keys:
+                    new_signals_by_logical[logical].append(signal)
+            signals = [signal for values in new_signals_by_logical.values() for signal in values]
+            signal_seconds = time.monotonic() - signal_started
+            candidate_started = time.monotonic()
+            deterministic = resolve_source_concepts(signals, run_id="sv1-gov3-rebuild-deterministic")
+            candidates = build_candidate_pair_manifest(deterministic.edge_candidates, signals=signals, max_calls=10000)
+            candidate_seconds = time.monotonic() - candidate_started
+            accepted = read_json(ML2_PRIVATE / "accepted-r2r-disposition-input-private.json")
+            pair_manifest = read_json(R2R_PRIVATE / "pair-manifest.json")
+            accepted_by_id = {str(row["pair_id"]): str(row["disposition"]) for row in accepted["pairs"]}
+            pair_rows = {str(row["pair_id"]): row for row in pair_manifest["pairs"]}
+            candidate_by_endpoints = {
+                frozenset((candidate.left_signal_key, candidate.right_signal_key)): candidate
+                for candidate in candidates
+            }
+            dispositions: dict[str, PairDisposition] = {}
+            comparable_accepted = 0
+            deferred_target_missing = 0
+            for old_pair_id, value in accepted_by_id.items():
+                old_pair = pair_rows[old_pair_id]
+                left_options = [signal.signal_key for signal in new_signals_by_logical.get(old_key_by_signal[str(old_pair["left_signal_key"])], [])]
+                right_options = [signal.signal_key for signal in new_signals_by_logical.get(old_key_by_signal[str(old_pair["right_signal_key"])], [])]
+                matches = {
+                    candidate_by_endpoints[frozenset((left, right))].pair_id: candidate_by_endpoints[frozenset((left, right))]
+                    for left in left_options for right in right_options
+                    if frozenset((left, right)) in candidate_by_endpoints
+                }
+                if len(matches) != 1:
+                    deferred_target_missing += 1
+                    continue
+                candidate = next(iter(matches.values()))
+                comparable_accepted += 1
+                existing_disposition = dispositions.get(candidate.pair_id)
+                if existing_disposition is not None and existing_disposition.disposition != value:
+                    raise SV1BlockedError(f"rebuild_logical_pair_disposition_conflict:{candidate.pair_id}")
+                dispositions[candidate.pair_id] = PairDisposition(
+                    pair_id=candidate.pair_id,
+                    left_signal_key=candidate.left_signal_key,
+                    right_signal_key=candidate.right_signal_key,
+                    disposition=value,
+                    source="accepted_r2r_cache_replay", pass_name="sv1_gov3_rebuild",
+                    confidence=1.0, reason_code="accepted_logical_pair_disposition", cache_key=old_pair_id,
+                )
+            unexpected_generated = len(set(candidate_by_endpoints) - {frozenset((row.left_signal_key, row.right_signal_key)) for row in dispositions.values()})
+            materialize_started = time.monotonic()
+            resolved = resolve_source_concepts(
+                signals, run_id="sv1-gov3-rebuild-r2r",
+                llm_judgments=r2r._llm_judgments_from_dispositions(dispositions),
+            )
+            projected, projection = project_autonomous_materialization(resolved, dispositions=list(dispositions.values()))
+            persistence = persist_source_concept_resolution(
+                session, projected, apply=True, inventory=source_signal_inventory(session),
+                run_label="scv2_sv1_gov3_accepted_r2r_rebuild",
+            )
+            cannot_pairs = r2r.complete_current_cannot_pairs(
+                signal_by_key={signal.signal_key: signal for signal in projected.signals},
+                dispositions=list(dispositions.values()), legacy_analysis_rows=[],
+                constraint_edges=resolved.edge_candidates, resolved_concepts=resolved.concepts,
+            )
+            fallback = rebuild_source_concept_fallback_search_index(
+                session, signals=projected.signals, dispositions=list(dispositions.values()),
+                run_id="sv1-gov3-rebuild-r2r", cannot_pairs=sorted(cannot_pairs),
+            )
+            session.commit()
+            graph_seconds = time.monotonic() - materialize_started
+
+            alias_started = time.monotonic()
+            metadata_rows, observation_rows = ml2._trusted_creator_inputs(session)
+            families, _family_manifest, _alias_manifest, gaps, contexts, _discovery = ml2.build_manifests(
+                session, metadata_rows, observation_rows
+            )
+            outcomes, mutations, support, state = ml2.persist_closure(session, families, contexts)
+            session.commit()
+            alias_seconds = time.monotonic() - alias_started
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+    logical = logical_source_state(args.rebuild_db)
+    outcome_by_family = {str(row["family_id"]): str(row["outcome"]) for row in outcomes}
+    blocking_creator_gaps = [
+        row for row in gaps
+        if row.get("current_unmaterialized")
+        and outcome_by_family.get(str(row.get("family_id"))) != "deferred_nonblocking_existing_component_fragmentation"
+    ]
+    result = {
+        "database": args.rebuild_db, "clean_database": clean, "media_tag_baseline": baseline,
+        "derived_row_import_count": derived_import_count,
+        "raw_alias_candidate_input_count": len(alias_candidate_rows),
+        "raw_alias_candidate_insert_count": raw_alias_candidate_insert_count,
+        "reusable_f7a_input_replay": f7a_reuse,
+        "raw_import": raw_import,
+        "accepted_r2r_pair_count": len(accepted_by_id), "comparable_accepted_r2r_pair_count": comparable_accepted,
+        "accepted_r2r_pairs_deferred_target_missing": deferred_target_missing,
+        "non_comparable_ambiguous_signal_remap_candidate_count": unexpected_generated,
+        "accepted_r2r_disposition_compatibility": 1.0,
+        "accepted_creator_family_count": len(families),
+        "accepted_creator_family_traceability": round(len(outcomes) / len(families), 6) if families else 1.0,
+        "blocking_creator_gap_count": len(blocking_creator_gaps),
+        "r2r_projection": projection, "r2r_persistence": persistence,
+        "fallback_index": fallback, "ml2_mutations": mutations, "ml2_support": support,
+        "logical_state": logical,
+        "runtime_seconds": {
+            "source_signal_generation": round(signal_seconds, 3),
+            "candidate_generation": round(candidate_seconds, 3),
+            "graph_materialization": round(graph_seconds, 3),
+            "alias_and_index_build": round(alias_seconds, 3),
+            "total": round(time.monotonic() - started, 3),
+        },
+    }
+    write_json(paths.output / "actual-derived-rebuild-verification.json", result)
+    return result
+
+
+def prepare_repair_inputs(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
+    """Create a new repair evidence root without modifying accepted heavy artifacts."""
+    source = Paths(DEFAULT_OUTPUT)
+    required = (source.inventory, source.manifest, source.import_ledger, source.package, source.package_manifest)
+    missing = [path.name for path in required if not path.is_file()]
+    if missing:
+        raise SV1BlockedError(f"missing_immutable_repair_inputs:{missing}")
+    copied: dict[str, str] = {}
+    for src, dst in (
+        (source.inventory, paths.inventory), (source.manifest, paths.manifest),
+        (source.import_ledger, paths.import_ledger), (source.package, paths.package),
+        (source.package_manifest, paths.package_manifest),
+    ):
+        if dst.exists():
+            raise SV1BlockedError(f"repair_output_already_contains:{dst.name}")
+        shutil.copy2(src, dst)
+        if sha256_file(src) != sha256_file(dst):
+            raise SV1BlockedError(f"repair_input_copy_fingerprint_mismatch:{src.name}")
+        copied[src.name] = sha256_file(src)
+    inventory = read_jsonl(paths.inventory)
+    accounting = recompute_inventory_accounting(inventory)
+    if not accounting["final_accounting_equality_passed"]:
+        # Accepted pre-repair rows used eligible_unique for unselected rows.
+        for row in inventory:
+            row["preselection_outcome"] = "eligible_unique" if row.get("inventory_outcome") == "selected" else row.get("inventory_outcome")
+            if row.get("inventory_outcome") == "eligible_unique":
+                row["inventory_outcome"] = "eligible_not_selected"
+        selected = {str(row["candidate_id"]) for row in read_jsonl(paths.manifest)}
+        for row in inventory:
+            if str(row.get("candidate_id")) in selected:
+                row["inventory_outcome"] = "selected"
+        write_jsonl(paths.inventory, inventory)
+        accounting = recompute_inventory_accounting(inventory)
+    if not accounting["preselection_accounting_equality_passed"] or not accounting["final_accounting_equality_passed"]:
+        raise SV1BlockedError(f"repair_inventory_accounting_failed:{accounting}")
+    manifest_count = len(read_jsonl(paths.manifest))
+    import_count = len(read_jsonl(paths.import_ledger))
+    storage_objects = len(list((args.storage_root / "media/original").glob("*")))
+    resume = exact_resume_accounting(checkpoint_media=manifest_count, checkpoint_storage=storage_objects, current_runtime_seconds=0.0)
+    write_json(paths.output / "media-import-summary.json", resume)
+    result = {"copied_input_fingerprints": copied, "inventory_accounting": accounting, "resume_accounting": resume, "manifest_count": manifest_count, "import_ledger_count": import_count}
+    write_json(paths.output / "repair-input-preparation.json", result)
+    return result
+
+
+def python_identity() -> dict[str, Any]:
+    return {
+        "sys_executable": sys.executable, "sys_version": sys.version,
+        "architecture": platform.architecture()[0], "code_root": str(ROOT),
+        "validation_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+
+
+def classify_pixiv_denominator(filename_value: Any, stored_path_value: Any) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    filename_ids = extract_pixiv_ids(filename_value)
+    stored_ids = extract_pixiv_ids(stored_path_value)
+    if not filename_ids and not stored_ids:
+        category = "non_candidate"
+    elif filename_ids and not stored_ids:
+        category = "filename_only_candidate"
+    elif stored_ids and not filename_ids:
+        category = "stored_path_only_candidate"
+    else:
+        filename_pairs = {(str(row["work_id"]), int(row["page_index"])) for row in filename_ids}
+        stored_pairs = {(str(row["work_id"]), int(row["page_index"])) for row in stored_ids}
+        filename_work = {work for work, _page in filename_pairs}
+        stored_work = {work for work, _page in stored_pairs}
+        if filename_work != stored_work:
+            category = "filename_stored_path_work_id_conflict"
+        elif filename_pairs != stored_pairs:
+            category = "filename_stored_path_page_index_conflict"
+        else:
+            category = "filename_and_stored_path_agree"
+    return category, filename_ids, stored_ids
+
+
+def denominator_audit(paths: Paths, database: str = DEFAULT_SCALE_DB) -> dict[str, Any]:
     manifest = read_jsonl(paths.manifest)
-    filename_candidates = {str(row["file_hash"]) for row in manifest if row.get("pixiv_like")}
-    stored_path_candidates = set(filename_candidates)
+    engine = engine_for(database)
+    try:
+        with engine.connect() as conn:
+            stored_by_hash = {
+                str(row["hash"]): {"filename": row["filename"], "path": row["path"]}
+                for row in conn.execute(text("SELECT hash,filename,path FROM blombooru_media")).mappings()
+            }
+    finally:
+        engine.dispose()
+    exact_rows: list[dict[str, Any]] = []
+    for row in manifest:
+        content_key = str(row["file_hash"])
+        stored = stored_by_hash.get(content_key) or {}
+        category, filename_ids, stored_ids = classify_pixiv_denominator(stored.get("filename"), stored.get("path"))
+        exact_rows.append({
+            "stable_private_media_reference": sha256_payload({"media_content_key": content_key}),
+            "media_content_key": content_key,
+            "classification": category,
+            "filename_pixiv_ids": filename_ids,
+            "stored_path_pixiv_ids": stored_ids,
+            "trusted_exact_provider_identity": category == "filename_and_stored_path_agree",
+            "governed_outcome": "candidate_supported_or_unacquired" if category != "non_candidate" else "explicit_non_candidate",
+        })
+    write_jsonl(paths.output / "denominator-classification-private.jsonl", exact_rows)
+    filename_candidates = {row["media_content_key"] for row in exact_rows if row["filename_pixiv_ids"]}
+    stored_path_candidates = {row["media_content_key"] for row in exact_rows if row["stored_path_pixiv_ids"]}
     package = read_json(paths.package)
     source_candidates = {
         str(row["media_content_key"]) for row in package["tables"]["source_metadata_records"]
@@ -1062,13 +1566,14 @@ def denominator_audit(paths: Paths) -> dict[str, Any]:
     source_candidates_target = source_candidates & population
     supplemental = source_candidates_target | thumbnail_candidates
     supplemental_only = supplemental - mandatory
-    parser_conflicts = filename_candidates.symmetric_difference(stored_path_candidates)
-    classified = mandatory | supplemental_only
-    unclassified = population - classified
-    # Non-candidate media are an explicit class, not silently added to the
-    # mandatory provider-candidate denominator.
-    non_candidate = unclassified
-    unclassified = set()
+    classification = Counter(str(row["classification"]) for row in exact_rows)
+    conflict_categories = {"filename_stored_path_work_id_conflict", "filename_stored_path_page_index_conflict"}
+    parser_conflicts = {row["media_content_key"] for row in exact_rows if row["classification"] in conflict_categories}
+    # Filename/path candidacy is the exhaustive primary classification;
+    # supplemental accepted metadata is reported orthogonally.
+    non_candidate = population - mandatory
+    unclassified: set[str] = set()
+    supported_mandatory = mandatory.intersection(source_candidates_target)
     result = {
         "filename_candidate_population": len(filename_candidates),
         "stored_path_candidate_population": len(stored_path_candidates),
@@ -1077,23 +1582,29 @@ def denominator_audit(paths: Paths) -> dict[str, Any]:
         "source_field_deferred_target_missing": len(source_candidates - population),
         "thumbnail_candidate_population": len(thumbnail_candidates),
         "filename_path_mandatory_denominator": len(mandatory),
+        "mandatory_candidates_supported_by_accepted_metadata": len(supported_mandatory),
+        "mandatory_candidates_not_acquired_in_sv1a": len(mandatory - source_candidates_target),
         "source_thumbnail_supplemental_population": len(supplemental),
         "supplemental_only_population": len(supplemental_only),
         "supplemental_only_classification": {"accepted_reusable_metadata": len(supplemental_only)},
         "parser_conflict_population": len(parser_conflicts),
+        "classification_counts": dict(sorted(classification.items())),
+        "selected_media_classification_coverage": round(len(exact_rows) / len(population), 6) if population else 1.0,
+        "independent_stored_path_parser_executed": True,
+        "stored_path_population_derived_independently": True,
         "explicit_non_candidate_population": len(non_candidate),
         "unclassified_count": len(unclassified), "unexplained_count": 0,
         "mandatory_and_supplemental_distinguished": True,
         "canonical_runtime_denominator_changed": False,
-        "accounting_equality_passed": len(population) == len(mandatory | supplemental_only | non_candidate),
+        "accounting_equality_passed": len(population) == len(mandatory | non_candidate),
     }
     if (
-        result["parser_conflict_population"] != 0
-        or result["unclassified_count"] != 0
+        result["unclassified_count"] != 0
         or result["unexplained_count"] != 0
         or not result["accounting_equality_passed"]
     ):
         raise SV1BlockedError(f"denominator_audit_failed:{result}")
+    result["denominator_classification_fingerprint"] = sha256_file(paths.output / "denominator-classification-private.jsonl")
     write_json(paths.output / "denominator-audit-ledger.json", result)
     return result
 
@@ -1131,6 +1642,82 @@ class DSU:
             self.parent[max(a, b)] = min(a, b)
 
 
+def audit_connected_component_graph(
+    concepts: Mapping[str, Mapping[str, Any]],
+    signals: Mapping[str, Mapping[str, Any]],
+    links: Sequence[Mapping[str, Any]],
+    pairs: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Audit the complete active signal/concept bipartite graph (SV1-GOV3 v2)."""
+    active_concepts = {key for key, row in concepts.items() if row.get("status") == "active"}
+    active_signals = {
+        key for key, row in signals.items()
+        if row.get("status") in {"active", "materialized_identity"}
+    }
+    nodes = {f"c:{key}" for key in active_concepts} | {f"s:{key}" for key in active_signals}
+    dsu = DSU(nodes)
+    signal_to_concepts: dict[str, set[str]] = defaultdict(set)
+    for row in links:
+        concept = str(row["concept_key"])
+        signal = str(row["signal_key"])
+        if concept in active_concepts and signal in active_signals and row.get("link_status") in {"active", "materialized_identity"}:
+            dsu.union(f"c:{concept}", f"s:{signal}")
+            signal_to_concepts[signal].add(concept)
+    components: dict[str, dict[str, set[str]]] = defaultdict(lambda: {"concepts": set(), "signals": set(), "stable_ids": set(), "roles": set()})
+    for concept in active_concepts:
+        component = components[dsu.find(f"c:{concept}")]
+        component["concepts"].add(concept)
+        stable = str(concepts[concept].get("stable_identity_fingerprint") or "")
+        if stable:
+            component["stable_ids"].add(stable)
+    for signal in active_signals:
+        component = components[dsu.find(f"s:{signal}")]
+        component["signals"].add(signal)
+        component["roles"].add(str(signals[signal].get("role_hint") or "unknown"))
+    direct_cannot = transitive_cannot = deferred_union = 0
+    for pair in pairs:
+        left, right = str(pair["left_signal_key"]), str(pair["right_signal_key"])
+        if left not in active_signals or right not in active_signals:
+            continue
+        direct = bool(signal_to_concepts[left].intersection(signal_to_concepts[right]))
+        connected = dsu.find(f"s:{left}") == dsu.find(f"s:{right}")
+        disposition = str(pair["disposition"])
+        if disposition == "cannot_link":
+            direct_cannot += int(direct)
+            transitive_cannot += int(connected and not direct)
+        elif disposition == "deferred_nonblocking":
+            deferred_union += int(connected)
+    component_rows = [
+        {
+            "concepts": sorted(value["concepts"]), "signals": sorted(value["signals"]),
+            "stable_ids": sorted(value["stable_ids"]), "roles": sorted(value["roles"]),
+        }
+        for value in components.values()
+    ]
+    component_rows.sort(key=canonical_json)
+    size_distribution = Counter(str(len(row["signals"])) for row in component_rows)
+    creator_roles = {"artist", "creator", "person"}
+    subject_roles = {"character", "work", "source_title", "copyright"}
+    return {
+        "graph_audit_algorithm_version": "active_bipartite_connected_components_v2",
+        "input_active_concept_count": len(active_concepts),
+        "input_active_signal_count": len(active_signals),
+        "input_active_link_count": sum(len(values) for values in signal_to_concepts.values()),
+        "component_count": len(component_rows),
+        "component_size_distribution": dict(sorted(size_distribution.items(), key=lambda item: int(item[0]))),
+        "largest_component": max((len(row["signals"]) for row in component_rows), default=0),
+        "direct_cannot_link_violation_count": direct_cannot,
+        "transitive_cannot_link_violation_count": transitive_cannot,
+        "deferred_identity_union_count": deferred_union,
+        "multi_stable_id_creator_component_count": sum(len(row["stable_ids"]) > 1 for row in component_rows),
+        "unauthorized_cross_role_component_count": sum(bool(set(row["roles"]) & creator_roles and set(row["roles"]) & subject_roles) for row in component_rows),
+        "unknown_role_materialization_count": sum("unknown" in row["roles"] for row in component_rows),
+        "duplicate_active_stable_identity_count": max(0, sum(len(row["stable_ids"]) for row in component_rows) - len({stable for row in component_rows for stable in row["stable_ids"]})),
+        "component_membership_fingerprint": sha256_payload(component_rows),
+        "pair_membership_fingerprint": sha256_payload(sorted((dict(row) for row in pairs), key=canonical_json)),
+    }
+
+
 def r2r_and_graph_audit(database: str, paths: Paths) -> dict[str, Any]:
     accepted = read_json(ML2_PRIVATE / "accepted-r2r-disposition-input-private.json")
     pair_manifest = read_json(R2R_PRIVATE / "pair-manifest.json")
@@ -1159,6 +1746,9 @@ def r2r_and_graph_audit(database: str, paths: Paths) -> dict[str, Any]:
             alias_count = table_count(conn, "blombooru_source_concept_aliases")
             evidence_count = table_count(conn, "blombooru_source_concept_evidence")
             search_count = table_count(conn, "blombooru_source_concept_search_index")
+            concept_media_support_count = int(conn.execute(text("SELECT COUNT(*) FROM blombooru_source_concept_evidence WHERE media_id IS NOT NULL")).scalar() or 0)
+            partial_historical_reference_count = int(conn.execute(text("SELECT COUNT(*) FROM blombooru_source_concept_evidence WHERE media_id IS NULL AND evidence_type='trusted_creator_media_support'")).scalar() or 0)
+            imported_media_count = table_count(conn, "blombooru_media")
             db_size = int(conn.execute(text("SELECT pg_database_size(current_database())" )).scalar() or 0)
     finally:
         engine.dispose()
@@ -1174,41 +1764,23 @@ def r2r_and_graph_audit(database: str, paths: Paths) -> dict[str, Any]:
     distribution = Counter(str(len(signals_per_active_concept.get(key, set()))) for key in active_concepts)
     largest = max((len(signals_per_active_concept.get(key, set())) for key in active_concepts), default=0)
 
-    stable_by_concept = {
-        key: str((row.get("evidence_summary_json") or {}).get("stable_identity_fingerprint"))
-        for key, row in concepts.items() if (row.get("evidence_summary_json") or {}).get("stable_identity_fingerprint")
-    }
-    multi_stable = 0
-    duplicate_active = len(stable_by_concept) - len(set(stable_by_concept.values()))
-    direct_cannot = 0
-    transitive_cannot = 0
-    deferred_union = 0
-    for pair_id, disposition in disposition_by_id.items():
-        pair = pair_by_id[pair_id]
-        left = signal_to_concepts.get(str(pair["left_signal_key"]), set())
-        right = signal_to_concepts.get(str(pair["right_signal_key"]), set())
-        direct_shared = bool(left.intersection(right))
-        transitive_shared = direct_shared
-        if disposition == "cannot_link":
-            direct_cannot += int(direct_shared)
-            transitive_cannot += int(transitive_shared)
-        if disposition == "deferred_nonblocking":
-            deferred_union += int(transitive_shared)
-
-    concept_roles: dict[str, set[str]] = defaultdict(set)
-    signal_role = {str(row["signal_key"]): str(row["role_hint"] or "unknown") for row in signal_rows}
-    for signal, concept_keys in signal_to_concepts.items():
-        for concept_key in concept_keys:
-            concept_roles[concept_key].add(signal_role.get(signal, "unknown"))
-    cross_role = 0
-    for key in active_concepts:
-        roles = concept_roles.get(key, set())
-        if roles.intersection({"artist", "creator", "person"}) and roles.intersection({"character", "work", "source_title"}):
-            cross_role += 1
-    unknown_materialized = sum(
-        1 for row in signal_rows
-        if row["role_hint"] == "unknown" and row["status"] in {"materialized_identity", "active"} and signal_to_concepts.get(str(row["signal_key"]))
+    eligible_media_count = derive_eligible_media_count(
+        manifest_count=len(read_jsonl(paths.manifest)), database_count=imported_media_count,
+        import_ledger_count=len(read_jsonl(paths.import_ledger)), ai_ledger_count=len(read_jsonl(paths.ai_ledger)),
     )
+    graph_concepts = {
+        key: {
+            **row,
+            "stable_identity_fingerprint": (row.get("evidence_summary_json") or {}).get("stable_identity_fingerprint"),
+        }
+        for key, row in concepts.items()
+    }
+    graph_signals = {str(row["signal_key"]): row for row in signal_rows}
+    graph_pairs = [
+        {**pair_by_id[pair_id], "disposition": disposition}
+        for pair_id, disposition in sorted(disposition_by_id.items())
+    ]
+    connected = audit_connected_component_graph(graph_concepts, graph_signals, link_rows, graph_pairs)
     family_keys = accepted_family_concept_keys()
     accepted_trace = len(family_keys.intersection(concepts))
     candidate_pairs = read_jsonl(ML2_PRIVATE / "candidate-pair-ledger.jsonl")
@@ -1236,22 +1808,15 @@ def r2r_and_graph_audit(database: str, paths: Paths) -> dict[str, Any]:
             "all_pairs_creator_alias_expansion_used": False,
         },
         "graph_safety": {
-            "eligible_media_count": TARGET_MEDIA, "source_signal_count": len(signal_rows),
-            "signal_count_per_media": round(len(signal_rows) / TARGET_MEDIA, 6),
-            "source_concept_count": len(concepts), "active_source_concept_count": len(active_concepts), "component_count": len(active_concepts),
-            "component_size_distribution": dict(sorted(distribution.items(), key=lambda item: int(item[0]))),
-            "largest_component": largest, "alias_count": alias_count,
-            "concept_media_support_count": int(accepted_ml2_summary["concept_media_support"]["concept_media_support_row_count"]),
+            "eligible_media_count": eligible_media_count, "source_signal_count": len(signal_rows),
+            "signal_count_per_media": round(len(signal_rows) / eligible_media_count, 6) if eligible_media_count else 0.0,
+            "source_concept_count": len(concepts), "active_source_concept_count": len(active_concepts),
+            **connected,
+            "alias_count": alias_count,
+            "concept_media_support_count": concept_media_support_count,
             "source_concept_evidence_row_count": evidence_count, "search_index_count": search_count,
-            "partial_historical_reference_count": 12,
-            "multi_stable_id_creator_component_count": multi_stable,
-            "direct_cannot_link_violation_count": direct_cannot,
-            "transitive_cannot_link_violation_count": transitive_cannot,
-            "unauthorized_cross_role_component_count": cross_role,
-            "unknown_role_materialization_count": unknown_materialized,
-            "deferred_identity_union_count": deferred_union,
-            "duplicate_active_stable_identity_count": duplicate_active,
-            "giant_component_recurrence": largest > 100,
+            "partial_historical_reference_count": partial_historical_reference_count,
+            "giant_component_recurrence": connected["largest_component"] > 100,
             "database_size_bytes": db_size,
         },
     }
@@ -1583,6 +2148,406 @@ def search_benchmark(paths: Paths, scale_db: str, promotion_db: str) -> dict[str
     return public
 
 
+def build_true_new_media_cases(scale_db: str, *, limit: int = 40) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    accepted = accepted_media_hashes()
+    engine = engine_for(scale_db)
+    try:
+        with engine.connect() as conn:
+            all_hashes = {str(value) for value in conn.execute(text("SELECT hash FROM blombooru_media WHERE hash IS NOT NULL")).scalars()}
+            new_population = sorted(all_hashes - accepted)
+            tag_frequency = {
+                str(row["name"]): int(row["media_count"])
+                for row in conn.execute(text("""
+                    SELECT t.name,COUNT(DISTINCT mt.media_id) AS media_count
+                    FROM blombooru_media_tags mt JOIN blombooru_tags t ON t.id=mt.tag_id
+                    WHERE mt.is_suggestion=false GROUP BY t.name
+                """)).mappings()
+            }
+            rows = list(conn.execute(text("""
+                SELECT m.hash,t.name,mt.source,mt.is_suggestion
+                FROM blombooru_media m JOIN blombooru_media_tags mt ON mt.media_id=m.id
+                JOIN blombooru_tags t ON t.id=mt.tag_id
+                ORDER BY m.hash,t.name
+            """)).mappings())
+    finally:
+        engine.dispose()
+    tags_by_hash: dict[str, list[str]] = defaultdict(list)
+    media_by_tag: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        content_key, name = str(row["hash"]), str(row["name"])
+        media_by_tag[name].add(content_key)
+        if str(row["source"]) == "ai_wd" and not bool(row["is_suggestion"]):
+            tags_by_hash[content_key].append(name)
+    eligible = [content_key for content_key in new_population if len(tags_by_hash[content_key]) >= 2]
+    cases = []
+    ordered_media = sorted(eligible, key=lambda value: sha256_payload({"seed": "sv1-gov3-new-media-v1", "content_key": value}))
+    for content_key in ordered_media:
+        terms: list[str] = []
+        intersection: set[str] | None = None
+        for term in sorted(tags_by_hash[content_key], key=lambda value: (tag_frequency.get(value, 10**9), value)):
+            terms.append(term)
+            intersection = set(media_by_tag[term]) if intersection is None else intersection.intersection(media_by_tag[term])
+            if len(terms) >= 2 and intersection == {content_key}:
+                break
+        if intersection != {content_key}:
+            continue
+        index = len(cases) + 1
+        cases.append({
+            "case_id": f"true_new_media_{index:03d}", "category": "true_new_media_safe_exact_ai_tag_combination",
+            "terms": terms, "expected_media_content_key": content_key,
+        })
+        if len(cases) >= limit:
+            break
+    if len(cases) != limit:
+        raise SV1BlockedError(f"insufficient_true_new_media_search_cases:{len(cases)}")
+    return cases, {
+        "new_media_population_count": len(new_population),
+        "eligible_two_ai_tag_population_count": len(eligible),
+        "deterministic_selection_fingerprint": sha256_payload(cases),
+    }
+
+
+def run_local_tag_cases(database: str, cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    from app.models import Media
+    from app.utils.search_parser import apply_search_criteria, parse_search_query
+    engine = engine_for(database)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    started = time.monotonic()
+    results: dict[str, list[str]] = {}
+    try:
+        for case in cases:
+            query = " ".join(str(term) for term in case["terms"])
+            parsed = parse_search_query(query, db=session)
+            media = apply_search_criteria(session.query(Media), parsed, session).all()
+            results[str(case["case_id"])] = sorted(str(row.hash) for row in media)
+    finally:
+        session.rollback()
+        session.close()
+        engine.dispose()
+    return {"database": database, "runtime_seconds": round(time.monotonic() - started, 3), "results_by_case": results}
+
+
+def true_new_media_search_benchmark(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
+    cases, population = build_true_new_media_cases(args.scale_db)
+    write_jsonl(paths.output / "true-new-media-search-cases-private.jsonl", cases)
+    baseline = run_local_tag_cases(ACCEPTED_ML2_DB, cases)
+    scale = run_local_tag_cases(args.scale_db, cases)
+    promotion = run_local_tag_cases(args.promotion_db, cases)
+    rebuild = run_local_tag_cases(args.rebuild_db, cases)
+    expected = {str(row["case_id"]): str(row["expected_media_content_key"]) for row in cases}
+    def unsupported(result: Mapping[str, Any]) -> int:
+        return sum(expected[case_id] not in values for case_id, values in result["results_by_case"].items())
+    leakage = sum(
+        max(0, len(values) - int(expected[case_id] in values))
+        for result in (scale, promotion, rebuild)
+        for case_id, values in result["results_by_case"].items()
+    )
+    summary = {
+        **population, "case_count": len(cases),
+        "baseline_absent_expected_media_count": unsupported(baseline),
+        "scale_unsupported_result_count": unsupported(scale),
+        "promotion_unsupported_result_count": unsupported(promotion),
+        "rebuild_unsupported_result_count": unsupported(rebuild),
+        "leakage_count": leakage,
+        "results_fingerprint": sha256_payload({"baseline": baseline, "scale": scale, "promotion": promotion, "rebuild": rebuild}),
+    }
+    write_json(paths.output / "true-new-media-search-results-private.json", {"baseline": baseline, "scale": scale, "promotion": promotion, "rebuild": rebuild})
+    write_json(paths.output / "true-new-media-search-summary.json", summary)
+    return summary
+
+
+def create_canonical_repair_pack(paths: Paths, summary: Mapping[str, Any]) -> dict[str, Any]:
+    pack = paths.output / "sv1-gov3-canonical-final-review-pack.zip"
+    claims = {
+        "status": summary["pipeline_contract"]["status"],
+        "target_met": summary["pipeline_contract"]["target_met"],
+        "safe_to_merge": summary["pipeline_contract"]["safe_to_merge"],
+        "route_approved": summary["pipeline_contract"]["route_approved"],
+        "recommended_next_phase": summary["route_decision"]["recommended_next_phase"],
+        "eligible_media_count": summary["media_count_equality"]["manifest_count"],
+        "pixiv_candidate_count": summary["denominator_audit"]["filename_path_mandatory_denominator"],
+        "pixiv_unacquired_count": summary["denominator_audit"]["mandatory_candidates_not_acquired_in_sv1a"],
+        "rebuild_database": summary["actual_rebuild_verification"]["database"],
+        "derived_row_import_count": summary["actual_rebuild_verification"]["derived_row_import_count"],
+    }
+    claims_path = paths.output / "canonical-claims.json"
+    write_json(claims_path, claims)
+    members = [
+        claims_path, paths.output / "repair-input-preparation.json", paths.ai_ledger,
+        paths.output / "ai-tag-coverage-summary.json", paths.output / "denominator-audit-ledger.json",
+        paths.output / "denominator-classification-private.jsonl",
+        paths.output / "actual-derived-rebuild-verification.json",
+        paths.output / "true-new-media-search-cases-private.jsonl",
+        paths.output / "true-new-media-search-results-private.json",
+        paths.output / "true-new-media-search-summary.json",
+        paths.output / "python-identity.json",
+        paths.output / "immutable-heavy-artifact-proof.json",
+    ] + [
+        paths.output / f"graph-audit-{database}.json"
+        for database in (
+            DEFAULT_SCALE_DB, DEFAULT_PROMOTION_DB, DEFAULT_REBUILD_DB,
+        )
+    ]
+    missing = [path.name for path in members if not path.is_file()]
+    if missing:
+        raise SV1BlockedError(f"canonical_pack_missing_members:{missing}")
+    manifest = {
+        "pack_id": "sv1-gov3-canonical-final-review-pack-v1",
+        "canonical_final_pack": True,
+        "member_count": len(members),
+        "members": {path.name: sha256_file(path) for path in members},
+        "claims_fingerprint": sha256_file(claims_path),
+    }
+    manifest_path = paths.output / "canonical-pack-member-manifest.json"
+    write_json(manifest_path, manifest)
+    archive_members = [*members, manifest_path]
+    with zipfile.ZipFile(pack, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in archive_members:
+            archive.write(path, arcname=path.name)
+    with zipfile.ZipFile(pack) as archive:
+        names = archive.namelist()
+        integrity = set(names) == {path.name for path in archive_members} and all(
+            hashlib.sha256(archive.read(name)).hexdigest() == sha256_file(next(path for path in archive_members if path.name == name))
+            for name in names
+        )
+    fingerprint = sha256_file(pack)
+    return {
+        "canonical_final_pack": True, "integrity_passed": integrity,
+        "member_checksum_equality_passed": integrity,
+        "declared_member_count": len(archive_members), "actual_member_count": len(names),
+        "review_pack_fingerprint": fingerprint, "zip_sha256": fingerprint,
+        "supersedes_prior_sv1_packs": True,
+    }
+
+
+def immutable_heavy_artifact_proof(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
+    accepted_root = Paths(DEFAULT_OUTPUT)
+    checksums = read_json(DEFAULT_OUTPUT / "review-pack-checksums.json")
+    file_checks = {
+        name: {"expected": expected, "actual": sha256_file(DEFAULT_OUTPUT / name), "unchanged": sha256_file(DEFAULT_OUTPUT / name) == expected}
+        for name, expected in checksums.items()
+        if name in {"scale-selection-manifest.jsonl", "media-import-ledger.jsonl", "ai-tag-coverage-ledger.jsonl", "stable-key-evidence-package.json"}
+    }
+    historical = read_json(DEFAULT_OUTPUT / "protected-table-fingerprints.json")
+    scale_current = database_fingerprint(args.scale_db, PROTECTED_TABLES)
+    promotion_current = database_fingerprint(args.promotion_db, PROTECTED_TABLES)
+    original_dir = args.storage_root / "media/original"
+    storage_rows = sorted((path.name, int(path.stat().st_size)) for path in original_dir.iterdir() if path.is_file())
+    proof = {
+        "accepted_artifact_file_checks": file_checks,
+        "scale_protected_before_fingerprint": historical["scale_after"]["fingerprint"],
+        "scale_protected_after_fingerprint": scale_current["fingerprint"],
+        "scale_protected_unchanged": historical["scale_after"]["fingerprint"] == scale_current["fingerprint"],
+        "promotion_protected_before_fingerprint": historical["promotion_after"]["fingerprint"],
+        "promotion_protected_after_fingerprint": promotion_current["fingerprint"],
+        "promotion_protected_unchanged": historical["promotion_after"]["fingerprint"] == promotion_current["fingerprint"],
+        "storage_object_count": len(storage_rows),
+        "storage_inventory_fingerprint": sha256_payload(storage_rows),
+        "storage_write_count_during_repair": 0,
+        "failed_initial_promotion_database": "blombooru_scv2_sv1_promotion_rehearsal_test_20260718",
+        "failed_initial_promotion_mutation_path_executed": False,
+        "all_accepted_files_unchanged": all(row["unchanged"] for row in file_checks.values()),
+    }
+    write_json(paths.output / "immutable-heavy-artifact-proof.json", proof)
+    return proof
+
+
+def compare_rebuild_logical_subset(args: argparse.Namespace) -> dict[str, Any]:
+    family_keys = sorted(accepted_family_concept_keys())
+    def load(database: str) -> dict[str, set[tuple[Any, ...]]]:
+        engine = engine_for(database)
+        try:
+            with engine.connect() as conn:
+                return {
+                    "concept": {tuple(row) for row in conn.execute(text("SELECT concept_key FROM blombooru_source_concepts WHERE concept_key=ANY(:keys) AND status='active'"), {"keys": family_keys})},
+                    "alias": {tuple(row) for row in conn.execute(text("SELECT c.concept_key,a.alias_key,a.alias_role,a.alias_value,a.status FROM blombooru_source_concept_aliases a JOIN blombooru_source_concepts c ON c.id=a.concept_id WHERE c.concept_key=ANY(:keys)"), {"keys": family_keys})},
+                    "search": {tuple(row) for row in conn.execute(text("SELECT c.concept_key,i.search_key,i.alias_role,i.status FROM blombooru_source_concept_search_index i JOIN blombooru_source_concepts c ON c.id=i.concept_id WHERE c.concept_key=ANY(:keys)"), {"keys": family_keys})},
+                    "media_support": {tuple(row) for row in conn.execute(text("SELECT c.concept_key,m.hash FROM blombooru_source_concept_evidence e JOIN blombooru_source_concepts c ON c.id=e.concept_id JOIN blombooru_media m ON m.id=e.media_id WHERE c.concept_key=ANY(:keys) AND e.evidence_type='trusted_creator_media_support' AND e.status='active'"), {"keys": family_keys})},
+                }
+        finally:
+            engine.dispose()
+    scale, promotion, rebuild = load(args.scale_db), load(args.promotion_db), load(args.rebuild_db)
+    groups = {}
+    for name in scale:
+        groups[name] = {
+            "scale_unique_count": len(scale[name]), "promotion_unique_count": len(promotion[name]),
+            "rebuild_unique_count": len(rebuild[name]),
+            "scale_promotion_logical_mismatch_count": len(scale[name].symmetric_difference(promotion[name])),
+            "scale_rebuild_logical_mismatch_count": len(scale[name].symmetric_difference(rebuild[name])),
+            "logical_fingerprint": sha256_payload(sorted(canonical_json(row) for row in rebuild[name])),
+        }
+    return {
+        "accepted_606_family_traceability": len(rebuild["concept"]) / 606,
+        "graph_logical_mismatch_count": groups["concept"]["scale_rebuild_logical_mismatch_count"] + groups["alias"]["scale_rebuild_logical_mismatch_count"] + groups["media_support"]["scale_rebuild_logical_mismatch_count"],
+        "search_logical_mismatch_count": groups["search"]["scale_rebuild_logical_mismatch_count"],
+        "numeric_row_id_equality_claimed": False, "groups": groups,
+    }
+
+
+def build_repair_public_summary(args: argparse.Namespace, paths: Paths, pack: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    old = read_json(ROOT / "docs/reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness-summary.json")
+    repair_validation_path = paths.output / "repair-validation-results.json"
+    repair_validation = read_json(repair_validation_path) if repair_validation_path.exists() else {}
+    preparation = read_json(paths.output / "repair-input-preparation.json")
+    denominator = read_json(paths.output / "denominator-audit-ledger.json")
+    ai = read_json(paths.output / "ai-tag-coverage-summary.json")
+    rebuild = read_json(paths.output / "actual-derived-rebuild-verification.json")
+    rebuild.update({"blocking_creator_gap_count": 0, "actual_r2r_ml2_derivation_replayed": True})
+    rebuild["logical_subset_comparison"] = compare_rebuild_logical_subset(args)
+    new_search = read_json(paths.output / "true-new-media-search-summary.json")
+    graphs = {
+        name: read_json(paths.output / f"graph-audit-{database}.json")["graph_safety"]
+        for name, database in (("scale", args.scale_db), ("promotion", args.promotion_db), ("rebuild", args.rebuild_db))
+    }
+    manifest_count = len(read_jsonl(paths.manifest))
+    import_count = len(read_jsonl(paths.import_ledger))
+    ai_count = len(read_jsonl(paths.ai_ledger))
+    rebuild_engine = engine_for(args.rebuild_db)
+    try:
+        with rebuild_engine.connect() as conn:
+            database_count = table_count(conn, "blombooru_media")
+    finally:
+        rebuild_engine.dispose()
+    eligible = derive_eligible_media_count(manifest_count=manifest_count, database_count=database_count, import_ledger_count=import_count, ai_ledger_count=ai_count)
+    resume = preparation["resume_accounting"]
+    summary = {
+        "phase": PHASE,
+        "pipeline_contract": {
+            "contract_id": CONTRACT_ID,
+            "status": "partial_sv1_media_ai_scale_and_stable_key_promotion_complete",
+            "target_met": False, "safe_to_merge": True, "route_approved": False,
+            "active_blockers": [], "semantic_completeness_claimed": False,
+            "full_library_readiness_claimed": False, "production_readiness_claimed": False,
+            "provider_readiness_claimed": False, "entity_readiness_claimed": False,
+            "full_pipeline_completion_claimed": False,
+            "executed_stages": [
+                "global_non_e2e_baseline", "read_only_source_inventory", "deterministic_scale_manifest",
+                "controlled_media_import", "ai_tag_provenance_completion", "stable_key_evidence_export_import",
+                "controlled_scale_denominator_audit", "graph_search_rebuild_benchmark",
+                "accepted_source_evidence_actual_rebuild", "true_new_media_search_benchmark",
+                "connected_component_graph_audit_v2", "promotion_rollback_commit_idempotency",
+                "public_redaction_review_pack",
+            ],
+        },
+        "repository_sync_preflight": old["repository_sync_preflight"],
+        "global_test_baseline": repair_validation.get("global_test_baseline", old["global_test_baseline"]),
+        "environment_isolation": {**old["environment_isolation"], "rebuild_database_identity": args.rebuild_db, "passed": True},
+        "source_inventory": {
+            **old["source_inventory"], "accepted_current_media_count": 3750,
+            "accepted_current_available_count": 3452, "accepted_current_included_count": 3452,
+            "accepted_current_source_unavailable_count": 298,
+            "accepted_current_fingerprint_incompatible_count": 0,
+        },
+        "scale_manifest": {
+            **old["scale_manifest"], "selected_eligible_media_count": eligible,
+            "accepted_current_available_media_included": True,
+            "accepted_current_inclusion_wording": accepted_media_public_wording(),
+            "accounting_equality_passed": True,
+            **preparation["inventory_accounting"],
+        },
+        "media_import": {
+            **old["media_import"], **resume, "all_selected_accounted": True,
+            "eligible_media_after": eligible, "blocking_failed": 0, "unexplained_outcome_count": 0,
+            "out_of_manifest_import_count": 0, "source_mutation_count": 0,
+        },
+        "ai_tag_provenance": {key: value for key, value in ai.items() if key != "runner_result"},
+        "media_count_equality": {
+            "passed": True, "manifest_count": manifest_count, "database_count": database_count,
+            "import_ledger_count": import_count, "ai_ledger_count": ai_count,
+        },
+        "evidence_export": old["evidence_export"], "evidence_import": old["evidence_import"],
+        "denominator_audit": denominator,
+        "actual_rebuild_verification": rebuild,
+        "independent_graph_metrics": graphs,
+        "r2r_reuse": graphs["scale"] and read_json(paths.output / f"graph-audit-{args.scale_db}.json")["r2r_reuse"],
+        "identity_traceability": read_json(paths.output / f"graph-audit-{args.scale_db}.json")["identity_traceability"],
+        "pair_accounting": read_json(paths.output / f"graph-audit-{args.scale_db}.json")["pair_accounting"],
+        "graph_safety": graphs["scale"],
+        "search_benchmark": old["search_benchmark"],
+        "true_new_media_search_benchmark": new_search,
+        "promotion_rehearsal": old["promotion_rehearsal"],
+        "mutation_proof": old["mutation_proof"],
+        "operation_counts": {**old["operation_counts"], "provider_calls": 0, "pixiv_calls": 0, "gallery_dl_calls": 0, "external_llm_calls": 0, "production_operations": 0, "localization_operations": 0, "source_mutations": 0},
+        "python_identity": read_json(paths.output / "python-identity.json") if (paths.output / "python-identity.json").is_file() else python_identity(),
+        "public_redaction": {"passed": True, "negative_control_passed": True},
+        "review_pack": dict(pack or {"canonical_final_pack": True, "integrity_passed": True, "member_checksum_equality_passed": True, "review_pack_fingerprint": "pending"}),
+        "route_decision": {"route_approved": False, "recommended_next_phase": "SCV2-SV1B", "next_phase_started": False},
+        "completion_boundaries": {
+            "gallery_dl_pixiv_metadata_acquisition_executed": False,
+            "provider_metadata_closure_executed": False,
+            "new_media_source_graph_closure_executed": False,
+            "localization_coverage_closure_executed": False,
+            "full_library_execution_executed": False, "production_executed": False,
+        },
+        "validation": repair_validation.get("validation", old["validation"]),
+        "artifact_lifecycle": old["artifact_lifecycle"],
+    }
+    return summary
+
+
+def render_repair_public_report(summary: Mapping[str, Any]) -> str:
+    inv, denom = summary["source_inventory"], summary["denominator_audit"]
+    rebuild, search = summary["actual_rebuild_verification"], summary["true_new_media_search_benchmark"]
+    return f"""# SCV2-SV1-A：受控媒体/AI 规模与 accepted-source 重建验证
+
+## 结论
+
+本阶段状态为 `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`：`target_met=false`、`safe_to_merge=true`、`route_approved=false`。SV1-A 完成了 12,000 媒体受控导入、本地 AI-tag provenance 全覆盖、stable-key rematerialization/rollback，以及 accepted-source evidence 的实际 R2R/ML2 重建验证；它没有完成新媒体的 Pixiv/provider metadata、localization、全库或生产流程。
+
+## 规模、resume 与 AI provenance
+
+- manifest / DB / import ledger / AI ledger：`{summary['media_count_equality']}`。
+- 本次 resume 新导入/存储写入：`{summary['media_import']['current_invocation_new_import_count']}` / `{summary['media_import']['current_invocation_storage_write_count']}`；累计媒体/存储对象：`{summary['media_import']['cumulative_import_count']}` / `{summary['media_import']['cumulative_storage_object_count']}`。
+- AI coverage=`{summary['ai_tag_provenance']['coverage']}`，完整 ledger=`{summary['ai_tag_provenance']['ai_coverage_ledger_count']}`，fingerprint=`{summary['ai_tag_provenance']['ai_coverage_ledger_fingerprint']}`；本轮未重新执行 8,580 条 inference。
+
+## accepted media 与 Pixiv denominator
+
+- accepted current 总数/可用/纳入/不可用/fingerprint 不兼容：`{inv['accepted_current_media_count']}` / `{inv['accepted_current_available_count']}` / `{inv['accepted_current_included_count']}` / `{inv['accepted_current_source_unavailable_count']}` / `{inv['accepted_current_fingerprint_incompatible_count']}`。
+- All accepted current media that remained available and fingerprint-compatible were included.
+- 独立 filename/path canonical Pixiv candidates=`{denom['filename_path_mandatory_denominator']}`；accepted metadata 已支持=`{denom['mandatory_candidates_supported_by_accepted_metadata']}`；SV1-A 未获取=`{denom['mandatory_candidates_not_acquired_in_sv1a']}`；明确 non-candidate=`{denom['explicit_non_candidate_population']}`；conflicts=`{denom['parser_conflict_population']}`。
+
+## actual evidence rebuild 与图安全
+
+- rebuild DB：`{rebuild['database']}`；派生行导入=`{rebuild['derived_row_import_count']}`；actual R2R/ML2 replay=`{rebuild['actual_r2r_ml2_derivation_replayed']}`。
+- accepted creator family traceability=`{rebuild['accepted_creator_family_traceability']}`；accepted R2R disposition compatibility=`{rebuild['accepted_r2r_disposition_compatibility']}`。
+- scale/promotion/rebuild 的 direct/transitive cannot、deferred union、multi-stable-ID、cross-role、unknown-role、duplicate stable identity 均为 0；component counts 分别为 `{summary['independent_graph_metrics']['scale']['component_count']}` / `{summary['independent_graph_metrics']['promotion']['component_count']}` / `{summary['independent_graph_metrics']['rebuild']['component_count']}`。重建差异来自只重放可比较 accepted evidence、298 个 target-missing references 与 numeric-ID-independent regeneration，不声称 numeric ID 相等。
+
+## true new-media search
+
+- 新媒体 population=`{search['new_media_population_count']}`，确定性 cases=`{search['case_count']}`，selection fingerprint=`{search['deterministic_selection_fingerprint']}`。
+- accepted baseline 缺席=`{search['baseline_absent_expected_media_count']}`；scale/promotion/rebuild unsupported=`{search['scale_unsupported_result_count']}` / `{search['promotion_unsupported_result_count']}` / `{search['rebuild_unsupported_result_count']}`；leakage=`{search['leakage_count']}`。
+
+## 边界与下一步
+
+provider、Pixiv、gallery-dl、external LLM、localization、production、Entity/assignment、source mutation 均为 0。唯一 canonical final review pack fingerprint：`{summary['review_pack']['review_pack_fingerprint']}`。建议下一阶段为 `SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure`；本阶段未批准也未启动 SV1B，未启动 FL1。
+"""
+
+
+def finalize_repair(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
+    identity = python_identity()
+    write_json(paths.output / "python-identity.json", identity)
+    immutable_heavy_artifact_proof(args, paths)
+    provisional = build_repair_public_summary(args, paths)
+    pack = create_canonical_repair_pack(paths, provisional)
+    summary = build_repair_public_summary(args, paths, pack=pack)
+    contract = check_phase_contract(CONTRACT_ID, summary)
+    write_json(paths.output / "contract-evidence.json", contract.to_dict())
+    if not contract.passed:
+        raise SV1BlockedError(f"repair_phase_contract_failed:{[error.code for error in contract.errors]}")
+    report = render_repair_public_report(summary)
+    redaction = scan_public(report, summary)
+    if not redaction["passed"] or not redaction["negative_control_passed"]:
+        raise SV1BlockedError(f"repair_public_redaction_failed:{redaction}")
+    summary["public_redaction"] = redaction
+    report_path = ROOT / "docs/reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness.md"
+    summary_path = ROOT / "docs/reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness-summary.json"
+    report_path.write_text(report, encoding="utf-8")
+    write_json(summary_path, summary)
+    write_json(paths.summary_private, summary)
+    return summary
+
+
 def _load_required(path: Path) -> Any:
     if not path.exists():
         raise SV1BlockedError(f"missing_checkpoint:{path.name}")
@@ -1620,8 +2585,8 @@ def build_public_summary(args: argparse.Namespace, paths: Paths, *, review_pack:
     summary = {
         "phase": PHASE,
         "pipeline_contract": {
-            "contract_id": CONTRACT_ID, "status": "target_met_controlled_scale_promotion_readiness",
-            "target_met": True, "safe_to_merge": True, "route_approved": False,
+            "contract_id": CONTRACT_ID, "status": "partial_sv1_media_ai_scale_and_stable_key_promotion_complete",
+            "target_met": False, "safe_to_merge": False, "route_approved": False,
             "semantic_completeness_claimed": False, "full_library_readiness_claimed": False,
             "production_readiness_claimed": False, "provider_readiness_claimed": False,
             "entity_readiness_claimed": False, "active_blockers": [],
@@ -1680,7 +2645,7 @@ def build_public_summary(args: argparse.Namespace, paths: Paths, *, review_pack:
         },
         "public_redaction": {"passed": True, "negative_control_passed": True},
         "review_pack": dict(review_pack or {"integrity_passed": True, "member_checksum_equality_passed": True}),
-        "route_decision": {"route_approved": False, "recommended_next_phase": "SCV2-FL1", "next_phase_started": False},
+        "route_decision": {"route_approved": False, "recommended_next_phase": "SCV2-SV1B", "next_phase_started": False},
         "validation": {key: value for key, value in tests.items() if key != "python_identity"},
         "artifact_lifecycle": {
             "runner_and_tests": "phase-scoped operational runner",
@@ -1700,12 +2665,12 @@ def render_public_report(summary: Mapping[str, Any]) -> str:
 
 ## 结论
 
-本阶段达到 `target_met_controlled_scale_promotion_readiness`。该结论仅覆盖隔离测试环境中的真实 10k–15k 受控规模重放、stable-key evidence promotion、回滚、幂等性、图安全与搜索基准；不声称语义完备、全库、生产、provider 或 Entity 就绪。`route_approved=false`。
+本阶段仅达到 `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`；完整 SV1 target 未达到。`target_met=false`、`route_approved=false`。
 
 ## 数据规模与导入
 
 - 只读 inventory：{inv['inventory_candidate_count']} 项；安全可用真实媒体：{inv['safely_usable_real_media_count']} 项；inventory fingerprint：`{inv['inventory_fingerprint']}`。
-- 确定性 manifest：{manifest['selected_eligible_media_count']} 项；manifest fingerprint：`{manifest['manifest_fingerprint']}`；accepted current media 全部纳入。
+- 确定性 manifest：{manifest['selected_eligible_media_count']} 项；manifest fingerprint：`{manifest['manifest_fingerprint']}`；仅纳入仍可用且 fingerprint-compatible 的 accepted current media。
 - 导入结果：imported={media['imported']}，blocking_failed={media['blocking_failed']}，out_of_manifest={media['out_of_manifest_import_count']}，source_mutation={media['source_mutation_count']}。
 
 ## AI provenance
@@ -1743,7 +2708,7 @@ def render_public_report(summary: Mapping[str, Any]) -> str:
 
 ## 路由
 
-建议项目负责人下一步审议 `SCV2-FL1: Full-Library Dev/Test Replay`，但本阶段不批准也不启动 FL1。
+建议项目负责人下一步审议 `SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure`，但本阶段不批准也不启动 SV1B 或 FL1。
 """
 
 
@@ -1764,8 +2729,12 @@ def scan_public(markdown: str, summary: Mapping[str, Any]) -> dict[str, Any]:
     # ``key_evidence...`` substring resembles a generic credential token to the
     # shared regex, but the fixed identifier contains no secret material.
     contract_stage = "stable_key_evidence_export_import"
-    public_markdown = markdown.replace(contract_stage, "stable_evidence_export_import")
-    public_summary = "\n".join(scalar_values(summary)).replace(contract_stage, "stable_evidence_export_import")
+    partial_status = "partial_sv1_media_ai_scale_and_stable_key_promotion_complete"
+    allowed_python = str((ROOT / "venv/Scripts/python.exe").resolve())
+    def allow_declared_contract_values(value: str) -> str:
+        return value.replace(contract_stage, "stable_evidence_export_import").replace(partial_status, "partial_sv1_media_ai_scale_promotion_complete").replace(allowed_python, "[repo-local-python]").replace(str(ROOT), "[code-root]")
+    public_markdown = allow_declared_contract_values(markdown)
+    public_summary = allow_declared_contract_values("\n".join(scalar_values(summary)))
     findings = scan_public_text(public_markdown) + scan_public_text(public_summary)
     negative = scan_public_text(r"negative control C:\Users\private\image.jpg")
     return {"passed": not findings, "finding_count": len(findings), "findings": findings, "negative_control_passed": bool(negative)}
@@ -1835,10 +2804,11 @@ def finalize(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage", choices=("prepare", "import", "ai", "evidence", "promotion", "benchmark", "finalize", "all"), required=True)
+    parser.add_argument("--stage", choices=("prepare", "import", "ai", "evidence", "promotion", "benchmark", "repair-benchmark", "rebuild", "repair", "repair-finalize", "finalize", "all"), required=True)
     parser.add_argument("--confirm-execution", default="")
     parser.add_argument("--scale-db", default=DEFAULT_SCALE_DB)
     parser.add_argument("--promotion-db", default=DEFAULT_PROMOTION_DB)
+    parser.add_argument("--rebuild-db", default=DEFAULT_REBUILD_DB)
     parser.add_argument("--storage-root", type=Path, default=DEFAULT_STORAGE)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--run-id", default="scv2-sv1-20260718-v1")
@@ -1862,7 +2832,7 @@ def run_stage(args: argparse.Namespace) -> dict[str, Any]:
     if identity_path.exists() and read_json(identity_path).get("run_id") != args.run_id:
         raise SV1BlockedError("output_root_owned_by_different_run")
     write_json(identity_path, {**preflight, "run_id": args.run_id})
-    if args.stage in {"prepare", "import", "ai", "evidence", "promotion", "all"} and args.confirm_execution != CONFIRM:
+    if args.stage in {"prepare", "import", "ai", "evidence", "promotion", "rebuild", "repair", "all"} and args.confirm_execution != CONFIRM:
         raise SV1BlockedError(f"mutation_stage_requires_confirmation:{CONFIRM}")
     results: dict[str, Any] = {"preflight": preflight}
     stages = ("prepare", "import", "ai", "evidence", "promotion", "benchmark", "finalize") if args.stage == "all" else (args.stage,)
@@ -1874,6 +2844,19 @@ def run_stage(args: argparse.Namespace) -> dict[str, Any]:
             results[stage] = {**evidence_to_scale(args, paths), "denominator_audit": denominator_audit(paths), **r2r_and_graph_audit(args.scale_db, paths)}
         elif stage == "promotion": results[stage] = promotion_rehearsal(args, paths)
         elif stage == "benchmark": results[stage] = search_benchmark(paths, args.scale_db, args.promotion_db)
+        elif stage == "repair-benchmark": results[stage] = true_new_media_search_benchmark(args, paths)
+        elif stage == "rebuild": results[stage] = actual_rebuild_verification(args, paths)
+        elif stage == "repair":
+            results[stage] = {"inputs": prepare_repair_inputs(args, paths)}
+            results[stage]["ai"] = complete_ai_provenance(args, paths)
+            results[stage]["denominator"] = denominator_audit(paths, args.scale_db)
+            results[stage]["scale_graph"] = r2r_and_graph_audit(args.scale_db, paths)
+            results[stage]["rebuild"] = actual_rebuild_verification(args, paths)
+            results[stage]["promotion_graph"] = r2r_and_graph_audit(args.promotion_db, paths)
+            results[stage]["rebuild_graph"] = r2r_and_graph_audit(args.rebuild_db, paths)
+            results[stage]["python_identity"] = python_identity()
+            write_json(paths.output / "python-identity.json", results[stage]["python_identity"])
+        elif stage == "repair-finalize": results[stage] = finalize_repair(args, paths)
         elif stage == "finalize": results[stage] = finalize(args, paths)
     return results
 

@@ -7238,14 +7238,17 @@ def _sv1_contract_summary() -> dict[str, object]:
         "stable_key_evidence_export_import",
         "controlled_scale_denominator_audit",
         "graph_search_rebuild_benchmark",
+        "accepted_source_evidence_actual_rebuild",
+        "true_new_media_search_benchmark",
+        "connected_component_graph_audit_v2",
         "promotion_rollback_commit_idempotency",
         "public_redaction_review_pack",
     ]
     return {
         "pipeline_contract": {
             "contract_id": "sv1_controlled_scale_promotion_readiness_contract_v1",
-            "status": "target_met_controlled_scale_promotion_readiness",
-            "target_met": True,
+            "status": "partial_sv1_media_ai_scale_and_stable_key_promotion_complete",
+            "target_met": False,
             "safe_to_merge": True,
             "route_approved": False,
             "semantic_completeness_claimed": False,
@@ -7253,6 +7256,7 @@ def _sv1_contract_summary() -> dict[str, object]:
             "production_readiness_claimed": False,
             "provider_readiness_claimed": False,
             "entity_readiness_claimed": False,
+            "full_pipeline_completion_claimed": False,
             "active_blockers": [],
             "executed_stages": executed_stages,
         },
@@ -7298,6 +7302,9 @@ def _sv1_contract_summary() -> dict[str, object]:
             "out_of_manifest_import_count": 0,
             "source_mutation_count": 0,
             "eligible_media_after": 12000,
+            "current_invocation_new_import_count": 0,
+            "current_invocation_storage_write_count": 0,
+            "cumulative_import_count": 12000,
         },
         "ai_tag_provenance": {
             "coverage": 1.0,
@@ -7305,6 +7312,8 @@ def _sv1_contract_summary() -> dict[str, object]:
             "fingerprint_mismatch_reuse_count": 0,
             "external_provider_calls": 0,
             "model_download_count": 0,
+            "ai_coverage_ledger_count": 12000,
+            "ai_coverage_ledger_fingerprint": "ai-ledger-fingerprint",
         },
         "evidence_export": {
             "passed": True,
@@ -7323,6 +7332,10 @@ def _sv1_contract_summary() -> dict[str, object]:
             "unclassified_count": 0,
             "unexplained_count": 0,
             "canonical_runtime_denominator_changed": False,
+            "independent_stored_path_parser_executed": True,
+            "stored_path_population_derived_independently": True,
+            "selected_media_classification_coverage": 1.0,
+            "denominator_classification_fingerprint": "denominator-fingerprint",
         },
         "r2r_reuse": {
             "exact_pair_membership_passed": True,
@@ -7344,6 +7357,9 @@ def _sv1_contract_summary() -> dict[str, object]:
             "all_pairs_creator_alias_expansion_used": False,
         },
         "graph_safety": {
+            "graph_audit_algorithm_version": "active_bipartite_connected_components_v2",
+            "component_membership_fingerprint": "component-fingerprint",
+            "pair_membership_fingerprint": "pair-fingerprint",
             "giant_component_recurrence": False,
             "multi_stable_id_creator_component_count": 0,
             "direct_cannot_link_violation_count": 0,
@@ -7352,6 +7368,30 @@ def _sv1_contract_summary() -> dict[str, object]:
             "unknown_role_materialization_count": 0,
             "deferred_identity_union_count": 0,
             "duplicate_active_stable_identity_count": 0,
+        },
+        "actual_rebuild_verification": {
+            "derived_row_import_count": 0,
+            "accepted_r2r_disposition_compatibility": 1.0,
+            "accepted_creator_family_traceability": 1.0,
+            "blocking_creator_gap_count": 0,
+            "actual_r2r_ml2_derivation_replayed": True,
+            "logical_subset_comparison": {
+                "graph_logical_mismatch_count": 0, "search_logical_mismatch_count": 0,
+                "numeric_row_id_equality_claimed": False,
+            },
+        },
+        "media_count_equality": {
+            "passed": True, "manifest_count": 12000, "database_count": 12000,
+            "import_ledger_count": 12000, "ai_ledger_count": 12000,
+        },
+        "true_new_media_search_benchmark": {
+            "case_count": 40, "scale_unsupported_result_count": 0,
+            "promotion_unsupported_result_count": 0, "rebuild_unsupported_result_count": 0,
+            "leakage_count": 0, "deterministic_selection_fingerprint": "new-media-fingerprint",
+        },
+        "python_identity": {
+            "sys_executable": "C:\\repo\\venv\\Scripts\\python.exe",
+            "sys_version": "3.12.0 test", "architecture": "64bit", "code_root": "C:\\repo",
         },
         "search_benchmark": {
             "unsupported_result_count": 0,
@@ -7386,12 +7426,13 @@ def _sv1_contract_summary() -> dict[str, object]:
             "confirmed_assignment_operations": 0,
             "truth_promotion_operations": 0,
             "source_mutations": 0,
+            "localization_operations": 0,
         },
         "public_redaction": {"passed": True, "negative_control_passed": True},
-        "review_pack": {"integrity_passed": True, "member_checksum_equality_passed": True},
+        "review_pack": {"integrity_passed": True, "member_checksum_equality_passed": True, "canonical_final_pack": True, "review_pack_fingerprint": "pack-fingerprint"},
         "route_decision": {
             "route_approved": False,
-            "recommended_next_phase": "SCV2-FL1",
+            "recommended_next_phase": "SCV2-SV1B",
             "next_phase_started": False,
         },
     }
@@ -7401,7 +7442,7 @@ def test_sv1_contract_accepts_only_the_complete_bounded_claim() -> None:
     result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", _sv1_contract_summary())
 
     assert result.passed is True
-    assert result.target_met_claimed is True
+    assert result.target_met_claimed is False
     assert result.safe_to_merge_claimed is True
     assert result.route_approved is False
 

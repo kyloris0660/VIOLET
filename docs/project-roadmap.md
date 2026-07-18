@@ -26,9 +26,10 @@ PR #137 is merged and accepted in `origin/main` at
 commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. Its final bounded result is
 `target_met_multilingual_identity_candidate_closure`, and the accepted logical
 evidence plus isolated ML2 database are immutable inputs. The separately
-governed SCV2-SV1 execution has reached
-`target_met_controlled_scale_promotion_readiness` on its feature branch; its PR
-remains unmerged and `route_approved=false`. The canonical current sequence
+governed SCV2-SV1-A execution has reached
+`partial_sv1_media_ai_scale_and_stable_key_promotion_complete` on its feature
+branch, with `target_met=false`, `safe_to_merge=true`, and
+`route_approved=false`. Its PR remains unmerged. The canonical current sequence
 lives in `docs/roadmap/current-mainline-roadmap.md`.
 
 The former SR1 interpretation is superseded: identity union and search-result
@@ -91,7 +92,7 @@ classifier ordering; `CONTROLLED-SCALE-AUDIT-DEBT` owns denominator treatment;
 `PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING` owns secret-token delimiter
 scanning.
 
-SV1 completed an exact 12,000-item isolated dev/test replay. It accounted all
+SV1-A completed an exact 12,000-item isolated dev/test replay. It accounted all
 imports, reached full local AI-tag provenance, imported stable-key evidence with
 zero row-ID dependency or silent loss, passed denominator and graph safety, and
 passed the 240-query search benchmark. Its independent promotion rehearsal
@@ -99,8 +100,13 @@ restored rollback fingerprints, committed 108,182 logical items, and produced
 zero second-import mutation, cross-database mismatch, media/media_tags mutation,
 or protected/forbidden mutation. It is not production or full-library execution
 and does not authorize provider/Pixiv/gallery-dl/LLM calls, Entity/EntityAlias,
-confirmed assignment, or SourceConcept-to-`media_tags` truth promotion. It may
-recommend SCV2-FL1 for separate review but does not start it.
+confirmed assignment, or SourceConcept-to-`media_tags` truth promotion. A clean
+rebuild-verification DB imported zero derived rows and replayed accepted R2R/ML2
+derivation; 40 true new-media local AI-tag cases passed scale, promotion, and
+rebuild with zero leakage. SV1-A did not acquire Pixiv/provider metadata for the
+4,124 unsupported canonical candidates and did not close localization or the
+new-media source graph. The immediate recommended phase is SCV2-SV1B; neither
+SV1B nor FL1 has started.
 
 PR #113 / Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline
 library, PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows

@@ -4,7 +4,7 @@
 > `7fca41151cc9e1d5b48cfe243279e66296346bae`; the accepted ML2 evidence-code
 > commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. The separately governed
 > `SCV2-SV1: Controlled Scale Replay and Promotion-Readiness Validation` run has
-> reached its bounded target on the feature branch; its PR remains unmerged.
+> reached its merge-safe partial SV1-A boundary on the feature branch; its PR remains unmerged.
 
 ## Canonical State
 
@@ -13,19 +13,16 @@
 | Merged baseline | PR #137 / `7fca41151cc9e1d5b48cfe243279e66296346bae` |
 | Current work item | `SCV2-SV1: Controlled Scale Replay and Promotion-Readiness Validation` |
 | Accepted R2R DB | `blombooru_scv2_r2r_dryrun_test_20260710` (immutable) |
-| Accepted SCV2-ML1 DB | `blombooru_scv2_ml1_acquisition_test_20260712` (immutable) |
+| Accepted SCV2-ML1: Multilingual Alias and Source-Metadata Closure DB | `blombooru_scv2_ml1_acquisition_test_20260712` (immutable) |
 | Accepted ML2 DB | `blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` (immutable) |
 | SV1 scale DB | `blombooru_scv2_sv1_controlled_scale_test_20260718` |
 | Successful promotion DB | `blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1` |
-| SV1 contract | `target_met_controlled_scale_promotion_readiness`; `route_approved=false` |
+| Rebuild verification DB | `blombooru_scv2_sv1_rebuild_verification_test_20260718` |
+| SV1 contract | `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`; `target_met=false`; `safe_to_merge=true`; `route_approved=false` |
 
-Accepted predecessor chain includes PR #133 / A1R, `SCV2-R2`
-(`target_met_constraint_aware_r2`), PR #135 / R2R,
-`SCV2-ML1: Multilingual Alias and Source-Metadata Closure`, and PR #137 / ML2
-(`target_met_multilingual_identity_candidate_closure`, `safe_to_merge=true`).
-Provider metadata acquisition ended in ML1; provider and production routes
-remain unauthorized.
-R2R's 3,319 dispositions and ML2's logical evidence remain immutable. ML2
+PR #133 / `SCV2-R2` remains `target_met_constraint_aware_r2`; PR #135 / R2R precedes ML2, which remains `target_met_multilingual_identity_candidate_closure`. Provider routes remain forbidden; production routes remain unauthorized.
+
+PR #135 R2R's 3,319 dispositions and ML2's logical evidence remain immutable. ML2
 identity accounting remains
 `606 = 12 already materialized + 594 new + 0 cannot-link + 0 deferred` and
 `1213 = 1213 must_link + 0 cannot_link + 0 deferred`.
@@ -46,9 +43,10 @@ media-level AND intersection.
 - Stable-key export contains `108,442` logical items with zero development row-ID
   dependencies. Scale import committed `108,182`; `298` missing-target metadata
   references remained explicitly deferred and zero accepted evidence was lost.
-- Denominator accounting is exact: filename/path mandatory `6,496`, source
-  supplemental target population `3,452`, supplemental-only `1,080`, explicit
-  non-candidate `4,424`, unclassified/unexplained `0`.
+- Denominator accounting independently parses filename and stored path:
+  canonical Pixiv candidates `6,496`, accepted metadata support `2,372`, not
+  acquired in SV1-A `4,124`, explicit non-candidate `5,504`, conflicts and
+  unclassified/unexplained `0`. The `298` unavailable accepted media remain explicit.
 - Accepted R2R reuse remained `3319 = 1522 must_link + 1791 cannot_link + 6
   deferred_nonblocking`; all `606` ML2 families remained traceable.
 - Graph audit found `1,677` active components, largest `88`, `14,068` signals,
@@ -67,19 +65,23 @@ media-level AND intersection.
   accepted proof.
 - Public redaction, negative control, review-pack integrity, predecessor
   immutability, environment isolation, and the executable phase contract passed.
+- A fresh rebuild DB imported zero derived SourceConcept rows and replayed the
+  accepted R2R/ML2 service paths with `606 / 606` creator-family traceability.
+  Forty cases from the actual `8,548` new-media population passed
+  scale/promotion/rebuild local-tag search with zero unsupported result or leakage.
 
 ## Next Boundary
 
-SV1 may recommend `SCV2-FL1: Full-Library Dev/Test Replay`, but it does not
-approve or start FL1. Production, provider/Pixiv/gallery-dl/external LLM,
+The immediate recommended phase is `SCV2-SV1B: Controlled Pixiv Metadata,
+Localization, and Source-Graph Closure`, but SV1-A does not approve or start
+SV1B or FL1. Production, provider metadata acquisition/Pixiv/gallery-dl/external LLM,
 Entity bridge / EntityAlias, confirmed assignment, SourceConcept-to-`media_tags` truth,
-and source/iCloud mutation remain forbidden. No later phase begins until this
+and source/iCloud mutation remain unauthorized. No later phase begins until this
 normal PR is reviewed and the project owner makes a separate decision.
 
 ## Durable Links
 
-- Canonical roadmap path: `docs/roadmap/current-mainline-roadmap.md`.
-- [Current roadmap](roadmap/current-mainline-roadmap.md)
+- Canonical roadmap: `docs/roadmap/current-mainline-roadmap.md` ([link](roadmap/current-mainline-roadmap.md))
 - [Phase contracts](phase-contracts.md)
 - [Evidence snapshot reuse](source-evidence-snapshot-reuse-policy.md)
 - [SV1 report](reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness.md)

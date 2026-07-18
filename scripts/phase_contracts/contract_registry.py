@@ -165,6 +165,7 @@ SV1_CONTROLLED_SCALE_PROMOTION_READINESS_STATUSES: tuple[str, ...] = (
     "blocked_sv1_idempotency",
     "blocked_sv1_fixed_or_forbidden_mutation",
     "partial_sv1_controlled_scale",
+    "partial_sv1_media_ai_scale_and_stable_key_promotion_complete",
     "target_met_controlled_scale_promotion_readiness",
 )
 
@@ -2520,6 +2521,9 @@ CONTRACTS: dict[str, PhaseContract] = {
             "stable_key_evidence_export_import",
             "controlled_scale_denominator_audit",
             "graph_search_rebuild_benchmark",
+            "accepted_source_evidence_actual_rebuild",
+            "true_new_media_search_benchmark",
+            "connected_component_graph_audit_v2",
             "promotion_rollback_commit_idempotency",
             "public_redaction_review_pack",
         ),
@@ -2548,6 +2552,10 @@ CONTRACTS: dict[str, PhaseContract] = {
             "public_report",
             "public_summary",
             "private_review_pack",
+            "actual_rebuild_verification_private",
+            "denominator_classification_private",
+            "true_new_media_search_cases_private",
+            "python_identity_private",
         ),
         required_summary_fields=(
             "pipeline_contract",
@@ -2580,10 +2588,10 @@ CONTRACTS: dict[str, PhaseContract] = {
         redaction_policy="public aggregate counts and non-content fingerprints only; raw paths, filenames, URLs, provider IDs, media hashes, and stable creator IDs stay private",
         review_pack_policy="required exact declared, checksum, and ZIP membership after fail-closed redaction",
         artifact_lifecycle_policy="SV1 runner/tests phase-scoped; contract reusable safety tool; private manifests ignored; public report committed",
-        route_decision_policy="may recommend SCV2-FL1 but route_approved remains false pending project-lead review",
+        route_decision_policy="must recommend SCV2-SV1B while route_approved=false and may not start SV1B",
         failure_behavior="fail_closed_on_sync_test_inventory_manifest_isolation_import_ai_stable_key_denominator_graph_search_promotion_mutation_redaction_or_review_pack_gap",
         custom_checks=("sv1_controlled_scale_promotion_readiness",),
-        description="SCV2-SV1 executable contract for a real 10k-15k controlled-scale replay and stable-key promotion rehearsal.",
+        description="SCV2-SV1-A partial executable contract for controlled media/AI scale, stable-key promotion, and accepted-source rebuild verification.",
     ),
     "review_pack_contract_v1": PhaseContract(
         contract_id="review_pack_contract_v1",

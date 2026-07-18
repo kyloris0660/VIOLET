@@ -29,8 +29,9 @@ PR #137 is merged and accepted at
 evidence and isolated database are immutable inputs to the separately governed
 SCV2-SV1 controlled-scale and promotion-readiness phase. SV1 registered and
 passed `sv1_controlled_scale_promotion_readiness_contract_v1` for its bounded
-feature-branch result. The contract does not authorize production, full-library,
-provider, Entity, confirmed assignment, truth-route work, or starting FL1.
+feature-branch partial SV1-A result. The contract does not authorize production,
+full-library, provider, Entity, confirmed assignment, truth-route work, or
+starting SV1B/FL1.
 
 ## Registered GOV3 Contracts
 
