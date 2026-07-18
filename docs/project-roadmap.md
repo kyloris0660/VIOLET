@@ -21,10 +21,13 @@ The finished system should:
 
 ## Current Active Roadmap
 
-PR #136 is merged in `origin/main` at
-`f6cae3483f4cf75974746a4cc82222f28e399b96`. SCV2-ML2 has completed its isolated
-SourceConcept-only execution and is the current reviewable phase. The canonical
-current sequence lives in `docs/roadmap/current-mainline-roadmap.md`.
+PR #137 is merged and accepted in `origin/main` at
+`7fca41151cc9e1d5b48cfe243279e66296346bae`; the accepted ML2 evidence-code
+commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. Its final bounded result is
+`target_met_multilingual_identity_candidate_closure`, and the accepted logical
+evidence plus isolated ML2 database are immutable inputs. SCV2-SV1 is now the
+current separately governed controlled-scale and promotion-readiness phase. The
+canonical current sequence lives in `docs/roadmap/current-mainline-roadmap.md`.
 
 The former SR1 interpretation is superseded: identity union and search-result
 union are different. `cannot_link` blocks identity union, but a bare name returns
@@ -85,6 +88,11 @@ manifest-scope outcome keys, conflict mismatch persistence, and terminal/private
 classifier ordering; `CONTROLLED-SCALE-AUDIT-DEBT` owns denominator treatment;
 `PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING` owns secret-token delimiter
 scanning.
+
+SV1 is limited to a real 10k-15k isolated dev/test replay and stable-key
+promotion-readiness validation. It is not production or full-library execution
+and does not authorize provider/Pixiv/gallery-dl/LLM calls, Entity/EntityAlias,
+confirmed assignment, or SourceConcept-to-`media_tags` truth promotion.
 
 PR #113 / Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline
 library, PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows

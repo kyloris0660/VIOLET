@@ -1,8 +1,9 @@
 # Current Mainline Roadmap
 
-Status: PR #136 is merged in `origin/main` at
-`f6cae3483f4cf75974746a4cc82222f28e399b96`. SCV2-ML2 has completed its
-separately governed isolated execution and awaits project-lead PR adjudication.
+Status: PR #137 is merged and accepted in `origin/main` at
+`7fca41151cc9e1d5b48cfe243279e66296346bae`. Its accepted ML2 evidence-code
+commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. SCV2-SV1 is the current
+separately governed controlled-scale and promotion-readiness phase.
 
 ## Accepted Mainline
 
@@ -16,6 +17,10 @@ separately governed isolated execution and awaits project-lead PR adjudication.
 5. SCV2-ML1 merged in PR #136 at
    `f6cae3483f4cf75974746a4cc82222f28e399b96`. Its accepted isolated database is
    an immutable input to ML2; ML2 did not replay acquisition.
+6. SCV2-ML2 merged in PR #137 at
+   `7fca41151cc9e1d5b48cfe243279e66296346bae`. Its final bounded result is
+   `target_met_multilingual_identity_candidate_closure`; the accepted logical
+   evidence and isolated ML2 database are immutable inputs to SV1.
 
 ## Corrected Route Semantics
 
@@ -77,7 +82,7 @@ ML1 owns:
 PR #136 is merged. Its ML1 database and accepted R2R evidence are immutable ML2
 inputs; identity closure does not authorize acquisition replay.
 
-## Current ML2 Closeout
+## Accepted ML2 Closeout
 
 `SCV2-ML2: Multilingual Identity Candidate Closure` consumed `606`
 identity-eligible families, `3,642` search-only translation families, and `30`
@@ -116,8 +121,9 @@ ML2 completed:
 The executable contract reports
 `target_met_multilingual_identity_candidate_closure`, `target_met=true`,
 `safe_to_merge=true`, `route_approved=false`, and `active_blockers=[]`. This
-closeout creates no production/full-library/provider authorization and starts no
-next phase.
+closeout creates no production/full-library/provider authorization. PR #137 is
+merged and accepted; SV1 may consume its stable logical evidence without copying
+development numeric row IDs.
 
 Six reviewer hardening items are deliberately bounded debt, not ML1 fixes:
 cross-pass spacing, manifest-scope outcome keys, conflict mismatch persistence,
@@ -142,8 +148,9 @@ it must never represent recovered Danbooru metadata as original Pixiv metadata.
 
 ## Stop Boundary
 
-Do not start PX1-B broad acquisition, Provider-2, Controlled Scale Validation,
-general scale-up, Entity bridge, production, full-library execution, truth
-promotion, media import, AI tagging, classification, localization, or another
-phase from ML2. The recommended 10k-15k Controlled Scale Validation remains a
-project-lead decision and requires a separate approved phase.
+SCV2-SV1 is the only current separately governed next phase. It is limited to a
+real 10k-15k controlled-scale dev/test replay and stable-key promotion-readiness
+validation. Do not start PX1-B broad acquisition, Provider-2, production,
+full-library execution, Entity bridge, confirmed assignment, truth promotion,
+or a later phase. Provider/Pixiv/gallery-dl/LLM calls and production/Entity/truth
+routes remain unauthorized.

@@ -1,19 +1,19 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> PR #136 is merged in `origin/main` at
-> `f6cae3483f4cf75974746a4cc82222f28e399b96`. SCV2-ML2 has completed its
-> isolated SourceConcept-only execution; final PR adjudication remains with the
-> project lead.
+> PR #137 is merged and accepted in `origin/main` at
+> `7fca41151cc9e1d5b48cfe243279e66296346bae`; the accepted ML2 evidence-code
+> commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. SCV2-SV1 is now the
+> current separately governed controlled-scale and promotion-readiness phase.
 
 ## Canonical State
 
 | Item | Value |
 |------|-------|
-| Merged baseline | PR #136 / `f6cae3483f4cf75974746a4cc82222f28e399b96` |
-| Current phase | `SCV2-ML2: Multilingual Identity Candidate Closure` |
+| Merged baseline | PR #137 / `7fca41151cc9e1d5b48cfe243279e66296346bae` |
+| Current phase | `SCV2-SV1: Controlled Scale Replay and Promotion-Readiness Validation` |
 | Accepted R2R DB | `blombooru_scv2_r2r_dryrun_test_20260710` (immutable) |
 | Accepted SCV2-ML1 DB | `blombooru_scv2_ml1_acquisition_test_20260712` (immutable) |
-| Fresh review-fix ML2 DB | `blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` |
+| Accepted ML2 DB | `blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` (immutable) |
 | Superseded ML2 DB | `blombooru_scv2_ml2_identity_closure_test_20260714` (preserved, immutable) |
 | SourceConcept / needs_review | `1677 / 0` |
 
@@ -60,14 +60,17 @@ Final contract: `target_met_multilingual_identity_candidate_closure`,
 `active_blockers=[]`. The accepted ML1/R2R databases remained immutable; only
 the fresh review-fix ML2 dev/test clone received allowlisted SourceConcept/source-name
 observation writes. The first ML2 database remains preserved as superseded evidence.
+PR #137 is merged and this final bounded result is accepted; its logical evidence
+and isolated database are immutable inputs to SV1.
 
 ## Next Boundary
 
-The evidence recommends project-lead review before any separately governed
-Controlled Scale Validation over roughly 10k-15k media. This PR does not start
-that phase and does not authorize a provider run, production/full-library run,
-PX1-B, Provider-2/PX-REC1, Entity bridge, truth promotion, media import, AI
-tagging, classification, localization, or source/iCloud mutation.
+SCV2-SV1 is separately authorized only to replay a real 10k-15k controlled-scale
+dev/test dataset and validate stable-key promotion readiness. It is not a
+production, full-library, provider, Entity, confirmed-assignment, or truth-route
+authorization. Provider/Pixiv/gallery-dl/LLM calls, production storage or DB
+writes, Entity/EntityAlias writes, and SourceConcept-to-`media_tags` truth
+promotion remain forbidden.
 
 The six ML1 hardening milestones remain unchanged:
 `PRE-NEXT-PROVIDER-EXECUTION-HARDENING`, `CONTROLLED-SCALE-AUDIT-DEBT`, and
