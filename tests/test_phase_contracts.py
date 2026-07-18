@@ -7226,3 +7226,203 @@ def test_mock_future_r1r_summary_passes_only_with_all_stages_and_llm_proof() -> 
     assert pass_result.passed is True
     assert fail_result.passed is False
     assert "source_concept_required_stage_missing" in _error_codes(fail_result)
+
+
+def _sv1_contract_summary() -> dict[str, object]:
+    executed_stages = [
+        "global_non_e2e_baseline",
+        "read_only_source_inventory",
+        "deterministic_scale_manifest",
+        "controlled_media_import",
+        "ai_tag_provenance_completion",
+        "stable_key_evidence_export_import",
+        "controlled_scale_denominator_audit",
+        "graph_search_rebuild_benchmark",
+        "promotion_rollback_commit_idempotency",
+        "public_redaction_review_pack",
+    ]
+    return {
+        "pipeline_contract": {
+            "contract_id": "sv1_controlled_scale_promotion_readiness_contract_v1",
+            "status": "target_met_controlled_scale_promotion_readiness",
+            "target_met": True,
+            "safe_to_merge": True,
+            "route_approved": False,
+            "semantic_completeness_claimed": False,
+            "full_library_readiness_claimed": False,
+            "production_readiness_claimed": False,
+            "provider_readiness_claimed": False,
+            "entity_readiness_claimed": False,
+            "active_blockers": [],
+            "executed_stages": executed_stages,
+        },
+        "repository_sync_preflight": {
+            "passed": True,
+            "local_main_equals_origin_main_before_branch": True,
+            "accepted_ml2_merge_is_ancestor": True,
+            "accepted_ml2_merge_sha": "7fca41151cc9e1d5b48cfe243279e66296346bae",
+            "task_branch_start_sha": "7fca41151cc9e1d5b48cfe243279e66296346bae",
+            "tracked_change_count_before_sync": 0,
+            "staged_change_count_before_sync": 0,
+            "user_owned_artifacts_preserved": True,
+        },
+        "global_test_baseline": {
+            "final_unexpected_failure_count": 0,
+            "unexplained_skip_count": 0,
+            "environment_specific_profiles_passed": True,
+            "sv1_regression_count": 0,
+        },
+        "environment_isolation": {
+            "passed": True,
+            "violet_env": "test",
+            "production_profile_active": False,
+            "scale_database_clean_schema": True,
+            "promotion_database_independent": True,
+            "source_routes_read_only": True,
+            "predecessor_databases_immutable": True,
+            "production_database_selected": False,
+            "production_storage_selected": False,
+        },
+        "source_inventory": {"safely_usable_real_media_count": 12000},
+        "scale_manifest": {
+            "selected_eligible_media_count": 12000,
+            "deterministic_selection": True,
+            "accepted_current_available_media_included": True,
+            "accounting_equality_passed": True,
+            "synthetic_or_cloned_media_count": 0,
+        },
+        "media_import": {
+            "all_selected_accounted": True,
+            "blocking_failed": 0,
+            "unexplained_outcome_count": 0,
+            "out_of_manifest_import_count": 0,
+            "source_mutation_count": 0,
+            "eligible_media_after": 12000,
+        },
+        "ai_tag_provenance": {
+            "coverage": 1.0,
+            "missing_provenance_count": 0,
+            "fingerprint_mismatch_reuse_count": 0,
+            "external_provider_calls": 0,
+            "model_download_count": 0,
+        },
+        "evidence_export": {
+            "passed": True,
+            "development_row_id_dependency_count": 0,
+            "package_checksum_manifest_passed": True,
+        },
+        "evidence_import": {
+            "blocking_failed": 0,
+            "unexplained_item_count": 0,
+            "accepted_evidence_silently_dropped": 0,
+            "development_row_id_dependency_count": 0,
+        },
+        "denominator_audit": {
+            "accounting_equality_passed": True,
+            "mandatory_and_supplemental_distinguished": True,
+            "unclassified_count": 0,
+            "unexplained_count": 0,
+            "canonical_runtime_denominator_changed": False,
+        },
+        "r2r_reuse": {
+            "exact_pair_membership_passed": True,
+            "fingerprint_compatible": True,
+            "accepted_pair_count": 3319,
+            "must_link_count": 1522,
+            "cannot_link_count": 1791,
+            "deferred_nonblocking_count": 6,
+            "coverage": 1.0,
+        },
+        "identity_traceability": {
+            "accepted_606_family_traceability_passed": True,
+            "accepted_family_count": 606,
+            "human_review_queue_count": 0,
+            "needs_review_normal_pipeline_count": 0,
+        },
+        "pair_accounting": {
+            "candidate_equation_passed": True,
+            "all_pairs_creator_alias_expansion_used": False,
+        },
+        "graph_safety": {
+            "giant_component_recurrence": False,
+            "multi_stable_id_creator_component_count": 0,
+            "direct_cannot_link_violation_count": 0,
+            "transitive_cannot_link_violation_count": 0,
+            "unauthorized_cross_role_component_count": 0,
+            "unknown_role_materialization_count": 0,
+            "deferred_identity_union_count": 0,
+            "duplicate_active_stable_identity_count": 0,
+        },
+        "search_benchmark": {
+            "unsupported_result_count": 0,
+            "rejected_only_result_count": 0,
+            "superseded_only_result_count": 0,
+            "invalid_or_deleted_only_result_count": 0,
+            "and_leakage_count": 0,
+            "search_caused_identity_mutation_count": 0,
+            "performance_gate_passed": True,
+            "scale_p95_ms": 100.0,
+            "allowed_scale_p95_ms": 750.0,
+            "scale_max_ms": 200.0,
+            "promotion_max_ms": 200.0,
+        },
+        "promotion_rehearsal": {
+            "rollback_fingerprint_restoration": True,
+            "second_import_mutation_count": 0,
+            "logical_cross_database_mismatch_count": 0,
+        },
+        "mutation_proof": {
+            "predecessor_databases_unchanged": True,
+            "media_media_tags_unchanged_during_promotion": True,
+            "protected_forbidden_tables_unchanged": True,
+        },
+        "operation_counts": {
+            "provider_calls": 0,
+            "pixiv_calls": 0,
+            "gallery_dl_calls": 0,
+            "external_llm_calls": 0,
+            "production_operations": 0,
+            "entity_operations": 0,
+            "confirmed_assignment_operations": 0,
+            "truth_promotion_operations": 0,
+            "source_mutations": 0,
+        },
+        "public_redaction": {"passed": True, "negative_control_passed": True},
+        "review_pack": {"integrity_passed": True, "member_checksum_equality_passed": True},
+        "route_decision": {
+            "route_approved": False,
+            "recommended_next_phase": "SCV2-FL1",
+            "next_phase_started": False,
+        },
+    }
+
+
+def test_sv1_contract_accepts_only_the_complete_bounded_claim() -> None:
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", _sv1_contract_summary())
+
+    assert result.passed is True
+    assert result.target_met_claimed is True
+    assert result.safe_to_merge_claimed is True
+    assert result.route_approved is False
+
+
+def test_sv1_contract_independently_derives_blockers_and_rejects_overclaim() -> None:
+    summary = _sv1_contract_summary()
+    summary["media_import"]["blocking_failed"] = 1  # type: ignore[index]
+
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+
+    assert result.passed is False
+    assert "sv1_active_blockers_incomplete" in _error_codes(result)
+    assert "sv1_target_overclaimed" in _error_codes(result)
+
+
+def test_sv1_contract_fails_closed_when_required_stage_is_missing() -> None:
+    summary = _sv1_contract_summary()
+    summary["pipeline_contract"]["executed_stages"].remove("promotion_rollback_commit_idempotency")  # type: ignore[index,union-attr]
+
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+
+    assert result.passed is False
+    assert "sv1_required_stage_missing" in _error_codes(result)
+    assert "sv1_active_blockers_incomplete" in _error_codes(result)

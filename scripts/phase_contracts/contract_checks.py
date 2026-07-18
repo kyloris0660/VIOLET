@@ -17,6 +17,7 @@ from .contract_registry import (
     R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES,
     SOURCE_CONCEPT_ALLOWED_STATUSES,
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
+    SV1_CONTROLLED_SCALE_PROMOTION_READINESS_STATUSES,
     get_contract,
 )
 from .contract_types import ContractCheckResult, PhaseContract
@@ -11946,6 +11947,272 @@ def _check_ml2_multilingual_identity_candidate_closure(
         result.fail("ml2_target_claim_incomplete", "Blocker-free evidence requires the exact bounded ML2 claim.", path="pipeline_contract")
 
 
+def _check_sv1_controlled_scale_promotion_readiness(
+    contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    """Independently derive every SV1 blocker from aggregate evidence."""
+
+    pipeline = _get(summary, "pipeline_contract", {})
+    status = pipeline.get("status") if isinstance(pipeline, Mapping) else None
+    if status not in SV1_CONTROLLED_SCALE_PROMOTION_READINESS_STATUSES:
+        result.fail("sv1_status_invalid", "SV1 status must use the registered vocabulary.", path="pipeline_contract.status", actual=status)
+
+    blockers: list[str] = []
+    missing_stages = _missing_required_stages(contract, summary)
+    if missing_stages:
+        result.fail(
+            "sv1_required_stage_missing",
+            "SV1 target claims require every declared stage to complete.",
+            path="pipeline_contract.executed_stages",
+            expected=list(contract.required_stages),
+            actual=sorted(_executed_stage_names(summary)),
+        )
+        blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
+    sync = _get(summary, "repository_sync_preflight", {})
+    if not (
+        isinstance(sync, Mapping)
+        and sync.get("passed") is True
+        and sync.get("local_main_equals_origin_main_before_branch") is True
+        and sync.get("accepted_ml2_merge_is_ancestor") is True
+        and sync.get("accepted_ml2_merge_sha") == "7fca41151cc9e1d5b48cfe243279e66296346bae"
+        and sync.get("task_branch_start_sha") == "7fca41151cc9e1d5b48cfe243279e66296346bae"
+        and _as_int(sync.get("tracked_change_count_before_sync"), -1) == 0
+        and _as_int(sync.get("staged_change_count_before_sync"), -1) == 0
+        and sync.get("user_owned_artifacts_preserved") is True
+    ):
+        blockers.append("blocked_sv1_repository_sync")
+
+    tests = _get(summary, "global_test_baseline", {})
+    if not (
+        isinstance(tests, Mapping)
+        and _as_int(tests.get("final_unexpected_failure_count"), -1) == 0
+        and _as_int(tests.get("unexplained_skip_count"), -1) == 0
+        and tests.get("environment_specific_profiles_passed") is True
+        and tests.get("sv1_regression_count") == 0
+    ):
+        blockers.append("blocked_sv1_global_test_baseline")
+
+    isolation = _get(summary, "environment_isolation", {})
+    if not (
+        isinstance(isolation, Mapping)
+        and isolation.get("passed") is True
+        and isolation.get("violet_env") == "test"
+        and isolation.get("production_profile_active") is False
+        and isolation.get("scale_database_clean_schema") is True
+        and isolation.get("promotion_database_independent") is True
+        and isolation.get("source_routes_read_only") is True
+        and isolation.get("predecessor_databases_immutable") is True
+        and isolation.get("production_database_selected") is False
+        and isolation.get("production_storage_selected") is False
+    ):
+        blockers.append("blocked_sv1_environment_isolation")
+
+    inventory = _get(summary, "source_inventory", {})
+    manifest = _get(summary, "scale_manifest", {})
+    eligible = _as_int(manifest.get("selected_eligible_media_count"), -1) if isinstance(manifest, Mapping) else -1
+    if not isinstance(inventory, Mapping) or _as_int(inventory.get("safely_usable_real_media_count"), -1) < 10000:
+        blockers.append("blocked_sv1_source_inventory_insufficient")
+    if not (
+        isinstance(manifest, Mapping)
+        and 10000 <= eligible <= 15000
+        and manifest.get("deterministic_selection") is True
+        and manifest.get("accepted_current_available_media_included") is True
+        and manifest.get("accounting_equality_passed") is True
+        and _as_int(manifest.get("synthetic_or_cloned_media_count"), -1) == 0
+    ):
+        blockers.append("blocked_sv1_scale_manifest")
+
+    media_import = _get(summary, "media_import", {})
+    if not (
+        isinstance(media_import, Mapping)
+        and media_import.get("all_selected_accounted") is True
+        and _as_int(media_import.get("blocking_failed"), -1) == 0
+        and _as_int(media_import.get("unexplained_outcome_count"), -1) == 0
+        and _as_int(media_import.get("out_of_manifest_import_count"), -1) == 0
+        and _as_int(media_import.get("source_mutation_count"), -1) == 0
+        and 10000 <= _as_int(media_import.get("eligible_media_after"), -1) <= 15000
+    ):
+        blockers.append("blocked_sv1_import_accounting")
+
+    ai = _get(summary, "ai_tag_provenance", {})
+    if not (
+        isinstance(ai, Mapping)
+        and _as_float(ai.get("coverage"), -1.0) == 1.0
+        and _as_int(ai.get("missing_provenance_count"), -1) == 0
+        and _as_int(ai.get("fingerprint_mismatch_reuse_count"), -1) == 0
+        and ai.get("external_provider_calls") == 0
+        and ai.get("model_download_count") == 0
+    ):
+        blockers.append("blocked_sv1_ai_tag_coverage")
+
+    export = _get(summary, "evidence_export", {})
+    if not (
+        isinstance(export, Mapping)
+        and export.get("passed") is True
+        and _as_int(export.get("development_row_id_dependency_count"), -1) == 0
+        and export.get("package_checksum_manifest_passed") is True
+    ):
+        blockers.append("blocked_sv1_evidence_export")
+    evidence_import = _get(summary, "evidence_import", {})
+    if not (
+        isinstance(evidence_import, Mapping)
+        and _as_int(evidence_import.get("blocking_failed"), -1) == 0
+        and _as_int(evidence_import.get("unexplained_item_count"), -1) == 0
+        and _as_int(evidence_import.get("accepted_evidence_silently_dropped"), -1) == 0
+        and _as_int(evidence_import.get("development_row_id_dependency_count"), -1) == 0
+    ):
+        blockers.append("blocked_sv1_evidence_import")
+
+    denominator = _get(summary, "denominator_audit", {})
+    if not (
+        isinstance(denominator, Mapping)
+        and denominator.get("accounting_equality_passed") is True
+        and denominator.get("mandatory_and_supplemental_distinguished") is True
+        and _as_int(denominator.get("unclassified_count"), -1) == 0
+        and _as_int(denominator.get("unexplained_count"), -1) == 0
+        and denominator.get("canonical_runtime_denominator_changed") is False
+    ):
+        blockers.append("blocked_sv1_denominator_audit")
+
+    r2r = _get(summary, "r2r_reuse", {})
+    if not (
+        isinstance(r2r, Mapping)
+        and r2r.get("exact_pair_membership_passed") is True
+        and r2r.get("fingerprint_compatible") is True
+        and _as_int(r2r.get("accepted_pair_count"), -1) == 3319
+        and _as_int(r2r.get("must_link_count"), -1) == 1522
+        and _as_int(r2r.get("cannot_link_count"), -1) == 1791
+        and _as_int(r2r.get("deferred_nonblocking_count"), -1) == 6
+        and _as_float(r2r.get("coverage"), -1.0) == 1.0
+    ):
+        blockers.append("blocked_sv1_graph_safety")
+
+    identity = _get(summary, "identity_traceability", {})
+    pair = _get(summary, "pair_accounting", {})
+    graph = _get(summary, "graph_safety", {})
+    graph_zero = (
+        "multi_stable_id_creator_component_count",
+        "direct_cannot_link_violation_count",
+        "transitive_cannot_link_violation_count",
+        "unauthorized_cross_role_component_count",
+        "unknown_role_materialization_count",
+        "deferred_identity_union_count",
+        "duplicate_active_stable_identity_count",
+    )
+    if not (
+        isinstance(identity, Mapping)
+        and identity.get("accepted_606_family_traceability_passed") is True
+        and _as_int(identity.get("accepted_family_count"), -1) == 606
+        and _as_int(identity.get("human_review_queue_count"), -1) == 0
+        and _as_int(identity.get("needs_review_normal_pipeline_count"), -1) == 0
+        and isinstance(pair, Mapping)
+        and pair.get("candidate_equation_passed") is True
+        and pair.get("all_pairs_creator_alias_expansion_used") is False
+        and isinstance(graph, Mapping)
+        and graph.get("giant_component_recurrence") is False
+        and not any(_as_int(graph.get(key), -1) for key in graph_zero)
+    ):
+        blockers.append("blocked_sv1_graph_safety")
+
+    search = _get(summary, "search_benchmark", {})
+    search_zero = (
+        "unsupported_result_count",
+        "rejected_only_result_count",
+        "superseded_only_result_count",
+        "invalid_or_deleted_only_result_count",
+        "and_leakage_count",
+        "search_caused_identity_mutation_count",
+    )
+    if not isinstance(search, Mapping) or any(_as_int(search.get(key), -1) for key in search_zero):
+        blockers.append("blocked_sv1_search_correctness")
+    if not (
+        isinstance(search, Mapping)
+        and search.get("performance_gate_passed") is True
+        and _as_float(search.get("scale_p95_ms"), 1e12) <= _as_float(search.get("allowed_scale_p95_ms"), -1.0)
+        and _as_float(search.get("scale_max_ms"), 1e12) <= 3000.0
+        and _as_float(search.get("promotion_max_ms"), 1e12) <= 3000.0
+    ):
+        blockers.append("blocked_sv1_search_performance")
+
+    promotion = _get(summary, "promotion_rehearsal", {})
+    if not isinstance(promotion, Mapping) or promotion.get("rollback_fingerprint_restoration") is not True:
+        blockers.append("blocked_sv1_promotion_rollback")
+    if not (
+        isinstance(promotion, Mapping)
+        and _as_int(promotion.get("second_import_mutation_count"), -1) == 0
+        and _as_int(promotion.get("logical_cross_database_mismatch_count"), -1) == 0
+    ):
+        blockers.append("blocked_sv1_idempotency")
+
+    mutation = _get(summary, "mutation_proof", {})
+    operations = _get(summary, "operation_counts", {})
+    forbidden_operation_keys = (
+        "provider_calls",
+        "pixiv_calls",
+        "gallery_dl_calls",
+        "external_llm_calls",
+        "production_operations",
+        "entity_operations",
+        "confirmed_assignment_operations",
+        "truth_promotion_operations",
+        "source_mutations",
+    )
+    if not (
+        isinstance(mutation, Mapping)
+        and mutation.get("predecessor_databases_unchanged") is True
+        and mutation.get("media_media_tags_unchanged_during_promotion") is True
+        and mutation.get("protected_forbidden_tables_unchanged") is True
+        and isinstance(operations, Mapping)
+        and not any(_as_int(operations.get(key), -1) for key in forbidden_operation_keys)
+    ):
+        blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
+
+    redaction = _get(summary, "public_redaction", {})
+    pack = _get(summary, "review_pack", {})
+    if not (
+        isinstance(redaction, Mapping)
+        and redaction.get("passed") is True
+        and redaction.get("negative_control_passed") is True
+        and isinstance(pack, Mapping)
+        and pack.get("integrity_passed") is True
+        and pack.get("member_checksum_equality_passed") is True
+    ):
+        blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
+
+    route = _get(summary, "route_decision", {})
+    if not (
+        isinstance(route, Mapping)
+        and route.get("route_approved") is False
+        and route.get("recommended_next_phase") == "SCV2-FL1"
+        and route.get("next_phase_started") is False
+    ):
+        result.fail("sv1_route_boundary_failed", "SV1 may only recommend SCV2-FL1 with route_approved=false.", path="route_decision")
+
+    derived = sorted(set(blockers))
+    declared = sorted(set(pipeline.get("active_blockers") or ())) if isinstance(pipeline, Mapping) else []
+    if derived != declared:
+        result.fail("sv1_active_blockers_incomplete", "SV1 active_blockers must exactly match independently derived blockers.", path="pipeline_contract.active_blockers", expected=derived, actual=declared)
+    target = bool(pipeline.get("target_met")) if isinstance(pipeline, Mapping) else False
+    safe = bool(pipeline.get("safe_to_merge")) if isinstance(pipeline, Mapping) else False
+    if derived:
+        if target or safe or status == "target_met_controlled_scale_promotion_readiness":
+            result.fail("sv1_target_overclaimed", "SV1 cannot claim target/safe with blockers.", path="pipeline_contract")
+    elif not (
+        status == "target_met_controlled_scale_promotion_readiness"
+        and target is True
+        and safe is True
+        and pipeline.get("route_approved") is False
+        and pipeline.get("semantic_completeness_claimed") is False
+        and pipeline.get("full_library_readiness_claimed") is False
+        and pipeline.get("production_readiness_claimed") is False
+        and pipeline.get("provider_readiness_claimed") is False
+        and pipeline.get("entity_readiness_claimed") is False
+    ):
+        result.fail("sv1_target_claim_incomplete", "Blocker-free SV1 evidence requires the exact bounded claim.", path="pipeline_contract")
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -11960,6 +12227,7 @@ CUSTOM_CHECKS = {
     "r2r_autonomous_recall_search_closure": _check_r2r_autonomous_recall_search_closure,
     "ml1_multilingual_alias_source_metadata_closure": _check_ml1_multilingual_alias_source_metadata_closure,
     "ml2_multilingual_identity_candidate_closure": _check_ml2_multilingual_identity_candidate_closure,
+    "sv1_controlled_scale_promotion_readiness": _check_sv1_controlled_scale_promotion_readiness,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,
