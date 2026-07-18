@@ -12021,6 +12021,11 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and manifest.get("accepted_current_available_media_included") is True
         and manifest.get("accounting_equality_passed") is True
         and _as_int(manifest.get("synthetic_or_cloned_media_count"), -1) == 0
+        and "inventory_outcome_counts" not in manifest
+        and isinstance(manifest.get("preselection_outcome_counts"), Mapping)
+        and isinstance(manifest.get("final_outcome_counts"), Mapping)
+        and bool(manifest.get("preselection_membership_fingerprint"))
+        and bool(manifest.get("final_membership_fingerprint"))
     ):
         blockers.append("blocked_sv1_scale_manifest")
 
@@ -12033,9 +12038,17 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and _as_int(media_import.get("out_of_manifest_import_count"), -1) == 0
         and _as_int(media_import.get("source_mutation_count"), -1) == 0
         and 10000 <= _as_int(media_import.get("eligible_media_after"), -1) <= 15000
-        and _as_int(media_import.get("current_invocation_new_import_count"), -1) == 0
-        and _as_int(media_import.get("current_invocation_storage_write_count"), -1) == 0
-        and _as_int(media_import.get("cumulative_import_count"), -1) == eligible
+        and "app_managed_storage_write_count" not in media_import
+        and "copy_import_runtime_seconds" not in media_import
+        and _as_int(_get(media_import, "current_invocation.new_import_count", -1)) == 0
+        and _as_int(_get(media_import, "current_invocation.storage_write_count", -1)) == 0
+        and _get(media_import, "current_invocation.resumed_exact_checkpoint", False) is True
+        and _as_int(_get(media_import, "cumulative_checkpoint_state.imported_media_count", -1)) == eligible
+        and _as_int(_get(media_import, "cumulative_checkpoint_state.storage_object_count", -1)) == eligible
+        and _as_int(_get(media_import, "original_execution.imported_media_count", -1)) == eligible
+        and _as_int(_get(media_import, "original_execution.storage_write_count", -1)) == eligible
+        and _get(media_import, "original_execution.runtime_evidence_available", True) is False
+        and _get(media_import, "original_execution.runtime_seconds", "not-null") is None
     ):
         blockers.append("blocked_sv1_import_accounting")
 
@@ -12049,6 +12062,12 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and ai.get("model_download_count") == 0
         and _as_int(ai.get("ai_coverage_ledger_count"), -1) == eligible
         and bool(ai.get("ai_coverage_ledger_fingerprint"))
+        and _as_int(_get(ai, "original_accepted_execution.reused_media_count", -1)) == 3420
+        and _as_int(_get(ai, "original_accepted_execution.newly_inferred_media_count", -1)) == 8580
+        and _get(ai, "original_accepted_execution.ai_inference_executed", False) is True
+        and _as_int(_get(ai, "current_repair_invocation.checkpoint_existing_covered_media_count", -1)) == eligible
+        and _as_int(_get(ai, "current_repair_invocation.newly_inferred_media_count", -1)) == 0
+        and _get(ai, "current_repair_invocation.ai_inference_rerun", True) is False
     ):
         blockers.append("blocked_sv1_ai_tag_coverage")
 
@@ -12082,6 +12101,7 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and denominator.get("stored_path_population_derived_independently") is True
         and _as_float(denominator.get("selected_media_classification_coverage"), -1.0) == 1.0
         and bool(denominator.get("denominator_classification_fingerprint"))
+        and denominator.get("database_identity") == _get(summary, "environment_isolation.scale_database_identity", None)
     ):
         blockers.append("blocked_sv1_denominator_audit")
 
@@ -12142,6 +12162,9 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and _as_int((rebuild.get("logical_subset_comparison") or {}).get("graph_logical_mismatch_count"), -1) == 0
         and _as_int((rebuild.get("logical_subset_comparison") or {}).get("search_logical_mismatch_count"), -1) == 0
         and (rebuild.get("logical_subset_comparison") or {}).get("numeric_row_id_equality_claimed") is False
+        and bool(rebuild.get("ledger_fingerprint"))
+        and bool(rebuild.get("ledger_algorithm_version"))
+        and bool(rebuild.get("derivation_algorithm_identity"))
     ):
         blockers.append("blocked_sv1_evidence_import")
     if not (
@@ -12162,10 +12185,12 @@ def _check_sv1_controlled_scale_promotion_readiness(
         blockers.append("blocked_sv1_search_correctness")
     if not (
         isinstance(python, Mapping)
-        and str(python.get("sys_executable") or "").casefold().endswith("venv\\scripts\\python.exe")
-        and str(python.get("sys_version") or "").startswith("3.12.0")
+        and "sys_executable" not in python
+        and "code_root" not in python
+        and str(python.get("python_version") or "").startswith("3.12.0")
         and bool(python.get("architecture"))
-        and bool(python.get("code_root"))
+        and python.get("interpreter_class") == "repo_local_venv"
+        and bool(python.get("code_root_fingerprint"))
     ):
         blockers.append("blocked_sv1_environment_isolation")
 
@@ -12200,6 +12225,10 @@ def _check_sv1_controlled_scale_promotion_readiness(
         blockers.append("blocked_sv1_idempotency")
 
     mutation = _get(summary, "mutation_proof", {})
+    immutable = _get(summary, "immutable_artifact_proof", {})
+    validation = _get(summary, "validation", {})
+    root_proof = _get(summary, "prewrite_root_containment", {})
+    orchestration = _get(summary, "canonical_orchestration", {})
     operations = _get(summary, "operation_counts", {})
     forbidden_operation_keys = (
         "provider_calls",
@@ -12223,17 +12252,71 @@ def _check_sv1_controlled_scale_promotion_readiness(
     ):
         blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
 
+    immutable_required = (
+        "accepted_manifest_import_ai_package_unchanged",
+        "storage_object_membership_unchanged",
+        "scale_protected_tables_unchanged",
+        "promotion_protected_tables_unchanged",
+        "accepted_predecessor_databases_unchanged",
+    )
+    if not (
+        isinstance(immutable, Mapping)
+        and immutable.get("passed") is True
+        and all(immutable.get(key) is True for key in immutable_required)
+        and bool(immutable.get("proof_fingerprint"))
+        and isinstance(mutation, Mapping)
+        and mutation.get("immutable_heavy_artifact_proof_passed") is True
+    ):
+        blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
+
+    if not (
+        isinstance(validation, Mapping)
+        and validation.get("current_candidate_validation_passed") is True
+        and validation.get("head_sha_matches_current") is True
+        and validation.get("changed_file_fingerprint_matches") is True
+        and validation.get("python_identity_fingerprint_matches") is True
+        and validation.get("validation_ledger_fingerprint_verified") is True
+        and validation.get("py_compile_passed") is True
+        and validation.get("focused_tests_passed") is True
+        and validation.get("documentation_contract_tests_passed") is True
+        and validation.get("full_non_e2e_passed") is True
+    ):
+        blockers.append("blocked_sv1_global_test_baseline")
+
+    if not (
+        isinstance(root_proof, Mapping)
+        and root_proof.get("passed") is True
+        and root_proof.get("validation_order") == "resolved_and_validated_before_mkdir_or_artifact_write"
+    ):
+        blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
+
+    canonical_stages = {
+        "prepare", "import", "ai", "evidence", "promotion", "benchmark", "rebuild",
+        "connected-graph-audits", "repair-benchmark", "finalization-accounting",
+        "validation", "repair-finalize",
+    }
+    if not (
+        isinstance(orchestration, Mapping)
+        and orchestration.get("stage") == "all"
+        and orchestration.get("complete") is True
+        and set(orchestration.get("stages") or ()) == canonical_stages
+    ):
+        blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
+
     redaction = _get(summary, "public_redaction", {})
     pack = _get(summary, "review_pack", {})
     if not (
         isinstance(redaction, Mapping)
         and redaction.get("passed") is True
         and redaction.get("negative_control_passed") is True
+        and redaction.get("exact_final_bytes_scanned") is True
+        and _as_int(redaction.get("absolute_path_finding_count"), -1) == 0
         and isinstance(pack, Mapping)
         and pack.get("integrity_passed") is True
         and pack.get("member_checksum_equality_passed") is True
         and pack.get("canonical_final_pack") is True
-        and bool(pack.get("review_pack_fingerprint"))
+        and pack.get("pack_fingerprint_recorded_privately") is True
+        and pack.get("pack_id") == "sv1-finalization-safety-canonical-pack-v2"
     ):
         blockers.append("blocked_sv1_fixed_or_forbidden_mutation")
 

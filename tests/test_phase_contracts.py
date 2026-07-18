@@ -7240,9 +7240,13 @@ def _sv1_contract_summary() -> dict[str, object]:
         "graph_search_rebuild_benchmark",
         "accepted_source_evidence_actual_rebuild",
         "true_new_media_search_benchmark",
-        "connected_component_graph_audit_v2",
-        "promotion_rollback_commit_idempotency",
-        "public_redaction_review_pack",
+            "connected_component_graph_audit_v2",
+            "promotion_rollback_commit_idempotency",
+            "immutable_artifact_drift_proof",
+            "current_head_repair_validation",
+            "prewrite_root_containment",
+            "canonical_orchestration_completeness",
+            "public_redaction_review_pack",
     ]
     return {
         "pipeline_contract": {
@@ -7286,6 +7290,7 @@ def _sv1_contract_summary() -> dict[str, object]:
             "predecessor_databases_immutable": True,
             "production_database_selected": False,
             "production_storage_selected": False,
+            "scale_database_identity": "blombooru_custom_test_scale",
         },
         "source_inventory": {"safely_usable_real_media_count": 12000},
         "scale_manifest": {
@@ -7294,6 +7299,10 @@ def _sv1_contract_summary() -> dict[str, object]:
             "accepted_current_available_media_included": True,
             "accounting_equality_passed": True,
             "synthetic_or_cloned_media_count": 0,
+            "preselection_outcome_counts": {"eligible_unique": 12000},
+            "final_outcome_counts": {"selected": 12000},
+            "preselection_membership_fingerprint": "preselection-fingerprint",
+            "final_membership_fingerprint": "final-fingerprint",
         },
         "media_import": {
             "all_selected_accounted": True,
@@ -7302,9 +7311,17 @@ def _sv1_contract_summary() -> dict[str, object]:
             "out_of_manifest_import_count": 0,
             "source_mutation_count": 0,
             "eligible_media_after": 12000,
-            "current_invocation_new_import_count": 0,
-            "current_invocation_storage_write_count": 0,
-            "cumulative_import_count": 12000,
+            "original_execution": {
+                "imported_media_count": 12000, "storage_write_count": 12000,
+                "runtime_seconds": None, "runtime_evidence_available": False,
+            },
+            "current_invocation": {
+                "new_import_count": 0, "storage_write_count": 0,
+                "runtime_seconds": 0.0, "resumed_exact_checkpoint": True,
+            },
+            "cumulative_checkpoint_state": {
+                "imported_media_count": 12000, "storage_object_count": 12000,
+            },
         },
         "ai_tag_provenance": {
             "coverage": 1.0,
@@ -7314,6 +7331,14 @@ def _sv1_contract_summary() -> dict[str, object]:
             "model_download_count": 0,
             "ai_coverage_ledger_count": 12000,
             "ai_coverage_ledger_fingerprint": "ai-ledger-fingerprint",
+            "original_accepted_execution": {
+                "reused_media_count": 3420, "newly_inferred_media_count": 8580,
+                "eligible_media_count": 12000, "ai_inference_executed": True,
+            },
+            "current_repair_invocation": {
+                "checkpoint_existing_covered_media_count": 12000,
+                "newly_inferred_media_count": 0, "ai_inference_rerun": False,
+            },
         },
         "evidence_export": {
             "passed": True,
@@ -7336,6 +7361,7 @@ def _sv1_contract_summary() -> dict[str, object]:
             "stored_path_population_derived_independently": True,
             "selected_media_classification_coverage": 1.0,
             "denominator_classification_fingerprint": "denominator-fingerprint",
+            "database_identity": "blombooru_custom_test_scale",
         },
         "r2r_reuse": {
             "exact_pair_membership_passed": True,
@@ -7375,6 +7401,9 @@ def _sv1_contract_summary() -> dict[str, object]:
             "accepted_creator_family_traceability": 1.0,
             "blocking_creator_gap_count": 0,
             "actual_r2r_ml2_derivation_replayed": True,
+            "ledger_fingerprint": "rebuild-ledger-fingerprint",
+            "ledger_algorithm_version": "actual-r2r-ml2-v2",
+            "derivation_algorithm_identity": "source-signal+r2r+ml2",
             "logical_subset_comparison": {
                 "graph_logical_mismatch_count": 0, "search_logical_mismatch_count": 0,
                 "numeric_row_id_equality_claimed": False,
@@ -7390,8 +7419,8 @@ def _sv1_contract_summary() -> dict[str, object]:
             "leakage_count": 0, "deterministic_selection_fingerprint": "new-media-fingerprint",
         },
         "python_identity": {
-            "sys_executable": "C:\\repo\\venv\\Scripts\\python.exe",
-            "sys_version": "3.12.0 test", "architecture": "64bit", "code_root": "C:\\repo",
+            "python_version": "3.12.0", "architecture": "64bit",
+            "interpreter_class": "repo_local_venv", "code_root_fingerprint": "root-fingerprint",
         },
         "search_benchmark": {
             "unsupported_result_count": 0,
@@ -7415,6 +7444,16 @@ def _sv1_contract_summary() -> dict[str, object]:
             "predecessor_databases_unchanged": True,
             "media_media_tags_unchanged_during_promotion": True,
             "protected_forbidden_tables_unchanged": True,
+            "immutable_heavy_artifact_proof_passed": True,
+        },
+        "immutable_artifact_proof": {
+            "passed": True,
+            "accepted_manifest_import_ai_package_unchanged": True,
+            "storage_object_membership_unchanged": True,
+            "scale_protected_tables_unchanged": True,
+            "promotion_protected_tables_unchanged": True,
+            "accepted_predecessor_databases_unchanged": True,
+            "proof_fingerprint": "immutable-proof-fingerprint",
         },
         "operation_counts": {
             "provider_calls": 0,
@@ -7428,8 +7467,35 @@ def _sv1_contract_summary() -> dict[str, object]:
             "source_mutations": 0,
             "localization_operations": 0,
         },
-        "public_redaction": {"passed": True, "negative_control_passed": True},
-        "review_pack": {"integrity_passed": True, "member_checksum_equality_passed": True, "canonical_final_pack": True, "review_pack_fingerprint": "pack-fingerprint"},
+        "public_redaction": {
+            "passed": True, "negative_control_passed": True,
+            "exact_final_bytes_scanned": True, "absolute_path_finding_count": 0,
+        },
+        "review_pack": {
+            "integrity_passed": True, "member_checksum_equality_passed": True,
+            "canonical_final_pack": True, "pack_fingerprint_recorded_privately": True,
+            "pack_id": "sv1-finalization-safety-canonical-pack-v2",
+        },
+        "validation": {
+            "current_candidate_validation_passed": True,
+            "head_sha_matches_current": True, "changed_file_fingerprint_matches": True,
+            "python_identity_fingerprint_matches": True,
+            "validation_ledger_fingerprint_verified": True,
+            "py_compile_passed": True, "focused_tests_passed": True,
+            "documentation_contract_tests_passed": True, "full_non_e2e_passed": True,
+        },
+        "prewrite_root_containment": {
+            "passed": True,
+            "validation_order": "resolved_and_validated_before_mkdir_or_artifact_write",
+        },
+        "canonical_orchestration": {
+            "stage": "all", "complete": True,
+            "stages": [
+                "prepare", "import", "ai", "evidence", "promotion", "benchmark", "rebuild",
+                "connected-graph-audits", "repair-benchmark", "finalization-accounting",
+                "validation", "repair-finalize",
+            ],
+        },
         "route_decision": {
             "route_approved": False,
             "recommended_next_phase": "SCV2-SV1B",
@@ -7466,4 +7532,38 @@ def test_sv1_contract_fails_closed_when_required_stage_is_missing() -> None:
 
     assert result.passed is False
     assert "sv1_required_stage_missing" in _error_codes(result)
+    assert "sv1_active_blockers_incomplete" in _error_codes(result)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ("actual_rebuild_verification.blocking_creator_gap_count", 1),
+        ("actual_rebuild_verification.actual_r2r_ml2_derivation_replayed", False),
+        ("immutable_artifact_proof.storage_object_membership_unchanged", False),
+        ("validation.current_candidate_validation_passed", False),
+        ("public_redaction.absolute_path_finding_count", 1),
+        ("prewrite_root_containment.passed", False),
+        ("denominator_audit.database_identity", "blombooru_default_test_wrong"),
+        ("canonical_orchestration.complete", False),
+        ("media_import.current_invocation.storage_write_count", 1),
+        ("ai_tag_provenance.current_repair_invocation.ai_inference_rerun", True),
+    ],
+)
+def test_sv1_finalization_safety_gates_fail_closed(path: str, value: object) -> None:
+    summary = _sv1_contract_summary()
+    _set_nested(summary, path, value)
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+    assert result.passed is False
+    assert "sv1_active_blockers_incomplete" in _error_codes(result)
+    assert "sv1_target_overclaimed" in _error_codes(result)
+
+
+def test_sv1_contract_rejects_stale_inventory_and_ambiguous_resume_fields() -> None:
+    summary = _sv1_contract_summary()
+    summary["scale_manifest"]["inventory_outcome_counts"] = {"eligible_unique": 12000}  # type: ignore[index]
+    summary["media_import"]["app_managed_storage_write_count"] = 12000  # type: ignore[index]
+    summary["media_import"]["copy_import_runtime_seconds"] = 3604.0  # type: ignore[index]
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+    assert result.passed is False
     assert "sv1_active_blockers_incomplete" in _error_codes(result)

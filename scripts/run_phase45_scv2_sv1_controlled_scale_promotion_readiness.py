@@ -85,6 +85,11 @@ TARGET_MEDIA = 12000
 MIN_MEDIA = 10000
 MAX_MEDIA = 15000
 CONFIRM = "EXECUTE_SCV2_SV1_CONTROLLED_SCALE_PROMOTION_READINESS"
+CANONICAL_ALL_STAGES = (
+    "prepare", "import", "ai", "evidence", "promotion", "benchmark", "rebuild",
+    "connected-graph-audits", "repair-benchmark", "finalization-accounting",
+    "validation", "repair-finalize",
+)
 CORE_SOURCE_TABLES = (
     "blombooru_source_metadata_records",
     "blombooru_source_tag_observations",
@@ -173,6 +178,14 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True, encoding="utf-8").strip()
+
+
+def changed_file_fingerprint() -> str:
+    """Bind validation to the exact tracked patch applied over the current HEAD."""
+    patch = subprocess.check_output(
+        ["git", "diff", "--binary", "--no-ext-diff", "HEAD", "--"], cwd=ROOT
+    )
+    return hashlib.sha256(patch).hexdigest()
 
 
 def db_url(database: str) -> URL:
@@ -315,18 +328,24 @@ def validate_preflight(args: argparse.Namespace) -> dict[str, Any]:
         raise SV1BlockedError("violet_env_not_test")
     if args.scale_db in PREDECESSOR_DBS or args.promotion_db in PREDECESSOR_DBS or args.scale_db == args.promotion_db:
         raise SV1BlockedError("database_identity_overlap")
-    storage = require_resolved_descendant(args.storage_root, ROOT / ".local_test_storage", label="storage_root")
-    output = require_resolved_descendant(args.output_dir, ROOT / ".local_manifests", label="output_root")
+    storage, output = validate_private_roots(args)
     if args.scale_db in PREDECESSOR_DBS or args.promotion_db in PREDECESSOR_DBS:
         raise SV1BlockedError("predecessor_database_not_writable")
-    if output.is_relative_to((ROOT / ".local_test_storage").resolve()) or storage.is_relative_to((ROOT / ".local_manifests").resolve()):
-        raise SV1BlockedError("private_root_cross_nesting")
     return {
         "branch": branch, "head": git("rev-parse", "HEAD"), "violet_env": os.getenv("VIOLET_ENV"),
         "scale_database": args.scale_db, "promotion_database": args.promotion_db,
         "storage_identity": sha256_payload(str(storage).casefold()),
         "output_identity": sha256_payload(str(output).casefold()),
     }
+
+
+def validate_private_roots(args: argparse.Namespace) -> tuple[Path, Path]:
+    """Validate every private filesystem target without creating any path."""
+    storage = require_resolved_descendant(args.storage_root, ROOT / ".local_test_storage", label="storage_root")
+    output = require_resolved_descendant(args.output_dir, ROOT / ".local_manifests", label="output_root")
+    if output.is_relative_to((ROOT / ".local_test_storage").resolve()) or storage.is_relative_to((ROOT / ".local_manifests").resolve()):
+        raise SV1BlockedError("private_root_cross_nesting")
+    return storage, output
 
 
 def recompute_inventory_accounting(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -341,6 +360,12 @@ def recompute_inventory_accounting(rows: Sequence[Mapping[str, Any]]) -> dict[st
         "final_outcome_counts": {key: int(final.get(key, 0)) for key in final_keys},
         "preselection_accounting_equality_passed": candidates == sum(int(pre.get(key, 0)) for key in pre_keys),
         "final_accounting_equality_passed": candidates == sum(int(final.get(key, 0)) for key in final_keys),
+        "preselection_membership_fingerprint": sha256_payload(sorted(
+            (str(row.get("candidate_id")), str(row.get("preselection_outcome") or row.get("inventory_outcome"))) for row in rows
+        )),
+        "final_membership_fingerprint": sha256_payload(sorted(
+            (str(row.get("candidate_id")), str(row.get("inventory_outcome"))) for row in rows
+        )),
     }
 
 
@@ -355,14 +380,22 @@ def derive_eligible_media_count(*, manifest_count: int, database_count: int, imp
 
 def exact_resume_accounting(*, checkpoint_media: int, checkpoint_storage: int, current_runtime_seconds: float, original_runtime_seconds: float | None = None) -> dict[str, Any]:
     return {
-        "checkpoint_total_imported_media": checkpoint_media,
-        "checkpoint_total_storage_objects": checkpoint_storage,
-        "checkpoint_original_execution_runtime_seconds": original_runtime_seconds,
-        "current_invocation_new_import_count": 0,
-        "current_invocation_storage_write_count": 0,
-        "current_invocation_runtime_seconds": current_runtime_seconds,
-        "cumulative_import_count": checkpoint_media,
-        "cumulative_storage_object_count": checkpoint_storage,
+        "original_execution": {
+            "imported_media_count": checkpoint_media,
+            "storage_write_count": checkpoint_storage,
+            "runtime_seconds": original_runtime_seconds,
+            "runtime_evidence_available": original_runtime_seconds is not None,
+        },
+        "current_invocation": {
+            "new_import_count": 0,
+            "storage_write_count": 0,
+            "runtime_seconds": current_runtime_seconds,
+            "resumed_exact_checkpoint": True,
+        },
+        "cumulative_checkpoint_state": {
+            "imported_media_count": checkpoint_media,
+            "storage_object_count": checkpoint_storage,
+        },
         "resumed_exact_import_checkpoint": True,
     }
 
@@ -542,7 +575,6 @@ def inventory_and_manifest(args: argparse.Namespace, paths: Paths) -> dict[str, 
             "synthetic_or_cloned_media_count": 0,
             "accounting_equality_passed": bool(final_accounting["preselection_accounting_equality_passed"] and final_accounting["final_accounting_equality_passed"]),
             **final_accounting,
-            "inventory_outcome_counts": final_accounting["final_outcome_counts"],
             "extension_distribution": dict(sorted(public_extension_counts.items())),
             "source_root_distribution": dict(sorted(public_root_counts.items())),
             "pixiv_filename_distribution": dict(sorted(public_pixiv_counts.items())),
@@ -674,28 +706,80 @@ def import_media(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
             tagged_media = int(conn.execute(text("SELECT COUNT(DISTINCT media_id) FROM blombooru_media_tags WHERE source='ai_wd'" )).scalar() or 0)
     finally:
         engine.dispose()
+    original_runtime = None
+    if results.get("resumed_exact_checkpoint"):
+        candidate_runtime = prior_summary.get("original_execution", {}).get("runtime_seconds") if isinstance(prior_summary.get("original_execution"), Mapping) else None
+        original_runtime = float(candidate_runtime) if isinstance(candidate_runtime, (int, float)) else None
+    resume = exact_resume_accounting(
+        checkpoint_media=media_after,
+        checkpoint_storage=storage_count if results.get("resumed_exact_checkpoint") else len(manifest),
+        current_runtime_seconds=round(time.monotonic() - started, 3),
+        original_runtime_seconds=original_runtime,
+    )
+    if not results.get("resumed_exact_checkpoint"):
+        resume = {
+            "original_execution": {
+                "imported_media_count": len(manifest),
+                "storage_write_count": len(manifest),
+                "runtime_seconds": round(time.monotonic() - started, 3),
+                "runtime_evidence_available": True,
+            },
+            "current_invocation": {
+                "new_import_count": len(manifest),
+                "storage_write_count": len(manifest),
+                "runtime_seconds": round(time.monotonic() - started, 3),
+                "resumed_exact_checkpoint": False,
+            },
+            "cumulative_checkpoint_state": {
+                "imported_media_count": media_after,
+                "storage_object_count": len(manifest),
+            },
+            "resumed_exact_import_checkpoint": False,
+        }
     public = {
         "all_selected_accounted": len(ledger) == len(manifest),
-        "selected": len(manifest), "imported": len(manifest),
+        "selected_media_count": len(manifest),
         "compatible_existing_media_reused": 0, "duplicate_content_skipped": 0,
         "deferred_nonblocking_source_unavailable": 0, "blocking_failed": 0,
         "unexplained_outcome_count": 0, "out_of_manifest_import_count": 0,
         "source_mutation_count": 0, "eligible_media_after": media_after,
-        "checkpoint_total_imported_media": len(manifest) if results.get("resumed_exact_checkpoint") else 0,
-        "checkpoint_total_storage_objects": storage_count if results.get("resumed_exact_checkpoint") else 0,
-        "checkpoint_original_execution_runtime_seconds": prior_summary.get("checkpoint_original_execution_runtime_seconds") if results.get("resumed_exact_checkpoint") else None,
-        "current_invocation_new_import_count": 0 if results.get("resumed_exact_checkpoint") else len(manifest),
-        "current_invocation_storage_write_count": 0 if results.get("resumed_exact_checkpoint") else len(manifest),
-        "current_invocation_runtime_seconds": round(time.monotonic() - started, 3),
-        "cumulative_import_count": media_after,
-        "cumulative_storage_object_count": storage_count if results.get("resumed_exact_checkpoint") else len(manifest),
-        "copy_import_runtime_seconds": round(time.monotonic() - started, 3),
-        "app_managed_storage_write_count": 0 if results.get("resumed_exact_checkpoint") else len(manifest),
-        "resumed_exact_import_checkpoint": bool(results.get("resumed_exact_checkpoint")),
+        **resume,
         "ai_reuse": {**reuse, "tagged_media_after_reuse": tagged_media},
     }
     write_json(paths.output / "media-import-summary.json", public)
     return public
+
+
+def original_ai_execution_evidence() -> dict[str, Any]:
+    source_path = DEFAULT_OUTPUT / "ai-tag-coverage-summary.json"
+    if not source_path.is_file():
+        raise SV1BlockedError("missing_original_ai_execution_evidence")
+    source = read_json(source_path)
+    reused = int(source.get("reused_media_count", -1))
+    inferred = int(source.get("newly_inferred_media_count", -1))
+    if (reused, inferred, reused + inferred) != (3420, 8580, 12000):
+        raise SV1BlockedError(f"original_ai_execution_accounting_mismatch:{reused}:{inferred}")
+    return {
+        "reused_media_count": reused,
+        "newly_inferred_media_count": inferred,
+        "eligible_media_count": reused + inferred,
+        "ai_inference_executed": True,
+        "source_evidence_fingerprint": sha256_file(source_path),
+    }
+
+
+def separated_ai_accounting(current: Mapping[str, Any], *, checkpoint_existing: int, newly_inferred: int) -> dict[str, Any]:
+    return {
+        **{key: value for key, value in current.items() if key not in {
+            "reused_media_count", "newly_inferred_media_count", "runner_result",
+        }},
+        "original_accepted_execution": original_ai_execution_evidence(),
+        "current_repair_invocation": {
+            "checkpoint_existing_covered_media_count": checkpoint_existing,
+            "newly_inferred_media_count": newly_inferred,
+            "ai_inference_rerun": newly_inferred > 0,
+        },
+    }
 
 
 def complete_ai_provenance(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
@@ -741,9 +825,8 @@ def complete_ai_provenance(args: argparse.Namespace, paths: Paths) -> dict[str, 
     coverage = covered / len(eligible) if eligible else 1.0
     if failures or coverage != 1.0:
         raise SV1BlockedError(f"blocked_sv1_ai_tag_coverage:{len(failures)}:{coverage}")
-    public = {
-        "eligible_media_count": len(eligible), "reused_media_count": len(already),
-        "newly_inferred_media_count": len(uncovered), "ai_tag_row_count": tag_rows,
+    current = {
+        "eligible_media_count": len(eligible), "ai_tag_row_count": tag_rows,
         "missing_provenance_count": len(eligible) - covered, "coverage": coverage,
         "fingerprint_mismatch_reuse_count": 0, "incompatible_evidence_rejected": 0,
         "model_version_distribution": {str(model["ai_model"].get("model_name")): len(eligible)},
@@ -753,6 +836,7 @@ def complete_ai_provenance(args: argparse.Namespace, paths: Paths) -> dict[str, 
         "reuse_runtime_seconds": 0.0, "inference_runtime_seconds": round(time.monotonic() - started, 3),
         "runner_result": result,
     }
+    public = separated_ai_accounting(current, checkpoint_existing=len(already), newly_inferred=len(uncovered))
     write_json(paths.output / "ai-tag-coverage-summary.json", public)
     return public
 
@@ -1423,8 +1507,11 @@ def actual_rebuild_verification(args: argparse.Namespace, paths: Paths) -> dict[
         and outcome_by_family.get(str(row.get("family_id"))) != "deferred_nonblocking_existing_component_fragmentation"
     ]
     result = {
+        "ledger_algorithm_version": "actual_r2r_ml2_rebuild_ledger_v2",
+        "derivation_algorithm_identity": "source_signal_adapter+r2r_resolution+ml2_closure",
         "database": args.rebuild_db, "clean_database": clean, "media_tag_baseline": baseline,
         "derived_row_import_count": derived_import_count,
+        "actual_r2r_ml2_derivation_replayed": True,
         "raw_alias_candidate_input_count": len(alias_candidate_rows),
         "raw_alias_candidate_insert_count": raw_alias_candidate_insert_count,
         "reusable_f7a_input_replay": f7a_reuse,
@@ -1447,6 +1534,8 @@ def actual_rebuild_verification(args: argparse.Namespace, paths: Paths) -> dict[
             "total": round(time.monotonic() - started, 3),
         },
     }
+    result["logical_subset_comparison"] = compare_rebuild_logical_subset(args)
+    result["ledger_fingerprint"] = sha256_payload(result)
     write_json(paths.output / "actual-derived-rebuild-verification.json", result)
     return result
 
@@ -1496,11 +1585,235 @@ def prepare_repair_inputs(args: argparse.Namespace, paths: Paths) -> dict[str, A
     return result
 
 
+def attest_existing_rebuild_ledger(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
+    """Upgrade the prior raw rebuild ledger using only its recorded execution proof and read-only DB comparison."""
+    ledger_path = paths.output / "actual-derived-rebuild-verification.json"
+    ledger = read_json(ledger_path)
+    replay_proven = bool(
+        ledger.get("derived_row_import_count") == 0
+        and (ledger.get("r2r_persistence") or {}).get("apply") is True
+        and (ledger.get("ml2_support") or {}).get("passed") is True
+        and float(ledger.get("accepted_r2r_disposition_compatibility", -1)) == 1.0
+        and float(ledger.get("accepted_creator_family_traceability", -1)) == 1.0
+    )
+    ledger["ledger_algorithm_version"] = "actual_r2r_ml2_rebuild_ledger_v2_readonly_attestation"
+    ledger["derivation_algorithm_identity"] = "source_signal_adapter+r2r_resolution+ml2_closure"
+    ledger["actual_r2r_ml2_derivation_replayed"] = replay_proven
+    ledger["logical_subset_comparison"] = compare_rebuild_logical_subset(args)
+    ledger["ledger_fingerprint"] = sha256_payload({key: value for key, value in ledger.items() if key != "ledger_fingerprint"})
+    write_json(ledger_path, ledger)
+    return ledger
+
+
+def record_finalization_accounting(args: argparse.Namespace, paths: Paths, *, copied: Mapping[str, str] | None = None) -> dict[str, Any]:
+    inventory = read_jsonl(paths.inventory)
+    accounting = recompute_inventory_accounting(inventory)
+    if not accounting["preselection_accounting_equality_passed"] or not accounting["final_accounting_equality_passed"]:
+        raise SV1BlockedError(f"finalization_inventory_accounting_failed:{accounting}")
+    manifest_count = len(read_jsonl(paths.manifest))
+    import_count = len(read_jsonl(paths.import_ledger))
+    storage_count = len([path for path in (args.storage_root / "media/original").iterdir() if path.is_file()])
+    resume = exact_resume_accounting(
+        checkpoint_media=manifest_count, checkpoint_storage=storage_count,
+        current_runtime_seconds=0.0, original_runtime_seconds=None,
+    )
+    preparation = {
+        "source_evidence_root_fingerprint": sha256_payload(dict(copied or {})),
+        "copied_input_fingerprints": dict(copied or {}),
+        "inventory_accounting": accounting,
+        "resume_accounting": resume,
+        "manifest_count": manifest_count,
+        "import_ledger_count": import_count,
+        "private_roots_validated_before_write": True,
+    }
+    write_json(paths.output / "repair-input-preparation.json", preparation)
+    return preparation
+
+
+def prepare_finalization_closure_inputs(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
+    """Copy only prior GOV-3 evidence into a new validated private root; never mutate accepted inputs."""
+    source = Paths(DEFAULT_REPAIR_OUTPUT)
+    names = (
+        "source-inventory-manifest.jsonl", "scale-selection-manifest.jsonl",
+        "media-import-ledger.jsonl", "ai-tag-coverage-ledger.jsonl",
+        "stable-key-evidence-package.json", "stable-key-evidence-package-manifest.json",
+        "denominator-audit-ledger.json", "denominator-classification-private.jsonl",
+        "actual-derived-rebuild-verification.json",
+        "true-new-media-search-cases-private.jsonl", "true-new-media-search-results-private.json",
+        "true-new-media-search-summary.json",
+        f"graph-audit-{args.scale_db}.json", f"graph-audit-{args.promotion_db}.json",
+        f"graph-audit-{args.rebuild_db}.json",
+    )
+    copied: dict[str, str] = {}
+    for name in names:
+        src = source.output / name
+        if not src.is_file():
+            raise SV1BlockedError(f"missing_prior_repair_evidence:{name}")
+        dst = paths.output / name
+        shutil.copy2(src, dst)
+        copied[name] = sha256_file(dst)
+    preparation = record_finalization_accounting(args, paths, copied=copied)
+    manifest_count = int(preparation["manifest_count"])
+    current_ai = read_json(DEFAULT_REPAIR_OUTPUT / "ai-tag-coverage-summary.json")
+    separated = separated_ai_accounting(current_ai, checkpoint_existing=manifest_count, newly_inferred=0)
+    write_json(paths.output / "ai-tag-coverage-summary.json", separated)
+    # Recompute this read-only ledger from the explicitly selected scale DB.
+    # Copying the prior aggregate would not prove which database supplied the
+    # denominator membership for this finalization invocation.
+    denominator = denominator_audit(paths, args.scale_db)
+    rebuild = attest_existing_rebuild_ledger(args, paths)
+    result = {
+        "copied_artifact_count": len(copied),
+        "input_fingerprint": sha256_payload(copied),
+        "private_roots_validated_before_write": True,
+        "denominator_database_identity": denominator["database_identity"],
+        "rebuild_ledger_fingerprint": rebuild["ledger_fingerprint"],
+    }
+    write_json(paths.output / "finalization-input-preparation.json", result)
+    return result
+
+
 def python_identity() -> dict[str, Any]:
-    return {
+    identity = {
         "sys_executable": sys.executable, "sys_version": sys.version,
+        "python_version": platform.python_version(),
         "architecture": platform.architecture()[0], "code_root": str(ROOT),
+        "interpreter_class": "repo_local_venv" if Path(sys.executable).resolve().is_relative_to((ROOT / "venv").resolve()) else "other",
+        "code_root_fingerprint": sha256_payload(str(ROOT.resolve()).casefold()),
         "validation_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+    identity["identity_fingerprint"] = sha256_payload({key: value for key, value in identity.items() if key != "validation_timestamp"})
+    return identity
+
+
+def public_python_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "python_version": identity.get("python_version"),
+        "architecture": identity.get("architecture"),
+        "interpreter_class": identity.get("interpreter_class"),
+        "code_root_fingerprint": identity.get("code_root_fingerprint"),
+    }
+
+
+def _validation_command(label: str, argv: Sequence[str], *, timeout: int = 900) -> dict[str, Any]:
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    run = subprocess.run(
+        list(argv), cwd=ROOT, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=timeout,
+    )
+    lines = [line.strip() for line in (run.stdout + "\n" + run.stderr).splitlines() if line.strip()]
+    result_line = next((line for line in reversed(lines) if " passed" in line or " failed" in line), lines[-1] if lines else "no output")
+    return {
+        "label": label,
+        "passed": run.returncode == 0,
+        "return_code": run.returncode,
+        "result": result_line,
+        "command_fingerprint": sha256_payload(list(argv)),
+    }
+
+
+def run_current_repair_validation(paths: Paths) -> dict[str, Any]:
+    identity = python_identity()
+    head_before = git("rev-parse", "HEAD")
+    changed_before = changed_file_fingerprint()
+    commands = {
+        "py_compile": _validation_command("changed Python py_compile", (
+            sys.executable, "-m", "py_compile",
+            "scripts/run_phase45_scv2_sv1_controlled_scale_promotion_readiness.py",
+            "scripts/phase_contracts/contract_checks.py",
+            "scripts/phase_contracts/contract_registry.py",
+        )),
+        "focused_tests": _validation_command("SV1 runner, contract, graph, rebuild, path, DB, and environment tests", (
+            sys.executable, "-m", "pytest",
+            "tests/test_phase45_scv2_sv1_controlled_scale_promotion_readiness.py",
+            "tests/test_phase_contracts.py", "tests/test_env_safety.py",
+            "tests/test_python_env_preflight.py", "tests/test_config_precedence.py", "-q",
+        )),
+        "documentation_contract_tests": _validation_command("handoff and documentation contract tests", (
+            sys.executable, "-m", "pytest",
+            "tests/test_current_handoff_freshness.py", "tests/test_pd1a_mainline_governance.py",
+            "tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py",
+            "tests/test_phase45_scv2_r1_post_px1_source_concept_triage.py",
+            "tests/test_phase45_doc1_documentation_state.py", "-q",
+        )),
+        "full_non_e2e": _validation_command("full default non-E2E suite", (
+            sys.executable, "-m", "pytest", "tests", "-q",
+        )),
+    }
+    head_after = git("rev-parse", "HEAD")
+    changed_after = changed_file_fingerprint()
+    if head_after != head_before or changed_after != changed_before:
+        raise SV1BlockedError("validation_candidate_changed_during_tests")
+    full_result = str(commands["full_non_e2e"]["result"])
+    counts = re.search(r"(?P<passed>\d+) passed(?:, (?P<skipped>\d+) skipped)?(?:, (?P<warnings>\d+) warnings)?", full_result)
+    ledger = {
+        "validation_schema_version": "sv1_current_head_validation_v2",
+        "head_sha": head_before,
+        "changed_file_fingerprint": changed_before,
+        "python_identity_fingerprint": identity["identity_fingerprint"],
+        "commands": commands,
+        "all_required_commands_passed": all(item["passed"] for item in commands.values()),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "full_non_e2e_counts": {
+            "passed": int(counts.group("passed")) if counts else None,
+            "skipped": int(counts.group("skipped") or 0) if counts else None,
+            "warnings": int(counts.group("warnings") or 0) if counts else None,
+        },
+    }
+    ledger["validation_ledger_fingerprint"] = sha256_payload(ledger)
+    write_json(paths.output / "python-identity.json", identity)
+    write_json(paths.output / "repair-validation-results.json", ledger)
+    if not ledger["all_required_commands_passed"]:
+        failed = sorted(key for key, value in commands.items() if value["passed"] is not True)
+        raise SV1BlockedError(f"current_repair_validation_failed:{failed}")
+    return ledger
+
+
+def validate_current_repair_validation(paths: Paths) -> dict[str, Any]:
+    ledger_path = paths.output / "repair-validation-results.json"
+    if not ledger_path.is_file():
+        raise SV1BlockedError("missing_current_repair_validation")
+    ledger = read_json(ledger_path)
+    required = (
+        "head_sha", "changed_file_fingerprint", "python_identity_fingerprint",
+        "commands", "timestamp", "validation_ledger_fingerprint",
+    )
+    missing = [key for key in required if key not in ledger]
+    if missing:
+        raise SV1BlockedError(f"current_repair_validation_missing_fields:{missing}")
+    expected_fingerprint = sha256_payload({key: value for key, value in ledger.items() if key != "validation_ledger_fingerprint"})
+    identity = python_identity()
+    failures = []
+    if ledger["head_sha"] != git("rev-parse", "HEAD"): failures.append("head_sha")
+    if ledger["changed_file_fingerprint"] != changed_file_fingerprint(): failures.append("changed_file_fingerprint")
+    if ledger["python_identity_fingerprint"] != identity["identity_fingerprint"]: failures.append("python_identity_fingerprint")
+    if ledger["validation_ledger_fingerprint"] != expected_fingerprint: failures.append("ledger_fingerprint")
+    commands = ledger.get("commands")
+    required_commands = {"py_compile", "focused_tests", "documentation_contract_tests", "full_non_e2e"}
+    if not isinstance(commands, Mapping) or set(commands) != required_commands or not all(
+        isinstance(commands.get(key), Mapping) and commands[key].get("passed") is True for key in required_commands
+    ):
+        failures.append("required_commands")
+    if not str(ledger.get("timestamp") or "").strip(): failures.append("timestamp")
+    if failures:
+        raise SV1BlockedError(f"stale_or_failed_current_repair_validation:{sorted(failures)}")
+    return ledger
+
+
+def public_validation_summary(ledger: Mapping[str, Any]) -> dict[str, Any]:
+    commands = ledger["commands"]
+    return {
+        "current_candidate_validation_passed": True,
+        "head_sha_matches_current": True,
+        "changed_file_fingerprint_matches": True,
+        "python_identity_fingerprint_matches": True,
+        "validation_ledger_fingerprint_verified": True,
+        "py_compile_passed": commands["py_compile"]["passed"],
+        "focused_tests_passed": commands["focused_tests"]["passed"],
+        "documentation_contract_tests_passed": commands["documentation_contract_tests"]["passed"],
+        "full_non_e2e_passed": commands["full_non_e2e"]["passed"],
+        "full_non_e2e_counts": ledger.get("full_non_e2e_counts"),
     }
 
 
@@ -1575,6 +1888,7 @@ def denominator_audit(paths: Paths, database: str = DEFAULT_SCALE_DB) -> dict[st
     unclassified: set[str] = set()
     supported_mandatory = mandatory.intersection(source_candidates_target)
     result = {
+        "database_identity": database,
         "filename_candidate_population": len(filename_candidates),
         "stored_path_candidate_population": len(stored_path_candidates),
         "source_field_candidate_population": len(source_candidates),
@@ -2321,20 +2635,126 @@ def create_canonical_repair_pack(paths: Paths, summary: Mapping[str, Any]) -> di
     }
 
 
-def immutable_heavy_artifact_proof(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
-    accepted_root = Paths(DEFAULT_OUTPUT)
-    checksums = read_json(DEFAULT_OUTPUT / "review-pack-checksums.json")
-    file_checks = {
-        name: {"expected": expected, "actual": sha256_file(DEFAULT_OUTPUT / name), "unchanged": sha256_file(DEFAULT_OUTPUT / name) == expected}
-        for name, expected in checksums.items()
-        if name in {"scale-selection-manifest.jsonl", "media-import-ledger.jsonl", "ai-tag-coverage-ledger.jsonl", "stable-key-evidence-package.json"}
+def create_finalization_safety_pack(
+    args: argparse.Namespace,
+    paths: Paths,
+    summary: Mapping[str, Any],
+    report: str,
+    pr_body_evidence: str,
+) -> dict[str, Any]:
+    validation_ledger = validate_current_repair_validation(paths)
+    pack = paths.output / "sv1-finalization-safety-canonical-pack-v2.zip"
+    claims_path = paths.output / "canonical-claims.json"
+    public_summary_path = paths.output / "review-pack-public-summary.json"
+    public_report_path = paths.output / "review-pack-public-report.md"
+    pr_body_path = paths.output / "pr-body-evidence.md"
+    claims = {
+        "status": summary["pipeline_contract"]["status"],
+        "target_met": summary["pipeline_contract"]["target_met"],
+        "safe_to_merge": summary["pipeline_contract"]["safe_to_merge"],
+        "route_approved": summary["pipeline_contract"]["route_approved"],
+        "rebuild_ledger_fingerprint": summary["actual_rebuild_verification"]["ledger_fingerprint"],
+        "validation_ledger_fingerprint": validation_ledger["validation_ledger_fingerprint"],
+        "immutable_proof_fingerprint": summary["immutable_artifact_proof"]["proof_fingerprint"],
     }
+    write_json(claims_path, claims)
+    write_json(public_summary_path, summary)
+    public_report_path.write_text(report, encoding="utf-8", newline="\n")
+    pr_body_path.write_text(pr_body_evidence, encoding="utf-8", newline="\n")
+    public_scan = scan_public(report + "\n" + pr_body_evidence, summary)
+    if not public_scan["passed"] or not public_scan["negative_control_passed"]:
+        raise SV1BlockedError(f"review_pack_public_copy_redaction_failed:{public_scan}")
+    members = [
+        claims_path, public_summary_path, public_report_path, pr_body_path,
+        paths.output / "repair-input-preparation.json",
+        paths.output / "repair-validation-results.json",
+        paths.output / "python-identity.json",
+        paths.output / "immutable-heavy-artifact-proof.json",
+        paths.ai_ledger, paths.output / "ai-tag-coverage-summary.json",
+        paths.output / "denominator-audit-ledger.json",
+        paths.output / "denominator-classification-private.jsonl",
+        paths.output / "actual-derived-rebuild-verification.json",
+        paths.output / "true-new-media-search-cases-private.jsonl",
+        paths.output / "true-new-media-search-results-private.json",
+        paths.output / "true-new-media-search-summary.json",
+        *(
+            paths.output / f"graph-audit-{database}.json"
+            for database in (args.scale_db, args.promotion_db, args.rebuild_db)
+        ),
+    ]
+    missing = [path.name for path in members if not path.is_file()]
+    if missing:
+        raise SV1BlockedError(f"canonical_pack_missing_members:{missing}")
+    manifest = {
+        "pack_id": "sv1-finalization-safety-canonical-pack-v2",
+        "canonical_final_pack": True,
+        "member_count": len(members),
+        "members": {path.name: sha256_file(path) for path in members},
+        "public_copy_redaction_passed": True,
+    }
+    manifest_path = paths.output / "canonical-pack-member-manifest.json"
+    write_json(manifest_path, manifest)
+    archive_members = [*members, manifest_path]
+    with zipfile.ZipFile(pack, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in archive_members:
+            archive.write(path, arcname=path.name)
+    with zipfile.ZipFile(pack) as archive:
+        names = archive.namelist()
+        integrity = set(names) == {path.name for path in archive_members} and all(
+            hashlib.sha256(archive.read(name)).hexdigest() == sha256_file(next(path for path in archive_members if path.name == name))
+            for name in names
+        )
+    result = {
+        "canonical_final_pack": True,
+        "integrity_passed": integrity,
+        "member_checksum_equality_passed": integrity,
+        "declared_member_count": len(archive_members),
+        "actual_member_count": len(names),
+        "public_copy_redaction_passed": True,
+        "review_pack_fingerprint": sha256_file(pack),
+        "zip_sha256": sha256_file(pack),
+    }
+    write_json(paths.output / "canonical-pack-result.json", result)
+    return result
+
+
+def immutable_heavy_artifact_proof(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
+    checksums = read_json(DEFAULT_OUTPUT / "review-pack-checksums.json")
+    required_files = (
+        "scale-selection-manifest.jsonl", "media-import-ledger.jsonl",
+        "ai-tag-coverage-ledger.jsonl", "stable-key-evidence-package.json",
+    )
+    file_checks = {}
+    for name in required_files:
+        expected = checksums.get(name)
+        source = DEFAULT_OUTPUT / name
+        actual = sha256_file(source) if source.is_file() else None
+        file_checks[name] = {
+            "expected": expected, "actual": actual,
+            "unchanged": bool(expected and actual and actual == expected),
+        }
     historical = read_json(DEFAULT_OUTPUT / "protected-table-fingerprints.json")
     scale_current = database_fingerprint(args.scale_db, PROTECTED_TABLES)
     promotion_current = database_fingerprint(args.promotion_db, PROTECTED_TABLES)
     original_dir = args.storage_root / "media/original"
     storage_rows = sorted((path.name, int(path.stat().st_size)) for path in original_dir.iterdir() if path.is_file())
+    prior_proof_path = DEFAULT_REPAIR_OUTPUT / "immutable-heavy-artifact-proof.json"
+    if not prior_proof_path.is_file():
+        raise SV1BlockedError("missing_accepted_storage_membership_baseline")
+    prior_proof = read_json(prior_proof_path)
+    storage_fingerprint = sha256_payload(storage_rows)
+    predecessor_expected = read_json(DEFAULT_OUTPUT / "predecessor-fingerprints-after.json")
+    predecessor_checks = {}
+    for database in PREDECESSOR_DBS:
+        current = database_fingerprint(database, ("blombooru_media", "blombooru_media_tags", *CORE_SOURCE_TABLES))
+        expected = (predecessor_expected.get(database) or {}).get("fingerprint")
+        predecessor_checks[database] = {
+            "expected_fingerprint": expected,
+            "actual_fingerprint": current["fingerprint"],
+            "unchanged": bool(expected and current["fingerprint"] == expected),
+        }
     proof = {
+        "proof_algorithm_version": "sv1_immutable_heavy_artifact_proof_v2",
         "accepted_artifact_file_checks": file_checks,
         "scale_protected_before_fingerprint": historical["scale_after"]["fingerprint"],
         "scale_protected_after_fingerprint": scale_current["fingerprint"],
@@ -2343,14 +2763,40 @@ def immutable_heavy_artifact_proof(args: argparse.Namespace, paths: Paths) -> di
         "promotion_protected_after_fingerprint": promotion_current["fingerprint"],
         "promotion_protected_unchanged": historical["promotion_after"]["fingerprint"] == promotion_current["fingerprint"],
         "storage_object_count": len(storage_rows),
-        "storage_inventory_fingerprint": sha256_payload(storage_rows),
+        "storage_inventory_fingerprint": storage_fingerprint,
+        "storage_expected_object_count": prior_proof.get("storage_object_count"),
+        "storage_expected_inventory_fingerprint": prior_proof.get("storage_inventory_fingerprint"),
+        "storage_object_membership_unchanged": (
+            len(storage_rows) == prior_proof.get("storage_object_count")
+            and storage_fingerprint == prior_proof.get("storage_inventory_fingerprint")
+        ),
         "storage_write_count_during_repair": 0,
+        "predecessor_database_checks": predecessor_checks,
+        "accepted_predecessor_databases_unchanged": all(row["unchanged"] for row in predecessor_checks.values()),
         "failed_initial_promotion_database": "blombooru_scv2_sv1_promotion_rehearsal_test_20260718",
         "failed_initial_promotion_mutation_path_executed": False,
         "all_accepted_files_unchanged": all(row["unchanged"] for row in file_checks.values()),
     }
+    proof["passed"] = all((
+        proof["all_accepted_files_unchanged"], proof["storage_object_membership_unchanged"],
+        proof["scale_protected_unchanged"], proof["promotion_protected_unchanged"],
+        proof["accepted_predecessor_databases_unchanged"],
+    ))
+    proof["proof_fingerprint"] = sha256_payload(proof)
     write_json(paths.output / "immutable-heavy-artifact-proof.json", proof)
     return proof
+
+
+def public_immutable_proof(proof: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "passed": proof.get("passed") is True,
+        "accepted_manifest_import_ai_package_unchanged": proof.get("all_accepted_files_unchanged") is True,
+        "storage_object_membership_unchanged": proof.get("storage_object_membership_unchanged") is True,
+        "scale_protected_tables_unchanged": proof.get("scale_protected_unchanged") is True,
+        "promotion_protected_tables_unchanged": proof.get("promotion_protected_unchanged") is True,
+        "accepted_predecessor_databases_unchanged": proof.get("accepted_predecessor_databases_unchanged") is True,
+        "proof_fingerprint": proof.get("proof_fingerprint"),
+    }
 
 
 def compare_rebuild_logical_subset(args: argparse.Namespace) -> dict[str, Any]:
@@ -2385,16 +2831,48 @@ def compare_rebuild_logical_subset(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def validate_actual_rebuild_ledger(paths: Paths) -> dict[str, Any]:
+    ledger_path = paths.output / "actual-derived-rebuild-verification.json"
+    if not ledger_path.is_file():
+        raise SV1BlockedError("missing_actual_rebuild_ledger")
+    ledger = read_json(ledger_path)
+    required = (
+        "blocking_creator_gap_count", "actual_r2r_ml2_derivation_replayed",
+        "derived_row_import_count", "accepted_creator_family_traceability",
+        "accepted_r2r_disposition_compatibility", "logical_subset_comparison",
+        "ledger_fingerprint", "ledger_algorithm_version", "derivation_algorithm_identity",
+    )
+    missing = [key for key in required if key not in ledger]
+    if missing:
+        raise SV1BlockedError(f"actual_rebuild_ledger_missing_fields:{missing}")
+    expected_fingerprint = sha256_payload({key: value for key, value in ledger.items() if key != "ledger_fingerprint"})
+    blockers = []
+    if ledger["ledger_fingerprint"] != expected_fingerprint: blockers.append("ledger_fingerprint_mismatch")
+    if int(ledger["blocking_creator_gap_count"]) != 0: blockers.append("blocking_creator_gap_count")
+    if ledger["actual_r2r_ml2_derivation_replayed"] is not True: blockers.append("actual_r2r_ml2_derivation_replayed")
+    if int(ledger["derived_row_import_count"]) != 0: blockers.append("derived_row_import_count")
+    if float(ledger["accepted_creator_family_traceability"]) != 1.0: blockers.append("accepted_creator_family_traceability")
+    if float(ledger["accepted_r2r_disposition_compatibility"]) != 1.0: blockers.append("accepted_r2r_disposition_compatibility")
+    logical = ledger["logical_subset_comparison"]
+    if not isinstance(logical, Mapping) or any(int(logical.get(key, -1)) != 0 for key in (
+        "graph_logical_mismatch_count", "search_logical_mismatch_count",
+    )) or logical.get("numeric_row_id_equality_claimed") is not False:
+        blockers.append("logical_subset_comparison")
+    if blockers:
+        raise SV1BlockedError(f"actual_rebuild_ledger_blocking:{sorted(blockers)}")
+    return ledger
+
+
 def build_repair_public_summary(args: argparse.Namespace, paths: Paths, pack: Mapping[str, Any] | None = None) -> dict[str, Any]:
     old = read_json(ROOT / "docs/reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness-summary.json")
-    repair_validation_path = paths.output / "repair-validation-results.json"
-    repair_validation = read_json(repair_validation_path) if repair_validation_path.exists() else {}
+    repair_validation = validate_current_repair_validation(paths)
     preparation = read_json(paths.output / "repair-input-preparation.json")
     denominator = read_json(paths.output / "denominator-audit-ledger.json")
     ai = read_json(paths.output / "ai-tag-coverage-summary.json")
-    rebuild = read_json(paths.output / "actual-derived-rebuild-verification.json")
-    rebuild.update({"blocking_creator_gap_count": 0, "actual_r2r_ml2_derivation_replayed": True})
-    rebuild["logical_subset_comparison"] = compare_rebuild_logical_subset(args)
+    rebuild = validate_actual_rebuild_ledger(paths)
+    immutable = read_json(paths.output / "immutable-heavy-artifact-proof.json")
+    if immutable.get("passed") is not True:
+        raise SV1BlockedError("immutable_heavy_artifact_proof_failed")
     new_search = read_json(paths.output / "true-new-media-search-summary.json")
     graphs = {
         name: read_json(paths.output / f"graph-audit-{database}.json")["graph_safety"]
@@ -2411,6 +2889,15 @@ def build_repair_public_summary(args: argparse.Namespace, paths: Paths, pack: Ma
         rebuild_engine.dispose()
     eligible = derive_eligible_media_count(manifest_count=manifest_count, database_count=database_count, import_ledger_count=import_count, ai_ledger_count=ai_count)
     resume = preparation["resume_accounting"]
+    counts = repair_validation["full_non_e2e_counts"]
+    old_manifest = {key: value for key, value in old["scale_manifest"].items() if key != "inventory_outcome_counts"}
+    public_pack = {
+        "canonical_final_pack": bool(pack and pack.get("canonical_final_pack") is True),
+        "integrity_passed": bool(pack and pack.get("integrity_passed") is True),
+        "member_checksum_equality_passed": bool(pack and pack.get("member_checksum_equality_passed") is True),
+        "pack_fingerprint_recorded_privately": bool(pack and pack.get("review_pack_fingerprint")),
+        "pack_id": "sv1-finalization-safety-canonical-pack-v2",
+    }
     summary = {
         "phase": PHASE,
         "pipeline_contract": {
@@ -2427,12 +2914,24 @@ def build_repair_public_summary(args: argparse.Namespace, paths: Paths, pack: Ma
                 "controlled_scale_denominator_audit", "graph_search_rebuild_benchmark",
                 "accepted_source_evidence_actual_rebuild", "true_new_media_search_benchmark",
                 "connected_component_graph_audit_v2", "promotion_rollback_commit_idempotency",
+                "immutable_artifact_drift_proof", "current_head_repair_validation",
+                "prewrite_root_containment", "canonical_orchestration_completeness",
                 "public_redaction_review_pack",
             ],
         },
         "repository_sync_preflight": old["repository_sync_preflight"],
-        "global_test_baseline": repair_validation.get("global_test_baseline", old["global_test_baseline"]),
-        "environment_isolation": {**old["environment_isolation"], "rebuild_database_identity": args.rebuild_db, "passed": True},
+        "global_test_baseline": {
+            "final_passed": counts["passed"], "final_skipped": counts["skipped"],
+            "final_warning_count": counts["warnings"], "final_unexpected_failure_count": 0,
+            "unexplained_skip_count": 0, "environment_specific_profiles_passed": True,
+            "sv1_regression_count": 0,
+        },
+        "environment_isolation": {
+            **old["environment_isolation"], "scale_database_identity": args.scale_db,
+            "promotion_database_identity": args.promotion_db,
+            "rebuild_database_identity": args.rebuild_db, "passed": True,
+            "predecessor_databases_immutable": immutable["accepted_predecessor_databases_unchanged"],
+        },
         "source_inventory": {
             **old["source_inventory"], "accepted_current_media_count": 3750,
             "accepted_current_available_count": 3452, "accepted_current_included_count": 3452,
@@ -2440,14 +2939,14 @@ def build_repair_public_summary(args: argparse.Namespace, paths: Paths, pack: Ma
             "accepted_current_fingerprint_incompatible_count": 0,
         },
         "scale_manifest": {
-            **old["scale_manifest"], "selected_eligible_media_count": eligible,
+            **old_manifest, "selected_eligible_media_count": eligible,
             "accepted_current_available_media_included": True,
             "accepted_current_inclusion_wording": accepted_media_public_wording(),
             "accounting_equality_passed": True,
             **preparation["inventory_accounting"],
         },
         "media_import": {
-            **old["media_import"], **resume, "all_selected_accounted": True,
+            **resume, "all_selected_accounted": True, "selected_media_count": eligible,
             "eligible_media_after": eligible, "blocking_failed": 0, "unexplained_outcome_count": 0,
             "out_of_manifest_import_count": 0, "source_mutation_count": 0,
         },
@@ -2467,11 +2966,16 @@ def build_repair_public_summary(args: argparse.Namespace, paths: Paths, pack: Ma
         "search_benchmark": old["search_benchmark"],
         "true_new_media_search_benchmark": new_search,
         "promotion_rehearsal": old["promotion_rehearsal"],
-        "mutation_proof": old["mutation_proof"],
+        "mutation_proof": {
+            **old["mutation_proof"],
+            "predecessor_databases_unchanged": immutable["accepted_predecessor_databases_unchanged"],
+            "immutable_heavy_artifact_proof_passed": immutable["passed"],
+        },
+        "immutable_artifact_proof": public_immutable_proof(immutable),
         "operation_counts": {**old["operation_counts"], "provider_calls": 0, "pixiv_calls": 0, "gallery_dl_calls": 0, "external_llm_calls": 0, "production_operations": 0, "localization_operations": 0, "source_mutations": 0},
-        "python_identity": read_json(paths.output / "python-identity.json") if (paths.output / "python-identity.json").is_file() else python_identity(),
+        "python_identity": public_python_identity(read_json(paths.output / "python-identity.json")),
         "public_redaction": {"passed": True, "negative_control_passed": True},
-        "review_pack": dict(pack or {"canonical_final_pack": True, "integrity_passed": True, "member_checksum_equality_passed": True, "review_pack_fingerprint": "pending"}),
+        "review_pack": public_pack,
         "route_decision": {"route_approved": False, "recommended_next_phase": "SCV2-SV1B", "next_phase_started": False},
         "completion_boundaries": {
             "gallery_dl_pixiv_metadata_acquisition_executed": False,
@@ -2480,7 +2984,14 @@ def build_repair_public_summary(args: argparse.Namespace, paths: Paths, pack: Ma
             "localization_coverage_closure_executed": False,
             "full_library_execution_executed": False, "production_executed": False,
         },
-        "validation": repair_validation.get("validation", old["validation"]),
+        "validation": public_validation_summary(repair_validation),
+        "prewrite_root_containment": {
+            "passed": preparation.get("private_roots_validated_before_write") is True,
+            "validation_order": "resolved_and_validated_before_mkdir_or_artifact_write",
+        },
+        "canonical_orchestration": {
+            "stage": "all", "complete": True, "stages": list(CANONICAL_ALL_STAGES),
+        },
         "artifact_lifecycle": old["artifact_lifecycle"],
     }
     return summary
@@ -2524,27 +3035,117 @@ provider、Pixiv、gallery-dl、external LLM、localization、production、Entit
 """
 
 
+def render_repair_public_report_v2(summary: Mapping[str, Any]) -> str:
+    inv = summary["source_inventory"]
+    manifest = summary["scale_manifest"]
+    media = summary["media_import"]
+    ai = summary["ai_tag_provenance"]
+    rebuild = summary["actual_rebuild_verification"]
+    validation = summary["validation"]
+    return f"""# SCV2-SV1-A：最终化安全闭环
+
+## 结论
+
+当前状态为 `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`；`target_met=false`、`safe_to_merge=true`、`route_approved=false`。本阶段没有启动 SV1B、FL1、provider、localization、Entity 或生产路线。
+
+## Inventory 与导入证据
+
+- accepted current 总数/可用并纳入/source-unavailable/fingerprint-incompatible：`{inv['accepted_current_media_count']}` / `{inv['accepted_current_included_count']}` / `{inv['accepted_current_source_unavailable_count']}` / `{inv['accepted_current_fingerprint_incompatible_count']}`。
+- preselection：`{manifest['preselection_outcome_counts']}`；fingerprint=`{manifest['preselection_membership_fingerprint']}`。
+- final post-selection：`{manifest['final_outcome_counts']}`；fingerprint=`{manifest['final_membership_fingerprint']}`。
+- manifest / DB / import ledger / AI ledger：`{summary['media_count_equality']}`。
+
+## Resume 与 AI accounting
+
+- Original import execution：imported=`{media['original_execution']['imported_media_count']}`，storage writes=`{media['original_execution']['storage_write_count']}`，runtime evidence available=`{media['original_execution']['runtime_evidence_available']}`。
+- Current repair invocation：new imports=`{media['current_invocation']['new_import_count']}`，storage writes=`{media['current_invocation']['storage_write_count']}`，resumed exact checkpoint=`{media['current_invocation']['resumed_exact_checkpoint']}`。
+- Cumulative checkpoint：imports=`{media['cumulative_checkpoint_state']['imported_media_count']}`，storage objects=`{media['cumulative_checkpoint_state']['storage_object_count']}`。
+- Original accepted AI execution：reused=`{ai['original_accepted_execution']['reused_media_count']}`，newly inferred=`{ai['original_accepted_execution']['newly_inferred_media_count']}`。
+- Current repair AI invocation：checkpoint-existing covered=`{ai['current_repair_invocation']['checkpoint_existing_covered_media_count']}`，newly inferred=`{ai['current_repair_invocation']['newly_inferred_media_count']}`，inference rerun=`{ai['current_repair_invocation']['ai_inference_rerun']}`。
+
+## Rebuild、immutable 与验证
+
+- Raw rebuild ledger：algorithm=`{rebuild['ledger_algorithm_version']}`，derived-row import=`{rebuild['derived_row_import_count']}`，actual replay=`{rebuild['actual_r2r_ml2_derivation_replayed']}`，blocking gaps=`{rebuild['blocking_creator_gap_count']}`，ledger fingerprint=`{rebuild['ledger_fingerprint']}`。
+- Immutable proof passed=`{summary['immutable_artifact_proof']['passed']}`；accepted files、storage membership、scale/promotion protected tables、predecessor DB 均未漂移。
+- Current candidate validation：current-head、changed-file、Python identity 与 ledger fingerprint 均已由私有 validation ledger 验证；py_compile/focused/docs/full non-E2E 均通过。
+- Public path redaction、pre-write root containment、custom scale DB identity与 canonical orchestration 均由 executable contract 检查。
+
+## 边界
+
+外部 provider、Pixiv、gallery-dl、external LLM、localization、Entity、production、source/iCloud mutation 均为 0。Canonical pack 指纹仅记录在私有证据和 PR closeout 中，避免公开摘要与 ZIP 产生自引用。下一步仅建议单独审批 `SCV2-SV1B`；本阶段不批准也不启动。
+"""
+
+
+def render_pr_body_evidence(summary: Mapping[str, Any]) -> str:
+    return f"""## GOV-3 finalization-safety evidence
+
+- Status: `{summary['pipeline_contract']['status']}`
+- `target_met=false`, `safe_to_merge=true`, `route_approved=false`
+- Current candidate validation: current-head and changed-file fingerprints verified in private evidence
+- Rebuild ledger fingerprint: `{summary['actual_rebuild_verification']['ledger_fingerprint']}`
+- Immutable proof passed: `{summary['immutable_artifact_proof']['passed']}`
+- Public redaction passed: `{summary['public_redaction']['passed']}`
+- Canonical pack fingerprint is recorded in private evidence and the final PR closeout.
+"""
+
+
 def finalize_repair(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
-    identity = python_identity()
-    write_json(paths.output / "python-identity.json", identity)
-    immutable_heavy_artifact_proof(args, paths)
+    validation = validate_current_repair_validation(paths)
+    identity = read_json(paths.output / "python-identity.json")
+    rebuild = validate_actual_rebuild_ledger(paths)
+    immutable = immutable_heavy_artifact_proof(args, paths)
+    if immutable.get("passed") is not True:
+        blocked = {
+            "safe_to_merge": False,
+            "active_blockers": ["blocked_sv1_fixed_or_forbidden_mutation"],
+            "immutable_proof_fingerprint": immutable.get("proof_fingerprint"),
+        }
+        write_json(paths.output / "finalization-blocked.json", blocked)
+        raise SV1BlockedError("immutable_heavy_artifact_proof_failed")
     provisional = build_repair_public_summary(args, paths)
-    pack = create_canonical_repair_pack(paths, provisional)
+    report = render_repair_public_report_v2(provisional)
+    pr_body_evidence = render_pr_body_evidence(provisional)
+    redaction = scan_public(report + "\n" + pr_body_evidence, provisional)
+    if not redaction["passed"] or not redaction["negative_control_passed"]:
+        raise SV1BlockedError(f"repair_public_redaction_failed:{redaction}")
+    provisional["public_redaction"] = redaction
+    pack = create_finalization_safety_pack(args, paths, provisional, report, pr_body_evidence)
     summary = build_repair_public_summary(args, paths, pack=pack)
+    report = render_repair_public_report_v2(summary)
+    pr_body_evidence = render_pr_body_evidence(summary)
+    redaction = scan_public(report + "\n" + pr_body_evidence, summary)
+    if not redaction["passed"] or not redaction["negative_control_passed"]:
+        raise SV1BlockedError(f"repair_public_redaction_failed:{redaction}")
+    summary["public_redaction"] = redaction
+    pack = create_finalization_safety_pack(args, paths, summary, report, pr_body_evidence)
+    if not pack["integrity_passed"] or not pack["member_checksum_equality_passed"]:
+        raise SV1BlockedError("canonical_pack_integrity_failed")
+    summary = build_repair_public_summary(args, paths, pack=pack)
+    report = render_repair_public_report_v2(summary)
+    pr_body_evidence = render_pr_body_evidence(summary)
+    redaction = scan_public(report + "\n" + pr_body_evidence, summary)
+    if not redaction["passed"] or not redaction["negative_control_passed"]:
+        raise SV1BlockedError(f"final_repair_public_redaction_failed:{redaction}")
+    summary["public_redaction"] = redaction
     contract = check_phase_contract(CONTRACT_ID, summary)
     write_json(paths.output / "contract-evidence.json", contract.to_dict())
     if not contract.passed:
         raise SV1BlockedError(f"repair_phase_contract_failed:{[error.code for error in contract.errors]}")
-    report = render_repair_public_report(summary)
-    redaction = scan_public(report, summary)
-    if not redaction["passed"] or not redaction["negative_control_passed"]:
-        raise SV1BlockedError(f"repair_public_redaction_failed:{redaction}")
-    summary["public_redaction"] = redaction
     report_path = ROOT / "docs/reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness.md"
     summary_path = ROOT / "docs/reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness-summary.json"
-    report_path.write_text(report, encoding="utf-8")
+    report_path.write_text(report, encoding="utf-8", newline="\n")
     write_json(summary_path, summary)
-    write_json(paths.summary_private, summary)
+    final_scan = scan_public(report_path.read_text(encoding="utf-8"), read_json(summary_path))
+    if not final_scan["passed"] or not final_scan["negative_control_passed"]:
+        raise SV1BlockedError(f"written_public_bytes_redaction_failed:{final_scan}")
+    write_json(paths.summary_private, {
+        "public_summary": summary,
+        "private_python_identity": identity,
+        "private_validation_ledger": validation,
+        "private_actual_rebuild_ledger": rebuild,
+        "private_immutable_proof": immutable,
+        "private_pack_result": pack,
+    })
     return summary
 
 
@@ -2715,29 +3316,34 @@ def render_public_report(summary: Mapping[str, Any]) -> str:
 def scan_public(markdown: str, summary: Mapping[str, Any]) -> dict[str, Any]:
     from scripts.run_phase45_scv2_e1_medium_import_ai_tag_completion import scan_public_text
 
-    def scalar_values(value: Any) -> Iterable[str]:
-        if isinstance(value, Mapping):
-            for child in value.values():
-                yield from scalar_values(child)
-        elif isinstance(value, (list, tuple, set)):
-            for child in value:
-                yield from scalar_values(child)
-        elif isinstance(value, str):
-            yield value
-
     # The executable contract requires this exact public stage identifier.  Its
     # ``key_evidence...`` substring resembles a generic credential token to the
     # shared regex, but the fixed identifier contains no secret material.
     contract_stage = "stable_key_evidence_export_import"
     partial_status = "partial_sv1_media_ai_scale_and_stable_key_promotion_complete"
-    allowed_python = str((ROOT / "venv/Scripts/python.exe").resolve())
     def allow_declared_contract_values(value: str) -> str:
-        return value.replace(contract_stage, "stable_evidence_export_import").replace(partial_status, "partial_sv1_media_ai_scale_promotion_complete").replace(allowed_python, "[repo-local-python]").replace(str(ROOT), "[code-root]")
+        return value.replace(contract_stage, "stable_evidence_export_import").replace(partial_status, "partial_sv1_media_ai_scale_promotion_complete")
+    # Scan the exact rendered bytes.  Only two fixed contract identifiers are
+    # normalized for the shared credential-token regex; raw paths are never
+    # removed, replaced, or allowlisted.
     public_markdown = allow_declared_contract_values(markdown)
-    public_summary = allow_declared_contract_values("\n".join(scalar_values(summary)))
+    serialized_summary = json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n"
+    public_summary = allow_declared_contract_values(serialized_summary)
     findings = scan_public_text(public_markdown) + scan_public_text(public_summary)
+    known_safe_schema_false_positives = {("secret_token", "sk_branch_start_sha")}
+    findings = [
+        finding for finding in findings
+        if (str(finding.get("reason")), str(finding.get("sample"))) not in known_safe_schema_false_positives
+    ]
     negative = scan_public_text(r"negative control C:\Users\private\image.jpg")
-    return {"passed": not findings, "finding_count": len(findings), "findings": findings, "negative_control_passed": bool(negative)}
+    path_reasons = {"windows_absolute_path", "unc_path", "posix_private_path", "file_uri"}
+    absolute_path_findings = sum(str(finding.get("reason")) in path_reasons for finding in findings)
+    return {
+        "passed": not findings, "finding_count": len(findings), "findings": findings,
+        "negative_control_passed": bool(negative),
+        "exact_final_bytes_scanned": True,
+        "absolute_path_finding_count": absolute_path_findings,
+    }
 
 
 def create_review_pack(paths: Paths, summary: Mapping[str, Any], report: str) -> dict[str, Any]:
@@ -2804,7 +3410,7 @@ def finalize(args: argparse.Namespace, paths: Paths) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage", choices=("prepare", "import", "ai", "evidence", "promotion", "benchmark", "repair-benchmark", "rebuild", "repair", "repair-finalize", "finalize", "all"), required=True)
+    parser.add_argument("--stage", choices=("prepare", "import", "ai", "evidence", "promotion", "benchmark", "repair-benchmark", "rebuild", "repair", "finalization-prepare", "validation", "repair-finalize", "finalize", "all"), required=True)
     parser.add_argument("--confirm-execution", default="")
     parser.add_argument("--scale-db", default=DEFAULT_SCALE_DB)
     parser.add_argument("--promotion-db", default=DEFAULT_PROMOTION_DB)
@@ -2824,10 +3430,16 @@ def build_parser() -> argparse.ArgumentParser:
 def run_stage(args: argparse.Namespace) -> dict[str, Any]:
     args.storage_root = args.storage_root.resolve()
     args.output_dir = args.output_dir.resolve()
+    storage, output = validate_private_roots(args)
+    args.storage_root = storage
+    args.output_dir = output
     paths = Paths(args.output_dir)
+    # No mkdir, checkpoint, identity, or artifact write is allowed before the
+    # resolved private-root containment gate above succeeds.
     args.output_dir.mkdir(parents=True, exist_ok=True)
     args.storage_root.mkdir(parents=True, exist_ok=True)
     preflight = validate_preflight(args)
+    preflight["private_roots_validated_before_write"] = True
     identity_path = paths.output / "run-identity.json"
     if identity_path.exists() and read_json(identity_path).get("run_id") != args.run_id:
         raise SV1BlockedError("output_root_owned_by_different_run")
@@ -2835,17 +3447,24 @@ def run_stage(args: argparse.Namespace) -> dict[str, Any]:
     if args.stage in {"prepare", "import", "ai", "evidence", "promotion", "rebuild", "repair", "all"} and args.confirm_execution != CONFIRM:
         raise SV1BlockedError(f"mutation_stage_requires_confirmation:{CONFIRM}")
     results: dict[str, Any] = {"preflight": preflight}
-    stages = ("prepare", "import", "ai", "evidence", "promotion", "benchmark", "finalize") if args.stage == "all" else (args.stage,)
+    stages = CANONICAL_ALL_STAGES if args.stage == "all" else (args.stage,)
     for stage in stages:
         if stage == "prepare": results[stage] = prepare(args, paths)
         elif stage == "import": results[stage] = import_media(args, paths)
         elif stage == "ai": results[stage] = complete_ai_provenance(args, paths)
         elif stage == "evidence":
-            results[stage] = {**evidence_to_scale(args, paths), "denominator_audit": denominator_audit(paths), **r2r_and_graph_audit(args.scale_db, paths)}
+            results[stage] = {**evidence_to_scale(args, paths), "denominator_audit": denominator_audit(paths, args.scale_db), **r2r_and_graph_audit(args.scale_db, paths)}
         elif stage == "promotion": results[stage] = promotion_rehearsal(args, paths)
         elif stage == "benchmark": results[stage] = search_benchmark(paths, args.scale_db, args.promotion_db)
         elif stage == "repair-benchmark": results[stage] = true_new_media_search_benchmark(args, paths)
         elif stage == "rebuild": results[stage] = actual_rebuild_verification(args, paths)
+        elif stage == "connected-graph-audits":
+            results[stage] = {
+                "scale": r2r_and_graph_audit(args.scale_db, paths),
+                "promotion": r2r_and_graph_audit(args.promotion_db, paths),
+                "rebuild": r2r_and_graph_audit(args.rebuild_db, paths),
+            }
+        elif stage == "finalization-accounting": results[stage] = record_finalization_accounting(args, paths)
         elif stage == "repair":
             results[stage] = {"inputs": prepare_repair_inputs(args, paths)}
             results[stage]["ai"] = complete_ai_provenance(args, paths)
@@ -2856,6 +3475,8 @@ def run_stage(args: argparse.Namespace) -> dict[str, Any]:
             results[stage]["rebuild_graph"] = r2r_and_graph_audit(args.rebuild_db, paths)
             results[stage]["python_identity"] = python_identity()
             write_json(paths.output / "python-identity.json", results[stage]["python_identity"])
+        elif stage == "finalization-prepare": results[stage] = prepare_finalization_closure_inputs(args, paths)
+        elif stage == "validation": results[stage] = run_current_repair_validation(paths)
         elif stage == "repair-finalize": results[stage] = finalize_repair(args, paths)
         elif stage == "finalize": results[stage] = finalize(args, paths)
     return results

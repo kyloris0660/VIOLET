@@ -1,32 +1,31 @@
-# SCV2-SV1-A：受控媒体/AI 规模与 accepted-source 重建验证
+# SCV2-SV1-A：最终化安全闭环
 
 ## 结论
 
-本阶段状态为 `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`：`target_met=false`、`safe_to_merge=true`、`route_approved=false`。SV1-A 完成了 12,000 媒体受控导入、本地 AI-tag provenance 全覆盖、stable-key rematerialization/rollback，以及 accepted-source evidence 的实际 R2R/ML2 重建验证；它没有完成新媒体的 Pixiv/provider metadata、localization、全库或生产流程。
+当前状态为 `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`；`target_met=false`、`safe_to_merge=true`、`route_approved=false`。本阶段没有启动 SV1B、FL1、provider、localization、Entity 或生产路线。
 
-## 规模、resume 与 AI provenance
+## Inventory 与导入证据
 
+- accepted current 总数/可用并纳入/source-unavailable/fingerprint-incompatible：`3750` / `3452` / `298` / `0`。
+- preselection：`{'eligible_unique': 20386, 'excluded_duplicate': 147, 'excluded_ineligible': 169, 'excluded_out_of_scope': 0, 'excluded_unreadable': 0}`；fingerprint=`1219577d01472898e8edbdf30ebb5a973b04ac277842ed7037ad9f7c87f695d9`。
+- final post-selection：`{'eligible_not_selected': 8386, 'excluded_duplicate': 147, 'excluded_ineligible': 169, 'excluded_out_of_scope': 0, 'excluded_unreadable': 0, 'selected': 12000}`；fingerprint=`0c61737d1c2b528707ffe65f0b7f1432f89e526b50555e9cb0142daddb09f46d`。
 - manifest / DB / import ledger / AI ledger：`{'passed': True, 'manifest_count': 12000, 'database_count': 12000, 'import_ledger_count': 12000, 'ai_ledger_count': 12000}`。
-- 本次 resume 新导入/存储写入：`0` / `0`；累计媒体/存储对象：`12000` / `12000`。
-- AI coverage=`1.0`，完整 ledger=`12000`，fingerprint=`830f39c850c9faa3eb436d9946989724b3bf67dd8bf00801a9a66731954694f6`；本轮未重新执行 8,580 条 inference。
 
-## accepted media 与 Pixiv denominator
+## Resume 与 AI accounting
 
-- accepted current 总数/可用/纳入/不可用/fingerprint 不兼容：`3750` / `3452` / `3452` / `298` / `0`。
-- All accepted current media that remained available and fingerprint-compatible were included.
-- 独立 filename/path canonical Pixiv candidates=`6496`；accepted metadata 已支持=`2372`；SV1-A 未获取=`4124`；明确 non-candidate=`5504`；conflicts=`0`。
+- Original import execution：imported=`12000`，storage writes=`12000`，runtime evidence available=`False`。
+- Current repair invocation：new imports=`0`，storage writes=`0`，resumed exact checkpoint=`True`。
+- Cumulative checkpoint：imports=`12000`，storage objects=`12000`。
+- Original accepted AI execution：reused=`3420`，newly inferred=`8580`。
+- Current repair AI invocation：checkpoint-existing covered=`12000`，newly inferred=`0`，inference rerun=`False`。
 
-## actual evidence rebuild 与图安全
+## Rebuild、immutable 与验证
 
-- rebuild DB：`blombooru_scv2_sv1_rebuild_verification_test_20260718`；派生行导入=`0`；actual R2R/ML2 replay=`True`。
-- accepted creator family traceability=`1.0`；accepted R2R disposition compatibility=`1.0`。
-- scale/promotion/rebuild 的 direct/transitive cannot、deferred union、multi-stable-ID、cross-role、unknown-role、duplicate stable identity 均为 0；component counts 分别为 `1677` / `1677` / `1681`。重建差异来自只重放可比较 accepted evidence、298 个 target-missing references 与 numeric-ID-independent regeneration，不声称 numeric ID 相等。
+- Raw rebuild ledger：algorithm=`actual_r2r_ml2_rebuild_ledger_v2_readonly_attestation`，derived-row import=`0`，actual replay=`True`，blocking gaps=`0`，ledger fingerprint=`f974a05177fe16c5bf7efd3c6b4e373d36f4125ba100201767227c8566010047`。
+- Immutable proof passed=`True`；accepted files、storage membership、scale/promotion protected tables、predecessor DB 均未漂移。
+- Current candidate validation：current-head、changed-file、Python identity 与 ledger fingerprint 均已由私有 validation ledger 验证；py_compile/focused/docs/full non-E2E 均通过。
+- Public path redaction、pre-write root containment、custom scale DB identity与 canonical orchestration 均由 executable contract 检查。
 
-## true new-media search
+## 边界
 
-- 新媒体 population=`8548`，确定性 cases=`40`，selection fingerprint=`57be69359419edaf65ebd021b4bc276db6803977c461b1f648ef35b8ce4a0166`。
-- accepted baseline 缺席=`40`；scale/promotion/rebuild unsupported=`0` / `0` / `0`；leakage=`0`。
-
-## 边界与下一步
-
-provider、Pixiv、gallery-dl、external LLM、localization、production、Entity/assignment、source mutation 均为 0。唯一 canonical final review pack fingerprint：`eb018945dce8d646e87cf9236966d803351d1e2f90f302e16942c052d2befdf9`。建议下一阶段为 `SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure`；本阶段未批准也未启动 SV1B，未启动 FL1。
+外部 provider、Pixiv、gallery-dl、external LLM、localization、Entity、production、source/iCloud mutation 均为 0。Canonical pack 指纹仅记录在私有证据和 PR closeout 中，避免公开摘要与 ZIP 产生自引用。下一步仅建议单独审批 `SCV2-SV1B`；本阶段不批准也不启动。

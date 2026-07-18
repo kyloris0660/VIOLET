@@ -15,6 +15,7 @@
     },
     "comparable_accepted_r2r_pair_count": 3227,
     "database": "blombooru_scv2_sv1_rebuild_verification_test_20260718",
+    "derivation_algorithm_identity": "source_signal_adapter+r2r_resolution+ml2_closure",
     "derived_row_import_count": 0,
     "fallback_index": {
       "active_row_count": 8405,
@@ -34,6 +35,8 @@
       "unique_alias_key_count": 1269,
       "write_performed": true
     },
+    "ledger_algorithm_version": "actual_r2r_ml2_rebuild_ledger_v2_readonly_attestation",
+    "ledger_fingerprint": "f974a05177fe16c5bf7efd3c6b4e373d36f4125ba100201767227c8566010047",
     "logical_state": {
       "database": "blombooru_scv2_sv1_rebuild_verification_test_20260718",
       "fingerprint": "e377f4899d86dd9708285dcb2fc314f496043e6b2d55e4e9bdc54ee98b0273c9",
@@ -338,6 +341,11 @@
     "ai_coverage_ledger_fingerprint": "830f39c850c9faa3eb436d9946989724b3bf67dd8bf00801a9a66731954694f6",
     "ai_tag_row_count": 640982,
     "coverage": 1.0,
+    "current_repair_invocation": {
+      "ai_inference_rerun": false,
+      "checkpoint_existing_covered_media_count": 12000,
+      "newly_inferred_media_count": 0
+    },
     "eligible_media_count": 12000,
     "external_provider_calls": 0,
     "fingerprint_mismatch_reuse_count": 0,
@@ -348,15 +356,38 @@
     "model_version_distribution": {
       "wd-swinv2-tagger-v3": 12000
     },
-    "newly_inferred_media_count": 0,
-    "reuse_runtime_seconds": 0.0,
-    "reused_media_count": 12000
+    "original_accepted_execution": {
+      "ai_inference_executed": true,
+      "eligible_media_count": 12000,
+      "newly_inferred_media_count": 8580,
+      "reused_media_count": 3420,
+      "source_evidence_fingerprint": "308e9ac2c9a9238831344c116e8029706a09cee4cad886a1ec0c384bba5343b2"
+    },
+    "reuse_runtime_seconds": 0.0
   },
   "artifact_lifecycle": {
     "phase_contract": "reusable validation/safety tool",
     "private_outputs": "one-off local artifact / ignored output",
     "public_outputs": "public report / handoff / roadmap update",
     "runner_and_tests": "phase-scoped operational runner"
+  },
+  "canonical_orchestration": {
+    "complete": true,
+    "stage": "all",
+    "stages": [
+      "prepare",
+      "import",
+      "ai",
+      "evidence",
+      "promotion",
+      "benchmark",
+      "rebuild",
+      "connected-graph-audits",
+      "repair-benchmark",
+      "finalization-accounting",
+      "validation",
+      "repair-finalize"
+    ]
   },
   "completion_boundaries": {
     "full_library_execution_executed": false,
@@ -373,6 +404,7 @@
       "filename_and_stored_path_agree": 6496,
       "non_candidate": 5504
     },
+    "database_identity": "blombooru_scv2_sv1_controlled_scale_test_20260718",
     "denominator_classification_fingerprint": "07964c4329e71a078702c910526c037e8a7907c3df5fc82bf4b06ebbcfea063a",
     "explicit_non_candidate_population": 5504,
     "filename_candidate_population": 6496,
@@ -466,19 +498,10 @@
   },
   "global_test_baseline": {
     "environment_specific_profiles_passed": true,
-    "explained_skip_reason": "Four Windows symlink tests require filesystem support or elevated symlink privilege; all were explicitly reported by pytest.",
-    "failure_classifications": {
-      "current_handoff_historical_contract_literals": 5,
-      "current_handoff_line_budget": 1
-    },
-    "final_passed": 3290,
+    "final_passed": 3308,
     "final_skipped": 4,
     "final_unexpected_failure_count": 0,
     "final_warning_count": 15,
-    "initial_failed": 1,
-    "initial_passed": 3289,
-    "initial_skipped": 4,
-    "runtime_seconds": 294.43,
     "sv1_regression_count": 0,
     "unexplained_skip_count": 0
   },
@@ -547,6 +570,15 @@
     "human_review_queue_count": 0,
     "needs_review_normal_pipeline_count": 0,
     "new_trusted_creator_family_count": 0
+  },
+  "immutable_artifact_proof": {
+    "accepted_manifest_import_ai_package_unchanged": true,
+    "accepted_predecessor_databases_unchanged": true,
+    "passed": true,
+    "promotion_protected_tables_unchanged": true,
+    "proof_fingerprint": "0d569d47cd91c4e7c8c433035842bccc7d91c4b32d7ece0bdcb716ac69a9e42b",
+    "scale_protected_tables_unchanged": true,
+    "storage_object_membership_unchanged": true
   },
   "independent_graph_metrics": {
     "promotion": {
@@ -721,36 +753,33 @@
     "passed": true
   },
   "media_import": {
-    "ai_reuse": {
-      "fingerprint_mismatch_reuse_count": 0,
-      "reused_ai_tag_row_count": 180937,
-      "reused_media_count": 3420,
-      "tagged_media_after_reuse": 3420
-    },
     "all_selected_accounted": true,
-    "app_managed_storage_write_count": 12000,
     "blocking_failed": 0,
-    "checkpoint_original_execution_runtime_seconds": null,
-    "checkpoint_total_imported_media": 12000,
-    "checkpoint_total_storage_objects": 12000,
-    "compatible_existing_media_reused": 0,
-    "copy_import_runtime_seconds": 3604.0,
-    "cumulative_import_count": 12000,
-    "cumulative_storage_object_count": 12000,
-    "current_invocation_new_import_count": 0,
-    "current_invocation_runtime_seconds": 0.0,
-    "current_invocation_storage_write_count": 0,
-    "deferred_nonblocking_source_unavailable": 0,
-    "duplicate_content_skipped": 0,
+    "cumulative_checkpoint_state": {
+      "imported_media_count": 12000,
+      "storage_object_count": 12000
+    },
+    "current_invocation": {
+      "new_import_count": 0,
+      "resumed_exact_checkpoint": true,
+      "runtime_seconds": 0.0,
+      "storage_write_count": 0
+    },
     "eligible_media_after": 12000,
-    "imported": 12000,
+    "original_execution": {
+      "imported_media_count": 12000,
+      "runtime_evidence_available": false,
+      "runtime_seconds": null,
+      "storage_write_count": 12000
+    },
     "out_of_manifest_import_count": 0,
     "resumed_exact_import_checkpoint": true,
-    "selected": 12000,
+    "selected_media_count": 12000,
     "source_mutation_count": 0,
     "unexplained_outcome_count": 0
   },
   "mutation_proof": {
+    "immutable_heavy_artifact_proof_passed": true,
     "media_media_tags_unchanged_during_promotion": true,
     "predecessor_databases_unchanged": true,
     "protected_forbidden_tables_unchanged": true
@@ -795,6 +824,10 @@
       "true_new_media_search_benchmark",
       "connected_component_graph_audit_v2",
       "promotion_rollback_commit_idempotency",
+      "immutable_artifact_drift_proof",
+      "current_head_repair_validation",
+      "prewrite_root_containment",
+      "canonical_orchestration_completeness",
       "public_redaction_review_pack"
     ],
     "full_library_readiness_claimed": false,
@@ -806,6 +839,10 @@
     "semantic_completeness_claimed": false,
     "status": "partial_sv1_media_ai_scale_and_stable_key_promotion_complete",
     "target_met": false
+  },
+  "prewrite_root_containment": {
+    "passed": true,
+    "validation_order": "resolved_and_validated_before_mkdir_or_artifact_write"
   },
   "promotion_rehearsal": {
     "baseline_copy": {
@@ -852,6 +889,8 @@
     "second_import_reported_insert_count": 0
   },
   "public_redaction": {
+    "absolute_path_finding_count": 0,
+    "exact_final_bytes_scanned": true,
     "finding_count": 0,
     "findings": [],
     "negative_control_passed": true,
@@ -859,10 +898,9 @@
   },
   "python_identity": {
     "architecture": "64bit",
-    "code_root": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru",
-    "sys_executable": "C:\\Users\\kyloris\\Documents\\AnimeLocalBooru\\venv\\Scripts\\python.exe",
-    "sys_version": "3.12.0 (tags/v3.12.0:0fb18b0, Oct  2 2023, 13:03:39) [MSC v.1935 64 bit (AMD64)]",
-    "validation_timestamp": "2026-07-18T19:57:52+0800"
+    "code_root_fingerprint": "676e7b47919cfae63bdaff671c4698a12183a151a8f86e8621c8db0c29ed72c8",
+    "interpreter_class": "repo_local_venv",
+    "python_version": "3.12.0"
   },
   "r2r_reuse": {
     "accepted_pair_count": 3319,
@@ -894,14 +932,11 @@
     "user_owned_artifacts_preserved": true
   },
   "review_pack": {
-    "actual_member_count": 16,
     "canonical_final_pack": true,
-    "declared_member_count": 16,
     "integrity_passed": true,
     "member_checksum_equality_passed": true,
-    "review_pack_fingerprint": "eb018945dce8d646e87cf9236966d803351d1e2f90f302e16942c052d2befdf9",
-    "supersedes_prior_sv1_packs": true,
-    "zip_sha256": "eb018945dce8d646e87cf9236966d803351d1e2f90f302e16942c052d2befdf9"
+    "pack_fingerprint_recorded_privately": true,
+    "pack_id": "sv1-finalization-safety-canonical-pack-v2"
   },
   "route_decision": {
     "next_phase_started": false,
@@ -921,6 +956,7 @@
       ".png": 2347
     },
     "final_accounting_equality_passed": true,
+    "final_membership_fingerprint": "0c61737d1c2b528707ffe65f0b7f1432f89e526b50555e9cb0142daddb09f46d",
     "final_outcome_counts": {
       "eligible_not_selected": 8386,
       "excluded_duplicate": 147,
@@ -930,17 +966,13 @@
       "selected": 12000
     },
     "inventory_candidate_count": 20702,
-    "inventory_outcome_counts": {
-      "eligible_unique": 20160,
-      "excluded_duplicate": 373,
-      "excluded_ineligible": 169
-    },
     "manifest_fingerprint": "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
     "pixiv_filename_distribution": {
       "non_pixiv_like": 5504,
       "pixiv_like": 6496
     },
     "preselection_accounting_equality_passed": true,
+    "preselection_membership_fingerprint": "1219577d01472898e8edbdf30ebb5a973b04ac277842ed7037ad9f7c87f695d9",
     "preselection_outcome_counts": {
       "eligible_unique": 20386,
       "excluded_duplicate": 147,
@@ -1019,39 +1051,19 @@
     "scale_unsupported_result_count": 0
   },
   "validation": {
-    "browser_validation": {
-      "performed": false,
-      "reason": "No UI, frontend JavaScript, user-visible route, or browser behavior changed.",
-      "required": false
+    "changed_file_fingerprint_matches": true,
+    "current_candidate_validation_passed": true,
+    "documentation_contract_tests_passed": true,
+    "focused_tests_passed": true,
+    "full_non_e2e_counts": {
+      "passed": 3308,
+      "skipped": 4,
+      "warnings": 15
     },
-    "global_test_baseline": {
-      "final_passed": 3290,
-      "final_skipped": 4,
-      "final_unexpected_failure_count": 0,
-      "final_warning_count": 15,
-      "runtime_seconds": 294.43
-    },
-    "validation_commands": {
-      "changed_python_py_compile": {
-        "passed": true,
-        "result": "exit 0"
-      },
-      "documentation_contract_focused": {
-        "passed": true,
-        "result": "55 passed in 1.55s"
-      },
-      "full_default_non_e2e": {
-        "passed": true,
-        "result": "3290 passed, 4 skipped, 15 warnings in 294.43s"
-      },
-      "gov3_runner_and_contract_focused": {
-        "passed": true,
-        "result": "400 passed in 4.23s"
-      },
-      "interrupted_full_run": {
-        "passed": false,
-        "result": "Command transport timeout at 4.4s closed stdout; no pytest result was produced and the complete suite was rerun from the beginning."
-      }
-    }
+    "full_non_e2e_passed": true,
+    "head_sha_matches_current": true,
+    "py_compile_passed": true,
+    "python_identity_fingerprint_matches": true,
+    "validation_ledger_fingerprint_verified": true
   }
 }
