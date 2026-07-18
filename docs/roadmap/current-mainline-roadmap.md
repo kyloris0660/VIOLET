@@ -2,8 +2,9 @@
 
 Status: PR #137 is merged and accepted in `origin/main` at
 `7fca41151cc9e1d5b48cfe243279e66296346bae`. Its accepted ML2 evidence-code
-commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. SCV2-SV1 is the current
-separately governed controlled-scale and promotion-readiness phase.
+commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. The separately governed
+SCV2-SV1 execution has reached its bounded promotion-readiness target on the
+feature branch; its normal PR remains unmerged and no later phase is active.
 
 ## Accepted Mainline
 
@@ -146,11 +147,30 @@ preserve Danbooru provenance and require an exact Pixiv source URL, exact hash,
 strong perceptual evidence, or another independently verified correspondence;
 it must never represent recovered Danbooru metadata as original Pixiv metadata.
 
+## SV1 Promotion-Readiness Result
+
+SV1 replayed exactly `12,000` real media items in isolated test storage and a
+clean-schema scale database. Import accounting, local AI provenance, stable-key
+evidence export/import, denominator audit, graph safety, and a 240-query search
+benchmark all passed. The successful independent promotion rehearsal proved
+rollback restoration, a committed `108,182`-item stable-key import, second-run
+mutation `0`, cross-database logical mismatch `0`, and no media/media_tags or
+protected/forbidden mutation. Provider, Pixiv, gallery-dl, external LLM,
+production, Entity, confirmed-assignment, truth-promotion, and source-mutation
+operation counts were all zero.
+
+The executable status is
+`target_met_controlled_scale_promotion_readiness`, with `target_met=true`,
+`safe_to_merge=true`, `route_approved=false`, and `active_blockers=[]`. This is
+a bounded dev/test promotion-readiness result, not semantic, full-library,
+production, provider, or Entity readiness. See the committed SV1 report and
+public summary for exact aggregate evidence.
+
 ## Stop Boundary
 
-SCV2-SV1 is the only current separately governed next phase. It is limited to a
-real 10k-15k controlled-scale dev/test replay and stable-key promotion-readiness
-validation. Do not start PX1-B broad acquisition, Provider-2, production,
-full-library execution, Entity bridge, confirmed assignment, truth promotion,
-or a later phase. Provider/Pixiv/gallery-dl/LLM calls and production/Entity/truth
+SCV2-SV1 is complete on its feature branch but remains unmerged. It may recommend
+`SCV2-FL1: Full-Library Dev/Test Replay`; it does not approve or start FL1. Do
+not start PX1-B broad acquisition, Provider-2, production, full-library
+execution, Entity bridge, confirmed assignment, truth promotion, or another
+later phase. Provider/Pixiv/gallery-dl/LLM calls and production/Entity/truth
 routes remain unauthorized.

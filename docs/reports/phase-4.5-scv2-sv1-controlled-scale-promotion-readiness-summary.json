@@ -1,0 +1,513 @@
+{
+  "ai_tag_provenance": {
+    "ai_tag_row_count": 640982,
+    "coverage": 1.0,
+    "eligible_media_count": 12000,
+    "external_provider_calls": 0,
+    "fingerprint_mismatch_reuse_count": 0,
+    "incompatible_evidence_rejected": 0,
+    "inference_runtime_seconds": 2636.86,
+    "missing_provenance_count": 0,
+    "model_download_count": 0,
+    "model_version_distribution": {
+      "wd-swinv2-tagger-v3": 12000
+    },
+    "newly_inferred_media_count": 8580,
+    "reuse_runtime_seconds": 0.0,
+    "reused_media_count": 3420
+  },
+  "artifact_lifecycle": {
+    "phase_contract": "reusable validation/safety tool",
+    "private_outputs": "one-off local artifact / ignored output",
+    "public_outputs": "public report / handoff / roadmap update",
+    "runner_and_tests": "phase-scoped operational runner"
+  },
+  "denominator_audit": {
+    "accounting_equality_passed": true,
+    "canonical_runtime_denominator_changed": false,
+    "explicit_non_candidate_population": 4424,
+    "filename_candidate_population": 6496,
+    "filename_path_mandatory_denominator": 6496,
+    "mandatory_and_supplemental_distinguished": true,
+    "parser_conflict_population": 0,
+    "source_field_candidate_population": 3750,
+    "source_field_deferred_target_missing": 298,
+    "source_field_target_member_population": 3452,
+    "source_thumbnail_supplemental_population": 3452,
+    "stored_path_candidate_population": 6496,
+    "supplemental_only_classification": {
+      "accepted_reusable_metadata": 1080
+    },
+    "supplemental_only_population": 1080,
+    "thumbnail_candidate_population": 0,
+    "unclassified_count": 0,
+    "unexplained_count": 0
+  },
+  "environment_isolation": {
+    "isolated_storage_identity": "6f17f10e852a34561a813e0888990e0af86d4831f1045dd64aa3f5c616312c02",
+    "passed": true,
+    "predecessor_databases_immutable": true,
+    "production_database_selected": false,
+    "production_profile_active": false,
+    "production_storage_selected": false,
+    "promotion_database_identity": "blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1",
+    "promotion_database_independent": true,
+    "scale_database_clean_schema": true,
+    "scale_database_identity": "blombooru_scv2_sv1_controlled_scale_test_20260718",
+    "source_routes_read_only": true,
+    "violet_env": "test"
+  },
+  "evidence_export": {
+    "development_row_id_dependency_count": 0,
+    "export_runtime_seconds": 4.453,
+    "exported_item_count": 108442,
+    "package_checksum_manifest_passed": true,
+    "package_fingerprint": "559778179b75b2329b88553adda83363814ab458e35a01d7f78d2cd3c895ae4c",
+    "passed": true,
+    "table_counts": {
+      "source_concept_aliases": 8124,
+      "source_concept_evidence": 12027,
+      "source_concept_fallback_search_index": 6596,
+      "source_concept_resolution_runs": 4,
+      "source_concept_search_index": 8124,
+      "source_concept_signal_links": 17150,
+      "source_concept_signals": 14068,
+      "source_concepts": 6007,
+      "source_metadata_evidence": 4414,
+      "source_metadata_records": 4421,
+      "source_name_observations": 7388,
+      "source_name_registry": 371,
+      "source_searchable_name_assertions": 1218,
+      "source_tag_observations": 18112,
+      "source_tag_registry": 418
+    }
+  },
+  "evidence_import": {
+    "accepted_evidence_silently_dropped": 0,
+    "blocking_failed": 0,
+    "deferred_nonblocking_target_missing": 298,
+    "development_row_id_dependency_count": 0,
+    "import_runtime_seconds": 20.234,
+    "inserted_counts": {
+      "source_concept_aliases": 8124,
+      "source_concept_evidence": 12027,
+      "source_concept_fallback_search_index": 6336,
+      "source_concept_resolution_runs": 4,
+      "source_concept_search_index": 8124,
+      "source_concept_signal_links": 17150,
+      "source_concept_signals": 14068,
+      "source_concepts": 6007,
+      "source_metadata_evidence": 4414,
+      "source_metadata_records": 4421,
+      "source_name_observations": 7388,
+      "source_name_registry": 371,
+      "source_searchable_name_assertions": 1218,
+      "source_tag_observations": 18112,
+      "source_tag_registry": 418
+    },
+    "inserted_total": 108182,
+    "logical_table_fingerprint": "5f53356d799f4facb027929c82a5f340c2e6b839f38f5e6c708659eefe4db4e5",
+    "unexplained_item_count": 0
+  },
+  "global_test_baseline": {
+    "environment_specific_profiles_passed": true,
+    "explained_skip_reason": "Four Windows symlink tests require filesystem support or elevated symlink privilege; all were explicitly reported by pytest.",
+    "failure_classifications": {
+      "fulllib_profile_environment_isolation": 9,
+      "s2_public_redaction_fixture": 8,
+      "s3a_m1_isolated_route_harness": 1,
+      "s3a_prod1_public_redaction_fixture": 8,
+      "stale_governance_wording": 1,
+      "stale_handoff_assertions": 2
+    },
+    "final_passed": 3270,
+    "final_skipped": 4,
+    "final_unexpected_failure_count": 0,
+    "final_warning_count": 15,
+    "initial_failed": 29,
+    "initial_passed": 3225,
+    "initial_skipped": 4,
+    "runtime_seconds": 215.11,
+    "sv1_regression_count": 0,
+    "unexplained_skip_count": 0
+  },
+  "graph_safety": {
+    "active_source_concept_count": 1677,
+    "alias_count": 8124,
+    "component_count": 1677,
+    "component_size_distribution": {
+      "1": 2,
+      "10": 3,
+      "11": 4,
+      "12": 11,
+      "13": 2,
+      "14": 5,
+      "15": 5,
+      "16": 1,
+      "17": 1,
+      "2": 615,
+      "20": 1,
+      "22": 1,
+      "23": 1,
+      "27": 1,
+      "3": 852,
+      "38": 1,
+      "4": 35,
+      "5": 27,
+      "6": 69,
+      "7": 2,
+      "8": 16,
+      "88": 1,
+      "9": 21
+    },
+    "concept_media_support_count": 2065,
+    "database_size_bytes": 192820915,
+    "deferred_identity_union_count": 0,
+    "direct_cannot_link_violation_count": 0,
+    "duplicate_active_stable_identity_count": 0,
+    "eligible_media_count": 12000,
+    "giant_component_recurrence": false,
+    "largest_component": 88,
+    "multi_stable_id_creator_component_count": 0,
+    "partial_historical_reference_count": 12,
+    "search_index_count": 8124,
+    "signal_count_per_media": 1.172333,
+    "source_concept_count": 6007,
+    "source_concept_evidence_row_count": 12027,
+    "source_signal_count": 14068,
+    "transitive_cannot_link_violation_count": 0,
+    "unauthorized_cross_role_component_count": 0,
+    "unknown_role_materialization_count": 0
+  },
+  "identity_traceability": {
+    "accepted_606_family_traceability_passed": true,
+    "accepted_family_count": 606,
+    "accepted_family_traceable_count": 606,
+    "family_disposition_accounting": {
+      "accepted_replayed": 606,
+      "additional_trusted": 0
+    },
+    "human_review_queue_count": 0,
+    "needs_review_normal_pipeline_count": 0,
+    "new_trusted_creator_family_count": 0
+  },
+  "media_import": {
+    "ai_reuse": {
+      "fingerprint_mismatch_reuse_count": 0,
+      "reused_ai_tag_row_count": 180937,
+      "reused_media_count": 3420,
+      "tagged_media_after_reuse": 3420
+    },
+    "all_selected_accounted": true,
+    "app_managed_storage_write_count": 12000,
+    "blocking_failed": 0,
+    "compatible_existing_media_reused": 0,
+    "copy_import_runtime_seconds": 3604.0,
+    "deferred_nonblocking_source_unavailable": 0,
+    "duplicate_content_skipped": 0,
+    "eligible_media_after": 12000,
+    "imported": 12000,
+    "out_of_manifest_import_count": 0,
+    "resumed_exact_import_checkpoint": true,
+    "selected": 12000,
+    "source_mutation_count": 0,
+    "unexplained_outcome_count": 0
+  },
+  "mutation_proof": {
+    "media_media_tags_unchanged_during_promotion": true,
+    "predecessor_databases_unchanged": true,
+    "protected_forbidden_tables_unchanged": true
+  },
+  "new_scale_media_without_provider_metadata": {
+    "metadata_complete_claimed": false,
+    "not_acquired_in_sv1_nonblocking": 8548,
+    "provider_failure_claimed": false
+  },
+  "operation_counts": {
+    "confirmed_assignment_operations": 0,
+    "entity_operations": 0,
+    "external_llm_calls": 0,
+    "gallery_dl_calls": 0,
+    "pixiv_calls": 0,
+    "production_operations": 0,
+    "provider_calls": 0,
+    "source_mutations": 0,
+    "truth_promotion_operations": 0
+  },
+  "pair_accounting": {
+    "all_pairs_creator_alias_expansion_used": false,
+    "candidate_equation_passed": true,
+    "candidate_pair_count": 1213,
+    "collision_local_cannot_link_pairs": 0,
+    "disposition_counts": {
+      "must_link": 1213
+    },
+    "unique_non_empty_alias_anchor_pairs": 1213
+  },
+  "performance_resource_accounting": {
+    "ai_tag_inference_seconds": 2636.86,
+    "ai_tag_reuse_seconds": 0.0,
+    "benchmark_seconds": 27.188,
+    "candidate_generation_seconds": 0.0,
+    "copy_import_seconds": 3604.0,
+    "evidence_export_seconds": 4.453,
+    "evidence_import_seconds": 20.234,
+    "graph_materialization_seconds": 20.234,
+    "idempotency_rerun_seconds": 30.0,
+    "media_inventory_seconds": 131.157,
+    "rollback_seconds": 70.969,
+    "search_index_build_seconds": 20.234,
+    "signal_generation_seconds": 0.0
+  },
+  "phase": "SCV2-SV1",
+  "pipeline_contract": {
+    "active_blockers": [],
+    "contract_id": "sv1_controlled_scale_promotion_readiness_contract_v1",
+    "entity_readiness_claimed": false,
+    "executed_stages": [
+      "global_non_e2e_baseline",
+      "read_only_source_inventory",
+      "deterministic_scale_manifest",
+      "controlled_media_import",
+      "ai_tag_provenance_completion",
+      "stable_key_evidence_export_import",
+      "controlled_scale_denominator_audit",
+      "graph_search_rebuild_benchmark",
+      "promotion_rollback_commit_idempotency",
+      "public_redaction_review_pack"
+    ],
+    "full_library_readiness_claimed": false,
+    "production_readiness_claimed": false,
+    "provider_readiness_claimed": false,
+    "route_approved": false,
+    "safe_to_merge": true,
+    "semantic_completeness_claimed": false,
+    "status": "target_met_controlled_scale_promotion_readiness",
+    "target_met": true
+  },
+  "promotion_rehearsal": {
+    "baseline_copy": {
+      "media_count": 12000,
+      "media_tag_count": 640982,
+      "numeric_row_id_copy": false,
+      "stable_content_key_copy": true
+    },
+    "clean_schema_proof": {
+      "clean_schema": true,
+      "database": "blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1",
+      "media_count": 0,
+      "source_counts": {
+        "blombooru_source_concept_aliases": 0,
+        "blombooru_source_concept_evidence": 0,
+        "blombooru_source_concept_fallback_search_index": 0,
+        "blombooru_source_concept_resolution_runs": 0,
+        "blombooru_source_concept_search_index": 0,
+        "blombooru_source_concept_signal_links": 0,
+        "blombooru_source_concept_signals": 0,
+        "blombooru_source_concepts": 0,
+        "blombooru_source_metadata_evidence": 0,
+        "blombooru_source_metadata_records": 0,
+        "blombooru_source_name_observations": 0,
+        "blombooru_source_name_registry": 0,
+        "blombooru_source_searchable_name_assertions": 0,
+        "blombooru_source_tag_observations": 0,
+        "blombooru_source_tag_registry": 0
+      }
+    },
+    "committed_import_count": 108182,
+    "committed_import_runtime_seconds": 18.39,
+    "idempotency_rerun_runtime_seconds": 30.0,
+    "logical_cross_database_mismatch_count": 0,
+    "media_media_tags_mutation_count": 0,
+    "numeric_row_id_equality_claimed": false,
+    "promotion_logical_fingerprint": "9b02a59274ecefd4b842b2a5f34d0cdc8667aa4fade1ce5ce197eae4a086fe93",
+    "protected_forbidden_table_mutation_count": 0,
+    "rollback_fingerprint_restoration": true,
+    "rollback_runtime_seconds": 70.969,
+    "rollback_tentative_insert_count": 108182,
+    "scale_logical_fingerprint": "9b02a59274ecefd4b842b2a5f34d0cdc8667aa4fade1ce5ce197eae4a086fe93",
+    "second_import_mutation_count": 0,
+    "second_import_reported_insert_count": 0
+  },
+  "public_redaction": {
+    "finding_count": 0,
+    "findings": [],
+    "negative_control_passed": true,
+    "passed": true
+  },
+  "r2r_reuse": {
+    "accepted_pair_count": 3319,
+    "cannot_link_count": 1791,
+    "coverage": 1.0,
+    "deferred_nonblocking_count": 6,
+    "exact_pair_membership_passed": true,
+    "fingerprint_compatible": true,
+    "must_link_count": 1522,
+    "snapshot_fingerprint": "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
+  },
+  "repository_sync_preflight": {
+    "accepted_ml2_evidence_code_sha": "00398a0b5b1a46d010e82c2b6f72796dbdb47918",
+    "accepted_ml2_merge_is_ancestor": true,
+    "accepted_ml2_merge_sha": "7fca41151cc9e1d5b48cfe243279e66296346bae",
+    "local_main_before_synchronization": "5bbbb8ff13b140ea77a839757603714bfdd87181",
+    "local_main_equals_origin_main_before_branch": true,
+    "local_main_synchronized_sha": "7fca41151cc9e1d5b48cfe243279e66296346bae",
+    "origin_main_synchronized_sha": "7fca41151cc9e1d5b48cfe243279e66296346bae",
+    "passed": true,
+    "preserved_path_count": 124367,
+    "preserved_path_list_fingerprint_after": "d51ce1a019a5b18f592a6633a660577e92c2b0d4",
+    "preserved_path_list_fingerprint_before": "d51ce1a019a5b18f592a6633a660577e92c2b0d4",
+    "previous_branch": "codex/scv2-ml2-multilingual-identity-candidate-closure",
+    "previous_head": "f8ce0b6faf50bf0d229e690e0f1a8d154f98d144",
+    "staged_change_count_before_sync": 0,
+    "task_branch_start_sha": "7fca41151cc9e1d5b48cfe243279e66296346bae",
+    "tracked_change_count_before_sync": 0,
+    "user_owned_artifacts_preserved": true
+  },
+  "review_pack": {
+    "actual_member_count": 16,
+    "declared_member_count": 16,
+    "integrity_passed": true,
+    "member_checksum_equality_passed": true,
+    "review_pack_fingerprint": "cf27c7ccc86db3ba9acc866d62ab28cbaac887e9eb85ba65609bedd3fe878538"
+  },
+  "route_decision": {
+    "next_phase_started": false,
+    "recommended_next_phase": "SCV2-FL1",
+    "route_approved": false
+  },
+  "scale_manifest": {
+    "accepted_current_available_media_included": true,
+    "accepted_current_source_unavailable_count": 298,
+    "accounting_equality_passed": true,
+    "deterministic_selection": true,
+    "extension_distribution": {
+      ".gif": 1,
+      ".jpeg": 162,
+      ".jpg": 9490,
+      ".png": 2347
+    },
+    "inventory_outcome_counts": {
+      "eligible_unique": 20160,
+      "excluded_duplicate": 373,
+      "excluded_ineligible": 169
+    },
+    "manifest_fingerprint": "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
+    "pixiv_filename_distribution": {
+      "non_pixiv_like": 5504,
+      "pixiv_like": 6496
+    },
+    "selected_eligible_media_count": 12000,
+    "selection_seed": "sv1-v1",
+    "source_root_distribution": {
+      "source_root_1": 6,
+      "source_root_2": 11994
+    },
+    "synthetic_or_cloned_media_count": 0
+  },
+  "search_benchmark": {
+    "accepted_baseline_max_ms": 34.344,
+    "accepted_baseline_p50_ms": 3.944,
+    "accepted_baseline_p95_ms": 8.841,
+    "accepted_baseline_results_deferred_target_missing": 0,
+    "allowed_scale_p95_ms": 750.0,
+    "and_leakage_count": 0,
+    "baseline_index_size_bytes": 6070272,
+    "benchmark_runtime_seconds": 27.188,
+    "composition": {
+      "accepted_creator_alias": 80,
+      "creator_character_and": 7,
+      "creator_work_title_and": 33,
+      "exact_source_name_tag": 20,
+      "negative": 20,
+      "newly_scaled_deterministic_sample": 40,
+      "search_only_translation": 20,
+      "shared_name": 20
+    },
+    "invalid_or_deleted_only_result_count": 0,
+    "performance_gate_passed": true,
+    "promotion_index_size_bytes": 7987200,
+    "promotion_max_ms": 35.409,
+    "promotion_p50_ms": 3.83,
+    "promotion_p95_ms": 8.767,
+    "rejected_only_result_count": 0,
+    "scale_index_size_bytes": 4268032,
+    "scale_max_ms": 40.645,
+    "scale_p50_ms": 3.9,
+    "scale_p95_ms": 8.602,
+    "search_caused_identity_mutation_count": 0,
+    "superseded_only_result_count": 0,
+    "supported_result_count": 471,
+    "unsupported_result_count": 0,
+    "workload_query_count": 240
+  },
+  "source_inventory": {
+    "accepted_current_available_count": 3452,
+    "accepted_current_media_count": 3750,
+    "accepted_current_source_unavailable_count": 298,
+    "inventory_candidate_count": 20702,
+    "inventory_fingerprint": "e5c97d8d07762073c942e31a5d978b03b9cc30ea4279c76b97cfd0bf5e6446e7",
+    "inventory_runtime_seconds": 131.157,
+    "safely_usable_real_media_count": 20160,
+    "source_mutation_count": 0,
+    "source_root_count": 2,
+    "source_routes_read_only": true
+  },
+  "validation": {
+    "browser_validation": {
+      "performed": false,
+      "reason": "No UI, frontend JavaScript, user-visible route, or browser behavior changed.",
+      "required": false
+    },
+    "global_test_baseline": {
+      "environment_specific_profiles_passed": true,
+      "explained_skip_reason": "Four Windows symlink tests require filesystem support or elevated symlink privilege; all were explicitly reported by pytest.",
+      "failure_classifications": {
+        "fulllib_profile_environment_isolation": 9,
+        "s2_public_redaction_fixture": 8,
+        "s3a_m1_isolated_route_harness": 1,
+        "s3a_prod1_public_redaction_fixture": 8,
+        "stale_governance_wording": 1,
+        "stale_handoff_assertions": 2
+      },
+      "final_passed": 3270,
+      "final_skipped": 4,
+      "final_unexpected_failure_count": 0,
+      "final_warning_count": 15,
+      "initial_failed": 29,
+      "initial_passed": 3225,
+      "initial_skipped": 4,
+      "runtime_seconds": 215.11,
+      "sv1_regression_count": 0,
+      "unexplained_skip_count": 0
+    },
+    "validation_commands": {
+      "changed_python_py_compile": {
+        "passed": true,
+        "result": "exit 0"
+      },
+      "cross_phase_ingestion_ai_ml1_r2r_ml2_graph_search_contract_handoff": {
+        "passed": true,
+        "result": "780 passed in 12.80s"
+      },
+      "environment_specific_profiles": {
+        "passed": true,
+        "profiles": [
+          "FULLLIB-E1A production guard under test environment",
+          "Phase 4.7-S2 baseline runner",
+          "S3A-M1 manual execute guard",
+          "S3A-PROD1 operator incremental sync guard"
+        ],
+        "result": "189 passed in 93.04s"
+      },
+      "full_default_non_e2e": {
+        "passed": true,
+        "result": "3270 passed, 4 skipped, 15 warnings in 215.11s"
+      },
+      "sv1_contract_focused": {
+        "passed": true,
+        "result": "380 passed in 3.25s"
+      }
+    }
+  }
+}

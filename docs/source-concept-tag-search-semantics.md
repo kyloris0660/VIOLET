@@ -106,3 +106,15 @@ superseded evidence is exposed, an AND/role/work/source constraint is ignored,
 alias propagation reaches an unsupported target, or search changes/implies
 identity membership. Multiple identities in a supported bare-name result are not
 by themselves invalid.
+
+## SV1 Controlled-Scale Benchmark
+
+SCV2-SV1 exercised the real SourceConcept search path with 240 fixed queries:
+80 creator aliases, 20 shared names, 20 search-only translations, 20 exact
+source-name tags, 20 negative cases, 40 deterministic scale samples, 7
+creator-character AND cases, and 33 creator-work/title AND cases. The scale
+database returned 471 supported results, zero unsupported/rejected/superseded/
+invalid-only result, zero AND leakage, and zero search-caused identity mutation.
+Scale P50/P95/max was `3.9 / 8.602 / 40.645 ms`; this passed the fixed 750 ms
+P95 and 3-second per-query gates. These numbers validate the selected 12,000
+media replay, not universal semantic completeness or full-library performance.

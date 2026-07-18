@@ -69,3 +69,14 @@ Full-library work must separate evidence acquisition from graph recomputation in
 its contract, run ledger, write allowlist, and reports. Provider collection,
 resolver rebuild, truth promotion, and production mutation are independent
 approval boundaries; success in one does not authorize another.
+
+## SV1 Promotion-Rehearsal Evidence
+
+SCV2-SV1 exported the accepted source layer as `108,442` logical stable-key
+items with zero development row-ID dependencies. A clean controlled-scale target
+imported `108,182` items while explicitly deferring `298` metadata references
+whose media were unavailable in the selected manifest. A separate clean
+promotion target proved transaction rollback restoration, committed import,
+second-import mutation `0`, and logical cross-database mismatch `0` without
+mutating media/media_tags. This validates the stable-key mechanism at controlled
+scale only; it does not authorize production or full-library promotion.

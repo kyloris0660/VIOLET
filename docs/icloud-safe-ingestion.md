@@ -194,3 +194,12 @@ The Local Library Scan section in the Admin Panel includes:
 | `example.env` | 3 new env vars |
 | `tests/test_scanner_icloud.py` | 22 unit tests |
 | `tests/e2e/test_icloud_scan.spec.ts` | 7 E2E tests |
+
+## SV1 Controlled-Copy Evidence
+
+SCV2-SV1 performed a read-only inventory and copied exactly 12,000 selected,
+safely usable real media items into isolated test storage. The source-mutation,
+blocking-failure, unexplained-outcome, and out-of-manifest counts were all zero.
+This validates the existing source-read boundary for one deterministic
+controlled-scale manifest; it does not change hydrated-only defaults, authorize
+source/iCloud writes, or establish full-library ingestion readiness.

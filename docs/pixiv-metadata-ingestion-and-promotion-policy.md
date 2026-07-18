@@ -98,6 +98,13 @@ outputs, candidate blocks/partitions, signal links, materialized concepts and
 aliases, fallback/search indexes, graph/route/confidence metrics, and search
 benchmarks. PR #136 does not authorize production execution.
 
+SCV2-SV1 validated this stable-key boundary in isolated dev/test databases:
+provider/source evidence moved by logical keys with zero development row-ID
+dependencies, while the destination rebuilt independent numeric identities.
+Rollback, committed import, second-run idempotency, and cross-database logical
+equivalence passed. Provider calls and production writes remained zero; the
+result is promotion-readiness evidence only, not production authorization.
+
 ## Default LLM Budget
 
 One finite, reproducible, primary-provider, cache-first bounded execution with
