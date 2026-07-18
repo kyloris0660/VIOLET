@@ -147,9 +147,13 @@ def test_final_delivery_report_standard_docs_presence():
         assert "PR URL, branch, head SHA" in text
         assert "exact sys.executable" in text
         assert "If any item is not applicable" in text
-        assert "Reviewer feedback handling policy" in text or "Reviewer Feedback Handling Policy" in text
-        assert "must not automatically modify code based on reviewer feedback" in text
-        assert "Automatic reviewer-fix loops are disabled by default" in text
+
+    governance = "\n".join(
+        (repo / rel).read_text(encoding="utf-8") for rel in ["AGENTS.md", "CLAUDE.md"]
+    )
+    assert "Reviewer closeout and deferral rule" in governance
+    assert "must not automatically modify code based on reviewer feedback" in governance
+    assert "Default reviewer closeout is **1 to 2 bounded fix rounds per PR**" in governance
 
 
 def test_cleanup_dry_run_refuses_unsafe_target(tmp_path: Path):

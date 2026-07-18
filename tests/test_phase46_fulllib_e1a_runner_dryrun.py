@@ -9,6 +9,12 @@ import pytest
 from scripts import run_phase46_fulllib_e1_production_import_ai_tagging as e1a
 
 
+@pytest.fixture(autouse=True)
+def isolated_fulllib_production_guard_profile(monkeypatch):
+    """Exercise production guards without inheriting the default test DB URL."""
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+
+
 def production_db_url() -> str:
     return "postgresql://postgres:super-secret@localhost:5432/violet_library_prod"
 

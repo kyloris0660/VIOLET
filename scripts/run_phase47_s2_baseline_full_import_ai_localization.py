@@ -2838,7 +2838,7 @@ def build_summary(
         },
         "browser_validation": browser_validation,
         "private_artifacts": {
-            "private_artifact_root_label": f".local_manifests/{PHASE_SLUG}",
+            "private_artifact_root_label": "[private]",
             "private_artifact_names": list(PRIVATE_LEDGER_NAMES),
             "private_artifacts_committed": False,
             "paths_public": False,
