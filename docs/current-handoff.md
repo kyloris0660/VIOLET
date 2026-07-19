@@ -1,26 +1,27 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> PR #137 is merged and accepted in `origin/main` at
-> `7fca41151cc9e1d5b48cfe243279e66296346bae`; the accepted ML2 evidence-code
-> commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. The separately governed
-> `SCV2-SV1: Controlled Scale Replay and Promotion-Readiness Validation` run has
-> reached its merge-safe partial SV1-A boundary on the feature branch; its PR remains unmerged.
+> PR #138 is merged and accepted in `origin/main` at
+> `46861489fa0b3b05ae917a99a3932897efd70365`; accepted SV1-A evidence HEAD is
+> `af073ca0ad2a9df9418cf072dc381d7b2c10216a`. SV1-A is an accepted partial
+> milestone with `target_met=false`; `SCV2-SV1B` is the current phase.
 
 ## Canonical State
 
 | Item | Value |
 |------|-------|
-| Merged baseline | PR #137 / `7fca41151cc9e1d5b48cfe243279e66296346bae` |
-| Current work item | `SCV2-SV1: Controlled Scale Replay and Promotion-Readiness Validation` |
+| Merged baseline | PR #138 / `46861489fa0b3b05ae917a99a3932897efd70365` |
+| Accepted evidence HEAD | `af073ca0ad2a9df9418cf072dc381d7b2c10216a` |
+| Current work item | `SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure` |
 | Accepted R2R DB | `blombooru_scv2_r2r_dryrun_test_20260710` (immutable) |
 | Accepted SCV2-ML1: Multilingual Alias and Source-Metadata Closure DB | `blombooru_scv2_ml1_acquisition_test_20260712` (immutable) |
 | Accepted ML2 DB | `blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` (immutable) |
 | SV1 scale DB | `blombooru_scv2_sv1_controlled_scale_test_20260718` |
 | Successful promotion DB | `blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1` |
 | Rebuild verification DB | `blombooru_scv2_sv1_rebuild_verification_test_20260718` |
-| SV1 contract | `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`; `target_met=false`; `safe_to_merge=true`; `route_approved=false` |
+| Accepted SV1-A contract | `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`; `target_met=false`; `safe_to_merge=true`; `route_approved=false` |
+| SV1B stop state | automated candidate must stop at `manual_acceptance_required=true`, `manual_acceptance_status=pending_user`, `target_met=false`, `safe_to_merge=false`, `route_approved=false` |
 
-PR #133 / `SCV2-R2` remains `target_met_constraint_aware_r2`; PR #135 / R2R precedes ML2, which remains `target_met_multilingual_identity_candidate_closure`. Provider routes remain forbidden; production routes remain unauthorized.
+PR #133 / `SCV2-R2` remains `target_met_constraint_aware_r2`; PR #135 / R2R precedes ML2, which remains `target_met_multilingual_identity_candidate_closure`. SV1-A provider routes were forbidden; production routes remain unauthorized.
 
 PR #135 R2R's 3,319 dispositions and ML2's logical evidence remain immutable. ML2 identity accounting remains `606 = 12 already materialized + 594 new + 0 cannot-link + 0 deferred` and `1213 = 1213 must_link + 0 cannot_link + 0 deferred`; the superseded first ML2 run's `1214` count remains historical evidence only. Search-result union is not identity union; additional query terms use media-level AND intersection.
 
@@ -72,14 +73,17 @@ PR #135 R2R's 3,319 dispositions and ML2's logical evidence remain immutable. ML
   for the immediate SV1B route. Both must be closed before a
   cross-platform or production rehearsal.
 
-## Next Boundary
+## Current SV1B Boundary
 
-The immediate recommended phase is `SCV2-SV1B: Controlled Pixiv Metadata,
-Localization, and Source-Graph Closure`, but SV1-A does not approve or start
-SV1B or FL1. Production, provider metadata acquisition/Pixiv/gallery-dl/external LLM,
-Entity bridge / EntityAlias, confirmed assignment, SourceConcept-to-`media_tags` truth,
-and source/iCloud mutation remain unauthorized. No later phase begins until this
-normal PR is reviewed and the project owner makes a separate decision.
+SV1-A accepted the exact 12,000-media import/AI-tagging evidence, stable-key
+promotion, and 606-family rebuild. New Pixiv metadata acquisition, localization, full graph,
+full-library, and production work remained incomplete.
+
+SV1B is active under its finite provider, graph, localization, replay, search,
+and manual-acceptance policy. Provider execution requires every hardening gate.
+It must stop at the exact 40-case candidate; until explicit user acceptance,
+`target_met`, `safe_to_merge`, and `route_approved` remain false. FL1,
+full-library/production, Entity/truth, media download, and source/iCloud mutation remain unauthorized.
 
 ## Durable Links
 

@@ -120,8 +120,8 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
     line_count = len(handoff.splitlines())
 
     assert line_count <= 90
-    assert "PR #137" in handoff
-    assert "SCV2-SV1: Controlled Scale Replay and Promotion-Readiness Validation" in handoff
+    assert "PR #138" in handoff
+    assert "SCV2-SV1B" in handoff
     assert "PR #135" in handoff
     assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in handoff
     assert "Search-result union is not identity union" in handoff

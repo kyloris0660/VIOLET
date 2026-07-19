@@ -21,17 +21,42 @@ or `safe_to_merge` must declare a registered contract and pass the contract
 checker before making that claim. If no matching contract exists, create or
 extend a contract first.
 
+## Mandatory Manual Acceptance Rule
+
+User manual acceptance is required after every two substantive behavioral/data
+phases and before any full-library or production route. Media import, AI
+tagging, provider acquisition, graph/resolver behavior, search behavior,
+localization, runtime/UI behavior, and production workflows are substantive.
+Docs-only, report-only, contract-only, and behavior-neutral repair phases do not
+increment or reset the counter.
+
+Acceptance is valid only for its exact Git HEAD, database identity, media
+manifest fingerprint, acquired metadata package fingerprint, graph/search
+fingerprints, and acceptance-case manifest fingerprint. Later runtime, data,
+search, graph, or localization changes invalidate affected acceptance cases.
+When acceptance is required and pending, the executable contract must enforce
+`manual_acceptance_required=true`, `manual_acceptance_status=pending_user`,
+`target_met=false`, `safe_to_merge=false`, and `route_approved=false`.
+
 ## Current Phase Boundary
 
-PR #137 is merged and accepted at
-`7fca41151cc9e1d5b48cfe243279e66296346bae`; its final bounded status is
-`target_met_multilingual_identity_candidate_closure`. The accepted ML2 logical
-evidence and isolated database are immutable inputs to the separately governed
-SCV2-SV1 controlled-scale and promotion-readiness phase. SV1 registered and
-passed `sv1_controlled_scale_promotion_readiness_contract_v1` for its bounded
-feature-branch partial SV1-A result. The contract does not authorize production,
-full-library, provider, Entity, confirmed assignment, truth-route work, or
-starting SV1B/FL1.
+PR #138 is merged and accepted at
+`46861489fa0b3b05ae917a99a3932897efd70365`; its accepted evidence HEAD is
+`af073ca0ad2a9df9418cf072dc381d7b2c10216a`. SV1-A registered and passed
+`sv1_controlled_scale_promotion_readiness_contract_v1` for the accepted partial
+12,000-media, AI-tagging, stable-key promotion, and 606-family rebuild result;
+`target_met` remained false. New Pixiv metadata, localization, full source-graph
+closure, the full library, and production remain incomplete.
+
+SCV2-SV1B is now the current separately governed phase. Before any provider
+request it must close persistent spacing, manifest-scoped outcomes,
+conflict/mismatch persistence, terminal precedence, and credential/redaction
+hardening. It must create and pass
+`sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
+and stop at `automated_sv1b_candidate_ready_manual_acceptance_pending` with the
+manual-acceptance fields pending and all completion/route booleans false. This
+does not authorize FL1, full-library, production, Entity, confirmed assignment,
+truth-route work, media download, or source/iCloud mutation.
 
 ## Registered GOV3 Contracts
 

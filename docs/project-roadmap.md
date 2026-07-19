@@ -21,16 +21,17 @@ The finished system should:
 
 ## Current Active Roadmap
 
-PR #137 is merged and accepted in `origin/main` at
-`7fca41151cc9e1d5b48cfe243279e66296346bae`; the accepted ML2 evidence-code
-commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. Its final bounded result is
-`target_met_multilingual_identity_candidate_closure`, and the accepted logical
-evidence plus isolated ML2 database are immutable inputs. The separately
-governed SCV2-SV1-A execution has reached
-`partial_sv1_media_ai_scale_and_stable_key_promotion_complete` on its feature
-branch, with `target_met=false`, `safe_to_merge=true`, and
-`route_approved=false`. Its PR remains unmerged. The canonical current sequence
-lives in `docs/roadmap/current-mainline-roadmap.md`.
+PR #138 is merged and accepted in `origin/main` at
+`46861489fa0b3b05ae917a99a3932897efd70365`; its accepted SV1-A evidence HEAD is
+`af073ca0ad2a9df9418cf072dc381d7b2c10216a`. SV1-A is an accepted partial
+milestone at `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`,
+with `target_met=false`. Its 12,000-media import and AI-tagging evidence,
+stable-key promotion, and accepted 606-family rebuild are accepted. New Pixiv
+metadata, localization, full source-graph closure, the full library, and
+production remain incomplete. `SCV2-SV1B: Controlled Pixiv Metadata,
+Localization, and Source-Graph Closure` is now the separately governed current
+phase. The canonical current sequence lives in
+`docs/roadmap/current-mainline-roadmap.md`.
 
 The former SR1 interpretation is superseded: identity union and search-result
 union are different. `cannot_link` blocks identity union, but a bare name returns
@@ -92,7 +93,7 @@ classifier ordering; `CONTROLLED-SCALE-AUDIT-DEBT` owns denominator treatment;
 `PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING` owns secret-token delimiter
 scanning.
 
-SV1-A completed an exact 12,000-item isolated dev/test replay. It accounted all
+SV1-A completed and PR #138 accepted an exact 12,000-item isolated dev/test replay. It accounted all
 imports, reached full local AI-tag provenance, imported stable-key evidence with
 zero row-ID dependency or silent loss, passed denominator and graph safety, and
 passed the 240-query search benchmark. Its independent promotion rehearsal
@@ -105,8 +106,7 @@ rebuild-verification DB imported zero derived rows and replayed accepted R2R/ML2
 derivation; 40 true new-media local AI-tag cases passed scale, promotion, and
 rebuild with zero leakage. SV1-A did not acquire Pixiv/provider metadata for the
 4,124 unsupported canonical candidates and did not close localization or the
-new-media source graph. The immediate recommended phase is SCV2-SV1B; neither
-SV1B nor FL1 has started.
+new-media source graph. SCV2-SV1B is now active; FL1 has not started.
 
 PR #113 / Phase 4.7-S2 is merged, V.I.O.L.E.T. has a real production baseline
 library, PR #122 / PROD-LAUNCHER-UX1/PF1 is merged with an accepted Windows
@@ -1135,6 +1135,24 @@ For every new major development phase or substantial feature scope, the agent mu
 2. **Wait for explicit user approval** before making substantial code changes.
 3. Bug fixes and small review-comment fixes may proceed without a separate plan.
 4. Major stage-level design changes (new classifiers, new models, new DB schemas, evaluation frameworks) require user-approved plan.
+
+### Mandatory Manual Acceptance Cadence
+
+User manual acceptance is mandatory after every two substantive behavioral or
+data phases, and before any full-library or production route. Substantive phases
+include media import, AI tagging, provider acquisition, graph/resolver behavior,
+search behavior, localization, runtime/UI behavior, and production workflows.
+Docs-only, report-only, contract-only, and behavior-neutral repair PRs neither
+increment nor reset this counter.
+
+Each manual acceptance must bind the exact Git HEAD, database identity, media
+manifest fingerprint, acquired metadata package fingerprint, graph/search
+fingerprints, and acceptance-case manifest fingerprint. Any later change to
+runtime, data, search, graph, or localization invalidates the affected cases.
+The phase contract must keep `target_met=false`, `safe_to_merge=false`, and
+`route_approved=false` while `manual_acceptance_status=pending_user`; automated
+tests, agent browser runs, and generated dashboards cannot substitute for the
+user's explicit acceptance.
 
 ### Safety Rules
 
