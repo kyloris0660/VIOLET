@@ -83,7 +83,7 @@ SV1B is active under its finite provider, graph, localization, replay, search,
 and manual-acceptance policy. Provider execution requires every hardening gate.
 It must stop at the exact 40-case candidate; until explicit user acceptance,
 `target_met`, `safe_to_merge`, and `route_approved` remain false. FL1,
-full-library/production, Entity/truth, media download, and source/iCloud mutation remain unauthorized.
+full-library/production, Entity bridge / Entity/truth, media download, and source/iCloud mutation remain unauthorized.
 
 ## Durable Links
 
