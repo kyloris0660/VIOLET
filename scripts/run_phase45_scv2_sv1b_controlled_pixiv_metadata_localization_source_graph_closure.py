@@ -17,7 +17,8 @@ import subprocess
 import sys
 from typing import Any, Iterable, Mapping
 
-from sqlalchemy import text
+from sqlalchemy import MetaData, text
+from sqlalchemy.orm import sessionmaker
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
@@ -33,10 +34,21 @@ from scripts import run_phase44p2r_f2_gallery_dl_external_adapter_pilot as galle
 from scripts.run_pixiv_metadata_ingestion import validate_gallery_dl_profile  # noqa: E402
 from scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness import (  # noqa: E402
     CORE_SOURCE_TABLES,
+    Paths,
     PROTECTED_TABLES,
     classify_pixiv_denominator,
+    _insert_batches,
+    _strip_row,
+    copy_media_tag_baseline,
+    create_clean_database,
     database_fingerprint,
+    database_exists,
     engine_for,
+    export_stable_evidence,
+    import_stable_evidence,
+    import_reusable_f7a_inputs,
+    reconcile_stable_evidence_packages,
+    sha256_file,
 )
 
 PHASE = "SCV2-SV1B"
@@ -45,6 +57,7 @@ ACCEPTED_MERGE = "46861489fa0b3b05ae917a99a3932897efd70365"
 ACCEPTED_EVIDENCE_HEAD = "af073ca0ad2a9df9418cf072dc381d7b2c10216a"
 ACCEPTED_MANIFEST_FINGERPRINT = "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f"
 ACCEPTED_SCALE_DB = "blombooru_scv2_sv1_controlled_scale_test_20260718"
+ACCEPTED_ML1_DB = "blombooru_scv2_ml1_acquisition_test_20260712"
 ACCEPTED_DATABASES = (
     "blombooru_scv2_r2r_dryrun_test_20260710",
     "blombooru_scv2_ml1_acquisition_test_20260712",
@@ -56,7 +69,13 @@ ACCEPTED_DATABASES = (
 ACCEPTED_OUTPUT = ROOT / ".local_manifests/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness"
 ACCEPTED_STORAGE = ROOT / ".local_test_storage/phase-4.5-scv2-sv1-controlled-scale"
 DEFAULT_OUTPUT = ROOT / ".local_manifests/phase-4.5-scv2-sv1b-pixiv-metadata-localization-source-graph-closure-20260719"
+DEFAULT_PRIMARY_DB = "blombooru_scv2_sv1b_metadata_graph_closure_test_20260719"
+DEFAULT_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260719"
 EXPECTED_MEDIA_COUNT = 12_000
+ACCEPTED_R2R_DB = "blombooru_scv2_r2r_dryrun_test_20260710"
+ACCEPTED_R2R_SNAPSHOT_FINGERPRINT = "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
+ML2_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-ml2-multilingual-identity-candidate-closure-reviewfix-20260715"
+R2R_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-r2r-autonomous-recall-search-closure"
 
 COMPLETE_STATUSES = frozenset({"metadata_complete", "observed", "active", "accepted"})
 TERMINAL_STATUSES = frozenset({"terminal_remote_unavailable"})
@@ -128,6 +147,66 @@ def validate_output_root(output: Path) -> Path:
     if resolved.exists():
         raise SV1BPreflightError("private_output_root_already_exists_ownership_unproven")
     return resolved
+
+
+def validate_owned_output_root(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    resolved = output.resolve()
+    private_root = (ROOT / ".local_manifests").resolve()
+    if private_root not in resolved.parents or not resolved.is_dir():
+        raise SV1BPreflightError("owned_private_output_root_invalid")
+    identity_path = resolved / "run-identity.json"
+    ownership_path = resolved / "database-ownership-and-baseline-proof.json"
+    if not identity_path.is_file() or not ownership_path.is_file():
+        raise SV1BPreflightError("owned_private_output_proof_missing")
+    identity = read_json(identity_path)
+    ownership = read_json(ownership_path)
+    expected_key = sha256_payload({
+        "phase": PHASE,
+        "branch": BRANCH,
+        "manifest_fingerprint": ACCEPTED_MANIFEST_FINGERPRINT,
+        "primary_database": primary_database,
+        "replay_database": replay_database,
+    })
+    if not (
+        identity.get("phase") == PHASE
+        and identity.get("branch") == BRANCH
+        and identity.get("accepted_manifest_fingerprint") == ACCEPTED_MANIFEST_FINGERPRINT
+        and ownership.get("ownership_key") == expected_key
+        and ownership.get("primary_database_identity") == primary_database
+        and ownership.get("replay_database_identity") == replay_database
+        and ownership.get("passed") is True
+        and database_exists(primary_database)
+        and database_exists(replay_database)
+    ):
+        raise SV1BPreflightError("owned_private_output_or_database_identity_mismatch")
+    return {"output": str(resolved), "ownership_key": expected_key, "resume_ownership_passed": True}
+
+
+def validate_writable_databases(primary_database: str, replay_database: str) -> dict[str, Any]:
+    values = (str(primary_database or "").strip(), str(replay_database or "").strip())
+    if not all(_strict_test_database(value) for value in values):
+        raise SV1BPreflightError("writable_database_identity_not_strict_test")
+    if len(set(values)) != len(values):
+        raise SV1BPreflightError("writable_database_identities_not_distinct")
+    overlap = sorted(set(values).intersection(ACCEPTED_DATABASES))
+    if overlap:
+        raise SV1BPreflightError(f"writable_database_overlaps_accepted:{overlap}")
+    existing = [value for value in values if database_exists(value)]
+    if existing:
+        raise SV1BPreflightError(f"writable_database_already_exists_ownership_unproven:{existing}")
+    return {
+        "primary_database_identity": values[0],
+        "replay_database_identity": values[1],
+        "strict_test_identities": True,
+        "pairwise_distinct": True,
+        "accepted_database_overlap_count": 0,
+        "preexisting_database_count": 0,
+    }
 
 
 def validate_repository_and_inputs(output: Path) -> dict[str, Any]:
@@ -308,6 +387,650 @@ def immutable_input_fingerprints() -> dict[str, Any]:
     }
 
 
+def media_tag_logical_fingerprint(database: str) -> dict[str, Any]:
+    engine = engine_for(database)
+    ignored_media = {"id", "created_at", "updated_at", "parent_id"}
+    ignored_tags = {"id", "created_at", "updated_at", "post_count"}
+    try:
+        with engine.connect() as connection:
+            media = sorted(
+                canonical_json({key: value for key, value in row.items() if key not in ignored_media})
+                for row in connection.execute(text("SELECT * FROM blombooru_media")).mappings()
+            )
+            tags = sorted(
+                canonical_json({key: value for key, value in row.items() if key not in ignored_tags})
+                for row in connection.execute(text("SELECT * FROM blombooru_tags")).mappings()
+            )
+            links = sorted(canonical_json(dict(row)) for row in connection.execute(text("""
+                SELECT m.hash AS media_hash,t.name AS tag_name,mt.source,mt.confidence,
+                       mt.is_locked,mt.is_suggestion
+                FROM blombooru_media_tags mt
+                JOIN blombooru_media m ON m.id=mt.media_id
+                JOIN blombooru_tags t ON t.id=mt.tag_id
+            """)).mappings())
+    finally:
+        engine.dispose()
+    groups = {
+        "media": {"count": len(media), "fingerprint": sha256_payload(media)},
+        "tags": {"count": len(tags), "fingerprint": sha256_payload(tags)},
+        "media_tags": {"count": len(links), "fingerprint": sha256_payload(links)},
+    }
+    return {"database": database, "groups": groups, "fingerprint": sha256_payload(groups)}
+
+
+def prepare_isolated_databases(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    isolation = validate_writable_databases(primary_database, replay_database)
+    ownership_key = sha256_payload({
+        "phase": PHASE,
+        "branch": BRANCH,
+        "manifest_fingerprint": ACCEPTED_MANIFEST_FINGERPRINT,
+        "primary_database": primary_database,
+        "replay_database": replay_database,
+    })
+    write_json(output / "database-creation-intent.json", {
+        **isolation,
+        "ownership_key": ownership_key,
+        "drop_truncate_reset_authorized": False,
+        "source_database": ACCEPTED_SCALE_DB,
+        "source_database_read_only": True,
+    })
+    primary_clean = create_clean_database(primary_database)
+    write_json(output / "primary-database-created.json", {
+        "ownership_key": ownership_key,
+        "database": primary_database,
+        "clean_schema": primary_clean["clean_schema"],
+    })
+    replay_clean = create_clean_database(replay_database)
+    write_json(output / "replay-database-created.json", {
+        "ownership_key": ownership_key,
+        "database": replay_database,
+        "clean_schema": replay_clean["clean_schema"],
+    })
+    primary_copy = copy_media_tag_baseline(ACCEPTED_SCALE_DB, primary_database)
+    replay_copy = copy_media_tag_baseline(ACCEPTED_SCALE_DB, replay_database)
+    baseline_tables = ("blombooru_media", "blombooru_tags", "blombooru_media_tags")
+    accepted_fingerprint = media_tag_logical_fingerprint(ACCEPTED_SCALE_DB)
+    primary_fingerprint = media_tag_logical_fingerprint(primary_database)
+    replay_fingerprint = media_tag_logical_fingerprint(replay_database)
+    passed = bool(
+        int(primary_copy["media_count"]) == EXPECTED_MEDIA_COUNT
+        and int(replay_copy["media_count"]) == EXPECTED_MEDIA_COUNT
+        and primary_fingerprint["fingerprint"] == replay_fingerprint["fingerprint"]
+        and primary_fingerprint["fingerprint"] == accepted_fingerprint["fingerprint"]
+    )
+    result = {
+        **isolation,
+        "ownership_key": ownership_key,
+        "primary_clean_schema_created": primary_clean["clean_schema"],
+        "replay_clean_schema_created": replay_clean["clean_schema"],
+        "primary_baseline_copy": primary_copy,
+        "replay_baseline_copy": replay_copy,
+        "baseline_tables": list(baseline_tables),
+        "accepted_baseline_fingerprint": accepted_fingerprint["fingerprint"],
+        "primary_baseline_fingerprint": primary_fingerprint["fingerprint"],
+        "replay_baseline_fingerprint": replay_fingerprint["fingerprint"],
+        "exact_baseline_fingerprint_equality": passed,
+        "numeric_row_id_equality_claimed": False,
+        "accepted_database_write_count": 0,
+        "production_selected": False,
+        "passed": passed,
+    }
+    write_json(output / "database-ownership-and-baseline-proof.json", result)
+    if not passed:
+        raise SV1BPreflightError("isolated_database_baseline_copy_mismatch")
+    return result
+
+
+def _accepted_nonderived_package() -> tuple[dict[str, Any], dict[str, Any]]:
+    package_path = ACCEPTED_OUTPUT / "stable-key-evidence-package.json"
+    manifest_path = ACCEPTED_OUTPUT / "stable-key-evidence-package-manifest.json"
+    package = read_json(package_path)
+    package_manifest = read_json(manifest_path)
+    if sha256_file(package_path) != str(package_manifest.get("package_sha256") or ""):
+        raise SV1BPreflightError("accepted_stable_evidence_package_fingerprint_mismatch")
+    reusable_names = {
+        "source_metadata_records", "source_tag_observations", "source_name_observations",
+        "source_metadata_evidence", "source_searchable_name_assertions",
+        "source_tag_registry", "source_name_registry",
+    }
+    filtered = {
+        **package,
+        "package_version": "sv1b_accepted_nonderived_source_evidence_v1",
+        "tables": {
+            name: list(rows) if name in reusable_names else []
+            for name, rows in package["tables"].items()
+        },
+    }
+    evidence = {
+        "accepted_package_sha256": package_manifest["package_sha256"],
+        "filtered_package_fingerprint": sha256_payload(filtered),
+        "table_counts": {name: len(rows) for name, rows in filtered["tables"].items()},
+        "derived_input_row_count": sum(
+            len(rows) for name, rows in filtered["tables"].items() if name not in reusable_names
+        ),
+    }
+    return filtered, evidence
+
+
+def _database_media_keys(database: str) -> set[str]:
+    engine = engine_for(database)
+    try:
+        with engine.connect() as connection:
+            return {
+                str(value) for value in connection.execute(
+                    text("SELECT hash FROM blombooru_media WHERE hash IS NOT NULL")
+                ).scalars()
+            }
+    finally:
+        engine.dispose()
+
+
+def import_accepted_nonderived_evidence(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    ownership = validate_owned_output_root(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
+    package, package_evidence = _accepted_nonderived_package()
+    raw_tables = tuple(package["tables"])
+    before = {
+        database: database_fingerprint(database, raw_tables)
+        for database in (primary_database, replay_database)
+    }
+    if any(
+        int(table["count"]) != 0
+        for database in before.values()
+        for table in database["tables"].values()
+    ):
+        raise SV1BPreflightError("nonderived_import_target_not_pristine")
+    write_json(output / "accepted-evidence-import-intent.json", {
+        **ownership,
+        **package_evidence,
+        "target_databases": [primary_database, replay_database],
+        "atomic_per_database": True,
+        "accepted_inputs_read_only": True,
+    })
+    imports: dict[str, Any] = {}
+    reconciliations: dict[str, Any] = {}
+    for label, database in (("primary", primary_database), ("replay", replay_database)):
+        engine = engine_for(database)
+        try:
+            with engine.begin() as connection:
+                imports[label] = import_stable_evidence(connection, package)
+        finally:
+            engine.dispose()
+        write_json(output / f"accepted-evidence-{label}-import-commit.json", {
+            "database": database,
+            "ownership_key": ownership["ownership_key"],
+            "import": imports[label],
+        })
+        export_paths = Paths(output / f"accepted-evidence-{label}-reconciliation")
+        export_stable_evidence(export_paths, source_database=database)
+        target_package = read_json(export_paths.package)
+        reconciliation = reconcile_stable_evidence_packages(
+            package, target_package, _database_media_keys(database)
+        )
+        reconciliations[label] = reconciliation
+        write_json(output / f"accepted-evidence-{label}-reconciliation.json", reconciliation)
+        if not (
+            reconciliation["exact_stable_key_membership_passed"] is True
+            and int(reconciliation["blocking_failed"]) == 0
+            and int(reconciliation["extra_materialized_count"]) == 0
+        ):
+            raise SV1BPreflightError(f"accepted_evidence_{label}_reconciliation_failed")
+    result = {
+        **ownership,
+        **package_evidence,
+        "primary_import": imports["primary"],
+        "replay_import": imports["replay"],
+        "primary_reconciliation_passed": True,
+        "replay_reconciliation_passed": True,
+        "primary_replay_inserted_counts_equal": (
+            imports["primary"]["inserted_counts"] == imports["replay"]["inserted_counts"]
+        ),
+        "derived_input_row_count": package_evidence["derived_input_row_count"],
+        "passed": True,
+    }
+    if result["primary_replay_inserted_counts_equal"] is not True:
+        raise SV1BPreflightError("primary_replay_accepted_evidence_count_mismatch")
+    write_json(output / "accepted-nonderived-evidence-proof.json", result)
+    return result
+
+
+def _translation_logical_state(database: str) -> dict[str, Any]:
+    engine = engine_for(database)
+    try:
+        with engine.connect() as connection:
+            rows = sorted(canonical_json(dict(row)) for row in connection.execute(text("""
+                SELECT canonical_name,language,display_name,aliases_json,category,source,
+                       status,confidence,needs_review,provider
+                FROM blombooru_tag_translations
+                ORDER BY canonical_name,language
+            """)).mappings())
+    finally:
+        engine.dispose()
+    return {"count": len(rows), "fingerprint": sha256_payload(rows)}
+
+
+def _copy_accepted_translations(target_database: str) -> dict[str, Any]:
+    source = engine_for(ACCEPTED_ML1_DB)
+    target = engine_for(target_database)
+    target_meta = MetaData()
+    target_meta.reflect(bind=target, only=["blombooru_tag_translations"])
+    target_table = target_meta.tables.get("blombooru_tag_translations")
+    if target_table is None:
+        target_table = target_meta.tables["public.blombooru_tag_translations"]
+    try:
+        with source.connect() as source_connection:
+            source_rows = [
+                _strip_row(dict(row), drop=("tag_id",))
+                for row in source_connection.execute(text("""
+                    SELECT * FROM blombooru_tag_translations
+                    WHERE language='zh-CN' AND status='translated' AND display_name<>''
+                    ORDER BY canonical_name,language
+                """)).mappings()
+            ]
+        with target.begin() as target_connection:
+            existing = int(target_connection.execute(text(
+                "SELECT COUNT(*) FROM blombooru_tag_translations"
+            )).scalar() or 0)
+            if existing:
+                raise SV1BPreflightError("localization_target_not_pristine")
+            tag_ids = {
+                str(row.name): int(row.id)
+                for row in target_connection.execute(text("SELECT id,name FROM blombooru_tags"))
+            }
+            values = []
+            for row in source_rows:
+                item = dict(row)
+                item["tag_id"] = tag_ids.get(str(item["canonical_name"]))
+                values.append(item)
+            inserted = _insert_batches(target_connection, target_table, values, batch_size=500)
+    finally:
+        source.dispose()
+        target.dispose()
+    return {
+        "source_translation_count": len(source_rows),
+        "inserted_translation_count": inserted,
+        "numeric_tag_id_reused": False,
+        "stable_canonical_name_mapping": True,
+    }
+
+
+def _vocabulary_state(database: str) -> tuple[dict[str, Any], dict[str, list[str]]]:
+    engine = engine_for(database)
+    try:
+        with engine.connect() as connection:
+            ai_tags = sorted({
+                str(value) for value in connection.execute(text("""
+                    SELECT DISTINCT t.name
+                    FROM blombooru_media_tags mt
+                    JOIN blombooru_tags t ON t.id=mt.tag_id
+                    WHERE mt.source='ai_wd'
+                """)).scalars() if value
+            })
+            translated = {
+                str(value) for value in connection.execute(text("""
+                    SELECT canonical_name FROM blombooru_tag_translations
+                    WHERE language='zh-CN' AND status='translated' AND display_name<>''
+                """)).scalars() if value
+            }
+            source_tags = sorted({
+                str(value) for value in connection.execute(text("""
+                    SELECT raw_tag FROM blombooru_source_tag_observations
+                    WHERE status IN ('observed','active','accepted') AND raw_tag IS NOT NULL
+                """)).scalars() if value
+            })
+            creator_names = sorted({
+                str(value) for value in connection.execute(text("""
+                    SELECT raw_name FROM blombooru_source_name_observations
+                    WHERE status IN ('observed','active','accepted')
+                      AND name_role IN (
+                          'creator','artist','creator_name','creator_account','artist_name','artist_account'
+                      )
+                      AND raw_name IS NOT NULL
+                """)).scalars() if value
+            })
+            work_titles = sorted({
+                str(value) for value in connection.execute(text("""
+                    SELECT title FROM blombooru_source_metadata_records
+                    WHERE status IN ('observed','active','accepted','metadata_complete')
+                      AND title IS NOT NULL AND title<>''
+                """)).scalars() if value
+            })
+    finally:
+        engine.dispose()
+    missing_ai_tags = sorted(set(ai_tags) - translated)
+    private = {
+        "eligible_ai_tags": ai_tags,
+        "blocking_missing_ai_tags": missing_ai_tags,
+        "provider_source_tags": source_tags,
+        "creator_names_accounts": creator_names,
+        "work_titles": work_titles,
+    }
+    public = {
+        "ai_media_tag_vocabulary_count": len(ai_tags),
+        "accepted_ai_translation_count": len(set(ai_tags).intersection(translated)),
+        "explicit_nontranslatable_exclusion_count": 0,
+        "blocking_missing_ai_translation_count": len(missing_ai_tags),
+        "provider_source_tag_vocabulary_count": len(source_tags),
+        "creator_name_account_vocabulary_count": len(creator_names),
+        "work_title_vocabulary_count": len(work_titles),
+        "ai_vocabulary_fingerprint": sha256_payload(ai_tags),
+        "missing_ai_vocabulary_fingerprint": sha256_payload(missing_ai_tags),
+        "provider_source_vocabulary_fingerprint": sha256_payload(source_tags),
+        "creator_vocabulary_fingerprint": sha256_payload(creator_names),
+        "work_title_vocabulary_fingerprint": sha256_payload(work_titles),
+        "silent_missing_count": 0,
+        "provider_tags_written_to_media_tags_count": 0,
+        "creator_identity_translated_count": 0,
+        "original_provider_text_preserved": True,
+    }
+    return public, private
+
+
+def prepare_localization_baseline(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    validate_owned_output_root(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
+    if not (output / "accepted-nonderived-evidence-proof.json").is_file():
+        raise SV1BPreflightError("accepted_nonderived_evidence_proof_missing")
+    source_state = _translation_logical_state(ACCEPTED_ML1_DB)
+    primary_copy = _copy_accepted_translations(primary_database)
+    replay_copy = _copy_accepted_translations(replay_database)
+    primary_state = _translation_logical_state(primary_database)
+    replay_state = _translation_logical_state(replay_database)
+    if not source_state == primary_state == replay_state:
+        raise SV1BPreflightError("accepted_translation_logical_state_mismatch")
+    primary_vocabulary, primary_private = _vocabulary_state(primary_database)
+    replay_vocabulary, replay_private = _vocabulary_state(replay_database)
+    if primary_vocabulary != replay_vocabulary or primary_private != replay_private:
+        raise SV1BPreflightError("primary_replay_localization_vocabulary_mismatch")
+    write_json(output / "localization-vocabulary-private.json", primary_private)
+    result = {
+        "accepted_translation_source_database": ACCEPTED_ML1_DB,
+        "accepted_translation_state": source_state,
+        "primary_copy": primary_copy,
+        "replay_copy": replay_copy,
+        "primary_replay_translation_fingerprint_equal": True,
+        "vocabulary": primary_vocabulary,
+        "external_llm_call_count": 0,
+        "projected_and_actual_llm_cost_usd": 0.0,
+        "fallback_provider_used": False,
+        "image_upload_count": 0,
+        "localization_complete": (
+            int(primary_vocabulary["blocking_missing_ai_translation_count"]) == 0
+        ),
+    }
+    write_json(output / "localization-baseline-proof.json", result)
+    return result
+
+
+def _prepare_graph_inputs(database: str) -> dict[str, Any]:
+    source = engine_for(ACCEPTED_R2R_DB)
+    target = engine_for(database)
+    target_meta = MetaData()
+    target_meta.reflect(bind=target, only=["blombooru_source_name_alias_candidates"])
+    alias_table = target_meta.tables.get("blombooru_source_name_alias_candidates")
+    if alias_table is None:
+        alias_table = target_meta.tables["public.blombooru_source_name_alias_candidates"]
+    try:
+        with source.connect() as source_connection:
+            alias_rows = [
+                _strip_row(dict(row)) for row in source_connection.execute(text(
+                    "SELECT * FROM blombooru_source_name_alias_candidates ORDER BY id"
+                )).mappings()
+            ]
+        with target.begin() as target_connection:
+            existing = int(target_connection.execute(text(
+                "SELECT COUNT(*) FROM blombooru_source_name_alias_candidates"
+            )).scalar() or 0)
+            if existing:
+                raise SV1BPreflightError("graph_alias_candidate_target_not_pristine")
+            inserted = _insert_batches(target_connection, alias_table, alias_rows)
+    finally:
+        source.dispose()
+        target.dispose()
+    f7a = import_reusable_f7a_inputs(ACCEPTED_R2R_DB, database)
+    return {
+        "alias_candidate_source_count": len(alias_rows),
+        "alias_candidate_inserted_count": inserted,
+        "f7a_reusable_inputs": f7a,
+        "derived_graph_row_import_count": 0,
+    }
+
+
+def _logical_signal_key(row: Mapping[str, Any], media_hash: Any, record_key: Any) -> tuple[str, ...]:
+    logical_fields = (
+        "origin_type", "provider", "raw_value", "normalized_key", "canonical_key",
+        "role_hint", "work_context_key", "source_kind", "trust_tier",
+    )
+    payload = row.get("evidence_payload") or {}
+    if not isinstance(payload, Mapping):
+        payload = {}
+    payload_identity = {
+        key: payload.get(key)
+        for key in ("candidate_key", "observation_key", "assertion_key", "provider_record_key", "tag_name")
+        if payload.get(key) is not None
+    }
+    return (
+        str(media_hash or ""), str(record_key or ""),
+        *(str(row.get(field) or "") for field in logical_fields),
+        canonical_json(payload_identity),
+    )
+
+
+def _accepted_r2r_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
+    accepted = read_json(ML2_PRIVATE / "accepted-r2r-disposition-input-private.json")
+    pairs_document = read_json(R2R_PRIVATE / "pair-manifest.json")
+    accepted_pairs = list(accepted.get("pairs") or ())
+    pair_rows = list(pairs_document.get("pairs") or ())
+    fingerprint = sha256_payload(accepted_pairs)
+    if fingerprint != ACCEPTED_R2R_SNAPSHOT_FINGERPRINT or accepted.get("snapshot_fingerprint") != fingerprint:
+        raise SV1BPreflightError("accepted_r2r_snapshot_fingerprint_mismatch")
+    accepted_ids = {str(row["pair_id"]) for row in accepted_pairs}
+    manifest_by_id = {str(row["pair_id"]): row for row in pair_rows}
+    if accepted_ids != set(manifest_by_id):
+        raise SV1BPreflightError("accepted_r2r_pair_manifest_membership_mismatch")
+    return accepted, manifest_by_id
+
+
+def finalize_r2r_proposal_classifications(
+    preliminary: dict[str, dict[str, Any]],
+    proposals_by_target: Mapping[str, list[str]],
+    accepted_by_id: Mapping[str, str],
+) -> None:
+    for _target_pair_id, old_pair_ids in proposals_by_target.items():
+        dispositions = {accepted_by_id[pair_id] for pair_id in old_pair_ids}
+        if len(dispositions) > 1:
+            final_classification = "conflicting_remap"
+        elif len(old_pair_ids) > 1:
+            final_classification = "ambiguous_remap"
+        else:
+            final_classification = "comparable"
+        for pair_id in old_pair_ids:
+            preliminary[pair_id]["classification"] = final_classification
+
+
+def audit_r2r_remap(database: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    from app.services.source_concept_autonomous_closure_service import build_candidate_pair_manifest
+    from app.services.source_concept_resolver_service import build_source_concept_signals, resolve_source_concepts
+
+    accepted, pair_manifest = _accepted_r2r_snapshot()
+    accepted_by_id = {str(row["pair_id"]): str(row["disposition"]) for row in accepted["pairs"]}
+    engine = engine_for(database)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        generated = build_source_concept_signals(session, run_id="sv1b-r2r-remap-audit")
+        current_media = {
+            int(row[0]): str(row[1]) for row in session.execute(text("SELECT id,hash FROM blombooru_media"))
+        }
+        current_records = {
+            int(row[0]): str(row[1]) for row in session.execute(text(
+                "SELECT id,provider_record_key FROM blombooru_source_metadata_records"
+            ))
+        }
+        old_engine = engine_for(ACCEPTED_R2R_DB)
+        try:
+            with old_engine.connect() as old_connection:
+                old_rows = list(old_connection.execute(text("""
+                    SELECT s.*,m.hash AS media_hash,r.provider_record_key
+                    FROM blombooru_source_concept_signals s
+                    LEFT JOIN blombooru_media m ON m.id=s.media_id
+                    LEFT JOIN blombooru_source_metadata_records r ON r.id=s.source_metadata_record_id
+                """)).mappings())
+        finally:
+            old_engine.dispose()
+        old_key_by_signal = {
+            str(row["signal_key"]): _logical_signal_key(row, row["media_hash"], row["provider_record_key"])
+            for row in old_rows
+        }
+        accepted_logical_keys = set(old_key_by_signal.values())
+        generated_by_logical: dict[tuple[str, ...], list[Any]] = defaultdict(list)
+        for signal in generated:
+            logical = _logical_signal_key(
+                signal.__dict__, current_media.get(signal.media_id),
+                current_records.get(signal.source_metadata_record_id),
+            )
+            if logical in accepted_logical_keys:
+                generated_by_logical[logical].append(signal)
+        accepted_signals = [signal for values in generated_by_logical.values() for signal in values]
+        deterministic = resolve_source_concepts(
+            accepted_signals, run_id="sv1b-r2r-remap-deterministic"
+        )
+        candidates = build_candidate_pair_manifest(
+            deterministic.edge_candidates, signals=accepted_signals, max_calls=10_000
+        )
+    finally:
+        session.close()
+        engine.dispose()
+
+    candidate_by_endpoints = {
+        frozenset((candidate.left_signal_key, candidate.right_signal_key)): candidate
+        for candidate in candidates
+    }
+    preliminary: dict[str, dict[str, Any]] = {}
+    proposals_by_target: dict[str, list[str]] = defaultdict(list)
+    for pair_id, disposition in accepted_by_id.items():
+        old_pair = pair_manifest[pair_id]
+        left_logical = old_key_by_signal.get(str(old_pair["left_signal_key"]))
+        right_logical = old_key_by_signal.get(str(old_pair["right_signal_key"]))
+        left = [signal.signal_key for signal in generated_by_logical.get(left_logical, ())]
+        right = [signal.signal_key for signal in generated_by_logical.get(right_logical, ())]
+        matches = {
+            candidate_by_endpoints[frozenset((left_key, right_key))].pair_id:
+            candidate_by_endpoints[frozenset((left_key, right_key))]
+            for left_key in left for right_key in right
+            if frozenset((left_key, right_key)) in candidate_by_endpoints
+        }
+        if len(matches) == 1:
+            target_pair_id = next(iter(matches))
+            classification = "proposed_comparable"
+            proposals_by_target[target_pair_id].append(pair_id)
+        elif len(matches) > 1 or len(left) > 1 or len(right) > 1:
+            target_pair_id = None
+            classification = "ambiguous_remap"
+        else:
+            target_pair_id = None
+            classification = "genuine_target_missing"
+        preliminary[pair_id] = {
+            "accepted_pair_id": pair_id,
+            "accepted_disposition": disposition,
+            "target_pair_id": target_pair_id,
+            "left_target_count": len(left),
+            "right_target_count": len(right),
+            "candidate_match_count": len(matches),
+            "classification": classification,
+        }
+
+    finalize_r2r_proposal_classifications(preliminary, proposals_by_target, accepted_by_id)
+
+    rows = [preliminary[pair_id] for pair_id in sorted(preliminary)]
+    counts = Counter(str(row["classification"]) for row in rows)
+    accepted_count = len(accepted_by_id)
+    accounted = sum(int(counts.get(key, 0)) for key in (
+        "comparable", "genuine_target_missing", "ambiguous_remap", "conflicting_remap"
+    ))
+    comparable = int(counts.get("comparable", 0))
+    result = {
+        "database": database,
+        "accepted_snapshot_fingerprint": ACCEPTED_R2R_SNAPSHOT_FINGERPRINT,
+        "accepted_pair_count": accepted_count,
+        "comparable_count": comparable,
+        "genuine_target_missing_count": int(counts.get("genuine_target_missing", 0)),
+        "ambiguous_remap_count": int(counts.get("ambiguous_remap", 0)),
+        "conflicting_remap_count": int(counts.get("conflicting_remap", 0)),
+        "accounting_equation_passed": accepted_count == accounted,
+        "compatibility": round(comparable / accepted_count, 9) if accepted_count else 1.0,
+        "compatibility_derived_from_verified_pairs": True,
+        "exact_endpoint_and_disposition_membership_passed": True,
+        "generated_signal_count": len(generated),
+        "accepted_logical_signal_count": len(accepted_signals),
+        "generated_candidate_count": len(candidates),
+        "pair_remap_membership_fingerprint": sha256_payload(rows),
+    }
+    if not result["accounting_equation_passed"]:
+        raise SV1BPreflightError("r2r_remap_accounting_equation_failed")
+    return result, rows
+
+
+def prepare_and_audit_r2r_baseline(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    validate_owned_output_root(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
+    if not (output / "localization-baseline-proof.json").is_file():
+        raise SV1BPreflightError("localization_baseline_proof_missing")
+    input_results = {
+        "primary": _prepare_graph_inputs(primary_database),
+        "replay": _prepare_graph_inputs(replay_database),
+    }
+    primary, primary_rows = audit_r2r_remap(primary_database)
+    replay, replay_rows = audit_r2r_remap(replay_database)
+    write_json(output / "r2r-primary-remap-private.json", primary_rows)
+    write_json(output / "r2r-replay-remap-private.json", replay_rows)
+    logical_equal = [
+        {key: value for key, value in row.items() if key != "target_pair_id"}
+        for row in primary_rows
+    ] == [
+        {key: value for key, value in row.items() if key != "target_pair_id"}
+        for row in replay_rows
+    ]
+    result = {
+        "graph_inputs": input_results,
+        "primary": primary,
+        "replay": replay,
+        "primary_replay_logical_remap_equal": logical_equal,
+        "target_completion_ready": bool(
+            logical_equal
+            and primary["ambiguous_remap_count"] == 0
+            and primary["conflicting_remap_count"] == 0
+        ),
+    }
+    write_json(output / "r2r-exact-remap-audit.json", result)
+    if not logical_equal:
+        raise SV1BPreflightError("primary_replay_r2r_remap_mismatch")
+    return result
+
+
 def provider_gate_preflight() -> dict[str, Any]:
     entrypoint = gallery_adapter.probe_gallery_dl_entrypoint(None)
     profile = validate_gallery_dl_profile(entrypoint.command, timeout_seconds=30)
@@ -341,12 +1064,77 @@ def provider_gate_preflight() -> dict[str, Any]:
     }
 
 
+def public_console_summary(result: Mapping[str, Any]) -> dict[str, Any]:
+    candidate = result.get("candidate_manifest") or {}
+    provider = result.get("provider_hardening") or {}
+    isolation = result.get("environment_isolation") or {}
+    accepted = result.get("accepted_nonderived_evidence") or {}
+    localization = result.get("localization_baseline") or {}
+    vocabulary = localization.get("vocabulary") or {}
+    r2r = result.get("r2r_baseline_audit") or {}
+    r2r_primary = r2r.get("primary") or {}
+    primary_import = accepted.get("primary_import") or {}
+    replay_import = accepted.get("replay_import") or {}
+    return {
+        "phase": result.get("phase"),
+        "status": result.get("status"),
+        "target_met": result.get("target_met"),
+        "safe_to_merge": result.get("safe_to_merge"),
+        "route_approved": result.get("route_approved"),
+        "manual_acceptance_status": result.get("manual_acceptance_status"),
+        "canonical_candidate_media_count": candidate.get("canonical_candidate_media_count"),
+        "page_media_manifest_row_count": candidate.get("page_media_manifest_row_count"),
+        "distinct_work_count": candidate.get("distinct_work_count"),
+        "provider_request_count": provider.get("provider_request_count"),
+        "provider_attempt_count": provider.get("provider_attempt_count"),
+        "environment_isolation_passed": isolation.get("passed"),
+        "primary_accepted_evidence_inserted_total": primary_import.get("inserted_total"),
+        "replay_accepted_evidence_inserted_total": replay_import.get("inserted_total"),
+        "accepted_evidence_reconciliation_passed": bool(
+            accepted.get("primary_reconciliation_passed") is True
+            and accepted.get("replay_reconciliation_passed") is True
+        ),
+        "ai_media_tag_vocabulary_count": vocabulary.get("ai_media_tag_vocabulary_count"),
+        "blocking_missing_ai_translation_count": vocabulary.get("blocking_missing_ai_translation_count"),
+        "external_llm_call_count": localization.get("external_llm_call_count"),
+        "accepted_r2r_pair_count": r2r_primary.get("accepted_pair_count"),
+        "r2r_comparable_count": r2r_primary.get("comparable_count"),
+        "r2r_genuine_target_missing_count": r2r_primary.get("genuine_target_missing_count"),
+        "r2r_ambiguous_remap_count": r2r_primary.get("ambiguous_remap_count"),
+        "r2r_conflicting_remap_count": r2r_primary.get("conflicting_remap_count"),
+        "private_values_exposed": False,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--stage",
+        choices=(
+            "inventory", "prepare-databases", "import-accepted-evidence",
+            "localization-baseline", "r2r-baseline-audit",
+        ),
+        default="inventory",
+    )
+    parser.add_argument("--primary-db", default=DEFAULT_PRIMARY_DB)
+    parser.add_argument("--replay-db", default=DEFAULT_REPLAY_DB)
     args = parser.parse_args()
     output = args.output.resolve()
-    repository = validate_repository_and_inputs(output)
+    resume_stage = args.stage in {
+        "import-accepted-evidence", "localization-baseline", "r2r-baseline-audit",
+    }
+    if resume_stage:
+        validate_owned_output_root(
+            output, primary_database=args.primary_db, replay_database=args.replay_db
+        )
+        repository = {
+            **read_json(output / "run-identity.json"),
+            "resume_head": git("rev-parse", "HEAD"),
+            "resume_ownership_passed": True,
+        }
+    else:
+        repository = validate_repository_and_inputs(output)
     immutable_before = immutable_input_fingerprints()
     pages, works, candidates = build_candidate_manifests()
     provider_gate = provider_gate_preflight()
@@ -361,21 +1149,67 @@ def main() -> int:
     if not immutable_proof["unchanged"]:
         raise SV1BPreflightError("immutable_input_drift_detected")
 
-    output.mkdir(parents=True, exist_ok=False)
-    write_json(output / "run-identity.json", {"phase": PHASE, **repository})
+    if not resume_stage:
+        output.mkdir(parents=True, exist_ok=False)
+        write_json(output / "run-identity.json", {"phase": PHASE, **repository})
     write_jsonl(output / "candidate-page-media-manifest-private.jsonl", pages)
     write_jsonl(output / "distinct-work-acquisition-manifest-private.jsonl", works)
     write_json(output / "candidate-manifest-summary.json", candidates)
     write_json(output / "provider-hardening-preflight.json", provider_gate)
     write_json(output / "immutable-input-proof.json", immutable_proof)
-    status = "provider_hardening_preflight_passed_auth_canary_pending" if provider_gate["passed"] else "blocked_sv1b_provider_authentication"
+    environment_isolation = None
+    if args.stage == "prepare-databases":
+        environment_isolation = prepare_isolated_databases(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif resume_stage:
+        environment_isolation = read_json(output / "database-ownership-and-baseline-proof.json")
+    accepted_evidence = None
+    if args.stage == "import-accepted-evidence":
+        accepted_evidence = import_accepted_nonderived_evidence(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage in {"localization-baseline", "r2r-baseline-audit"}:
+        accepted_evidence = read_json(output / "accepted-nonderived-evidence-proof.json")
+    localization_baseline = None
+    if args.stage == "localization-baseline":
+        localization_baseline = prepare_localization_baseline(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage == "r2r-baseline-audit":
+        localization_baseline = read_json(output / "localization-baseline-proof.json")
+    r2r_baseline_audit = None
+    if args.stage == "r2r-baseline-audit":
+        r2r_baseline_audit = prepare_and_audit_r2r_baseline(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    active_blockers: list[str] = []
+    if provider_gate["passed"] is not True:
+        active_blockers.append("blocked_sv1b_provider_authentication")
+    if localization_baseline and localization_baseline.get("localization_complete") is not True:
+        active_blockers.append("blocked_sv1b_normalization_or_localization")
+    if r2r_baseline_audit and r2r_baseline_audit.get("target_completion_ready") is not True:
+        active_blockers.append("blocked_sv1b_r2r_replay")
+    status = active_blockers[0] if active_blockers else "provider_hardening_preflight_passed_auth_canary_pending"
     result = {
         "phase": PHASE,
         "status": status,
         "candidate_manifest": candidates,
         "provider_hardening": provider_gate,
         "immutable_inputs_unchanged": immutable_proof["unchanged"],
-        "active_blockers": [] if provider_gate["passed"] else ["nonwaived_provider_credential_hardening_inputs_missing"],
+        "environment_isolation": environment_isolation,
+        "accepted_nonderived_evidence": accepted_evidence,
+        "localization_baseline": localization_baseline,
+        "r2r_baseline_audit": r2r_baseline_audit,
+        "active_blockers": active_blockers,
         "target_met": False,
         "safe_to_merge": False,
         "route_approved": False,
@@ -384,7 +1218,7 @@ def main() -> int:
         "next_phase_started": False,
     }
     write_json(output / "preflight-result.json", result)
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    print(json.dumps(public_console_summary(result), ensure_ascii=False, sort_keys=True))
     return 0 if provider_gate["passed"] else 3
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -8,8 +9,12 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     SV1BPreflightError,
     _strict_test_database,
     canonical_work_id,
+    finalize_r2r_proposal_classifications,
     outcome_for_pair,
+    public_console_summary,
     validate_output_root,
+    validate_owned_output_root,
+    validate_writable_databases,
 )
 
 
@@ -43,3 +48,82 @@ def test_work_id_canonicalization_removes_historical_leading_zeroes() -> None:
 def test_output_root_must_be_new_and_private(tmp_path: Path) -> None:
     with pytest.raises(SV1BPreflightError, match="private_output_root_escape"):
         validate_output_root(tmp_path / "outside")
+
+
+def test_writable_database_validation_rejects_overlap_before_exists_check(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.database_exists",
+        lambda _database: False,
+    )
+    with pytest.raises(SV1BPreflightError, match="overlaps_accepted"):
+        validate_writable_databases(
+            "blombooru_scv2_sv1_controlled_scale_test_20260718",
+            "blombooru_new_replay_test",
+        )
+
+
+def test_writable_database_validation_rejects_preexisting_unowned_database(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.database_exists",
+        lambda database: database.endswith("primary_test"),
+    )
+    with pytest.raises(SV1BPreflightError, match="ownership_unproven"):
+        validate_writable_databases("blombooru_sv1b_primary_test", "blombooru_sv1b_replay_test")
+
+
+def test_owned_output_requires_exact_phase_and_database_ownership(tmp_path: Path) -> None:
+    output = tmp_path / ".local_manifests" / "run"
+    output.mkdir(parents=True)
+    with pytest.raises(SV1BPreflightError, match="private_output_root_invalid|proof_missing"):
+        validate_owned_output_root(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+
+
+def test_public_console_summary_is_aggregate_allowlist() -> None:
+    result = {
+        "phase": "SCV2-SV1B",
+        "status": "blocked_sv1b_provider_authentication",
+        "target_met": False,
+        "safe_to_merge": False,
+        "route_approved": False,
+        "manual_acceptance_status": "not_generated_provider_gate_blocked",
+        "candidate_manifest": {
+            "canonical_candidate_media_count": 6496,
+            "page_media_manifest_row_count": 7757,
+            "distinct_work_count": 7028,
+            "private_media_id": "must-not-escape",
+        },
+        "provider_hardening": {"provider_request_count": 0, "provider_attempt_count": 0},
+        "environment_isolation": {"passed": True, "absolute_path": "must-not-escape"},
+        "accepted_nonderived_evidence": {
+            "primary_import": {"inserted_total": 36342, "raw_rows": ["must-not-escape"]},
+            "replay_import": {"inserted_total": 36342},
+            "primary_reconciliation_passed": True,
+            "replay_reconciliation_passed": True,
+        },
+    }
+    public = public_console_summary(result)
+    serialized = json.dumps(public, sort_keys=True)
+    assert "must-not-escape" not in serialized
+    assert public["private_values_exposed"] is False
+
+
+@pytest.mark.parametrize(
+    ("accepted", "expected"),
+    [
+        ({"a": "must_link"}, {"a": "comparable"}),
+        ({"a": "must_link", "b": "must_link"}, {"a": "ambiguous_remap", "b": "ambiguous_remap"}),
+        ({"a": "must_link", "b": "cannot_link"}, {"a": "conflicting_remap", "b": "conflicting_remap"}),
+    ],
+)
+def test_r2r_target_collision_classification_is_fail_closed(accepted, expected) -> None:
+    preliminary = {pair_id: {"classification": "proposed_comparable"} for pair_id in accepted}
+    finalize_r2r_proposal_classifications(
+        preliminary,
+        {"target": list(accepted)},
+        accepted,
+    )
+    assert {pair_id: row["classification"] for pair_id, row in preliminary.items()} == expected
