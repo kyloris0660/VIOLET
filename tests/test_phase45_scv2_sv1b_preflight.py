@@ -11,11 +11,15 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     audit_runtime_parser_denominator_rows,
     audit_acquisition_closure_rows,
     canonical_work_id,
+    build_full_candidate_dispositions,
+    compare_creator_family_states,
     execute_provider_manifest,
     filter_nonderived_source_package,
     finalize_r2r_proposal_classifications,
     outcome_for_pair,
     public_console_summary,
+    sha256_payload,
+    validate_graph_derivation_checkpoint,
     validate_output_root,
     validate_owned_output_root,
     validate_writable_databases,
@@ -185,6 +189,162 @@ def test_replay_package_filter_excludes_all_derived_sourceconcept_rows() -> None
     assert package["tables"]["source_metadata_records"] == [{"provider_record_key": "a"}]
     assert package["tables"]["source_concept_signals"] == []
     assert package["tables"]["source_concepts"] == []
+
+
+def test_full_candidate_dispositions_replay_accepted_and_defer_only_new_pairs() -> None:
+    from types import SimpleNamespace
+
+    candidates = [
+        SimpleNamespace(pair_id="p1", left_signal_key="a", right_signal_key="b"),
+        SimpleNamespace(pair_id="p2", left_signal_key="c", right_signal_key="d"),
+    ]
+    dispositions, accounting = build_full_candidate_dispositions(
+        candidates,
+        [
+            {
+                "classification": "comparable", "target_pair_id": "p1",
+                "accepted_pair_id": "old1", "accepted_disposition": "must_link",
+            },
+            {"classification": "genuine_target_missing", "accepted_pair_id": "old2"},
+        ],
+    )
+    assert {row.pair_id: row.disposition for row in dispositions} == {
+        "p1": "must_link",
+        "p2": "deferred_nonblocking",
+    }
+    assert accounting["accepted_comparable_pair_count"] == 1
+    assert accounting["accepted_genuine_target_missing_count"] == 1
+    assert accounting["new_deferred_nonblocking_pair_count"] == 1
+    assert accounting["normal_needs_review_count"] == 0
+    assert accounting["llm_call_count"] == 0
+    assert accounting["equation_balanced"] is True
+
+
+@pytest.mark.parametrize("classification", ["ambiguous_remap", "conflicting_remap"])
+def test_full_candidate_dispositions_reject_unsafe_accepted_remap(classification) -> None:
+    with pytest.raises(SV1BPreflightError, match="postacquisition_r2r_remap_not_safe"):
+        build_full_candidate_dispositions([], [{"classification": classification}])
+
+
+def test_creator_family_comparison_accepts_only_monotonic_trusted_growth() -> None:
+    accepted = {
+        "stable-a": {
+            "concept_key": "concept-a", "status": "active",
+            "aliases": (("a", "creator_identity_alias", "active"),),
+            "media_support": ("hash-a",),
+        }
+    }
+    current = {
+        "stable-a": {
+            "concept_key": "concept-a", "status": "active",
+            "aliases": (
+                ("a", "creator_identity_alias", "active"),
+                ("a2", "creator_identity_alias", "active"),
+            ),
+            "media_support": ("hash-a", "hash-b"),
+        },
+        "stable-b": {
+            "concept_key": "concept-b", "status": "active",
+            "aliases": (("b", "creator_identity_alias", "active"),),
+            "media_support": ("hash-c",),
+        },
+    }
+    result = compare_creator_family_states(accepted, current)
+    assert result["accepted_family_traceable_count"] == 1
+    assert result["changed_accepted_family_count"] == 1
+    assert result["new_creator_family_count"] == 1
+    assert result["new_alias_signal_count"] == 2
+    assert result["new_media_support_count"] == 2
+    assert result["every_changed_family_has_governed_reason"] is True
+
+
+@pytest.mark.parametrize("mutation", ["removed_alias", "concept_key_changed", "disappeared"])
+def test_creator_family_comparison_rejects_nonmonotonic_or_missing_identity(mutation) -> None:
+    accepted = {
+        "stable-a": {
+            "concept_key": "concept-a", "status": "active",
+            "aliases": (("a", "creator_identity_alias", "active"),),
+            "media_support": ("hash-a",),
+        }
+    }
+    if mutation == "disappeared":
+        current = {}
+    else:
+        current = {
+            "stable-a": {
+                "concept_key": "concept-b" if mutation == "concept_key_changed" else "concept-a",
+                "status": "active",
+                "aliases": () if mutation == "removed_alias" else accepted["stable-a"]["aliases"],
+                "media_support": ("hash-a",),
+            }
+        }
+    result = compare_creator_family_states(accepted, current)
+    if mutation == "disappeared":
+        assert result["accepted_stable_identity_disappeared_count"] == 1
+    else:
+        assert result["every_changed_family_has_governed_reason"] is False
+
+
+def _write_graph_checkpoint_fixture(output: Path) -> None:
+    package = {"package_version": "test", "tables": {}}
+    fingerprint = sha256_payload(package)
+    values = {
+        "acquisition-closure-and-package-proof.json": {
+            "passed": True,
+            "package": {"acquired_metadata_package_fingerprint": fingerprint},
+        },
+        "replay-acquired-evidence-import-proof.json": {
+            "passed": True,
+            "acquired_metadata_package_fingerprint": fingerprint,
+            "primary_replay_nonderived_logical_fingerprint_equal": True,
+        },
+        "localization-baseline-proof.json": {"localization_complete": True},
+        "r2r-exact-remap-audit.json": {
+            "target_completion_ready": True,
+            "primary": {
+                "accepted_snapshot_fingerprint": (
+                    "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
+                )
+            },
+        },
+        "accepted-nonderived-evidence-proof.json": {
+            "primary_reconciliation_passed": True,
+            "replay_reconciliation_passed": True,
+        },
+        "acquired-nonderived-evidence-package-private.json": package,
+    }
+    for name, value in values.items():
+        (output / name).write_text(json.dumps(value), encoding="utf-8")
+
+
+def test_graph_derivation_checkpoint_binds_all_reusable_memberships(tmp_path: Path) -> None:
+    _write_graph_checkpoint_fixture(tmp_path)
+    result = validate_graph_derivation_checkpoint(tmp_path)
+    assert result["passed"] is True
+    assert result["acquired_package_fingerprint_match"] is True
+    assert result["accepted_r2r_snapshot_pinned"] is True
+
+
+@pytest.mark.parametrize(
+    ("filename", "field"),
+    [
+        ("localization-baseline-proof.json", "localization_complete"),
+        ("replay-acquired-evidence-import-proof.json", "primary_replay_nonderived_logical_fingerprint_equal"),
+        ("r2r-exact-remap-audit.json", "target_completion_ready"),
+    ],
+)
+def test_graph_derivation_checkpoint_fails_closed_on_reusable_state_drift(
+    tmp_path: Path,
+    filename: str,
+    field: str,
+) -> None:
+    _write_graph_checkpoint_fixture(tmp_path)
+    path = tmp_path / filename
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value[field] = False
+    path.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(SV1BPreflightError, match="graph_derivation_checkpoint_failed"):
+        validate_graph_derivation_checkpoint(tmp_path)
 
 
 def test_output_root_must_be_new_and_private(tmp_path: Path) -> None:
