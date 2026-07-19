@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 from typing import Any, Iterable, Mapping
 
 from sqlalchemy import MetaData, text
@@ -28,10 +29,17 @@ for candidate in (ROOT, BACKEND):
 
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     MIN_REQUEST_SPACING_SECONDS,
+    PixivMetadataState,
     manifest_scoped_outcome_key,
+)
+from app.services.pixiv_filename_prior_service import (  # noqa: E402
+    PARSER_VERSION,
+    distinct_work_pages as durable_distinct_work_pages,
+    parse_approved_fields,
 )
 from scripts import run_phase44p2r_f2_gallery_dl_external_adapter_pilot as gallery_adapter  # noqa: E402
 from scripts.run_pixiv_metadata_ingestion import validate_gallery_dl_profile  # noqa: E402
+from scripts import run_pixiv_metadata_ingestion as ingestion_runner  # noqa: E402
 from scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness import (  # noqa: E402
     CORE_SOURCE_TABLES,
     Paths,
@@ -370,6 +378,75 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
     if not summary["candidate_accounting_passed"]:
         raise SV1BPreflightError("candidate_accounting_failed")
     return pages, works, summary
+
+
+def audit_runtime_parser_denominator_rows(media_rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Prove the durable queue parser exactly matches the accepted SV1 denominator."""
+
+    accepted_candidate_media: set[str] = set()
+    durable_candidate_media: set[str] = set()
+    accepted_membership: set[tuple[str, str, int]] = set()
+    durable_membership: set[tuple[str, str, int]] = set()
+    row_count = 0
+    for row in media_rows:
+        row_count += 1
+        stable_media_key = str(row.get("hash") or row.get("id") or "").strip()
+        if not stable_media_key:
+            raise SV1BPreflightError("runtime_parser_audit_media_stable_key_missing")
+        _category, filename_ids, stored_ids = classify_pixiv_denominator(row.get("filename"), row.get("path"))
+        accepted_pairs = {
+            (canonical_work_id(item["work_id"]), int(item["page_index"]))
+            for item in [*filename_ids, *stored_ids]
+        }
+        durable_pairs = set(durable_distinct_work_pages(parse_approved_fields((
+            ("filename", row.get("filename")),
+            ("stored_path", row.get("path")),
+        ))))
+        if accepted_pairs:
+            accepted_candidate_media.add(stable_media_key)
+        if durable_pairs:
+            durable_candidate_media.add(stable_media_key)
+        accepted_membership.update((stable_media_key, work_id, page) for work_id, page in accepted_pairs)
+        durable_membership.update((stable_media_key, work_id, page) for work_id, page in durable_pairs)
+
+    missing = accepted_membership - durable_membership
+    extra = durable_membership - accepted_membership
+    candidate_missing = accepted_candidate_media - durable_candidate_media
+    candidate_extra = durable_candidate_media - accepted_candidate_media
+    result = {
+        "runtime_parser_version": PARSER_VERSION,
+        "media_row_count": row_count,
+        "accepted_candidate_media_count": len(accepted_candidate_media),
+        "durable_candidate_media_count": len(durable_candidate_media),
+        "accepted_media_work_page_membership_count": len(accepted_membership),
+        "durable_media_work_page_membership_count": len(durable_membership),
+        "missing_candidate_media_count": len(candidate_missing),
+        "unexpected_candidate_media_count": len(candidate_extra),
+        "missing_media_work_page_count": len(missing),
+        "unexpected_media_work_page_count": len(extra),
+        "accepted_membership_fingerprint": sha256_payload(sorted(accepted_membership)),
+        "durable_membership_fingerprint": sha256_payload(sorted(durable_membership)),
+        "passed": not (candidate_missing or candidate_extra or missing or extra),
+    }
+    if result["passed"] is not True:
+        raise SV1BPreflightError(
+            "runtime_parser_denominator_mismatch:"
+            f"candidate_missing={len(candidate_missing)}:candidate_extra={len(candidate_extra)}:"
+            f"membership_missing={len(missing)}:membership_extra={len(extra)}"
+        )
+    return result
+
+
+def audit_runtime_parser_denominator() -> dict[str, Any]:
+    engine = engine_for(ACCEPTED_SCALE_DB)
+    try:
+        with engine.connect() as connection:
+            rows = list(connection.execute(text(
+                "SELECT id,hash,filename,path FROM blombooru_media ORDER BY hash"
+            )).mappings())
+    finally:
+        engine.dispose()
+    return audit_runtime_parser_denominator_rows(rows)
 
 
 def immutable_input_fingerprints() -> dict[str, Any]:
@@ -1031,6 +1108,120 @@ def prepare_and_audit_r2r_baseline(
     return result
 
 
+def queue_provider_manifest(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    validate_owned_output_root(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
+    if not (output / "r2r-exact-remap-audit.json").is_file():
+        raise SV1BPreflightError("r2r_exact_remap_audit_missing")
+    parser_audit_path = output / "runtime-parser-denominator-proof.json"
+    if not parser_audit_path.is_file() or read_json(parser_audit_path).get("passed") is not True:
+        raise SV1BPreflightError("runtime_parser_denominator_proof_missing_or_failed")
+    provider_output = output / "provider"
+    args = SimpleNamespace(
+        database=primary_database,
+        output_dir=provider_output,
+        execute=False,
+        accept_local_credential_risk=False,
+        replay_normalization_failures=False,
+        additional_diagnostic_calls=0,
+        gallery_dl_command="",
+        timeout=120,
+        phase_manifest_fingerprint=ACCEPTED_MANIFEST_FINGERPRINT,
+    )
+    queue_summary = ingestion_runner.run(args)
+    main_manifest = read_json(provider_output / "exact-distinct-work-manifest.json")
+    conflict_manifest = read_json(provider_output / "exact-conflict-resolution-manifest.json")
+    actual_main = {str(value) for value in main_manifest.get("work_ids") or ()}
+    actual_conflict = {str(value) for value in conflict_manifest.get("work_ids") or ()}
+    work_rows = read_jsonl(output / "distinct-work-acquisition-manifest-private.jsonl")
+    accepted_work_universe = {str(row["stable_work_id"]) for row in work_rows}
+    engine = engine_for(primary_database)
+    try:
+        with engine.connect() as connection:
+            queue_rows = list(connection.execute(text(
+                "SELECT source_work_id,status FROM blombooru_source_metadata_records "
+                "WHERE provider='pixiv' AND metadata_kind='pixiv_ingestion_gate' "
+                "AND source_work_id IS NOT NULL"
+            )).mappings())
+    finally:
+        engine.dispose()
+    states_by_work: dict[str, set[str]] = defaultdict(set)
+    for row in queue_rows:
+        states_by_work[str(row["source_work_id"])].add(str(row["status"] or ""))
+    expected_conflict = {
+        work_id for work_id, states in states_by_work.items()
+        if PixivMetadataState.CONFLICT.value in states
+    }
+    expected_main = {
+        work_id for work_id, states in states_by_work.items()
+        if states.intersection({PixivMetadataState.PENDING.value, PixivMetadataState.RETRYABLE.value})
+        and work_id not in expected_conflict
+    }
+    expected_open = expected_main | expected_conflict
+    actual_open = actual_main | actual_conflict
+    missing_main = sorted(expected_main - actual_main, key=int)
+    extra_main = sorted(actual_main - expected_main, key=int)
+    missing_conflict = sorted(expected_conflict - actual_conflict, key=int)
+    extra_conflict = sorted(actual_conflict - expected_conflict, key=int)
+    outside_accepted_universe = sorted(actual_open - accepted_work_universe, key=int)
+    missing = sorted((expected_open - actual_open), key=int)
+    extra = sorted((actual_open - expected_open), key=int)
+    main_conflict_overlap = actual_main.intersection(actual_conflict)
+    result = {
+        "phase_manifest_fingerprint": ACCEPTED_MANIFEST_FINGERPRINT,
+        "queued_media_count": int(queue_summary["queued_media_count"]),
+        "expected_open_distinct_work_count": len(expected_open),
+        "main_manifest_distinct_work_count": len(actual_main),
+        "conflict_manifest_distinct_work_count": len(actual_conflict),
+        "actual_open_distinct_work_count": len(actual_open),
+        "main_conflict_overlap_count": len(main_conflict_overlap),
+        "missing_main_manifest_work_count": len(missing_main),
+        "unexpected_main_manifest_work_count": len(extra_main),
+        "missing_conflict_manifest_work_count": len(missing_conflict),
+        "unexpected_conflict_manifest_work_count": len(extra_conflict),
+        "outside_accepted_work_universe_count": len(outside_accepted_universe),
+        "missing_expected_work_count": len(missing),
+        "unexpected_work_count": len(extra),
+        "missing_expected_work_fingerprint": sha256_payload(missing),
+        "unexpected_work_fingerprint": sha256_payload(extra),
+        "exact_open_work_membership_passed": not (
+            missing_main or extra_main or missing_conflict or extra_conflict
+            or outside_accepted_universe or main_conflict_overlap
+        ),
+        "provider_request_count": 0,
+        "provider_attempt_count": 0,
+        "media_download_count": 0,
+        "queue_state_counts": queue_summary["queue_state_counts"],
+        "main_manifest_fingerprint": ingestion_runner.executable_manifest_fingerprint(main_manifest),
+        "conflict_manifest_fingerprint": ingestion_runner.executable_manifest_fingerprint(conflict_manifest),
+    }
+    write_json(output / "provider-queue-manifest-proof.json", result)
+    if result["exact_open_work_membership_passed"] is not True:
+        write_json(output / "provider-queue-membership-mismatch-private.json", {
+            "missing_expected_work_ids": missing,
+            "unexpected_work_ids": extra,
+            "missing_main_manifest_work_ids": missing_main,
+            "unexpected_main_manifest_work_ids": extra_main,
+            "missing_conflict_manifest_work_ids": missing_conflict,
+            "unexpected_conflict_manifest_work_ids": extra_conflict,
+            "outside_accepted_work_universe_ids": outside_accepted_universe,
+            "main_conflict_overlap_work_ids": sorted(main_conflict_overlap, key=int),
+        })
+        raise SV1BPreflightError(
+            "provider_queue_manifest_membership_mismatch:"
+            f"main_missing={len(missing_main)}:main_extra={len(extra_main)}:"
+            f"conflict_missing={len(missing_conflict)}:conflict_extra={len(extra_conflict)}:"
+            f"outside_universe={len(outside_accepted_universe)}:overlap={len(main_conflict_overlap)}"
+        )
+    return result
+
+
 def provider_gate_preflight() -> dict[str, Any]:
     entrypoint = gallery_adapter.probe_gallery_dl_entrypoint(None)
     profile = validate_gallery_dl_profile(entrypoint.command, timeout_seconds=30)
@@ -1073,6 +1264,8 @@ def public_console_summary(result: Mapping[str, Any]) -> dict[str, Any]:
     vocabulary = localization.get("vocabulary") or {}
     r2r = result.get("r2r_baseline_audit") or {}
     r2r_primary = r2r.get("primary") or {}
+    queue = result.get("provider_queue") or {}
+    parser_audit = result.get("runtime_parser_denominator") or {}
     primary_import = accepted.get("primary_import") or {}
     replay_import = accepted.get("replay_import") or {}
     return {
@@ -1102,6 +1295,10 @@ def public_console_summary(result: Mapping[str, Any]) -> dict[str, Any]:
         "r2r_genuine_target_missing_count": r2r_primary.get("genuine_target_missing_count"),
         "r2r_ambiguous_remap_count": r2r_primary.get("ambiguous_remap_count"),
         "r2r_conflicting_remap_count": r2r_primary.get("conflicting_remap_count"),
+        "queued_open_distinct_work_count": queue.get("actual_open_distinct_work_count"),
+        "provider_queue_membership_passed": queue.get("exact_open_work_membership_passed"),
+        "runtime_parser_version": parser_audit.get("runtime_parser_version"),
+        "runtime_parser_denominator_passed": parser_audit.get("passed"),
         "private_values_exposed": False,
     }
 
@@ -1114,6 +1311,7 @@ def main() -> int:
         choices=(
             "inventory", "prepare-databases", "import-accepted-evidence",
             "localization-baseline", "r2r-baseline-audit",
+            "queue-provider",
         ),
         default="inventory",
     )
@@ -1122,7 +1320,7 @@ def main() -> int:
     args = parser.parse_args()
     output = args.output.resolve()
     resume_stage = args.stage in {
-        "import-accepted-evidence", "localization-baseline", "r2r-baseline-audit",
+        "import-accepted-evidence", "localization-baseline", "r2r-baseline-audit", "queue-provider",
     }
     if resume_stage:
         validate_owned_output_root(
@@ -1136,6 +1334,7 @@ def main() -> int:
     else:
         repository = validate_repository_and_inputs(output)
     immutable_before = immutable_input_fingerprints()
+    runtime_parser_denominator = audit_runtime_parser_denominator()
     pages, works, candidates = build_candidate_manifests()
     provider_gate = provider_gate_preflight()
     immutable_after = immutable_input_fingerprints()
@@ -1157,6 +1356,7 @@ def main() -> int:
     write_json(output / "candidate-manifest-summary.json", candidates)
     write_json(output / "provider-hardening-preflight.json", provider_gate)
     write_json(output / "immutable-input-proof.json", immutable_proof)
+    write_json(output / "runtime-parser-denominator-proof.json", runtime_parser_denominator)
     environment_isolation = None
     if args.stage == "prepare-databases":
         environment_isolation = prepare_isolated_databases(
@@ -1173,7 +1373,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"localization-baseline", "r2r-baseline-audit"}:
+    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider"}:
         accepted_evidence = read_json(output / "accepted-nonderived-evidence-proof.json")
     localization_baseline = None
     if args.stage == "localization-baseline":
@@ -1182,11 +1382,20 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage == "r2r-baseline-audit":
+    elif args.stage in {"r2r-baseline-audit", "queue-provider"}:
         localization_baseline = read_json(output / "localization-baseline-proof.json")
     r2r_baseline_audit = None
     if args.stage == "r2r-baseline-audit":
         r2r_baseline_audit = prepare_and_audit_r2r_baseline(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage == "queue-provider":
+        r2r_baseline_audit = read_json(output / "r2r-exact-remap-audit.json")
+    provider_queue = None
+    if args.stage == "queue-provider":
+        provider_queue = queue_provider_manifest(
             output,
             primary_database=args.primary_db,
             replay_database=args.replay_db,
@@ -1203,12 +1412,14 @@ def main() -> int:
         "phase": PHASE,
         "status": status,
         "candidate_manifest": candidates,
+        "runtime_parser_denominator": runtime_parser_denominator,
         "provider_hardening": provider_gate,
         "immutable_inputs_unchanged": immutable_proof["unchanged"],
         "environment_isolation": environment_isolation,
         "accepted_nonderived_evidence": accepted_evidence,
         "localization_baseline": localization_baseline,
         "r2r_baseline_audit": r2r_baseline_audit,
+        "provider_queue": provider_queue,
         "active_blockers": active_blockers,
         "target_met": False,
         "safe_to_merge": False,

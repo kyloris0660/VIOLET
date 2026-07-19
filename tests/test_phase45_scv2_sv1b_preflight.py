@@ -8,6 +8,7 @@ import pytest
 from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure import (
     SV1BPreflightError,
     _strict_test_database,
+    audit_runtime_parser_denominator_rows,
     canonical_work_id,
     finalize_r2r_proposal_classifications,
     outcome_for_pair,
@@ -43,6 +44,28 @@ def test_work_id_canonicalization_removes_historical_leading_zeroes() -> None:
     assert canonical_work_id("000123") == "123"
     with pytest.raises(SV1BPreflightError, match="out_of_range"):
         canonical_work_id("0")
+
+
+def test_runtime_parser_audit_accepts_exact_scv2_denominator_membership() -> None:
+    result = audit_runtime_parser_denominator_rows([
+        {"id": 1, "hash": "a", "filename": "1234567.jpg", "path": "media/original/1234567.jpg"},
+        {"id": 2, "hash": "b", "filename": "001234567-P2.png", "path": "media/original/001234567-P2.png"},
+        {"id": 3, "hash": "c", "filename": "plain.jpg", "path": "media/original/plain.jpg"},
+    ])
+    assert result["passed"] is True
+    assert result["accepted_candidate_media_count"] == 2
+    assert result["durable_candidate_media_count"] == 2
+
+
+def test_runtime_parser_audit_fails_closed_on_parser_drift(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.parse_approved_fields",
+        lambda _fields: (),
+    )
+    with pytest.raises(SV1BPreflightError, match="runtime_parser_denominator_mismatch"):
+        audit_runtime_parser_denominator_rows([
+            {"id": 1, "hash": "a", "filename": "1234567.jpg", "path": "media/original/1234567.jpg"},
+        ])
 
 
 def test_output_root_must_be_new_and_private(tmp_path: Path) -> None:

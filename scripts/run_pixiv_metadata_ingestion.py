@@ -33,6 +33,7 @@ for candidate in (ROOT, BACKEND_ROOT):
 from app.models import Media  # noqa: E402
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     MIN_REQUEST_SPACING_SECONDS,
+    PersistentRequestSpacing,
     PixivMetadataGateError,
     PixivMetadataState,
     backfill_creator_source_observations,
@@ -43,6 +44,7 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     queue_media_for_pixiv_metadata,
     require_rotation_confirmation,
     run_bounded_acquisition,
+    manifest_scoped_outcome_key,
 )
 from app.services.pixiv_filename_prior_service import PARSER_VERSION  # noqa: E402
 from app.utils.cache import invalidate_source_metadata_search_cache  # noqa: E402
@@ -53,6 +55,11 @@ from scripts import run_phase45_scv2_r2_constraint_aware_graph_remediation as r2
 ACCEPTED_IMMUTABLE_DATABASES = {
     "blombooru_scv2_r2r_dryrun_test_20260710",
     "blombooru_scv2_r2_review4_test_20260710",
+    "blombooru_scv2_ml1_acquisition_test_20260712",
+    "blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715",
+    "blombooru_scv2_sv1_controlled_scale_test_20260718",
+    "blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1",
+    "blombooru_scv2_sv1_rebuild_verification_test_20260718",
 }
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests/phase-4.5-scv2-ml1-pixiv-metadata-ingestion"
 TOKEN_CANDIDATE_RE = re.compile(r"[A-Za-z0-9_.=+/\-:%;,@!?$^&*(){}\[\]~]{8,}")
@@ -155,6 +162,20 @@ def select_deterministic_canary_work_ids(
     return tuple(selected[:limit])
 
 
+def governed_page_outcome(statuses: Iterable[str]) -> str:
+    values = {str(value or "") for value in statuses}
+    complete = {"metadata_complete", "observed", "active", "accepted"}
+    terminal = {"terminal_remote_unavailable"}
+    deferred = {"deferred_nonblocking_source_page_mismatch"}
+    if values and values.issubset(complete):
+        return "metadata_complete"
+    if values and values.issubset(terminal):
+        return "terminal_remote_unavailable"
+    if values and values.issubset(deferred):
+        return "deferred_nonblocking_source_page_mismatch"
+    return "unresolved_mixed_or_open_page_state"
+
+
 def validate_gallery_dl_profile(
     entrypoint: Sequence[str], *, command_runner=subprocess.run, timeout_seconds: int = 30
 ) -> dict[str, Any]:
@@ -189,21 +210,30 @@ def run_deterministic_auth_canary(
     accept_local_credential_risk: bool = False,
     result_callback=None,
     sleeper=time.sleep,
+    persistent_spacing: PersistentRequestSpacing | None = None,
+    prior_attempt_counts: Mapping[str, int] | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
     selected = tuple(dict.fromkeys(str(value) for value in work_ids))[:MAX_CANARY_WORKS]
     all_results: list[Any] = []
     for offset in range(0, len(selected), batch_size):
         batch = selected[offset : offset + batch_size]
-        if offset and any(item.request_attempted for item in all_results):
+        if offset and persistent_spacing is None and any(item.request_attempted for item in all_results):
             sleeper(MIN_REQUEST_SPACING_SECONDS)
-        results = acquire(
-            session,
-            batch,
+        acquire_kwargs = dict(
             entrypoint=entrypoint,
             authentication_passed=True,
             env=env,
             accept_local_credential_risk=accept_local_credential_risk,
             result_callback=result_callback,
+        )
+        if persistent_spacing is not None:
+            acquire_kwargs["persistent_spacing"] = persistent_spacing
+        if prior_attempt_counts is not None:
+            acquire_kwargs["prior_attempt_counts"] = prior_attempt_counts
+        results = acquire(
+            session,
+            batch,
+            **acquire_kwargs,
         )
         all_results.extend(results)
         stop = systemic_stop_result(results)
@@ -246,8 +276,8 @@ def _isolated_database_allowed(database: str) -> bool:
     lowered = database.casefold()
     return (
         database not in ACCEPTED_IMMUTABLE_DATABASES
-        and "ml1" in lowered
-        and any(marker in lowered for marker in ("test", "dev"))
+        and any(lane in lowered for lane in ("ml1", "sv1b"))
+        and "test" in lowered
         and not any(marker in lowered for marker in ("prod", "production"))
         and lowered not in {"blombooru", "postgres", "production", "prod"}
     )
@@ -284,7 +314,7 @@ def record_attempt_accounting(
     """Persist truthful provider-call accounting for success and early-stop paths."""
 
     attempted_results = [item for item in all_results if item.request_attempted]
-    request_attempt_count = sum(int(item.attempt_count) for item in attempted_results)
+    request_attempt_count = sum(int(value["attempt_count"]) for value in outcome_ledger.values())
     for key in ("gallery_dl_calls", "pixiv_provider_calls", "provider_metadata_acquisition_calls"):
         summary["operation_counts"][key] = request_attempt_count
 
@@ -299,7 +329,7 @@ def record_attempt_accounting(
     acquisition["provider_request_attempt_count"] = request_attempt_count
     acquisition["gallery_dl_call_count"] = request_attempt_count
     acquisition["max_observed_attempts_for_one_work"] = max(
-        [0, *(int(item.attempt_count) for item in attempted_results)]
+        [0, *(int(value["attempt_count"]) for value in outcome_ledger.values())]
     )
 
     outcome_counts = Counter(value["final_outcome"] for value in outcome_ledger.values())
@@ -602,6 +632,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         conflict_manifest_payload = build_executable_manifest(conflict_manifest, manifest_kind="conflict")
         main_manifest_fingerprint = executable_manifest_fingerprint(main_manifest_payload)
         conflict_manifest_fingerprint = executable_manifest_fingerprint(conflict_manifest_payload)
+        phase_manifest_fingerprint = str(
+            getattr(args, "phase_manifest_fingerprint", "") or ""
+        ).strip().casefold()
+        if phase_manifest_fingerprint and not re.fullmatch(r"[0-9a-f]{64}", phase_manifest_fingerprint):
+            raise PixivMetadataGateError("blocked_phase_manifest_fingerprint_invalid")
         waiver_accepted = _local_credential_risk_accepted(args)
         if getattr(args, "replay_normalization_failures", False):
             if not args.execute:
@@ -640,6 +675,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "conflict_resolution_manifest_fingerprint": conflict_manifest_fingerprint,
                 "checkpoint_main_manifest_fingerprint": main_manifest_fingerprint,
                 "checkpoint_conflict_manifest_fingerprint": conflict_manifest_fingerprint,
+                "phase_manifest_fingerprint": phase_manifest_fingerprint or None,
                 "max_attempts_per_work": 3,
                 "unique_work_ids_attempted_count": 0,
                 "normal_manifest_work_ids_attempted_count": 0,
@@ -700,12 +736,43 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if not profile["provider_profile_available"]:
             raise PixivMetadataGateError("blocked_gallery_dl_profile_unavailable")
         outcome_ledger: dict[str, dict[str, Any]] = {}
+        page_outcome_ledger: dict[str, dict[str, Any]] = {}
         checkpoint_path = output_dir / "acquisition-checkpoint.json"
+        if checkpoint_path.is_file():
+            prior_checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            if not (
+                prior_checkpoint.get("main_manifest_fingerprint") == main_manifest_fingerprint
+                and prior_checkpoint.get("conflict_manifest_fingerprint") == conflict_manifest_fingerprint
+                and prior_checkpoint.get("phase_manifest_fingerprint") == (phase_manifest_fingerprint or None)
+            ):
+                raise PixivMetadataGateError("blocked_stale_acquisition_checkpoint_fingerprint_mismatch")
+            outcome_ledger.update(prior_checkpoint.get("final_outcomes") or {})
+            page_outcome_ledger.update(prior_checkpoint.get("manifest_scoped_page_outcomes") or {})
+
+        persistent_spacing = None
+        if phase_manifest_fingerprint:
+            persistent_spacing = PersistentRequestSpacing(
+                output_dir / "persistent-request-spacing.json",
+                phase_manifest_fingerprint=phase_manifest_fingerprint,
+            )
+
+        def requested_page_statuses_for_work(work_id: str) -> dict[int, set[str]]:
+            page_statuses: dict[int, set[str]] = {}
+            for page_index, status in session.execute(text("""
+                    SELECT source_page_index,status FROM blombooru_source_metadata_records
+                    WHERE provider='pixiv' AND metadata_kind=:kind AND source_work_id=:work_id
+                """), {"kind": "pixiv_ingestion_gate", "work_id": str(work_id)}):
+                page_statuses.setdefault(int(page_index or 0), set()).add(str(status or ""))
+            return page_statuses
 
         def checkpoint_result(item: Any, *, conflict: bool = False) -> None:
             if not item.request_attempted:
                 return
-            if item.work_id in outcome_ledger:
+            prior_outcome = outcome_ledger.get(item.work_id)
+            if prior_outcome is not None and not (
+                "retryable" in str(prior_outcome.get("final_outcome") or "")
+                and int(prior_outcome.get("attempt_count") or 0) < int(item.attempt_count) <= 3
+            ):
                 raise PixivMetadataGateError("duplicate_final_outcome_for_attempted_work")
             outcome_ledger[item.work_id] = {
                 "manifest_kind": "conflict" if conflict else "main",
@@ -714,13 +781,36 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "systemic_stop": bool(item.systemic_stop),
                 "error_class": item.error_class,
             }
+            if phase_manifest_fingerprint:
+                for page_index, statuses in requested_page_statuses_for_work(item.work_id).items():
+                    page_key = manifest_scoped_outcome_key(
+                        phase_manifest_fingerprint, "pixiv", item.work_id, page_index
+                    )
+                    if page_key in page_outcome_ledger:
+                        prior_page = page_outcome_ledger[page_key]
+                        if not (
+                            str(prior_page.get("final_outcome") or "") == "unresolved_mixed_or_open_page_state"
+                            and int(prior_page.get("attempt_count") or 0) < int(item.attempt_count) <= 3
+                        ):
+                            raise PixivMetadataGateError("duplicate_manifest_scoped_page_outcome")
+                    page_outcome_ledger[page_key] = {
+                        "provider": "pixiv",
+                        "work_id": item.work_id,
+                        "requested_page_index": page_index,
+                        "manifest_kind": "conflict" if conflict else "main",
+                        "final_outcome": governed_page_outcome(statuses),
+                        "record_statuses": sorted(statuses),
+                        "attempt_count": int(item.attempt_count),
+                    }
             _write_private_json(
                 checkpoint_path,
                 {
                     "checkpoint_version": "ml1_pixiv_acquisition_checkpoint_v1",
                     "main_manifest_fingerprint": main_manifest_fingerprint,
                     "conflict_manifest_fingerprint": conflict_manifest_fingerprint,
+                    "phase_manifest_fingerprint": phase_manifest_fingerprint or None,
                     "final_outcomes": outcome_ledger,
+                    "manifest_scoped_page_outcomes": page_outcome_ledger,
                     "provider_request_attempt_count": sum(
                         int(value["attempt_count"]) for value in outcome_ledger.values()
                     ),
@@ -738,6 +828,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 env=os.environ,
                 accept_local_credential_risk=waiver_accepted,
                 result_callback=lambda item: checkpoint_result(item, conflict=False),
+                persistent_spacing=persistent_spacing,
+                prior_attempt_counts={key: int(value.get("attempt_count") or 0) for key, value in outcome_ledger.items()},
             )
             summary["redacted_authentication_preflight"] = {"performed": True, **canary}
             if not canary.get("passed"):
@@ -755,8 +847,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             canary = {"passed": True, "performed": False, "reason": "empty_main_manifest"}
             summary["redacted_authentication_preflight"] = canary
         remaining = pending_distinct_work_ids(session)
-        if remaining:
-            time.sleep(MIN_REQUEST_SPACING_SECONDS)
         results = run_bounded_acquisition(
             session,
             remaining,
@@ -765,6 +855,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             timeout_seconds=args.timeout,
             accept_local_credential_risk=waiver_accepted,
             result_callback=lambda item: checkpoint_result(item, conflict=False),
+            persistent_spacing=persistent_spacing,
+            prior_attempt_counts={key: int(value.get("attempt_count") or 0) for key, value in outcome_ledger.items()},
         )
         main_stop = systemic_stop_result(results)
         conflict_results: list[Any] = []
@@ -779,6 +871,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 allow_conflict_resolution=True,
                 accept_local_credential_risk=waiver_accepted,
                 result_callback=lambda item: checkpoint_result(item, conflict=True),
+                persistent_spacing=persistent_spacing,
+                prior_attempt_counts={key: int(value.get("attempt_count") or 0) for key, value in outcome_ledger.items()},
             )
             conflict_stop = systemic_stop_result(conflict_results)
             if conflict_stop is not None:
@@ -808,6 +902,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "conflict_resolved_terminal_unavailable",
             }
         ).items()))
+        summary["acquisition_execution"]["manifest_scoped_page_outcome_count"] = len(page_outcome_ledger)
+        summary["acquisition_execution"]["manifest_scoped_page_outcome_fingerprint"] = executable_manifest_fingerprint({
+            "manifest_kind": "sv1b-page-outcomes",
+            "work_ids": sorted(page_outcome_ledger),
+        })
+        summary["acquisition_execution"]["persistent_spacing"] = (
+            persistent_spacing.public_evidence() if persistent_spacing is not None else {"enabled": False}
+        )
         summary["acquisition_execution"]["skipped_complete_work_count"] = sum(not item.request_attempted for item in [*results, *conflict_results])
         lifecycle_counts = acquisition_work_lifecycle_counts(session)
         summary["final_work_lifecycle_counts"] = lifecycle_counts
@@ -849,6 +951,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Additional redacted diagnostic provider calls to include when resuming corrected replay.",
     )
     parser.add_argument("--gallery-dl-command", default=os.getenv("VIOLET_GALLERY_DL_COMMAND", ""))
+    parser.add_argument(
+        "--phase-manifest-fingerprint",
+        default=os.getenv("VIOLET_PHASE_MANIFEST_FINGERPRINT", ""),
+        help="Optional 64-hex phase manifest fingerprint enabling restart-safe spacing and page outcome keys.",
+    )
     parser.add_argument("--timeout", type=int, default=120)
     return parser
 

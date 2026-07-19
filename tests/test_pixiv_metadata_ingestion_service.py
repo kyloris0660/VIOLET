@@ -27,6 +27,7 @@ from app.services.pixiv_metadata_ingestion_service import (
     backfill_creator_source_observations,
     build_gallery_dl_metadata_command,
     classify_gallery_dl_failure,
+    conflicted_distinct_work_ids,
     defer_proven_source_page_mismatch,
     is_trusted_complete_pixiv_metadata_record,
     mark_work_state,
@@ -41,6 +42,10 @@ from app.services.pixiv_metadata_ingestion_service import (
     run_bounded_acquisition,
     summarize_batch_closure,
     supersede_untrusted_pixiv_creator_observations,
+)
+from app.services.pixiv_filename_prior_service import (
+    PARSER_VERSION,
+    extract_pixiv_filename_prior_from_text,
 )
 from scripts import run_pixiv_metadata_ingestion as ingestion_runner
 from scripts.run_pixiv_metadata_ingestion import scan_text_for_fingerprints
@@ -105,6 +110,29 @@ def test_import_gate_persists_pending_then_closes_all_pages(db) -> None:
     assert db.query(SourceTagObservation).count() == 2
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("1234567.jpg", [("1234567", 0)]),
+        ("prefix_12345678_p12.png", [("12345678", 12)]),
+        ("prefix_12345678-p3.png", [("12345678", 3)]),
+        ("prefix_12345678_P4.png", [("12345678", 4)]),
+        ("prefix_001234567_p2.png", [("1234567", 2)]),
+        ("123456.jpg", []),
+        ("x1234567890123y.jpg", []),
+    ],
+)
+def test_runtime_filename_prior_matches_accepted_scv2_denominator(text, expected) -> None:
+    matches = extract_pixiv_filename_prior_from_text(text)
+    assert [(item["pixiv_work_id"], item["page_index"]) for item in matches] == expected
+    assert PARSER_VERSION == "scv2_pixiv_filename_prior_v2"
+
+
+def test_runtime_filename_prior_deduplicates_canonical_leading_zero_identity() -> None:
+    matches = extract_pixiv_filename_prior_from_text("001234567_p2__1234567_p2.jpg")
+    assert [(item["pixiv_work_id"], item["page_index"]) for item in matches] == [("1234567", 2)]
+
+
 def test_import_gate_records_every_conflicted_work_membership(db) -> None:
     decision = queue_media_for_pixiv_metadata(
         db,
@@ -121,6 +149,25 @@ def test_import_gate_records_every_conflicted_work_membership(db) -> None:
     assert closure["pixiv_candidate_count"] == 1
     assert closure["open_candidate_count"] == 1
     assert closure["closed"] is False
+
+
+def test_pending_manifest_excludes_work_owned_by_conflict_manifest(db) -> None:
+    queue_media_for_pixiv_metadata(
+        db,
+        {"id": 81, "filename": "123456789_p0.jpg", "path": "media/original/123456789_p0.jpg"},
+    )
+    queue_media_for_pixiv_metadata(
+        db,
+        {
+            "id": 82,
+            "filename": "123456789_p0__987654321_p2.jpg",
+            "path": "media/original/conflict.jpg",
+        },
+    )
+    db.commit()
+
+    assert pending_distinct_work_ids(db) == ()
+    assert conflicted_distinct_work_ids(db) == ("123456789", "987654321")
 
 
 def test_complete_compatible_record_is_reused_without_reacquisition(db) -> None:
@@ -369,6 +416,16 @@ def test_rotation_gate_and_metadata_only_command() -> None:
     assert ingestion_runner._isolated_database_allowed("blombooru") is False
 
 
+def test_isolated_database_allowlist_accepts_sv1b_test_but_denies_accepted_and_prod() -> None:
+    assert ingestion_runner._isolated_database_allowed(
+        "blombooru_scv2_sv1b_metadata_graph_closure_test_20260719"
+    ) is True
+    assert ingestion_runner._isolated_database_allowed(
+        "blombooru_scv2_sv1_controlled_scale_test_20260718"
+    ) is False
+    assert ingestion_runner._isolated_database_allowed("blombooru_scv2_sv1b_prod") is False
+
+
 def test_credential_gate_is_the_only_operator_confirmation_before_provider_call(db) -> None:
     queue_media_for_pixiv_metadata(db, {"id": 15, "filename": "123456789_p0.jpg", "path": "media/15.jpg"})
     db.commit()
@@ -467,6 +524,56 @@ def test_systemic_failure_stops_all_later_main_and_conflict_calls(db, stderr: st
     assert results[0].systemic_stop is True
     assert results[0].error_class == expected_error
     assert ingestion_runner.conflict_manifest_may_start(results) is False
+
+
+def test_resume_attempt_budget_is_cumulative_and_never_exceeds_three(db) -> None:
+    queue_media_for_pixiv_metadata(
+        db, {"id": 221, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg"}
+    )
+    db.commit()
+    calls = []
+
+    def failed(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="429 rate limit")
+
+    result = run_bounded_acquisition(
+        db,
+        ["123456789"],
+        entrypoint=("gallery-dl",),
+        authentication_passed=True,
+        accept_local_credential_risk=True,
+        command_runner=failed,
+        sleeper=lambda _seconds: None,
+        max_attempts_per_work=3,
+        prior_attempt_counts={"123456789": 2},
+    )[0]
+    assert len(calls) == 1
+    assert result.attempt_count == 3
+    assert result.systemic_stop is True
+
+
+def test_resume_with_exhausted_attempt_budget_makes_no_provider_call(db) -> None:
+    queue_media_for_pixiv_metadata(
+        db, {"id": 222, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg"}
+    )
+    db.commit()
+    calls = []
+    result = run_bounded_acquisition(
+        db,
+        ["123456789"],
+        entrypoint=("gallery-dl",),
+        authentication_passed=True,
+        accept_local_credential_risk=True,
+        command_runner=lambda command, **_kwargs: calls.append(command),
+        sleeper=lambda _seconds: None,
+        max_attempts_per_work=3,
+        prior_attempt_counts={"123456789": 3},
+    )[0]
+    assert calls == []
+    assert result.request_attempted is False
+    assert result.error_class == "retry_budget_exhausted"
+    assert result.attempt_count == 3
 
 
 def test_terminal_and_normalization_failures_do_not_stop_unrelated_works(db) -> None:
@@ -1295,6 +1402,43 @@ def test_terminal_only_canary_advances_to_next_bounded_batch(db) -> None:
     assert calls == [("123456789",), ("223456789",)]
     assert sleeps == [ingestion_runner.MIN_REQUEST_SPACING_SECONDS]
     assert proof["passed"] is True
+
+
+def test_canary_reuses_persistent_spacing_without_outer_sleep(db) -> None:
+    calls = []
+    sleeps = []
+    marker = object()
+
+    def acquire(_session, work_ids, **kwargs):
+        calls.append((tuple(work_ids), kwargs.get("persistent_spacing")))
+        state = PixivMetadataState.TERMINAL.value if len(calls) == 1 else PixivMetadataState.COMPLETE.value
+        return [type("R", (), {
+            "work_id": work_ids[0], "state": state, "request_attempted": True,
+            "attempt_count": 1, "error_class": None,
+        })()]
+
+    _, proof = ingestion_runner.run_deterministic_auth_canary(
+        db, ["123456789", "223456789"], entrypoint=("gallery-dl",),
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, acquire=acquire,
+        batch_size=1, sleeper=sleeps.append, persistent_spacing=marker,
+    )
+    assert calls == [(('123456789',), marker), (('223456789',), marker)]
+    assert sleeps == []
+    assert proof["passed"] is True
+
+
+@pytest.mark.parametrize(
+    ("statuses", "expected"),
+    [
+        ({"metadata_complete", "accepted"}, "metadata_complete"),
+        ({"terminal_remote_unavailable"}, "terminal_remote_unavailable"),
+        ({"deferred_nonblocking_source_page_mismatch"}, "deferred_nonblocking_source_page_mismatch"),
+        ({"metadata_complete", "terminal_remote_unavailable"}, "unresolved_mixed_or_open_page_state"),
+        ({"retryable"}, "unresolved_mixed_or_open_page_state"),
+    ],
+)
+def test_page_outcomes_are_derived_from_page_local_record_states(statuses, expected) -> None:
+    assert ingestion_runner.governed_page_outcome(statuses) == expected
 
 
 def test_creator_source_backfill_is_additive_query_visible_and_role_safe(db) -> None:

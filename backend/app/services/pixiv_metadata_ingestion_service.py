@@ -771,6 +771,16 @@ def summarize_batch_closure(session: Session, media_ids: Iterable[int]) -> dict[
 
 
 def pending_distinct_work_ids(session: Session) -> tuple[str, ...]:
+    conflicted_work_ids = (
+        session.query(SourceMetadataRecord.source_work_id)
+        .filter(
+            SourceMetadataRecord.provider == "pixiv",
+            SourceMetadataRecord.metadata_kind == QUEUE_METADATA_KIND,
+            SourceMetadataRecord.status == PixivMetadataState.CONFLICT.value,
+            SourceMetadataRecord.source_work_id.isnot(None),
+        )
+        .distinct()
+    )
     rows = (
         session.query(SourceMetadataRecord.source_work_id)
         .filter(
@@ -778,6 +788,7 @@ def pending_distinct_work_ids(session: Session) -> tuple[str, ...]:
             SourceMetadataRecord.metadata_kind == QUEUE_METADATA_KIND,
             SourceMetadataRecord.status.in_((PixivMetadataState.PENDING.value, PixivMetadataState.RETRYABLE.value)),
             SourceMetadataRecord.source_work_id.isnot(None),
+            ~SourceMetadataRecord.source_work_id.in_(conflicted_work_ids),
         )
         .distinct()
         .order_by(SourceMetadataRecord.source_work_id.asc())
@@ -1619,6 +1630,7 @@ def run_bounded_acquisition(
     result_callback: Callable[[AcquisitionResult], None] | None = None,
     allow_normalization_replay: bool = False,
     persistent_spacing: PersistentRequestSpacing | None = None,
+    prior_attempt_counts: Mapping[str, int] | None = None,
 ) -> list[AcquisitionResult]:
     """Execute a finite distinct-work manifest with per-work DB checkpoints."""
 
@@ -1631,10 +1643,26 @@ def run_bounded_acquisition(
     if max_attempts_per_work < 1 or max_attempts_per_work > 3:
         raise PixivMetadataGateError("blocked_pixiv_retry_budget_invalid")
     manifest = tuple(dict.fromkeys(str(value) for value in work_ids))
+    prior_counts = {str(key): int(value) for key, value in (prior_attempt_counts or {}).items()}
+    if any(value < 0 or value > max_attempts_per_work for value in prior_counts.values()):
+        raise PixivMetadataGateError("blocked_pixiv_prior_attempt_count_invalid")
     results: list[AcquisitionResult] = []
     command_count = 0
     stop_remaining_manifest = False
     for work_id in manifest:
+        prior_attempt_count = prior_counts.get(work_id, 0)
+        remaining_attempts = max_attempts_per_work - prior_attempt_count
+        if remaining_attempts <= 0:
+            results.append(AcquisitionResult(
+                work_id,
+                PixivMetadataState.RETRYABLE.value,
+                False,
+                0,
+                "retry_budget_exhausted",
+                prior_attempt_count,
+                True,
+            ))
+            break
         attempted_records = open_work_records(
             session,
             work_id,
@@ -1649,11 +1677,12 @@ def run_bounded_acquisition(
             continue
         attempted_record_ids = tuple(int(record.id) for record in attempted_records)
         command = build_gallery_dl_metadata_command(entrypoint, work_id)
-        for attempt in range(1, max_attempts_per_work + 1):
+        for attempt_in_run in range(1, remaining_attempts + 1):
+            cumulative_attempt = prior_attempt_count + attempt_in_run
             if persistent_spacing is not None:
                 persistent_spacing.wait_before_request(work_id)
             elif command_count:
-                sleeper(max(min_spacing_seconds, min_spacing_seconds * attempt))
+                sleeper(max(min_spacing_seconds, min_spacing_seconds * cumulative_attempt))
             command_count += 1
             try:
                 completed = command_runner(
@@ -1669,9 +1698,9 @@ def run_bounded_acquisition(
                 state, reason = PixivMetadataState.RETRYABLE.value, "retryable_network_transport"
                 mark_work_state(session, work_id, state, reason=reason, attempted_record_ids=attempted_record_ids, allow_conflict_resolution=allow_conflict_resolution, allow_normalization_replay=allow_normalization_replay)
                 session.commit()
-                if attempt < max_attempts_per_work:
+                if attempt_in_run < remaining_attempts:
                     continue
-                result = AcquisitionResult(work_id, state, True, 0, exc.__class__.__name__, attempt, True)
+                result = AcquisitionResult(work_id, state, True, 0, exc.__class__.__name__, cumulative_attempt, True)
                 results.append(result)
                 if result_callback:
                     result_callback(result)
@@ -1686,10 +1715,10 @@ def run_bounded_acquisition(
                     "retryable_network_transport",
                     "retryable_provider_failure",
                 }
-                if retryable and attempt < max_attempts_per_work:
+                if retryable and attempt_in_run < remaining_attempts:
                     continue
                 systemic_stop = state == PixivMetadataState.RETRYABLE.value
-                result = AcquisitionResult(work_id, state, True, 0, reason, attempt, systemic_stop)
+                result = AcquisitionResult(work_id, state, True, 0, reason, cumulative_attempt, systemic_stop)
                 results.append(result)
                 if result_callback:
                     result_callback(result)
@@ -1744,7 +1773,7 @@ def run_bounded_acquisition(
                 session.commit()
                 systemic_stop = exc.state == PixivMetadataState.RETRYABLE.value
                 result = AcquisitionResult(
-                    work_id, exc.state, True, 0, exc.reason, attempt, systemic_stop
+                    work_id, exc.state, True, 0, exc.reason, cumulative_attempt, systemic_stop
                 )
                 results.append(result)
                 if result_callback:
@@ -1768,7 +1797,7 @@ def run_bounded_acquisition(
                         True,
                         0,
                         exc.__class__.__name__,
-                        attempt,
+                        cumulative_attempt,
                     )
                     results.append(result)
                     if result_callback:
@@ -1794,7 +1823,7 @@ def run_bounded_acquisition(
                     allow_normalization_replay=allow_normalization_replay,
                 )
                 session.commit()
-                result = AcquisitionResult(work_id, failure_state, True, 0, failure_code, attempt)
+                result = AcquisitionResult(work_id, failure_state, True, 0, failure_code, cumulative_attempt)
                 results.append(result)
                 if result_callback:
                     result_callback(result)
@@ -1814,7 +1843,7 @@ def run_bounded_acquisition(
                 True,
                 page_disposition.linked_count,
                 DEFERRED_PAGE_MISMATCH_REASON if page_disposition.missing_record_ids else None,
-                attempt_count=attempt,
+                attempt_count=cumulative_attempt,
             )
             results.append(result)
             if result_callback:
