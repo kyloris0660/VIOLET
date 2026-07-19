@@ -1514,6 +1514,19 @@ def import_acquired_package_to_replay(
     proof = read_json(output / "acquisition-closure-and-package-proof.json")
     if proof.get("passed") is not True:
         raise SV1BPreflightError("acquisition_closure_package_proof_missing_or_failed")
+    localization = read_json(output / "localization-closure-proof.json")
+    localization_fingerprint = str(
+        (localization.get("accepted_translation_state") or {}).get("fingerprint") or ""
+    )
+    if (
+        localization.get("passed") is not True
+        or not localization_fingerprint
+        or _translation_logical_state(primary_database).get("fingerprint")
+        != localization_fingerprint
+        or _translation_logical_state(replay_database).get("fingerprint")
+        != localization_fingerprint
+    ):
+        raise SV1BPreflightError("replay_localization_package_fingerprint_mismatch")
     package_path = output / "acquired-nonderived-evidence-package-private.json"
     package = read_json(package_path)
     expected_fingerprint = str((proof.get("package") or {}).get("acquired_metadata_package_fingerprint") or "")
@@ -1544,6 +1557,7 @@ def import_acquired_package_to_replay(
     replay_derived_after = database_fingerprint(replay_database, derived_tables)
     result = {
         "acquired_metadata_package_fingerprint": expected_fingerprint,
+        "localization_package_fingerprint": localization_fingerprint,
         "replay_import": imported,
         "replay_reconciliation": reconciliation,
         "replay_derived_tables_pristine_before": all(
@@ -1732,7 +1746,7 @@ def validate_graph_derivation_checkpoint(output: Path) -> dict[str, Any]:
     required = {
         "acquisition": output / "acquisition-closure-and-package-proof.json",
         "replay_import": output / "replay-acquired-evidence-import-proof.json",
-        "localization": output / "localization-baseline-proof.json",
+        "localization": output / "localization-closure-proof.json",
         "r2r": output / "r2r-exact-remap-audit.json",
         "accepted_evidence": output / "accepted-nonderived-evidence-proof.json",
     }
@@ -1765,6 +1779,10 @@ def validate_graph_derivation_checkpoint(output: Path) -> dict[str, Any]:
         "accepted_r2r_snapshot_pinned": bool(
             ((values["r2r"].get("primary") or {}).get("accepted_snapshot_fingerprint"))
             == ACCEPTED_R2R_SNAPSHOT_FINGERPRINT
+        ),
+        "localization_package_fingerprint_match": bool(
+            values["replay_import"].get("localization_package_fingerprint")
+            == ((values["localization"].get("accepted_translation_state") or {}).get("fingerprint"))
         ),
     }
     result = {
@@ -2624,7 +2642,7 @@ def public_console_summary(result: Mapping[str, Any]) -> dict[str, Any]:
     provider = result.get("provider_hardening") or {}
     isolation = result.get("environment_isolation") or {}
     accepted = result.get("accepted_nonderived_evidence") or {}
-    localization = result.get("localization_baseline") or {}
+    localization = result.get("localization_closure") or result.get("localization_baseline") or {}
     vocabulary = localization.get("vocabulary") or {}
     r2r = result.get("r2r_baseline_audit") or {}
     r2r_primary = r2r.get("primary") or {}
@@ -2676,7 +2694,8 @@ def main() -> int:
             "inventory", "prepare-databases", "import-accepted-evidence",
             "localization-baseline", "r2r-baseline-audit",
             "queue-provider",
-            "execute-provider", "audit-acquisition-package", "import-acquired-replay",
+            "execute-provider", "audit-acquisition-package", "localization-closure",
+            "import-acquired-replay",
             "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph",
             "validate-primary-search", "validate-replay-search", "compare-primary-replay-search",
             "build-manual-acceptance",
@@ -2689,7 +2708,8 @@ def main() -> int:
     output = args.output.resolve()
     resume_stage = args.stage in {
         "import-accepted-evidence", "localization-baseline", "r2r-baseline-audit", "queue-provider",
-        "execute-provider", "audit-acquisition-package", "import-acquired-replay",
+        "execute-provider", "audit-acquisition-package", "localization-closure",
+        "import-acquired-replay",
         "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph",
         "validate-primary-search", "validate-replay-search", "compare-primary-replay-search",
         "build-manual-acceptance",
@@ -2745,7 +2765,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         accepted_evidence = read_json(output / "accepted-nonderived-evidence-proof.json")
     localization_baseline = None
     if args.stage == "localization-baseline":
@@ -2754,7 +2774,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         localization_baseline = read_json(output / "localization-baseline-proof.json")
     r2r_baseline_audit = None
     if args.stage == "r2r-baseline-audit":
@@ -2763,7 +2783,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"queue-provider", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         r2r_baseline_audit = read_json(output / "r2r-exact-remap-audit.json")
     provider_queue = None
     if args.stage == "queue-provider":
@@ -2772,7 +2792,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         provider_queue = read_json(output / "provider-queue-manifest-proof.json")
     provider_execution = None
     if args.stage == "execute-provider":
@@ -2781,7 +2801,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         provider_execution_path = output / "provider-execution-proof.json"
         if not provider_execution_path.is_file():
             raise SV1BPreflightError("provider_execution_proof_missing")
@@ -2793,8 +2813,19 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         acquisition_package = read_json(output / "acquisition-closure-and-package-proof.json")
+    localization_closure = None
+    if args.stage == "localization-closure":
+        from scripts import run_phase45_scv2_sv1b_localization_closure as localization_runner
+
+        localization_closure = localization_runner.execute(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage in {"import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+        localization_closure = read_json(output / "localization-closure-proof.json")
     replay_acquired_import = None
     if args.stage == "import-acquired-replay":
         replay_acquired_import = import_acquired_package_to_replay(
@@ -2858,7 +2889,8 @@ def main() -> int:
     active_blockers: list[str] = []
     if provider_gate["passed"] is not True:
         active_blockers.append("blocked_sv1b_provider_authentication")
-    if localization_baseline and localization_baseline.get("localization_complete") is not True:
+    localization_gate = localization_closure or localization_baseline
+    if localization_gate and localization_gate.get("localization_complete") is not True:
         active_blockers.append("blocked_sv1b_normalization_or_localization")
     if r2r_baseline_audit and r2r_baseline_audit.get("target_completion_ready") is not True:
         active_blockers.append("blocked_sv1b_r2r_replay")
@@ -2880,6 +2912,7 @@ def main() -> int:
         "environment_isolation": environment_isolation,
         "accepted_nonderived_evidence": accepted_evidence,
         "localization_baseline": localization_baseline,
+        "localization_closure": localization_closure,
         "r2r_baseline_audit": r2r_baseline_audit,
         "provider_queue": provider_queue,
         "provider_execution": provider_execution,

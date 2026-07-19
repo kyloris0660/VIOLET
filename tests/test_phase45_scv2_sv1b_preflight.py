@@ -297,9 +297,13 @@ def _write_graph_checkpoint_fixture(output: Path) -> None:
         "replay-acquired-evidence-import-proof.json": {
             "passed": True,
             "acquired_metadata_package_fingerprint": fingerprint,
+            "localization_package_fingerprint": "localization-fingerprint",
             "primary_replay_nonderived_logical_fingerprint_equal": True,
         },
-        "localization-baseline-proof.json": {"localization_complete": True},
+        "localization-closure-proof.json": {
+            "localization_complete": True,
+            "accepted_translation_state": {"fingerprint": "localization-fingerprint"},
+        },
         "r2r-exact-remap-audit.json": {
             "target_completion_ready": True,
             "primary": {
@@ -326,10 +330,20 @@ def test_graph_derivation_checkpoint_binds_all_reusable_memberships(tmp_path: Pa
     assert result["accepted_r2r_snapshot_pinned"] is True
 
 
+def test_graph_derivation_checkpoint_rejects_localization_package_drift(tmp_path: Path) -> None:
+    _write_graph_checkpoint_fixture(tmp_path)
+    path = tmp_path / "replay-acquired-evidence-import-proof.json"
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["localization_package_fingerprint"] = "drifted"
+    path.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(SV1BPreflightError, match="graph_derivation_checkpoint_failed"):
+        validate_graph_derivation_checkpoint(tmp_path)
+
+
 @pytest.mark.parametrize(
     ("filename", "field"),
     [
-        ("localization-baseline-proof.json", "localization_complete"),
+        ("localization-closure-proof.json", "localization_complete"),
         ("replay-acquired-evidence-import-proof.json", "primary_replay_nonderived_logical_fingerprint_equal"),
         ("r2r-exact-remap-audit.json", "target_completion_ready"),
     ],

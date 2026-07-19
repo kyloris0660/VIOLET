@@ -340,7 +340,7 @@ def _database_binding(database: str) -> dict[str, Any]:
 
 def _proof_bindings(proofs: Mapping[str, Mapping[str, Any]]) -> dict[str, str]:
     acquisition = proofs["acquisition-closure-and-package-proof.json"]
-    localization = proofs["localization-baseline-proof.json"]
+    localization = proofs["localization-closure-proof.json"]
     primary_graph = proofs["primary-source-graph-derivation-proof.json"]
     replay_graph = proofs["replay-source-graph-derivation-proof.json"]
     graph_comparison = proofs["primary-replay-source-graph-comparison-proof.json"]
@@ -381,7 +381,7 @@ def build_harness(
     )
     required_proofs = (
         "acquisition-closure-and-package-proof.json",
-        "localization-baseline-proof.json",
+        "localization-closure-proof.json",
         "primary-source-graph-derivation-proof.json",
         "replay-source-graph-derivation-proof.json",
         "primary-replay-source-graph-comparison-proof.json",
@@ -390,9 +390,9 @@ def build_harness(
         "primary-replay-search-comparison-proof.json",
     )
     proofs = {name: sv1b.read_json(output / name) for name in required_proofs}
-    failed = [name for name, proof in proofs.items() if proof.get("passed") is not True and name != "localization-baseline-proof.json"]
-    if proofs["localization-baseline-proof.json"].get("localization_complete") is not True:
-        failed.append("localization-baseline-proof.json")
+    failed = [name for name, proof in proofs.items() if proof.get("passed") is not True]
+    if proofs["localization-closure-proof.json"].get("localization_complete") is not True:
+        failed.append("localization-closure-proof.json")
     if failed:
         raise ManualAcceptanceHarnessError(f"manual_acceptance_required_proof_failed:{sorted(failed)}")
 
@@ -478,7 +478,7 @@ def _current_bindings(
     expected = proof["bindings"]
     proof_names = (
         "acquisition-closure-and-package-proof.json",
-        "localization-baseline-proof.json",
+        "localization-closure-proof.json",
         "primary-source-graph-derivation-proof.json",
         "replay-source-graph-derivation-proof.json",
         "primary-replay-source-graph-comparison-proof.json",

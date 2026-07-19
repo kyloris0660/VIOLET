@@ -15,7 +15,8 @@ def _write_required_proofs(output: Path) -> None:
             "passed": True,
             "package": {"acquired_metadata_package_fingerprint": "a" * 64},
         },
-        "localization-baseline-proof.json": {
+        "localization-closure-proof.json": {
+            "passed": True,
             "localization_complete": True,
             "accepted_translation_state": {"fingerprint": "b" * 64},
             "vocabulary": {"fingerprint": "c" * 64},
