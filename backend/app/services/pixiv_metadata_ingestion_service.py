@@ -37,6 +37,8 @@ from .source_metadata_registry_service import canonical_source_key, normalize_so
 
 ROTATION_CONFIRMATION_ENV = "VIOLET_CREDENTIAL_ROTATION_CONFIRMED"
 MIN_REQUEST_SPACING_SECONDS = 2.0
+PERSISTENT_SPACING_STATE_VERSION = "pixiv_persistent_request_spacing_v1"
+MANIFEST_SCOPED_OUTCOME_KEY_VERSION = "pixiv_manifest_scoped_outcome_key_v1"
 QUEUE_METADATA_KIND = "pixiv_ingestion_gate"
 COMPLETE_METADATA_KINDS = frozenset({
     "provider_metadata",
@@ -151,6 +153,176 @@ def is_pixiv_creator_observation_compatible_with_parent(
 
 class PixivMetadataGateError(RuntimeError):
     pass
+
+
+def manifest_scoped_outcome_key(
+    phase_manifest_fingerprint: str,
+    provider: str,
+    work_id: str,
+    requested_page: int,
+) -> str:
+    """Return the stable acquisition key required for one requested page."""
+
+    fingerprint = str(phase_manifest_fingerprint or "").strip().casefold()
+    provider_value = str(provider or "").strip().casefold()
+    work_value = str(work_id or "").strip()
+    try:
+        page_value = int(requested_page)
+    except (TypeError, ValueError) as exc:
+        raise PixivMetadataGateError("manifest_outcome_page_invalid") from exc
+    if re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
+        raise PixivMetadataGateError("manifest_outcome_fingerprint_invalid")
+    if provider_value != "pixiv":
+        raise PixivMetadataGateError("manifest_outcome_provider_invalid")
+    if re.fullmatch(r"[1-9]\d{0,11}", work_value) is None:
+        raise PixivMetadataGateError("manifest_outcome_work_id_invalid")
+    if page_value < 0:
+        raise PixivMetadataGateError("manifest_outcome_page_invalid")
+    payload = {
+        "version": MANIFEST_SCOPED_OUTCOME_KEY_VERSION,
+        "phase_manifest_fingerprint": fingerprint,
+        "provider": provider_value,
+        "work_id": work_value,
+        "requested_page": page_value,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+class PersistentRequestSpacing:
+    """Serialize provider calls through an atomic, restart-safe spacing clock.
+
+    The state file contains no credentials, URLs, local paths, or raw provider
+    values. One atomic lock protects readers and writers across processes. A
+    stale or malformed lock/state fails closed instead of resetting the clock.
+    """
+
+    def __init__(
+        self,
+        state_path: Path,
+        *,
+        phase_manifest_fingerprint: str,
+        provider: str = "pixiv",
+        min_spacing_seconds: float = MIN_REQUEST_SPACING_SECONDS,
+        clock: Callable[[], float] = time.time,
+        sleeper: Callable[[float], None] = time.sleep,
+        lock_timeout_seconds: float = 30.0,
+    ) -> None:
+        if min_spacing_seconds < MIN_REQUEST_SPACING_SECONDS:
+            raise PixivMetadataGateError("blocked_pixiv_request_spacing_below_two_seconds")
+        fingerprint = str(phase_manifest_fingerprint or "").strip().casefold()
+        if re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
+            raise PixivMetadataGateError("persistent_spacing_manifest_fingerprint_invalid")
+        provider_value = str(provider or "").strip().casefold()
+        if provider_value != "pixiv":
+            raise PixivMetadataGateError("persistent_spacing_provider_invalid")
+        self.state_path = Path(state_path)
+        self.lock_path = self.state_path.with_name(self.state_path.name + ".lock")
+        self.phase_manifest_fingerprint = fingerprint
+        self.provider = provider_value
+        self.min_spacing_seconds = float(min_spacing_seconds)
+        self.clock = clock
+        self.sleeper = sleeper
+        self.lock_timeout_seconds = float(lock_timeout_seconds)
+        self.wait_count = 0
+        self.total_sleep_seconds = 0.0
+        self.last_observed_delay_seconds = 0.0
+
+    def _read_state(self) -> dict[str, Any]:
+        if not self.state_path.exists():
+            return {}
+        try:
+            value = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise PixivMetadataGateError("persistent_spacing_state_invalid") from exc
+        if not isinstance(value, Mapping):
+            raise PixivMetadataGateError("persistent_spacing_state_invalid")
+        if value.get("version") != PERSISTENT_SPACING_STATE_VERSION:
+            raise PixivMetadataGateError("persistent_spacing_state_version_mismatch")
+        if str(value.get("provider") or "").casefold() != self.provider:
+            raise PixivMetadataGateError("persistent_spacing_state_provider_mismatch")
+        last_epoch = value.get("last_request_epoch")
+        if last_epoch is not None:
+            try:
+                float(last_epoch)
+            except (TypeError, ValueError) as exc:
+                raise PixivMetadataGateError("persistent_spacing_last_request_invalid") from exc
+        return dict(value)
+
+    def _write_state(self, *, request_epoch: float) -> None:
+        seen = set()
+        if self.state_path.exists():
+            seen.update(self._read_state().get("manifest_fingerprints_seen") or ())
+        seen.add(self.phase_manifest_fingerprint)
+        payload = {
+            "version": PERSISTENT_SPACING_STATE_VERSION,
+            "provider": self.provider,
+            "last_request_epoch": float(request_epoch),
+            "minimum_spacing_seconds": self.min_spacing_seconds,
+            "manifest_fingerprints_seen": sorted(seen),
+        }
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.state_path.with_name(
+            f"{self.state_path.name}.{os.getpid()}.tmp"
+        )
+        temporary.write_text(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.state_path)
+
+    def wait_before_request(self, work_id: str) -> None:
+        if re.fullmatch(r"[1-9]\d{0,11}", str(work_id or "")) is None:
+            raise PixivMetadataGateError("persistent_spacing_work_id_invalid")
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.monotonic() + self.lock_timeout_seconds
+        lock_fd: int | None = None
+        while lock_fd is None:
+            try:
+                lock_fd = os.open(
+                    self.lock_path,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                )
+                os.write(lock_fd, str(os.getpid()).encode("ascii"))
+            except FileExistsError:
+                if time.monotonic() >= deadline:
+                    raise PixivMetadataGateError("persistent_spacing_lock_timeout")
+                time.sleep(0.05)
+        try:
+            state = self._read_state()
+            now = float(self.clock())
+            last_epoch = float(state.get("last_request_epoch") or 0.0)
+            elapsed = max(0.0, now - last_epoch) if last_epoch else self.min_spacing_seconds
+            delay = max(0.0, self.min_spacing_seconds - elapsed)
+            if delay:
+                self.sleeper(delay)
+            request_epoch = max(float(self.clock()), last_epoch + self.min_spacing_seconds)
+            self._write_state(request_epoch=request_epoch)
+            self.wait_count += 1
+            self.total_sleep_seconds += delay
+            self.last_observed_delay_seconds = delay
+        finally:
+            if lock_fd is not None:
+                os.close(lock_fd)
+            try:
+                self.lock_path.unlink()
+            except FileNotFoundError:
+                pass
+
+    def public_evidence(self) -> dict[str, Any]:
+        state = self._read_state()
+        return {
+            "version": PERSISTENT_SPACING_STATE_VERSION,
+            "provider": self.provider,
+            "minimum_spacing_seconds": self.min_spacing_seconds,
+            "persistent_state_present": bool(state),
+            "manifest_scope_count": len(state.get("manifest_fingerprints_seen") or ()),
+            "wait_count": self.wait_count,
+            "total_sleep_seconds": round(self.total_sleep_seconds, 6),
+            "last_observed_delay_seconds": round(self.last_observed_delay_seconds, 6),
+            "state_path_redacted": True,
+        }
 
 
 class GalleryDlReportedFailure(PixivMetadataGateError):
@@ -661,7 +833,7 @@ def acquisition_work_lifecycle_counts(session: Session) -> dict[str, int]:
 
 
 def build_gallery_dl_metadata_command(entrypoint: Sequence[str], work_id: str) -> list[str]:
-    if not re.fullmatch(r"[1-9]\d{5,11}", str(work_id)):
+    if not re.fullmatch(r"[1-9]\d{0,11}", str(work_id)):
         raise PixivMetadataGateError("invalid_canonical_pixiv_work_id")
     return [
         *entrypoint,
@@ -1413,14 +1585,20 @@ def defer_proven_source_page_mismatch(
 
 def classify_gallery_dl_failure(stderr: str, *, authentication_passed: bool) -> tuple[str, str]:
     value = str(stderr or "")
+    # Authenticated, explicit deleted/private/permanent evidence is terminal
+    # even when the same diagnostic also contains 403/auth wording. A bare 403
+    # remains retryable authentication evidence.
+    if authentication_passed and re.search(
+        r"(?i)(404|deleted|private|not\s*found|unavailable|does\s+not\s+exist|removed|permanent)",
+        value,
+    ):
+        return PixivMetadataState.TERMINAL.value, "authenticated_remote_deleted_private_unavailable"
     if re.search(r"(?i)(401|403|auth|oauth|login|refresh.?token|cookie)", value):
         return PixivMetadataState.RETRYABLE.value, "retryable_authentication"
     if re.search(r"(?i)(429|rate.?limit|too many requests)", value):
         return PixivMetadataState.RETRYABLE.value, "retryable_rate_limit"
     if re.search(r"(?i)(timeout|timed out|connection|network|dns|temporar)", value):
         return PixivMetadataState.RETRYABLE.value, "retryable_network_transport"
-    if authentication_passed and re.search(r"(?i)(404|deleted|private|not\s*found|unavailable|does\s+not\s+exist|removed)", value):
-        return PixivMetadataState.TERMINAL.value, "authenticated_remote_deleted_private_unavailable"
     return PixivMetadataState.RETRYABLE.value, "retryable_provider_failure"
 
 
@@ -1440,6 +1618,7 @@ def run_bounded_acquisition(
     accept_local_credential_risk: bool = False,
     result_callback: Callable[[AcquisitionResult], None] | None = None,
     allow_normalization_replay: bool = False,
+    persistent_spacing: PersistentRequestSpacing | None = None,
 ) -> list[AcquisitionResult]:
     """Execute a finite distinct-work manifest with per-work DB checkpoints."""
 
@@ -1471,7 +1650,9 @@ def run_bounded_acquisition(
         attempted_record_ids = tuple(int(record.id) for record in attempted_records)
         command = build_gallery_dl_metadata_command(entrypoint, work_id)
         for attempt in range(1, max_attempts_per_work + 1):
-            if command_count:
+            if persistent_spacing is not None:
+                persistent_spacing.wait_before_request(work_id)
+            elif command_count:
                 sleeper(max(min_spacing_seconds, min_spacing_seconds * attempt))
             command_count += 1
             try:

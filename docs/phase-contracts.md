@@ -74,6 +74,7 @@ truth-route work, media download, or source/iCloud mutation.
 - `ml1_multilingual_alias_source_metadata_closure_contract_v1`
 - `ml2_multilingual_identity_candidate_closure_contract_v1`
 - `sv1_controlled_scale_promotion_readiness_contract_v1`
+- `sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`

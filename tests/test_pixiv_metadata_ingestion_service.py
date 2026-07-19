@@ -22,6 +22,7 @@ from app.services.pixiv_metadata_ingestion_service import (
     DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
     PixivMetadataGateError,
     PixivMetadataState,
+    PersistentRequestSpacing,
     acquisition_work_lifecycle_counts,
     backfill_creator_source_observations,
     build_gallery_dl_metadata_command,
@@ -30,6 +31,7 @@ from app.services.pixiv_metadata_ingestion_service import (
     is_trusted_complete_pixiv_metadata_record,
     mark_work_state,
     llm_budget_policy,
+    manifest_scoped_outcome_key,
     pending_distinct_work_ids,
     persist_complete_work,
     persist_page_local_work_disposition,
@@ -1053,7 +1055,68 @@ def test_early_canary_accounting_records_every_provider_attempt(tmp_path) -> Non
 def test_terminal_classification_requires_authenticated_evidence() -> None:
     assert classify_gallery_dl_failure("404 not found", authentication_passed=False)[0] == PixivMetadataState.RETRYABLE.value
     assert classify_gallery_dl_failure("404 not found", authentication_passed=True)[0] == PixivMetadataState.TERMINAL.value
+    assert classify_gallery_dl_failure("403 private artwork", authentication_passed=True)[0] == PixivMetadataState.TERMINAL.value
+    assert classify_gallery_dl_failure("403 forbidden", authentication_passed=True)[0] == PixivMetadataState.RETRYABLE.value
     assert classify_gallery_dl_failure("429 rate limit", authentication_passed=True)[1] == "retryable_rate_limit"
+
+
+def test_manifest_scoped_outcome_key_binds_manifest_provider_work_and_page() -> None:
+    first = manifest_scoped_outcome_key("a" * 64, "pixiv", "123456789", 0)
+    assert first == manifest_scoped_outcome_key("a" * 64, "PIXIV", "123456789", 0)
+    assert first != manifest_scoped_outcome_key("a" * 64, "pixiv", "123", 0)
+    assert first != manifest_scoped_outcome_key("b" * 64, "pixiv", "123456789", 0)
+    assert first != manifest_scoped_outcome_key("a" * 64, "pixiv", "123456789", 1)
+    with pytest.raises(PixivMetadataGateError, match="fingerprint_invalid"):
+        manifest_scoped_outcome_key("stale", "pixiv", "123456789", 0)
+
+
+def test_persistent_spacing_survives_new_instance_and_does_not_reset(tmp_path) -> None:
+    now = [100.0]
+    sleeps: list[float] = []
+
+    def clock() -> float:
+        return now[0]
+
+    def sleeper(value: float) -> None:
+        sleeps.append(value)
+        now[0] += value
+
+    state_path = tmp_path / "provider" / "spacing-state.json"
+    first = PersistentRequestSpacing(
+        state_path,
+        phase_manifest_fingerprint="a" * 64,
+        clock=clock,
+        sleeper=sleeper,
+    )
+    first.wait_before_request("123456789")
+    assert sleeps == []
+
+    now[0] = 100.5
+    resumed = PersistentRequestSpacing(
+        state_path,
+        phase_manifest_fingerprint="b" * 64,
+        clock=clock,
+        sleeper=sleeper,
+    )
+    resumed.wait_before_request("223456789")
+    assert sleeps == [pytest.approx(1.5)]
+    persisted = json.loads(state_path.read_text(encoding="utf-8"))
+    assert persisted["last_request_epoch"] == pytest.approx(102.0)
+    assert persisted["manifest_fingerprints_seen"] == ["a" * 64, "b" * 64]
+    assert resumed.public_evidence()["minimum_spacing_seconds"] == 2.0
+
+
+def test_persistent_spacing_fails_closed_on_malformed_state(tmp_path) -> None:
+    state_path = tmp_path / "spacing-state.json"
+    state_path.write_text("{}", encoding="utf-8")
+    gate = PersistentRequestSpacing(
+        state_path,
+        phase_manifest_fingerprint="a" * 64,
+        clock=lambda: 100.0,
+        sleeper=lambda _seconds: None,
+    )
+    with pytest.raises(PixivMetadataGateError, match="state_version_mismatch"):
+        gate.wait_before_request("123456789")
 
 
 def test_rate_limit_retry_is_bounded_spaced_and_checkpointed(db) -> None:

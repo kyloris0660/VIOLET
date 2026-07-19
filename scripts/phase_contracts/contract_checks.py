@@ -18,6 +18,7 @@ from .contract_registry import (
     SOURCE_CONCEPT_ALLOWED_STATUSES,
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
     SV1_CONTROLLED_SCALE_PROMOTION_READINESS_STATUSES,
+    SV1B_CONTROLLED_PIXIV_METADATA_LOCALIZATION_SOURCE_GRAPH_CLOSURE_STATUSES,
     get_contract,
 )
 from .contract_types import ContractCheckResult, PhaseContract
@@ -12448,6 +12449,321 @@ def _check_sv1_controlled_scale_promotion_readiness(
         result.fail("sv1_target_claim_incomplete", "Blocker-free SV1-A evidence requires the exact partial bounded claim.", path="pipeline_contract")
 
 
+def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
+    contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    """Validate SV1B automated closure while preserving the user-acceptance gate."""
+
+    pipeline = _get(summary, "pipeline_contract", {})
+    status = pipeline.get("status") if isinstance(pipeline, Mapping) else None
+    if status not in SV1B_CONTROLLED_PIXIV_METADATA_LOCALIZATION_SOURCE_GRAPH_CLOSURE_STATUSES:
+        result.fail("sv1b_status_invalid", "SV1B status must use the registered vocabulary.", path="pipeline_contract.status", actual=status)
+
+    blockers: list[str] = []
+    if _missing_required_stages(contract, summary):
+        blockers.append("blocked_sv1b_validation")
+
+    sync = _get(summary, "repository_sync_preflight", {})
+    if not (
+        isinstance(sync, Mapping)
+        and sync.get("passed") is True
+        and sync.get("accepted_merge_sha") == "46861489fa0b3b05ae917a99a3932897efd70365"
+        and sync.get("accepted_evidence_head") == "af073ca0ad2a9df9418cf072dc381d7b2c10216a"
+        and sync.get("branch_start_sha") == "46861489fa0b3b05ae917a99a3932897efd70365"
+        and sync.get("local_main_equals_origin_main_before_branch") is True
+        and _as_int(sync.get("tracked_change_count_before_sync"), -1) == 0
+        and _as_int(sync.get("staged_change_count_before_sync"), -1) == 0
+        and sync.get("user_owned_artifacts_preserved") is True
+    ):
+        blockers.append("blocked_sv1b_repository_sync")
+
+    isolation = _get(summary, "environment_isolation", {})
+    primary_db = str(_get(isolation, "primary_database_identity", ""))
+    replay_db = str(_get(isolation, "replay_database_identity", ""))
+    accepted_dbs = {
+        "blombooru_scv2_r2r_dryrun_test_20260710",
+        "blombooru_scv2_ml1_acquisition_test_20260712",
+        "blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715",
+        "blombooru_scv2_sv1_controlled_scale_test_20260718",
+        "blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1",
+        "blombooru_scv2_sv1_rebuild_verification_test_20260718",
+    }
+    strict_db = lambda value: bool(re.fullmatch(r"blombooru_[a-z0-9]+(?:_[a-z0-9]+)*", value)) and "test" in value.split("_") and "prod" not in value
+    if not (
+        isinstance(isolation, Mapping)
+        and isolation.get("passed") is True
+        and isolation.get("violet_env") == "test"
+        and primary_db != replay_db
+        and strict_db(primary_db)
+        and strict_db(replay_db)
+        and not accepted_dbs.intersection({primary_db, replay_db})
+        and isolation.get("accepted_storage_read_only") is True
+        and isolation.get("production_selected") is False
+    ):
+        blockers.append("blocked_sv1b_environment_isolation")
+
+    immutable = _get(summary, "immutable_input_proof", {})
+    if not (
+        isinstance(immutable, Mapping)
+        and immutable.get("passed") is True
+        and immutable.get("manifest_fingerprint") == "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f"
+        and immutable.get("all_before_after_fingerprints_equal") is True
+        and _as_int(immutable.get("accepted_database_mutation_count"), -1) == 0
+        and _as_int(immutable.get("accepted_storage_mutation_count"), -1) == 0
+    ):
+        blockers.append("blocked_sv1b_environment_isolation")
+
+    hardening = _get(summary, "provider_hardening", {})
+    hardening_flags = (
+        "persistent_cross_process_spacing_passed",
+        "spacing_survives_restart_and_resume",
+        "manifest_scoped_outcome_keys_passed",
+        "conflict_mismatch_persistence_passed",
+        "terminal_classifier_precedence_passed",
+        "finite_manifest_passed",
+        "no_concurrent_duplicate_execution",
+        "metadata_only_command_passed",
+        "subprocess_arguments_redacted",
+        "subprocess_environment_redacted",
+    )
+    if not (
+        isinstance(hardening, Mapping)
+        and all(hardening.get(key) is True for key in hardening_flags)
+        and _as_float(hardening.get("minimum_spacing_seconds"), -1.0) >= 2.0
+        and _as_int(hardening.get("maximum_attempts_per_work"), -1) <= 3
+        and hardening.get("fallback_provider_used") is False
+        and hardening.get("media_download_enabled") is False
+    ):
+        blockers.append("blocked_sv1b_provider_hardening")
+
+    credential = _get(summary, "credential_preflight", {})
+    if not (
+        isinstance(credential, Mapping)
+        and credential.get("approved_local_route_available") is True
+        and credential.get("operator_confirmation_policy_passed") is True
+        and credential.get("delimiter_aware_fingerprint_scan_passed") is True
+        and credential.get("redacted_authentication_preflight_passed") is True
+        and credential.get("secret_value_exposed") is False
+        and credential.get("raw_configuration_output_exposed") is False
+    ):
+        blockers.append("blocked_sv1b_provider_authentication")
+
+    candidate = _get(summary, "candidate_accounting", {})
+    candidate_total = _as_int(candidate.get("canonical_candidate_media_count"), -1) if isinstance(candidate, Mapping) else -1
+    non_candidate = _as_int(candidate.get("explicit_non_candidate_media_count"), -1) if isinstance(candidate, Mapping) else -1
+    candidate_page_rows = _as_int(candidate.get("page_media_manifest_row_count"), -1) if isinstance(candidate, Mapping) else -1
+    candidate_work_rows = _as_int(candidate.get("distinct_work_manifest_row_count"), -1) if isinstance(candidate, Mapping) else -1
+    if not (
+        isinstance(candidate, Mapping)
+        and _as_int(candidate.get("manifest_media_count"), -1) == 12000
+        and candidate_total + non_candidate == 12000
+        and candidate.get("accounting_equality_passed") is True
+        and candidate.get("independently_reproduced") is True
+        and candidate.get("change_from_sv1a_fully_accounted") is True
+        and _as_int(candidate.get("unclassified_count"), -1) == 0
+        and _as_int(candidate.get("unexplained_count"), -1) == 0
+        and bool(candidate.get("page_media_manifest_fingerprint"))
+        and bool(candidate.get("distinct_work_manifest_fingerprint"))
+        and candidate_page_rows >= candidate_total
+        and candidate_work_rows > 0
+    ):
+        blockers.append("blocked_sv1b_candidate_manifest")
+
+    acquisition = _get(summary, "acquisition_accounting", {})
+    page_outcomes = _get(acquisition, "page_outcome_counts", {})
+    work_outcomes = _get(acquisition, "work_outcome_counts", {})
+    page_closed = sum(_as_int(_get(page_outcomes, key, -1), -1) for key in (
+        "metadata_complete", "terminal_remote_unavailable", "deferred_nonblocking_source_page_mismatch"
+    ))
+    work_closed = sum(_as_int(_get(work_outcomes, key, -1), -1) for key in (
+        "metadata_complete", "terminal_remote_unavailable", "deferred_nonblocking_source_page_mismatch"
+    ))
+    open_outcome_keys = (
+        "unattempted", "pending", "retryable", "authentication_failure",
+        "rate_limit_failure", "network_failure", "generic_provider_failure",
+        "parser_failure", "normalization_failure", "unresolved_identity_conflict",
+        "unexplained_outcome", "blocking_failure",
+    )
+    if not (
+        isinstance(acquisition, Mapping)
+        and isinstance(page_outcomes, Mapping)
+        and isinstance(work_outcomes, Mapping)
+        and page_closed == _as_int(acquisition.get("requested_page_count"), -2) == candidate_page_rows
+        and work_closed == _as_int(acquisition.get("distinct_work_count"), -2) == candidate_work_rows
+        and not any(_as_int(_get(page_outcomes, key, -1), -1) for key in open_outcome_keys)
+        and not any(_as_int(_get(work_outcomes, key, -1), -1) for key in open_outcome_keys)
+        and acquisition.get("page_equation_passed") is True
+        and acquisition.get("work_equation_passed") is True
+        and acquisition.get("checkpoint_after_every_attempt") is True
+        and _as_int(acquisition.get("out_of_manifest_attempt_count"), -1) == 0
+        and _as_int(acquisition.get("concurrent_duplicate_attempt_count"), -1) == 0
+    ):
+        blockers.append("blocked_sv1b_acquisition_incomplete")
+
+    retention = _get(summary, "metadata_retention", {})
+    localization = _get(summary, "localization_closure", {})
+    if not (
+        isinstance(retention, Mapping)
+        and retention.get("raw_and_normalized_package_retained") is True
+        and retention.get("creator_identity_fields_retained") is True
+        and retention.get("work_title_and_provider_tags_retained") is True
+        and retention.get("trusted_parent_policy_passed") is True
+        and retention.get("entity_truth_write_count") == 0
+        and retention.get("media_tags_truth_write_count") == 0
+        and isinstance(localization, Mapping)
+        and localization.get("eligible_ai_tag_missing_count") == 0
+        and localization.get("silently_missing_eligible_count") == 0
+        and localization.get("provider_tags_written_to_media_tags_count") == 0
+        and localization.get("original_provider_text_preserved") is True
+        and _as_float(localization.get("projected_and_actual_llm_cost_usd"), 1e9) <= 10.0
+        and localization.get("fallback_provider_used") is False
+        and localization.get("image_upload_count") == 0
+    ):
+        blockers.append("blocked_sv1b_normalization_or_localization")
+
+    r2r = _get(summary, "r2r_replay_accounting", {})
+    if not (
+        isinstance(r2r, Mapping)
+        and r2r.get("accepted_snapshot_fingerprint") == "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
+        and r2r.get("exact_endpoint_and_disposition_membership_passed") is True
+        and _as_int(r2r.get("accepted_pair_count"), -1) == sum(_as_int(r2r.get(key), -1) for key in (
+            "comparable_count", "genuine_target_missing_count", "ambiguous_remap_count", "conflicting_remap_count"
+        ))
+        and _as_int(r2r.get("ambiguous_remap_count"), -1) == 0
+        and _as_int(r2r.get("conflicting_remap_count"), -1) == 0
+        and r2r.get("compatibility_derived_from_verified_pairs") is True
+    ):
+        blockers.append("blocked_sv1b_r2r_replay")
+
+    baseline = _get(summary, "baseline_preservation", {})
+    if not (
+        isinstance(baseline, Mapping)
+        and _as_int(baseline.get("accepted_family_count"), -1) == 606
+        and _as_int(baseline.get("accepted_family_traceable_count"), -1) == 606
+        and _as_int(baseline.get("accepted_stable_identity_disappeared_count"), -1) == 0
+        and _as_int(baseline.get("cannot_link_became_identity_union_count"), -1) == 0
+        and _as_int(baseline.get("search_only_became_identity_count"), -1) == 0
+        and baseline.get("every_changed_family_has_governed_reason") is True
+    ):
+        blockers.append("blocked_sv1b_graph_safety")
+
+    graph_zero_keys = (
+        "multi_stable_id_creator_component_count", "direct_cannot_link_violation_count",
+        "transitive_cannot_link_violation_count", "deferred_identity_union_count",
+        "unauthorized_cross_role_component_count", "unknown_role_materialization_count",
+        "duplicate_active_stable_identity_count",
+    )
+    for name in ("primary_graph_safety", "replay_graph_safety"):
+        graph = _get(summary, name, {})
+        if not (
+            isinstance(graph, Mapping)
+            and not any(_as_int(graph.get(key), -1) for key in graph_zero_keys)
+            and graph.get("giant_component_recurrence") is False
+            and bool(graph.get("concept_signal_link_membership_fingerprint"))
+            and bool(graph.get("pair_membership_fingerprint"))
+        ):
+            blockers.append("blocked_sv1b_graph_safety")
+
+    comparison = _get(summary, "primary_replay_comparison", {})
+    if not (
+        isinstance(comparison, Mapping)
+        and comparison.get("checkpoint_membership_gate_passed") is True
+        and _as_int(comparison.get("unexplained_logical_mismatch_count"), -1) == 0
+        and comparison.get("numeric_row_id_equality_claimed") is False
+    ):
+        blockers.append("blocked_sv1b_replay_mismatch")
+
+    search = _get(summary, "search_validation", {})
+    search_zero_keys = (
+        "unsupported_result_count", "rejected_only_result_count",
+        "superseded_only_result_count", "invalid_deleted_only_result_count",
+        "and_leakage_count", "search_caused_identity_mutation_count",
+        "lifecycle_status_violation_count", "supported_query_missing_result_count",
+    )
+    if not (
+        isinstance(search, Mapping)
+        and search.get("counters_derived_from_returned_rows") is True
+        and search.get("independent_expected_membership_used") is True
+        and search.get("blombooru_tags_protected") is True
+        and not any(_as_int(search.get(key), -1) for key in search_zero_keys)
+        and _as_float(search.get("p95_latency_ms"), -1.0) >= 0.0
+    ):
+        blockers.append("blocked_sv1b_search_safety")
+
+    validation = _get(summary, "validation", {})
+    if not (
+        isinstance(validation, Mapping)
+        and _as_int(validation.get("failed_test_count"), -1) == 0
+        and _as_int(validation.get("unexplained_skip_count"), -1) == 0
+        and validation.get("exact_approved_skip_membership_passed") is True
+        and validation.get("full_default_non_e2e_passed") is True
+        and validation.get("environment_specific_profiles_passed") is True
+        and validation.get("json_parse_passed") is True
+        and validation.get("public_redaction_passed") is True
+        and validation.get("git_diff_check_passed") is True
+        and validation.get("real_browser_validation_passed") is True
+    ):
+        blockers.append("blocked_sv1b_validation")
+
+    manual = _get(summary, "manual_acceptance", {})
+    categories = _get(manual, "category_case_counts", {})
+    if not (
+        isinstance(manual, Mapping)
+        and manual.get("required") is True
+        and manual.get("status") == "pending_user"
+        and _as_int(manual.get("case_count"), -1) == 40
+        and isinstance(categories, Mapping)
+        and dict(categories) == {"pixiv_metadata": 12, "creator_clustering": 8, "shared_name_cannot_link": 6, "ai_tag_localization": 8, "search_and_negative": 6}
+        and manual.get("actual_backend_services_used") is True
+        and manual.get("result_private_and_uncommitted") is True
+        and manual.get("absolute_paths_exposed") is False
+        and bool(manual.get("acceptance_case_manifest_fingerprint"))
+        and str(manual.get("localhost_url") or "").startswith("http://127.0.0.1:")
+    ):
+        blockers.append("blocked_sv1b_manual_acceptance_harness")
+
+    operations = _get(summary, "operation_counts", {})
+    forbidden_operations = (
+        "media_downloads", "media_imports", "ai_tagging_runs", "classification_runs",
+        "production_operations", "full_library_operations", "entity_operations",
+        "confirmed_assignment_operations", "media_tags_truth_writes",
+        "source_icloud_mutations", "fallback_provider_calls", "hidden_daemon_starts",
+        "fl1_operations",
+    )
+    if not isinstance(operations, Mapping) or any(_as_int(operations.get(key), -1) for key in forbidden_operations):
+        blockers.append("blocked_sv1b_validation")
+
+    route = _get(summary, "route_decision", {})
+    if not (
+        isinstance(route, Mapping)
+        and route.get("route_approved") is False
+        and route.get("recommended_next_phase") == "SCV2-FL1"
+        and route.get("next_phase_started") is False
+    ):
+        blockers.append("blocked_sv1b_validation")
+
+    derived = sorted(set(blockers))
+    declared = sorted(set(pipeline.get("active_blockers") or ())) if isinstance(pipeline, Mapping) else []
+    if derived != declared:
+        result.fail("sv1b_active_blockers_incomplete", "SV1B active_blockers must exactly match independent checks.", path="pipeline_contract.active_blockers", expected=derived, actual=declared)
+
+    exact_pending_claim = (
+        status == "automated_sv1b_candidate_ready_manual_acceptance_pending"
+        and pipeline.get("target_met") is False
+        and pipeline.get("safe_to_merge") is False
+        and pipeline.get("route_approved") is False
+        and pipeline.get("manual_acceptance_required") is True
+        and pipeline.get("manual_acceptance_status") == "pending_user"
+    )
+    if derived:
+        if bool(pipeline.get("target_met")) or bool(pipeline.get("safe_to_merge")) or status == "automated_sv1b_candidate_ready_manual_acceptance_pending":
+            result.fail("sv1b_completion_overclaimed", "Blocked SV1B evidence cannot claim an automated acceptance candidate.", path="pipeline_contract")
+    elif not exact_pending_claim:
+        result.fail("sv1b_pending_claim_incomplete", "Blocker-free SV1B automation must stop at the exact pending-user claim.", path="pipeline_contract")
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -12463,6 +12779,7 @@ CUSTOM_CHECKS = {
     "ml1_multilingual_alias_source_metadata_closure": _check_ml1_multilingual_alias_source_metadata_closure,
     "ml2_multilingual_identity_candidate_closure": _check_ml2_multilingual_identity_candidate_closure,
     "sv1_controlled_scale_promotion_readiness": _check_sv1_controlled_scale_promotion_readiness,
+    "sv1b_controlled_pixiv_metadata_localization_source_graph_closure": _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,
