@@ -2679,6 +2679,7 @@ def main() -> int:
             "execute-provider", "audit-acquisition-package", "import-acquired-replay",
             "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph",
             "validate-primary-search", "validate-replay-search", "compare-primary-replay-search",
+            "build-manual-acceptance",
         ),
         default="inventory",
     )
@@ -2691,6 +2692,7 @@ def main() -> int:
         "execute-provider", "audit-acquisition-package", "import-acquired-replay",
         "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph",
         "validate-primary-search", "validate-replay-search", "compare-primary-replay-search",
+        "build-manual-acceptance",
     }
     if resume_stage:
         validate_owned_output_root(
@@ -2743,7 +2745,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         accepted_evidence = read_json(output / "accepted-nonderived-evidence-proof.json")
     localization_baseline = None
     if args.stage == "localization-baseline":
@@ -2752,7 +2754,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         localization_baseline = read_json(output / "localization-baseline-proof.json")
     r2r_baseline_audit = None
     if args.stage == "r2r-baseline-audit":
@@ -2761,7 +2763,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         r2r_baseline_audit = read_json(output / "r2r-exact-remap-audit.json")
     provider_queue = None
     if args.stage == "queue-provider":
@@ -2770,7 +2772,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         provider_queue = read_json(output / "provider-queue-manifest-proof.json")
     provider_execution = None
     if args.stage == "execute-provider":
@@ -2779,7 +2781,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         provider_execution_path = output / "provider-execution-proof.json"
         if not provider_execution_path.is_file():
             raise SV1BPreflightError("provider_execution_proof_missing")
@@ -2791,7 +2793,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         acquisition_package = read_json(output / "acquisition-closure-and-package-proof.json")
     replay_acquired_import = None
     if args.stage == "import-acquired-replay":
@@ -2800,21 +2802,21 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         replay_acquired_import = read_json(output / "replay-acquired-evidence-import-proof.json")
     primary_graph = None
     if args.stage == "derive-primary-graph":
         primary_graph = derive_full_source_graph(
             output, database=args.primary_db, label="primary"
         )
-    elif args.stage in {"derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         primary_graph = read_json(output / "primary-source-graph-derivation-proof.json")
     replay_graph = None
     if args.stage == "derive-replay-graph":
         replay_graph = derive_full_source_graph(
             output, database=args.replay_db, label="replay"
         )
-    elif args.stage in {"compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         replay_graph = read_json(output / "replay-source-graph-derivation-proof.json")
     primary_replay_graph = None
     if args.stage == "compare-primary-replay-graph":
@@ -2823,25 +2825,36 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         primary_replay_graph = read_json(output / "primary-replay-source-graph-comparison-proof.json")
     primary_search = None
     if args.stage == "validate-primary-search":
         primary_search = run_sv1b_search_validation(
             output, database=args.primary_db, label="primary"
         )
-    elif args.stage in {"validate-replay-search", "compare-primary-replay-search"}:
+    elif args.stage in {"validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         primary_search = read_json(output / "primary-search-validation-proof.json")
     replay_search = None
     if args.stage == "validate-replay-search":
         replay_search = run_sv1b_search_validation(
             output, database=args.replay_db, label="replay"
         )
-    elif args.stage == "compare-primary-replay-search":
+    elif args.stage in {"compare-primary-replay-search", "build-manual-acceptance"}:
         replay_search = read_json(output / "replay-search-validation-proof.json")
     primary_replay_search = None
     if args.stage == "compare-primary-replay-search":
         primary_replay_search = compare_primary_replay_search_results(output)
+    elif args.stage == "build-manual-acceptance":
+        primary_replay_search = read_json(output / "primary-replay-search-comparison-proof.json")
+    manual_acceptance = None
+    if args.stage == "build-manual-acceptance":
+        from scripts import run_phase45_scv2_sv1b_manual_acceptance_harness as harness
+
+        manual_acceptance = harness.build_harness(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
     active_blockers: list[str] = []
     if provider_gate["passed"] is not True:
         active_blockers.append("blocked_sv1b_provider_authentication")
@@ -2849,7 +2862,14 @@ def main() -> int:
         active_blockers.append("blocked_sv1b_normalization_or_localization")
     if r2r_baseline_audit and r2r_baseline_audit.get("target_completion_ready") is not True:
         active_blockers.append("blocked_sv1b_r2r_replay")
-    status = active_blockers[0] if active_blockers else "provider_hardening_preflight_passed_auth_canary_pending"
+    automated_candidate_ready = bool(manual_acceptance and manual_acceptance.get("passed") is True and not active_blockers)
+    status = (
+        "automated_sv1b_candidate_ready_manual_acceptance_pending"
+        if automated_candidate_ready
+        else active_blockers[0]
+        if active_blockers
+        else "provider_hardening_preflight_passed_auth_canary_pending"
+    )
     result = {
         "phase": PHASE,
         "status": status,
@@ -2871,12 +2891,13 @@ def main() -> int:
         "primary_search": primary_search,
         "replay_search": replay_search,
         "primary_replay_search": primary_replay_search,
+        "manual_acceptance": manual_acceptance,
         "active_blockers": active_blockers,
         "target_met": False,
         "safe_to_merge": False,
         "route_approved": False,
         "manual_acceptance_required": True,
-        "manual_acceptance_status": "not_generated_provider_gate_blocked",
+        "manual_acceptance_status": "pending_user" if automated_candidate_ready else "not_generated_provider_gate_blocked",
         "next_phase_started": False,
     }
     write_json(output / "preflight-result.json", result)
