@@ -99,6 +99,25 @@ NONDERIVED_SOURCE_TABLES = frozenset({
     "source_name_registry",
 })
 
+SEARCH_PROTECTED_TABLES = (
+    "blombooru_media",
+    "blombooru_tags",
+    "blombooru_media_tags",
+    "blombooru_tag_translations",
+    "blombooru_source_metadata_records",
+    "blombooru_source_tag_observations",
+    "blombooru_source_name_observations",
+    "blombooru_source_searchable_name_assertions",
+    "blombooru_source_name_alias_candidates",
+    "blombooru_source_concept_signals",
+    "blombooru_source_concepts",
+    "blombooru_source_concept_aliases",
+    "blombooru_source_concept_evidence",
+    "blombooru_source_concept_signal_links",
+    "blombooru_source_concept_search_index",
+    "blombooru_source_concept_fallback_search_index",
+)
+
 COMPLETE_STATUSES = frozenset({"metadata_complete", "observed", "active", "accepted"})
 TERMINAL_STATUSES = frozenset({"terminal_remote_unavailable"})
 DEFERRED_STATUSES = frozenset({"deferred_nonblocking_source_page_mismatch"})
@@ -2129,6 +2148,444 @@ def compare_primary_replay_graphs(
     return result
 
 
+def _accepted_provider_record_keys() -> set[str]:
+    engine = engine_for(ACCEPTED_ML1_DB)
+    try:
+        with engine.connect() as connection:
+            return {
+                str(value) for value in connection.execute(text(
+                    "SELECT provider_record_key FROM blombooru_source_metadata_records "
+                    "WHERE provider='pixiv' AND provider_record_key IS NOT NULL"
+                )).scalars()
+                if value
+            }
+    finally:
+        engine.dispose()
+
+
+def build_sv1b_search_workload(session: Any) -> list[dict[str, Any]]:
+    accepted_record_keys = _accepted_provider_record_keys()
+    cases: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(
+        category: str,
+        terms: Iterable[Any],
+        *,
+        mode: str = "runtime_query",
+        provider_record_key: Any = None,
+        source_record_id: Any = None,
+        forbidden_media_id: Any = None,
+        lifecycle_status: Any = None,
+    ) -> None:
+        cleaned = tuple(str(term).strip() for term in terms if str(term or "").strip())
+        private_ref = sha256_payload({
+            "category": category,
+            "terms": cleaned,
+            "mode": mode,
+            "provider_record_key": str(provider_record_key or ""),
+        })
+        if private_ref in seen:
+            return
+        seen.add(private_ref)
+        cases.append({
+            "case_ref": private_ref,
+            "category": category,
+            "mode": mode,
+            "terms": list(cleaned),
+            "source_record_id": int(source_record_id) if source_record_id is not None else None,
+            "forbidden_media_id": int(forbidden_media_id) if forbidden_media_id is not None else None,
+            "lifecycle_status": str(lifecycle_status) if lifecycle_status else None,
+        })
+
+    complete_rows = list(session.execute(text("""
+        SELECT id,provider_record_key,media_id,artist_name,title
+        FROM blombooru_source_metadata_records
+        WHERE provider='pixiv' AND media_id IS NOT NULL
+          AND status IN ('metadata_complete','observed','active','accepted')
+        ORDER BY provider_record_key,id
+    """)).mappings())
+    for row in complete_rows:
+        category = (
+            "accepted_creator_alias"
+            if str(row.get("provider_record_key") or "") in accepted_record_keys
+            else "newly_acquired_creator_alias"
+        )
+        if sum(case["category"] == category for case in cases) < 8 and row.get("artist_name"):
+            add(category, (row["artist_name"],))
+
+    for row in session.execute(text("""
+        SELECT search_key,COUNT(DISTINCT concept_id) AS concept_count
+        FROM blombooru_source_concept_search_index
+        WHERE status='active'
+        GROUP BY search_key HAVING COUNT(DISTINCT concept_id)>1
+        ORDER BY concept_count DESC,search_key LIMIT 8
+    """)).mappings():
+        add("shared_name_creator", (row["search_key"],))
+
+    for row in session.execute(text("""
+        SELECT DISTINCT r.artist_name,t.name
+        FROM blombooru_source_metadata_records r
+        JOIN blombooru_media_tags mt ON mt.media_id=r.media_id
+        JOIN blombooru_tags t ON t.id=mt.tag_id
+        WHERE r.provider='pixiv' AND r.status IN ('metadata_complete','observed','active','accepted')
+          AND COALESCE(r.artist_name,'')<>'' AND CAST(t.category AS text)='character'
+        ORDER BY r.artist_name,t.name LIMIT 8
+    """)).all():
+        add("creator_and_character", row)
+
+    for row in complete_rows:
+        if sum(case["category"] == "creator_and_work_title" for case in cases) >= 8:
+            break
+        if row.get("artist_name") and row.get("title"):
+            add("creator_and_work_title", (row["artist_name"], row["title"]))
+
+    for row in session.execute(text("""
+        SELECT DISTINCT o.raw_tag
+        FROM blombooru_source_tag_observations o
+        JOIN blombooru_source_metadata_records r ON r.id=o.source_metadata_record_id
+        WHERE o.status IN ('observed','active','accepted')
+          AND r.status IN ('metadata_complete','observed','active','accepted')
+          AND COALESCE(o.raw_tag,'')<>''
+        ORDER BY o.raw_tag LIMIT 8
+    """)).all():
+        add("provider_source_tag", row)
+
+    translation_rows = list(session.execute(text("""
+        SELECT tr.display_name,tr.category,tr.canonical_name
+        FROM blombooru_tag_translations tr
+        WHERE tr.language='zh-CN' AND tr.status='translated' AND COALESCE(tr.display_name,'')<>''
+        ORDER BY tr.canonical_name,tr.display_name
+    """)).mappings())
+    for row in translation_rows:
+        if sum(case["category"] == "chinese_localized_ai_tag" for case in cases) < 8:
+            used_by_ai = session.execute(text("""
+                SELECT 1 FROM blombooru_tags t
+                JOIN blombooru_media_tags mt ON mt.tag_id=t.id
+                WHERE t.name=:name AND mt.source='ai_wd' LIMIT 1
+            """), {"name": row["canonical_name"]}).first()
+            if used_by_ai:
+                add("chinese_localized_ai_tag", (row["display_name"],))
+        if (
+            sum(case["category"] == "search_only_translation" for case in cases) < 8
+            and str(row.get("category") or "general").casefold()
+            not in {"artist", "character", "copyright", "work", "person", "creator"}
+        ):
+            add("search_only_translation", (row["display_name"],))
+        if (
+            sum(case["category"] == "chinese_localized_ai_tag" for case in cases) >= 8
+            and sum(case["category"] == "search_only_translation" for case in cases) >= 8
+        ):
+            break
+
+    for index in range(4):
+        add("negative_query", (f"sv1b_deterministic_no_match_{index}_7f31a9",))
+
+    for lifecycle_status in (
+        "terminal_remote_unavailable",
+        "deferred_nonblocking_source_page_mismatch",
+    ):
+        for row in session.execute(text("""
+            SELECT id,provider_record_key,media_id,status
+            FROM blombooru_source_metadata_records
+            WHERE provider='pixiv' AND status=:status
+            ORDER BY provider_record_key,id LIMIT 4
+        """), {"status": lifecycle_status}).mappings():
+            add(
+                "terminal_or_deferred_lifecycle",
+                (),
+                mode="lifecycle_exclusion",
+                provider_record_key=row.get("provider_record_key"),
+                source_record_id=row["id"],
+                forbidden_media_id=row.get("media_id"),
+                lifecycle_status=lifecycle_status,
+            )
+
+    cases.sort(key=lambda row: (str(row["category"]), str(row["case_ref"])))
+    return cases
+
+
+def _percentile(values: Iterable[float], percentile: float) -> float:
+    import math
+
+    ordered = sorted(float(value) for value in values)
+    if not ordered:
+        return 0.0
+    index = max(0, min(len(ordered) - 1, math.ceil(percentile * len(ordered)) - 1))
+    return round(ordered[index], 3)
+
+
+def classify_search_runtime_membership(
+    term_support: Iterable[Mapping[int, set[str]]],
+    term_keys: Iterable[set[str]],
+    actual_ids: set[int],
+    *,
+    rejected_index: Mapping[str, set[int]],
+    superseded_index: Mapping[str, set[int]],
+    invalid_index: Mapping[str, set[int]],
+) -> dict[str, set[int]]:
+    support_rows = list(term_support)
+    key_rows = list(term_keys)
+    expected_ids = set(support_rows[0]) if support_rows else set()
+    for support in support_rows[1:]:
+        expected_ids.intersection_update(support)
+    supported = set(actual_ids).intersection(expected_ids)
+    unsupported = set(actual_ids) - expected_ids
+    missing = expected_ids - set(actual_ids)
+    rejected_only: set[int] = set()
+    superseded_only: set[int] = set()
+    invalid_only: set[int] = set()
+    lifecycle_violations: set[int] = set()
+    for media_id in unsupported:
+        flags = []
+        for support, keys in zip(support_rows, key_rows):
+            flags.append({
+                "legal": media_id in support,
+                "rejected": any(media_id in rejected_index.get(key, set()) for key in keys),
+                "superseded": any(media_id in superseded_index.get(key, set()) for key in keys),
+                "invalid": any(media_id in invalid_index.get(key, set()) for key in keys),
+            })
+        if flags and all(row["legal"] or row["rejected"] for row in flags) and any(row["rejected"] for row in flags):
+            rejected_only.add(media_id)
+        elif flags and all(row["legal"] or row["superseded"] for row in flags) and any(row["superseded"] for row in flags):
+            superseded_only.add(media_id)
+        elif flags and all(row["legal"] or row["invalid"] for row in flags) and any(row["invalid"] for row in flags):
+            invalid_only.add(media_id)
+        if any(row["rejected"] or row["superseded"] or row["invalid"] for row in flags):
+            lifecycle_violations.add(media_id)
+    return {
+        "expected": expected_ids,
+        "supported": supported,
+        "unsupported": unsupported,
+        "missing": missing,
+        "rejected_only": rejected_only,
+        "superseded_only": superseded_only,
+        "invalid_only": invalid_only,
+        "lifecycle_violations": lifecycle_violations,
+        "and_leakage": unsupported if len(support_rows) > 1 else set(),
+    }
+
+
+def run_sv1b_search_validation(
+    output: Path,
+    *,
+    database: str,
+    label: str,
+) -> dict[str, Any]:
+    import time
+    from scripts import run_phase45_scv2_ml1_multilingual_alias_source_metadata_closure as ml1
+
+    graph_proof = read_json(output / f"{label}-source-graph-derivation-proof.json")
+    graph_comparison = read_json(output / "primary-replay-source-graph-comparison-proof.json")
+    if graph_proof.get("passed") is not True or graph_comparison.get("passed") is not True:
+        raise SV1BPreflightError(f"{label}_graph_proof_missing_or_failed")
+    before = database_fingerprint(database, SEARCH_PROTECTED_TABLES)
+    engine = engine_for(database)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    private_cases: list[dict[str, Any]] = []
+    latencies: list[float] = []
+    totals = Counter()
+    category_counts = Counter()
+    lifecycle_status_counts = Counter()
+    try:
+        workload = build_sv1b_search_workload(session)
+        support_index, rejected_index, superseded_index, invalid_index = ml1.build_runtime_support_index(session)
+        translation_rows = [
+            dict(row) for row in session.execute(text(
+                "SELECT * FROM blombooru_tag_translations ORDER BY id"
+            )).mappings()
+        ]
+        ml1.apply_translation_support_relations(support_index, translation_rows)
+        media_hash_by_id = {
+            int(row[0]): str(row[1])
+            for row in session.execute(text("SELECT id,hash FROM blombooru_media"))
+        }
+        for case in workload:
+            category_counts[str(case["category"])] += 1
+            if case["mode"] == "lifecycle_exclusion":
+                lifecycle_status_counts[str(case.get("lifecycle_status") or "missing")] += 1
+                lifecycle_counts = session.execute(text("""
+                    SELECT
+                      (SELECT COUNT(*) FROM blombooru_source_metadata_evidence
+                       WHERE source_metadata_record_id=:record_id
+                         AND status IN ('active','accepted','observed')
+                         AND evidence_kind IN ('provider_page_observed_complete','trusted_complete_metadata'))
+                      +
+                      (SELECT COUNT(*) FROM blombooru_source_name_observations
+                       WHERE source_metadata_record_id=:record_id AND status IN ('active','accepted','observed'))
+                      +
+                      (SELECT COUNT(*) FROM blombooru_source_tag_observations
+                       WHERE source_metadata_record_id=:record_id AND status IN ('active','accepted','observed'))
+                      +
+                      (SELECT COUNT(*) FROM blombooru_source_searchable_name_assertions
+                       WHERE source_metadata_record_id=:record_id AND status IN ('active','accepted','observed'))
+                """), {"record_id": case["source_record_id"]}).scalar()
+                violations = int(lifecycle_counts or 0)
+                totals["lifecycle_status_violation_count"] += violations
+                private_cases.append({
+                    **case,
+                    "lifecycle_status_violation_count": violations,
+                    "passed": violations == 0,
+                })
+                continue
+
+            term_support: list[dict[int, set[str]]] = []
+            term_keys: list[set[str]] = []
+            for term in case["terms"]:
+                support, keys = ml1.indexed_support_for_runtime_query(session, term, support_index)
+                term_support.append(support)
+                term_keys.append(keys)
+            started = time.perf_counter()
+            actual_ids = ml1.runtime_and_terms(session, *case["terms"])
+            latency_ms = (time.perf_counter() - started) * 1000.0
+            latencies.append(latency_ms)
+            classified = classify_search_runtime_membership(
+                term_support,
+                term_keys,
+                actual_ids,
+                rejected_index=rejected_index,
+                superseded_index=superseded_index,
+                invalid_index=invalid_index,
+            )
+            expected_ids = classified["expected"]
+            supported = classified["supported"]
+            unsupported = classified["unsupported"]
+            missing = classified["missing"]
+            rejected_only = classified["rejected_only"]
+            superseded_only = classified["superseded_only"]
+            invalid_only = classified["invalid_only"]
+            lifecycle_violations = classified["lifecycle_violations"]
+            and_leakage = classified["and_leakage"]
+            totals.update({
+                "supported_result_count": len(supported),
+                "unsupported_result_count": len(unsupported),
+                "rejected_only_result_count": len(rejected_only),
+                "superseded_only_result_count": len(superseded_only),
+                "invalid_deleted_only_result_count": len(invalid_only),
+                "and_leakage_count": len(and_leakage),
+                "lifecycle_status_violation_count": len(lifecycle_violations),
+                "supported_query_missing_result_count": len(missing),
+            })
+            actual_hashes = sorted(media_hash_by_id[media_id] for media_id in actual_ids)
+            expected_hashes = sorted(media_hash_by_id[media_id] for media_id in expected_ids)
+            private_cases.append({
+                **case,
+                "actual_result_count": len(actual_ids),
+                "expected_result_count": len(expected_ids),
+                "actual_membership_fingerprint": sha256_payload(actual_hashes),
+                "expected_membership_fingerprint": sha256_payload(expected_hashes),
+                "unsupported_result_count": len(unsupported),
+                "rejected_only_result_count": len(rejected_only),
+                "superseded_only_result_count": len(superseded_only),
+                "invalid_deleted_only_result_count": len(invalid_only),
+                "and_leakage_count": len(and_leakage),
+                "supported_query_missing_result_count": len(missing),
+                "latency_ms": round(latency_ms, 3),
+                "passed": not unsupported and not missing,
+            })
+        session.rollback()
+    finally:
+        session.close()
+        engine.dispose()
+    after = database_fingerprint(database, SEARCH_PROTECTED_TABLES)
+    mutated_tables = sorted(
+        table for table in SEARCH_PROTECTED_TABLES
+        if before["tables"][table] != after["tables"][table]
+    )
+    logical_cases = [
+        {key: value for key, value in row.items() if key not in {"terms", "latency_ms", "source_record_id", "forbidden_media_id"}}
+        for row in private_cases
+    ]
+    write_json(output / f"{label}-search-workload-and-results-private.json", private_cases)
+    result = {
+        "database": database,
+        "label": label,
+        "case_count": len(private_cases),
+        "category_case_counts": dict(sorted(category_counts.items())),
+        "lifecycle_status_case_counts": dict(sorted(lifecycle_status_counts.items())),
+        **{key: int(totals[key]) for key in (
+            "supported_result_count", "unsupported_result_count",
+            "rejected_only_result_count", "superseded_only_result_count",
+            "invalid_deleted_only_result_count", "and_leakage_count",
+            "lifecycle_status_violation_count", "supported_query_missing_result_count",
+        )},
+        "search_caused_identity_mutation_count": len(mutated_tables),
+        "search_mutated_protected_tables": mutated_tables,
+        "counters_derived_from_returned_rows": True,
+        "independent_expected_membership_used": True,
+        "blombooru_tags_protected": "blombooru_tags" in SEARCH_PROTECTED_TABLES,
+        "protected_table_fingerprint_before": before["fingerprint"],
+        "protected_table_fingerprint_after": after["fingerprint"],
+        "workload_fingerprint": sha256_payload([
+            {"case_ref": row["case_ref"], "category": row["category"], "mode": row["mode"]}
+            for row in private_cases
+        ]),
+        "logical_result_fingerprint": sha256_payload(logical_cases),
+        "p50_latency_ms": _percentile(latencies, 0.50),
+        "p95_latency_ms": _percentile(latencies, 0.95),
+        "max_latency_ms": round(max(latencies), 3) if latencies else 0.0,
+        "index_counts": {
+            "source_concept_search_index": after["tables"]["blombooru_source_concept_search_index"]["count"],
+            "source_concept_fallback_search_index": after["tables"]["blombooru_source_concept_fallback_search_index"]["count"],
+        },
+    }
+    zero_keys = (
+        "unsupported_result_count", "rejected_only_result_count",
+        "superseded_only_result_count", "invalid_deleted_only_result_count",
+        "and_leakage_count", "search_caused_identity_mutation_count",
+        "lifecycle_status_violation_count", "supported_query_missing_result_count",
+    )
+    required_categories = {
+        "accepted_creator_alias", "newly_acquired_creator_alias", "shared_name_creator",
+        "creator_and_character", "creator_and_work_title", "provider_source_tag",
+        "chinese_localized_ai_tag", "search_only_translation", "negative_query",
+        "terminal_or_deferred_lifecycle",
+    }
+    result["required_category_membership_passed"] = required_categories.issubset(category_counts)
+    result["required_lifecycle_status_membership_passed"] = {
+        "terminal_remote_unavailable",
+        "deferred_nonblocking_source_page_mismatch",
+    }.issubset(lifecycle_status_counts)
+    result["passed"] = bool(
+        result["required_category_membership_passed"]
+        and result["required_lifecycle_status_membership_passed"]
+        and not any(int(result[key]) for key in zero_keys)
+        and before["fingerprint"] == after["fingerprint"]
+    )
+    write_json(output / f"{label}-search-validation-proof.json", result)
+    if result["passed"] is not True:
+        raise SV1BPreflightError(f"{label}_search_validation_failed")
+    return result
+
+
+def compare_primary_replay_search_results(output: Path) -> dict[str, Any]:
+    primary = read_json(output / "primary-search-validation-proof.json")
+    replay = read_json(output / "replay-search-validation-proof.json")
+    compared_fields = (
+        "case_count", "category_case_counts", "lifecycle_status_case_counts", "supported_result_count",
+        "unsupported_result_count", "rejected_only_result_count",
+        "superseded_only_result_count", "invalid_deleted_only_result_count",
+        "and_leakage_count", "search_caused_identity_mutation_count",
+        "lifecycle_status_violation_count", "supported_query_missing_result_count",
+        "workload_fingerprint", "logical_result_fingerprint", "index_counts",
+    )
+    mismatches = [key for key in compared_fields if primary.get(key) != replay.get(key)]
+    result = {
+        "compared_fields": list(compared_fields),
+        "mismatched_fields": mismatches,
+        "unexplained_logical_mismatch_count": len(mismatches),
+        "numeric_row_id_equality_claimed": False,
+        "primary_passed": primary.get("passed") is True,
+        "replay_passed": replay.get("passed") is True,
+        "passed": bool(primary.get("passed") is True and replay.get("passed") is True and not mismatches),
+    }
+    write_json(output / "primary-replay-search-comparison-proof.json", result)
+    if result["passed"] is not True:
+        raise SV1BPreflightError("primary_replay_search_comparison_failed")
+    return result
+
+
 def provider_gate_preflight() -> dict[str, Any]:
     entrypoint = gallery_adapter.probe_gallery_dl_entrypoint(None)
     profile = validate_gallery_dl_profile(entrypoint.command, timeout_seconds=30)
@@ -2221,6 +2678,7 @@ def main() -> int:
             "queue-provider",
             "execute-provider", "audit-acquisition-package", "import-acquired-replay",
             "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph",
+            "validate-primary-search", "validate-replay-search", "compare-primary-replay-search",
         ),
         default="inventory",
     )
@@ -2232,6 +2690,7 @@ def main() -> int:
         "import-accepted-evidence", "localization-baseline", "r2r-baseline-audit", "queue-provider",
         "execute-provider", "audit-acquisition-package", "import-acquired-replay",
         "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph",
+        "validate-primary-search", "validate-replay-search", "compare-primary-replay-search",
     }
     if resume_stage:
         validate_owned_output_root(
@@ -2284,7 +2743,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph"}:
+    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         accepted_evidence = read_json(output / "accepted-nonderived-evidence-proof.json")
     localization_baseline = None
     if args.stage == "localization-baseline":
@@ -2293,7 +2752,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph"}:
+    elif args.stage in {"r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         localization_baseline = read_json(output / "localization-baseline-proof.json")
     r2r_baseline_audit = None
     if args.stage == "r2r-baseline-audit":
@@ -2302,7 +2761,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph"}:
+    elif args.stage in {"queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         r2r_baseline_audit = read_json(output / "r2r-exact-remap-audit.json")
     provider_queue = None
     if args.stage == "queue-provider":
@@ -2311,7 +2770,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph"}:
+    elif args.stage in {"execute-provider", "audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         provider_queue = read_json(output / "provider-queue-manifest-proof.json")
     provider_execution = None
     if args.stage == "execute-provider":
@@ -2320,7 +2779,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph"}:
+    elif args.stage in {"audit-acquisition-package", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         provider_execution_path = output / "provider-execution-proof.json"
         if not provider_execution_path.is_file():
             raise SV1BPreflightError("provider_execution_proof_missing")
@@ -2332,7 +2791,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph"}:
+    elif args.stage in {"import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         acquisition_package = read_json(output / "acquisition-closure-and-package-proof.json")
     replay_acquired_import = None
     if args.stage == "import-acquired-replay":
@@ -2341,21 +2800,21 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph"}:
+    elif args.stage in {"derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         replay_acquired_import = read_json(output / "replay-acquired-evidence-import-proof.json")
     primary_graph = None
     if args.stage == "derive-primary-graph":
         primary_graph = derive_full_source_graph(
             output, database=args.primary_db, label="primary"
         )
-    elif args.stage in {"derive-replay-graph", "compare-primary-replay-graph"}:
+    elif args.stage in {"derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         primary_graph = read_json(output / "primary-source-graph-derivation-proof.json")
     replay_graph = None
     if args.stage == "derive-replay-graph":
         replay_graph = derive_full_source_graph(
             output, database=args.replay_db, label="replay"
         )
-    elif args.stage == "compare-primary-replay-graph":
+    elif args.stage in {"compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
         replay_graph = read_json(output / "replay-source-graph-derivation-proof.json")
     primary_replay_graph = None
     if args.stage == "compare-primary-replay-graph":
@@ -2364,6 +2823,25 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
+    elif args.stage in {"validate-primary-search", "validate-replay-search", "compare-primary-replay-search"}:
+        primary_replay_graph = read_json(output / "primary-replay-source-graph-comparison-proof.json")
+    primary_search = None
+    if args.stage == "validate-primary-search":
+        primary_search = run_sv1b_search_validation(
+            output, database=args.primary_db, label="primary"
+        )
+    elif args.stage in {"validate-replay-search", "compare-primary-replay-search"}:
+        primary_search = read_json(output / "primary-search-validation-proof.json")
+    replay_search = None
+    if args.stage == "validate-replay-search":
+        replay_search = run_sv1b_search_validation(
+            output, database=args.replay_db, label="replay"
+        )
+    elif args.stage == "compare-primary-replay-search":
+        replay_search = read_json(output / "replay-search-validation-proof.json")
+    primary_replay_search = None
+    if args.stage == "compare-primary-replay-search":
+        primary_replay_search = compare_primary_replay_search_results(output)
     active_blockers: list[str] = []
     if provider_gate["passed"] is not True:
         active_blockers.append("blocked_sv1b_provider_authentication")
@@ -2390,6 +2868,9 @@ def main() -> int:
         "primary_graph": primary_graph,
         "replay_graph": replay_graph,
         "primary_replay_graph": primary_replay_graph,
+        "primary_search": primary_search,
+        "replay_search": replay_search,
+        "primary_replay_search": primary_replay_search,
         "active_blockers": active_blockers,
         "target_met": False,
         "safe_to_merge": False,

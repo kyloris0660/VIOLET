@@ -12,6 +12,7 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     audit_acquisition_closure_rows,
     canonical_work_id,
     build_full_candidate_dispositions,
+    classify_search_runtime_membership,
     compare_creator_family_states,
     execute_provider_manifest,
     filter_nonderived_source_package,
@@ -345,6 +346,42 @@ def test_graph_derivation_checkpoint_fails_closed_on_reusable_state_drift(
     path.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(SV1BPreflightError, match="graph_derivation_checkpoint_failed"):
         validate_graph_derivation_checkpoint(tmp_path)
+
+
+def test_search_runtime_membership_classifies_returned_lifecycle_rows_and_and_leakage() -> None:
+    result = classify_search_runtime_membership(
+        [
+            {1: {"direct"}, 2: {"direct"}, 4: {"direct"}, 5: {"direct"}, 6: {"direct"}},
+            {2: {"direct"}, 3: {"direct"}},
+        ],
+        [{"term-a"}, {"term-b"}],
+        {2, 4, 5, 6},
+        rejected_index={"term-b": {4}},
+        superseded_index={"term-b": {5}},
+        invalid_index={"term-b": {6}},
+    )
+    assert result["expected"] == {2}
+    assert result["supported"] == {2}
+    assert result["unsupported"] == {4, 5, 6}
+    assert result["rejected_only"] == {4}
+    assert result["superseded_only"] == {5}
+    assert result["invalid_only"] == {6}
+    assert result["lifecycle_violations"] == {4, 5, 6}
+    assert result["and_leakage"] == {4, 5, 6}
+
+
+def test_search_runtime_membership_derives_missing_supported_rows() -> None:
+    result = classify_search_runtime_membership(
+        [{1: {"direct"}, 2: {"direct"}}, {2: {"direct"}, 3: {"direct"}}],
+        [{"term-a"}, {"term-b"}],
+        set(),
+        rejected_index={},
+        superseded_index={},
+        invalid_index={},
+    )
+    assert result["expected"] == {2}
+    assert result["missing"] == {2}
+    assert result["unsupported"] == set()
 
 
 def test_output_root_must_be_new_and_private(tmp_path: Path) -> None:

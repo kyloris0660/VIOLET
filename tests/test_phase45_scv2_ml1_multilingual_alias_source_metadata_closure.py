@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, migrate_add_source_concept_fallback_search_index
-from app.models import TagTranslation
+from app.models import Tag, TagTranslation
 from app.services.pixiv_metadata_ingestion_service import PixivMetadataGateError
 from app.services import source_assertion_search_service as source_search
 from app.utils.search_parser import parse_search_query
@@ -1002,13 +1002,92 @@ def test_parse_search_query_uses_explicit_snapshot_session_for_aliases() -> None
         session_b.commit()
         assert parse_search_query("snapshot_specific_alias", db=session_a)["tags"]["include"] == ["canonical_a"]
         assert parse_search_query("snapshot_specific_alias", db=session_b)["tags"]["include"] == ["canonical_b"]
-        assert "search_parser_translation_alias_map_v1" in session_a.info
-        assert "search_parser_translation_alias_map_v1" in session_b.info
+        assert "search_parser_translation_alias_map_v2" in session_a.info
+        assert "search_parser_translation_alias_map_v2" in session_b.info
     finally:
         session_a.close()
         session_b.close()
         engine_a.dispose()
         engine_b.dispose()
+
+
+def test_ambiguous_equal_priority_translation_alias_expands_to_tag_union() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[Tag.__table__, TagTranslation.__table__])
+    session = sessionmaker(bind=engine)()
+    try:
+        session.add_all(
+            [
+                Tag(name="canonical_a"),
+                Tag(name="canonical_b"),
+                TagTranslation(
+                    canonical_name="canonical_a",
+                    language="zh-CN",
+                    display_name="shared_translation_alias",
+                    source="static",
+                    status="translated",
+                    needs_review=False,
+                ),
+                TagTranslation(
+                    canonical_name="canonical_b",
+                    language="zh-CN",
+                    display_name="shared_translation_alias",
+                    source="static",
+                    status="translated",
+                    needs_review=False,
+                ),
+            ]
+        )
+        session.commit()
+        parsed = parse_search_query("shared_translation_alias", db=session)
+        assert parsed["tags"]["include"] == ["shared_translation_alias"]
+        assert source_search._tag_names_for_source_keys(
+            session, {"shared_translation_alias"}
+        ) == {"canonical_a", "canonical_b"}
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_canonical_alias_collision_unions_equal_priority_but_not_lower_priority() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[Tag.__table__, TagTranslation.__table__])
+    session = sessionmaker(bind=engine)()
+    try:
+        session.add_all(
+            [
+                Tag(name="canonical_a"),
+                Tag(name="canonical_b"),
+                Tag(name="canonical_c"),
+                Tag(name="canonical display tag"),
+                TagTranslation(
+                    canonical_name="canonical_a", language="zh-CN",
+                    display_name="shared alias", source="static",
+                    status="translated", needs_review=False,
+                ),
+                TagTranslation(
+                    canonical_name="canonical_b", language="zh-CN",
+                    display_name="shared_alias", source="static",
+                    status="translated", needs_review=False,
+                ),
+                TagTranslation(
+                    canonical_name="canonical_c", language="zh-CN",
+                    display_name="shared alias", source="imported",
+                    status="translated", needs_review=False,
+                ),
+            ]
+        )
+        session.commit()
+        assert parse_search_query('"shared alias"', db=session)["tags"]["include"] == ["shared alias"]
+        assert source_search._tag_names_for_source_keys(
+            session, {"shared_alias"}
+        ) == {"canonical_a", "canonical_b"}
+        assert source_search._tag_names_for_source_keys(
+            session, {"canonical_display_tag"}
+        ) == {"canonical display tag"}
+    finally:
+        session.close()
+        engine.dispose()
 
 
 def test_old_r2_schema_clone_adds_fallback_index_before_dry_run(tmp_path: Path) -> None:
