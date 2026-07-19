@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +19,7 @@ from scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness import (
     STABLE_ID_KEYS,
     SV1BlockedError,
     _percentile,
+    _observation_reference,
     _source_concept_evidence_logical_key,
     audit_connected_component_graph,
     accepted_media_public_wording,
@@ -23,8 +28,10 @@ from scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness import (
     denominator_audit,
     derive_eligible_media_count,
     exact_resume_accounting,
+    evidence_to_scale,
     is_strict_test_database_name,
     recompute_inventory_accounting,
+    reconcile_stable_evidence_packages,
     require_resolved_descendant,
     run_stage,
     sanitize_stable_payload,
@@ -32,6 +39,7 @@ from scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness import (
     separated_ai_accounting,
     sha256_payload,
     validate_actual_rebuild_ledger,
+    validate_evidence_table_accounting,
     write_json,
     write_jsonl,
 )
@@ -106,6 +114,13 @@ def test_source_concept_evidence_logical_key_distinguishes_media_support() -> No
     assert _source_concept_evidence_logical_key(base) != _source_concept_evidence_logical_key({**base, "media_id": 203})
 
 
+def test_polymorphic_observation_reference_never_merges_tag_and_name_id_spaces() -> None:
+    tag = {7: "tag-seven"}
+    name = {7: "name-seven"}
+    assert _observation_reference("source_tag_observation", 7, tag, name) == "tag-seven"
+    assert _observation_reference("source_name_observation", 7, tag, name) == "name-seven"
+
+
 def test_public_scan_allows_only_the_required_stable_key_stage_identifier() -> None:
     result = scan_public(
         "public aggregate report",
@@ -124,7 +139,13 @@ def test_public_scan_still_blocks_real_secret_tokens() -> None:
 
 
 def test_public_scan_does_not_treat_safe_schema_keys_as_values() -> None:
-    result = scan_public("public aggregate report", {"task_branch_start_sha": "abcdef123456"})
+    result = scan_public(
+        "public aggregate report",
+        {
+            "task_branch_start_sha": "abcdef123456",
+            "exact_stable_key_membership_passed": True,
+        },
+    )
 
     assert result["passed"] is True
 
@@ -171,6 +192,72 @@ def test_strict_test_database_identity_accepts_delimited_segment(name: str) -> N
 @pytest.mark.parametrize("name", ["blombooru", "blombooru_contest", "blombooru_latest", "blombooru_testimony", "other_test"])
 def test_strict_test_database_identity_rejects_substrings_and_production(name: str) -> None:
     assert not is_strict_test_database_name(name)
+
+
+@pytest.mark.parametrize(
+    ("scale_db", "promotion_db", "rebuild_db", "error"),
+    [
+        ("blombooru_scale_test", "blombooru_promotion_test", "blombooru_scale_test", "not_pairwise_distinct"),
+        ("blombooru_scale_test", "blombooru_promotion_test", "blombooru_promotion_test", "not_pairwise_distinct"),
+        ("blombooru_scale_test", "blombooru_promotion_test", "blombooru_scv2_ml1_acquisition_test_20260712", "accepted_predecessor"),
+        ("blombooru_scale_test", "blombooru_promotion_test", "blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715", "accepted_predecessor"),
+        ("blombooru_scale_test", "blombooru_promotion_test", "blombooru_production", "unsafe_writable_database_identity"),
+    ],
+)
+def test_rebuild_database_identity_rejects_before_any_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scale_db: str,
+    promotion_db: str,
+    rebuild_db: str,
+    error: str,
+) -> None:
+    import scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness as runner
+
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(runner, "git", lambda *args: runner.BRANCH if args == ("branch", "--show-current") else "head")
+    monkeypatch.setattr(runner, "engine_for", lambda _database: pytest.fail("database connection occurred before rejection"))
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    storage = tmp_path / ".local_test_storage" / "rejected"
+    output = tmp_path / ".local_manifests" / "rejected"
+    args = SimpleNamespace(
+        storage_root=storage, output_dir=output,
+        scale_db=scale_db, promotion_db=promotion_db, rebuild_db=rebuild_db,
+    )
+    with pytest.raises(SV1BlockedError, match=error):
+        run_stage(args)
+    assert not storage.exists()
+    assert not output.exists()
+
+
+def test_unsafe_root_subprocess_import_does_not_initialize_ambient_settings(tmp_path: Path) -> None:
+    unsafe_output = tmp_path / "unsafe-output"
+    ambient_storage = tmp_path / "ambient-storage"
+    safe_storage = ROOT / ".local_test_storage" / f"settings-preflight-{tmp_path.name}"
+    assert not unsafe_output.exists()
+    assert not ambient_storage.exists()
+    assert not safe_storage.exists()
+    env = os.environ.copy()
+    env.update({
+        "VIOLET_ENV": "test",
+        "VIOLET_STORAGE_ROOT": str(ambient_storage),
+        "PYTHONUTF8": "1",
+    })
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/run_phase45_scv2_sv1_controlled_scale_promotion_readiness.py"),
+            "--stage", "validation",
+            "--storage-root", str(safe_storage),
+            "--output-dir", str(unsafe_output),
+        ],
+        cwd=ROOT, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert run.returncode == 2
+    assert "output_root_outside_private_root" in run.stderr
+    assert not unsafe_output.exists()
+    assert not ambient_storage.exists()
+    assert not safe_storage.exists()
 
 
 def test_resolved_private_path_requires_true_descendant(tmp_path) -> None:
@@ -390,3 +477,133 @@ def test_custom_scale_database_is_the_only_denominator_membership_source(tmp_pat
     result = denominator_audit(paths, "blombooru_custom_test_scale")
     assert consulted == ["blombooru_custom_test_scale"]
     assert result["database_identity"] == "blombooru_custom_test_scale"
+    assert result["exact_membership_equality"] is True
+
+
+def test_denominator_blocks_before_classification_on_manifest_database_membership_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = Paths(tmp_path)
+    write_jsonl(paths.manifest, [{"file_hash": "manifest-only"}])
+
+    class Result:
+        def mappings(self):
+            return [{"hash": "database-only", "filename": "12345678_p0.jpg", "path": "media/12345678_p0.jpg"}]
+
+    class Connection:
+        def execute(self, _statement): return Result()
+
+    class Context:
+        def __enter__(self): return Connection()
+        def __exit__(self, *_args): return False
+
+    class Engine:
+        def connect(self): return Context()
+        def dispose(self): return None
+
+    monkeypatch.setattr("scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness.engine_for", lambda _database: Engine())
+    with pytest.raises(SV1BlockedError, match="membership_mismatch"):
+        denominator_audit(paths, "blombooru_custom_test_scale")
+    membership = json.loads((tmp_path / "denominator-membership-private.json").read_text(encoding="utf-8"))
+    assert membership["missing_in_database_count"] == 1
+    assert membership["extra_in_database_count"] == 1
+    assert membership["exact_membership_equality"] is False
+    assert not (tmp_path / "denominator-classification-private.jsonl").exists()
+
+
+def test_read_only_evidence_reconciliation_explicitly_defers_fallback_target_missing() -> None:
+    source = {
+        "tables": {
+            "source_metadata_records": [
+                {"provider_record_key": "present", "media_content_key": "hash-present"},
+                {"provider_record_key": "missing", "media_content_key": "hash-missing"},
+            ],
+            "source_concept_fallback_search_index": [
+                {"pair_id": "present", "media_content_key": "hash-present"},
+                {"pair_id": "missing", "media_content_key": "hash-missing"},
+            ],
+        }
+    }
+    target = {
+        "tables": {
+            "source_metadata_records": [
+                {"provider_record_key": "present", "media_content_key": "hash-present"},
+                {"provider_record_key": "missing", "media_content_key": None},
+            ],
+            "source_concept_fallback_search_index": [
+                {"pair_id": "present", "media_content_key": "hash-present"},
+            ],
+        }
+    }
+    result = reconcile_stable_evidence_packages(source, target, {"hash-present"})
+    fallback = result["per_table_accounting"]["source_concept_fallback_search_index"]
+    assert fallback == {
+        **fallback,
+        "exported": 2,
+        "inserted": 0,
+        "compatible_existing": 1,
+        "deferred_target_missing": 1,
+        "rejected_incompatible": 0,
+        "blocking_failed": 0,
+        "target_missing_reference_count": 1,
+        "missing_materialized_count": 0,
+        "extra_materialized_count": 0,
+        "equation_balanced": True,
+        "exact_stable_key_membership": True,
+    }
+    assert result["fallback_search_target_missing_count"] == 1
+    assert result["exact_stable_key_membership_passed"] is True
+
+
+@pytest.mark.parametrize(
+    "per_table",
+    [
+        {"exported": 1, "inserted": 0, "compatible_existing": 0, "deferred_target_missing": 0, "rejected_incompatible": 0, "blocking_failed": 0},
+        {"exported": 1, "inserted": 0, "compatible_existing": 1, "deferred_target_missing": 0, "rejected_incompatible": 0, "blocking_failed": 0},
+        {"exported": 1, "inserted": 2, "compatible_existing": 0, "deferred_target_missing": 0, "rejected_incompatible": 0, "blocking_failed": 0},
+    ],
+    ids=("silent-omission", "fallback-missing-without-deferral", "unbalanced-table"),
+)
+def test_atomic_evidence_import_rolls_back_on_every_accounting_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, per_table: dict[str, int],
+) -> None:
+    import scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness as runner
+
+    paths = Paths(tmp_path)
+    write_json(paths.package, {"tables": {"source_concept_fallback_search_index": [{}]}})
+    state = {"value": 0}
+
+    class Transaction:
+        def __enter__(self): return object()
+        def __exit__(self, exc_type, _exc, _tb):
+            if exc_type is not None:
+                state["value"] = 0
+            return False
+
+    class Engine:
+        def begin(self): return Transaction()
+        def dispose(self): return None
+
+    def fake_import(_conn, _package):
+        state["value"] = 1
+        result = {
+            "per_table_accounting": {"source_concept_fallback_search_index": {**per_table, "equation_balanced": True}},
+            "fallback_search_target_missing_count": 1,
+            "blocking_failed": 0,
+            "unexplained_item_count": 0,
+            "development_row_id_dependency_count": 0,
+        }
+        return result
+
+    monkeypatch.setattr(runner, "export_stable_evidence", lambda _paths: {"table_counts": {"source_concept_fallback_search_index": 1}})
+    monkeypatch.setattr(runner, "engine_for", lambda _database: Engine())
+    monkeypatch.setattr(runner, "import_stable_evidence", fake_import)
+    monkeypatch.setattr(runner, "database_fingerprint", lambda _database, _tables: {"fingerprint": str(state["value"]), "tables": {}})
+    args = SimpleNamespace(scale_db="blombooru_atomic_test")
+    with pytest.raises(SV1BlockedError, match="evidence_import_accounting_failed"):
+        evidence_to_scale(args, paths)
+    assert state["value"] == 0
+    assert not (tmp_path / "stable-key-import-ledger.json").exists()
+    failure = json.loads((tmp_path / "stable-key-import-failure-ledger.json").read_text(encoding="utf-8"))
+    assert failure["rollback_executed"] is True
+    assert failure["protected_source_layer_rollback_restored"] is True

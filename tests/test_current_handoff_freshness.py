@@ -34,6 +34,16 @@ def test_current_handoff_is_post_pr137_and_points_to_sv1() -> None:
     assert "provider" in text and "remain forbidden" in text
 
 
+def test_sv1_portability_debt_is_explicitly_deferred_without_changing_windows_evidence() -> None:
+    text = _read("docs/current-handoff.md")
+    assert "SV1-PORTABILITY-01" in text
+    assert "SV1-PORTABILITY-02" in text
+    assert "repository-local Windows" in text
+    assert "Python `3.12.0`" in text
+    assert "not `active_blockers`" in text
+    assert "cross-platform or production rehearsal" in text
+
+
 def test_roadmap_supersedes_sr1_and_keeps_ml2_boundary() -> None:
     roadmap = _read("docs/roadmap/current-mainline-roadmap.md")
     project = _read("docs/project-roadmap.md")

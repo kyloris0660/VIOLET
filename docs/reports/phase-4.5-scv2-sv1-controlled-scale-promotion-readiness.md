@@ -1,31 +1,53 @@
-# SCV2-SV1-A：最终化安全闭环
+# SCV2-SV1-A：最终 GOV-3 安全闭环
 
 ## 结论
 
-当前状态为 `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`；`target_met=false`、`safe_to_merge=true`、`route_approved=false`。本阶段没有启动 SV1B、FL1、provider、localization、Entity 或生产路线。
+当前状态为 `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`；`target_met=false`、`safe_to_merge=true`、`route_approved=false`。active blockers=`[]`。本阶段没有启动 SV1B、FL1、provider、localization、Entity、similarity 或生产路线。
 
-## Inventory 与导入证据
+## 数据库与 denominator membership
 
-- accepted current 总数/可用并纳入/source-unavailable/fingerprint-incompatible：`3750` / `3452` / `298` / `0`。
-- preselection：`{'eligible_unique': 20386, 'excluded_duplicate': 147, 'excluded_ineligible': 169, 'excluded_out_of_scope': 0, 'excluded_unreadable': 0}`；fingerprint=`1219577d01472898e8edbdf30ebb5a973b04ac277842ed7037ad9f7c87f695d9`。
-- final post-selection：`{'eligible_not_selected': 8386, 'excluded_duplicate': 147, 'excluded_ineligible': 169, 'excluded_out_of_scope': 0, 'excluded_unreadable': 0, 'selected': 12000}`；fingerprint=`0c61737d1c2b528707ffe65f0b7f1432f89e526b50555e9cb0142daddb09f46d`。
-- manifest / DB / import ledger / AI ledger：`{'passed': True, 'manifest_count': 12000, 'database_count': 12000, 'import_ledger_count': 12000, 'ai_ledger_count': 12000}`。
+- scale / promotion / rebuild DB：`blombooru_scv2_sv1_controlled_scale_test_20260718` / `blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1` / `blombooru_scv2_sv1_rebuild_verification_test_20260718`；三者均为严格 test identity、两两不同且不属于 accepted predecessor DB。
+- manifest / selected scale DB content keys：`12000 / 12000`；missing=`0`，extra=`0`，duplicate manifest=`0`，exact equality=`True`。
+- corrected filename/path candidate denominator=`6496`；accepted metadata support=`2372`；unacquired=`4124`；explicit non-candidate=`5504`；conflicts=`0`。
 
-## Resume 与 AI accounting
+## Stable-key evidence per-table reconciliation
 
-- Original import execution：imported=`12000`，storage writes=`12000`，runtime evidence available=`False`。
-- Current repair invocation：new imports=`0`，storage writes=`0`，resumed exact checkpoint=`True`。
-- Cumulative checkpoint：imports=`12000`，storage objects=`12000`。
-- Original accepted AI execution：reused=`3420`，newly inferred=`8580`。
-- Current repair AI invocation：checkpoint-existing covered=`12000`，newly inferred=`0`，inference rerun=`False`。
+方程顺序为 `exported = inserted + compatible_existing + deferred_target_missing + rejected_incompatible + blocking_failed`。本次为只读 re-audit，因此 inserted 均为 0：
 
-## Rebuild、immutable 与验证
+- `source_concept_aliases`: `8124 = 0 + 8124 + 0 + 0 + 0`; target-missing references=`0`.
+- `source_concept_evidence`: `12027 = 0 + 12027 + 0 + 0 + 0`; target-missing references=`229`.
+- `source_concept_fallback_search_index`: `6596 = 0 + 6336 + 260 + 0 + 0`; target-missing references=`260`.
+- `source_concept_resolution_runs`: `4 = 0 + 4 + 0 + 0 + 0`; target-missing references=`0`.
+- `source_concept_search_index`: `8124 = 0 + 8124 + 0 + 0 + 0`; target-missing references=`0`.
+- `source_concept_signal_links`: `17150 = 0 + 17150 + 0 + 0 + 0`; target-missing references=`0`.
+- `source_concept_signals`: `14068 = 0 + 14068 + 0 + 0 + 0`; target-missing references=`228`.
+- `source_concepts`: `6007 = 0 + 6007 + 0 + 0 + 0`; target-missing references=`0`.
+- `source_metadata_evidence`: `4414 = 0 + 4414 + 0 + 0 + 0`; target-missing references=`0`.
+- `source_metadata_records`: `4421 = 0 + 4421 + 0 + 0 + 0`; target-missing references=`298`.
+- `source_name_observations`: `7388 = 0 + 7388 + 0 + 0 + 0`; target-missing references=`3`.
+- `source_name_registry`: `371 = 0 + 371 + 0 + 0 + 0`; target-missing references=`0`.
+- `source_searchable_name_assertions`: `1218 = 0 + 1218 + 0 + 0 + 0`; target-missing references=`0`.
+- `source_tag_observations`: `18112 = 0 + 18112 + 0 + 0 + 0`; target-missing references=`10`.
+- `source_tag_registry`: `418 = 0 + 418 + 0 + 0 + 0`; target-missing references=`0`.
 
-- Raw rebuild ledger：algorithm=`actual_r2r_ml2_rebuild_ledger_v2_readonly_attestation`，derived-row import=`0`，actual replay=`True`，blocking gaps=`0`，ledger fingerprint=`f974a05177fe16c5bf7efd3c6b4e373d36f4125ba100201767227c8566010047`。
-- Immutable proof passed=`True`；accepted files、storage membership、scale/promotion protected tables、predecessor DB 均未漂移。
-- Current candidate validation：current-head、changed-file、Python identity 与 ledger fingerprint 均已由私有 validation ledger 验证；py_compile/focused/docs/full non-E2E 均通过。
-- Public path redaction、pre-write root containment、custom scale DB identity与 canonical orchestration 均由 executable contract 检查。
+- fallback exported / materialized / target-missing：`6596` / `6336` / `260`。
+- exact stable-key membership=`True`，unexplained=`0`，extra materialized=`0`，current re-audit writes=`0`。
+- 实际导入路径在单一事务内完成行导入、per-table accounting、兼容性检查、target-missing 分类、unexplained-loss 与 blocking decision；成功 ledger 仅在 commit 后写入，失败路径验证 rollback fingerprint restoration。
+
+## 三库 graph safety
+
+- scale: DB=`blombooru_scv2_sv1_controlled_scale_test_20260718`, components=`1677`, largest=`88`, all hard violation counts=`0`, giant recurrence=`False`.
+- promotion: DB=`blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1`, components=`1677`, largest=`88`, all hard violation counts=`0`, giant recurrence=`False`.
+- rebuild: DB=`blombooru_scv2_sv1_rebuild_verification_test_20260718`, components=`1681`, largest=`88`, all hard violation counts=`0`, giant recurrence=`False`.
+
+三库均使用 `active_bipartite_connected_components_v2`，component/pair membership fingerprints 已记录；multi-stable-ID、direct/transitive cannot-link、deferred union、cross-role、unknown-role、duplicate active identity 均为 0。
+
+## Validation、immutable 与 portability debt
+
+- Current-head validation 的 HEAD、changed-file、Python identity 与 ledger fingerprint 均由私有 ledger 验证；py_compile、focused、documentation 与 full non-E2E 均通过。
+- Immutable proof=`True`；accepted files、storage membership、scale/promotion protected tables 与 predecessor DB 均未漂移。
+- 当前验证环境为 repository-local Windows venv / Python `3.12.0`。`SV1-PORTABILITY-01`（symlinked `venv/bin/python` 与 `.venv`）和 `SV1-PORTABILITY-02`（supported patch-version policy）为明确 nonblocking debt；它们不改变当前数据、写安全、graph safety 或结论，但必须在跨平台或 production rehearsal 前关闭。
 
 ## 边界
 
-外部 provider、Pixiv、gallery-dl、external LLM、localization、Entity、production、source/iCloud mutation 均为 0。Canonical pack 指纹仅记录在私有证据和 PR closeout 中，避免公开摘要与 ZIP 产生自引用。下一步仅建议单独审批 `SCV2-SV1B`；本阶段不批准也不启动。
+媒体导入、原始 AI inference、provider、Pixiv、gallery-dl、external LLM、localization、Entity、similarity、production、source/iCloud mutation 均为 0。本阶段不批准也不启动 SV1B 或 FL1。

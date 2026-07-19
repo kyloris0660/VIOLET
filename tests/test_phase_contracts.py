@@ -7291,6 +7291,8 @@ def _sv1_contract_summary() -> dict[str, object]:
             "production_database_selected": False,
             "production_storage_selected": False,
             "scale_database_identity": "blombooru_custom_test_scale",
+            "promotion_database_identity": "blombooru_custom_test_promotion",
+            "rebuild_database_identity": "blombooru_custom_test_rebuild",
         },
         "source_inventory": {"safely_usable_real_media_count": 12000},
         "scale_manifest": {
@@ -7344,12 +7346,58 @@ def _sv1_contract_summary() -> dict[str, object]:
             "passed": True,
             "development_row_id_dependency_count": 0,
             "package_checksum_manifest_passed": True,
+            "table_counts": {
+                "source_metadata_records": 4421,
+                "source_tag_observations": 18112,
+                "source_name_observations": 7388,
+                "source_concept_evidence": 12027,
+                "source_concept_fallback_search_index": 6596,
+            },
         },
         "evidence_import": {
             "blocking_failed": 0,
             "unexplained_item_count": 0,
             "accepted_evidence_silently_dropped": 0,
             "development_row_id_dependency_count": 0,
+            "exact_stable_key_membership_passed": True,
+            "all_table_equations_balanced": True,
+            "atomic_import_contract_enforced": True,
+            "success_ledger_written_only_after_commit": True,
+            "current_reaudit_write_count": 0,
+            "extra_materialized_count": 0,
+            "fallback_search_target_missing_count": 260,
+            "per_table_accounting": {
+                "source_metadata_records": {
+                    "exported": 4421, "inserted": 0, "compatible_existing": 4421,
+                    "deferred_target_missing": 0, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 298,
+                    "equation_balanced": True,
+                },
+                "source_tag_observations": {
+                    "exported": 18112, "inserted": 0, "compatible_existing": 18112,
+                    "deferred_target_missing": 0, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 298,
+                    "equation_balanced": True,
+                },
+                "source_name_observations": {
+                    "exported": 7388, "inserted": 0, "compatible_existing": 7388,
+                    "deferred_target_missing": 0, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 298,
+                    "equation_balanced": True,
+                },
+                "source_concept_evidence": {
+                    "exported": 12027, "inserted": 0, "compatible_existing": 12027,
+                    "deferred_target_missing": 0, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 298,
+                    "equation_balanced": True,
+                },
+                "source_concept_fallback_search_index": {
+                    "exported": 6596, "inserted": 0, "compatible_existing": 6336,
+                    "deferred_target_missing": 260, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 260,
+                    "equation_balanced": True,
+                },
+            },
         },
         "denominator_audit": {
             "accounting_equality_passed": True,
@@ -7362,6 +7410,17 @@ def _sv1_contract_summary() -> dict[str, object]:
             "selected_media_classification_coverage": 1.0,
             "denominator_classification_fingerprint": "denominator-fingerprint",
             "database_identity": "blombooru_custom_test_scale",
+            "manifest_content_key_count": 12000,
+            "database_content_key_count": 12000,
+            "duplicate_manifest_content_key_count": 0,
+            "missing_in_database_count": 0,
+            "extra_in_database_count": 0,
+            "manifest_membership_fingerprint": "manifest-membership",
+            "database_membership_fingerprint": "database-membership",
+            "missing_membership_fingerprint": "empty-missing",
+            "extra_membership_fingerprint": "empty-extra",
+            "exact_membership_equality": True,
+            "safe_to_publish_denominator": True,
         },
         "r2r_reuse": {
             "exact_pair_membership_passed": True,
@@ -7394,6 +7453,27 @@ def _sv1_contract_summary() -> dict[str, object]:
             "unknown_role_materialization_count": 0,
             "deferred_identity_union_count": 0,
             "duplicate_active_stable_identity_count": 0,
+        },
+        "independent_graph_metrics": {
+            name: {
+                "database_identity": database,
+                "graph_audit_algorithm_version": "active_bipartite_connected_components_v2",
+                "component_membership_fingerprint": f"{name}-component-fingerprint",
+                "pair_membership_fingerprint": f"{name}-pair-fingerprint",
+                "giant_component_recurrence": False,
+                "multi_stable_id_creator_component_count": 0,
+                "direct_cannot_link_violation_count": 0,
+                "transitive_cannot_link_violation_count": 0,
+                "unauthorized_cross_role_component_count": 0,
+                "unknown_role_materialization_count": 0,
+                "deferred_identity_union_count": 0,
+                "duplicate_active_stable_identity_count": 0,
+            }
+            for name, database in (
+                ("scale", "blombooru_custom_test_scale"),
+                ("promotion", "blombooru_custom_test_promotion"),
+                ("rebuild", "blombooru_custom_test_rebuild"),
+            )
         },
         "actual_rebuild_verification": {
             "derived_row_import_count": 0,
@@ -7567,3 +7647,14 @@ def test_sv1_contract_rejects_stale_inventory_and_ambiguous_resume_fields() -> N
     result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
     assert result.passed is False
     assert "sv1_active_blockers_incomplete" in _error_codes(result)
+
+
+@pytest.mark.parametrize("database", ["promotion", "rebuild"])
+def test_sv1_contract_blocks_when_only_non_scale_graph_has_violation(database: str) -> None:
+    summary = _sv1_contract_summary()
+    summary["independent_graph_metrics"][database]["transitive_cannot_link_violation_count"] = 1  # type: ignore[index]
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+    assert result.passed is False
+    active_error = next(error for error in result.errors if error.code == "sv1_active_blockers_incomplete")
+    assert "blocked_sv1_graph_safety" in active_error.expected
+    assert "sv1_target_overclaimed" in _error_codes(result)

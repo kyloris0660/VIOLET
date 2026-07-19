@@ -11995,6 +11995,22 @@ def _check_sv1_controlled_scale_promotion_readiness(
         blockers.append("blocked_sv1_global_test_baseline")
 
     isolation = _get(summary, "environment_isolation", {})
+    writable_database_identities = [
+        str(_get(isolation, "scale_database_identity", "")),
+        str(_get(isolation, "promotion_database_identity", "")),
+        str(_get(isolation, "rebuild_database_identity", "")),
+    ] if isinstance(isolation, Mapping) else []
+    predecessor_databases = {
+        "blombooru_scv2_r2r_dryrun_test_20260710",
+        "blombooru_scv2_ml1_acquisition_test_20260712",
+        "blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715",
+        "blombooru_scv2_ml2_identity_closure_test_20260714",
+    }
+    strict_test_identities = all(
+        bool(re.fullmatch(r"blombooru_[a-z0-9]+(?:_[a-z0-9]+)*", database))
+        and "test" in database.split("_")
+        for database in writable_database_identities
+    )
     if not (
         isinstance(isolation, Mapping)
         and isolation.get("passed") is True
@@ -12006,6 +12022,10 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and isolation.get("predecessor_databases_immutable") is True
         and isolation.get("production_database_selected") is False
         and isolation.get("production_storage_selected") is False
+        and len(writable_database_identities) == 3
+        and strict_test_identities
+        and len(set(writable_database_identities)) == 3
+        and not predecessor_databases.intersection(writable_database_identities)
     ):
         blockers.append("blocked_sv1_environment_isolation")
 
@@ -12080,12 +12100,53 @@ def _check_sv1_controlled_scale_promotion_readiness(
     ):
         blockers.append("blocked_sv1_evidence_export")
     evidence_import = _get(summary, "evidence_import", {})
+    evidence_tables = _get(evidence_import, "per_table_accounting", {})
+    evidence_export_counts = _get(export, "table_counts", {})
+    required_media_bound_tables = {
+        "source_metadata_records", "source_tag_observations", "source_name_observations",
+        "source_concept_evidence", "source_concept_fallback_search_index",
+    }
+    evidence_equations_passed = (
+        isinstance(evidence_tables, Mapping)
+        and isinstance(evidence_export_counts, Mapping)
+        and set(evidence_tables) == set(evidence_export_counts)
+        and all(
+        isinstance(row, Mapping)
+        and _as_int(row.get("exported"), -1) == _as_int(evidence_export_counts.get(table), -2)
+        and _as_int(row.get("exported"), -1) == sum(
+            _as_int(row.get(key), -1)
+            for key in (
+                "inserted", "compatible_existing", "deferred_target_missing",
+                "rejected_incompatible", "blocking_failed",
+            )
+        )
+        and row.get("equation_balanced") is True
+        and _as_int(row.get("rejected_incompatible"), -1) == 0
+        and _as_int(row.get("blocking_failed"), -1) == 0
+        for table, row in evidence_tables.items()
+        )
+    )
+    fallback_accounting = _get(evidence_tables, "source_concept_fallback_search_index", {})
     if not (
         isinstance(evidence_import, Mapping)
         and _as_int(evidence_import.get("blocking_failed"), -1) == 0
         and _as_int(evidence_import.get("unexplained_item_count"), -1) == 0
         and _as_int(evidence_import.get("accepted_evidence_silently_dropped"), -1) == 0
         and _as_int(evidence_import.get("development_row_id_dependency_count"), -1) == 0
+        and evidence_import.get("exact_stable_key_membership_passed") is True
+        and evidence_import.get("all_table_equations_balanced") is True
+        and evidence_import.get("atomic_import_contract_enforced") is True
+        and evidence_import.get("success_ledger_written_only_after_commit") is True
+        and _as_int(evidence_import.get("current_reaudit_write_count"), -1) == 0
+        and _as_int(evidence_import.get("extra_materialized_count"), -1) == 0
+        and evidence_equations_passed
+        and required_media_bound_tables.issubset(set(evidence_tables))
+        and all(
+            _as_int(_get(evidence_tables, f"{table}.target_missing_reference_count", -1)) >= 0
+            for table in required_media_bound_tables
+        )
+        and _as_int(evidence_import.get("fallback_search_target_missing_count"), -1)
+        == _as_int(_get(fallback_accounting, "deferred_target_missing", -2))
     ):
         blockers.append("blocked_sv1_evidence_import")
 
@@ -12102,6 +12163,17 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and _as_float(denominator.get("selected_media_classification_coverage"), -1.0) == 1.0
         and bool(denominator.get("denominator_classification_fingerprint"))
         and denominator.get("database_identity") == _get(summary, "environment_isolation.scale_database_identity", None)
+        and denominator.get("exact_membership_equality") is True
+        and denominator.get("safe_to_publish_denominator") is True
+        and _as_int(denominator.get("manifest_content_key_count"), -1) == eligible
+        and _as_int(denominator.get("database_content_key_count"), -1) == eligible
+        and _as_int(denominator.get("duplicate_manifest_content_key_count"), -1) == 0
+        and _as_int(denominator.get("missing_in_database_count"), -1) == 0
+        and _as_int(denominator.get("extra_in_database_count"), -1) == 0
+        and bool(denominator.get("manifest_membership_fingerprint"))
+        and bool(denominator.get("database_membership_fingerprint"))
+        and bool(denominator.get("missing_membership_fingerprint"))
+        and bool(denominator.get("extra_membership_fingerprint"))
     ):
         blockers.append("blocked_sv1_denominator_audit")
 
@@ -12146,6 +12218,29 @@ def _check_sv1_controlled_scale_promotion_readiness(
         and graph.get("giant_component_recurrence") is False
         and not any(_as_int(graph.get(key), -1) for key in graph_zero)
     ):
+        blockers.append("blocked_sv1_graph_safety")
+
+    independent_graphs = _get(summary, "independent_graph_metrics", {})
+    expected_graph_databases = {
+        "scale": _get(isolation, "scale_database_identity", None),
+        "promotion": _get(isolation, "promotion_database_identity", None),
+        "rebuild": _get(isolation, "rebuild_database_identity", None),
+    }
+    independent_graphs_passed = (
+        isinstance(independent_graphs, Mapping)
+        and set(independent_graphs) == set(expected_graph_databases)
+        and all(
+            isinstance(independent_graphs.get(name), Mapping)
+            and independent_graphs[name].get("database_identity") == database
+            and independent_graphs[name].get("graph_audit_algorithm_version") == "active_bipartite_connected_components_v2"
+            and bool(independent_graphs[name].get("component_membership_fingerprint"))
+            and bool(independent_graphs[name].get("pair_membership_fingerprint"))
+            and independent_graphs[name].get("giant_component_recurrence") is False
+            and not any(_as_int(independent_graphs[name].get(key), -1) for key in graph_zero)
+            for name, database in expected_graph_databases.items()
+        )
+    )
+    if not independent_graphs_passed:
         blockers.append("blocked_sv1_graph_safety")
 
     rebuild = _get(summary, "actual_rebuild_verification", {})
