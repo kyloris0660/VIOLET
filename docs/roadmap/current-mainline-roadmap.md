@@ -1,8 +1,10 @@
 # Current Mainline Roadmap
 
-Status: PR #136 is merged in `origin/main` at
-`f6cae3483f4cf75974746a4cc82222f28e399b96`. SCV2-ML2 has completed its
-separately governed isolated execution and awaits project-lead PR adjudication.
+Status: PR #137 is merged and accepted in `origin/main` at
+`7fca41151cc9e1d5b48cfe243279e66296346bae`. Its accepted ML2 evidence-code
+commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. The separately governed
+SCV2-SV1 execution has reached its bounded promotion-readiness target on the
+feature branch; its normal PR remains unmerged and no later phase is active.
 
 ## Accepted Mainline
 
@@ -16,6 +18,10 @@ separately governed isolated execution and awaits project-lead PR adjudication.
 5. SCV2-ML1 merged in PR #136 at
    `f6cae3483f4cf75974746a4cc82222f28e399b96`. Its accepted isolated database is
    an immutable input to ML2; ML2 did not replay acquisition.
+6. SCV2-ML2 merged in PR #137 at
+   `7fca41151cc9e1d5b48cfe243279e66296346bae`. Its final bounded result is
+   `target_met_multilingual_identity_candidate_closure`; the accepted logical
+   evidence and isolated ML2 database are immutable inputs to SV1.
 
 ## Corrected Route Semantics
 
@@ -77,7 +83,7 @@ ML1 owns:
 PR #136 is merged. Its ML1 database and accepted R2R evidence are immutable ML2
 inputs; identity closure does not authorize acquisition replay.
 
-## Current ML2 Closeout
+## Accepted ML2 Closeout
 
 `SCV2-ML2: Multilingual Identity Candidate Closure` consumed `606`
 identity-eligible families, `3,642` search-only translation families, and `30`
@@ -116,8 +122,9 @@ ML2 completed:
 The executable contract reports
 `target_met_multilingual_identity_candidate_closure`, `target_met=true`,
 `safe_to_merge=true`, `route_approved=false`, and `active_blockers=[]`. This
-closeout creates no production/full-library/provider authorization and starts no
-next phase.
+closeout creates no production/full-library/provider authorization. PR #137 is
+merged and accepted; SV1 may consume its stable logical evidence without copying
+development numeric row IDs.
 
 Six reviewer hardening items are deliberately bounded debt, not ML1 fixes:
 cross-pass spacing, manifest-scope outcome keys, conflict mismatch persistence,
@@ -140,10 +147,32 @@ preserve Danbooru provenance and require an exact Pixiv source URL, exact hash,
 strong perceptual evidence, or another independently verified correspondence;
 it must never represent recovered Danbooru metadata as original Pixiv metadata.
 
+## SV1 Promotion-Readiness Result
+
+SV1 replayed exactly `12,000` real media items in isolated test storage and a
+clean-schema scale database. Import accounting, local AI provenance, stable-key
+evidence export/import, denominator audit, graph safety, and a 240-query search
+benchmark all passed. The successful independent promotion rehearsal proved
+rollback restoration, a committed `108,182`-item stable-key import, second-run
+mutation `0`, cross-database logical mismatch `0`, and no media/media_tags or
+protected/forbidden mutation. Provider, Pixiv, gallery-dl, external LLM,
+production, Entity, confirmed-assignment, truth-promotion, and source-mutation
+operation counts were all zero.
+
+The executable status is
+`partial_sv1_media_ai_scale_and_stable_key_promotion_complete`, with `target_met=false`,
+`safe_to_merge=true`, `route_approved=false`, and `active_blockers=[]`. This is
+a bounded dev/test promotion-readiness result, not semantic, full-library,
+production, provider, or Entity readiness. See the committed SV1 report and
+public summary for exact aggregate evidence.
+
 ## Stop Boundary
 
-Do not start PX1-B broad acquisition, Provider-2, Controlled Scale Validation,
-general scale-up, Entity bridge, production, full-library execution, truth
-promotion, media import, AI tagging, classification, localization, or another
-phase from ML2. The recommended 10k-15k Controlled Scale Validation remains a
-project-lead decision and requires a separate approved phase.
+SCV2-SV1-A is merge-safe partial work on its feature branch but remains unmerged.
+Its immediate recommendation is `SCV2-SV1B: Controlled Pixiv Metadata,
+Localization, and Source-Graph Closure`; it does not approve or start SV1B or
+FL1. Do
+not start PX1-B broad acquisition, Provider-2, production, full-library
+execution, Entity bridge, confirmed assignment, truth promotion, or another
+later phase. Provider/Pixiv/gallery-dl/LLM calls and production/Entity/truth
+routes remain unauthorized.

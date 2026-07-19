@@ -1,85 +1,86 @@
 # Current Handoff - V.I.O.L.E.T.
 
-> PR #136 is merged in `origin/main` at
-> `f6cae3483f4cf75974746a4cc82222f28e399b96`. SCV2-ML2 has completed its
-> isolated SourceConcept-only execution; final PR adjudication remains with the
-> project lead.
+> PR #137 is merged and accepted in `origin/main` at
+> `7fca41151cc9e1d5b48cfe243279e66296346bae`; the accepted ML2 evidence-code
+> commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. The separately governed
+> `SCV2-SV1: Controlled Scale Replay and Promotion-Readiness Validation` run has
+> reached its merge-safe partial SV1-A boundary on the feature branch; its PR remains unmerged.
 
 ## Canonical State
 
 | Item | Value |
 |------|-------|
-| Merged baseline | PR #136 / `f6cae3483f4cf75974746a4cc82222f28e399b96` |
-| Current phase | `SCV2-ML2: Multilingual Identity Candidate Closure` |
+| Merged baseline | PR #137 / `7fca41151cc9e1d5b48cfe243279e66296346bae` |
+| Current work item | `SCV2-SV1: Controlled Scale Replay and Promotion-Readiness Validation` |
 | Accepted R2R DB | `blombooru_scv2_r2r_dryrun_test_20260710` (immutable) |
-| Accepted SCV2-ML1 DB | `blombooru_scv2_ml1_acquisition_test_20260712` (immutable) |
-| Fresh review-fix ML2 DB | `blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` |
-| Superseded ML2 DB | `blombooru_scv2_ml2_identity_closure_test_20260714` (preserved, immutable) |
-| SourceConcept / needs_review | `1677 / 0` |
+| Accepted SCV2-ML1: Multilingual Alias and Source-Metadata Closure DB | `blombooru_scv2_ml1_acquisition_test_20260712` (immutable) |
+| Accepted ML2 DB | `blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715` (immutable) |
+| SV1 scale DB | `blombooru_scv2_sv1_controlled_scale_test_20260718` |
+| Successful promotion DB | `blombooru_scv2_sv1_promotion_rehearsal_test_20260718_retry1` |
+| Rebuild verification DB | `blombooru_scv2_sv1_rebuild_verification_test_20260718` |
+| SV1 contract | `partial_sv1_media_ai_scale_and_stable_key_promotion_complete`; `target_met=false`; `safe_to_merge=true`; `route_approved=false` |
 
-Accepted predecessor chain: PR #133 / A1R, `SCV2-R2` (`target_met_constraint_aware_r2`),
-PR #135 / R2R, and `SCV2-ML1: Multilingual Alias and Source-Metadata Closure`. Provider
-metadata acquisition ended in ML1; production, Entity bridge, and downstream routes
-remain unauthorized. See [R2R evidence reuse policy](source-evidence-snapshot-reuse-policy.md).
+PR #133 / `SCV2-R2` remains `target_met_constraint_aware_r2`; PR #135 / R2R precedes ML2, which remains `target_met_multilingual_identity_candidate_closure`. Provider routes remain forbidden; production routes remain unauthorized.
 
-R2R's 3,319 dispositions and 12,249 signals remain immutable. ML2 made no
-provider, Pixiv, gallery-dl, LLM, production, Entity, or `media_tags` truth call
-or write. Search-result union is not identity union, and
-additional query terms use media-level AND intersection.
+PR #135 R2R's 3,319 dispositions and ML2's logical evidence remain immutable. ML2 identity accounting remains `606 = 12 already materialized + 594 new + 0 cannot-link + 0 deferred` and `1213 = 1213 must_link + 0 cannot_link + 0 deferred`; the superseded first ML2 run's `1214` count remains historical evidence only. Search-result union is not identity union; additional query terms use media-level AND intersection.
 
-The superseded first ML2 execution reported `1214` candidate pairs. That count
-is preserved only as historical evidence and is not current execution truth;
-the fresh review-fix execution rebuilt the ledger from the new database and
-produced the actual `1213` pairs reported below.
+## SV1 Bounded Result
 
-## ML2 Final Evidence
+- Read-only inventory found `20,702` candidates and `20,160` safely usable real media; deterministic manifest selected exactly `12,000` non-synthetic items.
+- Controlled import accounted `12,000 / 12,000`, with zero blocking failure, out-of-manifest import, unexplained outcome, or source mutation.
+- AI provenance reached `12,000 / 12,000`: `3,420` compatible rows reused and
+  `8,580` inferred through the cached local `wd-swinv2-tagger-v3` model; model
+  downloads and external calls were zero.
+- Stable-key export contains `108,442` logical items with zero development row-ID
+  dependencies. The exact read-only reconciliation is
+  `108,442 = 0 inserted + 108,182 compatible existing + 260 deferred target-missing + 0 rejected + 0 blocking`.
+  All `260` deferred rows are fallback-search rows (`6,596 = 0 + 6,336 + 260 + 0 + 0`);
+  the `298` source-metadata target-missing references remain explicitly recorded
+  in materialized nullable-reference rows and are not mislabeled as deferred or lost.
+- Denominator accounting independently parses filename and stored path: canonical Pixiv candidates `6,496`, accepted metadata support `2,372`, not acquired in SV1-A `4,124`, explicit non-candidate `5,504`, conflicts and unclassified/unexplained `0`.
+- Accepted R2R reuse remained `3319 = 1522 must_link + 1791 cannot_link + 6
+  deferred_nonblocking`; all `606` ML2 families remained traceable.
+- Graph audit found `1,677` active components, largest `88`, `14,068` signals,
+  `8,124` aliases, and `2,065` concept-media support rows. All cannot-link,
+  cross-role, unknown-role, duplicate-active-identity, deferred-union, and
+  multi-stable-ID violation counts are zero.
+- The 240-query benchmark returned `471` supported results, zero unsupported
+  result and zero AND leakage or search mutation. Scale P50/P95/max was
+  `3.9 / 8.602 / 40.645 ms`; the 750 ms P95 gate passed.
+- Promotion rehearsal proved rollback restoration, committed `108,182` logical
+  items, second-import mutation `0`, cross-database logical mismatch `0`, and
+  media/media_tags plus protected/forbidden mutation `0`.
+- The first promotion attempt is preserved, not cleaned: it exposed PostgreSQL
+  NULL uniqueness behavior for 2,065 media-support rows. The runner now performs
+  full logical-key deduplication; the fresh `retry1` database supplied the
+  accepted proof.
+- Public redaction, negative control, review-pack integrity, predecessor
+  immutability, environment isolation, and the executable phase contract passed.
+- A fresh rebuild DB imported zero derived SourceConcept rows and replayed the
+  accepted R2R/ML2 service paths with `606 / 606` creator-family traceability.
+  Forty cases from the actual `8,548` new-media population passed
+  scale/promotion/rebuild local-tag search with zero unsupported result or leakage.
+- The selected manifest and scale DB have exact content-key membership: `12,000 / 12,000`, missing `0`, extra `0`, with matching membership fingerprints. Independent scale/promotion/rebuild connected-component audits each pass every hard graph-safety gate.
 
-ML2 rebuilt creator identity candidates from the accepted ML1 snapshot using
-`(provider, stable_creator_id, creator_role)` as the deterministic source-layer
-anchor. It retained every non-empty canonical/account/historical name as an
-alias signal, used star-topology candidate generation, and never expanded into
-all-pairs alias comparisons.
+## Deferred SV1 Portability Debt
 
-- identity families: `606 = 12 already materialized + 594 new + 0 cannot-link + 0 deferred + 0 fragmented deferred`;
-- candidate pairs: `1213 = 1213 must_link + 0 cannot_link + 0 deferred`;
-- accepted R2R accounting: `3319 = 1522 must_link + 1791 cannot_link + 6 deferred_nonblocking`, reconstructed cache-only from the immutable database and compatible private evidence with zero reuse conflict;
-- active-concept reuse: `0` inactive references/reuses, `310` partial historical references retained only as private diagnostics, and `0` pre-existing active-component fragmentations;
-- concept-media membership: `2065 / 2065` exact trusted support rows and distinct expected media, with zero duplicate, missing, unsupported, or `media_count` mismatch;
-- SourceConcept-only runtime: `606` families / `1213` alias cases at `1.0` expected-media coverage, zero fallback, zero search-inert concepts, and `25 / 25` media-detail visibility samples passed;
-- candidate-generation gaps: `30 before / 0 unexplained after`;
-- ML2 touched graph: `606` complete active components, largest `8`; all 12 accepted historical components were audited with their old links, with no multi-stable-ID, direct/transitive cannot-link, contamination, cross-role, unknown-role, or duplicate-active-identity violation;
-- creator-context benchmark: `93 / 93` evidence-supported cases succeeded; one
-  evidence-absent case is `deferred_nonblocking_evidence_absent`;
-- search-only families: `3642 before / 3642 after`, with zero regression,
-  unsupported, rejected-only, superseded-only, AND leakage, or search mutation;
-- second execution: zero mutations, no duplicate media support, and identical component/disposition fingerprints;
-- public redaction and review-pack integrity passed fail-closed publication gates.
-
-Final contract: `target_met_multilingual_identity_candidate_closure`,
-`target_met=true`, `safe_to_merge=true`, `route_approved=false`,
-`active_blockers=[]`. The accepted ML1/R2R databases remained immutable; only
-the fresh review-fix ML2 dev/test clone received allowlisted SourceConcept/source-name
-observation writes. The first ML2 database remains preserved as superseded evidence.
+- `SV1-PORTABILITY-01`: support symlinked repository-local `venv/bin/python` and `.venv` interpreter recognition on Linux/macOS.
+- `SV1-PORTABILITY-02`: replace the exact Python `3.12.0` patch check with the project's approved supported-runtime version policy.
+- The currently validated environment remains the repository-local Windows
+  venv on Python `3.12.0`. These two debts do not change current data, write
+  safety, graph safety, or the bounded SV1-A conclusions; they are not `active_blockers`
+  for the immediate SV1B route. Both must be closed before a
+  cross-platform or production rehearsal.
 
 ## Next Boundary
 
-The evidence recommends project-lead review before any separately governed
-Controlled Scale Validation over roughly 10k-15k media. This PR does not start
-that phase and does not authorize a provider run, production/full-library run,
-PX1-B, Provider-2/PX-REC1, Entity bridge, truth promotion, media import, AI
-tagging, classification, localization, or source/iCloud mutation.
-
-The six ML1 hardening milestones remain unchanged:
-`PRE-NEXT-PROVIDER-EXECUTION-HARDENING`, `CONTROLLED-SCALE-AUDIT-DEBT`, and
-`PRE-NONWAIVED-PROVIDER-CREDENTIAL-HARDENING`. None is exercised by ML2 because
-ML2 performs no provider execution.
+The immediate recommended phase is `SCV2-SV1B: Controlled Pixiv Metadata,
+Localization, and Source-Graph Closure`, but SV1-A does not approve or start
+SV1B or FL1. Production, provider metadata acquisition/Pixiv/gallery-dl/external LLM,
+Entity bridge / EntityAlias, confirmed assignment, SourceConcept-to-`media_tags` truth,
+and source/iCloud mutation remain unauthorized. No later phase begins until this
+normal PR is reviewed and the project owner makes a separate decision.
 
 ## Durable Links
 
-Canonical roadmap path: `docs/roadmap/current-mainline-roadmap.md`.
-
-- [Current roadmap](roadmap/current-mainline-roadmap.md)
-- [Phase contracts](phase-contracts.md)
-- [Search semantics](source-concept-tag-search-semantics.md)
-- [Autonomous resolution policy](source-concept-autonomous-resolution-policy.md)
-- [ML2 report](reports/phase-4.5-scv2-ml2-multilingual-identity-candidate-closure.md)
+[Canonical roadmap](roadmap/current-mainline-roadmap.md) (`docs/roadmap/current-mainline-roadmap.md`) · [Phase contracts](phase-contracts.md) · [Evidence snapshot reuse](source-evidence-snapshot-reuse-policy.md) · [SV1 report](reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness.md) · [SV1 public summary](reports/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness-summary.json) · [ML2 report](reports/phase-4.5-scv2-ml2-multilingual-identity-candidate-closure.md) · [Search semantics](source-concept-tag-search-semantics.md)

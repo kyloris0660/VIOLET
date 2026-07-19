@@ -152,6 +152,12 @@ See `docs/project-roadmap.md` § Development Standards. In short:
 2. Push → PR → squash merge → pull main
 3. **Stop after merge.** Do not auto-start the next phase.
 
+Every new project phase must begin by synchronizing local `main` to the latest
+`origin/main`, deriving the previously accepted PR and merge SHA from remote
+main, and completing a post-merge documentation closure in the canonical
+handoff/roadmap documents. Only after that closure may implementation or phase
+execution begin.
+
 ### GitHub PR / main protection
 
 Agents may:

@@ -132,7 +132,7 @@ def _prod_summary(**overrides: object) -> dict:
                 "reported": True,
                 "passed": True,
                 "blocked_count": 0,
-                "protected_root_labels": ["settings.STORAGE_ROOT", "settings.MEDIA_DIR"],
+                "protected_root_labels": ["[redacted]", "[redacted]"],
                 "paths_redacted": True,
             },
             "source_safety_gate": {
@@ -186,7 +186,7 @@ def _prod_summary(**overrides: object) -> dict:
                 "reported": True,
                 "passed": True,
                 "blocked_count": 0,
-                "protected_root_labels": ["settings.STORAGE_ROOT", "settings.MEDIA_DIR"],
+                "protected_root_labels": ["[redacted]", "[redacted]"],
                 "paths_redacted": True,
             },
             "source_safety_gate": {

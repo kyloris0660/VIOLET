@@ -7226,3 +7226,435 @@ def test_mock_future_r1r_summary_passes_only_with_all_stages_and_llm_proof() -> 
     assert pass_result.passed is True
     assert fail_result.passed is False
     assert "source_concept_required_stage_missing" in _error_codes(fail_result)
+
+
+def _sv1_contract_summary() -> dict[str, object]:
+    executed_stages = [
+        "global_non_e2e_baseline",
+        "read_only_source_inventory",
+        "deterministic_scale_manifest",
+        "controlled_media_import",
+        "ai_tag_provenance_completion",
+        "stable_key_evidence_export_import",
+        "controlled_scale_denominator_audit",
+        "graph_search_rebuild_benchmark",
+        "accepted_source_evidence_actual_rebuild",
+        "true_new_media_search_benchmark",
+            "connected_component_graph_audit_v2",
+            "promotion_rollback_commit_idempotency",
+            "immutable_artifact_drift_proof",
+            "current_head_repair_validation",
+            "prewrite_root_containment",
+            "canonical_orchestration_completeness",
+            "public_redaction_review_pack",
+    ]
+    return {
+        "pipeline_contract": {
+            "contract_id": "sv1_controlled_scale_promotion_readiness_contract_v1",
+            "status": "partial_sv1_media_ai_scale_and_stable_key_promotion_complete",
+            "target_met": False,
+            "safe_to_merge": True,
+            "route_approved": False,
+            "semantic_completeness_claimed": False,
+            "full_library_readiness_claimed": False,
+            "production_readiness_claimed": False,
+            "provider_readiness_claimed": False,
+            "entity_readiness_claimed": False,
+            "full_pipeline_completion_claimed": False,
+            "active_blockers": [],
+            "executed_stages": executed_stages,
+        },
+        "repository_sync_preflight": {
+            "passed": True,
+            "local_main_equals_origin_main_before_branch": True,
+            "accepted_ml2_merge_is_ancestor": True,
+            "accepted_ml2_merge_sha": "7fca41151cc9e1d5b48cfe243279e66296346bae",
+            "task_branch_start_sha": "7fca41151cc9e1d5b48cfe243279e66296346bae",
+            "tracked_change_count_before_sync": 0,
+            "staged_change_count_before_sync": 0,
+            "user_owned_artifacts_preserved": True,
+        },
+        "global_test_baseline": {
+            "final_unexpected_failure_count": 0,
+            "unexplained_skip_count": 0,
+            "environment_specific_profiles_passed": True,
+            "sv1_regression_count": 0,
+        },
+        "environment_isolation": {
+            "passed": True,
+            "violet_env": "test",
+            "production_profile_active": False,
+            "scale_database_clean_schema": True,
+            "promotion_database_independent": True,
+            "source_routes_read_only": True,
+            "predecessor_databases_immutable": True,
+            "production_database_selected": False,
+            "production_storage_selected": False,
+            "scale_database_identity": "blombooru_custom_test_scale",
+            "promotion_database_identity": "blombooru_custom_test_promotion",
+            "rebuild_database_identity": "blombooru_custom_test_rebuild",
+        },
+        "source_inventory": {"safely_usable_real_media_count": 12000},
+        "scale_manifest": {
+            "selected_eligible_media_count": 12000,
+            "deterministic_selection": True,
+            "accepted_current_available_media_included": True,
+            "accounting_equality_passed": True,
+            "synthetic_or_cloned_media_count": 0,
+            "preselection_outcome_counts": {"eligible_unique": 12000},
+            "final_outcome_counts": {"selected": 12000},
+            "preselection_membership_fingerprint": "preselection-fingerprint",
+            "final_membership_fingerprint": "final-fingerprint",
+        },
+        "media_import": {
+            "all_selected_accounted": True,
+            "blocking_failed": 0,
+            "unexplained_outcome_count": 0,
+            "out_of_manifest_import_count": 0,
+            "source_mutation_count": 0,
+            "eligible_media_after": 12000,
+            "original_execution": {
+                "imported_media_count": 12000, "storage_write_count": 12000,
+                "runtime_seconds": None, "runtime_evidence_available": False,
+            },
+            "current_invocation": {
+                "new_import_count": 0, "storage_write_count": 0,
+                "runtime_seconds": 0.0, "resumed_exact_checkpoint": True,
+            },
+            "cumulative_checkpoint_state": {
+                "imported_media_count": 12000, "storage_object_count": 12000,
+            },
+        },
+        "ai_tag_provenance": {
+            "coverage": 1.0,
+            "missing_provenance_count": 0,
+            "fingerprint_mismatch_reuse_count": 0,
+            "external_provider_calls": 0,
+            "model_download_count": 0,
+            "ai_coverage_ledger_count": 12000,
+            "ai_coverage_ledger_fingerprint": "ai-ledger-fingerprint",
+            "original_accepted_execution": {
+                "reused_media_count": 3420, "newly_inferred_media_count": 8580,
+                "eligible_media_count": 12000, "ai_inference_executed": True,
+            },
+            "current_repair_invocation": {
+                "checkpoint_existing_covered_media_count": 12000,
+                "newly_inferred_media_count": 0, "ai_inference_rerun": False,
+            },
+        },
+        "evidence_export": {
+            "passed": True,
+            "development_row_id_dependency_count": 0,
+            "package_checksum_manifest_passed": True,
+            "table_counts": {
+                "source_metadata_records": 4421,
+                "source_tag_observations": 18112,
+                "source_name_observations": 7388,
+                "source_concept_evidence": 12027,
+                "source_concept_fallback_search_index": 6596,
+            },
+        },
+        "evidence_import": {
+            "blocking_failed": 0,
+            "unexplained_item_count": 0,
+            "accepted_evidence_silently_dropped": 0,
+            "development_row_id_dependency_count": 0,
+            "exact_stable_key_membership_passed": True,
+            "all_table_equations_balanced": True,
+            "atomic_import_contract_enforced": True,
+            "success_ledger_written_only_after_commit": True,
+            "current_reaudit_write_count": 0,
+            "extra_materialized_count": 0,
+            "fallback_search_target_missing_count": 260,
+            "per_table_accounting": {
+                "source_metadata_records": {
+                    "exported": 4421, "inserted": 0, "compatible_existing": 4421,
+                    "deferred_target_missing": 0, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 298,
+                    "equation_balanced": True,
+                },
+                "source_tag_observations": {
+                    "exported": 18112, "inserted": 0, "compatible_existing": 18112,
+                    "deferred_target_missing": 0, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 298,
+                    "equation_balanced": True,
+                },
+                "source_name_observations": {
+                    "exported": 7388, "inserted": 0, "compatible_existing": 7388,
+                    "deferred_target_missing": 0, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 298,
+                    "equation_balanced": True,
+                },
+                "source_concept_evidence": {
+                    "exported": 12027, "inserted": 0, "compatible_existing": 12027,
+                    "deferred_target_missing": 0, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 298,
+                    "equation_balanced": True,
+                },
+                "source_concept_fallback_search_index": {
+                    "exported": 6596, "inserted": 0, "compatible_existing": 6336,
+                    "deferred_target_missing": 260, "rejected_incompatible": 0,
+                    "blocking_failed": 0, "target_missing_reference_count": 260,
+                    "equation_balanced": True,
+                },
+            },
+        },
+        "denominator_audit": {
+            "accounting_equality_passed": True,
+            "mandatory_and_supplemental_distinguished": True,
+            "unclassified_count": 0,
+            "unexplained_count": 0,
+            "canonical_runtime_denominator_changed": False,
+            "independent_stored_path_parser_executed": True,
+            "stored_path_population_derived_independently": True,
+            "selected_media_classification_coverage": 1.0,
+            "denominator_classification_fingerprint": "denominator-fingerprint",
+            "database_identity": "blombooru_custom_test_scale",
+            "manifest_content_key_count": 12000,
+            "database_content_key_count": 12000,
+            "duplicate_manifest_content_key_count": 0,
+            "missing_in_database_count": 0,
+            "extra_in_database_count": 0,
+            "manifest_membership_fingerprint": "manifest-membership",
+            "database_membership_fingerprint": "database-membership",
+            "missing_membership_fingerprint": "empty-missing",
+            "extra_membership_fingerprint": "empty-extra",
+            "exact_membership_equality": True,
+            "safe_to_publish_denominator": True,
+        },
+        "r2r_reuse": {
+            "exact_pair_membership_passed": True,
+            "fingerprint_compatible": True,
+            "accepted_pair_count": 3319,
+            "must_link_count": 1522,
+            "cannot_link_count": 1791,
+            "deferred_nonblocking_count": 6,
+            "coverage": 1.0,
+        },
+        "identity_traceability": {
+            "accepted_606_family_traceability_passed": True,
+            "accepted_family_count": 606,
+            "human_review_queue_count": 0,
+            "needs_review_normal_pipeline_count": 0,
+        },
+        "pair_accounting": {
+            "candidate_equation_passed": True,
+            "all_pairs_creator_alias_expansion_used": False,
+        },
+        "graph_safety": {
+            "graph_audit_algorithm_version": "active_bipartite_connected_components_v2",
+            "component_membership_fingerprint": "component-fingerprint",
+            "pair_membership_fingerprint": "pair-fingerprint",
+            "giant_component_recurrence": False,
+            "multi_stable_id_creator_component_count": 0,
+            "direct_cannot_link_violation_count": 0,
+            "transitive_cannot_link_violation_count": 0,
+            "unauthorized_cross_role_component_count": 0,
+            "unknown_role_materialization_count": 0,
+            "deferred_identity_union_count": 0,
+            "duplicate_active_stable_identity_count": 0,
+        },
+        "independent_graph_metrics": {
+            name: {
+                "database_identity": database,
+                "graph_audit_algorithm_version": "active_bipartite_connected_components_v2",
+                "component_membership_fingerprint": f"{name}-component-fingerprint",
+                "pair_membership_fingerprint": f"{name}-pair-fingerprint",
+                "giant_component_recurrence": False,
+                "multi_stable_id_creator_component_count": 0,
+                "direct_cannot_link_violation_count": 0,
+                "transitive_cannot_link_violation_count": 0,
+                "unauthorized_cross_role_component_count": 0,
+                "unknown_role_materialization_count": 0,
+                "deferred_identity_union_count": 0,
+                "duplicate_active_stable_identity_count": 0,
+            }
+            for name, database in (
+                ("scale", "blombooru_custom_test_scale"),
+                ("promotion", "blombooru_custom_test_promotion"),
+                ("rebuild", "blombooru_custom_test_rebuild"),
+            )
+        },
+        "actual_rebuild_verification": {
+            "derived_row_import_count": 0,
+            "accepted_r2r_disposition_compatibility": 1.0,
+            "accepted_creator_family_traceability": 1.0,
+            "blocking_creator_gap_count": 0,
+            "actual_r2r_ml2_derivation_replayed": True,
+            "ledger_fingerprint": "rebuild-ledger-fingerprint",
+            "ledger_algorithm_version": "actual-r2r-ml2-v2",
+            "derivation_algorithm_identity": "source-signal+r2r+ml2",
+            "logical_subset_comparison": {
+                "graph_logical_mismatch_count": 0, "search_logical_mismatch_count": 0,
+                "numeric_row_id_equality_claimed": False,
+            },
+        },
+        "media_count_equality": {
+            "passed": True, "manifest_count": 12000, "database_count": 12000,
+            "import_ledger_count": 12000, "ai_ledger_count": 12000,
+        },
+        "true_new_media_search_benchmark": {
+            "case_count": 40, "scale_unsupported_result_count": 0,
+            "promotion_unsupported_result_count": 0, "rebuild_unsupported_result_count": 0,
+            "leakage_count": 0, "deterministic_selection_fingerprint": "new-media-fingerprint",
+        },
+        "python_identity": {
+            "python_version": "3.12.0", "architecture": "64bit",
+            "interpreter_class": "repo_local_venv", "code_root_fingerprint": "root-fingerprint",
+        },
+        "search_benchmark": {
+            "unsupported_result_count": 0,
+            "rejected_only_result_count": 0,
+            "superseded_only_result_count": 0,
+            "invalid_or_deleted_only_result_count": 0,
+            "and_leakage_count": 0,
+            "search_caused_identity_mutation_count": 0,
+            "performance_gate_passed": True,
+            "scale_p95_ms": 100.0,
+            "allowed_scale_p95_ms": 750.0,
+            "scale_max_ms": 200.0,
+            "promotion_max_ms": 200.0,
+        },
+        "promotion_rehearsal": {
+            "rollback_fingerprint_restoration": True,
+            "second_import_mutation_count": 0,
+            "logical_cross_database_mismatch_count": 0,
+        },
+        "mutation_proof": {
+            "predecessor_databases_unchanged": True,
+            "media_media_tags_unchanged_during_promotion": True,
+            "protected_forbidden_tables_unchanged": True,
+            "immutable_heavy_artifact_proof_passed": True,
+        },
+        "immutable_artifact_proof": {
+            "passed": True,
+            "accepted_manifest_import_ai_package_unchanged": True,
+            "storage_object_membership_unchanged": True,
+            "scale_protected_tables_unchanged": True,
+            "promotion_protected_tables_unchanged": True,
+            "accepted_predecessor_databases_unchanged": True,
+            "proof_fingerprint": "immutable-proof-fingerprint",
+        },
+        "operation_counts": {
+            "provider_calls": 0,
+            "pixiv_calls": 0,
+            "gallery_dl_calls": 0,
+            "external_llm_calls": 0,
+            "production_operations": 0,
+            "entity_operations": 0,
+            "confirmed_assignment_operations": 0,
+            "truth_promotion_operations": 0,
+            "source_mutations": 0,
+            "localization_operations": 0,
+        },
+        "public_redaction": {
+            "passed": True, "negative_control_passed": True,
+            "exact_final_bytes_scanned": True, "absolute_path_finding_count": 0,
+        },
+        "review_pack": {
+            "integrity_passed": True, "member_checksum_equality_passed": True,
+            "canonical_final_pack": True, "pack_fingerprint_recorded_privately": True,
+            "pack_id": "sv1-finalization-safety-canonical-pack-v2",
+        },
+        "validation": {
+            "current_candidate_validation_passed": True,
+            "head_sha_matches_current": True, "changed_file_fingerprint_matches": True,
+            "python_identity_fingerprint_matches": True,
+            "validation_ledger_fingerprint_verified": True,
+            "py_compile_passed": True, "focused_tests_passed": True,
+            "documentation_contract_tests_passed": True, "full_non_e2e_passed": True,
+        },
+        "prewrite_root_containment": {
+            "passed": True,
+            "validation_order": "resolved_and_validated_before_mkdir_or_artifact_write",
+        },
+        "canonical_orchestration": {
+            "stage": "all", "complete": True,
+            "stages": [
+                "prepare", "import", "ai", "evidence", "promotion", "benchmark", "rebuild",
+                "connected-graph-audits", "repair-benchmark", "finalization-accounting",
+                "validation", "repair-finalize",
+            ],
+        },
+        "route_decision": {
+            "route_approved": False,
+            "recommended_next_phase": "SCV2-SV1B",
+            "next_phase_started": False,
+        },
+    }
+
+
+def test_sv1_contract_accepts_only_the_complete_bounded_claim() -> None:
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", _sv1_contract_summary())
+
+    assert result.passed is True
+    assert result.target_met_claimed is False
+    assert result.safe_to_merge_claimed is True
+    assert result.route_approved is False
+
+
+def test_sv1_contract_independently_derives_blockers_and_rejects_overclaim() -> None:
+    summary = _sv1_contract_summary()
+    summary["media_import"]["blocking_failed"] = 1  # type: ignore[index]
+
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+
+    assert result.passed is False
+    assert "sv1_active_blockers_incomplete" in _error_codes(result)
+    assert "sv1_target_overclaimed" in _error_codes(result)
+
+
+def test_sv1_contract_fails_closed_when_required_stage_is_missing() -> None:
+    summary = _sv1_contract_summary()
+    summary["pipeline_contract"]["executed_stages"].remove("promotion_rollback_commit_idempotency")  # type: ignore[index,union-attr]
+
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+
+    assert result.passed is False
+    assert "sv1_required_stage_missing" in _error_codes(result)
+    assert "sv1_active_blockers_incomplete" in _error_codes(result)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ("actual_rebuild_verification.blocking_creator_gap_count", 1),
+        ("actual_rebuild_verification.actual_r2r_ml2_derivation_replayed", False),
+        ("immutable_artifact_proof.storage_object_membership_unchanged", False),
+        ("validation.current_candidate_validation_passed", False),
+        ("public_redaction.absolute_path_finding_count", 1),
+        ("prewrite_root_containment.passed", False),
+        ("denominator_audit.database_identity", "blombooru_default_test_wrong"),
+        ("canonical_orchestration.complete", False),
+        ("media_import.current_invocation.storage_write_count", 1),
+        ("ai_tag_provenance.current_repair_invocation.ai_inference_rerun", True),
+    ],
+)
+def test_sv1_finalization_safety_gates_fail_closed(path: str, value: object) -> None:
+    summary = _sv1_contract_summary()
+    _set_nested(summary, path, value)
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+    assert result.passed is False
+    assert "sv1_active_blockers_incomplete" in _error_codes(result)
+    assert "sv1_target_overclaimed" in _error_codes(result)
+
+
+def test_sv1_contract_rejects_stale_inventory_and_ambiguous_resume_fields() -> None:
+    summary = _sv1_contract_summary()
+    summary["scale_manifest"]["inventory_outcome_counts"] = {"eligible_unique": 12000}  # type: ignore[index]
+    summary["media_import"]["app_managed_storage_write_count"] = 12000  # type: ignore[index]
+    summary["media_import"]["copy_import_runtime_seconds"] = 3604.0  # type: ignore[index]
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+    assert result.passed is False
+    assert "sv1_active_blockers_incomplete" in _error_codes(result)
+
+
+@pytest.mark.parametrize("database", ["promotion", "rebuild"])
+def test_sv1_contract_blocks_when_only_non_scale_graph_has_violation(database: str) -> None:
+    summary = _sv1_contract_summary()
+    summary["independent_graph_metrics"][database]["transitive_cannot_link_violation_count"] = 1  # type: ignore[index]
+    result = check_phase_contract("sv1_controlled_scale_promotion_readiness_contract_v1", summary)
+    assert result.passed is False
+    active_error = next(error for error in result.errors if error.code == "sv1_active_blockers_incomplete")
+    assert "blocked_sv1_graph_safety" in active_error.expected
+    assert "sv1_target_overclaimed" in _error_codes(result)

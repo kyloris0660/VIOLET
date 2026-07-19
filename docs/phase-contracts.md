@@ -21,6 +21,18 @@ or `safe_to_merge` must declare a registered contract and pass the contract
 checker before making that claim. If no matching contract exists, create or
 extend a contract first.
 
+## Current Phase Boundary
+
+PR #137 is merged and accepted at
+`7fca41151cc9e1d5b48cfe243279e66296346bae`; its final bounded status is
+`target_met_multilingual_identity_candidate_closure`. The accepted ML2 logical
+evidence and isolated database are immutable inputs to the separately governed
+SCV2-SV1 controlled-scale and promotion-readiness phase. SV1 registered and
+passed `sv1_controlled_scale_promotion_readiness_contract_v1` for its bounded
+feature-branch partial SV1-A result. The contract does not authorize production,
+full-library, provider, Entity, confirmed assignment, truth-route work, or
+starting SV1B/FL1.
+
 ## Registered GOV3 Contracts
 
 - `python_env_contract_v1`
@@ -36,6 +48,7 @@ extend a contract first.
 - `r2r_autonomous_recall_search_closure_contract_v1`
 - `ml1_multilingual_alias_source_metadata_closure_contract_v1`
 - `ml2_multilingual_identity_candidate_closure_contract_v1`
+- `sv1_controlled_scale_promotion_readiness_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`

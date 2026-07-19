@@ -1381,6 +1381,7 @@ def test_s3a_m1_manual_execute_active_blocks_ai_job_start(db, monkeypatch):
 
 def test_s3a_m1_manual_execute_active_blocks_direct_ai_tagging(monkeypatch):
     monkeypatch.setattr(execute_service, "is_manual_sync_execute_active", lambda: True)
+    monkeypatch.setattr(ai_tagging_routes, "_get_session", lambda: SimpleNamespace(close=lambda: None))
     monkeypatch.setenv("AI_TAGGING_ENABLED", "true")
 
     with pytest.raises(HTTPException) as exc:
