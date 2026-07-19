@@ -9,7 +9,10 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     SV1BPreflightError,
     _strict_test_database,
     audit_runtime_parser_denominator_rows,
+    audit_acquisition_closure_rows,
     canonical_work_id,
+    execute_provider_manifest,
+    filter_nonderived_source_package,
     finalize_r2r_proposal_classifications,
     outcome_for_pair,
     public_console_summary,
@@ -66,6 +69,122 @@ def test_runtime_parser_audit_fails_closed_on_parser_drift(monkeypatch) -> None:
         audit_runtime_parser_denominator_rows([
             {"id": 1, "hash": "a", "filename": "1234567.jpg", "path": "media/original/1234567.jpg"},
         ])
+
+
+def test_acquisition_closure_requires_exact_trusted_page_outcomes() -> None:
+    pages = [
+        {"media_stable_key": "a", "stable_work_id": "1234567", "requested_page_index": 0},
+        {"media_stable_key": "b", "stable_work_id": "2234567", "requested_page_index": 1},
+        {"media_stable_key": "c", "stable_work_id": "3234567", "requested_page_index": 2},
+    ]
+    queue = [
+        {
+            "id": 1, "media_stable_key": "a", "provider": "pixiv",
+            "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "authenticated_provider_metadata",
+            "status": "metadata_complete", "source_work_id": "1234567", "source_page_index": 0,
+            "provenance": {"source": "gallery_dl_authenticated_metadata"}, "raw_metadata_json": {},
+        },
+        {
+            "id": 2, "media_stable_key": "b", "provider": "pixiv",
+            "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+            "status": "terminal_remote_unavailable", "source_work_id": "2234567", "source_page_index": 1,
+            "provenance": {}, "raw_metadata_json": {
+                "failure_reason": "authenticated_remote_deleted_private_unavailable", "last_attempt_at": "now"
+            },
+        },
+        {
+            "id": 3, "media_stable_key": "c", "provider": "pixiv",
+            "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+            "status": "deferred_nonblocking_source_page_mismatch", "source_work_id": "3234567", "source_page_index": 2,
+            "provenance": {}, "raw_metadata_json": {},
+        },
+    ]
+    evidence = [{
+        "source_metadata_record_id": 3,
+        "evidence_kind": "deferred_nonblocking_source_page_mismatch",
+        "status": "active",
+        "provenance": {
+            "governance_policy_version": "source_page_mismatch_deferred_nonblocking_v1",
+            "unsupported_page_link_created": False,
+        },
+    }]
+    public, private = audit_acquisition_closure_rows(pages, queue, evidence)
+    assert public["passed"] is True
+    assert public["page_outcome_counts"] == {
+        "deferred_nonblocking_source_page_mismatch": 1,
+        "metadata_complete": 1,
+        "terminal_remote_unavailable": 1,
+    }
+    assert private == {"missing_keys": [], "unexpected_keys": [], "duplicate_keys": []}
+
+
+def test_acquisition_closure_rejects_untrusted_complete_and_missing_membership() -> None:
+    pages = [
+        {"media_stable_key": "a", "stable_work_id": "1234567", "requested_page_index": 0},
+        {"media_stable_key": "b", "stable_work_id": "2234567", "requested_page_index": 1},
+    ]
+    queue = [{
+        "id": 1, "media_stable_key": "a", "provider": "pixiv",
+        "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+        "status": "metadata_complete", "source_work_id": "1234567", "source_page_index": 0,
+        "provenance": {"source": "canonical_pixiv_filename_path_prior"}, "raw_metadata_json": {},
+    }]
+    public, private = audit_acquisition_closure_rows(pages, queue, [])
+    assert public["passed"] is False
+    assert public["missing_page_queue_count"] == 1
+    assert public["blocking_outcome_counts"] == {"blocking_metadata_complete": 1}
+    assert len(private["missing_keys"]) == 1
+
+
+def test_execute_provider_stops_before_runner_when_credential_gate_fails(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    (output / "provider-queue-manifest-proof.json").write_text(
+        json.dumps({"exact_open_work_membership_passed": True}), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.provider_gate_preflight",
+        lambda: {"passed": False},
+    )
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.ingestion_runner.run",
+        lambda _args: pytest.fail("provider runner must not be called"),
+    )
+    with pytest.raises(SV1BPreflightError, match="blocked_sv1b_provider_authentication"):
+        execute_provider_manifest(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+
+
+def test_replay_package_filter_excludes_all_derived_sourceconcept_rows() -> None:
+    package = filter_nonderived_source_package(
+        {
+            "package_version": "old",
+            "source": "test",
+            "tables": {
+                "source_metadata_records": [{"provider_record_key": "a"}],
+                "source_tag_observations": [],
+                "source_name_observations": [],
+                "source_metadata_evidence": [],
+                "source_searchable_name_assertions": [],
+                "source_tag_registry": [],
+                "source_name_registry": [],
+                "source_concept_signals": [{"signal_key": "must-not-import"}],
+                "source_concepts": [{"concept_key": "must-not-import"}],
+            },
+        },
+        package_version="sv1b_acquired_nonderived_source_evidence_v1",
+    )
+    assert package["package_version"] == "sv1b_acquired_nonderived_source_evidence_v1"
+    assert package["tables"]["source_metadata_records"] == [{"provider_record_key": "a"}]
+    assert package["tables"]["source_concept_signals"] == []
+    assert package["tables"]["source_concepts"] == []
 
 
 def test_output_root_must_be_new_and_private(tmp_path: Path) -> None:

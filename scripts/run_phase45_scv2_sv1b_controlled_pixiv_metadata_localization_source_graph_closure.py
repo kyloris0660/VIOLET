@@ -28,8 +28,10 @@ for candidate in (ROOT, BACKEND):
         sys.path.insert(0, str(candidate))
 
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
+    DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
     MIN_REQUEST_SPACING_SECONDS,
     PixivMetadataState,
+    is_trusted_complete_pixiv_metadata_record,
     manifest_scoped_outcome_key,
 )
 from app.services.pixiv_filename_prior_service import (  # noqa: E402
@@ -84,6 +86,16 @@ ACCEPTED_R2R_DB = "blombooru_scv2_r2r_dryrun_test_20260710"
 ACCEPTED_R2R_SNAPSHOT_FINGERPRINT = "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
 ML2_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-ml2-multilingual-identity-candidate-closure-reviewfix-20260715"
 R2R_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-r2r-autonomous-recall-search-closure"
+
+NONDERIVED_SOURCE_TABLES = frozenset({
+    "source_metadata_records",
+    "source_tag_observations",
+    "source_name_observations",
+    "source_metadata_evidence",
+    "source_searchable_name_assertions",
+    "source_tag_registry",
+    "source_name_registry",
+})
 
 COMPLETE_STATUSES = frozenset({"metadata_complete", "observed", "active", "accepted"})
 TERMINAL_STATUSES = frozenset({"terminal_remote_unavailable"})
@@ -1222,6 +1234,319 @@ def queue_provider_manifest(
     return result
 
 
+def execute_provider_manifest(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    validate_owned_output_root(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
+    queue_proof = read_json(output / "provider-queue-manifest-proof.json")
+    if queue_proof.get("exact_open_work_membership_passed") is not True:
+        raise SV1BPreflightError("provider_queue_manifest_proof_missing_or_failed")
+    gate = provider_gate_preflight()
+    if gate.get("passed") is not True:
+        raise SV1BPreflightError("blocked_sv1b_provider_authentication")
+    args = SimpleNamespace(
+        database=primary_database,
+        output_dir=output / "provider",
+        execute=True,
+        accept_local_credential_risk=False,
+        replay_normalization_failures=False,
+        additional_diagnostic_calls=0,
+        gallery_dl_command="",
+        timeout=120,
+        phase_manifest_fingerprint=ACCEPTED_MANIFEST_FINGERPRINT,
+    )
+    summary = ingestion_runner.run(args)
+    result = {
+        "phase_manifest_fingerprint": ACCEPTED_MANIFEST_FINGERPRINT,
+        "execution_requested": summary.get("execution_requested") is True,
+        "credential_rotation_confirmation_present": summary.get("credential_rotation_confirmation_present") is True,
+        "redacted_secret_scan_passed": (summary.get("redacted_secret_scan") or {}).get("passed") is True,
+        "redacted_authentication_preflight_passed": (
+            summary.get("redacted_authentication_preflight") or {}
+        ).get("passed") is True,
+        "operation_counts": summary.get("operation_counts") or {},
+        "acquisition_execution": summary.get("acquisition_execution") or {},
+        "provider_raw_execution_summary_private": str(output / "provider" / "execution-summary.json"),
+    }
+    write_json(output / "provider-execution-proof.json", result)
+    return result
+
+
+def audit_acquisition_closure_rows(
+    page_rows: Iterable[Mapping[str, Any]],
+    queue_rows: Iterable[Mapping[str, Any]],
+    evidence_rows: Iterable[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Audit exact page/media closure without exposing private membership."""
+
+    expected: set[tuple[str, str, int]] = set()
+    work_pages: dict[str, list[str]] = defaultdict(list)
+    for row in page_rows:
+        key = (
+            str(row.get("media_stable_key") or ""),
+            canonical_work_id(row.get("stable_work_id")),
+            int(row.get("requested_page_index") or 0),
+        )
+        if not key[0] or key in expected:
+            raise SV1BPreflightError("acquisition_page_manifest_duplicate_or_missing_stable_key")
+        expected.add(key)
+
+    evidence_by_record: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in evidence_rows:
+        evidence_by_record[int(row["source_metadata_record_id"])].append(row)
+    actual: dict[tuple[str, str, int], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in queue_rows:
+        work_id = str(row.get("source_work_id") or "").strip()
+        media_key = str(row.get("media_stable_key") or "").strip()
+        if work_id and media_key:
+            actual[(media_key, canonical_work_id(work_id), int(row.get("source_page_index") or 0))].append(row)
+
+    missing = expected - set(actual)
+    extra = set(actual) - expected
+    duplicate = {key for key in expected if len(actual.get(key, ())) != 1}
+    outcome_counts: Counter[str] = Counter()
+    blocking_counts: Counter[str] = Counter()
+    for key in sorted(expected):
+        rows = actual.get(key, ())
+        if len(rows) != 1:
+            continue
+        row = rows[0]
+        status = str(row.get("status") or "")
+        raw = row.get("raw_metadata_json") if isinstance(row.get("raw_metadata_json"), Mapping) else {}
+        record_evidence = evidence_by_record.get(int(row["id"]), ())
+        if status == PixivMetadataState.COMPLETE.value and is_trusted_complete_pixiv_metadata_record(row):
+            outcome = PixivMetadataState.COMPLETE.value
+        elif status == PixivMetadataState.TERMINAL.value and (
+            str(raw.get("failure_reason") or "") == "authenticated_remote_deleted_private_unavailable"
+            and bool(raw.get("last_attempt_at"))
+        ):
+            outcome = PixivMetadataState.TERMINAL.value
+        elif status == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value and any(
+            str(item.get("evidence_kind") or "") == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+            and str(item.get("status") or "") == "active"
+            and str((item.get("provenance") or {}).get("governance_policy_version") or "")
+            == DEFERRED_PAGE_MISMATCH_POLICY_VERSION
+            and (item.get("provenance") or {}).get("unsupported_page_link_created") is False
+            for item in record_evidence
+        ):
+            outcome = PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+        else:
+            outcome = "blocking_" + (status or "missing_status")
+            blocking_counts[outcome] += 1
+        outcome_counts[outcome] += 1
+        work_pages[key[1]].append(outcome)
+
+    work_outcomes: Counter[str] = Counter()
+    closed_values = {
+        PixivMetadataState.COMPLETE.value,
+        PixivMetadataState.TERMINAL.value,
+        PixivMetadataState.DEFERRED_PAGE_MISMATCH.value,
+    }
+    for values in work_pages.values():
+        distinct = set(values)
+        if not distinct.issubset(closed_values):
+            work_outcomes["blocking_open_or_invalid"] += 1
+        elif len(distinct) == 1:
+            work_outcomes[next(iter(distinct))] += 1
+        else:
+            work_outcomes["mixed_closed"] += 1
+
+    passed = not (missing or extra or duplicate or blocking_counts) and sum(outcome_counts.values()) == len(expected)
+    public = {
+        "page_manifest_count": len(expected),
+        "queue_membership_count": len(actual),
+        "missing_page_queue_count": len(missing),
+        "unexpected_page_queue_count": len(extra),
+        "duplicate_page_queue_count": len(duplicate),
+        "page_outcome_counts": dict(sorted(outcome_counts.items())),
+        "page_equation_balanced": sum(outcome_counts.values()) == len(expected),
+        "distinct_work_count": len(work_pages),
+        "work_outcome_counts": dict(sorted(work_outcomes.items())),
+        "work_equation_balanced": sum(work_outcomes.values()) == len(work_pages),
+        "blocking_outcome_counts": dict(sorted(blocking_counts.items())),
+        "passed": passed,
+    }
+    private = {
+        "missing_keys": sorted(missing),
+        "unexpected_keys": sorted(extra),
+        "duplicate_keys": sorted(duplicate),
+    }
+    return public, private
+
+
+def export_acquired_nonderived_package(
+    output: Path,
+    *,
+    primary_database: str,
+) -> dict[str, Any]:
+    export_paths = Paths(output / "acquired-evidence-export-private")
+    export_stable_evidence(export_paths, source_database=primary_database)
+    full_package = read_json(export_paths.package)
+    package = filter_nonderived_source_package(
+        full_package,
+        package_version="sv1b_acquired_nonderived_source_evidence_v1",
+    )
+    normalized = json.loads(canonical_json(package))
+    for row in normalized["tables"]["source_metadata_records"]:
+        row.pop("raw_metadata_json", None)
+    package_path = output / "acquired-nonderived-evidence-package-private.json"
+    write_json(package_path, package)
+    result = {
+        "package_version": package["package_version"],
+        "table_counts": {name: len(rows) for name, rows in package["tables"].items()},
+        "derived_row_count": sum(
+            len(rows) for name, rows in package["tables"].items()
+            if name not in NONDERIVED_SOURCE_TABLES
+        ),
+        "acquired_metadata_package_fingerprint": sha256_payload(package),
+        "normalized_evidence_fingerprint": sha256_payload(normalized),
+        "package_file_sha256": sha256_file(package_path),
+        "private_package_path": str(package_path),
+    }
+    return result
+
+
+def filter_nonderived_source_package(
+    full_package: Mapping[str, Any],
+    *,
+    package_version: str,
+) -> dict[str, Any]:
+    return {
+        **full_package,
+        "package_version": package_version,
+        "tables": {
+            name: list(rows) if name in NONDERIVED_SOURCE_TABLES else []
+            for name, rows in full_package["tables"].items()
+        },
+    }
+
+
+def audit_acquisition_and_package(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    validate_owned_output_root(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
+    execution_path = output / "provider" / "execution-summary.json"
+    if not execution_path.is_file():
+        raise SV1BPreflightError("provider_execution_summary_missing")
+    execution = read_json(execution_path)
+    if not (
+        execution.get("execution_requested") is True
+        and (execution.get("redacted_secret_scan") or {}).get("passed") is True
+        and (execution.get("redacted_authentication_preflight") or {}).get("passed") is True
+    ):
+        raise SV1BPreflightError("provider_execution_governance_proof_failed")
+    page_rows = read_jsonl(output / "candidate-page-media-manifest-private.jsonl")
+    engine = engine_for(primary_database)
+    try:
+        with engine.connect() as connection:
+            queue_rows = list(connection.execute(text("""
+                SELECT r.id,m.hash AS media_stable_key,r.provider,r.metadata_kind,r.data_type_label,
+                       r.status,r.source_work_id,r.source_page_index,r.provenance,r.raw_metadata_json
+                FROM blombooru_source_metadata_records r
+                JOIN blombooru_media m ON m.id=r.media_id
+                WHERE r.provider='pixiv' AND r.metadata_kind='pixiv_ingestion_gate'
+                  AND r.source_work_id IS NOT NULL
+            """)).mappings())
+            evidence_rows = list(connection.execute(text("""
+                SELECT source_metadata_record_id,evidence_kind,status,provenance
+                FROM blombooru_source_metadata_evidence
+            """)).mappings())
+    finally:
+        engine.dispose()
+    closure, private = audit_acquisition_closure_rows(page_rows, queue_rows, evidence_rows)
+    if closure["passed"] is not True:
+        write_json(output / "acquisition-closure-mismatch-private.json", private)
+        raise SV1BPreflightError("acquisition_page_or_work_closure_failed")
+    package = export_acquired_nonderived_package(output, primary_database=primary_database)
+    result = {
+        "closure": closure,
+        "package": package,
+        "provider_request_attempt_count": int(
+            (execution.get("acquisition_execution") or {}).get("provider_request_attempt_count") or 0
+        ),
+        "media_download_count": int((execution.get("operation_counts") or {}).get("media_downloads") or 0),
+        "passed": closure["passed"] is True and package["derived_row_count"] == 0,
+    }
+    write_json(output / "acquisition-closure-and-package-proof.json", result)
+    return result
+
+
+def import_acquired_package_to_replay(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    validate_owned_output_root(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
+    proof = read_json(output / "acquisition-closure-and-package-proof.json")
+    if proof.get("passed") is not True:
+        raise SV1BPreflightError("acquisition_closure_package_proof_missing_or_failed")
+    package_path = output / "acquired-nonderived-evidence-package-private.json"
+    package = read_json(package_path)
+    expected_fingerprint = str((proof.get("package") or {}).get("acquired_metadata_package_fingerprint") or "")
+    if sha256_payload(package) != expected_fingerprint:
+        raise SV1BPreflightError("acquired_metadata_package_fingerprint_mismatch")
+    derived_tables = tuple(
+        name for name in CORE_SOURCE_TABLES
+        if name.replace("blombooru_", "") not in NONDERIVED_SOURCE_TABLES
+    )
+    replay_derived_before = database_fingerprint(replay_database, derived_tables)
+    if any(int(row["count"]) != 0 for row in replay_derived_before["tables"].values()):
+        raise SV1BPreflightError("replay_derived_source_tables_not_pristine")
+    engine = engine_for(replay_database)
+    try:
+        with engine.begin() as connection:
+            imported = import_stable_evidence(connection, package)
+    finally:
+        engine.dispose()
+    replay_export_paths = Paths(output / "replay-acquired-evidence-reconciliation-private")
+    export_stable_evidence(replay_export_paths, source_database=replay_database)
+    replay_package = filter_nonderived_source_package(
+        read_json(replay_export_paths.package),
+        package_version=str(package["package_version"]),
+    )
+    reconciliation = reconcile_stable_evidence_packages(
+        package, replay_package, _database_media_keys(replay_database)
+    )
+    replay_derived_after = database_fingerprint(replay_database, derived_tables)
+    result = {
+        "acquired_metadata_package_fingerprint": expected_fingerprint,
+        "replay_import": imported,
+        "replay_reconciliation": reconciliation,
+        "replay_derived_tables_pristine_before": all(
+            int(row["count"]) == 0 for row in replay_derived_before["tables"].values()
+        ),
+        "replay_derived_tables_pristine_after": all(
+            int(row["count"]) == 0 for row in replay_derived_after["tables"].values()
+        ),
+        "primary_replay_nonderived_logical_fingerprint_equal": sha256_payload(package) == sha256_payload(replay_package),
+        "provider_request_count": 0,
+        "passed": bool(
+            reconciliation.get("exact_stable_key_membership_passed") is True
+            and int(reconciliation.get("blocking_failed") or 0) == 0
+            and int(reconciliation.get("extra_materialized_count") or 0) == 0
+            and sha256_payload(package) == sha256_payload(replay_package)
+            and all(int(row["count"]) == 0 for row in replay_derived_after["tables"].values())
+        ),
+    }
+    write_json(output / "replay-acquired-evidence-import-proof.json", result)
+    if result["passed"] is not True:
+        raise SV1BPreflightError("replay_acquired_evidence_reconciliation_failed")
+    return result
+
+
 def provider_gate_preflight() -> dict[str, Any]:
     entrypoint = gallery_adapter.probe_gallery_dl_entrypoint(None)
     profile = validate_gallery_dl_profile(entrypoint.command, timeout_seconds=30)
@@ -1312,6 +1637,7 @@ def main() -> int:
             "inventory", "prepare-databases", "import-accepted-evidence",
             "localization-baseline", "r2r-baseline-audit",
             "queue-provider",
+            "execute-provider", "audit-acquisition-package", "import-acquired-replay",
         ),
         default="inventory",
     )
@@ -1321,6 +1647,7 @@ def main() -> int:
     output = args.output.resolve()
     resume_stage = args.stage in {
         "import-accepted-evidence", "localization-baseline", "r2r-baseline-audit", "queue-provider",
+        "execute-provider", "audit-acquisition-package", "import-acquired-replay",
     }
     if resume_stage:
         validate_owned_output_root(
@@ -1373,7 +1700,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider"}:
+    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay"}:
         accepted_evidence = read_json(output / "accepted-nonderived-evidence-proof.json")
     localization_baseline = None
     if args.stage == "localization-baseline":
@@ -1382,7 +1709,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"r2r-baseline-audit", "queue-provider"}:
+    elif args.stage in {"r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay"}:
         localization_baseline = read_json(output / "localization-baseline-proof.json")
     r2r_baseline_audit = None
     if args.stage == "r2r-baseline-audit":
@@ -1391,11 +1718,41 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage == "queue-provider":
+    elif args.stage in {"queue-provider", "execute-provider", "audit-acquisition-package", "import-acquired-replay"}:
         r2r_baseline_audit = read_json(output / "r2r-exact-remap-audit.json")
     provider_queue = None
     if args.stage == "queue-provider":
         provider_queue = queue_provider_manifest(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage in {"execute-provider", "audit-acquisition-package", "import-acquired-replay"}:
+        provider_queue = read_json(output / "provider-queue-manifest-proof.json")
+    provider_execution = None
+    if args.stage == "execute-provider":
+        provider_execution = execute_provider_manifest(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage in {"audit-acquisition-package", "import-acquired-replay"}:
+        provider_execution_path = output / "provider-execution-proof.json"
+        if not provider_execution_path.is_file():
+            raise SV1BPreflightError("provider_execution_proof_missing")
+        provider_execution = read_json(provider_execution_path)
+    acquisition_package = None
+    if args.stage == "audit-acquisition-package":
+        acquisition_package = audit_acquisition_and_package(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage == "import-acquired-replay":
+        acquisition_package = read_json(output / "acquisition-closure-and-package-proof.json")
+    replay_acquired_import = None
+    if args.stage == "import-acquired-replay":
+        replay_acquired_import = import_acquired_package_to_replay(
             output,
             primary_database=args.primary_db,
             replay_database=args.replay_db,
@@ -1420,6 +1777,9 @@ def main() -> int:
         "localization_baseline": localization_baseline,
         "r2r_baseline_audit": r2r_baseline_audit,
         "provider_queue": provider_queue,
+        "provider_execution": provider_execution,
+        "acquisition_package": acquisition_package,
+        "replay_acquired_import": replay_acquired_import,
         "active_blockers": active_blockers,
         "target_met": False,
         "safe_to_merge": False,
