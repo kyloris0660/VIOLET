@@ -761,7 +761,13 @@ def test_matching_pending_queue_yields_to_trusted_complete_contradiction() -> No
     media = [{"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None}]
     metadata = [
         {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "metadata_kind": "pixiv_ingestion_gate", "status": "metadata_pending"},
-        {"id": 11, "provider": "pixiv", "media_id": 1, "source_work_id": "999999999", "source_page_index": 1, "metadata_kind": "provider_metadata", "data_type_label": "authenticated_provider_metadata", "status": "metadata_complete"},
+        {
+            "id": 11, "provider": "pixiv", "media_id": 1,
+            "source_work_id": "999999999", "source_page_index": 1,
+            "metadata_kind": "provider_metadata", "data_type_label": "authenticated_provider_metadata",
+            "status": "metadata_complete", "raw_metadata_json": {"id": 999999999},
+            "provenance": {"source": "gallery_dl_authenticated_metadata"},
+        },
     ]
     public, candidates, work_rows = ml1_runner.build_pixiv_accounting(media, metadata)
     assert candidates[0].status == "filename_identity_conflict"
@@ -1347,11 +1353,13 @@ def test_creator_audit_detects_account_loss_without_destroying_stable_id() -> No
             "metadata_kind": "provider_metadata",
             "status": "metadata_complete",
             "source_work_id": "123456789",
-            "source_page_index": 0,
-            "media_id": 1,
-            "artist_id": "42",
+                "source_page_index": 0,
+                "media_id": 1,
+                "data_type_label": "authenticated_provider_metadata",
+                "artist_id": "42",
             "artist_name": "Display",
-            "raw_metadata_json": {"user": {"id": 42, "name": "Display", "account": "handle"}},
+                "raw_metadata_json": {"user": {"id": 42, "name": "Display", "account": "handle"}},
+                "provenance": {"source": "gallery_dl_authenticated_metadata"},
         }
     ]
     observations = [
@@ -1387,16 +1395,18 @@ def test_creator_audit_counts_creator_account_first_and_deduplicates_compatible_
             "metadata_kind": "provider_metadata",
             "status": "metadata_complete",
             "source_work_id": "123456789",
-            "source_page_index": 0,
-            "media_id": 1,
-            "artist_id": "42",
+                "source_page_index": 0,
+                "media_id": 1,
+                "data_type_label": "authenticated_provider_metadata",
+                "artist_id": "42",
             "artist_name": "Display",
             "raw_metadata_json": {
                 "creator_account": "handle",
                 "user_account": "handle",
                 "artist_account": "handle",
-                "user": {"account": "handle"},
-            },
+                    "user": {"account": "handle"},
+                },
+                "provenance": {"source": "gallery_dl_authenticated_metadata"},
         }
     ]
     observations = [

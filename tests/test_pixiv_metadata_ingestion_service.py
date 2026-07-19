@@ -177,9 +177,11 @@ def test_complete_compatible_record_is_reused_without_reacquisition(db) -> None:
             provider_record_key="existing:123456789:p0",
             source_work_id="123456789",
             source_page_index=0,
-            metadata_kind="provider_metadata",
-            data_type_label="authenticated_provider_metadata",
-            status="observed",
+                metadata_kind="provider_metadata",
+                data_type_label="authenticated_provider_metadata",
+                status="observed",
+                raw_metadata_json={"id": 123456789},
+                provenance={"source": "gallery_dl_authenticated_metadata"},
         )
     )
     db.commit()
@@ -193,6 +195,33 @@ def test_complete_compatible_record_is_reused_without_reacquisition(db) -> None:
     assert decision.reused_complete_record_ids
     assert pending_distinct_work_ids(db) == ()
     assert summarize_batch_closure(db, [9])["closed"] is True
+
+
+def test_untrusted_positive_queue_row_reopens_and_preserves_raw_payload(db) -> None:
+    existing = SourceMetadataRecord(
+        provider="pixiv",
+        provider_record_key="pixiv-ingestion:92:123456789:p0",
+        media_id=92,
+        source_work_id="123456789",
+        source_page_index=0,
+        metadata_kind="pixiv_ingestion_gate",
+        data_type_label="authenticated_provider_metadata",
+        status="metadata_complete",
+        raw_metadata_json={"historical_field": "preserve-me"},
+        provenance={"source": "legacy_positive_status_only"},
+    )
+    db.add(existing)
+    db.commit()
+
+    decision = queue_media_for_pixiv_metadata(
+        db, {"id": 92, "filename": "123456789_p0.jpg", "path": "media/92.jpg"}
+    )
+    db.commit()
+
+    assert decision.state == PixivMetadataState.PENDING.value
+    assert existing.raw_metadata_json["historical_field"] == "preserve-me"
+    assert existing.raw_metadata_json["_sv1b_trust_reclassification"]["raw_metadata_preserved"] is True
+    assert pending_distinct_work_ids(db) == ("123456789",)
 
 
 def test_complete_reuse_materializes_search_evidence_for_new_media(db) -> None:
@@ -209,6 +238,7 @@ def test_complete_reuse_materializes_search_evidence_for_new_media(db) -> None:
         artist_name="Creator",
         status="metadata_complete",
         raw_metadata_json={"creator_account": "creator_account"},
+        provenance={"source": "gallery_dl_authenticated_metadata"},
     )
     db.add(source)
     db.flush()
@@ -269,6 +299,8 @@ def test_historical_gallery_dl_complete_kind_is_reused(db) -> None:
         source_work_id="123456789", source_page_index=0,
         metadata_kind="gallery_dl_real_pixiv_metadata",
         data_type_label="authenticated_provider_metadata", status="observed",
+        raw_metadata_json={"id": 123456789},
+        provenance={"source": "gallery_dl_authenticated_metadata"},
     ))
     db.commit()
     decision = queue_media_for_pixiv_metadata(db, {"id": 16, "filename": "123456789_p0.jpg", "path": "media/16.jpg"})
@@ -283,6 +315,8 @@ def test_historical_wrong_work_or_page_is_queued_as_conflict_not_acquisition(db)
         source_work_id="999999999", source_page_index=1,
         metadata_kind="gallery_dl_real_pixiv_metadata",
         data_type_label="authenticated_provider_metadata", status="observed",
+        raw_metadata_json={"id": 999999999},
+        provenance={"source": "gallery_dl_authenticated_metadata"},
     ))
     db.commit()
     decision = queue_media_for_pixiv_metadata(db, {"id": 17, "filename": "123456789_p0.jpg", "path": "media/17.jpg"})
@@ -324,9 +358,11 @@ def test_current_media_mismatch_wins_over_compatible_record_on_other_media(db) -
                 media_id=170,
                 source_work_id="123456789",
                 source_page_index=0,
-                metadata_kind="gallery_dl_real_pixiv_metadata",
-                data_type_label="authenticated_provider_metadata",
-                status="metadata_complete",
+                    metadata_kind="gallery_dl_real_pixiv_metadata",
+                    data_type_label="authenticated_provider_metadata",
+                    status="metadata_complete",
+                    raw_metadata_json={"id": 123456789},
+                    provenance={"source": "gallery_dl_authenticated_metadata"},
             ),
             SourceMetadataRecord(
                 provider="pixiv",
@@ -334,9 +370,11 @@ def test_current_media_mismatch_wins_over_compatible_record_on_other_media(db) -
                 media_id=171,
                 source_work_id="999999999",
                 source_page_index=1,
-                metadata_kind="gallery_dl_real_pixiv_metadata",
-                data_type_label="authenticated_provider_metadata",
-                status="observed",
+                    metadata_kind="gallery_dl_real_pixiv_metadata",
+                    data_type_label="authenticated_provider_metadata",
+                    status="observed",
+                    raw_metadata_json={"id": 999999999},
+                    provenance={"source": "gallery_dl_authenticated_metadata"},
             ),
         ]
     )
@@ -452,11 +490,24 @@ def test_explicit_auth_failure_in_canary_blocks_without_raw_output(db) -> None:
         db, ["123456789"], entrypoint=("gallery-dl",),
         env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
         acquire=lambda *_args, **_kwargs: [result],
+        credential_risk_waiver_policy=(
+            "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
+        ),
     )
     assert results == [result]
     assert evidence["passed"] is False
     assert evidence["systemic_stop"] is True
     assert evidence["raw_values_exposed"] is False
+    assert evidence["authenticated_success"] is False
+    assert evidence["safe_reason_code"] == "provider_authentication_or_route_rejected"
+    assert evidence["private_stable_work_reference"] == hashlib.sha256(
+        b"123456789"
+    ).hexdigest()
+    assert evidence["returned_page_consistency_count"] == 0
+    assert evidence["credential_risk_waiver_policy"] == (
+        "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
+    )
+    assert evidence["elapsed_seconds"] >= 0
 
 
 def test_bounded_acquisition_deduplicates_manifest_and_checkpoints(db) -> None:
@@ -729,6 +780,12 @@ def test_resume_does_not_reopen_or_request_completed_page(db) -> None:
     queue_media_for_pixiv_metadata(db, {"id": 108, "filename": "123456789_p0.jpg", "path": "media/108.jpg"})
     db.flush()
     row = db.query(SourceMetadataRecord).filter(SourceMetadataRecord.media_id == 108).one()
+    row.data_type_label = "authenticated_provider_metadata"
+    row.raw_metadata_json = {"id": 123456789}
+    row.provenance = {
+        "source": "gallery_dl_authenticated_metadata",
+        "stable_identity_key": {"provider": "pixiv", "work_id": "123456789", "page_index": 0},
+    }
     row.status = PixivMetadataState.COMPLETE.value
     decision = queue_media_for_pixiv_metadata(db, {"id": 108, "filename": "123456789_p0.jpg", "path": "media/108.jpg"})
     assert decision.state == PixivMetadataState.COMPLETE.value
@@ -1385,6 +1442,9 @@ def test_deleted_first_canary_does_not_block_later_success(db) -> None:
     )
     assert len(results) == 2 and proof["passed"] is True
     assert proof["terminal_count"] == 1 and proof["success_count"] == 1
+    assert proof["authenticated_success"] is True
+    assert proof["safe_reason_code"] == "authenticated_metadata_consistency_confirmed"
+    assert proof["returned_page_consistency_count"] == 0
 
 
 def test_terminal_only_canary_advances_to_next_bounded_batch(db) -> None:
@@ -1447,6 +1507,7 @@ def test_creator_source_backfill_is_additive_query_visible_and_role_safe(db) -> 
         source_work_id="123456789", source_page_index=0, metadata_kind="provider_metadata",
         data_type_label="authenticated_provider_metadata", status="metadata_complete",
         raw_metadata_json={"user": {"id": 42, "name": "Display", "account": "handle"}},
+        provenance={"source": "gallery_dl_authenticated_metadata"},
     )
     db.add(record); db.commit()
     proof = backfill_creator_source_observations(db); db.commit()
@@ -1501,6 +1562,8 @@ def test_lineage_cleanup_supersedes_only_pr136_untrusted_rows_and_preserves_othe
         metadata_kind="provider_metadata",
         data_type_label="authenticated_provider_metadata",
         status="metadata_complete",
+        raw_metadata_json={"id": 123456789},
+        provenance={"source": "gallery_dl_authenticated_metadata"},
     )
     untrusted_parent = SourceMetadataRecord(
         provider="pixiv",

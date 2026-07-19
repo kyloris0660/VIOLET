@@ -8,6 +8,7 @@ import pytest
 from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure import (
     SV1BPreflightError,
     _strict_test_database,
+    _generic_credential_findings,
     audit_runtime_parser_denominator_rows,
     audit_acquisition_closure_rows,
     canonical_work_id,
@@ -29,23 +30,94 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
 
 def test_outcome_for_pair_preserves_terminal_and_page_local_precedence() -> None:
     records = [
-        {"source_work_id": "123", "source_page_index": 0, "status": "metadata_complete"},
-        {"source_work_id": "123", "source_page_index": 1, "status": "terminal_remote_unavailable"},
-        {"source_work_id": "124", "source_page_index": 0, "status": "deferred_nonblocking_source_page_mismatch"},
+        {
+            "id": 1, "provider": "pixiv", "source_work_id": "123", "source_page_index": 0,
+            "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "authenticated_provider_metadata",
+            "status": "metadata_complete", "raw_metadata_json": {"id": 123},
+            "provenance": {"source": "gallery_dl_authenticated_metadata", "stable_identity_key": {
+                "provider": "pixiv", "work_id": "123", "page_index": 0,
+            }},
+        },
+        {
+            "id": 2, "provider": "pixiv", "source_work_id": "123", "source_page_index": 1,
+            "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+            "status": "terminal_remote_unavailable",
+            "raw_metadata_json": {"failure_reason": "authenticated_remote_deleted_private_unavailable", "last_attempt_at": "now"},
+            "provenance": {},
+        },
+        {
+            "id": 3, "provider": "pixiv", "source_work_id": "124", "source_page_index": 0,
+            "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+            "status": "deferred_nonblocking_source_page_mismatch", "raw_metadata_json": {}, "provenance": {},
+        },
     ]
-    assert outcome_for_pair(records, "123", 0) == "accepted_metadata_complete"
-    assert outcome_for_pair(records, "123", 1) == "accepted_terminal_remote_unavailable"
-    assert outcome_for_pair(records, "124", 9) == "accepted_deferred_nonblocking_source_page_mismatch"
+    evidence = [{
+        "source_metadata_record_id": 3,
+        "evidence_kind": "deferred_nonblocking_source_page_mismatch",
+        "status": "active",
+        "provenance": {
+            "governance_policy_version": "source_page_mismatch_deferred_nonblocking_v1",
+            "unsupported_page_link_created": False,
+        },
+    }]
+    assert outcome_for_pair(records, "123", 0, evidence) == "trusted_exact_complete"
+    assert outcome_for_pair(records, "123", 1, evidence) == "exact_terminal"
+    assert outcome_for_pair(records, "124", 0, evidence) == "exact_governed_page_mismatch"
+    assert outcome_for_pair(records, "124", 9, evidence) == "unacquired"
     assert outcome_for_pair(records, "125", 0) == "unacquired"
 
 
-@pytest.mark.parametrize("database", ["blombooru", "postgres", "template0", "template1", "production"])
+def test_outcome_for_pair_rejects_positive_status_without_canonical_trust_shape() -> None:
+    row = {
+        "id": 1, "provider": "pixiv", "source_work_id": "123", "source_page_index": 0,
+        "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+        "status": "metadata_complete", "raw_metadata_json": {}, "provenance": {},
+    }
+    assert outcome_for_pair([row], "123", 0) == "unexplained"
+
+
+def test_outcome_for_pair_marks_mixed_closed_truth_as_conflicting() -> None:
+    complete = {
+        "id": 1, "provider": "pixiv", "source_work_id": "123", "source_page_index": 0,
+        "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "authenticated_provider_metadata",
+        "status": "metadata_complete", "raw_metadata_json": {"id": 123},
+        "provenance": {"source": "gallery_dl_authenticated_metadata", "stable_identity_key": {
+            "provider": "pixiv", "work_id": "123", "page_index": 0,
+        }},
+    }
+    terminal = {
+        **complete, "id": 2, "status": "terminal_remote_unavailable",
+        "raw_metadata_json": {"failure_reason": "authenticated_remote_deleted_private_unavailable", "last_attempt_at": "now"},
+    }
+    assert outcome_for_pair([complete, terminal], "123", 0) == "conflicting"
+
+
+@pytest.mark.parametrize("database", [
+    "blombooru", "postgres", "template0", "template1", "production",
+    "blombooru_contest", "blombooru_latest", "blombooru_testimony",
+])
 def test_strict_test_database_rejects_default_and_production(database: str) -> None:
     assert _strict_test_database(database) is False
 
 
 def test_strict_test_database_accepts_sv1b_identity() -> None:
     assert _strict_test_database("blombooru_scv2_sv1b_metadata_graph_closure_test_20260719") is True
+
+
+def test_generic_credential_scan_detects_delimited_values_without_old_fingerprint() -> None:
+    secret_value = "".join(("credential", "_material", "_123456789012345"))
+    bearer_value = "".join(("another", "_material", "_123456789012345"))
+    key = "".join(("refresh", "_token"))
+    secret_count, raw_config_count = _generic_credential_findings(
+        f'{key}="{secret_value}"\n'
+        f'Authorization: Bearer {bearer_value}\n'
+        f'"pixiv": {{"{key}": "{secret_value}"}}'
+    )
+    assert secret_count >= 2
+    assert raw_config_count == 1
+    assert _generic_credential_findings(
+        'credential_risk_waiver_policy="operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"'
+    ) == (0, 0)
 
 
 def test_work_id_canonicalization_removes_historical_leading_zeroes() -> None:
@@ -87,7 +159,11 @@ def test_acquisition_closure_requires_exact_trusted_page_outcomes() -> None:
             "id": 1, "media_stable_key": "a", "provider": "pixiv",
             "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "authenticated_provider_metadata",
             "status": "metadata_complete", "source_work_id": "1234567", "source_page_index": 0,
-            "provenance": {"source": "gallery_dl_authenticated_metadata"}, "raw_metadata_json": {},
+            "provenance": {
+                "source": "gallery_dl_authenticated_metadata",
+                "stable_identity_key": {"provider": "pixiv", "work_id": "1234567", "page_index": 0},
+            },
+            "raw_metadata_json": {"id": 1234567},
         },
         {
             "id": 2, "media_stable_key": "b", "provider": "pixiv",
@@ -146,6 +222,15 @@ def test_execute_provider_stops_before_runner_when_credential_gate_fails(tmp_pat
     output.mkdir()
     (output / "provider-queue-manifest-proof.json").write_text(
         json.dumps({"exact_open_work_membership_passed": True}), encoding="utf-8"
+    )
+    (output / "waiver-aware-secret-redaction-scan-proof.json").write_text(
+        json.dumps({
+            "passed": True,
+            "credential_risk_waiver_policy": "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1",
+            "raw_credential_exposure_count": 0,
+            "raw_config_exposure_count": 0,
+        }),
+        encoding="utf-8",
     )
     monkeypatch.setattr(
         "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.validate_owned_output_root",

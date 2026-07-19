@@ -107,14 +107,19 @@ def _local_credential_risk_accepted(args: argparse.Namespace) -> bool:
     ).strip().casefold() == "true"
 
 
-def credential_waiver_evidence(*, accepted: bool) -> dict[str, Any]:
+def credential_waiver_evidence(
+    *, accepted: bool, policy: str | None = None, scope: str | None = None
+) -> dict[str, Any]:
+    selected_policy = str(policy or "operator_accepted_local_credential_risk_v1")
+    if accepted and re.fullmatch(r"operator_accepted_[a-z0-9_]+", selected_policy) is None:
+        raise PixivMetadataGateError("blocked_credential_waiver_policy_identity_invalid")
     return {
-        "policy": "operator_accepted_local_credential_risk_v1" if accepted else "default_rotation_and_fingerprint_gate_v1",
+        "policy": selected_policy if accepted else "default_rotation_and_fingerprint_gate_v1",
         "project_owner_authorized": accepted,
         "credential_rotation_required": not accepted,
         "fingerprint_scan_required": not accepted,
         "existing_profile_use_authorized": accepted,
-        "scope": "isolated_ml1_pixiv_metadata_only_execution" if accepted else "default_provider_execution",
+        "scope": str(scope or "isolated_ml1_pixiv_metadata_only_execution") if accepted else "default_provider_execution",
         "production_allowed": False,
         "raw_secret_exposure_allowed": False,
     }
@@ -212,9 +217,39 @@ def run_deterministic_auth_canary(
     sleeper=time.sleep,
     persistent_spacing: PersistentRequestSpacing | None = None,
     prior_attempt_counts: Mapping[str, int] | None = None,
+    max_attempts_per_work: int = 3,
+    credential_risk_waiver_policy: str | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
+    started = time.monotonic()
     selected = tuple(dict.fromkeys(str(value) for value in work_ids))[:MAX_CANARY_WORKS]
     all_results: list[Any] = []
+
+    def proof(*, passed: bool, safe_reason_code: str, **extra: Any) -> dict[str, Any]:
+        attempted = [item for item in all_results if item.request_attempted]
+        return {
+            "passed": passed,
+            "authenticated_success": passed,
+            "safe_reason_code": safe_reason_code,
+            "selected_work_count": len(selected),
+            "attempted_work_count": len(attempted),
+            "success_count": sum(
+                item.state == PixivMetadataState.COMPLETE.value for item in all_results
+            ),
+            "terminal_count": sum(
+                item.state == PixivMetadataState.TERMINAL.value for item in all_results
+            ),
+            "returned_page_consistency_count": sum(
+                int(getattr(item, "page_count", 0) or 0) for item in attempted
+            ),
+            "private_stable_work_reference": (
+                hashlib.sha256(selected[0].encode("utf-8")).hexdigest() if selected else None
+            ),
+            "elapsed_seconds": round(time.monotonic() - started, 6),
+            "credential_risk_waiver_policy": credential_risk_waiver_policy,
+            "raw_values_exposed": False,
+            **extra,
+        }
+
     for offset in range(0, len(selected), batch_size):
         batch = selected[offset : offset + batch_size]
         if offset and persistent_spacing is None and any(item.request_attempted for item in all_results):
@@ -225,6 +260,7 @@ def run_deterministic_auth_canary(
             env=env,
             accept_local_credential_risk=accept_local_credential_risk,
             result_callback=result_callback,
+            max_attempts_per_work=max_attempts_per_work,
         )
         if persistent_spacing is not None:
             acquire_kwargs["persistent_spacing"] = persistent_spacing
@@ -238,38 +274,28 @@ def run_deterministic_auth_canary(
         all_results.extend(results)
         stop = systemic_stop_result(results)
         if stop is not None:
-            return all_results, {
-                "passed": False,
-                "systemic_stop": True,
-                "systemic_stop_class": str(stop.error_class or "provider_route_failure"),
-                "selected_work_count": len(selected),
-                "attempted_work_count": sum(item.request_attempted for item in all_results),
-                "success_count": sum(item.state == PixivMetadataState.COMPLETE.value for item in all_results),
-                "terminal_count": sum(item.state == PixivMetadataState.TERMINAL.value for item in all_results),
-                "raw_values_exposed": False,
-            }
+            return all_results, proof(
+                passed=False,
+                safe_reason_code="provider_authentication_or_route_rejected",
+                systemic_stop=True,
+                systemic_stop_class=str(stop.error_class or "provider_route_failure"),
+            )
         if any(item.state == PixivMetadataState.COMPLETE.value for item in results):
-            return all_results, {
-                "passed": True,
-                "selected_work_count": len(selected),
-                "attempted_work_count": sum(item.request_attempted for item in all_results),
-                "success_count": sum(item.state == PixivMetadataState.COMPLETE.value for item in all_results),
-                "terminal_count": sum(item.state == PixivMetadataState.TERMINAL.value for item in all_results),
-                "raw_values_exposed": False,
-            }
+            return all_results, proof(
+                passed=True,
+                safe_reason_code="authenticated_metadata_consistency_confirmed",
+                systemic_stop=False,
+                systemic_stop_class=None,
+            )
     normalization_count = sum(item.state == PixivMetadataState.NORMALIZATION_FAILED.value for item in all_results)
-    return all_results, {
-        "passed": False,
-        "systemic_stop": False,
-        "systemic_stop_class": None,
-        "route_viability_unresolved": True,
-        "selected_work_count": len(selected),
-        "attempted_work_count": sum(item.request_attempted for item in all_results),
-        "success_count": 0,
-        "terminal_count": sum(item.state == PixivMetadataState.TERMINAL.value for item in all_results),
-        "normalization_failed_count": normalization_count,
-        "raw_values_exposed": False,
-    }
+    return all_results, proof(
+        passed=False,
+        safe_reason_code="authenticated_route_viability_unresolved",
+        systemic_stop=False,
+        systemic_stop_class=None,
+        route_viability_unresolved=True,
+        normalization_failed_count=normalization_count,
+    )
 
 
 def _isolated_database_allowed(database: str) -> bool:
@@ -649,6 +675,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 output_dir,
                 waiver_accepted=waiver_accepted,
             )
+        waiver_policy = str(getattr(args, "credential_risk_waiver_policy", "") or "") or None
+        waiver_scope = str(getattr(args, "credential_risk_waiver_scope", "") or "") or None
         summary: dict[str, Any] = {
             "database_label": "isolated-ml1-dev-test",
             "queued_media_count": len(decisions),
@@ -657,7 +685,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "exact_work_ids_public": False,
             "execution_requested": bool(args.execute),
             "credential_rotation_confirmation_present": False,
-            "credential_safety": credential_waiver_evidence(accepted=waiver_accepted),
+            "credential_safety": credential_waiver_evidence(
+                accepted=waiver_accepted, policy=waiver_policy, scope=waiver_scope
+            ),
             "redacted_secret_scan": {"performed": False},
             "redacted_authentication_preflight": {"performed": False},
             "gallery_dl_configuration_check": {"performed": False},
@@ -721,7 +751,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if waiver_accepted:
             summary["redacted_secret_scan"] = {
                 "performed": False,
-                "waived_by_policy": "operator_accepted_local_credential_risk_v1",
+                "waived_by_policy": waiver_policy or "operator_accepted_local_credential_risk_v1",
                 "raw_values_exposed": False,
             }
         else:
@@ -820,7 +850,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         canary_results: list[Any] = []
         canary: dict[str, Any]
         if manifest:
-            canary_ids = select_deterministic_canary_work_ids(manifest)
+            canary_limit = int(getattr(args, "canary_work_limit", MAX_CANARY_WORKS) or MAX_CANARY_WORKS)
+            if canary_limit < 1 or canary_limit > MAX_CANARY_WORKS:
+                raise PixivMetadataGateError("blocked_auth_canary_work_limit_invalid")
+            canary_ids = select_deterministic_canary_work_ids(manifest, limit=canary_limit)
             canary_results, canary = run_deterministic_auth_canary(
                 session,
                 canary_ids,
@@ -830,6 +863,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 result_callback=lambda item: checkpoint_result(item, conflict=False),
                 persistent_spacing=persistent_spacing,
                 prior_attempt_counts={key: int(value.get("attempt_count") or 0) for key, value in outcome_ledger.items()},
+                max_attempts_per_work=int(getattr(args, "canary_max_attempts_per_work", 3) or 3),
+                credential_risk_waiver_policy=waiver_policy,
             )
             summary["redacted_authentication_preflight"] = {"performed": True, **canary}
             if not canary.get("passed"):

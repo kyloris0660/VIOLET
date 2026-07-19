@@ -50,6 +50,7 @@ CANONICAL_COMPLETE_STATUSES = frozenset({"observed", "active", "accepted", "meta
 DEFERRED_PAGE_MISMATCH_POLICY_VERSION = "source_page_mismatch_deferred_nonblocking_v1"
 DEFERRED_PAGE_MISMATCH_REASON = "provider_metadata_missing_attempted_local_page"
 PAGE_OBSERVED_COMPLETION_EVIDENCE_KIND = "provider_page_observed_complete"
+SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION = "sv1b_trusted_complete_reclassification_v1"
 QUERY_VISIBLE_OBSERVATION_STATUSES = frozenset({"observed", "active", "accepted"})
 
 
@@ -94,26 +95,52 @@ def is_trusted_complete_pixiv_metadata_record(
 
     provider = str(_record_value(record, "provider") or "").strip().casefold()
     metadata_kind = str(_record_value(record, "metadata_kind") or "").strip()
+    data_type = str(_record_value(record, "data_type_label") or "").strip()
     status = str(_record_value(record, "status") or "").strip()
     work_id = str(_record_value(record, "source_work_id") or "").strip()
+    page_index = _record_value(record, "source_page_index")
+    raw = _record_value(record, "raw_metadata_json")
+    provenance = _record_value(record, "provenance")
     if (
         provider != "pixiv"
         or metadata_kind not in COMPLETE_METADATA_KINDS
         or status not in CANONICAL_COMPLETE_STATUSES
         or not work_id
+        or page_index is None
+        or int(page_index) < 0
+        or not data_type
+        or not isinstance(raw, Mapping)
+        or not raw
+        or not isinstance(provenance, Mapping)
+        or not provenance
     ):
         return False
     if metadata_kind != QUEUE_METADATA_KIND:
         return True
-    data_type = str(_record_value(record, "data_type_label") or "").strip()
-    provenance = _record_value(record, "provenance") or {}
-    provenance = provenance if isinstance(provenance, Mapping) else {}
-    return status == PixivMetadataState.COMPLETE.value and (
-        data_type in {
+    stable = provenance.get("stable_identity_key")
+    stable = stable if isinstance(stable, Mapping) else {}
+    stable_matches = bool(
+        str(stable.get("provider") or "").casefold() == "pixiv"
+        and str(stable.get("work_id") or "") == work_id
+        and stable.get("page_index") is not None
+        and int(stable["page_index"]) == int(page_index)
+    )
+    source = str(provenance.get("source") or "")
+    if status != PixivMetadataState.COMPLETE.value or not stable_matches:
+        return False
+    if source == "compatible_complete_record_reuse":
+        reuse = raw.get("_pixiv_ingestion_reuse")
+        reuse = reuse if isinstance(reuse, Mapping) else {}
+        return bool(
+            provenance.get("source_metadata_record_id") is not None
+            and reuse.get("source_metadata_record_id") == provenance.get("source_metadata_record_id")
+        )
+    return bool(
+        source == "gallery_dl_authenticated_metadata"
+        and data_type in {
             "authenticated_provider_metadata",
             "authenticated_provider_page_presence_evidence",
         }
-        or str(provenance.get("source") or "") == "compatible_complete_record_reuse"
     )
 
 
@@ -510,6 +537,35 @@ def _upsert_queue_record(
             data_type_label="local_runtime_source_prior",
         )
         session.add(record)
+    elif (
+        str(record.status) == PixivMetadataState.COMPLETE.value
+        and not is_trusted_complete_pixiv_metadata_record(record)
+    ):
+        # SV1B tightened the canonical completeness contract. Preserve the raw
+        # historical payload/provenance, but reopen an untrusted positive queue
+        # row so it cannot silently close an exact page.
+        prior_raw = dict(record.raw_metadata_json or {})
+        prior_provenance = dict(record.provenance or {})
+        raw = {
+            **prior_raw,
+            "pixiv_ingestion_state": state,
+            "parser_version": PARSER_VERSION,
+            "parser_evidence": private_parser_evidence,
+            "reused_complete_record_ids": [int(value) for value in reused_record_ids],
+            "_sv1b_trust_reclassification": {
+                "policy_version": SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION,
+                "prior_status": PixivMetadataState.COMPLETE.value,
+                "raw_metadata_preserved": True,
+            },
+        }
+        provenance = {
+            **prior_provenance,
+            "source": "canonical_pixiv_filename_path_prior",
+            "parser_version": PARSER_VERSION,
+            "stable_identity_key": {"provider": "pixiv", "work_id": work_id, "page_index": page_index},
+            "trust_reclassification_policy_version": SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION,
+            "updated_at": utc_now().isoformat(),
+        }
     elif str(record.status) in CLOSED_STATES | {
         PixivMetadataState.RETRYABLE.value,
         PixivMetadataState.CONFLICT.value,

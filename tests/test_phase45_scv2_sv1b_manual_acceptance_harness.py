@@ -43,25 +43,54 @@ def _write_required_proofs(output: Path) -> None:
 
 
 def _cases(category: str, count: int, prefix: str) -> list[dict]:
-    return [
-        harness._case(
+    values = []
+    for index in range(1, count + 1):
+        actual = {"passed": True}
+        provenance = {"source_layer_only": True, "derived_from_current_proofs": True}
+        if category == "pixiv_metadata":
+            provenance["phase_delta"] = "newly_acquired_exact_metadata"
+        elif category == "creator_clustering":
+            provenance.update(
+                phase_delta="new_or_materially_changed_creator_component",
+                available_changed_component_count=8,
+            )
+            actual["lifecycle_correct"] = True
+        elif category == "shared_name_cannot_link":
+            provenance.update(
+                phase_delta="newly_acquired_alias_or_graph_edge",
+                available_phase_delta_case_count=6,
+            )
+            actual.update(
+                identity_union_created=False,
+                cannot_link_safety_passed=True,
+                lifecycle_correct=True,
+            )
+        elif category == "ai_tag_localization":
+            provenance["phase_delta"] = (
+                "newly_generated_translation" if index <= 6 else "proper_noun_exclusion_display"
+            )
+        elif category == "search_and_negative":
+            provenance.update(
+                phase_delta="new_localization",
+                supported_by_phase_delta=True,
+            )
+        values.append(harness._case(
             f"{prefix}{index:02d}",
             category,
             media_hash=f"hash-{prefix}-{index}",
             title=f"case {index}",
             expected_behavior="expected",
-            actual_result={"passed": True},
-            provenance={"source_layer_only": True},
-        )
-        for index in range(1, count + 1)
-    ]
+            actual_result=actual,
+            provenance=provenance,
+        ))
+    return values
 
 
 def _patch_case_builders(monkeypatch, *, metadata_count: int = 12) -> None:
-    monkeypatch.setattr(harness, "_pixiv_metadata_cases", lambda _session: _cases("pixiv_metadata", metadata_count, "A"))
-    monkeypatch.setattr(harness, "_creator_clustering_cases", lambda _session: _cases("creator_clustering", 8, "B"))
-    monkeypatch.setattr(harness, "_shared_name_cases", lambda _session: _cases("shared_name_cannot_link", 6, "C"))
-    monkeypatch.setattr(harness, "_localization_cases", lambda _session: _cases("ai_tag_localization", 8, "D"))
+    monkeypatch.setattr(harness, "_pixiv_metadata_cases", lambda _session, _output: _cases("pixiv_metadata", metadata_count, "A"))
+    monkeypatch.setattr(harness, "_creator_clustering_cases", lambda _session, _output, _database: _cases("creator_clustering", 8, "B"))
+    monkeypatch.setattr(harness, "_shared_name_cases", lambda _session, _output: _cases("shared_name_cannot_link", 6, "C"))
+    monkeypatch.setattr(harness, "_localization_cases", lambda _session, _output: _cases("ai_tag_localization", 8, "D"))
     monkeypatch.setattr(harness, "_search_cases", lambda _session, _output: _cases("search_and_negative", 6, "E"))
 
 
@@ -211,6 +240,19 @@ def test_normalize_submission_requires_exact_case_membership_and_bounded_decisio
             {"results": [{"case_id": "A01", "decision": "accept"}, {"case_id": "A02"}]},
             case_ids,
         )
+
+
+def test_phase_delta_composition_rejects_underived_shared_name_safety() -> None:
+    cases = [
+        *_cases("pixiv_metadata", 12, "A"),
+        *_cases("creator_clustering", 8, "B"),
+        *_cases("shared_name_cannot_link", 6, "C"),
+        *_cases("ai_tag_localization", 8, "D"),
+        *_cases("search_and_negative", 6, "E"),
+    ]
+    cases[20]["actual_result"]["identity_union_created"] = True
+    with pytest.raises(harness.ManualAcceptanceHarnessError, match="shared_name_safety_invalid"):
+        harness.validate_phase_delta_case_composition(cases)
 
 
 def test_harness_server_is_loopback_only_and_never_embeds_paths() -> None:

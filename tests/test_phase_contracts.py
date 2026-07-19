@@ -7804,6 +7804,7 @@ def _sv1b_contract_summary() -> dict[str, object]:
         "localization_closure": {
             "eligible_ai_tag_missing_count": 0,
             "silently_missing_eligible_count": 0,
+            "localization_ambiguity_count": 0,
             "provider_tags_written_to_media_tags_count": 0,
             "original_provider_text_preserved": True,
             "projected_and_actual_llm_cost_usd": 0.0,
@@ -7911,6 +7912,40 @@ def test_sv1b_contract_accepts_only_pending_user_automated_candidate() -> None:
     assert result.route_approved is False
 
 
+def test_sv1b_contract_accepts_only_the_exact_phase_scoped_credential_waiver() -> None:
+    summary = _sv1b_contract_summary()
+    summary["credential_preflight"] = {
+        "approved_local_route_available": True,
+        "operator_confirmation_policy_passed": True,
+        "delimiter_aware_fingerprint_scan_passed": False,
+        "credential_risk_waiver_accepted": True,
+        "credential_risk_waiver_policy": "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1",
+        "credential_rotation_performed": False,
+        "known_compromised_secret_fingerprint_scan_performed": False,
+        "generic_delimiter_aware_secret_scan_passed": True,
+        "raw_credential_exposure_count": 0,
+        "raw_config_exposure_count": 0,
+        "credential_like_value_finding_count": 0,
+        "redacted_authentication_preflight_passed": True,
+        "secret_value_exposed": False,
+        "raw_configuration_output_exposed": False,
+    }
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+    assert result.passed is True
+    summary["credential_preflight"]["credential_risk_waiver_policy"] = "operator_accepted_wrong_scope_v1"
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+    assert result.passed is False
+    assert "blocked_sv1b_provider_authentication" in next(
+        item.expected for item in result.errors if item.code == "sv1b_active_blockers_incomplete"
+    )
+
+
 @pytest.mark.parametrize(
     ("path", "value", "blocker"),
     [
@@ -7918,6 +7953,7 @@ def test_sv1b_contract_accepts_only_pending_user_automated_candidate() -> None:
         ("credential_preflight.redacted_authentication_preflight_passed", False, "blocked_sv1b_provider_authentication"),
         ("acquisition_accounting.page_outcome_counts.retryable", 1, "blocked_sv1b_acquisition_incomplete"),
         ("localization_closure.eligible_ai_tag_missing_count", 1, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.localization_ambiguity_count", 1, "blocked_sv1b_normalization_or_localization"),
         ("r2r_replay_accounting.ambiguous_remap_count", 1, "blocked_sv1b_r2r_replay"),
         ("primary_graph_safety.transitive_cannot_link_violation_count", 1, "blocked_sv1b_graph_safety"),
         ("search_validation.and_leakage_count", 1, "blocked_sv1b_search_safety"),

@@ -191,6 +191,8 @@ def _validate_translation_rows(
 
 def _apply_batch(database: str, rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
     values = [dict(row) for row in rows]
+    if any(bool(row.get("needs_review")) for row in values):
+        raise LocalizationClosureError("blocked_sv1b_localization_ambiguity")
     names = [str(row["canonical_name"]) for row in values]
     engine = sv1b.engine_for(database)
     inserted = 0
@@ -222,6 +224,7 @@ def _apply_batch(database: str, rows: Iterable[Mapping[str, Any]]) -> dict[str, 
                     if (
                         str(prior.get("status")) not in {"translated", "reviewed"}
                         or not str(prior.get("display_name") or "").strip()
+                        or bool(prior.get("needs_review"))
                     ):
                         raise LocalizationClosureError("localization_existing_row_not_accepted")
                     reused += 1
@@ -232,14 +235,13 @@ def _apply_batch(database: str, rows: Iterable[Mapping[str, Any]]) -> dict[str, 
                          source,status,confidence,needs_review,provider)
                     VALUES
                         (:tag_id,:canonical_name,'zh-CN',:display_name,:aliases_json,:category,
-                         'llm','translated',NULL,:needs_review,'primary')
+                         'llm','translated',NULL,false,'primary')
                 """), {
                     "tag_id": tag_ids[name],
                     "canonical_name": name,
                     "display_name": str(row["display_name"]),
                     "aliases_json": json.dumps(row.get("aliases") or [], ensure_ascii=False),
                     "category": str(row["category"]),
-                    "needs_review": bool(row.get("needs_review")),
                 })
                 inserted += 1
     finally:
@@ -299,69 +301,120 @@ def execute(
             if sv1b.sha256_payload(rows) != state.get("translation_fingerprint"):
                 raise LocalizationClosureError("localization_checkpoint_translation_drift")
         else:
-            attempts = int(state.get("attempt_count") or 0)
-            if attempts >= MAX_ATTEMPTS_PER_BATCH:
-                raise LocalizationClosureError("localization_batch_retry_budget_exhausted")
-            prior_cost_upper_bound = float(state.get("cost_upper_bound_usd") or 0.0)
-            attempt_token_upper_bound = TOKENS_PER_BATCH_UPPER_BOUND
-            reserved_cost_upper_bound = round(
-                prior_cost_upper_bound + _cost_upper_bound(attempt_token_upper_bound), 6
-            )
-            other_cost_upper_bound = sum(
-                float(value.get("cost_upper_bound_usd") or 0.0)
-                for key, value in (checkpoint.get("batches") or {}).items()
-                if key != batch_id
-            )
-            if round(other_cost_upper_bound + reserved_cost_upper_bound, 6) > COST_CAP_USD:
-                raise LocalizationClosureError("llm_retry_would_exceed_usd10")
-            state = {
-                "input_fingerprint": batch["input_fingerprint"],
-                "attempt_count": attempts + 1,
-                "status": "in_flight",
-                "cost_upper_bound_usd": reserved_cost_upper_bound,
-                "started_at": _utc_now(),
-            }
-            checkpoint.setdefault("batches", {})[batch_id] = state
-            sv1b.write_json(_checkpoint_path(output), checkpoint)
-            inputs = [
-                {"name": row["canonical_name"], "category": row["category"]}
-                for row in batch["rows"]
-            ]
-            before_usage = dict(getattr(provider, "usage_totals", {}) or {})
-            try:
-                results = asyncio.run(provider.translate_tags(inputs))
-            except Exception as exc:
-                state["status"] = "failed_retryable"
-                state["last_error_type"] = type(exc).__name__
-                state["failed_at"] = _utc_now()
+            while True:
+                attempts = int(state.get("attempt_count") or 0)
+                if attempts >= MAX_ATTEMPTS_PER_BATCH:
+                    if state.get("status") == "ambiguity_retry_pending":
+                        raise LocalizationClosureError("blocked_sv1b_localization_ambiguity")
+                    raise LocalizationClosureError("localization_batch_retry_budget_exhausted")
+                prior_cost_upper_bound = float(state.get("cost_upper_bound_usd") or 0.0)
+                attempt_token_upper_bound = TOKENS_PER_BATCH_UPPER_BOUND
+                reserved_cost_upper_bound = round(
+                    prior_cost_upper_bound + _cost_upper_bound(attempt_token_upper_bound), 6
+                )
+                other_cost_upper_bound = sum(
+                    float(value.get("cost_upper_bound_usd") or 0.0)
+                    for key, value in (checkpoint.get("batches") or {}).items()
+                    if key != batch_id
+                )
+                if round(other_cost_upper_bound + reserved_cost_upper_bound, 6) > COST_CAP_USD:
+                    raise LocalizationClosureError("llm_retry_would_exceed_usd10")
+                expected_rows = list(state.get("clarification_rows") or batch["rows"])
+                accepted_partial = list(state.get("accepted_partial_translations") or ())
+                clarification_retry = bool(state.get("clarification_rows"))
+                state = {
+                    "input_fingerprint": batch["input_fingerprint"],
+                    "attempt_count": attempts + 1,
+                    "status": "in_flight",
+                    "cost_upper_bound_usd": reserved_cost_upper_bound,
+                    "accepted_partial_translations": accepted_partial,
+                    "clarification_rows": expected_rows if clarification_retry else [],
+                    "clarification_retry": clarification_retry,
+                    "started_at": _utc_now(),
+                }
+                checkpoint.setdefault("batches", {})[batch_id] = state
+                sv1b.write_json(_checkpoint_path(output), checkpoint)
+                inputs = [
+                    {
+                        "name": row["canonical_name"],
+                        "category": row["category"],
+                        **({
+                            "clarification_retry": (
+                                "Return a definitive non-ambiguous Chinese display label; "
+                                "set needs_review=false only when supported."
+                            )
+                        } if clarification_retry else {}),
+                    }
+                    for row in expected_rows
+                ]
+                before_usage = dict(getattr(provider, "usage_totals", {}) or {})
+                try:
+                    results = asyncio.run(provider.translate_tags(inputs))
+                except Exception as exc:
+                    state["status"] = "failed_retryable"
+                    state["last_error_type"] = type(exc).__name__
+                    state["failed_at"] = _utc_now()
+                    checkpoint["batches"][batch_id] = state
+                    sv1b.write_json(_checkpoint_path(output), checkpoint)
+                    raise LocalizationClosureError(
+                        "localization_primary_provider_call_failed"
+                    ) from None
+                attempt_rows = _validate_translation_rows(expected_rows, results)
+                after_usage = dict(getattr(provider, "usage_totals", {}) or {})
+                usage_tokens = max(
+                    0,
+                    int(after_usage.get("total_tokens", 0) or 0)
+                    - int(before_usage.get("total_tokens", 0) or 0),
+                )
+                if usage_tokens == 0:
+                    usage_tokens = attempt_token_upper_bound
+                current_attempt_cost = _cost_upper_bound(usage_tokens)
+                cumulative_cost_upper_bound = round(
+                    prior_cost_upper_bound + current_attempt_cost, 6
+                )
+                ambiguous = [row for row in attempt_rows if row["needs_review"]]
+                accepted_now = [row for row in attempt_rows if not row["needs_review"]]
+                if ambiguous:
+                    state.update({
+                        "status": "ambiguity_retry_pending",
+                        "ambiguity_count": len(ambiguous),
+                        "accepted_partial_translations": sorted(
+                            [*accepted_partial, *accepted_now], key=lambda row: row["canonical_name"]
+                        ),
+                        "clarification_rows": [
+                            {"canonical_name": row["canonical_name"], "category": row["category"]}
+                            for row in ambiguous
+                        ],
+                        "usage_tokens_or_upper_bound": usage_tokens,
+                        "cost_upper_bound_usd": cumulative_cost_upper_bound,
+                        "finished_at": _utc_now(),
+                    })
+                    checkpoint["batches"][batch_id] = state
+                    sv1b.write_json(_checkpoint_path(output), checkpoint)
+                    if int(state["attempt_count"]) >= MAX_ATTEMPTS_PER_BATCH:
+                        state["status"] = "blocked_localization_ambiguity"
+                        checkpoint["batches"][batch_id] = state
+                        sv1b.write_json(_checkpoint_path(output), checkpoint)
+                        raise LocalizationClosureError("blocked_sv1b_localization_ambiguity")
+                    continue
+                rows = sorted([*accepted_partial, *accepted_now], key=lambda row: row["canonical_name"])
+                expected_names = {str(row["canonical_name"]) for row in batch["rows"]}
+                if {str(row["canonical_name"]) for row in rows} != expected_names:
+                    raise LocalizationClosureError("localization_provider_membership_invalid")
+                state.update({
+                    "status": "checkpointed",
+                    "ambiguity_count": 0,
+                    "translations": rows,
+                    "translation_fingerprint": sv1b.sha256_payload(rows),
+                    "usage_tokens_or_upper_bound": usage_tokens,
+                    "cost_upper_bound_usd": cumulative_cost_upper_bound,
+                    "finished_at": _utc_now(),
+                })
+                state.pop("accepted_partial_translations", None)
+                state.pop("clarification_rows", None)
                 checkpoint["batches"][batch_id] = state
                 sv1b.write_json(_checkpoint_path(output), checkpoint)
-                raise LocalizationClosureError(
-                    "localization_primary_provider_call_failed"
-                ) from None
-            rows = _validate_translation_rows(batch["rows"], results)
-            after_usage = dict(getattr(provider, "usage_totals", {}) or {})
-            usage_tokens = max(
-                0,
-                int(after_usage.get("total_tokens", 0) or 0)
-                - int(before_usage.get("total_tokens", 0) or 0),
-            )
-            if usage_tokens == 0:
-                usage_tokens = attempt_token_upper_bound
-            current_attempt_cost = _cost_upper_bound(usage_tokens)
-            cumulative_cost_upper_bound = round(
-                prior_cost_upper_bound + current_attempt_cost, 6
-            )
-            state.update({
-                "status": "checkpointed",
-                "translations": rows,
-                "translation_fingerprint": sv1b.sha256_payload(rows),
-                "usage_tokens_or_upper_bound": usage_tokens,
-                "cost_upper_bound_usd": cumulative_cost_upper_bound,
-                "finished_at": _utc_now(),
-            })
-            checkpoint["batches"][batch_id] = state
-            sv1b.write_json(_checkpoint_path(output), checkpoint)
+                break
 
         primary_apply = _apply_batch(primary_database, rows)
         replay_apply = _apply_batch(replay_database, rows)
@@ -404,6 +457,7 @@ def execute(
         "explicit_nontranslatable_exclusion_count": len(excluded),
         "eligible_ai_tag_missing_count": len(unexplained),
         "silently_missing_eligible_count": 0,
+        "localization_ambiguity_count": 0,
         "provider_source_localized_count": 0,
         "creator_identity_translated_count": 0,
         "provider_tags_written_to_media_tags_count": 0,

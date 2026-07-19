@@ -26,7 +26,7 @@ from scripts import run_phase45_scv2_ml1_multilingual_alias_source_metadata_clos
 from scripts import run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure as sv1b  # noqa: E402
 
 
-HARNESS_VERSION = "sv1b_manual_acceptance_harness_v1"
+HARNESS_VERSION = "sv1b_phase_delta_manual_acceptance_harness_v2"
 DEFAULT_PORT = 8031
 CATEGORY_COUNTS = {
     "pixiv_metadata": 12,
@@ -83,9 +83,24 @@ def _fallback_media_hash(session: Any) -> str:
     return str(value)
 
 
-def _pixiv_metadata_cases(session: Any) -> list[dict[str, Any]]:
+def _pixiv_metadata_cases(session: Any, output: Path) -> list[dict[str, Any]]:
+    initial_pages = sv1b.read_jsonl(output / "candidate-page-media-manifest-private.jsonl")
+    initially_open = {
+        (
+            str(row["media_stable_key"]),
+            str(row["stable_work_id"]),
+            int(row["requested_page_index"]),
+        )
+        for row in initial_pages
+        if str(row.get("acquisition_state")) in {
+            sv1b.PAGE_OUTCOME_UNACQUIRED,
+            sv1b.PAGE_OUTCOME_CONFLICTING,
+            sv1b.PAGE_OUTCOME_UNEXPLAINED,
+        }
+    }
     rows = list(session.execute(text("""
-        SELECT r.id,r.provider_record_key,r.source_work_id,r.source_page_index,
+        SELECT r.id,r.provider,r.provider_record_key,r.source_work_id,r.source_page_index,
+               r.metadata_kind,r.data_type_label,r.raw_metadata_json,
                r.artist_id,r.artist_name,r.title,r.status,r.retrieved_at,r.provenance,
                m.hash,
                (SELECT COUNT(*) FROM blombooru_source_tag_observations o
@@ -96,8 +111,21 @@ def _pixiv_metadata_cases(session: Any) -> list[dict[str, Any]]:
           AND r.status IN ('metadata_complete','observed','active','accepted')
           AND (m.mime_type LIKE 'image/%' OR CAST(m.file_type AS text)='image')
           AND r.source_work_id IS NOT NULL AND r.source_page_index IS NOT NULL
-        ORDER BY r.provider_record_key,m.hash LIMIT 12
+        ORDER BY r.provider_record_key,m.hash
     """)).mappings())
+    rows = [
+        row for row in rows
+        if (
+            str(row["hash"]), str(row["source_work_id"]), int(row["source_page_index"])
+        ) in initially_open
+        and sv1b._is_trusted_exact_complete_record(
+            row, str(row["source_work_id"]), int(row["source_page_index"])
+        )
+    ][:12]
+    if len(rows) != 12:
+        raise ManualAcceptanceHarnessError(
+            f"manual_acceptance_new_exact_metadata_case_gap:{len(rows)}"
+        )
     cases = []
     for index, row in enumerate(rows, 1):
         provenance = row.get("provenance") or {}
@@ -117,6 +145,8 @@ def _pixiv_metadata_cases(session: Any) -> list[dict[str, Any]]:
                 "record_status": row.get("status"),
             },
             provenance={
+                "phase_delta": "newly_acquired_exact_metadata",
+                "derived_from_current_proofs": True,
                 "provider": "pixiv",
                 "metadata_status": row.get("status"),
                 "retrieved_at": row.get("retrieved_at"),
@@ -127,34 +157,60 @@ def _pixiv_metadata_cases(session: Any) -> list[dict[str, Any]]:
     return cases
 
 
-def _creator_clustering_cases(session: Any) -> list[dict[str, Any]]:
-    rows = list(session.execute(text("""
-        SELECT c.id,c.concept_key,c.primary_display_name,c.evidence_summary_json,
-               COUNT(DISTINCT a.id) FILTER (WHERE a.status='active') AS alias_count,
-               ARRAY_AGG(DISTINCT a.alias_value ORDER BY a.alias_value)
-                 FILTER (WHERE a.status='active') AS aliases,
-               COUNT(DISTINCT e.media_id) FILTER
-                 (WHERE e.status='active' AND e.evidence_type='trusted_creator_media_support') AS support_count,
-               MIN(m.hash) FILTER
-                 (WHERE e.status='active' AND e.evidence_type='trusted_creator_media_support'
-                  AND (m.mime_type LIKE 'image/%' OR CAST(m.file_type AS text)='image')) AS media_hash
-        FROM blombooru_source_concepts c
-        JOIN blombooru_source_concept_aliases a ON a.concept_id=c.id
-        LEFT JOIN blombooru_source_concept_evidence e ON e.concept_id=c.id
-        LEFT JOIN blombooru_media m ON m.id=e.media_id
-        WHERE c.status='active' AND c.concept_type_hint IN ('artist','creator','person')
-        GROUP BY c.id,c.concept_key,c.primary_display_name
-        HAVING COUNT(DISTINCT a.id) FILTER (WHERE a.status='active')>=2
-           AND COUNT(DISTINCT e.media_id) FILTER
-               (WHERE e.status='active' AND e.evidence_type='trusted_creator_media_support')>=1
-           AND COUNT(DISTINCT e.media_id) FILTER
-               (WHERE e.status='active' AND e.evidence_type='trusted_creator_media_support'
-                AND (m.mime_type LIKE 'image/%' OR CAST(m.file_type AS text)='image'))>=1
-        ORDER BY c.concept_key LIMIT 8
-    """)).mappings())
+def _creator_clustering_cases(
+    session: Any, output: Path, primary_database: str
+) -> list[dict[str, Any]]:
+    current_outcomes = sv1b.read_json(output / "primary-creator-family-outcomes-private.json")
+    accepted_outcomes = sv1b.read_jsonl(sv1b.ML2_PRIVATE / "family-closure-ledger.jsonl")
+    accepted_mapping = sv1b._family_identity_mapping(
+        "blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715", accepted_outcomes
+    )
+    accepted_mapping = {
+        stable: concept for stable, concept in accepted_mapping.items()
+        if concept in sv1b.accepted_family_concept_keys()
+    }
+    accepted_state = sv1b._creator_family_state(
+        "blombooru_scv2_ml2_identity_closure_reviewfix_test_20260715", accepted_mapping
+    )
+    current_mapping = sv1b._family_identity_mapping(primary_database, current_outcomes)
+    current_state = sv1b._creator_family_state(primary_database, current_mapping)
+    changed = [
+        stable for stable in sorted(current_state)
+        if stable not in accepted_state
+        or sv1b.canonical_json(current_state[stable]) != sv1b.canonical_json(accepted_state[stable])
+    ]
+    preservation_fillers = [
+        stable for stable in sorted(set(current_state).intersection(accepted_state))
+        if stable not in changed
+    ]
+    selected = [(stable, "new_or_materially_changed_creator_component") for stable in changed[:8]]
+    selected.extend(
+        (stable, "accepted_family_preservation_filler")
+        for stable in preservation_fillers[: 8 - len(selected)]
+    )
+    if len(selected) != 8:
+        raise ManualAcceptanceHarnessError(
+            f"manual_acceptance_creator_component_case_gap:{len(selected)}"
+        )
     cases = []
-    for index, row in enumerate(rows, 1):
-        summary = row.get("evidence_summary_json") or {}
+    for index, (stable, delta_kind) in enumerate(selected, 1):
+        state = current_state[stable]
+        concept_key = str(state["concept_key"])
+        row = session.execute(text("""
+            SELECT c.primary_display_name,
+                   MIN(m.hash) FILTER (WHERE m.hash IS NOT NULL AND
+                     (m.mime_type LIKE 'image/%' OR CAST(m.file_type AS text)='image')) AS media_hash
+            FROM blombooru_source_concepts c
+            LEFT JOIN blombooru_source_concept_evidence e
+              ON e.concept_id=c.id AND e.status='active'
+              AND e.evidence_type='trusted_creator_media_support'
+            LEFT JOIN blombooru_media m ON m.id=e.media_id
+            WHERE c.concept_key=:concept_key
+            GROUP BY c.id,c.primary_display_name
+        """), {"concept_key": concept_key}).mappings().one()
+        if not row.get("media_hash"):
+            raise ManualAcceptanceHarnessError("manual_acceptance_creator_component_media_missing")
+        aliases = [str(value[0]) for value in state.get("aliases") or () if len(value) >= 3 and value[2] == "active"]
         cases.append(_case(
             f"B{index:02d}",
             "creator_clustering",
@@ -163,25 +219,55 @@ def _creator_clustering_cases(session: Any) -> list[dict[str, Any]]:
             expected_behavior="Trusted names/accounts form a star around one stable creator anchor without merging another stable creator.",
             actual_result={
                 "primary_display_name": row.get("primary_display_name"),
-                "aliases": list(row.get("aliases") or ()),
-                "alias_count": int(row.get("alias_count") or 0),
-                "media_support_count": int(row.get("support_count") or 0),
-                "concept_ref": sv1b.sha256_payload(str(row.get("concept_key") or "")),
+                "aliases": sorted(set(aliases)),
+                "alias_count": len(set(aliases)),
+                "media_support_count": len(state.get("media_support") or ()),
+                "concept_ref": sv1b.sha256_payload(concept_key),
+                "lifecycle_status": state.get("status"),
+                "lifecycle_correct": state.get("status") == "active",
+                "expected_membership_fingerprint": sv1b.sha256_payload({
+                    "aliases": state.get("aliases") or (),
+                    "media_support": state.get("media_support") or (),
+                }),
             },
             provenance={
-                "stable_identity_ref": sv1b.sha256_payload(
-                    str(summary.get("stable_identity_fingerprint") or row.get("concept_key") or "")
-                ),
-                "evidence_policy": summary.get("policy_version"),
+                "phase_delta": delta_kind,
+                "available_changed_component_count": len(changed),
+                "derived_from_current_proofs": True,
+                "stable_identity_ref": sv1b.sha256_payload(stable),
                 "source_layer_only": True,
             },
         ))
     return cases
 
 
-def _shared_name_cases(session: Any) -> list[dict[str, Any]]:
+def _shared_name_cases(session: Any, output: Path) -> list[dict[str, Any]]:
+    initial_pages = sv1b.read_jsonl(output / "candidate-page-media-manifest-private.jsonl")
+    initially_open = {
+        (str(row["media_stable_key"]), str(row["stable_work_id"]), int(row["requested_page_index"]))
+        for row in initial_pages
+        if str(row.get("acquisition_state")) in {
+            sv1b.PAGE_OUTCOME_UNACQUIRED,
+            sv1b.PAGE_OUTCOME_CONFLICTING,
+            sv1b.PAGE_OUTCOME_UNEXPLAINED,
+        }
+    }
+    observed = session.execute(text("""
+        SELECT o.canonical_name_key,m.hash,r.source_work_id,r.source_page_index
+        FROM blombooru_source_name_observations o
+        JOIN blombooru_source_metadata_records r ON r.id=o.source_metadata_record_id
+        JOIN blombooru_media m ON m.id=r.media_id
+        WHERE o.status IN ('observed','active','accepted') AND r.provider='pixiv'
+    """)).mappings()
+    delta_aliases = {
+        str(row["canonical_name_key"])
+        for row in observed
+        if (str(row["hash"]), str(row["source_work_id"]), int(row["source_page_index"] or 0))
+        in initially_open
+    }
     rows = list(session.execute(text("""
         SELECT i.search_key,COUNT(DISTINCT i.concept_id) AS concept_count,
+               ARRAY_AGG(DISTINCT i.concept_id ORDER BY i.concept_id) AS concept_ids,
                COUNT(DISTINCT f.pair_id) FILTER
                  (WHERE f.relation='cannot_link' AND f.status='blocked') AS cannot_pair_count,
                MIN(m.hash) AS media_hash
@@ -196,11 +282,24 @@ def _shared_name_cases(session: Any) -> list[dict[str, Any]]:
         WHERE i.status='active'
         GROUP BY i.search_key
         HAVING COUNT(DISTINCT i.concept_id)>1 AND MIN(m.hash) IS NOT NULL
-        ORDER BY concept_count DESC,i.search_key LIMIT 6
-    """)).mappings())
+           AND COUNT(DISTINCT f.pair_id) FILTER
+             (WHERE f.relation='cannot_link' AND f.status='blocked')>0
+        ORDER BY CASE WHEN i.search_key=ANY(:delta_aliases) THEN 0 ELSE 1 END,
+                 concept_count DESC,i.search_key LIMIT 6
+    """), {"delta_aliases": sorted(delta_aliases) or ["__no_delta_alias__"]}).mappings())
+    if len(rows) != 6:
+        raise ManualAcceptanceHarnessError(f"manual_acceptance_shared_name_case_gap:{len(rows)}")
+    selected_delta_count = sum(str(row["search_key"]) in delta_aliases for row in rows)
     cases = []
     for index, row in enumerate(rows, 1):
         actual_ids = ml1.runtime_and_terms(session, str(row["search_key"]))
+        concept_ids = {int(value) for value in row.get("concept_ids") or ()}
+        identity_union_created = len(concept_ids) != int(row.get("concept_count") or 0)
+        cannot_link_safety = bool(
+            not identity_union_created
+            and int(row.get("cannot_pair_count") or 0) > 0
+            and len(concept_ids) > 1
+        )
         cases.append(_case(
             f"C{index:02d}",
             "shared_name_cannot_link",
@@ -212,17 +311,33 @@ def _shared_name_cases(session: Any) -> list[dict[str, Any]]:
                 "separate_active_concept_count": int(row.get("concept_count") or 0),
                 "cannot_link_pair_count": int(row.get("cannot_pair_count") or 0),
                 "runtime_result_count": len(actual_ids),
-                "identity_union_created": False,
+                "identity_union_created": identity_union_created,
+                "cannot_link_safety_passed": cannot_link_safety,
+                "expected_component_membership_fingerprint": sv1b.sha256_payload(sorted(concept_ids)),
+                "lifecycle_correct": len(concept_ids) == int(row.get("concept_count") or 0),
             },
             provenance={
+                "phase_delta": (
+                    "newly_acquired_alias_or_graph_edge"
+                    if str(row["search_key"]) in delta_aliases
+                    else "baseline_shared_name_preservation_filler"
+                ),
+                "available_phase_delta_case_count": selected_delta_count,
+                "derived_from_current_proofs": True,
                 "source": "active SourceConcept search index plus cannot-link overlay",
-                "search_result_union_is_identity_union": False,
+                "search_result_union_is_identity_union": identity_union_created,
             },
         ))
     return cases
 
 
-def _localization_cases(session: Any) -> list[dict[str, Any]]:
+def _localization_cases(session: Any, output: Path) -> list[dict[str, Any]]:
+    manifest = sv1b.read_json(output / "localization/localization-manifest-private.json")
+    new_names = {str(row["canonical_name"]) for row in manifest.get("eligible_rows") or ()}
+    exclusions = {
+        str(row["canonical_name"]): dict(row)
+        for row in manifest.get("explicit_exclusions") or ()
+    }
     rows = list(session.execute(text("""
         SELECT tr.canonical_name,tr.display_name,tr.source,tr.status,tr.category,
                MIN(m.hash) AS media_hash,COUNT(DISTINCT mt.media_id) AS media_count
@@ -239,8 +354,32 @@ def _localization_cases(session: Any) -> list[dict[str, Any]]:
               AND other.canonical_name<>tr.canonical_name
           )
         GROUP BY tr.canonical_name,tr.display_name,tr.source,tr.status,tr.category
-        ORDER BY tr.canonical_name LIMIT 8
-    """)).mappings())
+          AND tr.canonical_name=ANY(:new_names)
+          AND tr.needs_review=false
+        ORDER BY tr.canonical_name LIMIT 6
+    """), {"new_names": sorted(new_names) or ["__no_new_translation__"]}).mappings())
+    exclusion_rows = list(session.execute(text("""
+        SELECT t.name AS canonical_name,CAST(t.category AS text) AS category,
+               MIN(m.hash) AS media_hash,COUNT(DISTINCT mt.media_id) AS media_count,
+               COUNT(tr.id) FILTER (
+                 WHERE tr.language='zh-CN' AND tr.status IN ('translated','reviewed')
+               ) AS accepted_translation_count
+        FROM blombooru_tags t
+        JOIN blombooru_media_tags mt ON mt.tag_id=t.id AND mt.source='ai_wd'
+        JOIN blombooru_media m ON m.id=mt.media_id
+          AND (m.mime_type LIKE 'image/%' OR CAST(m.file_type AS text)='image')
+        LEFT JOIN blombooru_tag_translations tr ON tr.canonical_name=t.name
+        WHERE t.name=ANY(:excluded_names)
+        GROUP BY t.name,t.category
+        HAVING COUNT(tr.id) FILTER (
+          WHERE tr.language='zh-CN' AND tr.status IN ('translated','reviewed')
+        )=0
+        ORDER BY t.name LIMIT 2
+    """), {"excluded_names": sorted(exclusions) or ["__no_exclusion__"]}).mappings())
+    if len(rows) != 6 or len(exclusion_rows) != 2:
+        raise ManualAcceptanceHarnessError(
+            f"manual_acceptance_localization_delta_case_gap:translations={len(rows)}:exclusions={len(exclusion_rows)}"
+        )
     cases = []
     for index, row in enumerate(rows, 1):
         actual_ids = ml1.runtime_and_terms(session, str(row["display_name"]))
@@ -258,7 +397,39 @@ def _localization_cases(session: Any) -> list[dict[str, Any]]:
                 "runtime_result_count": len(actual_ids),
             },
             provenance={
+                "phase_delta": "newly_generated_translation",
+                "derived_from_current_proofs": True,
                 "translation_source": row.get("source"),
+                "tag_category": row.get("category"),
+                "media_tag_source": "ai_wd",
+            },
+        ))
+    for offset, row in enumerate(exclusion_rows, 7):
+        canonical = str(row["canonical_name"])
+        policy = exclusions[canonical]
+        actual_ids = ml1.runtime_and_terms(session, canonical)
+        cases.append(_case(
+            f"D{offset:02d}",
+            "ai_tag_localization",
+            media_hash=str(row["media_hash"]),
+            title=f"Proper-noun exclusion/display #{offset - 6}",
+            expected_behavior=(
+                "An AI proper-noun tag remains canonical source text, has no accepted LLM translation, "
+                "and stays searchable only as a visual/source descriptor rather than identity truth."
+            ),
+            actual_result={
+                "canonical_tag": canonical,
+                "display_name": canonical,
+                "translation_status": "excluded_by_policy",
+                "accepted_translation_count": int(row.get("accepted_translation_count") or 0),
+                "independent_media_count": int(row.get("media_count") or 0),
+                "runtime_result_count": len(actual_ids),
+            },
+            provenance={
+                "phase_delta": "proper_noun_exclusion_display",
+                "derived_from_current_proofs": True,
+                "reason_code": policy.get("reason_code"),
+                "policy_version": policy.get("policy_version"),
                 "tag_category": row.get("category"),
                 "media_tag_source": "ai_wd",
             },
@@ -268,17 +439,59 @@ def _localization_cases(session: Any) -> list[dict[str, Any]]:
 
 def _search_cases(session: Any, output: Path) -> list[dict[str, Any]]:
     rows = sv1b.read_json(output / "primary-search-workload-and-results-private.json")
+    localization_manifest = sv1b.read_json(output / "localization/localization-manifest-private.json")
+    new_names = {str(row["canonical_name"]) for row in localization_manifest.get("eligible_rows") or ()}
+    translation_rows = list(session.execute(text("""
+        SELECT tr.canonical_name,tr.display_name,COUNT(DISTINCT mt.media_id) AS media_count
+        FROM blombooru_tag_translations tr
+        JOIN blombooru_tags t ON t.name=tr.canonical_name
+        JOIN blombooru_media_tags mt ON mt.tag_id=t.id AND mt.source='ai_wd'
+        WHERE tr.language='zh-CN' AND tr.status IN ('translated','reviewed')
+          AND tr.needs_review=false AND tr.canonical_name=ANY(:names)
+        GROUP BY tr.canonical_name,tr.display_name
+        ORDER BY tr.canonical_name
+    """), {"names": sorted(new_names) or ["__no_new_translation__"]}).mappings())
+    delta_terms = {
+        str(value).casefold()
+        for row in translation_rows
+        for value in (row["canonical_name"], row["display_name"])
+        if value
+    }
     desired = (
         ("creator_and_character", 2),
         ("creator_and_work_title", 1),
         ("provider_source_tag", 1),
         ("negative_query", 2),
     )
-    selected = [
+    preferred = [
         row
         for category, count in desired
-        for row in [item for item in rows if item.get("category") == category][:count]
+        for row in [
+            item for item in rows
+            if item.get("category") == category
+            and any(str(term).casefold() in delta_terms for term in item.get("terms") or ())
+        ][:count]
     ]
+    selected = preferred[:6]
+    selected_term_keys = {tuple(str(term) for term in row.get("terms") or ()) for row in selected}
+    for row in translation_rows:
+        if len(selected) >= 6:
+            break
+        terms = (str(row["display_name"]),)
+        if terms in selected_term_keys:
+            continue
+        selected.append({
+            "category": "new_localization_search",
+            "terms": list(terms),
+            "expected_result_count": int(row.get("media_count") or 0),
+            "and_leakage_count": 0,
+            "supported_query_missing_result_count": 0,
+            "case_ref": sv1b.sha256_payload({"new_localization_search": terms}),
+            "phase_delta_source": "new_localization",
+        })
+        selected_term_keys.add(terms)
+    if len(selected) != 6:
+        raise ManualAcceptanceHarnessError(f"manual_acceptance_phase_delta_search_case_gap:{len(selected)}")
     fallback_hash = _fallback_media_hash(session)
     cases = []
     for index, row in enumerate(selected, 1):
@@ -314,6 +527,9 @@ def _search_cases(session: Any, output: Path) -> list[dict[str, Any]]:
                 ),
             },
             provenance={
+                "phase_delta": str(row.get("phase_delta_source") or "new_metadata_or_localization_workload"),
+                "supported_by_phase_delta": True,
+                "derived_from_current_proofs": True,
                 "runtime_path": "parse_search_query + apply_endpoint_equivalent_text_search",
                 "independent_expected_membership": True,
                 "case_ref": row.get("case_ref"),
@@ -368,6 +584,83 @@ def _proof_bindings(proofs: Mapping[str, Mapping[str, Any]]) -> dict[str, str]:
     }
 
 
+def validate_phase_delta_case_composition(cases: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    values = [dict(row) for row in cases]
+    by_category: dict[str, list[dict[str, Any]]] = {
+        category: [row for row in values if row.get("category") == category]
+        for category in CATEGORY_COUNTS
+    }
+    if {category: len(rows) for category, rows in by_category.items()} != CATEGORY_COUNTS:
+        raise ManualAcceptanceHarnessError("manual_acceptance_phase_delta_category_membership_invalid")
+    if any(
+        (row.get("provenance") or {}).get("phase_delta") != "newly_acquired_exact_metadata"
+        for row in by_category["pixiv_metadata"]
+    ):
+        raise ManualAcceptanceHarnessError("manual_acceptance_metadata_not_phase_delta")
+
+    creator = by_category["creator_clustering"]
+    creator_delta_count = sum(
+        (row.get("provenance") or {}).get("phase_delta") == "new_or_materially_changed_creator_component"
+        for row in creator
+    )
+    creator_available = max(
+        (int((row.get("provenance") or {}).get("available_changed_component_count") or 0) for row in creator),
+        default=0,
+    )
+    if creator_delta_count != min(8, creator_available):
+        raise ManualAcceptanceHarnessError("manual_acceptance_creator_delta_priority_invalid")
+
+    shared = by_category["shared_name_cannot_link"]
+    shared_delta_count = sum(
+        (row.get("provenance") or {}).get("phase_delta") == "newly_acquired_alias_or_graph_edge"
+        for row in shared
+    )
+    shared_available = max(
+        (int((row.get("provenance") or {}).get("available_phase_delta_case_count") or 0) for row in shared),
+        default=0,
+    )
+    if shared_delta_count != min(6, shared_available):
+        raise ManualAcceptanceHarnessError("manual_acceptance_shared_name_delta_priority_invalid")
+
+    localization = by_category["ai_tag_localization"]
+    new_translation_count = sum(
+        (row.get("provenance") or {}).get("phase_delta") == "newly_generated_translation"
+        for row in localization
+    )
+    proper_noun_exclusion_count = sum(
+        (row.get("provenance") or {}).get("phase_delta") == "proper_noun_exclusion_display"
+        for row in localization
+    )
+    if new_translation_count < 6 or proper_noun_exclusion_count < 2:
+        raise ManualAcceptanceHarnessError("manual_acceptance_localization_delta_composition_invalid")
+
+    search = by_category["search_and_negative"]
+    if any((row.get("provenance") or {}).get("supported_by_phase_delta") is not True for row in search):
+        raise ManualAcceptanceHarnessError("manual_acceptance_search_not_phase_delta_supported")
+    if any((row.get("provenance") or {}).get("derived_from_current_proofs") is not True for row in values):
+        raise ManualAcceptanceHarnessError("manual_acceptance_case_proof_derivation_missing")
+    if any(row.get("actual_result", {}).get("lifecycle_correct") is not True for row in creator):
+        raise ManualAcceptanceHarnessError("manual_acceptance_creator_lifecycle_invalid")
+    if any(
+        row.get("actual_result", {}).get("identity_union_created") is not False
+        or row.get("actual_result", {}).get("cannot_link_safety_passed") is not True
+        or row.get("actual_result", {}).get("lifecycle_correct") is not True
+        for row in shared
+    ):
+        raise ManualAcceptanceHarnessError("manual_acceptance_shared_name_safety_invalid")
+    return {
+        "metadata_new_exact_count": 12,
+        "creator_changed_or_new_count": creator_delta_count,
+        "creator_preservation_filler_count": 8 - creator_delta_count,
+        "shared_name_new_alias_or_edge_count": shared_delta_count,
+        "shared_name_baseline_filler_count": 6 - shared_delta_count,
+        "new_translation_case_count": new_translation_count,
+        "proper_noun_exclusion_display_case_count": proper_noun_exclusion_count,
+        "phase_delta_supported_search_case_count": 6,
+        "derived_from_current_proofs": True,
+    }
+
+
 def build_harness(
     output: Path,
     *,
@@ -408,10 +701,10 @@ def build_harness(
     session = sessionmaker(bind=engine)()
     try:
         cases = [
-            *_pixiv_metadata_cases(session),
-            *_creator_clustering_cases(session),
-            *_shared_name_cases(session),
-            *_localization_cases(session),
+            *_pixiv_metadata_cases(session, output),
+            *_creator_clustering_cases(session, output, primary_database),
+            *_shared_name_cases(session, output),
+            *_localization_cases(session, output),
             *_search_cases(session, output),
         ]
         session.rollback()
@@ -426,6 +719,7 @@ def build_harness(
     case_ids = [str(row["case_id"]) for row in cases]
     if len(case_ids) != len(set(case_ids)):
         raise ManualAcceptanceHarnessError("manual_acceptance_case_id_duplicate")
+    phase_delta_composition = validate_phase_delta_case_composition(cases)
 
     manual_root = output / "manual-acceptance"
     manual_root.mkdir(parents=True, exist_ok=False)
@@ -447,6 +741,7 @@ def build_harness(
         "status": "pending_user",
         "case_count": len(cases),
         "category_case_counts": dict(counts),
+        "phase_delta_composition": phase_delta_composition,
         "actual_backend_services_used": True,
         "accepted_storage_read_only": True,
         "result_private_and_uncommitted": True,

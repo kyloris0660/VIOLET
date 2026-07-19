@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -31,6 +32,7 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
     MIN_REQUEST_SPACING_SECONDS,
     PixivMetadataState,
+    classify_pixiv_metadata_lifecycle,
     is_trusted_complete_pixiv_metadata_record,
     manifest_scoped_outcome_key,
 )
@@ -59,6 +61,7 @@ from scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness import ( 
     export_stable_evidence,
     import_stable_evidence,
     import_reusable_f7a_inputs,
+    is_strict_test_database_name,
     reconcile_stable_evidence_packages,
     sha256_file,
 )
@@ -86,6 +89,7 @@ DEFAULT_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260719"
 EXPECTED_MEDIA_COUNT = 12_000
 ACCEPTED_R2R_DB = "blombooru_scv2_r2r_dryrun_test_20260710"
 ACCEPTED_R2R_SNAPSHOT_FINGERPRINT = "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
+SV1B_CREDENTIAL_RISK_WAIVER_POLICY = "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
 ML2_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-ml2-multilingual-identity-candidate-closure-reviewfix-20260715"
 R2R_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-r2r-autonomous-recall-search-closure"
 
@@ -121,6 +125,12 @@ SEARCH_PROTECTED_TABLES = (
 COMPLETE_STATUSES = frozenset({"metadata_complete", "observed", "active", "accepted"})
 TERMINAL_STATUSES = frozenset({"terminal_remote_unavailable"})
 DEFERRED_STATUSES = frozenset({"deferred_nonblocking_source_page_mismatch"})
+PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE = "trusted_exact_complete"
+PAGE_OUTCOME_EXACT_TERMINAL = "exact_terminal"
+PAGE_OUTCOME_EXACT_GOVERNED_MISMATCH = "exact_governed_page_mismatch"
+PAGE_OUTCOME_UNACQUIRED = "unacquired"
+PAGE_OUTCOME_CONFLICTING = "conflicting"
+PAGE_OUTCOME_UNEXPLAINED = "unexplained"
 
 
 class SV1BPreflightError(RuntimeError):
@@ -166,8 +176,10 @@ def git(*args: str) -> str:
 
 
 def _strict_test_database(database: str) -> bool:
+    """Use the repository's canonical delimited ``test``-segment validator."""
+
     value = str(database or "").strip().casefold()
-    return bool(value and "test" in value and value not in {"blombooru", "postgres", "template0", "template1"})
+    return is_strict_test_database_name(value)
 
 
 def canonical_work_id(value: Any) -> str:
@@ -213,7 +225,13 @@ def validate_owned_output_root(
         "primary_database": primary_database,
         "replay_database": replay_database,
     })
-    if not (
+    identities_are_safe = bool(
+        _strict_test_database(primary_database)
+        and _strict_test_database(replay_database)
+        and primary_database != replay_database
+        and not set((primary_database, replay_database)).intersection(ACCEPTED_DATABASES)
+    )
+    proof_identity_matches = bool(
         identity.get("phase") == PHASE
         and identity.get("branch") == BRANCH
         and identity.get("accepted_manifest_fingerprint") == ACCEPTED_MANIFEST_FINGERPRINT
@@ -221,9 +239,12 @@ def validate_owned_output_root(
         and ownership.get("primary_database_identity") == primary_database
         and ownership.get("replay_database_identity") == replay_database
         and ownership.get("passed") is True
-        and database_exists(primary_database)
-        and database_exists(replay_database)
-    ):
+    )
+    # All string identities and stage-owned proof must be validated before the
+    # first database existence probe opens an administrative connection.
+    if not identities_are_safe or not proof_identity_matches:
+        raise SV1BPreflightError("owned_private_output_or_database_identity_mismatch")
+    if not database_exists(primary_database) or not database_exists(replay_database):
         raise SV1BPreflightError("owned_private_output_or_database_identity_mismatch")
     return {"output": str(resolved), "ownership_key": expected_key, "resume_ownership_passed": True}
 
@@ -281,24 +302,125 @@ def validate_repository_and_inputs(output: Path) -> dict[str, Any]:
     }
 
 
-def outcome_for_pair(records: list[Mapping[str, Any]], work_id: str, page_index: int) -> str:
+def _stable_identity_matches_exact_page(
+    record: Mapping[str, Any], work_id: str, page_index: int
+) -> bool:
+    provenance = record.get("provenance")
+    if not isinstance(provenance, Mapping):
+        return False
+    stable = provenance.get("stable_identity_key")
+    if not isinstance(stable, Mapping):
+        return False
+    return bool(
+        str(stable.get("provider") or "").casefold() == "pixiv"
+        and str(stable.get("work_id") or "") == work_id
+        and stable.get("page_index") is not None
+        and int(stable["page_index"]) == page_index
+    )
+
+
+def _is_trusted_exact_complete_record(
+    record: Mapping[str, Any], work_id: str, page_index: int
+) -> bool:
+    """Apply the canonical predicate plus every SV1B exact-page shape gate."""
+
+    raw = record.get("raw_metadata_json")
+    provenance = record.get("provenance")
+    metadata_kind = str(record.get("metadata_kind") or "")
+    data_type = str(record.get("data_type_label") or "")
+    if not (
+        is_trusted_complete_pixiv_metadata_record(record)
+        and str(record.get("provider") or "").casefold() == "pixiv"
+        and str(record.get("source_work_id") or "") == work_id
+        and record.get("source_page_index") is not None
+        and int(record["source_page_index"]) == page_index
+        and metadata_kind
+        and data_type
+        and isinstance(raw, Mapping)
+        and bool(raw)
+        and isinstance(provenance, Mapping)
+        and bool(provenance)
+        and classify_pixiv_metadata_lifecycle(record.get("status")) == "complete"
+    ):
+        return False
+    if metadata_kind == "pixiv_ingestion_gate":
+        return _stable_identity_matches_exact_page(record, work_id, page_index)
+    # A non-queue trusted parent is itself the provider-evidence parent. Its
+    # exact provider/work/page tuple is the compatibility assertion.
+    return True
+
+
+def _is_exact_terminal_record(record: Mapping[str, Any]) -> bool:
+    raw = record.get("raw_metadata_json")
+    return bool(
+        str(record.get("status") or "") == PixivMetadataState.TERMINAL.value
+        and isinstance(raw, Mapping)
+        and str(raw.get("failure_reason") or "")
+        == "authenticated_remote_deleted_private_unavailable"
+        and bool(raw.get("last_attempt_at"))
+    )
+
+
+def _has_exact_governed_mismatch(
+    record: Mapping[str, Any], evidence_rows: Iterable[Mapping[str, Any]]
+) -> bool:
+    record_id = record.get("id")
+    if record_id is None or str(record.get("status") or "") != PixivMetadataState.DEFERRED_PAGE_MISMATCH.value:
+        return False
+    for evidence in evidence_rows:
+        provenance = evidence.get("provenance")
+        provenance = provenance if isinstance(provenance, Mapping) else {}
+        if (
+            int(evidence.get("source_metadata_record_id") or -1) == int(record_id)
+            and str(evidence.get("evidence_kind") or "") == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+            and str(evidence.get("status") or "") == "active"
+            and str(provenance.get("governance_policy_version") or "")
+            == DEFERRED_PAGE_MISMATCH_POLICY_VERSION
+            and provenance.get("unsupported_page_link_created") is False
+        ):
+            return True
+    return False
+
+
+def outcome_for_pair(
+    records: list[Mapping[str, Any]],
+    work_id: str,
+    page_index: int,
+    evidence_rows: Iterable[Mapping[str, Any]] = (),
+) -> str:
+    """Classify one exact media/work/page tuple into one canonical outcome."""
+
     exact = [
         row for row in records
+        if str(row.get("provider") or "pixiv").casefold() == "pixiv"
         if str(row.get("source_work_id") or "") == work_id
         and row.get("source_page_index") is not None
         and int(row["source_page_index"]) == page_index
     ]
+    if not exact:
+        return PAGE_OUTCOME_UNACQUIRED
+    accepted_classes: set[str] = set()
+    if any(_is_trusted_exact_complete_record(row, work_id, page_index) for row in exact):
+        accepted_classes.add(PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE)
+    if any(_is_exact_terminal_record(row) for row in exact):
+        accepted_classes.add(PAGE_OUTCOME_EXACT_TERMINAL)
+    if any(_has_exact_governed_mismatch(row, evidence_rows) for row in exact):
+        accepted_classes.add(PAGE_OUTCOME_EXACT_GOVERNED_MISMATCH)
     statuses = {str(row.get("status") or "") for row in exact}
-    if statuses & COMPLETE_STATUSES:
-        return "accepted_metadata_complete"
-    if statuses & TERMINAL_STATUSES:
-        return "accepted_terminal_remote_unavailable"
-    if statuses & DEFERRED_STATUSES:
-        return "accepted_deferred_nonblocking_source_page_mismatch"
-    same_work = {str(row.get("status") or "") for row in records if str(row.get("source_work_id") or "") == work_id}
-    if same_work & DEFERRED_STATUSES:
-        return "accepted_deferred_nonblocking_source_page_mismatch"
-    return "unacquired"
+    if len(accepted_classes) > 1 or statuses.intersection({
+        PixivMetadataState.CONFLICT.value,
+        PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value,
+    }):
+        return PAGE_OUTCOME_CONFLICTING
+    if accepted_classes:
+        return next(iter(accepted_classes))
+    if statuses and statuses.issubset({
+        PixivMetadataState.CANDIDATE_DETECTED.value,
+        PixivMetadataState.PENDING.value,
+        PixivMetadataState.RETRYABLE.value,
+    }):
+        return PAGE_OUTCOME_UNACQUIRED
+    return PAGE_OUTCOME_UNEXPLAINED
 
 
 def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
@@ -311,8 +433,15 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
                 "SELECT id,hash,filename,path FROM blombooru_media ORDER BY hash"
             )).mappings())
             metadata_rows = list(connection.execute(text(
-                "SELECT media_id,source_work_id,source_page_index,status "
+                "SELECT id,media_id,provider,source_work_id,source_page_index,metadata_kind,"
+                "data_type_label,status,raw_metadata_json,provenance "
                 "FROM blombooru_source_metadata_records WHERE provider='pixiv'"
+            )).mappings())
+            metadata_evidence_rows = list(connection.execute(text(
+                "SELECT source_metadata_record_id,evidence_kind,status,provenance "
+                "FROM blombooru_source_metadata_evidence "
+                "WHERE source_metadata_record_id IN ("
+                "SELECT id FROM blombooru_source_metadata_records WHERE provider='pixiv')"
             )).mappings())
     finally:
         engine.dispose()
@@ -324,6 +453,9 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
     for row in metadata_rows:
         if row["media_id"] is not None:
             records_by_media[int(row["media_id"])].append(row)
+    evidence_by_record: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in metadata_evidence_rows:
+        evidence_by_record[int(row["source_metadata_record_id"])].append(row)
 
     pages: list[dict[str, Any]] = []
     non_candidate_count = 0
@@ -337,6 +469,20 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
             continue
         pairs = sorted({(canonical_work_id(row["work_id"]), int(row["page_index"])) for row in [*filename_ids, *stored_ids]})
         for work_id, page_index in pairs:
+            media_records = records_by_media[int(media["id"])]
+            exact_record_ids = {
+                int(row["id"])
+                for row in media_records
+                if row.get("id") is not None
+                and str(row.get("source_work_id") or "") == work_id
+                and row.get("source_page_index") is not None
+                and int(row["source_page_index"]) == page_index
+            }
+            exact_evidence = [
+                evidence
+                for record_id in exact_record_ids
+                for evidence in evidence_by_record.get(record_id, ())
+            ]
             pages.append({
                 "provider": "pixiv",
                 "stable_work_id": work_id,
@@ -344,7 +490,9 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
                 "media_stable_key": media_hash,
                 "media_safe_label": sha256_payload({"media": media_hash}),
                 "identity_classification": classification,
-                "acquisition_state": outcome_for_pair(records_by_media[int(media["id"])], work_id, page_index),
+                "acquisition_state": outcome_for_pair(
+                    media_records, work_id, page_index, exact_evidence
+                ),
                 "checkpoint_key": manifest_scoped_outcome_key(
                     ACCEPTED_MANIFEST_FINGERPRINT, "pixiv", work_id, page_index
                 ),
@@ -379,8 +527,18 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
 
     candidate_media = {str(row["media_stable_key"]) for row in pages}
     outcome_counts = Counter(str(row["acquisition_state"]) for row in pages)
+    closed_page_states = {
+        PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE,
+        PAGE_OUTCOME_EXACT_TERMINAL,
+        PAGE_OUTCOME_EXACT_GOVERNED_MISMATCH,
+    }
+    page_states_by_media: dict[str, list[str]] = defaultdict(list)
+    for row in pages:
+        page_states_by_media[str(row["media_stable_key"])].append(str(row["acquisition_state"]))
     exact_closed_media = {
-        str(row["media_stable_key"]) for row in pages if row["acquisition_state"] != "unacquired"
+        media_key
+        for media_key, states in page_states_by_media.items()
+        if states and all(state in closed_page_states for state in states)
     }
     media_id_by_hash = {str(row["hash"]): int(row["id"]) for row in media_rows if row["hash"] is not None}
     any_accepted_metadata_media = {
@@ -400,6 +558,12 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
         "distinct_work_manifest_row_count": len(works),
         "classification_counts": dict(sorted(classification_counts.items())),
         "accepted_page_outcome_counts": dict(sorted(outcome_counts.items())),
+        "trusted_exact_complete_page_count": outcome_counts[PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE],
+        "exact_terminal_page_count": outcome_counts[PAGE_OUTCOME_EXACT_TERMINAL],
+        "exact_governed_page_mismatch_count": outcome_counts[PAGE_OUTCOME_EXACT_GOVERNED_MISMATCH],
+        "unacquired_page_count": outcome_counts[PAGE_OUTCOME_UNACQUIRED],
+        "conflicting_page_count": outcome_counts[PAGE_OUTCOME_CONFLICTING],
+        "unexplained_page_count": outcome_counts[PAGE_OUTCOME_UNEXPLAINED],
         "candidate_media_with_any_accepted_metadata_record": len(any_accepted_metadata_media),
         "candidate_media_with_exact_page_closure": len(exact_closed_media),
         "candidate_media_with_accepted_but_non_exact_page_evidence": len(any_accepted_metadata_media - exact_closed_media),
@@ -1160,7 +1324,9 @@ def queue_provider_manifest(
         database=primary_database,
         output_dir=provider_output,
         execute=False,
-        accept_local_credential_risk=False,
+        accept_local_credential_risk=True,
+        credential_risk_waiver_policy=SV1B_CREDENTIAL_RISK_WAIVER_POLICY,
+        credential_risk_waiver_scope="pr139_branch_manifest_database_pair_metadata_only_current_draft",
         replay_normalization_failures=False,
         additional_diagnostic_calls=0,
         gallery_dl_command="",
@@ -1267,6 +1433,14 @@ def execute_provider_manifest(
     queue_proof = read_json(output / "provider-queue-manifest-proof.json")
     if queue_proof.get("exact_open_work_membership_passed") is not True:
         raise SV1BPreflightError("provider_queue_manifest_proof_missing_or_failed")
+    redaction = read_json(output / "waiver-aware-secret-redaction-scan-proof.json")
+    if not (
+        redaction.get("passed") is True
+        and redaction.get("credential_risk_waiver_policy") == SV1B_CREDENTIAL_RISK_WAIVER_POLICY
+        and redaction.get("raw_credential_exposure_count") == 0
+        and redaction.get("raw_config_exposure_count") == 0
+    ):
+        raise SV1BPreflightError("blocked_sv1b_credential_redaction_scan")
     gate = provider_gate_preflight()
     if gate.get("passed") is not True:
         raise SV1BPreflightError("blocked_sv1b_provider_authentication")
@@ -1274,7 +1448,11 @@ def execute_provider_manifest(
         database=primary_database,
         output_dir=output / "provider",
         execute=True,
-        accept_local_credential_risk=False,
+        accept_local_credential_risk=True,
+        credential_risk_waiver_policy=SV1B_CREDENTIAL_RISK_WAIVER_POLICY,
+        credential_risk_waiver_scope="pr139_branch_manifest_database_pair_metadata_only_current_draft",
+        canary_work_limit=1,
+        canary_max_attempts_per_work=1,
         replay_normalization_failures=False,
         additional_diagnostic_calls=0,
         gallery_dl_command="",
@@ -1282,14 +1460,37 @@ def execute_provider_manifest(
         phase_manifest_fingerprint=ACCEPTED_MANIFEST_FINGERPRINT,
     )
     summary = ingestion_runner.run(args)
+    canary = summary.get("redacted_authentication_preflight") or {}
+    gallery_dl_check = summary.get("gallery_dl_configuration_check") or {}
+    redacted_canary = {
+        "performed": canary.get("performed") is True,
+        "authenticated_success": canary.get("authenticated_success") is True,
+        "gallery_dl_version": gallery_dl_check.get("version") or "unavailable",
+        "private_stable_work_reference": canary.get("private_stable_work_reference"),
+        "selected_work_count": int(canary.get("selected_work_count") or 0),
+        "attempted_work_count": int(canary.get("attempted_work_count") or 0),
+        "returned_page_consistency_count": int(
+            canary.get("returned_page_consistency_count") or 0
+        ),
+        "elapsed_seconds": float(canary.get("elapsed_seconds") or 0.0),
+        "redaction_passed": canary.get("raw_values_exposed") is False,
+        "safe_reason_code": canary.get("safe_reason_code"),
+        "credential_risk_waiver_policy": canary.get("credential_risk_waiver_policy"),
+        "raw_stdout_published": False,
+        "raw_stderr_published": False,
+        "profile_contents_published": False,
+        "provider_url_published": False,
+    }
     result = {
         "phase_manifest_fingerprint": ACCEPTED_MANIFEST_FINGERPRINT,
         "execution_requested": summary.get("execution_requested") is True,
-        "credential_rotation_confirmation_present": summary.get("credential_rotation_confirmation_present") is True,
+        "credential_rotation_performed": False,
+        "known_compromised_secret_fingerprint_scan_performed": False,
+        "credential_risk_waiver_accepted": True,
+        "credential_risk_waiver_policy": SV1B_CREDENTIAL_RISK_WAIVER_POLICY,
         "redacted_secret_scan_passed": (summary.get("redacted_secret_scan") or {}).get("passed") is True,
-        "redacted_authentication_preflight_passed": (
-            summary.get("redacted_authentication_preflight") or {}
-        ).get("passed") is True,
+        "redacted_authentication_preflight_passed": canary.get("passed") is True,
+        "redacted_authentication_canary": redacted_canary,
         "operation_counts": summary.get("operation_counts") or {},
         "acquisition_execution": summary.get("acquisition_execution") or {},
         "provider_raw_execution_summary_private": str(output / "provider" / "execution-summary.json"),
@@ -2607,34 +2808,223 @@ def compare_primary_replay_search_results(output: Path) -> dict[str, Any]:
 def provider_gate_preflight() -> dict[str, Any]:
     entrypoint = gallery_adapter.probe_gallery_dl_entrypoint(None)
     profile = validate_gallery_dl_profile(entrypoint.command, timeout_seconds=30)
-    rotation = str(os.getenv("VIOLET_CREDENTIAL_ROTATION_CONFIRMED") or "").strip().casefold() in {"1", "true", "yes"}
-    fingerprints = [
-        value.strip() for value in str(os.getenv("VIOLET_COMPROMISED_SECRET_SHA256") or "").replace(";", ",").split(",")
-        if value.strip()
-    ]
-    fingerprint_shape_valid = bool(fingerprints) and all(
-        len(value) == 64 and all(character in "0123456789abcdefABCDEF" for character in value)
-        for value in fingerprints
-    )
     passed = bool(
         profile["provider_profile_available"]
         and profile["configuration_status_command_passed"]
-        and rotation
-        and fingerprint_shape_valid
     )
     return {
         "metadata_only_command_semantics": {"dump_json": True, "no_download": True},
         "persistent_cross_process_spacing_required_seconds": MIN_REQUEST_SPACING_SECONDS,
         "provider_profile": profile,
-        "credential_rotation_confirmation_present": rotation,
-        "compromised_secret_fingerprint_count": len(fingerprints),
-        "compromised_secret_fingerprint_shape_valid": fingerprint_shape_valid,
+        "credential_rotation_performed": False,
+        "known_compromised_secret_fingerprint_scan_performed": False,
+        "credential_risk_waiver_accepted": True,
+        "credential_risk_waiver_policy": SV1B_CREDENTIAL_RISK_WAIVER_POLICY,
+        "existing_local_credential_route_used": True,
         "delimiter_aware_secret_scan_executed": False,
         "redacted_authentication_canary_executed": False,
         "provider_request_count": 0,
         "provider_attempt_count": 0,
         "passed": passed,
     }
+
+
+_GENERIC_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)(?:refresh[_-]?token|access[_-]?token|authorization|cookie|api[_-]?key|password|secret)"
+    r"(?![a-z0-9_-])"
+    r"\s*[\"']?\s*[:=]\s*(?:\"([A-Za-z0-9._~+/:%=@!?$^&*(){}\[\]-]{20,})\"|"
+    r"'([A-Za-z0-9._~+/:%=@!?$^&*(){}\[\]-]{20,})')"
+)
+_GENERIC_BEARER_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{20,})")
+_RAW_PIXIV_CONFIG_RE = re.compile(
+    r"(?is)[\"']pixiv[\"']\s*:\s*\{.{0,4000}?(?:refresh[_-]?token|cookies?|authorization)"
+)
+
+
+def _is_generic_credential_candidate(value: str) -> bool:
+    folded = value.casefold()
+    return bool(
+        folded not in {"redacted", "placeholder", "example", "changeme", "not_configured"}
+        and "redact" not in folded
+        and "placeholder" not in folded
+        and not any(
+            marker in folded
+            for marker in (
+                "missing", "invalid", "not_", "unavailable", "required",
+                "configured", "exposed", "forbidden", "blocked", "disabled",
+                "unchanged", "preserved", "relative", "environment", "unresolved",
+            )
+        )
+    )
+
+
+def _generic_credential_candidates(text_value: str) -> list[tuple[str, bool]]:
+    values: list[tuple[str, bool]] = []
+    for match in _GENERIC_SECRET_ASSIGNMENT_RE.finditer(text_value):
+        value = next(item for item in match.groups() if item is not None)
+        if _is_generic_credential_candidate(value):
+            key_text = match.group(0).casefold().split("=", 1)[0].split(":", 1)[0]
+            provider_critical = any(
+                marker in key_text
+                for marker in ("refresh", "access", "authorization", "cookie")
+            )
+            values.append((value, provider_critical))
+    for match in _GENERIC_BEARER_RE.finditer(text_value):
+        if _is_generic_credential_candidate(match.group(1)):
+            values.append((match.group(1), True))
+    return values
+
+
+def _generic_credential_findings(text_value: str) -> tuple[int, int]:
+    return len(_generic_credential_candidates(text_value)), len(_RAW_PIXIV_CONFIG_RE.findall(text_value))
+
+
+def waiver_aware_secret_and_redaction_scan(
+    output: Path,
+    *,
+    provider_execution_root: Path,
+) -> dict[str, Any]:
+    """Scan governed evidence without reading or copying the approved profile."""
+
+    output = output.resolve()
+    execution_root = provider_execution_root.resolve()
+    if output not in execution_root.parents:
+        raise SV1BPreflightError("provider_execution_root_not_new_stage_descendant")
+    if execution_root.exists() and any(
+        (execution_root / name).exists()
+        for name in ("execution-summary.json", "acquisition-checkpoint.json", "persistent-request-spacing.json")
+    ):
+        raise SV1BPreflightError("provider_execution_root_already_executed")
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "-z"], cwd=ROOT
+    ).decode("utf-8", errors="replace").split("\0")
+    tracked_paths = {ROOT / value for value in tracked if value}
+    paths = set(tracked_paths)
+    paths.update(path for path in output.rglob("*") if path.is_file())
+    paths.update(path for path in ROOT.glob("*.log") if path.is_file())
+    reports_root = ROOT / "docs/reports"
+    if reports_root.is_dir():
+        paths.update(path for path in reports_root.rglob("*") if path.is_file())
+
+    secret_count = 0
+    raw_config_count = 0
+    accepted_tracked_fixture_literal_count = 0
+    scanned_file_count = 0
+    matched_safe_file_labels: list[str] = []
+    for path in sorted(paths, key=lambda value: str(value).casefold()):
+        try:
+            if path.stat().st_size > 8 * 1024 * 1024:
+                continue
+            raw = path.read_bytes()
+            if b"\x00" in raw:
+                continue
+            value = raw.decode("utf-8", errors="replace")
+        except OSError:
+            continue
+        scanned_file_count += 1
+        current_candidates = _generic_credential_candidates(value)
+        found_config = len(_RAW_PIXIV_CONFIG_RE.findall(value))
+        found_secret = len(current_candidates)
+        if path in tracked_paths and current_candidates:
+            relative = str(path.relative_to(ROOT)).replace("\\", "/")
+            baseline = subprocess.run(
+                ["git", "show", f"HEAD:{relative}"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            baseline_candidates = (
+                _generic_credential_candidates(baseline.stdout)
+                if baseline.returncode == 0
+                else []
+            )
+            baseline_generic = Counter(
+                sha256_payload(value) for value, _critical in baseline_candidates
+            )
+            current_generic = Counter(
+                sha256_payload(value) for value, _critical in current_candidates
+            )
+            new_generic = current_generic - baseline_generic
+            found_secret = sum(new_generic.values())
+            accepted_tracked_fixture_literal_count += sum(
+                (current_generic & baseline_generic).values()
+            )
+        if found_secret or found_config:
+            matched_safe_file_labels.append(sha256_payload(str(path.relative_to(ROOT))))
+        secret_count += found_secret
+        raw_config_count += found_config
+
+    diff = subprocess.check_output(
+        ["git", "diff", "--no-ext-diff", "--binary"], cwd=ROOT
+    ).decode("utf-8", errors="replace")
+    added_diff = "\n".join(
+        line[1:] for line in diff.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    )
+    diff_secret_count, diff_raw_config_count = _generic_credential_findings(added_diff)
+
+    synthetic_value = "".join(("synthetic", "_credential", "_value", "_1234567890"))
+    synthetic = "Authorization: Bearer " + synthetic_value
+    redacted_exception = gallery_adapter.redact_text(synthetic)
+    exception_redaction_passed = synthetic_value not in redacted_exception
+    command_projection = [
+        "<gallery-dl-entrypoint>", "--dump-json", "--no-download", "[REDACTED_PROVIDER_WORK]"
+    ]
+    environment_projection = {
+        "credential_bearing_environment_values": "[REDACTED]",
+        "raw_environment_serialized": False,
+    }
+    projection_text = canonical_json({
+        "command": command_projection,
+        "environment": environment_projection,
+        "exception": redacted_exception,
+    })
+    projection_secret_count, projection_raw_config_count = _generic_credential_findings(projection_text)
+    secret_count += projection_secret_count
+    raw_config_count += projection_raw_config_count
+    passed = bool(
+        secret_count == 0
+        and raw_config_count == 0
+        and diff_secret_count == 0
+        and diff_raw_config_count == 0
+        and exception_redaction_passed
+        and "pixiv.net" not in projection_text.casefold()
+    )
+    result = {
+        "scan_version": "sv1b_generic_delimiter_aware_secret_scan_v1",
+        "repository_tracked_files_scanned": True,
+        "current_phase_output_scanned": True,
+        "logs_reports_exception_payloads_scanned": True,
+        "subprocess_argument_projection_scanned": True,
+        "subprocess_environment_projection_scanned": True,
+        "review_pack_candidates_scanned": True,
+        "approved_local_profile_copied_or_serialized": False,
+        "scanned_file_count": scanned_file_count,
+        "raw_credential_exposure_count": secret_count,
+        "raw_config_exposure_count": raw_config_count,
+        "credential_like_value_finding_count_outside_approved_local_profile": secret_count,
+        "accepted_tracked_fixture_literal_count": accepted_tracked_fixture_literal_count,
+        "current_diff_credential_like_finding_count": diff_secret_count,
+        "current_diff_raw_config_finding_count": diff_raw_config_count,
+        "redaction_finding_count": secret_count + raw_config_count,
+        "matched_safe_file_label_count": len(set(matched_safe_file_labels)),
+        "provider_command_arguments_redacted": True,
+        "provider_environment_projection_redacted": True,
+        "exception_payload_redaction_passed": exception_redaction_passed,
+        "credential_rotation_performed": False,
+        "known_compromised_secret_fingerprint_scan_performed": False,
+        "credential_risk_waiver_accepted": True,
+        "credential_risk_waiver_policy": SV1B_CREDENTIAL_RISK_WAIVER_POLICY,
+        "waiver_policy_identity_recorded": True,
+        "provider_execution_root_new_and_unexecuted": True,
+        "passed": passed,
+    }
+    if not passed:
+        raise SV1BPreflightError("blocked_sv1b_credential_redaction_scan")
+    return result
 
 
 def public_console_summary(result: Mapping[str, Any]) -> dict[str, Any]:

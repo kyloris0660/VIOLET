@@ -12539,11 +12539,26 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         blockers.append("blocked_sv1b_provider_hardening")
 
     credential = _get(summary, "credential_preflight", {})
+    default_credential_route = bool(
+        credential.get("delimiter_aware_fingerprint_scan_passed") is True
+    ) if isinstance(credential, Mapping) else False
+    sv1b_waiver_route = bool(
+        isinstance(credential, Mapping)
+        and credential.get("credential_risk_waiver_accepted") is True
+        and credential.get("credential_risk_waiver_policy")
+        == "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
+        and credential.get("credential_rotation_performed") is False
+        and credential.get("known_compromised_secret_fingerprint_scan_performed") is False
+        and credential.get("generic_delimiter_aware_secret_scan_passed") is True
+        and _as_int(credential.get("raw_credential_exposure_count"), -1) == 0
+        and _as_int(credential.get("raw_config_exposure_count"), -1) == 0
+        and _as_int(credential.get("credential_like_value_finding_count"), -1) == 0
+    )
     if not (
         isinstance(credential, Mapping)
         and credential.get("approved_local_route_available") is True
         and credential.get("operator_confirmation_policy_passed") is True
-        and credential.get("delimiter_aware_fingerprint_scan_passed") is True
+        and (default_credential_route or sv1b_waiver_route)
         and credential.get("redacted_authentication_preflight_passed") is True
         and credential.get("secret_value_exposed") is False
         and credential.get("raw_configuration_output_exposed") is False
@@ -12615,6 +12630,7 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         and isinstance(localization, Mapping)
         and localization.get("eligible_ai_tag_missing_count") == 0
         and localization.get("silently_missing_eligible_count") == 0
+        and _as_int(localization.get("localization_ambiguity_count"), -1) == 0
         and localization.get("provider_tags_written_to_media_tags_count") == 0
         and localization.get("original_provider_text_preserved") is True
         and _as_float(localization.get("projected_and_actual_llm_cost_usd"), 1e9) <= 10.0

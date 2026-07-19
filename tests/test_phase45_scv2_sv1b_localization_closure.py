@@ -51,6 +51,30 @@ class _FailOnceProvider(_Provider):
         return await super().translate_tags(rows)
 
 
+class _AmbiguousThenClearProvider(_Provider):
+    async def translate_tags(self, rows):
+        self.calls += 1
+        self.usage_totals["total_tokens"] += 120
+        ambiguous = self.calls == 1
+        return [
+            _Translation(
+                canonical_name=row["name"],
+                display_name_zh=f"澶嶆牳{index}",
+                aliases_zh=[],
+                needs_review=ambiguous,
+            )
+            for index, row in enumerate(rows, 1)
+        ]
+
+
+class _AlwaysAmbiguousProvider(_AmbiguousThenClearProvider):
+    async def translate_tags(self, rows):
+        results = await super().translate_tags(rows)
+        for result in results:
+            result.needs_review = True
+        return results
+
+
 def test_build_manifest_separates_policy_exclusions_and_binds_cost(tmp_path: Path, monkeypatch) -> None:
     output = tmp_path / "run"
     output.mkdir()
@@ -265,3 +289,66 @@ def test_execute_redacts_provider_failure_and_accounts_one_bounded_retry(tmp_pat
     assert result["localization_complete"] is True
     assert state["attempt_count"] == 2
     assert state["cost_upper_bound_usd"] > closure._cost_upper_bound(120)
+
+
+def _install_single_batch_execution_fakes(tmp_path: Path, monkeypatch) -> Path:
+    output = tmp_path / "run"
+    output.mkdir()
+    row = {"canonical_name": "red_hat", "category": "general"}
+    monkeypatch.setattr(closure, "build_manifest", lambda *_args, **_kwargs: {
+        "manifest_fingerprint": "f" * 64,
+        "initial_missing_count": 1,
+        "eligible_translation_count": 1,
+        "explicit_exclusions": [],
+        "batches": [{
+            "batch_id": "0001-test",
+            "input_fingerprint": closure.sv1b.sha256_payload([row]),
+            "rows": [row],
+        }],
+        "projected_cost_upper_bound_usd": 0.1,
+    })
+    monkeypatch.setattr(closure, "_apply_batch", lambda *_args, **_kwargs: {"inserted": 1, "reused": 0})
+    monkeypatch.setattr(
+        closure.sv1b, "_vocabulary_state",
+        lambda _database: ({"blocking_missing_ai_translation_count": 0}, {"blocking_missing_ai_tags": []}),
+    )
+    monkeypatch.setattr(
+        closure.sv1b, "_translation_logical_state",
+        lambda _database: {"count": 1, "fingerprint": "s" * 64},
+    )
+    return output
+
+
+def test_execute_retries_ambiguous_translation_once_before_acceptance(tmp_path: Path, monkeypatch) -> None:
+    output = _install_single_batch_execution_fakes(tmp_path, monkeypatch)
+    provider = _AmbiguousThenClearProvider()
+    result = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
+    )
+    checkpoint = json.loads((output / "localization/localization-llm-checkpoint-private.json").read_text(encoding="utf-8"))
+    state = checkpoint["batches"]["0001-test"]
+    assert provider.calls == 2
+    assert state["attempt_count"] == 2
+    assert state["ambiguity_count"] == 0
+    assert state["translations"][0]["needs_review"] is False
+    assert result["localization_ambiguity_count"] == 0
+
+
+def test_execute_blocks_when_clarification_remains_ambiguous(tmp_path: Path, monkeypatch) -> None:
+    output = _install_single_batch_execution_fakes(tmp_path, monkeypatch)
+    provider = _AlwaysAmbiguousProvider()
+    with pytest.raises(closure.LocalizationClosureError, match="blocked_sv1b_localization_ambiguity"):
+        closure.execute(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+            provider=provider,
+        )
+    checkpoint = json.loads((output / "localization/localization-llm-checkpoint-private.json").read_text(encoding="utf-8"))
+    state = checkpoint["batches"]["0001-test"]
+    assert provider.calls == 2
+    assert state["attempt_count"] == 2
+    assert state["status"] == "blocked_localization_ambiguity"
