@@ -12515,6 +12515,60 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
     ):
         blockers.append("blocked_sv1b_environment_isolation")
 
+    checkpoint_a = _get(summary, "accepted_baseline_checkpoint", {})
+    checkpoint_databases = (
+        _get(checkpoint_a, "primary", {}), _get(checkpoint_a, "replay", {})
+    )
+    if not (
+        isinstance(checkpoint_a, Mapping)
+        and checkpoint_a.get("passed") is True
+        and checkpoint_a.get("checkpoint") == "A_ACCEPTED_BASELINE"
+        and checkpoint_a.get("manifest_fingerprint")
+        == "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f"
+        and checkpoint_a.get("accepted_r2r_snapshot_fingerprint")
+        == "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
+        and checkpoint_a.get("provider_tooling_executed_before_checkpoint") is False
+        and bool(checkpoint_a.get("checkpoint_fingerprint"))
+        and all(
+            isinstance(database, Mapping)
+            and _as_int(_get(database, "accepted_stable_key_reconciliation.missing_accepted_stable_keys", -1), -1) == 0
+            and _as_int(_get(database, "accepted_stable_key_reconciliation.extra_nonderived_stable_keys", -1), -1) == 0
+            and _as_int(_get(database, "accepted_stable_key_reconciliation.accepted_payload_drift", -1), -1) == 0
+            and _as_int(database.get("derived_graph_row_count"), -1) == 0
+            and _as_int(database.get("phase_owned_delta_row_count"), -1) == 0
+            and _as_int(database.get("phase_owned_provider_execution_row_count"), -1) == 0
+            for database in checkpoint_databases
+        )
+    ):
+        blockers.append("blocked_sv1b_accepted_baseline_checkpoint")
+
+    retry1_forensics = _get(summary, "retry1_forensics", {})
+    if not (
+        isinstance(retry1_forensics, Mapping)
+        and retry1_forensics.get("passed") is True
+        and retry1_forensics.get("read_only") is True
+        and retry1_forensics.get("retry1_provider_execution_authorized") is False
+        and _as_int(retry1_forensics.get("payload_drift_row_count"), -1) == 489
+        and _as_int(retry1_forensics.get("accepted_provider_fact_mutation_count"), -1) == 0
+        and _as_int(retry1_forensics.get("stable_identity_change_count"), -1) == 0
+    ):
+        blockers.append("blocked_sv1b_accepted_provider_fact_mutation")
+
+    phase_delta = _get(summary, "primary_phase_delta_checkpoint", {})
+    if not (
+        isinstance(phase_delta, Mapping)
+        and phase_delta.get("passed") is True
+        and phase_delta.get("checkpoint") == "B_PRIMARY_PHASE_DELTA"
+        and _as_int(phase_delta.get("accepted_rows_missing"), -1) == 0
+        and _as_int(phase_delta.get("accepted_stable_identities_changed"), -1) == 0
+        and _as_int(phase_delta.get("accepted_provider_facts_changed"), -1) == 0
+        and _as_int(phase_delta.get("phase_delta_envelope_failure_count"), -1) == 0
+        and phase_delta.get("accepted_baseline_plus_phase_delta_equation_passed") is True
+        and phase_delta.get("retry1_deterministic_transformation_reproduced") is True
+        and bool(phase_delta.get("phase_delta_fingerprint"))
+    ):
+        blockers.append("blocked_sv1b_primary_phase_delta_checkpoint")
+
     hardening = _get(summary, "provider_hardening", {})
     hardening_flags = (
         "persistent_cross_process_spacing_passed",

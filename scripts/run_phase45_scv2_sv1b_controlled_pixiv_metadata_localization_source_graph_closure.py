@@ -14,8 +14,10 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 from typing import Any, Iterable, Mapping
 
@@ -32,6 +34,9 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
     MIN_REQUEST_SPACING_SECONDS,
     PixivMetadataState,
+    QUEUE_METADATA_KIND,
+    SV1B_PHASE_DELTA_ENVELOPE_VERSION,
+    SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION,
     classify_pixiv_metadata_lifecycle,
     is_trusted_complete_pixiv_metadata_record,
     manifest_scoped_outcome_key,
@@ -84,12 +89,22 @@ ACCEPTED_DATABASES = (
 ACCEPTED_OUTPUT = ROOT / ".local_manifests/phase-4.5-scv2-sv1-controlled-scale-promotion-readiness"
 ACCEPTED_STORAGE = ROOT / ".local_test_storage/phase-4.5-scv2-sv1-controlled-scale"
 DEFAULT_OUTPUT = ROOT / ".local_manifests/phase-4.5-scv2-sv1b-pixiv-metadata-localization-source-graph-closure-20260719"
-DEFAULT_PRIMARY_DB = "blombooru_scv2_sv1b_metadata_graph_closure_test_20260719"
-DEFAULT_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260719"
+DEFAULT_PRIMARY_DB = "blombooru_scv2_sv1b_metadata_graph_closure_test_20260721_retry2"
+DEFAULT_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260721_retry2"
 EXPECTED_MEDIA_COUNT = 12_000
 ACCEPTED_R2R_DB = "blombooru_scv2_r2r_dryrun_test_20260710"
 ACCEPTED_R2R_SNAPSHOT_FINGERPRINT = "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
 SV1B_CREDENTIAL_RISK_WAIVER_POLICY = "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
+SUPERSEDED_RETRY1_PRIMARY_DB = "blombooru_scv2_sv1b_metadata_graph_closure_test_20260719_retry1"
+SUPERSEDED_RETRY1_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260719_retry1"
+RETRY1_FORENSIC_PROOF_NAME = "superseded-retry1-forensic-classification-proof-v2.json"
+PRIMARY_PHASE_DELTA_PROOF_NAME = "primary-phase-delta-checkpoint-proof-v2.json"
+APPROVED_DEFAULT_NON_E2E_SKIPS = frozenset({
+    "tests/test_env_safety.py:570",
+    "tests/test_phase38d_i6_staging_copy_retry.py:284",
+    "tests/test_phase38d_i6_staging_copy_retry.py:307",
+    "tests/test_scanner_icloud.py:89",
+})
 ML2_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-ml2-multilingual-identity-candidate-closure-reviewfix-20260715"
 R2R_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-r2r-autonomous-recall-search-closure"
 
@@ -298,6 +313,10 @@ def validate_repository_and_inputs(output: Path) -> dict[str, Any]:
         ).returncode == 0,
         "accepted_manifest_fingerprint": manifest_fingerprint,
         "accepted_scale_database": ACCEPTED_SCALE_DB,
+        "superseded_retry1_primary_database": SUPERSEDED_RETRY1_PRIMARY_DB,
+        "superseded_retry1_replay_database": SUPERSEDED_RETRY1_REPLAY_DB,
+        "superseded_retry1_forensic_only": True,
+        "superseded_retry1_mutation_authorized": False,
         "output_root_validated_before_write": True,
     }
 
@@ -423,10 +442,67 @@ def outcome_for_pair(
     return PAGE_OUTCOME_UNEXPLAINED
 
 
-def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+def open_reason_for_pair(
+    records: list[Mapping[str, Any]],
+    work_id: str,
+    page_index: int,
+    outcome: str,
+) -> str | None:
+    """Return one exact deterministic reason for every non-closed page."""
+
+    if outcome in {
+        PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE,
+        PAGE_OUTCOME_EXACT_TERMINAL,
+        PAGE_OUTCOME_EXACT_GOVERNED_MISMATCH,
+    }:
+        return None
+    exact = [
+        row for row in records
+        if str(row.get("provider") or "pixiv").casefold() == "pixiv"
+        and str(row.get("source_work_id") or "") == work_id
+        and row.get("source_page_index") is not None
+        and int(row["source_page_index"]) == page_index
+    ]
+    statuses = {str(row.get("status") or "") for row in exact}
+    if outcome == PAGE_OUTCOME_CONFLICTING or statuses.intersection({
+        PixivMetadataState.CONFLICT.value,
+        PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value,
+    }):
+        return "conflicting"
+    untrusted_positive = [
+        row for row in exact
+        if classify_pixiv_metadata_lifecycle(row.get("status")) == "complete"
+        and not _is_trusted_exact_complete_record(row, work_id, page_index)
+    ]
+    if untrusted_positive:
+        if any(not isinstance(row.get("raw_metadata_json"), Mapping) or not row.get("raw_metadata_json") for row in untrusted_positive):
+            return "missing_normalized_shape"
+        if any(not isinstance(row.get("provenance"), Mapping) or not row.get("provenance") for row in untrusted_positive):
+            return "missing_trusted_provenance"
+        if any(
+            str(row.get("metadata_kind") or "") == QUEUE_METADATA_KIND
+            and not _stable_identity_matches_exact_page(row, work_id, page_index)
+            for row in untrusted_positive
+        ):
+            return "missing_stable_identity"
+        if any(not str((row.get("provenance") or {}).get("source") or "") for row in untrusted_positive):
+            return "missing_trusted_provenance"
+        return "reopened_untrusted_complete"
+    if not exact or statuses.issubset({
+        PixivMetadataState.CANDIDATE_DETECTED.value,
+        PixivMetadataState.PENDING.value,
+        PixivMetadataState.RETRYABLE.value,
+    }):
+        return "open_unacquired"
+    return "truly_unexplained"
+
+
+def build_candidate_manifests(
+    database: str = ACCEPTED_SCALE_DB,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     manifest = read_jsonl(ACCEPTED_OUTPUT / "scale-selection-manifest.jsonl")
     manifest_keys = [str(row["file_hash"]) for row in manifest]
-    engine = engine_for(ACCEPTED_SCALE_DB)
+    engine = engine_for(database)
     try:
         with engine.connect() as connection:
             media_rows = list(connection.execute(text(
@@ -483,6 +559,9 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
                 for record_id in exact_record_ids
                 for evidence in evidence_by_record.get(record_id, ())
             ]
+            acquisition_state = outcome_for_pair(
+                media_records, work_id, page_index, exact_evidence
+            )
             pages.append({
                 "provider": "pixiv",
                 "stable_work_id": work_id,
@@ -490,8 +569,9 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
                 "media_stable_key": media_hash,
                 "media_safe_label": sha256_payload({"media": media_hash}),
                 "identity_classification": classification,
-                "acquisition_state": outcome_for_pair(
-                    media_records, work_id, page_index, exact_evidence
+                "acquisition_state": acquisition_state,
+                "open_reason": open_reason_for_pair(
+                    media_records, work_id, page_index, acquisition_state
                 ),
                 "checkpoint_key": manifest_scoped_outcome_key(
                     ACCEPTED_MANIFEST_FINGERPRINT, "pixiv", work_id, page_index
@@ -527,6 +607,9 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
 
     candidate_media = {str(row["media_stable_key"]) for row in pages}
     outcome_counts = Counter(str(row["acquisition_state"]) for row in pages)
+    open_reason_counts = Counter(
+        str(row["open_reason"]) for row in pages if row.get("open_reason")
+    )
     closed_page_states = {
         PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE,
         PAGE_OUTCOME_EXACT_TERMINAL,
@@ -564,6 +647,11 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
         "unacquired_page_count": outcome_counts[PAGE_OUTCOME_UNACQUIRED],
         "conflicting_page_count": outcome_counts[PAGE_OUTCOME_CONFLICTING],
         "unexplained_page_count": outcome_counts[PAGE_OUTCOME_UNEXPLAINED],
+        "open_page_reason_counts": dict(sorted(open_reason_counts.items())),
+        "truly_unexplained_page_count": open_reason_counts["truly_unexplained"],
+        "every_open_page_has_exact_reason": sum(open_reason_counts.values()) == sum(
+            count for state, count in outcome_counts.items() if state not in closed_page_states
+        ),
         "candidate_media_with_any_accepted_metadata_record": len(any_accepted_metadata_media),
         "candidate_media_with_exact_page_closure": len(exact_closed_media),
         "candidate_media_with_accepted_but_non_exact_page_evidence": len(any_accepted_metadata_media - exact_closed_media),
@@ -571,10 +659,47 @@ def build_candidate_manifests() -> tuple[list[dict[str, Any]], list[dict[str, An
         "candidate_accounting_passed": len(candidate_media) + non_candidate_count == len(manifest_keys),
         "page_manifest_fingerprint": sha256_payload(pages),
         "work_manifest_fingerprint": sha256_payload(works),
+        "source_database": database,
     }
     if not summary["candidate_accounting_passed"]:
         raise SV1BPreflightError("candidate_accounting_failed")
     return pages, works, summary
+
+
+def build_distinct_work_page_manifest(
+    pages: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, int], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in pages:
+        grouped[(str(row["stable_work_id"]), int(row["requested_page_index"]))].append(row)
+    result: list[dict[str, Any]] = []
+    for (work_id, page_index), rows in sorted(
+        grouped.items(), key=lambda item: (int(item[0][0]), item[0][1])
+    ):
+        states = sorted({str(row["acquisition_state"]) for row in rows})
+        reasons = sorted({str(row["open_reason"]) for row in rows if row.get("open_reason")})
+        result.append({
+            "provider": "pixiv",
+            "stable_work_id": work_id,
+            "requested_page_index": page_index,
+            "media_stable_keys": sorted({str(row["media_stable_key"]) for row in rows}),
+            "acquisition_state": states[0] if len(states) == 1 else "mixed_media_outcomes",
+            "open_reason": reasons[0] if len(reasons) == 1 else (
+                "mixed_exact_media_reasons" if reasons else None
+            ),
+            "media_outcomes": sorted(
+                ({
+                    "media_stable_key": str(row["media_stable_key"]),
+                    "acquisition_state": str(row["acquisition_state"]),
+                    "open_reason": row.get("open_reason"),
+                    "checkpoint_key": str(row["checkpoint_key"]),
+                } for row in rows),
+                key=lambda row: (row["media_stable_key"], row["checkpoint_key"]),
+            ),
+            "page_outcome_inherited_across_media": False,
+            "checkpoint_keys": sorted({str(row["checkpoint_key"]) for row in rows}),
+        })
+    return result
 
 
 def audit_runtime_parser_denominator_rows(media_rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
@@ -1305,6 +1430,541 @@ def prepare_and_audit_r2r_baseline(
     return result
 
 
+def classify_retry1_payload_drift_rows(
+    accepted_rows: Iterable[Mapping[str, Any]],
+    current_rows: Iterable[Mapping[str, Any]],
+    *,
+    accepted_target_media_keys: set[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Classify retry1 payload drift without exposing raw provider values."""
+
+    current_by_key = {
+        str(row.get("provider_record_key") or ""): dict(row) for row in current_rows
+    }
+    ledger: list[dict[str, Any]] = []
+    kind_counts: Counter[str] = Counter()
+    reason_counts: Counter[str] = Counter()
+    raw_field_counts: Counter[str] = Counter()
+    provenance_field_counts: Counter[str] = Counter()
+    provider_fact_mutation_count = 0
+    stable_identity_change_count = 0
+    missing_stable_key_count = 0
+    governed_target_missing_media_reference_count = 0
+    queue_control_raw_fields = {
+        "parser_version", "pixiv_ingestion_state", "parser_evidence",
+        "reused_complete_record_ids", "_sv1b_trust_reclassification",
+        "_sv1b_phase_delta",
+    }
+    stable_fields = (
+        "provider", "provider_record_key", "media_content_key",
+        "source_work_id", "source_page_index",
+    )
+    scalar_provider_fact_fields = (
+        "metadata_kind", "data_type_label", "title", "artist_id", "artist_name",
+        "source_url", "status",
+    )
+    for accepted in accepted_rows:
+        key = str(accepted.get("provider_record_key") or "")
+        current = current_by_key.get(key)
+        if current is None:
+            missing_stable_key_count += 1
+            continue
+        accepted_raw = accepted.get("raw_metadata_json")
+        current_raw = current.get("raw_metadata_json")
+        accepted_raw = dict(accepted_raw) if isinstance(accepted_raw, Mapping) else {}
+        current_raw = dict(current_raw) if isinstance(current_raw, Mapping) else {}
+        accepted_provenance = accepted.get("provenance")
+        current_provenance = current.get("provenance")
+        accepted_provenance = (
+            dict(accepted_provenance) if isinstance(accepted_provenance, Mapping) else {}
+        )
+        current_provenance = (
+            dict(current_provenance) if isinstance(current_provenance, Mapping) else {}
+        )
+        scalar_provider_facts_changed = sorted(
+            field for field in scalar_provider_fact_fields
+            if accepted.get(field) != current.get(field)
+        )
+        if (
+            accepted_raw == current_raw
+            and accepted_provenance == current_provenance
+            and not scalar_provider_facts_changed
+        ):
+            continue
+        raw_changed = sorted(
+            key for key in set(accepted_raw) | set(current_raw)
+            if accepted_raw.get(key) != current_raw.get(key)
+        )
+        provenance_changed = sorted(
+            key for key in set(accepted_provenance) | set(current_provenance)
+            if accepted_provenance.get(key) != current_provenance.get(key)
+        )
+        raw_removed = sorted(set(accepted_raw) - set(current_raw))
+        provenance_removed = sorted(set(accepted_provenance) - set(current_provenance))
+        accepted_media_content_key = accepted.get("media_content_key")
+        accepted_media_reference_target_missing = bool(
+            accepted_target_media_keys is not None
+            and accepted_media_content_key
+            and str(accepted_media_content_key) not in accepted_target_media_keys
+        )
+        effective_accepted_identity = dict(accepted)
+        if accepted_media_reference_target_missing:
+            effective_accepted_identity["media_content_key"] = None
+            governed_target_missing_media_reference_count += 1
+        stable_identity_changed_fields = sorted(
+            field for field in stable_fields
+            if effective_accepted_identity.get(field) != current.get(field)
+        )
+        stable_identity_unchanged = not stable_identity_changed_fields
+        metadata_kind = str(accepted.get("metadata_kind") or "")
+        provider_fact_raw_changes = sorted(
+            field for field in raw_changed if field not in queue_control_raw_fields
+        )
+        accepted_provider_fact_changed = bool(
+            scalar_provider_facts_changed
+            or provider_fact_raw_changes
+            or (metadata_kind != QUEUE_METADATA_KIND and provenance_changed)
+        )
+        if not stable_identity_unchanged:
+            stable_identity_change_count += 1
+        if accepted_provider_fact_changed:
+            provider_fact_mutation_count += 1
+        if (
+            metadata_kind == QUEUE_METADATA_KIND
+            and str(accepted.get("status") or "") == PixivMetadataState.NOT_APPLICABLE.value
+            and set(raw_changed).issubset({"parser_version"})
+            and set(provenance_changed).issubset({"parser_version", "updated_at"})
+        ):
+            reason_code = "refreshed_not_applicable_queue_record"
+        elif metadata_kind == QUEUE_METADATA_KIND:
+            reason_code = "other_phase_owned_queue_reclassification"
+        else:
+            reason_code = "accepted_provider_fact_mutation"
+        kind_label = "|".join((
+            metadata_kind,
+            str(accepted.get("data_type_label") or ""),
+            str(accepted.get("provider") or ""),
+            str(accepted.get("status") or ""),
+        ))
+        kind_counts[kind_label] += 1
+        reason_counts[reason_code] += 1
+        raw_field_counts.update(raw_changed)
+        provenance_field_counts.update(provenance_changed)
+        ledger.append({
+            "provider_record_key": key,
+            "metadata_kind": metadata_kind,
+            "data_type_label": str(accepted.get("data_type_label") or ""),
+            "provider": str(accepted.get("provider") or ""),
+            "status": str(accepted.get("status") or ""),
+            "media_stable_key": accepted.get("media_content_key"),
+            "source_work_id": accepted.get("source_work_id"),
+            "source_page_index": accepted.get("source_page_index"),
+            "stable_identity_unchanged": stable_identity_unchanged,
+            "stable_identity_changed_fields": stable_identity_changed_fields,
+            "accepted_media_reference_target_missing": accepted_media_reference_target_missing,
+            "accepted_media_content_key_fingerprint": (
+                sha256_payload({"media_content_key": accepted_media_content_key})
+                if accepted_media_content_key else None
+            ),
+            "changed_raw_fields": raw_changed,
+            "changed_provenance_fields": provenance_changed,
+            "removed_raw_fields": raw_removed,
+            "removed_provenance_fields": provenance_removed,
+            "accepted_provider_fact_changed": accepted_provider_fact_changed,
+            "accepted_provider_fact_changed_fields": sorted(
+                set(scalar_provider_facts_changed + provider_fact_raw_changes)
+            ),
+            "reclassification_policy": SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION,
+            "reason_code": reason_code,
+            "accepted_raw_fingerprint": sha256_payload(accepted_raw),
+            "current_raw_fingerprint": sha256_payload(current_raw),
+            "accepted_provenance_fingerprint": sha256_payload(accepted_provenance),
+            "current_provenance_fingerprint": sha256_payload(current_provenance),
+            "original_fingerprints_retained_in_private_ledger": True,
+        })
+    aggregate = {
+        "payload_drift_row_count": len(ledger),
+        "missing_accepted_stable_key_count": missing_stable_key_count,
+        "stable_identity_change_count": stable_identity_change_count,
+        "governed_target_missing_media_reference_count": governed_target_missing_media_reference_count,
+        "accepted_provider_fact_mutation_count": provider_fact_mutation_count,
+        "metadata_kind_data_type_provider_status_counts": dict(sorted(kind_counts.items())),
+        "reason_code_counts": dict(sorted(reason_counts.items())),
+        "changed_raw_field_counts": dict(sorted(raw_field_counts.items())),
+        "changed_provenance_field_counts": dict(sorted(provenance_field_counts.items())),
+        "all_rows_phase_owned_queue_kind": bool(ledger) and all(
+            row["metadata_kind"] == QUEUE_METADATA_KIND for row in ledger
+        ),
+        "all_stable_identities_unchanged": stable_identity_change_count == 0,
+        "all_original_fingerprints_retained_in_private_ledger": True,
+        "private_ledger_fingerprint": sha256_payload(ledger),
+    }
+    return ledger, aggregate
+
+
+def classify_superseded_retry1_forensics(output: Path) -> dict[str, Any]:
+    """Freeze and classify the retry1 databases as read-only forensic inputs."""
+
+    if not database_exists(SUPERSEDED_RETRY1_PRIMARY_DB) or not database_exists(
+        SUPERSEDED_RETRY1_REPLAY_DB
+    ):
+        raise SV1BPreflightError("superseded_retry1_database_missing")
+    with engine_for(SUPERSEDED_RETRY1_PRIMARY_DB).connect() as connection:
+        active_writer_or_user_count = int(connection.execute(text(
+            "SELECT COUNT(*) FROM pg_stat_activity "
+            "WHERE datname IN (:primary_database, :replay_database) "
+            "AND pid <> pg_backend_pid()"
+        ), {
+            "primary_database": SUPERSEDED_RETRY1_PRIMARY_DB,
+            "replay_database": SUPERSEDED_RETRY1_REPLAY_DB,
+        }).scalar_one())
+    if active_writer_or_user_count:
+        raise SV1BPreflightError("superseded_retry1_database_still_in_use")
+    accepted_package, accepted_evidence = _accepted_nonderived_package()
+    export_root = output / "superseded-retry1-primary-read-only-export-v2"
+    if export_root.exists():
+        raise SV1BPreflightError("superseded_retry1_forensic_export_already_exists")
+    export_paths = Paths(export_root)
+    export_stable_evidence(export_paths, source_database=SUPERSEDED_RETRY1_PRIMARY_DB)
+    retry1_package = read_json(export_paths.package)
+    ledger, aggregate = classify_retry1_payload_drift_rows(
+        accepted_package["tables"]["source_metadata_records"],
+        retry1_package["tables"]["source_metadata_records"],
+        accepted_target_media_keys=_database_media_keys(SUPERSEDED_RETRY1_PRIMARY_DB),
+    )
+    replay_export_root = output / "superseded-retry1-replay-read-only-export-v2"
+    if replay_export_root.exists():
+        raise SV1BPreflightError("superseded_retry1_forensic_export_already_exists")
+    replay_paths = Paths(replay_export_root)
+    export_stable_evidence(replay_paths, source_database=SUPERSEDED_RETRY1_REPLAY_DB)
+    replay_package = read_json(replay_paths.package)
+    replay_reconciliation = reconcile_stable_evidence_packages(
+        accepted_package,
+        replay_package,
+        _database_media_keys(SUPERSEDED_RETRY1_REPLAY_DB),
+    )
+    write_jsonl(output / "superseded-retry1-payload-drift-ledger-private-v2.jsonl", ledger)
+    result = {
+        "checkpoint_version": "sv1b_superseded_retry1_forensics_v1",
+        "superseded_primary_database": SUPERSEDED_RETRY1_PRIMARY_DB,
+        "superseded_replay_database": SUPERSEDED_RETRY1_REPLAY_DB,
+        "superseded_output_roots": [
+            str(DEFAULT_OUTPUT),
+            str(ROOT / ".local_manifests/phase-4.5-scv2-sv1b-pixiv-metadata-localization-source-graph-closure-20260719-r4"),
+            str(ROOT / ".local_manifests/phase-4.5-scv2-sv1b-pixiv-metadata-localization-source-graph-closure-20260719-r4/resume-waiver-v1-c871f69-20260719-204000"),
+        ],
+        "read_only": True,
+        "database_mutation_count": 0,
+        "active_writer_or_user_count": active_writer_or_user_count,
+        "retry1_provider_execution_authorized": False,
+        "accepted_package_fingerprint": accepted_evidence["filtered_package_fingerprint"],
+        **aggregate,
+        "replay_exact_accepted_package_passed": bool(
+            replay_reconciliation["exact_stable_key_membership_passed"]
+            and int(replay_reconciliation["blocking_failed"]) == 0
+            and int(replay_reconciliation["extra_materialized_count"]) == 0
+        ),
+        "fresh_primary_reproduction_pending": True,
+        "passed": bool(
+            len(ledger) == 489
+            and aggregate["accepted_provider_fact_mutation_count"] == 0
+            and aggregate["stable_identity_change_count"] == 0
+            and aggregate["missing_accepted_stable_key_count"] == 0
+            and aggregate["all_rows_phase_owned_queue_kind"] is True
+        ),
+    }
+    write_json(output / RETRY1_FORENSIC_PROOF_NAME, result)
+    if aggregate["accepted_provider_fact_mutation_count"]:
+        raise SV1BPreflightError("blocked_sv1b_accepted_provider_fact_mutation")
+    if result["passed"] is not True:
+        raise SV1BPreflightError("blocked_sv1b_retry1_forensic_classification")
+    return result
+
+
+def _derived_graph_row_counts(database: str) -> dict[str, int]:
+    tables = (
+        "blombooru_source_concept_resolution_runs", "blombooru_source_concept_signals",
+        "blombooru_source_concepts", "blombooru_source_concept_aliases",
+        "blombooru_source_concept_evidence", "blombooru_source_concept_signal_links",
+        "blombooru_source_concept_search_index", "blombooru_source_concept_fallback_search_index",
+    )
+    engine = engine_for(database)
+    try:
+        with engine.connect() as connection:
+            return {
+                table: int(connection.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar() or 0)
+                for table in tables
+            }
+    finally:
+        engine.dispose()
+
+
+def create_accepted_baseline_checkpoint(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    """Persist immutable Checkpoint A before any primary-only phase delta."""
+
+    validate_owned_output_root(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
+    checkpoint_path = output / "accepted-baseline-checkpoint-proof.json"
+    if checkpoint_path.exists():
+        raise SV1BPreflightError("accepted_baseline_checkpoint_already_exists")
+    required = (
+        "accepted-nonderived-evidence-proof.json", "localization-baseline-proof.json",
+        "r2r-exact-remap-audit.json", RETRY1_FORENSIC_PROOF_NAME,
+    )
+    if any(not (output / name).is_file() for name in required):
+        raise SV1BPreflightError("accepted_baseline_checkpoint_prerequisite_missing")
+    package, package_evidence = _accepted_nonderived_package()
+    database_proofs: dict[str, Any] = {}
+    for label, database in (("primary", primary_database), ("replay", replay_database)):
+        paths = Paths(output / f"accepted-baseline-checkpoint-{label}-export")
+        if paths.output.exists():
+            raise SV1BPreflightError("accepted_baseline_export_already_exists")
+        export_stable_evidence(paths, source_database=database)
+        current_package = read_json(paths.package)
+        reconciliation = reconcile_stable_evidence_packages(
+            package, current_package, _database_media_keys(database)
+        )
+        graph_counts = _derived_graph_row_counts(database)
+        phase_delta_count = sum(
+            1 for row in current_package["tables"]["source_metadata_records"]
+            if isinstance(row.get("raw_metadata_json"), Mapping)
+            and "_sv1b_phase_delta" in row["raw_metadata_json"]
+        )
+        database_proofs[label] = {
+            "database": database,
+            "media_tag_logical_state": media_tag_logical_fingerprint(database),
+            "accepted_nonderived_package_fingerprint": sha256_payload(current_package),
+            "accepted_stable_key_reconciliation": {
+                "missing_accepted_stable_keys": int(reconciliation["blocking_failed"]),
+                "extra_nonderived_stable_keys": int(reconciliation["extra_materialized_count"]),
+                "accepted_payload_drift": int(reconciliation["blocking_failed"]),
+                "exact": reconciliation["exact_stable_key_membership_passed"] is True,
+            },
+            "translation_logical_state": _translation_logical_state(database),
+            "derived_graph_row_counts": graph_counts,
+            "derived_graph_row_count": sum(graph_counts.values()),
+            "phase_owned_delta_row_count": phase_delta_count,
+            "phase_owned_provider_execution_row_count": 0,
+        }
+    accepted_media = media_tag_logical_fingerprint(ACCEPTED_SCALE_DB)
+    accepted_translation = _translation_logical_state(ACCEPTED_ML1_DB)
+    r2r = read_json(output / "r2r-exact-remap-audit.json")
+    r2r_input_fingerprint = sha256_payload({
+        "graph_inputs": r2r["graph_inputs"],
+        "primary_pair_membership": r2r["primary"]["pair_remap_membership_fingerprint"],
+        "replay_pair_membership": r2r["replay"]["pair_remap_membership_fingerprint"],
+        "accepted_snapshot": r2r["primary"]["accepted_snapshot_fingerprint"],
+    })
+    exact = bool(
+        database_proofs["primary"]["media_tag_logical_state"]["fingerprint"]
+        == database_proofs["replay"]["media_tag_logical_state"]["fingerprint"]
+        == accepted_media["fingerprint"]
+        and database_proofs["primary"]["translation_logical_state"]
+        == database_proofs["replay"]["translation_logical_state"]
+        == accepted_translation
+        and all(
+            proof["accepted_stable_key_reconciliation"]["exact"]
+            and proof["derived_graph_row_count"] == 0
+            and proof["phase_owned_delta_row_count"] == 0
+            and proof["phase_owned_provider_execution_row_count"] == 0
+            for proof in database_proofs.values()
+        )
+        and r2r["primary_replay_logical_remap_equal"] is True
+        and r2r["primary"]["accepted_snapshot_fingerprint"] == ACCEPTED_R2R_SNAPSHOT_FINGERPRINT
+    )
+    result = {
+        "checkpoint": "A_ACCEPTED_BASELINE",
+        "checkpoint_version": "sv1b_accepted_baseline_checkpoint_v1",
+        "manifest_fingerprint": ACCEPTED_MANIFEST_FINGERPRINT,
+        "accepted_media_tag_fingerprint": accepted_media["fingerprint"],
+        "accepted_nonderived_evidence_fingerprint": package_evidence["filtered_package_fingerprint"],
+        "accepted_translation_fingerprint": accepted_translation["fingerprint"],
+        "accepted_r2r_snapshot_fingerprint": ACCEPTED_R2R_SNAPSHOT_FINGERPRINT,
+        "accepted_r2r_input_fingerprint": r2r_input_fingerprint,
+        "primary": database_proofs["primary"],
+        "replay": database_proofs["replay"],
+        "provider_tooling_executed_before_checkpoint": False,
+        "immutable_after_write": True,
+        "passed": exact,
+    }
+    result["checkpoint_fingerprint"] = sha256_payload(result)
+    write_json(checkpoint_path, result)
+    if not exact:
+        raise SV1BPreflightError("blocked_sv1b_accepted_baseline_checkpoint")
+    return result
+
+
+def audit_primary_phase_delta(
+    output: Path,
+    *,
+    primary_database: str,
+) -> dict[str, Any]:
+    """Prove Checkpoint B as accepted baseline plus a governed primary delta."""
+
+    checkpoint_a = read_json(output / "accepted-baseline-checkpoint-proof.json")
+    forensics = read_json(output / RETRY1_FORENSIC_PROOF_NAME)
+    accepted, evidence = _accepted_nonderived_package()
+    paths = Paths(output / "primary-phase-delta-checkpoint-export-v2")
+    if paths.output.exists():
+        raise SV1BPreflightError("primary_phase_delta_export_already_exists")
+    export_stable_evidence(paths, source_database=primary_database)
+    current = read_json(paths.package)
+    target_media_keys = _database_media_keys(primary_database)
+
+    def normalize_accepted_target(row: Mapping[str, Any]) -> dict[str, Any]:
+        normalized = dict(row)
+        content_key = normalized.get("media_content_key")
+        if content_key and str(content_key) not in target_media_keys:
+            normalized["media_content_key"] = None
+        return normalized
+
+    normalized_accepted_tables = {
+        table: [normalize_accepted_target(row) for row in rows]
+        for table, rows in accepted["tables"].items()
+    }
+    accepted_records = {
+        str(row.get("provider_record_key") or ""): dict(row)
+        for row in normalized_accepted_tables["source_metadata_records"]
+    }
+    current_records = {
+        str(row.get("provider_record_key") or ""): dict(row)
+        for row in current["tables"]["source_metadata_records"]
+    }
+    missing_keys = sorted(set(accepted_records) - set(current_records))
+    added_keys = sorted(set(current_records) - set(accepted_records))
+    modified_ledger: list[dict[str, Any]] = []
+    provider_fact_mutations = 0
+    stable_identity_changes = 0
+    envelope_failures = 0
+    reason_counts: Counter[str] = Counter()
+    stable_fields = (
+        "provider", "provider_record_key", "media_content_key",
+        "source_work_id", "source_page_index",
+    )
+    for key in sorted(set(accepted_records).intersection(current_records)):
+        before = accepted_records[key]
+        after = current_records[key]
+        if canonical_json(before) == canonical_json(after):
+            continue
+        stable_unchanged = all(before.get(field) == after.get(field) for field in stable_fields)
+        if not stable_unchanged:
+            stable_identity_changes += 1
+        before_raw = before.get("raw_metadata_json")
+        after_raw = after.get("raw_metadata_json")
+        before_raw = dict(before_raw) if isinstance(before_raw, Mapping) else {}
+        after_raw = dict(after_raw) if isinstance(after_raw, Mapping) else {}
+        before_provenance = before.get("provenance")
+        before_provenance = dict(before_provenance) if isinstance(before_provenance, Mapping) else {}
+        envelope = after_raw.get("_sv1b_phase_delta")
+        envelope = envelope if isinstance(envelope, Mapping) else {}
+        kind = str(before.get("metadata_kind") or "")
+        scalar_fact_fields = ("title", "artist_id", "artist_name", "source_url", "data_type_label")
+        provider_fact_changed = bool(
+            kind != QUEUE_METADATA_KIND
+            or any(before.get(field) != after.get(field) for field in scalar_fact_fields)
+        )
+        if provider_fact_changed:
+            provider_fact_mutations += 1
+        envelope_valid = bool(
+            kind == QUEUE_METADATA_KIND
+            and envelope.get("envelope_version") == SV1B_PHASE_DELTA_ENVELOPE_VERSION
+            and envelope.get("original_values_recoverable") is True
+            and envelope.get("accepted_stable_identity_unchanged") is True
+            and envelope.get("original_raw_metadata_fingerprint") == sha256_payload(before_raw)
+            and envelope.get("original_provenance_fingerprint") == sha256_payload(before_provenance)
+            and envelope.get("original_raw_metadata_json") == before_raw
+            and envelope.get("original_provenance") == before_provenance
+        )
+        if not envelope_valid:
+            envelope_failures += 1
+        reason = str(envelope.get("reason_code") or "missing_phase_delta_reason")
+        reason_counts[reason] += 1
+        modified_ledger.append({
+            "provider_record_key": key,
+            "metadata_kind": kind,
+            "stable_identity_unchanged": stable_unchanged,
+            "accepted_provider_fact_changed": provider_fact_changed,
+            "phase_delta_envelope_valid": envelope_valid,
+            "reason_code": reason,
+            "before_fingerprint": sha256_payload(before),
+            "after_fingerprint": sha256_payload(after),
+        })
+    accepted_missing_other = 0
+    phase_added_other = 0
+    for table, accepted_rows in normalized_accepted_tables.items():
+        if table == "source_metadata_records":
+            continue
+        accepted_counter = Counter(canonical_json(row) for row in accepted_rows)
+        current_counter = Counter(canonical_json(row) for row in current["tables"][table])
+        accepted_missing_other += sum((accepted_counter - current_counter).values())
+        phase_added_other += sum((current_counter - accepted_counter).values())
+    retry1_keys = {
+        str(row["provider_record_key"])
+        for row in read_jsonl(output / "superseded-retry1-payload-drift-ledger-private-v2.jsonl")
+    }
+    fresh_reason_by_key = {
+        str(row["provider_record_key"]): str(row["reason_code"]) for row in modified_ledger
+    }
+    reproduced_retry1 = bool(
+        len(retry1_keys) == 489
+        and retry1_keys.issubset(fresh_reason_by_key)
+        and all(
+            fresh_reason_by_key[key] == "refreshed_not_applicable_queue_record"
+            for key in retry1_keys
+        )
+    )
+    current_count = sum(len(rows) for rows in current["tables"].values())
+    accepted_count = sum(len(rows) for rows in normalized_accepted_tables.values())
+    phase_rows_added = len(added_keys) + phase_added_other
+    accepted_provider_fact_mutations = provider_fact_mutations + accepted_missing_other
+    equation = current_count == accepted_count - len(missing_keys) - accepted_missing_other + phase_rows_added
+    write_jsonl(output / "primary-phase-delta-ledger-private-v2.jsonl", modified_ledger)
+    result = {
+        "checkpoint": "B_PRIMARY_PHASE_DELTA",
+        "checkpoint_version": "sv1b_primary_phase_delta_checkpoint_v1",
+        "accepted_baseline_checkpoint_fingerprint": checkpoint_a["checkpoint_fingerprint"],
+        "accepted_baseline_row_count": accepted_count,
+        "accepted_rows_missing": len(missing_keys) + accepted_missing_other,
+        "accepted_stable_identities_changed": stable_identity_changes,
+        "accepted_provider_facts_changed": accepted_provider_fact_mutations,
+        "phase_owned_rows_added": phase_rows_added,
+        "phase_owned_queue_rows_added": len(added_keys),
+        "phase_owned_queue_rows_modified": len(modified_ledger),
+        "phase_delta_envelope_failure_count": envelope_failures,
+        "before_fingerprint": evidence["filtered_package_fingerprint"],
+        "target_normalized_before_fingerprint": sha256_payload(normalized_accepted_tables),
+        "after_fingerprint": sha256_payload(current),
+        "reason_code_counts": dict(sorted(reason_counts.items())),
+        "accepted_baseline_plus_phase_delta_equation_passed": equation,
+        "retry1_deterministic_transformation_reproduced": reproduced_retry1,
+        "retry1_payload_drift_count": int(forensics["payload_drift_row_count"]),
+        "provider_request_count": 0,
+        "provider_attempt_count": 0,
+        "passed": bool(
+            not missing_keys
+            and accepted_missing_other == 0
+            and stable_identity_changes == 0
+            and accepted_provider_fact_mutations == 0
+            and envelope_failures == 0
+            and equation
+            and reproduced_retry1
+        ),
+    }
+    result["phase_delta_fingerprint"] = sha256_payload(result)
+    write_json(output / PRIMARY_PHASE_DELTA_PROOF_NAME, result)
+    if accepted_provider_fact_mutations:
+        raise SV1BPreflightError("blocked_sv1b_accepted_provider_fact_mutation")
+    if result["passed"] is not True:
+        raise SV1BPreflightError("blocked_sv1b_primary_phase_delta_checkpoint")
+    return result
+
+
 def queue_provider_manifest(
     output: Path,
     *,
@@ -1316,6 +1976,12 @@ def queue_provider_manifest(
     )
     if not (output / "r2r-exact-remap-audit.json").is_file():
         raise SV1BPreflightError("r2r_exact_remap_audit_missing")
+    checkpoint_a_path = output / "accepted-baseline-checkpoint-proof.json"
+    forensic_path = output / RETRY1_FORENSIC_PROOF_NAME
+    if not checkpoint_a_path.is_file() or read_json(checkpoint_a_path).get("passed") is not True:
+        raise SV1BPreflightError("accepted_baseline_checkpoint_missing_or_failed")
+    if not forensic_path.is_file() or read_json(forensic_path).get("passed") is not True:
+        raise SV1BPreflightError("superseded_retry1_forensics_missing_or_failed")
     parser_audit_path = output / "runtime-parser-denominator-proof.json"
     if not parser_audit_path.is_file() or read_json(parser_audit_path).get("passed") is not True:
         raise SV1BPreflightError("runtime_parser_denominator_proof_missing_or_failed")
@@ -1333,12 +1999,35 @@ def queue_provider_manifest(
         timeout=120,
         phase_manifest_fingerprint=ACCEPTED_MANIFEST_FINGERPRINT,
     )
-    queue_summary = ingestion_runner.run(args)
+    queue_artifacts = (
+        provider_output / "queue-summary.json",
+        provider_output / "exact-distinct-work-manifest.json",
+        provider_output / "exact-conflict-resolution-manifest.json",
+    )
+    existing_queue_artifact_count = sum(path.is_file() for path in queue_artifacts)
+    if existing_queue_artifact_count not in {0, len(queue_artifacts)}:
+        raise SV1BPreflightError("partial_provider_queue_materialization_detected")
+    queue_summary = (
+        read_json(provider_output / "queue-summary.json")
+        if existing_queue_artifact_count == len(queue_artifacts)
+        else ingestion_runner.run(args)
+    )
+    pages, work_rows, candidate_summary = build_candidate_manifests(primary_database)
+    distinct_work_pages = build_distinct_work_page_manifest(pages)
+    write_jsonl(output / "candidate-page-media-manifest-private.jsonl", pages)
+    write_jsonl(output / "distinct-work-page-acquisition-manifest-private.jsonl", distinct_work_pages)
+    write_jsonl(output / "distinct-work-acquisition-manifest-private.jsonl", work_rows)
+    write_json(output / "candidate-manifest-summary.json", candidate_summary)
+    if (
+        candidate_summary["truly_unexplained_page_count"] != 0
+        or candidate_summary["every_open_page_has_exact_reason"] is not True
+    ):
+        raise SV1BPreflightError("blocked_sv1b_open_page_reason_incomplete")
+    phase_delta = audit_primary_phase_delta(output, primary_database=primary_database)
     main_manifest = read_json(provider_output / "exact-distinct-work-manifest.json")
     conflict_manifest = read_json(provider_output / "exact-conflict-resolution-manifest.json")
     actual_main = {str(value) for value in main_manifest.get("work_ids") or ()}
     actual_conflict = {str(value) for value in conflict_manifest.get("work_ids") or ()}
-    work_rows = read_jsonl(output / "distinct-work-acquisition-manifest-private.jsonl")
     accepted_work_universe = {str(row["stable_work_id"]) for row in work_rows}
     engine = engine_for(primary_database)
     try:
@@ -1392,11 +2081,21 @@ def queue_provider_manifest(
         "exact_open_work_membership_passed": not (
             missing_main or extra_main or missing_conflict or extra_conflict
             or outside_accepted_universe or main_conflict_overlap
+            or candidate_summary["truly_unexplained_page_count"]
+            or candidate_summary["every_open_page_has_exact_reason"] is not True
+            or phase_delta["passed"] is not True
         ),
         "provider_request_count": 0,
         "provider_attempt_count": 0,
         "media_download_count": 0,
         "queue_state_counts": queue_summary["queue_state_counts"],
+        "open_page_reason_counts": candidate_summary["open_page_reason_counts"],
+        "truly_unexplained_page_count": candidate_summary["truly_unexplained_page_count"],
+        "every_open_page_has_exact_reason": candidate_summary["every_open_page_has_exact_reason"],
+        "distinct_work_page_manifest_count": len(distinct_work_pages),
+        "distinct_work_page_manifest_fingerprint": sha256_payload(distinct_work_pages),
+        "primary_phase_delta_checkpoint_fingerprint": phase_delta["phase_delta_fingerprint"],
+        "accepted_provider_facts_changed": phase_delta["accepted_provider_facts_changed"],
         "main_manifest_fingerprint": ingestion_runner.executable_manifest_fingerprint(main_manifest),
         "conflict_manifest_fingerprint": ingestion_runner.executable_manifest_fingerprint(conflict_manifest),
     }
@@ -1421,6 +2120,230 @@ def queue_provider_manifest(
     return result
 
 
+def _run_pre_network_validation_command(
+    output: Path,
+    label: str,
+    argv: Iterable[str],
+    *,
+    timeout_seconds: int = 1200,
+) -> tuple[dict[str, Any], str]:
+    command = [str(value) for value in argv]
+    environment = os.environ.copy()
+    environment["PYTHONUTF8"] = "1"
+    started = time.monotonic()
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_seconds,
+        check=False,
+    )
+    combined = completed.stdout + "\n" + completed.stderr
+    log_path = output / "pre-network-validation-logs-private" / f"{label}.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(combined, encoding="utf-8")
+    lines = [line.strip() for line in combined.splitlines() if line.strip()]
+    summary = next(
+        (line for line in reversed(lines) if " passed" in line or " failed" in line),
+        lines[-1] if lines else "no_output",
+    )
+    return ({
+        "label": label,
+        "passed": completed.returncode == 0,
+        "return_code": completed.returncode,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "command_fingerprint": sha256_payload(command),
+        "private_log_fingerprint": sha256_payload(combined),
+        "safe_result_summary": summary,
+    }, combined)
+
+
+def run_full_pre_network_validation(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    """Run and persist the complete no-provider validation gate for SV1B."""
+
+    proof_path = output / "full-pre-network-validation-proof.json"
+    if proof_path.exists():
+        raise SV1BPreflightError("full_pre_network_validation_proof_already_exists")
+    if not (output / "provider-queue-manifest-proof.json").is_file():
+        raise SV1BPreflightError("provider_queue_manifest_proof_missing")
+    provider_tooling_artifacts = (
+        output / "provider-hardening-preflight.json",
+        output / "provider" / "execution-summary.json",
+        output / "provider" / "acquisition-checkpoint.json",
+    )
+    if any(path.exists() for path in provider_tooling_artifacts):
+        raise SV1BPreflightError("provider_tooling_executed_before_validation")
+
+    head_before = git("rev-parse", "HEAD")
+    diff_before = sha256_payload(git("diff", "--no-ext-diff", "--binary"))
+    python = sys.executable
+    commands: dict[str, dict[str, Any]] = {}
+    outputs: dict[str, str] = {}
+    command_specs = {
+        "changed_python_py_compile": (
+            python, "-m", "py_compile",
+            "backend/app/services/pixiv_metadata_ingestion_service.py",
+            "scripts/run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.py",
+            "scripts/phase_contracts/contract_checks.py",
+            "scripts/phase_contracts/contract_registry.py",
+        ),
+        "focused_stage_aware_tests": (
+            python, "-m", "pytest",
+            "tests/test_phase45_scv2_sv1b_preflight.py",
+            "tests/test_pixiv_metadata_ingestion_service.py",
+            "tests/test_phase45_scv2_sv1b_localization_closure.py",
+            "tests/test_phase45_scv2_sv1b_manual_acceptance_harness.py",
+            "tests/test_phase_contracts.py", "-q",
+        ),
+        "affected_regressions": (
+            python, "-m", "pytest",
+            "tests/test_phase45_scv2_ml1_multilingual_alias_source_metadata_closure.py",
+            "tests/test_phase45_scv2_r2r_autonomous_recall_search_closure.py",
+            "tests/test_phase45_scv2_ml2_multilingual_identity_candidate_closure.py",
+            "tests/test_phase45_scv2_sv1_controlled_scale_promotion_readiness.py", "-q",
+        ),
+        "environment_specific_profiles": (
+            python, "-m", "pytest",
+            "tests/test_env_safety.py", "tests/test_python_env_preflight.py",
+            "tests/test_config_precedence.py", "-q", "-ra",
+        ),
+        "full_default_non_e2e": (python, "-m", "pytest", "tests", "-q", "-ra"),
+    }
+    for label, argv in command_specs.items():
+        commands[label], outputs[label] = _run_pre_network_validation_command(
+            output, label, argv
+        )
+
+    full_output = outputs["full_default_non_e2e"]
+    counts_match = re.search(
+        r"(?P<passed>\d+) passed, (?P<skipped>\d+) skipped(?:, (?P<warnings>\d+) warnings)? in ",
+        full_output,
+    )
+    observed_skips = {
+        f"{match.group(1).replace(chr(92), '/')}:{match.group(2)}"
+        for match in re.finditer(r"SKIPPED \[\d+\] ([^:\r\n]+):(\d+):", full_output)
+    }
+    unexplained_skips = sorted(observed_skips - APPROVED_DEFAULT_NON_E2E_SKIPS)
+    missing_approved_skips = sorted(APPROVED_DEFAULT_NON_E2E_SKIPS - observed_skips)
+
+    invalid_json_files: list[str] = []
+    json_file_count = 0
+    for path in sorted(output.rglob("*.json"), key=lambda item: str(item).casefold()):
+        json_file_count += 1
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            invalid_json_files.append(sha256_payload(str(path.relative_to(output))))
+    diff_check = subprocess.run(
+        ["git", "diff", "--check"], cwd=ROOT, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", check=False,
+    )
+
+    queue = read_json(output / "provider-queue-manifest-proof.json")
+    open_work_count = int(queue["actual_open_distinct_work_count"])
+    with engine_for(primary_database).connect() as connection:
+        primary_size = int(connection.execute(
+            text("SELECT pg_database_size(CAST(:database_name AS text))"),
+            {"database_name": primary_database},
+        ).scalar_one())
+        replay_size = int(connection.execute(
+            text("SELECT pg_database_size(CAST(:database_name AS text))"),
+            {"database_name": replay_database},
+        ).scalar_one())
+    disk = shutil.disk_usage(output)
+    required_free_bytes = max(4 * 1024**3, 2 * (primary_size + replay_size))
+    runtime_capacity = {
+        "open_distinct_work_count": open_work_count,
+        "minimum_spacing_seconds": MIN_REQUEST_SPACING_SECONDS,
+        "one_attempt_minimum_spacing_bound_seconds": int(
+            open_work_count * MIN_REQUEST_SPACING_SECONDS
+        ),
+        "three_attempt_maximum_spacing_bound_seconds": int(
+            open_work_count * 3 * MIN_REQUEST_SPACING_SECONDS
+        ),
+        "finite_subprocess_timeout_seconds": 120,
+        "three_attempt_timeout_inclusive_upper_bound_seconds": int(
+            open_work_count * 3 * (120 + MIN_REQUEST_SPACING_SECONDS)
+        ),
+        "primary_database_size_bytes": primary_size,
+        "replay_database_size_bytes": replay_size,
+        "local_disk_free_bytes": int(disk.free),
+        "required_free_bytes": required_free_bytes,
+        "capacity_preflight_passed": int(disk.free) >= required_free_bytes,
+    }
+    runtime_capacity["proof_fingerprint"] = sha256_payload(runtime_capacity)
+    write_json(output / "runtime-and-capacity-preflight-proof.json", runtime_capacity)
+
+    head_after = git("rev-parse", "HEAD")
+    diff_after = sha256_payload(git("diff", "--no-ext-diff", "--binary"))
+    commands_passed = all(item["passed"] is True for item in commands.values())
+    exact_skip_membership = bool(
+        counts_match
+        and int(counts_match.group("skipped")) == len(APPROVED_DEFAULT_NON_E2E_SKIPS)
+        and not unexplained_skips
+        and not missing_approved_skips
+    )
+    result = {
+        "validation_version": "sv1b_full_pre_network_validation_v1",
+        "head": head_before,
+        "diff_fingerprint": diff_before,
+        "python_executable": sys.executable,
+        "python_version": sys.version.split()[0],
+        "commands": commands,
+        "changed_python_py_compile_passed": commands["changed_python_py_compile"]["passed"],
+        "focused_stage_aware_tests_passed": commands["focused_stage_aware_tests"]["passed"],
+        "affected_regressions_passed": commands["affected_regressions"]["passed"],
+        "full_default_non_e2e_passed": commands["full_default_non_e2e"]["passed"],
+        "environment_specific_profiles_passed": commands["environment_specific_profiles"]["passed"],
+        "exact_approved_skip_membership_passed": exact_skip_membership,
+        "approved_skip_membership": sorted(APPROVED_DEFAULT_NON_E2E_SKIPS),
+        "observed_skip_membership": sorted(observed_skips),
+        "unexplained_skip_count": len(unexplained_skips),
+        "missing_approved_skip_count": len(missing_approved_skips),
+        "full_default_non_e2e_counts": {
+            "passed": int(counts_match.group("passed")) if counts_match else None,
+            "skipped": int(counts_match.group("skipped")) if counts_match else None,
+            "warnings": int(counts_match.group("warnings") or 0) if counts_match else None,
+        },
+        "failed_test_count": sum(
+            1 for key, item in commands.items()
+            if key != "changed_python_py_compile" and item["passed"] is not True
+        ),
+        "json_file_count": json_file_count,
+        "invalid_json_file_count": len(invalid_json_files),
+        "invalid_json_safe_labels": invalid_json_files,
+        "json_parse_passed": not invalid_json_files,
+        "git_diff_check_passed": diff_check.returncode == 0,
+        "candidate_unchanged_during_validation": (
+            head_before == head_after and diff_before == diff_after
+        ),
+        "provider_tooling_executed_before_validation": False,
+        "runtime_and_capacity_preflight_passed": runtime_capacity["capacity_preflight_passed"],
+    }
+    result["passed"] = bool(
+        commands_passed
+        and exact_skip_membership
+        and result["json_parse_passed"]
+        and result["git_diff_check_passed"]
+        and result["candidate_unchanged_during_validation"]
+        and result["runtime_and_capacity_preflight_passed"]
+    )
+    result["validation_fingerprint"] = sha256_payload(result)
+    write_json(proof_path, result)
+    if result["passed"] is not True:
+        raise SV1BPreflightError("blocked_sv1b_full_pre_network_validation")
+    return result
+
+
 def execute_provider_manifest(
     output: Path,
     *,
@@ -1433,6 +2356,29 @@ def execute_provider_manifest(
     queue_proof = read_json(output / "provider-queue-manifest-proof.json")
     if queue_proof.get("exact_open_work_membership_passed") is not True:
         raise SV1BPreflightError("provider_queue_manifest_proof_missing_or_failed")
+    validation_path = output / "full-pre-network-validation-proof.json"
+    if not validation_path.is_file():
+        raise SV1BPreflightError("full_pre_network_validation_proof_missing")
+    validation = read_json(validation_path)
+    required_validation_flags = (
+        "changed_python_py_compile_passed",
+        "focused_stage_aware_tests_passed",
+        "affected_regressions_passed",
+        "full_default_non_e2e_passed",
+        "exact_approved_skip_membership_passed",
+        "environment_specific_profiles_passed",
+        "json_parse_passed",
+        "git_diff_check_passed",
+    )
+    if not (
+        validation.get("passed") is True
+        and validation.get("head") == git("rev-parse", "HEAD")
+        and validation.get("provider_tooling_executed_before_validation") is False
+        and int(validation.get("failed_test_count") or 0) == 0
+        and int(validation.get("unexplained_skip_count") or 0) == 0
+        and all(validation.get(flag) is True for flag in required_validation_flags)
+    ):
+        raise SV1BPreflightError("full_pre_network_validation_proof_failed")
     redaction = read_json(output / "waiver-aware-secret-redaction-scan-proof.json")
     if not (
         redaction.get("passed") is True
@@ -1442,11 +2388,24 @@ def execute_provider_manifest(
     ):
         raise SV1BPreflightError("blocked_sv1b_credential_redaction_scan")
     gate = provider_gate_preflight()
+    write_json(output / "provider-hardening-preflight.json", gate)
     if gate.get("passed") is not True:
         raise SV1BPreflightError("blocked_sv1b_provider_authentication")
+    provider_execution_root = output / "provider-execution-checkpoint-r1"
+    if provider_execution_root.exists():
+        raise SV1BPreflightError("provider_execution_checkpoint_root_already_exists")
+    provider_execution_root.mkdir(parents=True, exist_ok=False)
+    for name in (
+        "queue-summary.json", "exact-distinct-work-manifest.json",
+        "exact-conflict-resolution-manifest.json",
+    ):
+        source = output / "provider" / name
+        if not source.is_file():
+            raise SV1BPreflightError(f"provider_queue_artifact_missing:{name}")
+        shutil.copy2(source, provider_execution_root / name)
     args = SimpleNamespace(
         database=primary_database,
-        output_dir=output / "provider",
+        output_dir=provider_execution_root,
         execute=True,
         accept_local_credential_risk=True,
         credential_risk_waiver_policy=SV1B_CREDENTIAL_RISK_WAIVER_POLICY,
@@ -1493,7 +2452,8 @@ def execute_provider_manifest(
         "redacted_authentication_canary": redacted_canary,
         "operation_counts": summary.get("operation_counts") or {},
         "acquisition_execution": summary.get("acquisition_execution") or {},
-        "provider_raw_execution_summary_private": str(output / "provider" / "execution-summary.json"),
+        "provider_execution_checkpoint_root": str(provider_execution_root),
+        "provider_raw_execution_summary_private": str(provider_execution_root / "execution-summary.json"),
     }
     write_json(output / "provider-execution-proof.json", result)
     return result
@@ -3082,8 +4042,9 @@ def main() -> int:
         "--stage",
         choices=(
             "inventory", "prepare-databases", "import-accepted-evidence",
-            "localization-baseline", "r2r-baseline-audit",
-            "queue-provider",
+            "localization-baseline", "r2r-baseline-audit", "retry1-forensics",
+            "accepted-baseline-checkpoint",
+            "queue-provider", "pre-network-validation", "redaction-scan",
             "execute-provider", "audit-acquisition-package", "localization-closure",
             "import-acquired-replay",
             "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph",
@@ -3097,7 +4058,9 @@ def main() -> int:
     args = parser.parse_args()
     output = args.output.resolve()
     resume_stage = args.stage in {
-        "import-accepted-evidence", "localization-baseline", "r2r-baseline-audit", "queue-provider",
+        "import-accepted-evidence", "localization-baseline", "r2r-baseline-audit",
+        "retry1-forensics", "accepted-baseline-checkpoint", "queue-provider",
+        "pre-network-validation", "redaction-scan",
         "execute-provider", "audit-acquisition-package", "localization-closure",
         "import-acquired-replay",
         "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph",
@@ -3118,7 +4081,14 @@ def main() -> int:
     immutable_before = immutable_input_fingerprints()
     runtime_parser_denominator = audit_runtime_parser_denominator()
     pages, works, candidates = build_candidate_manifests()
-    provider_gate = provider_gate_preflight()
+    provider_gate = {
+        "passed": False,
+        "provider_tooling_executed": False,
+        "profile_inspected": False,
+        "reason": "deferred_until_checkpoint_a_forensics_phase_delta_and_validation_pass",
+        "provider_request_count": 0,
+        "provider_attempt_count": 0,
+    }
     immutable_after = immutable_input_fingerprints()
     immutable_proof = {
         "before": immutable_before,
@@ -3134,9 +4104,13 @@ def main() -> int:
         output.mkdir(parents=True, exist_ok=False)
         write_json(output / "run-identity.json", {"phase": PHASE, **repository})
     write_jsonl(output / "candidate-page-media-manifest-private.jsonl", pages)
+    write_jsonl(
+        output / "distinct-work-page-acquisition-manifest-private.jsonl",
+        build_distinct_work_page_manifest(pages),
+    )
     write_jsonl(output / "distinct-work-acquisition-manifest-private.jsonl", works)
     write_json(output / "candidate-manifest-summary.json", candidates)
-    write_json(output / "provider-hardening-preflight.json", provider_gate)
+    write_json(output / "provider-tooling-deferred-proof.json", provider_gate)
     write_json(output / "immutable-input-proof.json", immutable_proof)
     write_json(output / "runtime-parser-denominator-proof.json", runtime_parser_denominator)
     environment_isolation = None
@@ -3155,7 +4129,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"localization-baseline", "r2r-baseline-audit", "retry1-forensics", "accepted-baseline-checkpoint", "queue-provider", "pre-network-validation", "redaction-scan", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         accepted_evidence = read_json(output / "accepted-nonderived-evidence-proof.json")
     localization_baseline = None
     if args.stage == "localization-baseline":
@@ -3164,7 +4138,7 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"r2r-baseline-audit", "queue-provider", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"r2r-baseline-audit", "retry1-forensics", "accepted-baseline-checkpoint", "queue-provider", "pre-network-validation", "redaction-scan", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         localization_baseline = read_json(output / "localization-baseline-proof.json")
     r2r_baseline_audit = None
     if args.stage == "r2r-baseline-audit":
@@ -3173,8 +4147,22 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"queue-provider", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"retry1-forensics", "accepted-baseline-checkpoint", "queue-provider", "pre-network-validation", "redaction-scan", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         r2r_baseline_audit = read_json(output / "r2r-exact-remap-audit.json")
+    retry1_forensics = None
+    if args.stage == "retry1-forensics":
+        retry1_forensics = classify_superseded_retry1_forensics(output)
+    elif args.stage in {"accepted-baseline-checkpoint", "queue-provider", "pre-network-validation", "redaction-scan", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+        retry1_forensics = read_json(output / RETRY1_FORENSIC_PROOF_NAME)
+    accepted_baseline_checkpoint = None
+    if args.stage == "accepted-baseline-checkpoint":
+        accepted_baseline_checkpoint = create_accepted_baseline_checkpoint(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage in {"queue-provider", "pre-network-validation", "redaction-scan", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+        accepted_baseline_checkpoint = read_json(output / "accepted-baseline-checkpoint-proof.json")
     provider_queue = None
     if args.stage == "queue-provider":
         provider_queue = queue_provider_manifest(
@@ -3182,8 +4170,26 @@ def main() -> int:
             primary_database=args.primary_db,
             replay_database=args.replay_db,
         )
-    elif args.stage in {"execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+    elif args.stage in {"pre-network-validation", "redaction-scan", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
         provider_queue = read_json(output / "provider-queue-manifest-proof.json")
+    pre_network_validation = None
+    if args.stage == "pre-network-validation":
+        pre_network_validation = run_full_pre_network_validation(
+            output,
+            primary_database=args.primary_db,
+            replay_database=args.replay_db,
+        )
+    elif args.stage in {"redaction-scan", "execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+        pre_network_validation = read_json(output / "full-pre-network-validation-proof.json")
+    redaction_scan = None
+    if args.stage == "redaction-scan":
+        execution_root = output / "provider-execution-checkpoint-r1"
+        redaction_scan = waiver_aware_secret_and_redaction_scan(
+            output, provider_execution_root=execution_root,
+        )
+        write_json(output / "waiver-aware-secret-redaction-scan-proof.json", redaction_scan)
+    elif args.stage in {"execute-provider", "audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
+        redaction_scan = read_json(output / "waiver-aware-secret-redaction-scan-proof.json")
     provider_execution = None
     if args.stage == "execute-provider":
         provider_execution = execute_provider_manifest(
@@ -3196,6 +4202,9 @@ def main() -> int:
         if not provider_execution_path.is_file():
             raise SV1BPreflightError("provider_execution_proof_missing")
         provider_execution = read_json(provider_execution_path)
+    provider_gate_path = output / "provider-hardening-preflight.json"
+    if provider_gate_path.is_file():
+        provider_gate = read_json(provider_gate_path)
     acquisition_package = None
     if args.stage == "audit-acquisition-package":
         acquisition_package = audit_acquisition_and_package(
@@ -3277,10 +4286,24 @@ def main() -> int:
             replay_database=args.replay_db,
         )
     active_blockers: list[str] = []
-    if provider_gate["passed"] is not True:
+    provider_started_stages = {
+        "execute-provider", "audit-acquisition-package", "localization-closure",
+        "import-acquired-replay", "derive-primary-graph", "derive-replay-graph",
+        "compare-primary-replay-graph", "validate-primary-search",
+        "validate-replay-search", "compare-primary-replay-search",
+        "build-manual-acceptance",
+    }
+    if args.stage in provider_started_stages and provider_gate["passed"] is not True:
         active_blockers.append("blocked_sv1b_provider_authentication")
     localization_gate = localization_closure or localization_baseline
-    if localization_gate and localization_gate.get("localization_complete") is not True:
+    localization_started_stages = provider_started_stages - {
+        "execute-provider", "audit-acquisition-package",
+    }
+    if (
+        args.stage in localization_started_stages
+        and localization_gate
+        and localization_gate.get("localization_complete") is not True
+    ):
         active_blockers.append("blocked_sv1b_normalization_or_localization")
     if r2r_baseline_audit and r2r_baseline_audit.get("target_completion_ready") is not True:
         active_blockers.append("blocked_sv1b_r2r_replay")
@@ -3290,7 +4313,7 @@ def main() -> int:
         if automated_candidate_ready
         else active_blockers[0]
         if active_blockers
-        else "provider_hardening_preflight_passed_auth_canary_pending"
+        else "sv1b_offline_checkpoint_complete_provider_auth_pending"
     )
     result = {
         "phase": PHASE,
@@ -3301,10 +4324,19 @@ def main() -> int:
         "immutable_inputs_unchanged": immutable_proof["unchanged"],
         "environment_isolation": environment_isolation,
         "accepted_nonderived_evidence": accepted_evidence,
+        "retry1_forensics": retry1_forensics,
+        "accepted_baseline_checkpoint": accepted_baseline_checkpoint,
+        "primary_phase_delta_checkpoint": (
+            read_json(output / PRIMARY_PHASE_DELTA_PROOF_NAME)
+            if (output / PRIMARY_PHASE_DELTA_PROOF_NAME).is_file()
+            else None
+        ),
         "localization_baseline": localization_baseline,
         "localization_closure": localization_closure,
         "r2r_baseline_audit": r2r_baseline_audit,
         "provider_queue": provider_queue,
+        "pre_network_validation": pre_network_validation,
+        "waiver_aware_redaction_scan": redaction_scan,
         "provider_execution": provider_execution,
         "acquisition_package": acquisition_package,
         "replay_acquired_import": replay_acquired_import,
@@ -3320,12 +4352,14 @@ def main() -> int:
         "safe_to_merge": False,
         "route_approved": False,
         "manual_acceptance_required": True,
-        "manual_acceptance_status": "pending_user" if automated_candidate_ready else "not_generated_provider_gate_blocked",
+        "manual_acceptance_status": (
+            "pending_user" if automated_candidate_ready else "not_generated_automated_gates_pending"
+        ),
         "next_phase_started": False,
     }
     write_json(output / "preflight-result.json", result)
     print(json.dumps(public_console_summary(result), ensure_ascii=False, sort_keys=True))
-    return 0 if provider_gate["passed"] else 3
+    return 0
 
 
 if __name__ == "__main__":

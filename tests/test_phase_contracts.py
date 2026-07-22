@@ -7662,6 +7662,9 @@ def test_sv1_contract_blocks_when_only_non_scale_graph_has_violation(database: s
 
 def _sv1b_contract_summary() -> dict[str, object]:
     stages = [
+        "accepted_baseline_checkpoint",
+        "superseded_retry1_forensic_classification",
+        "primary_phase_delta_checkpoint",
         "provider_pre_execution_hardening",
         "credential_redaction_preflight",
         "canonical_candidate_manifest",
@@ -7743,6 +7746,53 @@ def _sv1b_contract_summary() -> dict[str, object]:
             "all_before_after_fingerprints_equal": True,
             "accepted_database_mutation_count": 0,
             "accepted_storage_mutation_count": 0,
+        },
+        "accepted_baseline_checkpoint": {
+            "checkpoint": "A_ACCEPTED_BASELINE",
+            "passed": True,
+            "manifest_fingerprint": "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
+            "accepted_r2r_snapshot_fingerprint": "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc",
+            "provider_tooling_executed_before_checkpoint": False,
+            "checkpoint_fingerprint": "checkpoint-a-fingerprint",
+            "primary": {
+                "accepted_stable_key_reconciliation": {
+                    "missing_accepted_stable_keys": 0,
+                    "extra_nonderived_stable_keys": 0,
+                    "accepted_payload_drift": 0,
+                },
+                "derived_graph_row_count": 0,
+                "phase_owned_delta_row_count": 0,
+                "phase_owned_provider_execution_row_count": 0,
+            },
+            "replay": {
+                "accepted_stable_key_reconciliation": {
+                    "missing_accepted_stable_keys": 0,
+                    "extra_nonderived_stable_keys": 0,
+                    "accepted_payload_drift": 0,
+                },
+                "derived_graph_row_count": 0,
+                "phase_owned_delta_row_count": 0,
+                "phase_owned_provider_execution_row_count": 0,
+            },
+        },
+        "retry1_forensics": {
+            "passed": True,
+            "read_only": True,
+            "retry1_provider_execution_authorized": False,
+            "payload_drift_row_count": 489,
+            "accepted_provider_fact_mutation_count": 0,
+            "stable_identity_change_count": 0,
+        },
+        "primary_phase_delta_checkpoint": {
+            "checkpoint": "B_PRIMARY_PHASE_DELTA",
+            "passed": True,
+            "accepted_rows_missing": 0,
+            "accepted_stable_identities_changed": 0,
+            "accepted_provider_facts_changed": 0,
+            "phase_delta_envelope_failure_count": 0,
+            "accepted_baseline_plus_phase_delta_equation_passed": True,
+            "retry1_deterministic_transformation_reproduced": True,
+            "phase_delta_fingerprint": "phase-delta-fingerprint",
         },
         "provider_hardening": {
             "persistent_cross_process_spacing_passed": True,
@@ -7949,6 +7999,9 @@ def test_sv1b_contract_accepts_only_the_exact_phase_scoped_credential_waiver() -
 @pytest.mark.parametrize(
     ("path", "value", "blocker"),
     [
+        ("accepted_baseline_checkpoint.primary.phase_owned_delta_row_count", 1, "blocked_sv1b_accepted_baseline_checkpoint"),
+        ("retry1_forensics.accepted_provider_fact_mutation_count", 1, "blocked_sv1b_accepted_provider_fact_mutation"),
+        ("primary_phase_delta_checkpoint.accepted_provider_facts_changed", 1, "blocked_sv1b_primary_phase_delta_checkpoint"),
         ("provider_hardening.spacing_survives_restart_and_resume", False, "blocked_sv1b_provider_hardening"),
         ("credential_preflight.redacted_authentication_preflight_passed", False, "blocked_sv1b_provider_authentication"),
         ("acquisition_accounting.page_outcome_counts.retryable", 1, "blocked_sv1b_acquisition_incomplete"),

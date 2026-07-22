@@ -221,7 +221,41 @@ def test_untrusted_positive_queue_row_reopens_and_preserves_raw_payload(db) -> N
     assert decision.state == PixivMetadataState.PENDING.value
     assert existing.raw_metadata_json["historical_field"] == "preserve-me"
     assert existing.raw_metadata_json["_sv1b_trust_reclassification"]["raw_metadata_preserved"] is True
+    envelope = existing.raw_metadata_json["_sv1b_phase_delta"]
+    assert envelope["reason_code"] == "reopened_untrusted_complete"
+    assert envelope["original_values_recoverable"] is True
+    assert envelope["original_raw_metadata_json"] == {"historical_field": "preserve-me"}
+    assert envelope["original_provenance"] == {"source": "legacy_positive_status_only"}
+    assert existing.provenance["original_raw_metadata_fingerprint"] == envelope[
+        "original_raw_metadata_fingerprint"
+    ]
     assert pending_distinct_work_ids(db) == ("123456789",)
+
+
+def test_existing_not_applicable_queue_refresh_retains_immutable_phase_delta_envelope(db) -> None:
+    existing = SourceMetadataRecord(
+        provider="pixiv",
+        provider_record_key="pixiv-ingestion:93:not-applicable",
+        media_id=93,
+        metadata_kind="pixiv_ingestion_gate",
+        data_type_label="local_runtime_source_prior",
+        status="not_applicable_non_pixiv",
+        raw_metadata_json={"parser_version": "accepted-old"},
+        provenance={"source": "accepted", "parser_version": "accepted-old"},
+    )
+    db.add(existing)
+    db.commit()
+    queue_media_for_pixiv_metadata(
+        db, {"id": 93, "filename": "plain.jpg", "path": "media/plain.jpg"}
+    )
+    db.commit()
+    envelope = existing.raw_metadata_json["_sv1b_phase_delta"]
+    assert envelope["reason_code"] == "refreshed_not_applicable_queue_record"
+    assert envelope["original_raw_metadata_json"] == {"parser_version": "accepted-old"}
+    assert envelope["original_provenance"] == {
+        "source": "accepted", "parser_version": "accepted-old"
+    }
+    assert envelope["accepted_stable_identity_unchanged"] is True
 
 
 def test_complete_reuse_materializes_search_evidence_for_new_media(db) -> None:

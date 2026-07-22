@@ -51,6 +51,7 @@ DEFERRED_PAGE_MISMATCH_POLICY_VERSION = "source_page_mismatch_deferred_nonblocki
 DEFERRED_PAGE_MISMATCH_REASON = "provider_metadata_missing_attempted_local_page"
 PAGE_OBSERVED_COMPLETION_EVIDENCE_KIND = "provider_page_observed_complete"
 SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION = "sv1b_trusted_complete_reclassification_v1"
+SV1B_PHASE_DELTA_ENVELOPE_VERSION = "sv1b_primary_phase_delta_envelope_v1"
 QUERY_VISIBLE_OBSERVATION_STATUSES = frozenset({"observed", "active", "accepted"})
 
 
@@ -526,6 +527,9 @@ def _upsert_queue_record(
         "stable_identity_key": {"provider": "pixiv", "work_id": work_id, "page_index": page_index},
         "updated_at": utc_now().isoformat(),
     }
+    phase_delta_reason: str | None = None
+    prior_raw: dict[str, Any] = {}
+    prior_provenance: dict[str, Any] = {}
     if record is None:
         record = SourceMetadataRecord(
             provider="pixiv",
@@ -546,6 +550,7 @@ def _upsert_queue_record(
         # row so it cannot silently close an exact page.
         prior_raw = dict(record.raw_metadata_json or {})
         prior_provenance = dict(record.provenance or {})
+        phase_delta_reason = "reopened_untrusted_complete"
         raw = {
             **prior_raw,
             "pixiv_ingestion_state": state,
@@ -564,7 +569,6 @@ def _upsert_queue_record(
             "parser_version": PARSER_VERSION,
             "stable_identity_key": {"provider": "pixiv", "work_id": work_id, "page_index": page_index},
             "trust_reclassification_policy_version": SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION,
-            "updated_at": utc_now().isoformat(),
         }
     elif str(record.status) in CLOSED_STATES | {
         PixivMetadataState.RETRYABLE.value,
@@ -575,6 +579,55 @@ def _upsert_queue_record(
         # Generic import/resume discovery cannot reopen durable closure or
         # silently select a winner for an unresolved identity conflict.
         return record
+    elif record is not None:
+        prior_raw = dict(record.raw_metadata_json or {})
+        prior_provenance = dict(record.provenance or {})
+        phase_delta_reason = (
+            "refreshed_not_applicable_queue_record"
+            if str(record.status) == PixivMetadataState.NOT_APPLICABLE.value
+            else "refreshed_open_queue_record"
+        )
+
+    if record is not None and phase_delta_reason is not None:
+        existing_envelope = prior_raw.get("_sv1b_phase_delta")
+        existing_envelope = existing_envelope if isinstance(existing_envelope, Mapping) else {}
+        original_raw = existing_envelope.get("original_raw_metadata_json")
+        original_raw = dict(original_raw) if isinstance(original_raw, Mapping) else prior_raw
+        original_provenance = existing_envelope.get("original_provenance")
+        original_provenance = (
+            dict(original_provenance)
+            if isinstance(original_provenance, Mapping)
+            else prior_provenance
+        )
+
+        def fingerprint(value: Mapping[str, Any]) -> str:
+            return hashlib.sha256(
+                json.dumps(
+                    dict(value), ensure_ascii=False, sort_keys=True,
+                    separators=(",", ":"), default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+
+        envelope = {
+            "envelope_version": SV1B_PHASE_DELTA_ENVELOPE_VERSION,
+            "reclassification_policy_version": SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION,
+            "reason_code": phase_delta_reason,
+            "original_status": str(existing_envelope.get("original_status") or record.status),
+            "original_raw_metadata_fingerprint": fingerprint(original_raw),
+            "original_provenance_fingerprint": fingerprint(original_provenance),
+            "original_raw_metadata_json": original_raw,
+            "original_provenance": original_provenance,
+            "original_values_recoverable": True,
+            "accepted_stable_identity_unchanged": True,
+        }
+        raw = {**raw, "_sv1b_phase_delta": envelope}
+        provenance = {
+            **provenance,
+            "sv1b_phase_delta_envelope_version": SV1B_PHASE_DELTA_ENVELOPE_VERSION,
+            "sv1b_phase_delta_reason_code": phase_delta_reason,
+            "original_raw_metadata_fingerprint": envelope["original_raw_metadata_fingerprint"],
+            "original_provenance_fingerprint": envelope["original_provenance_fingerprint"],
+        }
     record.status = state
     record.raw_metadata_json = raw
     record.provenance = provenance

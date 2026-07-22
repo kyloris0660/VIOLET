@@ -172,6 +172,9 @@ SV1_CONTROLLED_SCALE_PROMOTION_READINESS_STATUSES: tuple[str, ...] = (
 SV1B_CONTROLLED_PIXIV_METADATA_LOCALIZATION_SOURCE_GRAPH_CLOSURE_STATUSES: tuple[str, ...] = (
     "blocked_sv1b_repository_sync",
     "blocked_sv1b_environment_isolation",
+    "blocked_sv1b_accepted_baseline_checkpoint",
+    "blocked_sv1b_accepted_provider_fact_mutation",
+    "blocked_sv1b_primary_phase_delta_checkpoint",
     "blocked_sv1b_provider_hardening",
     "blocked_sv1b_provider_authentication",
     "blocked_sv1b_candidate_manifest",
@@ -184,6 +187,7 @@ SV1B_CONTROLLED_PIXIV_METADATA_LOCALIZATION_SOURCE_GRAPH_CLOSURE_STATUSES: tuple
     "blocked_sv1b_replay_mismatch",
     "blocked_sv1b_validation",
     "blocked_sv1b_manual_acceptance_harness",
+    "sv1b_offline_checkpoint_complete_provider_auth_pending",
     "automated_sv1b_candidate_ready_manual_acceptance_pending",
 )
 
@@ -2640,6 +2644,9 @@ CONTRACTS: dict[str, PhaseContract] = {
             "immutable exact 12,000-media manifest fingerprint 5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
         ),
         required_stages=(
+            "accepted_baseline_checkpoint",
+            "superseded_retry1_forensic_classification",
+            "primary_phase_delta_checkpoint",
             "provider_pre_execution_hardening",
             "credential_redaction_preflight",
             "canonical_candidate_manifest",
@@ -2674,6 +2681,9 @@ CONTRACTS: dict[str, PhaseContract] = {
             "repository_sync_preflight",
             "environment_isolation",
             "immutable_input_proof",
+            "accepted_baseline_checkpoint",
+            "retry1_forensics",
+            "primary_phase_delta_checkpoint",
             "provider_hardening",
             "credential_preflight",
             "candidate_accounting",

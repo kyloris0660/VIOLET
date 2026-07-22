@@ -13,12 +13,15 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     audit_acquisition_closure_rows,
     canonical_work_id,
     build_full_candidate_dispositions,
+    build_distinct_work_page_manifest,
+    classify_retry1_payload_drift_rows,
     classify_search_runtime_membership,
     compare_creator_family_states,
     execute_provider_manifest,
     filter_nonderived_source_package,
     finalize_r2r_proposal_classifications,
     outcome_for_pair,
+    open_reason_for_pair,
     public_console_summary,
     sha256_payload,
     validate_graph_derivation_checkpoint,
@@ -90,6 +93,99 @@ def test_outcome_for_pair_marks_mixed_closed_truth_as_conflicting() -> None:
         "raw_metadata_json": {"failure_reason": "authenticated_remote_deleted_private_unavailable", "last_attempt_at": "now"},
     }
     assert outcome_for_pair([complete, terminal], "123", 0) == "conflicting"
+
+
+@pytest.mark.parametrize(
+    ("row", "reason"),
+    [
+        ({"status": "metadata_complete", "raw_metadata_json": {}, "provenance": {}}, "missing_normalized_shape"),
+        ({"status": "metadata_complete", "raw_metadata_json": {"id": 1}, "provenance": {}}, "missing_trusted_provenance"),
+        ({
+            "status": "metadata_complete", "raw_metadata_json": {"id": 1},
+            "provenance": {"source": "legacy"},
+        }, "missing_stable_identity"),
+        ({"status": "metadata_pending", "raw_metadata_json": {}, "provenance": {}}, "open_unacquired"),
+    ],
+)
+def test_open_reason_for_pair_is_exact_and_deterministic(row, reason) -> None:
+    record = {
+        "provider": "pixiv", "source_work_id": "123", "source_page_index": 0,
+        "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+        **row,
+    }
+    outcome = outcome_for_pair([record], "123", 0)
+    assert open_reason_for_pair([record], "123", 0, outcome) == reason
+
+
+def test_distinct_work_page_manifest_preserves_cross_media_outcomes_without_inheritance() -> None:
+    rows = [
+        {"stable_work_id": "123", "requested_page_index": 0, "media_stable_key": "a", "acquisition_state": "unacquired", "open_reason": "open_unacquired", "checkpoint_key": "1"},
+        {"stable_work_id": "123", "requested_page_index": 0, "media_stable_key": "b", "acquisition_state": "trusted_exact_complete", "open_reason": None, "checkpoint_key": "2"},
+    ]
+    manifest = build_distinct_work_page_manifest(rows)
+    assert manifest[0]["acquisition_state"] == "mixed_media_outcomes"
+    assert manifest[0]["page_outcome_inherited_across_media"] is False
+    assert [row["acquisition_state"] for row in manifest[0]["media_outcomes"]] == [
+        "unacquired", "trusted_exact_complete",
+    ]
+
+
+def test_retry1_forensic_classifier_accepts_only_queue_control_drift() -> None:
+    accepted = [{
+        "provider_record_key": "queue:1", "provider": "pixiv", "media_content_key": "m",
+        "source_work_id": None, "source_page_index": None,
+        "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+        "status": "not_applicable_non_pixiv",
+        "raw_metadata_json": {"parser_version": "old"},
+        "provenance": {"parser_version": "old", "updated_at": "before"},
+    }]
+    current = [{
+        **accepted[0],
+        "raw_metadata_json": {"parser_version": "new"},
+        "provenance": {"parser_version": "new", "updated_at": "after"},
+    }]
+    ledger, aggregate = classify_retry1_payload_drift_rows(accepted, current)
+    assert len(ledger) == 1
+    assert aggregate["accepted_provider_fact_mutation_count"] == 0
+    assert aggregate["stable_identity_change_count"] == 0
+    assert aggregate["reason_code_counts"] == {"refreshed_not_applicable_queue_record": 1}
+
+
+def test_retry1_forensic_classifier_governs_accepted_target_missing_media_reference() -> None:
+    accepted = [{
+        "provider_record_key": "queue:outside-manifest", "provider": "pixiv",
+        "media_content_key": "accepted-but-outside-finite-target",
+        "source_work_id": None, "source_page_index": None,
+        "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "local_runtime_source_prior",
+        "status": "not_applicable_non_pixiv",
+        "raw_metadata_json": {"parser_version": "old"},
+        "provenance": {"parser_version": "old", "updated_at": "before"},
+    }]
+    current = [{
+        **accepted[0], "media_content_key": None,
+        "raw_metadata_json": {"parser_version": "new"},
+        "provenance": {"parser_version": "new", "updated_at": "after"},
+    }]
+    ledger, aggregate = classify_retry1_payload_drift_rows(
+        accepted, current, accepted_target_media_keys={"another-media-key"},
+    )
+    assert aggregate["stable_identity_change_count"] == 0
+    assert aggregate["governed_target_missing_media_reference_count"] == 1
+    assert ledger[0]["accepted_media_reference_target_missing"] is True
+    assert ledger[0]["accepted_media_content_key_fingerprint"]
+
+
+def test_retry1_forensic_classifier_detects_provider_fact_mutation() -> None:
+    accepted = [{
+        "provider_record_key": "provider:1", "provider": "pixiv", "media_content_key": "m",
+        "source_work_id": "123", "source_page_index": 0,
+        "metadata_kind": "provider_metadata", "data_type_label": "authenticated_provider_metadata",
+        "status": "observed", "title": "accepted",
+        "raw_metadata_json": {"id": 123}, "provenance": {"source": "provider"},
+    }]
+    current = [{**accepted[0], "title": "mutated"}]
+    _, aggregate = classify_retry1_payload_drift_rows(accepted, current)
+    assert aggregate["accepted_provider_fact_mutation_count"] == 1
 
 
 @pytest.mark.parametrize("database", [
@@ -232,9 +328,31 @@ def test_execute_provider_stops_before_runner_when_credential_gate_fails(tmp_pat
         }),
         encoding="utf-8",
     )
+    (output / "full-pre-network-validation-proof.json").write_text(
+        json.dumps({
+            "passed": True,
+            "head": "test-head",
+            "provider_tooling_executed_before_validation": False,
+            "failed_test_count": 0,
+            "unexplained_skip_count": 0,
+            "changed_python_py_compile_passed": True,
+            "focused_stage_aware_tests_passed": True,
+            "affected_regressions_passed": True,
+            "full_default_non_e2e_passed": True,
+            "exact_approved_skip_membership_passed": True,
+            "environment_specific_profiles_passed": True,
+            "json_parse_passed": True,
+            "git_diff_check_passed": True,
+        }),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.validate_owned_output_root",
         lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.git",
+        lambda *_args: "test-head",
     )
     monkeypatch.setattr(
         "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.provider_gate_preflight",
@@ -245,6 +363,28 @@ def test_execute_provider_stops_before_runner_when_credential_gate_fails(tmp_pat
         lambda _args: pytest.fail("provider runner must not be called"),
     )
     with pytest.raises(SV1BPreflightError, match="blocked_sv1b_provider_authentication"):
+        execute_provider_manifest(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+
+
+def test_execute_provider_requires_full_validation_before_profile_inspection(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    (output / "provider-queue-manifest-proof.json").write_text(
+        json.dumps({"exact_open_work_membership_passed": True}), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.provider_gate_preflight",
+        lambda: pytest.fail("profile inspection must remain unreachable"),
+    )
+    with pytest.raises(SV1BPreflightError, match="full_pre_network_validation_proof_missing"):
         execute_provider_manifest(
             output,
             primary_database="blombooru_sv1b_primary_test",
