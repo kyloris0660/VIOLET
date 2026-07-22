@@ -14,6 +14,7 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     canonical_work_id,
     build_full_candidate_dispositions,
     build_distinct_work_page_manifest,
+    candidate_manifest_database_for_stage,
     classify_retry1_payload_drift_rows,
     classify_search_runtime_membership,
     compare_creator_family_states,
@@ -198,6 +199,13 @@ def test_strict_test_database_rejects_default_and_production(database: str) -> N
 
 def test_strict_test_database_accepts_sv1b_identity() -> None:
     assert _strict_test_database("blombooru_scv2_sv1b_metadata_graph_closure_test_20260719") is True
+
+
+def test_post_checkpoint_b_stages_rebuild_candidates_from_fresh_primary() -> None:
+    primary = "blombooru_scv2_sv1b_metadata_graph_closure_test_20260721_retry2"
+    assert candidate_manifest_database_for_stage("pre-network-validation", primary) == primary
+    assert candidate_manifest_database_for_stage("execute-provider", primary) == primary
+    assert candidate_manifest_database_for_stage("inventory", primary) != primary
 
 
 def test_generic_credential_scan_detects_delimited_values_without_old_fingerprint() -> None:

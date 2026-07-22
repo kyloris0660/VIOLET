@@ -105,6 +105,14 @@ APPROVED_DEFAULT_NON_E2E_SKIPS = frozenset({
     "tests/test_phase38d_i6_staging_copy_retry.py:307",
     "tests/test_scanner_icloud.py:89",
 })
+PRIMARY_DELTA_STAGE_NAMES = frozenset({
+    "queue-provider", "pre-network-validation", "redaction-scan",
+    "execute-provider", "audit-acquisition-package", "localization-closure",
+    "import-acquired-replay", "derive-primary-graph", "derive-replay-graph",
+    "compare-primary-replay-graph", "validate-primary-search",
+    "validate-replay-search", "compare-primary-replay-search",
+    "build-manual-acceptance",
+})
 ML2_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-ml2-multilingual-identity-candidate-closure-reviewfix-20260715"
 R2R_PRIVATE = ROOT / ".local_manifests/phase-4.5-scv2-r2r-autonomous-recall-search-closure"
 
@@ -195,6 +203,12 @@ def _strict_test_database(database: str) -> bool:
 
     value = str(database or "").strip().casefold()
     return is_strict_test_database_name(value)
+
+
+def candidate_manifest_database_for_stage(stage: str, primary_database: str) -> str:
+    """Keep post-Checkpoint-B manifests bound to the current primary DB."""
+
+    return primary_database if stage in PRIMARY_DELTA_STAGE_NAMES else ACCEPTED_SCALE_DB
 
 
 def canonical_work_id(value: Any) -> str:
@@ -4080,7 +4094,10 @@ def main() -> int:
         repository = validate_repository_and_inputs(output)
     immutable_before = immutable_input_fingerprints()
     runtime_parser_denominator = audit_runtime_parser_denominator()
-    pages, works, candidates = build_candidate_manifests()
+    candidate_source_database = candidate_manifest_database_for_stage(
+        args.stage, args.primary_db
+    )
+    pages, works, candidates = build_candidate_manifests(candidate_source_database)
     provider_gate = {
         "passed": False,
         "provider_tooling_executed": False,
