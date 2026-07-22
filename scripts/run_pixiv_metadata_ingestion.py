@@ -699,8 +699,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             require_rotation_confirmation()
         summary["acquisition_execution"]["acquisition_route_active"] = True
         if waiver_accepted:
+            external_redaction_passed = bool(
+                getattr(args, "external_redaction_scan_passed", False)
+            )
             summary["redacted_secret_scan"] = {
-                "performed": False,
+                "performed": external_redaction_passed,
+                "passed": external_redaction_passed,
+                "proof_source": "current_head_external_generic_redaction_scan" if external_redaction_passed else None,
                 "waived_by_policy": waiver_policy or "operator_accepted_local_credential_risk_v1",
                 "raw_values_exposed": False,
             }

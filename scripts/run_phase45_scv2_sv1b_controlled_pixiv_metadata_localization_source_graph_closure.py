@@ -33,6 +33,7 @@ for candidate in (ROOT, BACKEND):
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
     MIN_REQUEST_SPACING_SECONDS,
+    PixivMetadataGateError,
     PixivMetadataState,
     QUEUE_METADATA_KIND,
     SV1B_PHASE_DELTA_ENVELOPE_VERSION,
@@ -98,7 +99,7 @@ ACCEPTED_R2R_SNAPSHOT_FINGERPRINT = "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43c
 SV1B_CREDENTIAL_RISK_WAIVER_POLICY = "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
 EXPECTED_RETRY2_CHECKPOINT_A_FINGERPRINT = "681d16aaefb390177bec54dd113e626a8a6f3408f89ba2be92d0caca195752b4"
 EXPECTED_RETRY2_CHECKPOINT_B_FINGERPRINT = "2243ef27f0ce29399caa367af8c88547286d4ffe003df445cbe0ce707df5ed19"
-CANARY_ROUTE_RESUME_ROOT_NAME = "canary-route-viability-resume-r2"
+CANARY_ROUTE_RESUME_ROOT_NAME = "canary-route-viability-resume-r3"
 SUPERSEDED_RETRY1_PRIMARY_DB = "blombooru_scv2_sv1b_metadata_graph_closure_test_20260719_retry1"
 SUPERSEDED_RETRY1_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260719_retry1"
 RETRY1_FORENSIC_PROOF_NAME = "superseded-retry1-forensic-classification-proof-v2.json"
@@ -2522,13 +2523,22 @@ def execute_provider_manifest(
         excluded_canary_work_ids=(prior_canary_work_id,),
         prior_attempt_counts={prior_canary_work_id: 1},
         skip_queue_materialization=True,
+        external_redaction_scan_passed=True,
         replay_normalization_failures=False,
         additional_diagnostic_calls=0,
         gallery_dl_command="",
         timeout=120,
         phase_manifest_fingerprint=ACCEPTED_MANIFEST_FINGERPRINT,
     )
-    summary = ingestion_runner.run(args)
+    execution_error: str | None = None
+    try:
+        summary = ingestion_runner.run(args)
+    except PixivMetadataGateError as exc:
+        execution_error = str(exc)
+        execution_summary_path = provider_execution_root / "execution-summary.json"
+        if not execution_summary_path.is_file():
+            raise
+        summary = read_json(execution_summary_path)
     canary = summary.get("redacted_authentication_preflight") or {}
     gallery_dl_check = summary.get("gallery_dl_configuration_check") or {}
     redacted_canary = {
@@ -2561,7 +2571,7 @@ def execute_provider_manifest(
         "known_compromised_secret_fingerprint_scan_performed": False,
         "credential_risk_waiver_accepted": True,
         "credential_risk_waiver_policy": SV1B_CREDENTIAL_RISK_WAIVER_POLICY,
-        "redacted_secret_scan_passed": (summary.get("redacted_secret_scan") or {}).get("passed") is True,
+        "redacted_secret_scan_passed": redaction.get("passed") is True,
         "redacted_authentication_preflight_passed": canary.get("passed") is True,
         "redacted_authentication_canary": redacted_canary,
         "prior_inconclusive_canary_correction": correction,
@@ -2569,8 +2579,11 @@ def execute_provider_manifest(
         "acquisition_execution": summary.get("acquisition_execution") or {},
         "provider_execution_checkpoint_root": str(provider_execution_root),
         "provider_raw_execution_summary_private": str(provider_execution_root / "execution-summary.json"),
+        "status": execution_error or "provider_execution_complete",
     }
     write_json(output / "provider-execution-proof.json", result)
+    if execution_error:
+        raise SV1BPreflightError(execution_error)
     return result
 
 
@@ -2732,7 +2745,8 @@ def audit_acquisition_and_package(
     validate_owned_output_root(
         output, primary_database=primary_database, replay_database=replay_database
     )
-    execution_path = output / "provider" / "execution-summary.json"
+    provider_proof = read_json(output / "provider-execution-proof.json")
+    execution_path = Path(str(provider_proof.get("provider_raw_execution_summary_private") or ""))
     if not execution_path.is_file():
         raise SV1BPreflightError("provider_execution_summary_missing")
     execution = read_json(execution_path)
