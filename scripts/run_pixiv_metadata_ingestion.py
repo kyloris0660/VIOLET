@@ -44,6 +44,7 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     queue_media_for_pixiv_metadata,
     require_rotation_confirmation,
     run_bounded_acquisition,
+    run_bounded_route_viability_canary,
     manifest_scoped_outcome_key,
 )
 from app.services.pixiv_filename_prior_service import PARSER_VERSION  # noqa: E402
@@ -64,8 +65,8 @@ ACCEPTED_IMMUTABLE_DATABASES = {
 DEFAULT_OUTPUT_DIR = ROOT / ".local_manifests/phase-4.5-scv2-ml1-pixiv-metadata-ingestion"
 TOKEN_CANDIDATE_RE = re.compile(r"[A-Za-z0-9_.=+/\-:%;,@!?$^&*(){}\[\]~]{8,}")
 OWNER_SAMPLE_CSV = ROOT / ".local_manifests/phase-4.5-scv2-ml1-multilingual-alias-source-metadata-closure/owner-review/pixiv-missing-work-owner-review-sample.csv"
-CANARY_BATCH_SIZE = 20
-MAX_CANARY_WORKS = 60
+CANARY_BATCH_SIZE = 1
+MAX_CANARY_WORKS = 5
 LOCAL_CREDENTIAL_RISK_ENV = "VIOLET_LOCAL_CREDENTIAL_RISK_ACCEPTED"
 EXECUTABLE_MANIFEST_VERSION = "ml1_pixiv_executable_manifest_v1"
 EXCLUSION_POLICY_VERSION = "ml1_complete_terminal_normalization_conflict_exclusion_v1"
@@ -153,17 +154,24 @@ def final_outcome_for_result(result: Any, *, conflict: bool) -> str:
 
 
 def select_deterministic_canary_work_ids(
-    manifest: Sequence[str], sample_csv: Path = OWNER_SAMPLE_CSV, *, limit: int = MAX_CANARY_WORKS
+    manifest: Sequence[str], sample_csv: Path = OWNER_SAMPLE_CSV, *, limit: int = MAX_CANARY_WORKS,
+    excluded_work_ids: Iterable[str] = (),
 ) -> tuple[str, ...]:
-    manifest_set = {str(value) for value in manifest}
-    selected: list[str] = []
-    if sample_csv.is_file():
-        with sample_csv.open("r", encoding="utf-8-sig", newline="") as handle:
-            for row in csv.DictReader(handle):
-                work_id = str(row.get("pixiv_work_id") or "")
-                if work_id in manifest_set and work_id not in selected:
-                    selected.append(work_id)
-    selected.extend(work_id for work_id in sorted(manifest_set, key=int) if work_id not in selected)
+    del sample_csv  # Historical owner sample is intentionally not a route-canary selector.
+    if limit < 1 or limit > MAX_CANARY_WORKS:
+        raise PixivMetadataGateError("blocked_auth_canary_work_limit_invalid")
+    excluded = {str(value) for value in excluded_work_ids}
+    candidates = sorted(
+        {str(value) for value in manifest} - excluded,
+        key=lambda value: hashlib.sha256(value.encode("utf-8")).hexdigest(),
+    )
+    partitions: dict[int, list[str]] = {index: [] for index in range(limit)}
+    for work_id in candidates:
+        digest = hashlib.sha256(work_id.encode("utf-8")).digest()
+        partitions[int.from_bytes(digest[:8], "big") % limit].append(work_id)
+    selected = [partitions[index][0] for index in range(limit) if partitions[index]]
+    selected_set = set(selected)
+    selected.extend(value for value in candidates if value not in selected_set)
     return tuple(selected[:limit])
 
 
@@ -210,7 +218,7 @@ def run_deterministic_auth_canary(
     *,
     entrypoint: Sequence[str],
     env: Mapping[str, str] | None = None,
-    acquire=run_bounded_acquisition,
+    command_runner=subprocess.run,
     batch_size: int = CANARY_BATCH_SIZE,
     accept_local_credential_risk: bool = False,
     result_callback=None,
@@ -220,82 +228,20 @@ def run_deterministic_auth_canary(
     max_attempts_per_work: int = 3,
     credential_risk_waiver_policy: str | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
-    started = time.monotonic()
-    selected = tuple(dict.fromkeys(str(value) for value in work_ids))[:MAX_CANARY_WORKS]
-    all_results: list[Any] = []
-
-    def proof(*, passed: bool, safe_reason_code: str, **extra: Any) -> dict[str, Any]:
-        attempted = [item for item in all_results if item.request_attempted]
-        return {
-            "passed": passed,
-            "authenticated_success": passed,
-            "safe_reason_code": safe_reason_code,
-            "selected_work_count": len(selected),
-            "attempted_work_count": len(attempted),
-            "success_count": sum(
-                item.state == PixivMetadataState.COMPLETE.value for item in all_results
-            ),
-            "terminal_count": sum(
-                item.state == PixivMetadataState.TERMINAL.value for item in all_results
-            ),
-            "returned_page_consistency_count": sum(
-                int(getattr(item, "page_count", 0) or 0) for item in attempted
-            ),
-            "private_stable_work_reference": (
-                hashlib.sha256(selected[0].encode("utf-8")).hexdigest() if selected else None
-            ),
-            "elapsed_seconds": round(time.monotonic() - started, 6),
-            "credential_risk_waiver_policy": credential_risk_waiver_policy,
-            "raw_values_exposed": False,
-            **extra,
-        }
-
-    for offset in range(0, len(selected), batch_size):
-        batch = selected[offset : offset + batch_size]
-        if offset and persistent_spacing is None and any(item.request_attempted for item in all_results):
-            sleeper(MIN_REQUEST_SPACING_SECONDS)
-        acquire_kwargs = dict(
-            entrypoint=entrypoint,
-            authentication_passed=True,
-            env=env,
-            accept_local_credential_risk=accept_local_credential_risk,
-            result_callback=result_callback,
-            max_attempts_per_work=max_attempts_per_work,
-        )
-        if persistent_spacing is not None:
-            acquire_kwargs["persistent_spacing"] = persistent_spacing
-        if prior_attempt_counts is not None:
-            acquire_kwargs["prior_attempt_counts"] = prior_attempt_counts
-        results = acquire(
-            session,
-            batch,
-            **acquire_kwargs,
-        )
-        all_results.extend(results)
-        stop = systemic_stop_result(results)
-        if stop is not None:
-            return all_results, proof(
-                passed=False,
-                safe_reason_code="provider_authentication_or_route_rejected",
-                systemic_stop=True,
-                systemic_stop_class=str(stop.error_class or "provider_route_failure"),
-            )
-        if any(item.state == PixivMetadataState.COMPLETE.value for item in results):
-            return all_results, proof(
-                passed=True,
-                safe_reason_code="authenticated_metadata_consistency_confirmed",
-                systemic_stop=False,
-                systemic_stop_class=None,
-            )
-    normalization_count = sum(item.state == PixivMetadataState.NORMALIZATION_FAILED.value for item in all_results)
-    return all_results, proof(
-        passed=False,
-        safe_reason_code="authenticated_route_viability_unresolved",
-        systemic_stop=False,
-        systemic_stop_class=None,
-        route_viability_unresolved=True,
-        normalization_failed_count=normalization_count,
+    del session, batch_size, accept_local_credential_risk, result_callback
+    del prior_attempt_counts, max_attempts_per_work
+    results, evidence = run_bounded_route_viability_canary(
+        work_ids, entrypoint=entrypoint, env=env, command_runner=command_runner,
+        sleeper=sleeper, persistent_spacing=persistent_spacing,
+        max_works=min(len(tuple(dict.fromkeys(work_ids))), MAX_CANARY_WORKS) or 1,
     )
+    evidence.update({
+        "passed": bool(evidence["route_viable"]),
+        "authenticated_success": bool(evidence["route_viable"]),
+        "credential_risk_waiver_policy": credential_risk_waiver_policy,
+        "raw_values_exposed": False,
+    })
+    return results, evidence
 
 
 def _isolated_database_allowed(database: str) -> bool:
@@ -648,10 +594,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if identity != args.database:
             raise PixivMetadataGateError("blocked_environment_isolation:database_identity_mismatch")
         media = session.query(Media).order_by(Media.id.asc()).all()
-        decisions = [queue_media_for_pixiv_metadata(session, item) for item in media]
-        creator_backfill = backfill_creator_source_observations(session)
-        session.commit()
-        invalidate_source_metadata_search_cache()
+        if bool(getattr(args, "skip_queue_materialization", False)):
+            decisions = []
+            creator_backfill = {"skipped": True, "reason": "resume_existing_checkpoint_b_queue"}
+        else:
+            decisions = [queue_media_for_pixiv_metadata(session, item) for item in media]
+            creator_backfill = backfill_creator_source_observations(session)
+            session.commit()
+            invalidate_source_metadata_search_cache()
         manifest = pending_distinct_work_ids(session)
         conflict_manifest = conflicted_distinct_work_ids(session)
         main_manifest_payload = build_executable_manifest(manifest, manifest_kind="main")
@@ -679,7 +629,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         waiver_scope = str(getattr(args, "credential_risk_waiver_scope", "") or "") or None
         summary: dict[str, Any] = {
             "database_label": "isolated-ml1-dev-test",
-            "queued_media_count": len(decisions),
+            "queued_media_count": len(media),
             "queue_state_counts": dict(sorted(Counter(item.state for item in decisions).items())),
             "exact_distinct_work_manifest_count": len(manifest),
             "exact_work_ids_public": False,
@@ -778,6 +728,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 raise PixivMetadataGateError("blocked_stale_acquisition_checkpoint_fingerprint_mismatch")
             outcome_ledger.update(prior_checkpoint.get("final_outcomes") or {})
             page_outcome_ledger.update(prior_checkpoint.get("manifest_scoped_page_outcomes") or {})
+        external_prior_attempt_counts = {
+            str(key): int(value)
+            for key, value in (getattr(args, "prior_attempt_counts", {}) or {}).items()
+        }
+        if any(value < 0 or value > 3 for value in external_prior_attempt_counts.values()):
+            raise PixivMetadataGateError("blocked_pixiv_prior_attempt_count_invalid")
 
         persistent_spacing = None
         if phase_manifest_fingerprint:
@@ -848,12 +804,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
 
         canary_results: list[Any] = []
+        canary_prior_counts: dict[str, int] = {}
         canary: dict[str, Any]
         if manifest:
             canary_limit = int(getattr(args, "canary_work_limit", MAX_CANARY_WORKS) or MAX_CANARY_WORKS)
             if canary_limit < 1 or canary_limit > MAX_CANARY_WORKS:
                 raise PixivMetadataGateError("blocked_auth_canary_work_limit_invalid")
-            canary_ids = select_deterministic_canary_work_ids(manifest, limit=canary_limit)
+            canary_ids = select_deterministic_canary_work_ids(
+                manifest,
+                limit=canary_limit,
+                excluded_work_ids=getattr(args, "excluded_canary_work_ids", ()) or (),
+            )
             canary_results, canary = run_deterministic_auth_canary(
                 session,
                 canary_ids,
@@ -862,26 +823,49 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 accept_local_credential_risk=waiver_accepted,
                 result_callback=lambda item: checkpoint_result(item, conflict=False),
                 persistent_spacing=persistent_spacing,
-                prior_attempt_counts={key: int(value.get("attempt_count") or 0) for key, value in outcome_ledger.items()},
+                prior_attempt_counts={
+                    key: max(
+                        int(value.get("attempt_count") or 0), canary_prior_counts.get(key, 0),
+                        external_prior_attempt_counts.get(key, 0),
+                    )
+                    for key, value in outcome_ledger.items()
+                } | external_prior_attempt_counts | canary_prior_counts,
                 max_attempts_per_work=int(getattr(args, "canary_max_attempts_per_work", 3) or 3),
                 credential_risk_waiver_policy=waiver_policy,
             )
+            canary_prior_counts = {item.work_id: int(item.attempt_count) for item in canary_results}
             summary["redacted_authentication_preflight"] = {"performed": True, **canary}
+            _write_private_json(output_dir / "route-viability-canary-ledger.json", canary)
             if not canary.get("passed"):
-                summary["acquisition_execution"]["systemic_stop"] = bool(canary.get("systemic_stop"))
-                summary["acquisition_execution"]["systemic_stop_class"] = canary.get("systemic_stop_class")
-                summary["acquisition_execution"]["systemic_stop_stage"] = "canary" if canary.get("systemic_stop") else None
-                record_attempt_accounting(summary, outcome_ledger, canary_results, output_dir)
+                summary["acquisition_execution"]["systemic_stop"] = canary.get("status") in {
+                    "blocked_sv1b_provider_authentication", "blocked_sv1b_provider_transport"
+                }
+                summary["acquisition_execution"]["systemic_stop_class"] = canary.get("status")
+                summary["acquisition_execution"]["systemic_stop_stage"] = "route_viability_canary"
+                summary["acquisition_execution"]["provider_request_attempt_count"] = len(canary_results)
+                summary["operation_counts"]["gallery_dl_calls"] = len(canary_results)
+                summary["operation_counts"]["pixiv_provider_calls"] = len(canary_results)
                 _write_private_json(output_dir / "execution-summary.json", summary)
-                raise PixivMetadataGateError(
-                    "blocked_gallery_dl_canary_systemic_stop"
-                    if canary.get("systemic_stop")
-                    else "blocked_gallery_dl_canary_route_viability_unresolved"
-                )
+                raise PixivMetadataGateError(str(canary.get("status")))
         else:
             canary = {"passed": True, "performed": False, "reason": "empty_main_manifest"}
             summary["redacted_authentication_preflight"] = canary
         remaining = pending_distinct_work_ids(session)
+        ordinary_prior_counts = {
+            key: max(
+                int(value.get("attempt_count") or 0), canary_prior_counts.get(key, 0),
+                external_prior_attempt_counts.get(key, 0),
+            )
+            for key, value in outcome_ledger.items()
+        }
+        ordinary_prior_counts.update({
+            key: max(value, ordinary_prior_counts.get(key, 0))
+            for key, value in canary_prior_counts.items()
+        })
+        ordinary_prior_counts.update({
+            key: max(value, ordinary_prior_counts.get(key, 0))
+            for key, value in external_prior_attempt_counts.items()
+        })
         results = run_bounded_acquisition(
             session,
             remaining,
@@ -891,7 +875,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             accept_local_credential_risk=waiver_accepted,
             result_callback=lambda item: checkpoint_result(item, conflict=False),
             persistent_spacing=persistent_spacing,
-            prior_attempt_counts={key: int(value.get("attempt_count") or 0) for key, value in outcome_ledger.items()},
+            prior_attempt_counts=ordinary_prior_counts,
         )
         main_stop = systemic_stop_result(results)
         conflict_results: list[Any] = []
@@ -907,7 +891,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 accept_local_credential_risk=waiver_accepted,
                 result_callback=lambda item: checkpoint_result(item, conflict=True),
                 persistent_spacing=persistent_spacing,
-                prior_attempt_counts={key: int(value.get("attempt_count") or 0) for key, value in outcome_ledger.items()},
+                prior_attempt_counts={
+                    **ordinary_prior_counts,
+                    **{key: int(value.get("attempt_count") or 0) for key, value in outcome_ledger.items()},
+                },
             )
             conflict_stop = systemic_stop_result(conflict_results)
             if conflict_stop is not None:
@@ -918,10 +905,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             summary["acquisition_execution"]["systemic_stop"] = True
             summary["acquisition_execution"]["systemic_stop_class"] = main_stop.error_class
             summary["acquisition_execution"]["systemic_stop_stage"] = "main_manifest"
-        all_results = [*canary_results, *results, *conflict_results]
+        all_results = [*results, *conflict_results]
         request_attempt_count, outcome_counts = record_attempt_accounting(
             summary, outcome_ledger, all_results, output_dir
         )
+        request_attempt_count += len(canary_results)
+        summary["acquisition_execution"]["provider_request_attempt_count"] = request_attempt_count
+        summary["operation_counts"]["gallery_dl_calls"] = request_attempt_count
+        summary["operation_counts"]["pixiv_provider_calls"] = request_attempt_count
         elapsed_seconds = round(time.monotonic() - run_started_monotonic, 6)
         summary["acquisition_execution"]["elapsed_seconds"] = elapsed_seconds
         summary["acquisition_execution"]["average_request_interval_seconds"] = (

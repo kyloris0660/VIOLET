@@ -38,6 +38,7 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     SV1B_PHASE_DELTA_ENVELOPE_VERSION,
     SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION,
     classify_pixiv_metadata_lifecycle,
+    correct_inconclusive_canary_terminal_record,
     is_trusted_complete_pixiv_metadata_record,
     manifest_scoped_outcome_key,
 )
@@ -95,6 +96,8 @@ EXPECTED_MEDIA_COUNT = 12_000
 ACCEPTED_R2R_DB = "blombooru_scv2_r2r_dryrun_test_20260710"
 ACCEPTED_R2R_SNAPSHOT_FINGERPRINT = "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
 SV1B_CREDENTIAL_RISK_WAIVER_POLICY = "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
+EXPECTED_RETRY2_CHECKPOINT_A_FINGERPRINT = "681d16aaefb390177bec54dd113e626a8a6f3408f89ba2be92d0caca195752b4"
+EXPECTED_RETRY2_CHECKPOINT_B_FINGERPRINT = "2243ef27f0ce29399caa367af8c88547286d4ffe003df445cbe0ce707df5ed19"
 SUPERSEDED_RETRY1_PRIMARY_DB = "blombooru_scv2_sv1b_metadata_graph_closure_test_20260719_retry1"
 SUPERSEDED_RETRY1_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260719_retry1"
 RETRY1_FORENSIC_PROOF_NAME = "superseded-retry1-forensic-classification-proof-v2.json"
@@ -2181,18 +2184,21 @@ def run_full_pre_network_validation(
     *,
     primary_database: str,
     replay_database: str,
+    proof_root: Path | None = None,
 ) -> dict[str, Any]:
     """Run and persist the complete no-provider validation gate for SV1B."""
 
-    proof_path = output / "full-pre-network-validation-proof.json"
+    selected_proof_root = proof_root or output
+    selected_proof_root.mkdir(parents=True, exist_ok=True)
+    proof_path = selected_proof_root / "full-pre-network-validation-proof.json"
     if proof_path.exists():
         raise SV1BPreflightError("full_pre_network_validation_proof_already_exists")
     if not (output / "provider-queue-manifest-proof.json").is_file():
         raise SV1BPreflightError("provider_queue_manifest_proof_missing")
     provider_tooling_artifacts = (
-        output / "provider-hardening-preflight.json",
-        output / "provider" / "execution-summary.json",
-        output / "provider" / "acquisition-checkpoint.json",
+        selected_proof_root / "provider-hardening-preflight.json",
+        selected_proof_root / "provider-execution-summary.json",
+        selected_proof_root / "provider-acquisition-checkpoint.json",
     )
     if any(path.exists() for path in provider_tooling_artifacts):
         raise SV1BPreflightError("provider_tooling_executed_before_validation")
@@ -2234,7 +2240,7 @@ def run_full_pre_network_validation(
     }
     for label, argv in command_specs.items():
         commands[label], outputs[label] = _run_pre_network_validation_command(
-            output, label, argv
+            selected_proof_root, label, argv
         )
 
     full_output = outputs["full_default_non_e2e"]
@@ -2358,6 +2364,80 @@ def run_full_pre_network_validation(
     return result
 
 
+def correct_prior_inconclusive_canary_state(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> tuple[str, dict[str, Any]]:
+    """Correct the single status delta created by the superseded route-unverified canary."""
+
+    checkpoint_a = read_json(output / "accepted-baseline-checkpoint-proof.json")
+    checkpoint_b = read_json(output / PRIMARY_PHASE_DELTA_PROOF_NAME)
+    if (
+        checkpoint_a.get("checkpoint_fingerprint") != EXPECTED_RETRY2_CHECKPOINT_A_FINGERPRINT
+        or checkpoint_b.get("phase_delta_fingerprint") != EXPECTED_RETRY2_CHECKPOINT_B_FINGERPRINT
+        or int(checkpoint_b.get("accepted_provider_facts_changed") or 0) != 0
+    ):
+        raise SV1BPreflightError("blocked_retry2_checkpoint_a_b_fingerprint_mismatch")
+    baseline_path = output / "primary-phase-delta-checkpoint-export-v2" / "stable-key-evidence-package.json"
+    baseline_rows = read_json(baseline_path)["tables"]["source_metadata_records"]
+    baseline_by_key = {str(row["provider_record_key"]): row for row in baseline_rows}
+    replay_before = database_fingerprint(replay_database, CORE_SOURCE_TABLES)
+    engine = engine_for(primary_database)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        candidates = list(session.execute(text("""
+            SELECT id,provider_record_key,source_work_id
+            FROM blombooru_source_metadata_records
+            WHERE provider='pixiv' AND metadata_kind='pixiv_ingestion_gate'
+              AND status='terminal_remote_unavailable'
+        """)).mappings())
+        changed = [
+            row for row in candidates
+            if str((baseline_by_key.get(str(row["provider_record_key"])) or {}).get("status") or "")
+            != PixivMetadataState.TERMINAL.value
+        ]
+        if len(changed) != 1:
+            raise SV1BPreflightError("blocked_prior_canary_exact_status_delta_not_unique")
+        target = changed[0]
+        correction = correct_inconclusive_canary_terminal_record(session, int(target["id"]))
+        session.commit()
+        prior_work_id = str(target["source_work_id"])
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+        engine.dispose()
+    replay_after = database_fingerprint(replay_database, CORE_SOURCE_TABLES)
+    proof = {
+        **correction,
+        "checkpoint_a_fingerprint": checkpoint_a["checkpoint_fingerprint"],
+        "checkpoint_b_fingerprint": checkpoint_b["phase_delta_fingerprint"],
+        "exact_corrected_row_count": 1,
+        "replay_database_unchanged": replay_before == replay_after,
+        "replay_before_fingerprint": replay_before["fingerprint"],
+        "replay_after_fingerprint": replay_after["fingerprint"],
+        "accepted_provider_fact_mutation_count": 0,
+        "passed": bool(
+            correction["stable_identity_unchanged"]
+            and correction["original_raw_payload_preserved"]
+            and correction["original_provenance_fields_preserved"]
+            and replay_before == replay_after
+        ),
+    }
+    if proof["passed"] is not True:
+        raise SV1BPreflightError("blocked_prior_canary_corrective_transition_failed")
+    correction_root = output / "canary-route-viability-resume-r1"
+    correction_path = correction_root / "prior-canary-terminal-correction-proof.json"
+    if correction_path.exists():
+        raise SV1BPreflightError("prior_canary_terminal_correction_proof_already_exists")
+    write_json(correction_path, proof)
+    return prior_work_id, proof
+
+
 def execute_provider_manifest(
     output: Path,
     *,
@@ -2370,7 +2450,10 @@ def execute_provider_manifest(
     queue_proof = read_json(output / "provider-queue-manifest-proof.json")
     if queue_proof.get("exact_open_work_membership_passed") is not True:
         raise SV1BPreflightError("provider_queue_manifest_proof_missing_or_failed")
-    validation_path = output / "full-pre-network-validation-proof.json"
+    resume_root = output / "canary-route-viability-resume-r1"
+    validation_path = resume_root / "full-pre-network-validation-proof.json"
+    if not validation_path.is_file():
+        validation_path = output / "full-pre-network-validation-proof.json"
     if not validation_path.is_file():
         raise SV1BPreflightError("full_pre_network_validation_proof_missing")
     validation = read_json(validation_path)
@@ -2393,7 +2476,10 @@ def execute_provider_manifest(
         and all(validation.get(flag) is True for flag in required_validation_flags)
     ):
         raise SV1BPreflightError("full_pre_network_validation_proof_failed")
-    redaction = read_json(output / "waiver-aware-secret-redaction-scan-proof.json")
+    redaction_path = resume_root / "waiver-aware-secret-redaction-scan-proof.json"
+    if not redaction_path.is_file():
+        redaction_path = output / "waiver-aware-secret-redaction-scan-proof.json"
+    redaction = read_json(redaction_path)
     if not (
         redaction.get("passed") is True
         and redaction.get("credential_risk_waiver_policy") == SV1B_CREDENTIAL_RISK_WAIVER_POLICY
@@ -2401,11 +2487,14 @@ def execute_provider_manifest(
         and redaction.get("raw_config_exposure_count") == 0
     ):
         raise SV1BPreflightError("blocked_sv1b_credential_redaction_scan")
+    prior_canary_work_id, correction = correct_prior_inconclusive_canary_state(
+        output, primary_database=primary_database, replay_database=replay_database
+    )
     gate = provider_gate_preflight()
-    write_json(output / "provider-hardening-preflight.json", gate)
+    write_json(resume_root / "provider-hardening-preflight.json", gate)
     if gate.get("passed") is not True:
         raise SV1BPreflightError("blocked_sv1b_provider_authentication")
-    provider_execution_root = output / "provider-execution-checkpoint-r1"
+    provider_execution_root = output / "provider-execution-checkpoint-r2-route-viability"
     if provider_execution_root.exists():
         raise SV1BPreflightError("provider_execution_checkpoint_root_already_exists")
     provider_execution_root.mkdir(parents=True, exist_ok=False)
@@ -2424,8 +2513,11 @@ def execute_provider_manifest(
         accept_local_credential_risk=True,
         credential_risk_waiver_policy=SV1B_CREDENTIAL_RISK_WAIVER_POLICY,
         credential_risk_waiver_scope="pr139_branch_manifest_database_pair_metadata_only_current_draft",
-        canary_work_limit=1,
+        canary_work_limit=5,
         canary_max_attempts_per_work=1,
+        excluded_canary_work_ids=(prior_canary_work_id,),
+        prior_attempt_counts={prior_canary_work_id: 1},
+        skip_queue_materialization=True,
         replay_normalization_failures=False,
         additional_diagnostic_calls=0,
         gallery_dl_command="",
@@ -2439,15 +2531,19 @@ def execute_provider_manifest(
         "performed": canary.get("performed") is True,
         "authenticated_success": canary.get("authenticated_success") is True,
         "gallery_dl_version": gallery_dl_check.get("version") or "unavailable",
-        "private_stable_work_reference": canary.get("private_stable_work_reference"),
+        "private_stable_work_references": [
+            item.get("private_stable_work_reference") for item in canary.get("attempts", [])
+        ],
         "selected_work_count": int(canary.get("selected_work_count") or 0),
         "attempted_work_count": int(canary.get("attempted_work_count") or 0),
-        "returned_page_consistency_count": int(
-            canary.get("returned_page_consistency_count") or 0
+        "returned_page_consistency_count": sum(
+            int(item.get("returned_page_count") or 0) for item in canary.get("attempts", [])
         ),
         "elapsed_seconds": float(canary.get("elapsed_seconds") or 0.0),
         "redaction_passed": canary.get("raw_values_exposed") is False,
-        "safe_reason_code": canary.get("safe_reason_code"),
+        "safe_reason_code": canary.get("status"),
+        "result_class_counts": canary.get("result_class_counts") or {},
+        "route_viable": canary.get("route_viable") is True,
         "credential_risk_waiver_policy": canary.get("credential_risk_waiver_policy"),
         "raw_stdout_published": False,
         "raw_stderr_published": False,
@@ -2464,6 +2560,7 @@ def execute_provider_manifest(
         "redacted_secret_scan_passed": (summary.get("redacted_secret_scan") or {}).get("passed") is True,
         "redacted_authentication_preflight_passed": canary.get("passed") is True,
         "redacted_authentication_canary": redacted_canary,
+        "prior_inconclusive_canary_correction": correction,
         "operation_counts": summary.get("operation_counts") or {},
         "acquisition_execution": summary.get("acquisition_execution") or {},
         "provider_execution_checkpoint_root": str(provider_execution_root),
@@ -4219,7 +4316,9 @@ def main() -> int:
         if not provider_execution_path.is_file():
             raise SV1BPreflightError("provider_execution_proof_missing")
         provider_execution = read_json(provider_execution_path)
-    provider_gate_path = output / "provider-hardening-preflight.json"
+    provider_gate_path = output / "canary-route-viability-resume-r1" / "provider-hardening-preflight.json"
+    if not provider_gate_path.is_file():
+        provider_gate_path = output / "provider-hardening-preflight.json"
     if provider_gate_path.is_file():
         provider_gate = read_json(provider_gate_path)
     acquisition_package = None

@@ -26,7 +26,9 @@ from app.services.pixiv_metadata_ingestion_service import (
     acquisition_work_lifecycle_counts,
     backfill_creator_source_observations,
     build_gallery_dl_metadata_command,
+    classify_gallery_dl_route_viability,
     classify_gallery_dl_failure,
+    correct_inconclusive_canary_terminal_record,
     conflicted_distinct_work_ids,
     defer_proven_source_page_mismatch,
     is_trusted_complete_pixiv_metadata_record,
@@ -40,6 +42,7 @@ from app.services.pixiv_metadata_ingestion_service import (
     queue_media_for_pixiv_metadata,
     require_rotation_confirmation,
     run_bounded_acquisition,
+    run_bounded_route_viability_canary,
     summarize_batch_closure,
     supersede_untrusted_pixiv_creator_observations,
 )
@@ -519,25 +522,22 @@ def test_explicit_auth_failure_in_canary_blocks_without_raw_output(db) -> None:
     )
     db.commit()
 
-    result = type("R", (), {"work_id": "123456789", "state": PixivMetadataState.RETRYABLE.value, "request_attempted": True, "attempt_count": 1, "error_class": "retryable_authentication", "systemic_stop": True})()
     results, evidence = ingestion_runner.run_deterministic_auth_canary(
         db, ["123456789"], entrypoint=("gallery-dl",),
         env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
-        acquire=lambda *_args, **_kwargs: [result],
+        command_runner=lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 1, stdout="", stderr="invalid refresh token"
+        ),
         credential_risk_waiver_policy=(
             "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
         ),
     )
-    assert results == [result]
+    assert len(results) == 1
     assert evidence["passed"] is False
-    assert evidence["systemic_stop"] is True
     assert evidence["raw_values_exposed"] is False
     assert evidence["authenticated_success"] is False
-    assert evidence["safe_reason_code"] == "provider_authentication_or_route_rejected"
-    assert evidence["private_stable_work_reference"] == hashlib.sha256(
-        b"123456789"
-    ).hexdigest()
-    assert evidence["returned_page_consistency_count"] == 0
+    assert evidence["status"] == "blocked_sv1b_provider_authentication"
+    assert evidence["attempts"][0]["private_stable_work_reference"] == hashlib.sha256(b"123456789").hexdigest()
     assert evidence["credential_risk_waiver_policy"] == (
         "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
     )
@@ -1467,33 +1467,40 @@ def test_pending_to_terminal_lifecycle_closes_batch(db) -> None:
 
 
 def test_deleted_first_canary_does_not_block_later_success(db) -> None:
-    terminal = type("R", (), {"work_id": "123456789", "state": PixivMetadataState.TERMINAL.value, "request_attempted": True, "attempt_count": 1, "error_class": "authenticated_remote_deleted_private_unavailable"})()
-    success = type("R", (), {"work_id": "223456789", "state": PixivMetadataState.COMPLETE.value, "request_attempted": True, "attempt_count": 1, "error_class": None})()
+    calls = []
+    def command_runner(command, **_kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="404 deleted")
+        payload = [[3, "url", {"id": 223456789, "num": 0, "category": "pixiv"}]]
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
     results, proof = ingestion_runner.run_deterministic_auth_canary(
         db, ["123456789", "223456789"], entrypoint=("gallery-dl",),
         env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
-        acquire=lambda *_args, **_kwargs: [terminal, success],
+        command_runner=command_runner, sleeper=lambda _seconds: None,
     )
     assert len(results) == 2 and proof["passed"] is True
-    assert proof["terminal_count"] == 1 and proof["success_count"] == 1
+    assert proof["result_class_counts"] == {"resource_unavailable_inconclusive": 1, "route_viable": 1}
     assert proof["authenticated_success"] is True
-    assert proof["safe_reason_code"] == "authenticated_metadata_consistency_confirmed"
-    assert proof["returned_page_consistency_count"] == 0
+    assert proof["status"] == "route_viable"
 
 
 def test_terminal_only_canary_advances_to_next_bounded_batch(db) -> None:
     calls = []
     sleeps = []
-    def acquire(_session, work_ids, **_kwargs):
-        calls.append(tuple(work_ids))
-        state = PixivMetadataState.TERMINAL.value if len(calls) == 1 else PixivMetadataState.COMPLETE.value
-        return [type("R", (), {"work_id": work_ids[0], "state": state, "request_attempted": True, "attempt_count": 1, "error_class": None})()]
+    def command_runner(command, **_kwargs):
+        calls.append((command[-1].rsplit("/", 1)[-1],))
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="private work")
+        payload = [[3, "url", {"id": 223456789, "num": 0, "category": "pixiv"}]]
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
     _, proof = ingestion_runner.run_deterministic_auth_canary(
         db, ["123456789", "223456789"], entrypoint=("gallery-dl",),
-        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, acquire=acquire,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, command_runner=command_runner,
         batch_size=1, sleeper=sleeps.append,
     )
     assert calls == [("123456789",), ("223456789",)]
+    assert len(calls) == 2
     assert sleeps == [ingestion_runner.MIN_REQUEST_SPACING_SECONDS]
     assert proof["passed"] is True
 
@@ -1501,24 +1508,139 @@ def test_terminal_only_canary_advances_to_next_bounded_batch(db) -> None:
 def test_canary_reuses_persistent_spacing_without_outer_sleep(db) -> None:
     calls = []
     sleeps = []
-    marker = object()
+    class Marker:
+        def wait_before_request(self, work_id):
+            calls.append(("spacing", work_id))
+    marker = Marker()
 
-    def acquire(_session, work_ids, **kwargs):
-        calls.append((tuple(work_ids), kwargs.get("persistent_spacing")))
-        state = PixivMetadataState.TERMINAL.value if len(calls) == 1 else PixivMetadataState.COMPLETE.value
-        return [type("R", (), {
-            "work_id": work_ids[0], "state": state, "request_attempted": True,
-            "attempt_count": 1, "error_class": None,
-        })()]
+    def command_runner(command, **_kwargs):
+        work_id = command[-1].rsplit("/", 1)[-1]
+        calls.append(("provider", work_id))
+        if work_id == "123456789":
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="private")
+        payload = [[3, "url", {"id": int(work_id), "num": 0, "category": "pixiv"}]]
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
 
     _, proof = ingestion_runner.run_deterministic_auth_canary(
         db, ["123456789", "223456789"], entrypoint=("gallery-dl",),
-        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, acquire=acquire,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"}, command_runner=command_runner,
         batch_size=1, sleeper=sleeps.append, persistent_spacing=marker,
     )
-    assert calls == [(('123456789',), marker), (('223456789',), marker)]
+    assert calls == [
+        ("spacing", "123456789"), ("provider", "123456789"),
+        ("spacing", "223456789"), ("provider", "223456789"),
+    ]
     assert sleeps == []
     assert proof["passed"] is True
+
+
+def test_matching_work_payload_proves_route_when_requested_page_is_absent() -> None:
+    payload = [[3, "url", {"id": 123456789, "num": 0, "category": "pixiv"}]]
+    result = classify_gallery_dl_route_viability(
+        stdout=json.dumps(payload), stderr="", returncode=0,
+        expected_work_id="123456789",
+    )
+    assert result.route_viable is True
+    assert result.result_class == "route_viable"
+    assert result.returned_page_count == 1
+
+
+@pytest.mark.parametrize("stderr", ["429 rate limit", "network timeout", "DNS failure"])
+def test_route_canary_transport_is_not_authentication_rejection(stderr: str) -> None:
+    result = classify_gallery_dl_route_viability(
+        stdout="", stderr=stderr, returncode=1, expected_work_id="123456789"
+    )
+    assert result.result_class == "transport_or_provider_systemic_failure"
+
+
+def test_five_resource_unavailable_results_are_bounded_inconclusive() -> None:
+    calls = []
+    work_ids = [str(123456789 + index) for index in range(7)]
+    def runner(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="404 removed")
+    attempts, proof = run_bounded_route_viability_canary(
+        work_ids, entrypoint=("gallery-dl",), command_runner=runner,
+        sleeper=lambda _seconds: None, max_works=5,
+    )
+    assert len(attempts) == len(calls) == 5
+    assert proof["status"] == "blocked_sv1b_authentication_canary_inconclusive"
+    assert proof["one_attempt_per_selected_work"] is True
+
+
+def test_canary_selection_is_partitioned_bounded_and_excludes_prior_work() -> None:
+    manifest = [str(123456789 + index) for index in range(30)]
+    selected = ingestion_runner.select_deterministic_canary_work_ids(
+        manifest, limit=5, excluded_work_ids={manifest[0]}
+    )
+    assert len(selected) == len(set(selected)) == 5
+    assert manifest[0] not in selected
+    assert selected == ingestion_runner.select_deterministic_canary_work_ids(
+        list(reversed(manifest)), limit=5, excluded_work_ids={manifest[0]}
+    )
+
+
+def test_route_canary_stops_after_first_success_and_does_not_mutate_queue(db) -> None:
+    for media_id, work_id in ((301, "123456789"), (302, "223456789"), (303, "323456789")):
+        queue_media_for_pixiv_metadata(db, {
+            "id": media_id, "filename": f"{work_id}_p9.jpg", "path": f"media/{media_id}.jpg"
+        })
+    db.commit()
+    before = [(item.id, item.status, item.raw_metadata_json, item.provenance) for item in db.query(SourceMetadataRecord).order_by(SourceMetadataRecord.id)]
+    calls = []
+    def runner(command, **_kwargs):
+        calls.append(command)
+        work_id = command[-1].rsplit("/", 1)[-1]
+        payload = [[3, "url", {"id": int(work_id), "num": 0, "category": "pixiv"}]]
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+    attempts, proof = run_bounded_route_viability_canary(
+        ["123456789", "223456789", "323456789"], entrypoint=("gallery-dl",),
+        command_runner=runner, sleeper=lambda _seconds: None,
+    )
+    after = [(item.id, item.status, item.raw_metadata_json, item.provenance) for item in db.query(SourceMetadataRecord).order_by(SourceMetadataRecord.id)]
+    assert len(calls) == len(attempts) == 1
+    assert proof["route_viable"] is True
+    assert before == after
+
+
+def test_canary_attempt_counts_toward_three_attempt_acquisition_budget(db) -> None:
+    queue_media_for_pixiv_metadata(db, {"id": 304, "filename": "123456789_p0.jpg", "path": "media/304.jpg"})
+    db.commit()
+    calls = []
+    results = run_bounded_acquisition(
+        db, ["123456789"], entrypoint=("gallery-dl",), authentication_passed=True,
+        env={"VIOLET_CREDENTIAL_ROTATION_CONFIRMED": "true"},
+        prior_attempt_counts={"123456789": 1}, max_attempts_per_work=3,
+        command_runner=lambda command, **kwargs: (
+            calls.append(command) or subprocess.CompletedProcess(command, 1, stdout="", stderr="network timeout")
+        ), sleeper=lambda _seconds: None,
+    )
+    assert len(calls) == 2
+    assert results[0].attempt_count == 3
+
+
+def test_prior_terminal_canary_correction_preserves_original_evidence(db) -> None:
+    for media_id in (305, 306):
+        queue_media_for_pixiv_metadata(db, {
+            "id": media_id, "filename": f"{123456789 + media_id}_p0.jpg", "path": f"media/{media_id}.jpg"
+        })
+    db.commit()
+    records = db.query(SourceMetadataRecord).order_by(SourceMetadataRecord.id).all()
+    target, untouched = records
+    target.status = PixivMetadataState.TERMINAL.value
+    target.raw_metadata_json = {"original": "safe-terminal-shape"}
+    target.provenance = {"original": "safe-provenance"}
+    db.commit()
+    untouched_before = (untouched.status, untouched.raw_metadata_json, untouched.provenance)
+    proof = correct_inconclusive_canary_terminal_record(db, target.id)
+    db.commit()
+    assert target.status == PixivMetadataState.RETRYABLE.value
+    assert target.raw_metadata_json == {"original": "safe-terminal-shape"}
+    assert target.provenance["original"] == "safe-provenance"
+    assert target.provenance["sv1b_canary_corrections"][0]["historical_attempt_count"] == 1
+    assert proof["historical_terminal_evidence_retained"] is True
+    assert proof["accepted_provider_metadata_fact_changed"] is False
+    assert (untouched.status, untouched.raw_metadata_json, untouched.provenance) == untouched_before
 
 
 @pytest.mark.parametrize(

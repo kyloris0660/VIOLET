@@ -406,6 +406,30 @@ class AcquisitionResult:
     systemic_stop: bool = False
 
 
+class PixivRouteViabilityClass(str, Enum):
+    ROUTE_VIABLE = "route_viable"
+    EXPLICIT_AUTHENTICATION_REJECTION = "explicit_authentication_rejection"
+    RESOURCE_UNAVAILABLE_INCONCLUSIVE = "resource_unavailable_inconclusive"
+    TRANSPORT_OR_PROVIDER_SYSTEMIC_FAILURE = "transport_or_provider_systemic_failure"
+    IDENTITY_OR_PAYLOAD_FAILURE = "identity_or_payload_failure"
+
+
+@dataclass(frozen=True)
+class RouteViabilityAttempt:
+    work_id: str
+    result_class: str
+    route_viable: bool
+    returned_work_consistent: bool
+    returned_page_count: int
+    safe_reason_code: str
+    elapsed_seconds: float
+    attempt_count: int = 1
+
+    @property
+    def private_stable_work_reference(self) -> str:
+        return hashlib.sha256(self.work_id.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class PageLocalDispositionResult:
     linked_record_ids: tuple[int, ...]
@@ -1065,6 +1089,176 @@ def parse_gallery_dl_stdout(stdout: str, expected_work_id: str) -> list[dict[str
     return sorted(normalized, key=lambda item: int(item["page_index"]))
 
 
+def classify_gallery_dl_route_viability(
+    *, stdout: str, stderr: str, returncode: int, expected_work_id: str,
+) -> RouteViabilityAttempt:
+    """Classify route evidence without changing ordinary acquisition state."""
+
+    started = time.monotonic()
+    payloads: list[Any] = []
+    parse_failed = False
+    stripped = str(stdout or "").strip()
+    if stripped:
+        try:
+            payloads.append(json.loads(stripped))
+        except json.JSONDecodeError:
+            try:
+                payloads.extend(json.loads(line) for line in stripped.splitlines() if line.strip())
+            except json.JSONDecodeError:
+                parse_failed = True
+    records: list[dict[str, Any]] = []
+    if not parse_failed:
+        for payload in payloads:
+            records.extend(_extract_payload_records(payload))
+    matching_records: list[dict[str, Any]] = []
+    mismatched_identity = False
+    provider_is_pixiv = False
+    for record in records:
+        raw_work_id = record.get("id") or record.get("illust_id") or record.get("work_id") or record.get("pid")
+        record_is_pixiv = any(
+            "pixiv" in str(value or "").casefold()
+            for value in (
+                record.get("provider"), record.get("category"), record.get("extractor"),
+                record.get("extractor_key"), record.get("subcategory"),
+            )
+        )
+        if str(raw_work_id or "") == str(expected_work_id):
+            matching_records.append(record)
+            provider_is_pixiv = provider_is_pixiv or record_is_pixiv
+        elif raw_work_id not in (None, ""):
+            mismatched_identity = True
+    if matching_records and provider_is_pixiv:
+        page_indexes: set[int] = set()
+        for record in matching_records:
+            raw_page = record.get("num")
+            if raw_page is None:
+                raw_page = record.get("page_index", record.get("page", 0))
+            try:
+                page_indexes.add(int(raw_page or 0))
+            except (TypeError, ValueError):
+                pass
+        return RouteViabilityAttempt(
+            str(expected_work_id), PixivRouteViabilityClass.ROUTE_VIABLE.value, True, True,
+            len(page_indexes), "pixiv_matching_work_metadata_returned",
+            round(time.monotonic() - started, 6),
+        )
+
+    diagnostic = " ".join((str(stderr or ""), str(stdout or "")))
+    if re.search(
+        r"(?i)(\b401\b|authentication(?:\s+required|\s+failed|\s+rejected)|login\s+required|"
+        r"invalid(?:\s+or\s+expired)?\s+refresh.?token|expired\s+refresh.?token|"
+        r"oauth(?:\s+failure|\s+failed|\s+error)|credential(?:s)?\s+rejected|"
+        r"\b403\b[^\r\n]*(?:auth|login|token|oauth|credential))", diagnostic,
+    ):
+        result_class = PixivRouteViabilityClass.EXPLICIT_AUTHENTICATION_REJECTION.value
+        reason = "explicit_provider_authentication_rejection"
+    elif re.search(r"(?i)(\b404\b|deleted|private|not\s*found|unavailable|does\s+not\s+exist|removed)", diagnostic):
+        result_class = PixivRouteViabilityClass.RESOURCE_UNAVAILABLE_INCONCLUSIVE.value
+        reason = "resource_unavailable_route_unverified"
+    elif re.search(
+        r"(?i)(\b429\b|rate.?limit|too many requests|timeout|timed out|connection|network|dns|"
+        r"temporary failure|provider process|process failure)", diagnostic,
+    ) or (int(returncode) != 0 and not records):
+        result_class = PixivRouteViabilityClass.TRANSPORT_OR_PROVIDER_SYSTEMIC_FAILURE.value
+        reason = "provider_transport_or_systemic_failure"
+    else:
+        result_class = PixivRouteViabilityClass.IDENTITY_OR_PAYLOAD_FAILURE.value
+        if parse_failed:
+            reason = "malformed_provider_payload"
+        elif mismatched_identity or (records and not matching_records):
+            reason = "returned_work_identity_mismatch"
+        elif matching_records and not provider_is_pixiv:
+            reason = "returned_provider_not_pixiv"
+        else:
+            reason = "empty_or_unusable_provider_payload"
+    return RouteViabilityAttempt(
+        str(expected_work_id), result_class, False,
+        bool(matching_records) and not mismatched_identity, 0, reason,
+        round(time.monotonic() - started, 6),
+    )
+
+
+def run_bounded_route_viability_canary(
+    work_ids: Sequence[str], *, entrypoint: Sequence[str],
+    env: Mapping[str, str] | None = None,
+    command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    sleeper: Callable[[float], None] = time.sleep,
+    timeout_seconds: int = 120,
+    min_spacing_seconds: float = MIN_REQUEST_SPACING_SECONDS,
+    persistent_spacing: PersistentRequestSpacing | None = None,
+    max_works: int = 5,
+) -> tuple[list[RouteViabilityAttempt], dict[str, Any]]:
+    """Probe at most five distinct works without persisting queue outcomes."""
+
+    if max_works < 1 or max_works > 5:
+        raise PixivMetadataGateError("blocked_auth_canary_work_limit_invalid")
+    if min_spacing_seconds < MIN_REQUEST_SPACING_SECONDS:
+        raise PixivMetadataGateError("blocked_pixiv_request_spacing_below_two_seconds")
+    selected = tuple(dict.fromkeys(str(value) for value in work_ids))[:max_works]
+    attempts: list[RouteViabilityAttempt] = []
+    started = time.monotonic()
+    for index, work_id in enumerate(selected):
+        if persistent_spacing is not None:
+            persistent_spacing.wait_before_request(work_id)
+        elif index:
+            sleeper(min_spacing_seconds)
+        command = build_gallery_dl_metadata_command(entrypoint, work_id)
+        attempt_started = time.monotonic()
+        try:
+            completed = command_runner(
+                command, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=timeout_seconds, shell=False, env=env,
+            )
+            attempt = classify_gallery_dl_route_viability(
+                stdout=completed.stdout or "", stderr=completed.stderr or "",
+                returncode=int(completed.returncode), expected_work_id=work_id,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            attempt = RouteViabilityAttempt(
+                work_id, PixivRouteViabilityClass.TRANSPORT_OR_PROVIDER_SYSTEMIC_FAILURE.value,
+                False, False, 0, "provider_transport_or_systemic_exception",
+                round(time.monotonic() - attempt_started, 6),
+            )
+        attempts.append(attempt)
+        if attempt.result_class != PixivRouteViabilityClass.RESOURCE_UNAVAILABLE_INCONCLUSIVE.value:
+            break
+    classes = Counter(item.result_class for item in attempts)
+    route_viable = any(item.route_viable for item in attempts)
+    if route_viable:
+        status = "route_viable"
+    elif classes[PixivRouteViabilityClass.EXPLICIT_AUTHENTICATION_REJECTION.value]:
+        status = "blocked_sv1b_provider_authentication"
+    elif classes[PixivRouteViabilityClass.TRANSPORT_OR_PROVIDER_SYSTEMIC_FAILURE.value]:
+        status = "blocked_sv1b_provider_transport"
+    else:
+        status = "blocked_sv1b_authentication_canary_inconclusive"
+    proof = {
+        "canary_version": "sv1b_pixiv_route_viability_canary_v1",
+        "status": status,
+        "route_viable": route_viable,
+        "selected_work_count": len(selected),
+        "attempted_work_count": len(attempts),
+        "maximum_provider_requests": 5,
+        "one_attempt_per_selected_work": len({item.work_id for item in attempts}) == len(attempts),
+        "result_class_counts": dict(sorted(classes.items())),
+        "attempts": [{
+            "private_stable_work_reference": item.private_stable_work_reference,
+            "attempt_count": item.attempt_count,
+            "result_class": item.result_class,
+            "route_viability": item.route_viable,
+            "returned_work_consistency": item.returned_work_consistent,
+            "returned_page_count": item.returned_page_count,
+            "elapsed_seconds": item.elapsed_seconds,
+            "safe_reason_code": item.safe_reason_code,
+            "raw_output_redacted": True,
+        } for item in attempts],
+        "elapsed_seconds": round(time.monotonic() - started, 6),
+        "raw_stdout_published": False,
+        "raw_stderr_published": False,
+    }
+    return attempts, proof
+
+
 def _walk_payload_mappings(value: Any) -> Iterable[Mapping[str, Any]]:
     if isinstance(value, Mapping):
         yield value
@@ -1720,6 +1914,85 @@ def classify_gallery_dl_failure(stderr: str, *, authentication_passed: bool) -> 
     if re.search(r"(?i)(timeout|timed out|connection|network|dns|temporar)", value):
         return PixivMetadataState.RETRYABLE.value, "retryable_network_transport"
     return PixivMetadataState.RETRYABLE.value, "retryable_provider_failure"
+
+
+def correct_inconclusive_canary_terminal_record(
+    session: Session,
+    record_id: int,
+    *,
+    historical_attempt_count: int = 1,
+) -> dict[str, Any]:
+    """Reopen exactly one untrusted canary terminal while retaining its evidence."""
+
+    if historical_attempt_count != 1:
+        raise PixivMetadataGateError("blocked_prior_canary_attempt_count_invalid")
+    record = session.query(SourceMetadataRecord).filter(SourceMetadataRecord.id == int(record_id)).one_or_none()
+    if record is None:
+        raise PixivMetadataGateError("blocked_prior_canary_record_missing")
+    if record.provider != "pixiv" or record.metadata_kind != QUEUE_METADATA_KIND:
+        raise PixivMetadataGateError("blocked_prior_canary_record_not_phase_owned_queue")
+    if record.status != PixivMetadataState.TERMINAL.value:
+        raise PixivMetadataGateError("blocked_prior_canary_record_not_terminal")
+    raw_before = dict(record.raw_metadata_json or {})
+    provenance_before = dict(record.provenance or {})
+    raw_fingerprint = hashlib.sha256(
+        json.dumps(raw_before, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    provenance_fingerprint = hashlib.sha256(
+        json.dumps(provenance_before, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    stable_identity = "|".join((
+        str(record.provider_record_key or ""), str(record.media_id or ""),
+        str(record.source_work_id or ""), str(record.source_page_index or 0),
+    ))
+    before_fingerprint = hashlib.sha256(
+        json.dumps({
+            "identity": stable_identity, "status": record.status,
+            "raw": raw_before, "provenance": provenance_before,
+        }, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    envelope = {
+        "version": "sv1b_auth_canary_terminal_correction_v1",
+        "reason_code": "sv1b_auth_canary_terminal_untrusted_before_route_viability_v1",
+        "historical_classifier_status": PixivMetadataState.TERMINAL.value,
+        "historical_attempt_count": 1,
+        "original_raw_payload_fingerprint": raw_fingerprint,
+        "original_provenance_fingerprint": provenance_fingerprint,
+        "ordinary_terminal_closure_accepted": False,
+    }
+    provenance_after = dict(provenance_before)
+    existing = provenance_after.get("sv1b_canary_corrections")
+    corrections = list(existing) if isinstance(existing, list) else []
+    corrections.append(envelope)
+    provenance_after["sv1b_canary_corrections"] = corrections
+    record.status = PixivMetadataState.RETRYABLE.value
+    record.provenance = provenance_after
+    session.flush()
+    after_fingerprint = hashlib.sha256(
+        json.dumps({
+            "identity": stable_identity, "status": record.status,
+            "raw": record.raw_metadata_json or {}, "provenance": record.provenance or {},
+        }, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    return {
+        "correction_version": envelope["version"],
+        "private_stable_record_reference": hashlib.sha256(stable_identity.encode("utf-8")).hexdigest(),
+        "before_fingerprint": before_fingerprint,
+        "after_fingerprint": after_fingerprint,
+        "stable_identity_unchanged": True,
+        "original_raw_payload_preserved": dict(record.raw_metadata_json or {}) == raw_before,
+        "original_raw_payload_fingerprint": raw_fingerprint,
+        "original_provenance_fields_preserved": all(
+            provenance_after.get(key) == value for key, value in provenance_before.items()
+        ),
+        "original_provenance_fingerprint": provenance_fingerprint,
+        "historical_attempt_count": 1,
+        "historical_terminal_evidence_retained": True,
+        "accepted_provider_metadata_fact_changed": False,
+        "ordinary_terminal_closure_accepted": False,
+        "new_state": PixivMetadataState.RETRYABLE.value,
+        "safe_reason_code": envelope["reason_code"],
+    }
 
 
 def run_bounded_acquisition(

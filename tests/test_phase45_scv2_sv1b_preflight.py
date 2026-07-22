@@ -367,6 +367,10 @@ def test_execute_provider_stops_before_runner_when_credential_gate_fails(tmp_pat
         lambda: {"passed": False},
     )
     monkeypatch.setattr(
+        "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.correct_prior_inconclusive_canary_state",
+        lambda *_args, **_kwargs: ("123456789", {"passed": True}),
+    )
+    monkeypatch.setattr(
         "scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.ingestion_runner.run",
         lambda _args: pytest.fail("provider runner must not be called"),
     )
