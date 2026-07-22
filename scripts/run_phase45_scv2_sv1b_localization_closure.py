@@ -306,6 +306,15 @@ def execute(
     for batch in manifest["batches"]:
         batch_id = str(batch["batch_id"])
         state = dict((checkpoint.get("batches") or {}).get(batch_id) or {})
+        if state.get("status") == "in_flight":
+            state.update({
+                "status": "validation_retry_pending",
+                "last_validation_reason": "localization_in_flight_result_not_accepted",
+                "clarification_rows": list(batch["rows"]),
+                "recovered_at": _utc_now(),
+            })
+            checkpoint.setdefault("batches", {})[batch_id] = state
+            sv1b.write_json(_checkpoint_path(output), checkpoint)
         if state.get("status") in {"checkpointed", "applied_both"}:
             rows = state.get("translations") or []
             if sv1b.sha256_payload(rows) != state.get("translation_fingerprint"):
@@ -341,6 +350,12 @@ def execute(
                     "clarification_rows": expected_rows if clarification_retry else [],
                     "clarification_retry": clarification_retry,
                     "started_at": _utc_now(),
+                    **({
+                        "last_validation_reason": state["last_validation_reason"]
+                    } if state.get("last_validation_reason") else {}),
+                    **({
+                        "recovered_at": state["recovered_at"]
+                    } if state.get("recovered_at") else {}),
                 }
                 checkpoint.setdefault("batches", {})[batch_id] = state
                 sv1b.write_json(_checkpoint_path(output), checkpoint)
@@ -369,7 +384,24 @@ def execute(
                     raise LocalizationClosureError(
                         "localization_primary_provider_call_failed"
                     ) from None
-                attempt_rows = _validate_translation_rows(expected_rows, results)
+                try:
+                    attempt_rows = _validate_translation_rows(expected_rows, results)
+                except LocalizationClosureError as exc:
+                    state.update({
+                        "status": "validation_retry_pending",
+                        "last_validation_reason": str(exc),
+                        "clarification_rows": list(expected_rows),
+                        "finished_at": _utc_now(),
+                    })
+                    if int(state["attempt_count"]) >= MAX_ATTEMPTS_PER_BATCH:
+                        state["status"] = "blocked_localization_validation"
+                    checkpoint["batches"][batch_id] = state
+                    sv1b.write_json(_checkpoint_path(output), checkpoint)
+                    if state["status"] == "blocked_localization_validation":
+                        raise LocalizationClosureError(
+                            "localization_batch_retry_budget_exhausted"
+                        ) from None
+                    continue
                 after_usage = dict(getattr(provider, "usage_totals", {}) or {})
                 usage_tokens = max(
                     0,

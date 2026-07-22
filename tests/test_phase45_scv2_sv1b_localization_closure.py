@@ -75,6 +75,20 @@ class _AlwaysAmbiguousProvider(_AmbiguousThenClearProvider):
         return results
 
 
+class _EchoThenClearProvider(_Provider):
+    async def translate_tags(self, rows):
+        self.calls += 1
+        self.usage_totals["total_tokens"] += 120
+        return [
+            _Translation(
+                canonical_name=row["name"],
+                display_name_zh=(row["name"] if self.calls == 1 else "红帽"),
+                aliases_zh=[],
+            )
+            for row in rows
+        ]
+
+
 def test_build_manifest_separates_policy_exclusions_and_binds_cost(tmp_path: Path, monkeypatch) -> None:
     output = tmp_path / "run"
     output.mkdir()
@@ -371,3 +385,63 @@ def test_execute_blocks_when_clarification_remains_ambiguous(tmp_path: Path, mon
     assert provider.calls == 2
     assert state["attempt_count"] == 2
     assert state["status"] == "blocked_localization_ambiguity"
+
+
+def test_execute_retries_untranslated_echo_once_before_acceptance(tmp_path: Path, monkeypatch) -> None:
+    output = _install_single_batch_execution_fakes(tmp_path, monkeypatch)
+    provider = _EchoThenClearProvider()
+
+    result = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
+    )
+
+    checkpoint = json.loads((output / "localization/localization-llm-checkpoint-private.json").read_text(encoding="utf-8"))
+    state = checkpoint["batches"]["0001-test"]
+    assert result["localization_complete"] is True
+    assert provider.calls == 2
+    assert state["attempt_count"] == 2
+    assert state["clarification_retry"] is True
+    assert state["status"] == "applied_both"
+
+
+def test_execute_recovers_unaccepted_inflight_attempt_without_resetting_budget(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = _install_single_batch_execution_fakes(tmp_path, monkeypatch)
+    checkpoint_path = output / "localization/localization-llm-checkpoint-private.json"
+    checkpoint_path.parent.mkdir(parents=True)
+    checkpoint_path.write_text(json.dumps({
+        "manifest_fingerprint": "f" * 64,
+        "provider_route": "primary_only",
+        "fallback_provider_used": False,
+        "batches": {
+            "0001-test": {
+                "input_fingerprint": closure.sv1b.sha256_payload([
+                    {"canonical_name": "red_hat", "category": "general"}
+                ]),
+                "attempt_count": 1,
+                "status": "in_flight",
+                "cost_upper_bound_usd": closure._cost_upper_bound(
+                    closure.TOKENS_PER_BATCH_UPPER_BOUND
+                ),
+            }
+        },
+    }), encoding="utf-8")
+    provider = _Provider()
+
+    result = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
+    )
+
+    state = json.loads(checkpoint_path.read_text(encoding="utf-8"))["batches"]["0001-test"]
+    assert result["localization_complete"] is True
+    assert provider.calls == 1
+    assert state["attempt_count"] == 2
+    assert state["clarification_retry"] is True
+    assert state["last_validation_reason"] == "localization_in_flight_result_not_accepted"
