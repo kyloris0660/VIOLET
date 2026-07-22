@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -40,6 +41,7 @@ from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     SV1B_TRUST_RECLASSIFICATION_POLICY_VERSION,
     classify_pixiv_metadata_lifecycle,
     correct_inconclusive_canary_terminal_record,
+    defer_proven_source_page_mismatch,
     is_trusted_complete_pixiv_metadata_record,
     manifest_scoped_outcome_key,
 )
@@ -2587,6 +2589,198 @@ def execute_provider_manifest(
     return result
 
 
+def close_sv1b_page_mismatch_outcomes(
+    output: Path,
+    *,
+    primary_database: str,
+) -> dict[str, Any]:
+    """Close only exact provenance-bearing SV1B page mismatches, without provider calls."""
+
+    execution_root = output / "provider-execution-checkpoint-r2-route-viability"
+    ledger_path = execution_root / "final-work-outcome-ledger.json"
+    summary_path = execution_root / "execution-summary.json"
+    ledger_rows = read_json(ledger_path)
+    original_summary = read_json(summary_path)
+    governed = {
+        str(row["work_id"]): str(row["final_outcome"])
+        for row in ledger_rows
+        if str(row.get("final_outcome") or "") in {
+            "normalization_failed", "conflict_normalization_failed",
+        }
+    }
+    engine = engine_for(primary_database)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    private_ledger: list[dict[str, Any]] = []
+    before_rows: list[Mapping[str, Any]] = []
+    first_counts: Counter[str] = Counter()
+    second_counts: Counter[str] = Counter()
+    try:
+        if governed:
+            before_rows = list(session.execute(text("""
+                SELECT id,source_work_id,source_page_index,status,raw_metadata_json,provenance
+                FROM blombooru_source_metadata_records
+                WHERE provider='pixiv' AND metadata_kind='pixiv_ingestion_gate'
+                  AND status='normalization_failed' AND source_work_id = ANY(:work_ids)
+                ORDER BY source_work_id,source_page_index,id
+            """), {"work_ids": list(governed)}).mappings())
+        by_work: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+        for row in before_rows:
+            by_work[str(row["source_work_id"])].append(row)
+        if set(by_work) != set(governed):
+            raise SV1BPreflightError("blocked_sv1b_page_mismatch_db_ledger_membership_mismatch")
+        raw_history_before = sha256_payload([
+            {"id": int(row["id"]), "raw": row["raw_metadata_json"], "provenance": row["provenance"]}
+            for row in before_rows
+        ])
+        prepared: list[dict[str, Any]] = []
+        for work_id, rows in sorted(by_work.items(), key=lambda item: int(item[0])):
+            observed_pages: set[int] = set()
+            requested_pages: set[int] = set()
+            stable_rows: list[dict[str, Any]] = []
+            for row in rows:
+                raw = dict(row["raw_metadata_json"] or {})
+                diagnostics = dict(raw.get("structural_diagnostics") or {})
+                if not (
+                    diagnostics.get("failure_code") == "provider_metadata_missing_attempted_local_page"
+                    and diagnostics.get("provider_output_returned") is True
+                    and str(diagnostics.get("work_id") or "") == work_id
+                    and diagnostics.get("normalizer_version") == "gallery_dl_pixiv_normalizer_v1"
+                ):
+                    raise SV1BPreflightError("blocked_sv1b_page_mismatch_provenance_invalid")
+                observed_pages.update(int(value) for value in diagnostics.get("observed_page_set") or ())
+                requested_pages.add(int(row["source_page_index"] or 0))
+                stable_rows.append({
+                    "record_id": int(row["id"]),
+                    "requested_page_index": int(row["source_page_index"] or 0),
+                    "raw_fingerprint": sha256_payload(raw),
+                    "provenance_fingerprint": sha256_payload(dict(row["provenance"] or {})),
+                })
+            if not observed_pages or not requested_pages.isdisjoint(observed_pages):
+                raise SV1BPreflightError("blocked_sv1b_page_mismatch_not_exactly_absent")
+            manifest_kind = "conflict" if governed[work_id].startswith("conflict_") else "main"
+            evidence_fingerprint = sha256_payload({
+                "policy": DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
+                "manifest_fingerprint": ACCEPTED_MANIFEST_FINGERPRINT,
+                "manifest_kind": manifest_kind,
+                "original_final_outcome": governed[work_id],
+                "rows": stable_rows,
+                "observed_pages": sorted(observed_pages),
+            })
+            item = {
+                "work_id": work_id,
+                "manifest_kind": manifest_kind,
+                "original_final_outcome": governed[work_id],
+                "record_ids": tuple(int(row["id"]) for row in rows),
+                "requested_pages": tuple(sorted(requested_pages)),
+                "observed_pages": tuple(sorted(observed_pages)),
+                "evidence_fingerprint": evidence_fingerprint,
+            }
+            prepared.append(item)
+            private_ledger.append({
+                "private_stable_work_reference": sha256_payload(work_id),
+                "manifest_kind": manifest_kind,
+                "original_final_outcome": governed[work_id],
+                "requested_page_indexes": list(item["requested_pages"]),
+                "observed_page_indexes": list(item["observed_pages"]),
+                "record_count": len(item["record_ids"]),
+                "evidence_fingerprint": evidence_fingerprint,
+            })
+        deferred_at = datetime.now(timezone.utc).isoformat()
+        for item in prepared:
+            first_counts.update(defer_proven_source_page_mismatch(
+                session, item["work_id"], attempted_record_ids=item["record_ids"],
+                observed_page_indexes=item["observed_pages"],
+                original_final_outcome=item["original_final_outcome"],
+                manifest_kind=item["manifest_kind"],
+                evidence_fingerprint=item["evidence_fingerprint"],
+                deferred_at=deferred_at, governed_route_exhausted=True,
+            ))
+        session.commit()
+        for item in prepared:
+            second_counts.update(defer_proven_source_page_mismatch(
+                session, item["work_id"], attempted_record_ids=item["record_ids"],
+                observed_page_indexes=item["observed_pages"],
+                original_final_outcome=item["original_final_outcome"],
+                manifest_kind=item["manifest_kind"],
+                evidence_fingerprint=item["evidence_fingerprint"],
+                deferred_at=deferred_at, governed_route_exhausted=True,
+            ))
+        session.commit()
+        after_rows = list(session.execute(text("""
+            SELECT id,source_work_id,source_page_index,status,raw_metadata_json,provenance
+            FROM blombooru_source_metadata_records
+            WHERE id = ANY(:record_ids) ORDER BY source_work_id,source_page_index,id
+        """), {"record_ids": [int(row["id"]) for row in before_rows]}).mappings()) if before_rows else []
+        raw_history_after = sha256_payload([
+            {"id": int(row["id"]), "raw": row["raw_metadata_json"], "provenance": row["provenance"]}
+            for row in after_rows
+        ])
+        remaining_open = int(session.execute(text("""
+            SELECT count(DISTINCT source_work_id) FROM blombooru_source_metadata_records
+            WHERE provider='pixiv' AND metadata_kind='pixiv_ingestion_gate'
+              AND status IN ('metadata_pending','metadata_retryable','normalization_failed','provider_identity_mismatch','filename_identity_conflict')
+        """)).scalar() or 0)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+        engine.dispose()
+    if raw_history_before != raw_history_after:
+        raise SV1BPreflightError("blocked_sv1b_page_mismatch_raw_or_provenance_mutated")
+    if second_counts["updated"] or second_counts["evidence_created"]:
+        raise SV1BPreflightError("blocked_sv1b_page_mismatch_transition_not_idempotent")
+    if remaining_open:
+        raise SV1BPreflightError("blocked_sv1b_acquisition_open_work_remaining")
+
+    governed_summary = json.loads(canonical_json(original_summary))
+    acquisition = governed_summary["acquisition_execution"]
+    counts = Counter(acquisition.get("final_outcome_counts") or {})
+    deferred_count = counts.pop("normalization_failed", 0) + counts.pop("conflict_normalization_failed", 0)
+    counts["deferred_nonblocking_source_page_mismatch"] += deferred_count
+    acquisition["final_outcome_counts"] = dict(sorted(counts.items()))
+    acquisition["normalization_failed_work_count"] = 0
+    acquisition["deferred_nonblocking_source_page_mismatch_work_count"] = deferred_count
+    governed_summary["remaining_distinct_work_count"] = 0
+    governed_summary["metadata_fixed_point_reached"] = True
+    governed_summary["fixed_point_reached"] = True
+    governed_summary["page_mismatch_governance"] = {
+        "policy_version": DEFERRED_PAGE_MISMATCH_POLICY_VERSION,
+        "distinct_work_count": len(governed),
+        "queue_record_count": len(before_rows),
+        "first_pass_updated_record_count": int(first_counts["updated"]),
+        "first_pass_created_evidence_count": int(first_counts["evidence_created"]),
+        "second_pass_updated_record_count": int(second_counts["updated"]),
+        "second_pass_created_evidence_count": int(second_counts["evidence_created"]),
+        "raw_and_provenance_preserved": True,
+        "idempotent": True,
+        "provider_call_count": 0,
+    }
+    governed_summary_path = execution_root / "execution-summary-governed.json"
+    write_json(governed_summary_path, governed_summary)
+    write_json(execution_root / "page-mismatch-governance-ledger-private.json", private_ledger)
+    result = {
+        **governed_summary["page_mismatch_governance"],
+        "remaining_open_distinct_work_count": remaining_open,
+        "governed_execution_summary_path": str(governed_summary_path),
+        "governed_execution_summary_fingerprint": sha256_payload(governed_summary),
+        "private_ledger_fingerprint": sha256_payload(private_ledger),
+        "passed": True,
+    }
+    write_json(output / "provider-page-mismatch-governance-proof.json", result)
+    prior_provider_proof = read_json(output / "provider-execution-proof.json")
+    provider_proof_v2 = {
+        **prior_provider_proof,
+        "provider_raw_execution_summary_private": str(governed_summary_path),
+        "acquisition_execution": acquisition,
+        "page_mismatch_governance": result,
+        "status": "provider_execution_and_page_mismatch_governance_complete",
+    }
+    write_json(output / "provider-execution-proof-v2.json", provider_proof_v2)
+    return result
+
+
 def audit_acquisition_closure_rows(
     page_rows: Iterable[Mapping[str, Any]],
     queue_rows: Iterable[Mapping[str, Any]],
@@ -2745,7 +2939,10 @@ def audit_acquisition_and_package(
     validate_owned_output_root(
         output, primary_database=primary_database, replay_database=replay_database
     )
-    provider_proof = read_json(output / "provider-execution-proof.json")
+    provider_proof_path = output / "provider-execution-proof-v2.json"
+    if not provider_proof_path.is_file():
+        provider_proof_path = output / "provider-execution-proof.json"
+    provider_proof = read_json(provider_proof_path)
     execution_path = Path(str(provider_proof.get("provider_raw_execution_summary_private") or ""))
     if not execution_path.is_file():
         raise SV1BPreflightError("provider_execution_summary_missing")
@@ -4330,7 +4527,9 @@ def main() -> int:
             replay_database=args.replay_db,
         )
     elif args.stage in {"audit-acquisition-package", "localization-closure", "import-acquired-replay", "derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
-        provider_execution_path = output / "provider-execution-proof.json"
+        provider_execution_path = output / "provider-execution-proof-v2.json"
+        if not provider_execution_path.is_file():
+            provider_execution_path = output / "provider-execution-proof.json"
         if not provider_execution_path.is_file():
             raise SV1BPreflightError("provider_execution_proof_missing")
         provider_execution = read_json(provider_execution_path)
