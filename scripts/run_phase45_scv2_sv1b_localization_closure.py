@@ -271,6 +271,16 @@ def _load_checkpoint(output: Path, manifest: Mapping[str, Any]) -> dict[str, Any
     return checkpoint
 
 
+def _is_approved_primary_provider_route(provider: Any) -> bool:
+    """Accept the real primary provider identity without admitting fallback routes."""
+
+    provider_name = str(provider.get_provider_name())
+    provider_label = getattr(provider, "label", None)
+    if provider_name == "primary":
+        return provider_label in {None, "primary"}
+    return provider_name == "openai_compatible(primary)" and provider_label == "primary"
+
+
 def execute(
     output: Path,
     *,
@@ -287,7 +297,7 @@ def execute(
         raise LocalizationClosureError("localization_fallback_provider_forbidden")
     if manifest["eligible_translation_count"] and not provider.is_available():
         raise LocalizationClosureError("localization_primary_provider_unavailable")
-    if manifest["eligible_translation_count"] and provider.get_provider_name() != "primary":
+    if manifest["eligible_translation_count"] and not _is_approved_primary_provider_route(provider):
         raise LocalizationClosureError("localization_unapproved_provider_route")
     if manifest["eligible_translation_count"] and getattr(provider, "model", None) != APPROVED_MODEL:
         raise LocalizationClosureError("localization_unapproved_model")

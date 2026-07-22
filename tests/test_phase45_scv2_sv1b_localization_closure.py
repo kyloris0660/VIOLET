@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.llm_translation_provider import FallbackProvider
+from app.services.llm_translation_provider import FallbackProvider, OpenAICompatibleProvider
 from scripts import run_phase45_scv2_sv1b_localization_closure as closure
 
 
@@ -235,6 +235,25 @@ def test_execute_forbids_fallback_provider_before_any_call(tmp_path: Path, monke
             replay_database="blombooru_sv1b_replay_test",
             provider=provider,
         )
+
+
+def test_primary_route_gate_accepts_real_primary_provider_identity_only() -> None:
+    primary = OpenAICompatibleProvider(
+        api_key="test-key",
+        model=closure.APPROVED_MODEL,
+        base_url="https://example.invalid/v1",
+        label="primary",
+    )
+    fallback = OpenAICompatibleProvider(
+        api_key="test-key",
+        model=closure.APPROVED_MODEL,
+        base_url="https://example.invalid/v1",
+        label="fallback",
+    )
+
+    assert primary.get_provider_name() == "openai_compatible(primary)"
+    assert closure._is_approved_primary_provider_route(primary) is True
+    assert closure._is_approved_primary_provider_route(fallback) is False
 
 
 def test_execute_redacts_provider_failure_and_accounts_one_bounded_retry(tmp_path: Path, monkeypatch) -> None:
