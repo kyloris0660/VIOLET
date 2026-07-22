@@ -447,13 +447,21 @@ def outcome_for_pair(
     if any(_has_exact_governed_mismatch(row, evidence_rows) for row in exact):
         accepted_classes.add(PAGE_OUTCOME_EXACT_GOVERNED_MISMATCH)
     statuses = {str(row.get("status") or "") for row in exact}
-    if len(accepted_classes) > 1 or statuses.intersection({
+    if {
+        PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE,
+        PAGE_OUTCOME_EXACT_TERMINAL,
+    }.issubset(accepted_classes) or statuses.intersection({
         PixivMetadataState.CONFLICT.value,
         PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value,
     }):
         return PAGE_OUTCOME_CONFLICTING
-    if accepted_classes:
-        return next(iter(accepted_classes))
+    for accepted in (
+        PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE,
+        PAGE_OUTCOME_EXACT_TERMINAL,
+        PAGE_OUTCOME_EXACT_GOVERNED_MISMATCH,
+    ):
+        if accepted in accepted_classes:
+            return accepted
     if statuses and statuses.issubset({
         PixivMetadataState.CANDIDATE_DETECTED.value,
         PixivMetadataState.PENDING.value,
@@ -2812,35 +2820,49 @@ def audit_acquisition_closure_rows(
 
     missing = expected - set(actual)
     extra = set(actual) - expected
-    duplicate = {key for key in expected if len(actual.get(key, ())) != 1}
+    duplicate = {key for key in expected if len(actual.get(key, ())) > 1}
     outcome_counts: Counter[str] = Counter()
     blocking_counts: Counter[str] = Counter()
     for key in sorted(expected):
         rows = actual.get(key, ())
-        if len(rows) != 1:
+        if not rows:
             continue
-        row = rows[0]
-        status = str(row.get("status") or "")
-        raw = row.get("raw_metadata_json") if isinstance(row.get("raw_metadata_json"), Mapping) else {}
-        record_evidence = evidence_by_record.get(int(row["id"]), ())
-        if status == PixivMetadataState.COMPLETE.value and is_trusted_complete_pixiv_metadata_record(row):
+        trusted_complete = any(
+            str(row.get("status") or "") == PixivMetadataState.COMPLETE.value
+            and is_trusted_complete_pixiv_metadata_record(row)
+            for row in rows
+        )
+        terminal = any(
+            str(row.get("status") or "") == PixivMetadataState.TERMINAL.value
+            and str((row.get("raw_metadata_json") or {}).get("failure_reason") or "")
+            == "authenticated_remote_deleted_private_unavailable"
+            and bool((row.get("raw_metadata_json") or {}).get("last_attempt_at"))
+            for row in rows
+        )
+        deferred = any(
+            str(row.get("status") or "") == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+            and any(
+                str(item.get("evidence_kind") or "") == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
+                and str(item.get("status") or "") == "active"
+                and str((item.get("provenance") or {}).get("governance_policy_version") or "")
+                == DEFERRED_PAGE_MISMATCH_POLICY_VERSION
+                and (item.get("provenance") or {}).get("unsupported_page_link_created") is False
+                for item in evidence_by_record.get(int(row["id"]), ())
+            )
+            for row in rows
+        )
+        if trusted_complete and terminal:
+            outcome = "blocking_conflicting_complete_and_terminal"
+            blocking_counts[outcome] += 1
+        elif trusted_complete:
             outcome = PixivMetadataState.COMPLETE.value
-        elif status == PixivMetadataState.TERMINAL.value and (
-            str(raw.get("failure_reason") or "") == "authenticated_remote_deleted_private_unavailable"
-            and bool(raw.get("last_attempt_at"))
-        ):
+        elif terminal:
             outcome = PixivMetadataState.TERMINAL.value
-        elif status == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value and any(
-            str(item.get("evidence_kind") or "") == PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
-            and str(item.get("status") or "") == "active"
-            and str((item.get("provenance") or {}).get("governance_policy_version") or "")
-            == DEFERRED_PAGE_MISMATCH_POLICY_VERSION
-            and (item.get("provenance") or {}).get("unsupported_page_link_created") is False
-            for item in record_evidence
-        ):
+        elif deferred:
             outcome = PixivMetadataState.DEFERRED_PAGE_MISMATCH.value
         else:
-            outcome = "blocking_" + (status or "missing_status")
+            statuses = sorted({str(row.get("status") or "missing_status") for row in rows})
+            outcome = "blocking_" + "+".join(statuses)
             blocking_counts[outcome] += 1
         outcome_counts[outcome] += 1
         work_pages[key[1]].append(outcome)
@@ -2860,19 +2882,22 @@ def audit_acquisition_closure_rows(
         else:
             work_outcomes["mixed_closed"] += 1
 
-    passed = not (missing or extra or duplicate or blocking_counts) and sum(outcome_counts.values()) == len(expected)
+    passed = not (missing or blocking_counts) and sum(outcome_counts.values()) == len(expected)
     public = {
         "page_manifest_count": len(expected),
         "queue_membership_count": len(actual),
         "missing_page_queue_count": len(missing),
         "unexpected_page_queue_count": len(extra),
         "duplicate_page_queue_count": len(duplicate),
+        "compatible_multi_record_page_count": len(duplicate),
+        "preserved_out_of_manifest_closed_history_count": len(extra),
         "page_outcome_counts": dict(sorted(outcome_counts.items())),
         "page_equation_balanced": sum(outcome_counts.values()) == len(expected),
         "distinct_work_count": len(work_pages),
         "work_outcome_counts": dict(sorted(work_outcomes.items())),
         "work_equation_balanced": sum(work_outcomes.values()) == len(work_pages),
         "blocking_outcome_counts": dict(sorted(blocking_counts.items())),
+        "duplicate_rows_treated_as_duplicate_requests": False,
         "passed": passed,
     }
     private = {

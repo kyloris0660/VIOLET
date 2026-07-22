@@ -96,6 +96,64 @@ def test_outcome_for_pair_marks_mixed_closed_truth_as_conflicting() -> None:
     assert outcome_for_pair([complete, terminal], "123", 0) == "conflicting"
 
 
+def test_outcome_for_pair_trusted_complete_supersedes_nonblocking_mismatch_history() -> None:
+    complete = {
+        "id": 1, "provider": "pixiv", "source_work_id": "123", "source_page_index": 0,
+        "metadata_kind": "pixiv_ingestion_gate", "data_type_label": "authenticated_provider_metadata",
+        "status": "metadata_complete", "raw_metadata_json": {"id": 123},
+        "provenance": {"source": "gallery_dl_authenticated_metadata", "stable_identity_key": {
+            "provider": "pixiv", "work_id": "123", "page_index": 0,
+        }},
+    }
+    deferred = {
+        **complete, "id": 2, "data_type_label": "local_runtime_source_prior",
+        "status": "deferred_nonblocking_source_page_mismatch", "raw_metadata_json": {},
+        "provenance": {},
+    }
+    evidence = [{
+        "source_metadata_record_id": 2,
+        "evidence_kind": "deferred_nonblocking_source_page_mismatch",
+        "status": "active",
+        "provenance": {
+            "governance_policy_version": "source_page_mismatch_deferred_nonblocking_v1",
+            "unsupported_page_link_created": False,
+        },
+    }]
+    assert outcome_for_pair([complete, deferred], "123", 0, evidence) == "trusted_exact_complete"
+
+
+def test_acquisition_closure_aggregates_compatible_multi_record_page() -> None:
+    pages = [{"media_stable_key": "a", "stable_work_id": "123", "requested_page_index": 0}]
+    complete = {
+        "id": 1, "media_stable_key": "a", "provider": "pixiv", "source_work_id": "123",
+        "source_page_index": 0, "metadata_kind": "pixiv_ingestion_gate",
+        "data_type_label": "authenticated_provider_metadata", "status": "metadata_complete",
+        "raw_metadata_json": {"id": 123},
+        "provenance": {"source": "gallery_dl_authenticated_metadata", "stable_identity_key": {
+            "provider": "pixiv", "work_id": "123", "page_index": 0,
+        }},
+    }
+    deferred = {
+        **complete, "id": 2, "data_type_label": "local_runtime_source_prior",
+        "status": "deferred_nonblocking_source_page_mismatch", "raw_metadata_json": {},
+        "provenance": {},
+    }
+    evidence = [{
+        "source_metadata_record_id": 2,
+        "evidence_kind": "deferred_nonblocking_source_page_mismatch", "status": "active",
+        "provenance": {
+            "governance_policy_version": "source_page_mismatch_deferred_nonblocking_v1",
+            "unsupported_page_link_created": False,
+        },
+    }]
+    public, private = audit_acquisition_closure_rows(pages, [complete, deferred], evidence)
+    assert public["passed"] is True
+    assert public["page_outcome_counts"] == {"metadata_complete": 1}
+    assert public["compatible_multi_record_page_count"] == 1
+    assert public["duplicate_rows_treated_as_duplicate_requests"] is False
+    assert len(private["duplicate_keys"]) == 1
+
+
 @pytest.mark.parametrize(
     ("row", "reason"),
     [
