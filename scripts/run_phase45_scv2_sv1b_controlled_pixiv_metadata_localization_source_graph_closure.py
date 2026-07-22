@@ -98,6 +98,7 @@ ACCEPTED_R2R_SNAPSHOT_FINGERPRINT = "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43c
 SV1B_CREDENTIAL_RISK_WAIVER_POLICY = "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1"
 EXPECTED_RETRY2_CHECKPOINT_A_FINGERPRINT = "681d16aaefb390177bec54dd113e626a8a6f3408f89ba2be92d0caca195752b4"
 EXPECTED_RETRY2_CHECKPOINT_B_FINGERPRINT = "2243ef27f0ce29399caa367af8c88547286d4ffe003df445cbe0ce707df5ed19"
+CANARY_ROUTE_RESUME_ROOT_NAME = "canary-route-viability-resume-r2"
 SUPERSEDED_RETRY1_PRIMARY_DB = "blombooru_scv2_sv1b_metadata_graph_closure_test_20260719_retry1"
 SUPERSEDED_RETRY1_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260719_retry1"
 RETRY1_FORENSIC_PROOF_NAME = "superseded-retry1-forensic-classification-proof-v2.json"
@@ -2433,7 +2434,7 @@ def correct_prior_inconclusive_canary_state(
     }
     if proof["passed"] is not True:
         raise SV1BPreflightError("blocked_prior_canary_corrective_transition_failed")
-    correction_root = output / "canary-route-viability-resume-r1"
+    correction_root = output / CANARY_ROUTE_RESUME_ROOT_NAME
     correction_path = correction_root / "prior-canary-terminal-correction-proof.json"
     if correction_path.exists():
         raise SV1BPreflightError("prior_canary_terminal_correction_proof_already_exists")
@@ -2453,7 +2454,7 @@ def execute_provider_manifest(
     queue_proof = read_json(output / "provider-queue-manifest-proof.json")
     if queue_proof.get("exact_open_work_membership_passed") is not True:
         raise SV1BPreflightError("provider_queue_manifest_proof_missing_or_failed")
-    resume_root = output / "canary-route-viability-resume-r1"
+    resume_root = output / CANARY_ROUTE_RESUME_ROOT_NAME
     validation_path = resume_root / "full-pre-network-validation-proof.json"
     if not validation_path.is_file():
         validation_path = output / "full-pre-network-validation-proof.json"
@@ -4319,7 +4320,7 @@ def main() -> int:
         if not provider_execution_path.is_file():
             raise SV1BPreflightError("provider_execution_proof_missing")
         provider_execution = read_json(provider_execution_path)
-    provider_gate_path = output / "canary-route-viability-resume-r1" / "provider-hardening-preflight.json"
+    provider_gate_path = output / CANARY_ROUTE_RESUME_ROOT_NAME / "provider-hardening-preflight.json"
     if not provider_gate_path.is_file():
         provider_gate_path = output / "provider-hardening-preflight.json"
     if provider_gate_path.is_file():
