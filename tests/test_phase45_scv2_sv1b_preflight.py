@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure import (
+    SV1B_PHASE_DELTA_ENVELOPE_VERSION,
     SV1BPreflightError,
+    _validate_replay_phase_delta_transition,
     _strict_test_database,
     _generic_credential_findings,
     audit_runtime_parser_denominator_rows,
@@ -625,6 +627,62 @@ def test_graph_derivation_checkpoint_binds_all_reusable_memberships(tmp_path: Pa
     assert result["passed"] is True
     assert result["acquired_package_fingerprint_match"] is True
     assert result["accepted_r2r_snapshot_pinned"] is True
+
+
+def test_replay_phase_delta_transition_accepts_only_governed_queue_envelope() -> None:
+    before = {
+        "provider": "pixiv",
+        "provider_record_key": "queue-key",
+        "media_content_key": "media-key",
+        "source_work_id": None,
+        "source_page_index": None,
+        "metadata_kind": "pixiv_ingestion_gate",
+        "data_type_label": "local_runtime_source_prior",
+        "title": None,
+        "artist_id": None,
+        "artist_name": None,
+        "source_url": None,
+        "raw_metadata_json": {"pixiv_ingestion_state": "not_applicable_non_pixiv"},
+        "provenance": {"source": "canonical_pixiv_filename_path_prior"},
+        "status": "not_applicable_non_pixiv",
+    }
+    after = {
+        **before,
+        "raw_metadata_json": {
+            "pixiv_ingestion_state": "not_applicable_non_pixiv",
+            "_sv1b_phase_delta": {
+                "envelope_version": SV1B_PHASE_DELTA_ENVELOPE_VERSION,
+                "original_values_recoverable": True,
+                "accepted_stable_identity_unchanged": True,
+                "original_raw_metadata_fingerprint": sha256_payload(
+                    before["raw_metadata_json"]
+                ),
+                "original_provenance_fingerprint": sha256_payload(
+                    before["provenance"]
+                ),
+                "original_raw_metadata_json": before["raw_metadata_json"],
+                "original_provenance": before["provenance"],
+                "reason_code": "refreshed_not_applicable_queue_record",
+            },
+        },
+        "provenance": {
+            **before["provenance"],
+            "sv1b_phase_delta_envelope_version": (
+                SV1B_PHASE_DELTA_ENVELOPE_VERSION
+            ),
+        },
+    }
+    result = _validate_replay_phase_delta_transition(before, after)
+    assert result["passed"] is True
+    assert result["accepted_provider_fact_unchanged"] is True
+    assert result["stable_identity_unchanged"] is True
+
+    mutated = {**after, "title": "provider fact changed"}
+    rejected = _validate_replay_phase_delta_transition(
+        before, mutated
+    )
+    assert rejected["passed"] is False
+    assert rejected["accepted_provider_fact_unchanged"] is False
 
 
 def test_graph_derivation_checkpoint_rejects_localization_package_drift(tmp_path: Path) -> None:

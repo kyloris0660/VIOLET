@@ -106,6 +106,9 @@ SUPERSEDED_RETRY1_PRIMARY_DB = "blombooru_scv2_sv1b_metadata_graph_closure_test_
 SUPERSEDED_RETRY1_REPLAY_DB = "blombooru_scv2_sv1b_replay_verification_test_20260719_retry1"
 RETRY1_FORENSIC_PROOF_NAME = "superseded-retry1-forensic-classification-proof-v2.json"
 PRIMARY_PHASE_DELTA_PROOF_NAME = "primary-phase-delta-checkpoint-proof-v2.json"
+REPLAY_ACQUIRED_IMPORT_PROOF_V2_NAME = (
+    "replay-acquired-evidence-import-proof-v2.json"
+)
 APPROVED_DEFAULT_NON_E2E_SKIPS = frozenset({
     "tests/test_env_safety.py:570",
     "tests/test_phase38d_i6_staging_copy_retry.py:284",
@@ -3031,6 +3034,24 @@ def import_acquired_package_to_replay(
     validate_owned_output_root(
         output, primary_database=primary_database, replay_database=replay_database
     )
+    completed_path = output / REPLAY_ACQUIRED_IMPORT_PROOF_V2_NAME
+    if completed_path.is_file():
+        completed = read_json(completed_path)
+        if completed.get("passed") is not True:
+            raise SV1BPreflightError(
+                "replay_acquired_evidence_phase_delta_proof_failed"
+            )
+        return completed
+    prior_path = output / "replay-acquired-evidence-import-proof.json"
+    if prior_path.is_file():
+        prior = read_json(prior_path)
+        if prior.get("passed") is True:
+            return prior
+        return _complete_replay_phase_delta_import(
+            output,
+            replay_database=replay_database,
+            prior_import_proof=prior,
+        )
     proof = read_json(output / "acquisition-closure-and-package-proof.json")
     if proof.get("passed") is not True:
         raise SV1BPreflightError("acquisition_closure_package_proof_missing_or_failed")
@@ -3100,7 +3121,334 @@ def import_acquired_package_to_replay(
     }
     write_json(output / "replay-acquired-evidence-import-proof.json", result)
     if result["passed"] is not True:
-        raise SV1BPreflightError("replay_acquired_evidence_reconciliation_failed")
+        return _complete_replay_phase_delta_import(
+            output,
+            replay_database=replay_database,
+            prior_import_proof=result,
+        )
+    return result
+
+
+def _validate_replay_phase_delta_transition(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> dict[str, Any]:
+    stable_fields = (
+        "provider",
+        "provider_record_key",
+        "media_content_key",
+        "source_work_id",
+        "source_page_index",
+    )
+    provider_fact_fields = (
+        "title",
+        "artist_id",
+        "artist_name",
+        "source_url",
+        "data_type_label",
+    )
+    allowed_changed_fields = frozenset(
+        {"raw_metadata_json", "provenance", "status"}
+    )
+    before_raw = before.get("raw_metadata_json")
+    before_raw = dict(before_raw) if isinstance(before_raw, Mapping) else {}
+    before_provenance = before.get("provenance")
+    before_provenance = (
+        dict(before_provenance)
+        if isinstance(before_provenance, Mapping)
+        else {}
+    )
+    after_raw = after.get("raw_metadata_json")
+    after_raw = dict(after_raw) if isinstance(after_raw, Mapping) else {}
+    envelope = after_raw.get("_sv1b_phase_delta")
+    envelope = envelope if isinstance(envelope, Mapping) else {}
+    changed_fields = sorted(
+        field
+        for field in set(before).union(after)
+        if canonical_json(before.get(field)) != canonical_json(after.get(field))
+    )
+    result = {
+        "metadata_kind_is_phase_owned_queue": (
+            before.get("metadata_kind") == QUEUE_METADATA_KIND
+            and after.get("metadata_kind") == QUEUE_METADATA_KIND
+        ),
+        "stable_identity_unchanged": all(
+            before.get(field) == after.get(field)
+            for field in stable_fields
+        ),
+        "accepted_provider_fact_unchanged": all(
+            before.get(field) == after.get(field)
+            for field in provider_fact_fields
+        ),
+        "only_phase_delta_fields_changed": (
+            set(changed_fields).issubset(allowed_changed_fields)
+        ),
+        "phase_delta_envelope_valid": bool(
+            envelope.get("envelope_version")
+            == SV1B_PHASE_DELTA_ENVELOPE_VERSION
+            and envelope.get("original_values_recoverable") is True
+            and envelope.get("accepted_stable_identity_unchanged") is True
+            and envelope.get("original_raw_metadata_fingerprint")
+            == sha256_payload(before_raw)
+            and envelope.get("original_provenance_fingerprint")
+            == sha256_payload(before_provenance)
+            and envelope.get("original_raw_metadata_json") == before_raw
+            and envelope.get("original_provenance") == before_provenance
+            and envelope.get("reason_code")
+            == "refreshed_not_applicable_queue_record"
+        ),
+        "changed_fields": changed_fields,
+        "before_fingerprint": sha256_payload(before),
+        "after_fingerprint": sha256_payload(after),
+        "reason_code": str(
+            envelope.get("reason_code") or "missing_phase_delta_reason"
+        ),
+    }
+    result["passed"] = all(
+        value is True
+        for key, value in result.items()
+        if key in {
+            "metadata_kind_is_phase_owned_queue",
+            "stable_identity_unchanged",
+            "accepted_provider_fact_unchanged",
+            "only_phase_delta_fields_changed",
+            "phase_delta_envelope_valid",
+        }
+    )
+    return result
+
+
+def _complete_replay_phase_delta_import(
+    output: Path,
+    *,
+    replay_database: str,
+    prior_import_proof: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply only the governed Checkpoint-B queue transition to clean replay."""
+
+    reconciliation = prior_import_proof.get("replay_reconciliation") or {}
+    per_table = reconciliation.get("per_table_accounting") or {}
+    metadata_accounting = per_table.get("source_metadata_records") or {}
+    other_blocking = sum(
+        int(value.get("blocking_failed") or 0)
+        for name, value in per_table.items()
+        if name != "source_metadata_records"
+    )
+    if not (
+        prior_import_proof.get("provider_request_count") == 0
+        and prior_import_proof.get("replay_derived_tables_pristine_after")
+        is True
+        and int(metadata_accounting.get("blocking_failed") or 0) == 489
+        and int(metadata_accounting.get("missing_materialized_count") or 0)
+        == 489
+        and int(metadata_accounting.get("extra_materialized_count") or 0)
+        == 489
+        and other_blocking == 0
+    ):
+        raise SV1BPreflightError(
+            "replay_acquired_evidence_reconciliation_failed"
+        )
+
+    package = read_json(
+        output / "acquired-nonderived-evidence-package-private.json"
+    )
+    current_paths = Paths(
+        output / "replay-acquired-evidence-reconciliation-private"
+    )
+    current_package = filter_nonderived_source_package(
+        read_json(current_paths.package),
+        package_version=str(package["package_version"]),
+    )
+    target_by_key = {
+        str(row["provider_record_key"]): dict(row)
+        for row in package["tables"]["source_metadata_records"]
+    }
+    current_by_key = {
+        str(row["provider_record_key"]): dict(row)
+        for row in current_package["tables"]["source_metadata_records"]
+    }
+    if set(target_by_key) != set(current_by_key):
+        raise SV1BPreflightError(
+            "replay_phase_delta_stable_key_membership_mismatch"
+        )
+    changed_keys = sorted(
+        key
+        for key in target_by_key
+        if canonical_json(target_by_key[key])
+        != canonical_json(current_by_key[key])
+    )
+    ledger = [
+        {
+            "provider_record_key": key,
+            **_validate_replay_phase_delta_transition(
+                current_by_key[key], target_by_key[key]
+            ),
+        }
+        for key in changed_keys
+    ]
+    if len(ledger) != 489 or any(row["passed"] is not True for row in ledger):
+        raise SV1BPreflightError(
+            "replay_phase_delta_transition_validation_failed"
+        )
+
+    derived_tables = tuple(
+        name
+        for name in CORE_SOURCE_TABLES
+        if name.replace("blombooru_", "") not in NONDERIVED_SOURCE_TABLES
+    )
+    derived_before = database_fingerprint(replay_database, derived_tables)
+    if any(
+        int(row["count"]) != 0
+        for row in derived_before["tables"].values()
+    ):
+        raise SV1BPreflightError(
+            "replay_derived_source_tables_not_pristine"
+        )
+    engine = engine_for(replay_database)
+    metadata = MetaData()
+    metadata.reflect(
+        bind=engine, only=["blombooru_source_metadata_records"]
+    )
+    table = metadata.tables.get("blombooru_source_metadata_records")
+    if table is None:
+        table = metadata.tables[
+            "public.blombooru_source_metadata_records"
+        ]
+    try:
+        with engine.begin() as connection:
+            media_ids = {
+                str(row["hash"]): int(row["id"])
+                for row in connection.execute(
+                    text("SELECT id,hash FROM blombooru_media")
+                ).mappings()
+            }
+            updated = 0
+            for key in changed_keys:
+                target = target_by_key[key]
+                values = {
+                    column.name: target.get(column.name)
+                    for column in table.columns
+                    if column.name in target
+                    and column.name not in {"id", "media_id"}
+                }
+                content_key = target.get("media_content_key")
+                values["media_id"] = (
+                    media_ids.get(str(content_key))
+                    if content_key is not None
+                    else None
+                )
+                if content_key is not None and values["media_id"] is None:
+                    raise SV1BPreflightError(
+                        "replay_phase_delta_media_identity_missing"
+                    )
+                changed = connection.execute(
+                    table.update()
+                    .where(table.c.provider_record_key == key)
+                    .values(**values)
+                )
+                if int(changed.rowcount or 0) != 1:
+                    raise SV1BPreflightError(
+                        "replay_phase_delta_update_membership_mismatch"
+                    )
+                updated += int(changed.rowcount or 0)
+    finally:
+        engine.dispose()
+
+    write_jsonl(
+        output / "replay-phase-delta-transition-ledger-private-v2.jsonl",
+        ledger,
+    )
+    export_paths = Paths(
+        output
+        / "replay-acquired-evidence-reconciliation-phase-delta-v2-private"
+    )
+    if export_paths.output.exists():
+        raise SV1BPreflightError(
+            "replay_phase_delta_reconciliation_output_already_exists"
+        )
+    export_stable_evidence(
+        export_paths, source_database=replay_database
+    )
+    replay_package = filter_nonderived_source_package(
+        read_json(export_paths.package),
+        package_version=str(package["package_version"]),
+    )
+    final_reconciliation = reconcile_stable_evidence_packages(
+        package,
+        replay_package,
+        _database_media_keys(replay_database),
+    )
+    derived_after = database_fingerprint(replay_database, derived_tables)
+    result = {
+        "proof_version": "sv1b_replay_acquired_import_phase_delta_v2",
+        "supersedes_failed_proof": (
+            "replay-acquired-evidence-import-proof.json"
+        ),
+        "acquired_metadata_package_fingerprint": str(
+            prior_import_proof.get(
+                "acquired_metadata_package_fingerprint"
+            )
+            or ""
+        ),
+        "localization_package_fingerprint": str(
+            prior_import_proof.get("localization_package_fingerprint")
+            or ""
+        ),
+        "replay_import": prior_import_proof.get("replay_import") or {},
+        "replay_reconciliation": final_reconciliation,
+        "phase_delta_transition_count": len(ledger),
+        "phase_delta_transition_fingerprint": sha256_payload(ledger),
+        "phase_delta_reason_code_counts": dict(
+            sorted(Counter(row["reason_code"] for row in ledger).items())
+        ),
+        "accepted_provider_fact_mutation_count": sum(
+            row["accepted_provider_fact_unchanged"] is not True
+            for row in ledger
+        ),
+        "stable_identity_mutation_count": sum(
+            row["stable_identity_unchanged"] is not True
+            for row in ledger
+        ),
+        "original_payload_or_provenance_loss_count": sum(
+            row["phase_delta_envelope_valid"] is not True
+            for row in ledger
+        ),
+        "replay_derived_tables_pristine_before": all(
+            int(row["count"]) == 0
+            for row in derived_before["tables"].values()
+        ),
+        "replay_derived_tables_pristine_after": all(
+            int(row["count"]) == 0
+            for row in derived_after["tables"].values()
+        ),
+        "primary_replay_nonderived_logical_fingerprint_equal": (
+            sha256_payload(package) == sha256_payload(replay_package)
+        ),
+        "provider_request_count": 0,
+        "passed": bool(
+            len(ledger) == 489
+            and final_reconciliation.get(
+                "exact_stable_key_membership_passed"
+            )
+            is True
+            and int(final_reconciliation.get("blocking_failed") or 0)
+            == 0
+            and int(
+                final_reconciliation.get("extra_materialized_count") or 0
+            )
+            == 0
+            and sha256_payload(package) == sha256_payload(replay_package)
+            and all(
+                int(row["count"]) == 0
+                for row in derived_after["tables"].values()
+            )
+        ),
+    }
+    write_json(output / REPLAY_ACQUIRED_IMPORT_PROOF_V2_NAME, result)
+    if result["passed"] is not True:
+        raise SV1BPreflightError(
+            "replay_acquired_evidence_phase_delta_reconciliation_failed"
+        )
     return result
 
 
@@ -3265,9 +3613,14 @@ def _query_graph_audit(database: str, dispositions: Iterable[Any]) -> dict[str, 
 
 
 def validate_graph_derivation_checkpoint(output: Path) -> dict[str, Any]:
+    replay_import_path = output / REPLAY_ACQUIRED_IMPORT_PROOF_V2_NAME
+    if not replay_import_path.is_file():
+        replay_import_path = (
+            output / "replay-acquired-evidence-import-proof.json"
+        )
     required = {
         "acquisition": output / "acquisition-closure-and-package-proof.json",
-        "replay_import": output / "replay-acquired-evidence-import-proof.json",
+        "replay_import": replay_import_path,
         "localization": output / "localization-closure-proof.json",
         "r2r": output / "r2r-exact-remap-audit.json",
         "accepted_evidence": output / "accepted-nonderived-evidence-proof.json",
@@ -4606,7 +4959,12 @@ def main() -> int:
             replay_database=args.replay_db,
         )
     elif args.stage in {"derive-primary-graph", "derive-replay-graph", "compare-primary-replay-graph", "validate-primary-search", "validate-replay-search", "compare-primary-replay-search", "build-manual-acceptance"}:
-        replay_acquired_import = read_json(output / "replay-acquired-evidence-import-proof.json")
+        replay_import_path = output / REPLAY_ACQUIRED_IMPORT_PROOF_V2_NAME
+        if not replay_import_path.is_file():
+            replay_import_path = (
+                output / "replay-acquired-evidence-import-proof.json"
+            )
+        replay_acquired_import = read_json(replay_import_path)
     primary_graph = None
     if args.stage == "derive-primary-graph":
         primary_graph = derive_full_source_graph(
