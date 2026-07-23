@@ -2319,7 +2319,10 @@ def run_full_pre_network_validation(
         "capacity_preflight_passed": int(disk.free) >= required_free_bytes,
     }
     runtime_capacity["proof_fingerprint"] = sha256_payload(runtime_capacity)
-    write_json(output / "runtime-and-capacity-preflight-proof.json", runtime_capacity)
+    write_json(
+        selected_proof_root / "runtime-and-capacity-preflight-proof.json",
+        runtime_capacity,
+    )
 
     head_after = git("rev-parse", "HEAD")
     diff_after = sha256_payload(git("diff", "--no-ext-diff", "--binary"))
