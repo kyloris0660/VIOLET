@@ -7855,7 +7855,7 @@ def _sv1b_contract_summary() -> dict[str, object]:
             "eligible_ai_tag_missing_count": 0,
             "silently_missing_eligible_count": 0,
             "localization_ambiguity_count": 0,
-            "final_untranslated_echo_count": 0,
+            "final_untranslated_echo_count": 1,
             "final_missing_result_count": 0,
             "final_invalid_display_count": 0,
             "final_invalid_aliases_count": 0,
@@ -7864,10 +7864,16 @@ def _sv1b_contract_summary() -> dict[str, object]:
             "item_validation_policy_version": "sv1b_localization_item_validation_v1",
             "display_preserve_policy_version": "sv1b_localization_display_preserve_v1",
             "targeted_adjudication_prompt_version": "sv1b_localization_targeted_item_prompt_v1",
+            "manual_review_policy_version": "sv1b_manual_localization_review_pending_v1",
+            "manual_review_pending_threshold": 8,
             "initial_eligible_count": 1788,
-            "accepted_new_translation_count": 1788,
+            "accepted_new_translation_count": 1787,
             "explicit_proper_noun_exclusion_count": 454,
             "explicit_display_preserved_count": 0,
+            "manual_localization_review_pending_count": 1,
+            "manual_localization_override_count": 0,
+            "missing_disposition_count": 0,
+            "duplicate_disposition_count": 0,
             "standard_batch_call_count": 72,
             "item_adjudication_call_count": 0,
             "external_llm_call_count": 72,
@@ -7878,11 +7884,19 @@ def _sv1b_contract_summary() -> dict[str, object]:
                 "translation_count_balanced": True,
                 "terminal_membership_exact": True,
                 "primary_replay_equal": True,
-                "unresolved_zero": True,
+                "silently_missing_zero": True,
+                "duplicate_disposition_zero": True,
             },
+            "localization_accounting_closed": True,
+            "localization_translation_complete": False,
+            "downstream_progression_allowed": True,
             "transport_logging": {
                 "minimum_log_level": "WARNING",
-                "process_log_record_factory_redaction_enabled": True,
+                "root_handler_filters_added": 0,
+                "process_log_record_factory_redaction_enabled": False,
+                "unrelated_loggers_modified": False,
+                "non_sensitive_url_context_preserved": True,
+                "exception_context_preserved": True,
                 "request_response_body_logging_enabled": False,
             },
             "provider_tags_written_to_media_tags_count": 0,
@@ -7992,6 +8006,34 @@ def test_sv1b_contract_accepts_only_pending_user_automated_candidate() -> None:
     assert result.route_approved is False
 
 
+def test_sv1b_contract_allows_one_pending_but_blocks_systemic_quality_above_eight() -> None:
+    accepted = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        _sv1b_contract_summary(),
+    )
+    assert accepted.passed is True
+
+    summary = _sv1b_contract_summary()
+    localization = summary["localization_closure"]
+    localization["accepted_new_translation_count"] = 1779
+    localization["manual_localization_review_pending_count"] = 9
+    localization["final_untranslated_echo_count"] = 9
+    localization["downstream_progression_allowed"] = False
+    pipeline = summary["pipeline_contract"]
+    pipeline["status"] = "blocked_sv1b_systemic_localization_quality"
+    pipeline["manual_acceptance_status"] = "not_started_blocked"
+    pipeline["active_blockers"] = [
+        "blocked_sv1b_systemic_localization_quality"
+    ]
+    blocked = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+    assert blocked.passed is True
+    assert blocked.target_met_claimed is False
+    assert blocked.safe_to_merge_claimed is False
+
+
 def test_sv1b_contract_accepts_only_the_exact_phase_scoped_credential_waiver() -> None:
     summary = _sv1b_contract_summary()
     summary["credential_preflight"] = {
@@ -8037,12 +8079,12 @@ def test_sv1b_contract_accepts_only_the_exact_phase_scoped_credential_waiver() -
         ("acquisition_accounting.page_outcome_counts.retryable", 1, "blocked_sv1b_acquisition_incomplete"),
         ("localization_closure.eligible_ai_tag_missing_count", 1, "blocked_sv1b_normalization_or_localization"),
         ("localization_closure.localization_ambiguity_count", 1, "blocked_sv1b_normalization_or_localization"),
-        ("localization_closure.final_untranslated_echo_count", 1, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.final_untranslated_echo_count", 2, "blocked_sv1b_normalization_or_localization"),
         ("localization_closure.display_preserve_policy_version", "wrong-policy", "blocked_sv1b_normalization_or_localization"),
         ("localization_closure.external_llm_call_count", 71, "blocked_sv1b_normalization_or_localization"),
-        ("localization_closure.localization_equations.unresolved_zero", False, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.localization_equations.eligible_outcomes_balanced", False, "blocked_sv1b_normalization_or_localization"),
         ("localization_closure.transport_logging.minimum_log_level", "INFO", "blocked_sv1b_normalization_or_localization"),
-        ("localization_closure.transport_logging.process_log_record_factory_redaction_enabled", False, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.transport_logging.process_log_record_factory_redaction_enabled", True, "blocked_sv1b_normalization_or_localization"),
         ("r2r_replay_accounting.ambiguous_remap_count", 1, "blocked_sv1b_r2r_replay"),
         ("primary_graph_safety.transitive_cannot_link_violation_count", 1, "blocked_sv1b_graph_safety"),
         ("search_validation.and_leakage_count", 1, "blocked_sv1b_search_safety"),

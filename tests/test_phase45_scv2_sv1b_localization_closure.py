@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import io
+import inspect
 import json
 import logging
 from pathlib import Path
@@ -148,6 +149,48 @@ class _RawSecretProjectionProvider(_Provider):
             "https://example.invalid/v1?q=secret"
         )
         return results
+
+
+class _FirstTargetEchoThenTranslateProvider(_Provider):
+    async def translate_tags(self, rows):
+        self.calls += 1
+        self.standard_calls += 1
+        self.usage_totals["total_tokens"] += 120
+        return [
+            _Translation(row["name"], row["name"], [])
+            for row in rows
+        ]
+
+    async def complete_chat(self, messages, *, temperature=0.3, max_tokens=4096):
+        self.calls += 1
+        self.targeted_calls += 1
+        self.targeted_temperatures.append(temperature)
+        self.targeted_messages.append(messages)
+        self.usage_totals["total_tokens"] += 80
+        user = json.loads(messages[-1]["content"])
+        display = (
+            user["canonical_name"]
+            if self.targeted_calls == 1
+            else "中文显示"
+        )
+        self.last_completion_content = json.dumps({
+            "canonical_name": user["canonical_name"],
+            "display_name_zh": display,
+            "aliases_zh": [],
+            "needs_review": False,
+        }, ensure_ascii=False)
+        return self.last_completion_content
+
+
+class _AllTargetEchoProvider(_FirstTargetEchoThenTranslateProvider):
+    async def complete_chat(self, messages, *, temperature=0.3, max_tokens=4096):
+        content = await super().complete_chat(
+            messages, temperature=temperature, max_tokens=max_tokens
+        )
+        value = json.loads(content)
+        value["display_name_zh"] = value["canonical_name"]
+        self.last_completion_content = json.dumps(value, ensure_ascii=False)
+        return self.last_completion_content
 
 
 def test_build_manifest_separates_policy_exclusions_and_binds_cost(tmp_path: Path, monkeypatch) -> None:
@@ -411,50 +454,55 @@ def test_primary_route_gate_accepts_real_primary_provider_identity_only() -> Non
     assert closure._is_approved_primary_provider_route(fallback) is False
 
 
-def test_transport_logging_hardening_redacts_all_current_process_handlers() -> None:
+def test_transport_logging_hardening_is_scoped_and_preserves_diagnostics() -> None:
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     root = logging.getLogger()
     root.addHandler(handler)
+    original_factory = logging.getLogRecordFactory()
+    unrelated_stream = io.StringIO()
+    unrelated_handler = logging.StreamHandler(unrelated_stream)
+    unrelated = logging.getLogger("violet.unrelated.component")
+    unrelated.addHandler(unrelated_handler)
+    unrelated.propagate = False
     try:
         proof = harden_llm_transport_logging()
         secret = "".join(("fake", "-authorization", "-value", "-123456789"))
         cookie = "".join(("fake", "-cookie", "-value", "-123456789"))
-        for name in proof["hardened_logger_names"]:
-            logging.getLogger(name).warning(
+        transport = logging.getLogger("httpx")
+        try:
+            raise RuntimeError(f"Authorization: Bearer {secret}")
+        except RuntimeError:
+            transport.exception(
                 "Authorization: Bearer %s Cookie=%s Set-Cookie=%s "
                 "headers={'Authorization':'%s'} "
-                "endpoint=https://example.invalid/v1?q=%s",
+                "endpoint=https://example.invalid/v1/chat?"
+                "api_key=%s&trace=ordinary-context",
                 secret, cookie, cookie, secret, secret,
             )
         value = stream.getvalue()
         assert secret not in value
         assert cookie not in value
-        assert "example.invalid" not in value
+        assert "https://example.invalid/v1/chat" in value
+        assert "trace=ordinary-context" in value
         assert "[REDACTED" in value
-        assert proof["process_log_record_factory_redaction_enabled"] is True
+        assert "Traceback (most recent call last)" in value
+        assert "RuntimeError" in value
+        assert logging.getLogRecordFactory() is original_factory
+        assert proof["process_log_record_factory_redaction_enabled"] is False
+        assert proof["root_handler_filters_added"] == 0
+        assert proof["unrelated_loggers_modified"] is False
+        assert proof["exception_context_preserved"] is True
         assert proof["request_response_body_logging_enabled"] is False
 
-        late_stream = io.StringIO()
-        late_handler = logging.StreamHandler(late_stream)
-        late_logger = logging.getLogger("application.http.transport.created_late")
-        late_logger.addHandler(late_handler)
-        late_logger.propagate = False
-        try:
-            late_logger.warning(
-                "Authorization: Bearer %s Cookie=%s endpoint=%s",
-                secret,
-                cookie,
-                "https://example.invalid/v1?q=credential-material",
-            )
-            late_value = late_stream.getvalue()
-            assert secret not in late_value
-            assert cookie not in late_value
-            assert "example.invalid" not in late_value
-        finally:
-            late_logger.removeHandler(late_handler)
-            late_logger.propagate = True
+        unrelated.warning(
+            "ordinary endpoint=https://localhost:8012/api/status path=/gallery"
+        )
+        assert unrelated_stream.getvalue().strip() == (
+            "ordinary endpoint=https://localhost:8012/api/status path=/gallery"
+        )
     finally:
+        unrelated.removeHandler(unrelated_handler)
         root.removeHandler(handler)
 
 
@@ -579,46 +627,288 @@ def test_private_raw_model_output_is_redacted_before_checkpoint_write(
         output / "localization/localization-llm-checkpoint-private.json"
     ).read_text(encoding="utf-8")
     assert "fake-raw-secret-123456789" not in checkpoint_text
-    assert "example.invalid" not in checkpoint_text
+    assert "https://example.invalid/v1?q=secret" in checkpoint_text
     assert "[REDACTED" in checkpoint_text
 
 
-def test_targeted_adjudication_failure_blocks_once_without_another_loop(
+def test_targeted_adjudication_failure_becomes_manual_pending_without_repeat(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output, _manifest_value, _applied = _install_execution_fakes(
+        tmp_path, monkeypatch, accepted_translation_count=0
+    )
+    provider = _AlwaysAmbiguousProvider()
+    first = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
+    )
+    calls = provider.calls
+    second = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
+    )
+    assert provider.standard_calls == 1
+    assert provider.targeted_calls == 1
+    assert provider.calls == calls
+    assert first["localization_accounting_closed"] is True
+    assert first["localization_translation_complete"] is False
+    assert first["downstream_progression_allowed"] is True
+    assert second["manual_localization_review_pending_count"] == 1
+    public = json.loads(
+        (output / "localization/localization-manual-review-pending.json")
+        .read_text(encoding="utf-8")
+    )
+    assert public["manual_review_pending_count"] == 1
+    assert public["manual_localization_review_pending"][0][
+        "validator_verdict"
+    ] == "ambiguous_needs_review"
+
+
+def test_first_manual_pending_does_not_block_later_unrelated_item(
+    tmp_path: Path, monkeypatch
+) -> None:
+    rows = [
+        {"canonical_name": "alpha_tag", "category": "general"},
+        {"canonical_name": "beta_tag", "category": "general"},
+    ]
+    output, _manifest_value, applied = _install_execution_fakes(
+        tmp_path,
+        monkeypatch,
+        rows=rows,
+        accepted_translation_count=1,
+        blocking_missing=["alpha_tag"],
+    )
+    provider = _FirstTargetEchoThenTranslateProvider()
+    result = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
+    )
+    assert provider.standard_calls == 1
+    assert provider.targeted_calls == 2
+    assert result["accepted_new_translation_count"] == 1
+    assert result["manual_localization_review_pending_count"] == 1
+    assert result["localization_accounting_closed"] is True
+    assert result["localization_translation_complete"] is False
+    assert result["downstream_progression_allowed"] is True
+    assert applied == [
+        ("blombooru_sv1b_primary_test", ("beta_tag",)),
+        ("blombooru_sv1b_replay_test", ("beta_tag",)),
+    ]
+
+
+def test_resume_reuses_sixteen_results_and_never_recalls_exhausted_item(
+    tmp_path: Path, monkeypatch
+) -> None:
+    rows = [
+        {"canonical_name": f"tag_{index:02d}", "category": "general"}
+        for index in range(25)
+    ]
+    output, manifest, applied = _install_execution_fakes(
+        tmp_path,
+        monkeypatch,
+        rows=rows,
+        accepted_translation_count=24,
+        blocking_missing=["tag_16"],
+    )
+    accepted_items = {}
+    for index in range(16):
+        canonical = f"tag_{index:02d}"
+        translation = {
+            "canonical_name": canonical,
+            "display_name": f"中文{index}",
+            "aliases": [],
+            "category": "general",
+            "needs_review": False,
+        }
+        accepted_items[canonical] = {
+            "attempt_count": 1,
+            "status": "accepted_translation",
+            "prompt_version": closure.TARGETED_ADJUDICATION_PROMPT_VERSION,
+            "translation": translation,
+            "translation_fingerprint": closure.sv1b.sha256_payload(
+                translation
+            ),
+            "cost_upper_bound_usd": 0.001,
+        }
+    accepted_items["tag_16"] = {
+        "attempt_count": 1,
+        "status": "blocked_invalid_result",
+        "prompt_version": closure.TARGETED_ADJUDICATION_PROMPT_VERSION,
+        "cost_upper_bound_usd": 0.001,
+        "redacted_raw_model_output": json.dumps({
+            "canonical_name": "tag_16",
+            "display_name_zh": "tag_16",
+        }),
+        "validation": {
+            "per_reason_counts": {"untranslated_echo": 1},
+            "verdict_rows": [{
+                "canonical_name": "tag_16",
+                "category": "general",
+                "verdict": "untranslated_echo",
+            }],
+        },
+    }
+    checkpoint_path = (
+        output / "localization/localization-llm-checkpoint-private.json"
+    )
+    checkpoint_path.parent.mkdir(parents=True)
+    checkpoint_path.write_text(json.dumps({
+        "manifest_fingerprint": "f" * 64,
+        "provider_route": "primary_only",
+        "fallback_provider_used": False,
+        "batches": {
+            "0001-test": {
+                "input_fingerprint": manifest["batches"][0][
+                    "input_fingerprint"
+                ],
+                "attempt_count": 2,
+                "original_batch_attempt_count": 2,
+                "standard_batch_call_count": 2,
+                "status": "item_adjudication_pending",
+                "cost_upper_bound_usd": 0.08,
+                "accepted_item_results": [],
+                "unresolved_items": [
+                    {
+                        **row,
+                        "verdict": "missing_result",
+                        "result_fingerprint": None,
+                    }
+                    for row in rows
+                ],
+                "item_validation": {"unexpected_rows": []},
+                "item_adjudications": accepted_items,
+                "display_preserved_outcomes": [],
+            }
+        },
+    }), encoding="utf-8")
+    provider = _Provider()
+    result = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
+    )
+    assert provider.standard_calls == 0
+    assert provider.targeted_calls == 8
+    assert result["accepted_new_translation_count"] == 24
+    assert result["manual_localization_review_pending_count"] == 1
+    assert result["reused_targeted_result_count"] == 16
+    assert result["avoided_duplicate_call_count"] == 19
+    assert set(applied[0][1]) == {
+        *(f"tag_{index:02d}" for index in range(16)),
+        *(f"tag_{index:02d}" for index in range(17, 25)),
+    }
+    state = json.loads(checkpoint_path.read_text(encoding="utf-8"))[
+        "batches"
+    ]["0001-test"]
+    assert state["item_adjudications"]["tag_16"]["attempt_count"] == 1
+    assert state["item_adjudications"]["tag_16"]["status"] == (
+        "manual_localization_review_pending"
+    )
+
+
+def test_more_than_eight_pending_finishes_inventory_then_blocks_downstream(
+    tmp_path: Path, monkeypatch
+) -> None:
+    rows = [
+        {"canonical_name": f"ordinary_{index:02d}", "category": "general"}
+        for index in range(10)
+    ]
+    output, _manifest_value, applied = _install_execution_fakes(
+        tmp_path,
+        monkeypatch,
+        rows=rows,
+        accepted_translation_count=0,
+        blocking_missing=[row["canonical_name"] for row in rows],
+    )
+    provider = _AllTargetEchoProvider()
+    result = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
+    )
+    assert provider.standard_calls == 1
+    assert provider.targeted_calls == 10
+    assert result["localization_accounting_closed"] is True
+    assert result["manual_localization_review_pending_count"] == 10
+    assert result["downstream_progression_allowed"] is False
+    assert result["status"] == "blocked_sv1b_systemic_localization_quality"
+    assert applied == [
+        ("blombooru_sv1b_primary_test", ()),
+        ("blombooru_sv1b_replay_test", ()),
+    ]
+
+
+def test_dual_database_apply_recovers_after_replay_interruption_without_recall(
     tmp_path: Path, monkeypatch
 ) -> None:
     output, _manifest_value, _applied = _install_execution_fakes(
         tmp_path, monkeypatch
     )
-    provider = _AlwaysAmbiguousProvider()
-    with pytest.raises(
-        closure.LocalizationClosureError,
-        match="blocked_sv1b_localization_unresolved_item",
-    ):
+    calls = []
+    interrupted = {"value": False}
+
+    def apply(database, rows):
+        calls.append(database)
+        if database.endswith("replay_test") and not interrupted["value"]:
+            interrupted["value"] = True
+            raise RuntimeError("synthetic replay interruption")
+        return {"inserted": len(list(rows)), "reused": 0}
+
+    monkeypatch.setattr(closure, "_apply_batch", apply)
+    provider = _Provider()
+    with pytest.raises(RuntimeError, match="synthetic replay interruption"):
         closure.execute(
             output,
             primary_database="blombooru_sv1b_primary_test",
             replay_database="blombooru_sv1b_replay_test",
             provider=provider,
         )
-    calls = provider.calls
-    with pytest.raises(
-        closure.LocalizationClosureError,
-        match="blocked_sv1b_localization_unresolved_item",
-    ):
-        closure.execute(
-            output,
-            primary_database="blombooru_sv1b_primary_test",
-            replay_database="blombooru_sv1b_replay_test",
-            provider=provider,
-        )
-    assert provider.standard_calls == 1
-    assert provider.targeted_calls == 1
-    assert provider.calls == calls
-    safe = json.loads(
-        (output / "localization-unresolved-items-proof.json")
-        .read_text(encoding="utf-8")
+    result = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=provider,
     )
-    assert safe["unresolved_item_count"] == 1
+    assert provider.standard_calls == 1
+    assert provider.targeted_calls == 0
+    assert calls == [
+        "blombooru_sv1b_primary_test",
+        "blombooru_sv1b_replay_test",
+        "blombooru_sv1b_primary_test",
+        "blombooru_sv1b_replay_test",
+    ]
+    assert result["primary_replay_translation_fingerprint_equal"] is True
+    assert result["restart_safe_dual_database_reconciliation_used"] is True
+
+
+def test_graph_identity_and_recovery_path_do_not_depend_on_translation_or_pixiv() -> None:
+    from app.services import source_concept_resolver_service
+
+    signal_source = inspect.getsource(
+        source_concept_resolver_service.build_source_concept_signals
+    )
+    inventory_source = inspect.getsource(
+        source_concept_resolver_service.source_signal_inventory
+    )
+    localization_source = inspect.getsource(closure.execute)
+    for source in (signal_source, inventory_source):
+        assert "TagTranslation" not in source
+        assert "blombooru_tag_translations" not in source
+    for forbidden in (
+        "execute_provider_manifest",
+        "gallery-dl",
+        "gallery_adapter",
+        "run_pixiv_metadata_ingestion",
+    ):
+        assert forbidden not in localization_source
 
 
 def test_untranslated_echo_uses_targeted_call_without_full_batch_retry(

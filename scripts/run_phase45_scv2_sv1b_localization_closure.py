@@ -49,8 +49,10 @@ ITEM_VALIDATION_POLICY_VERSION = "sv1b_localization_item_validation_v1"
 DISPLAY_PRESERVE_POLICY_VERSION = "sv1b_localization_display_preserve_v1"
 CHECKPOINT_MIGRATION_VERSION = "sv1b_localization_blocked_batch_item_migration_v1"
 TARGETED_ADJUDICATION_PROMPT_VERSION = "sv1b_localization_targeted_item_prompt_v1"
+MANUAL_REVIEW_POLICY_VERSION = "sv1b_manual_localization_review_pending_v1"
 MAX_STANDARD_CALLS_PER_NEW_BATCH = 1
 MAX_ITEM_ADJUDICATION_ATTEMPTS = 1
+MAX_MANUAL_REVIEW_PENDING_FOR_DOWNSTREAM = 8
 TOKENS_PER_ITEM_ADJUDICATION_UPPER_BOUND = 1200
 ITEM_VERDICTS = frozenset({
     "accepted_translation",
@@ -65,6 +67,8 @@ ITEM_VERDICTS = frozenset({
 TERMINAL_ITEM_OUTCOMES = frozenset({
     "accepted_translation",
     "explicit_display_preserved_nontranslatable",
+    "manual_localization_review_pending",
+    "manual_localization_override",
 })
 TECHNICAL_DISPLAY_PRESERVE_ALLOWLIST = frozenset({
     "2d", "3d", "4k", "8k", "ai", "ar", "cmyk", "css", "dna", "fps",
@@ -355,6 +359,62 @@ def _display_preserve_outcome(row: Mapping[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _manual_review_pending_outcome(
+    row: Mapping[str, Any],
+    *,
+    batch_state: Mapping[str, Any],
+    item_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    canonical = str(row["canonical_name"])
+    category = str(row["category"])
+    validation = item_state.get("validation") or {}
+    verdict_rows = [
+        value for value in validation.get("verdict_rows") or ()
+        if str(value.get("canonical_name")) == canonical
+    ]
+    verdict = str(
+        (verdict_rows[0].get("verdict") if verdict_rows else None)
+        or row.get("verdict")
+        or item_state.get("status")
+        or "unexplained"
+    )
+    targeted_status = str(item_state.get("status") or "attempt_not_completed")
+    return {
+        "canonical_name": canonical,
+        "category": category,
+        "outcome": "manual_localization_review_pending",
+        "validator_verdict": verdict,
+        "failure_reason": (
+            f"targeted_adjudication_{verdict}_after_item_budget_exhaustion"
+        ),
+        "policy_version": MANUAL_REVIEW_POLICY_VERSION,
+        "model_output": str(
+            item_state.get("redacted_raw_model_output")
+            or "model_output_not_safely_persisted"
+        ),
+        "call_attempt_history": {
+            "original_batch_attempt_count": int(
+                batch_state.get("original_batch_attempt_count")
+                or batch_state.get("attempt_count")
+                or 0
+            ),
+            "targeted_item_attempt_count": int(
+                item_state.get("attempt_count") or 0
+            ),
+            "targeted_item_status": targeted_status,
+            "targeted_prompt_version": item_state.get("prompt_version"),
+        },
+        "proposed_manual_review_question": (
+            f"请确认 Danbooru {category} tag `{canonical}` 的 zh-CN 显示名称，"
+            "或明确批准保持 canonical 显示。"
+        ),
+        "canonical_fallback_behavior": (
+            "canonical_tag_search_and_display_fallback_without_chinese_completion_claim"
+        ),
+        "entity_or_truth_eligible": False,
+    }
+
+
 def _private_response_record(provider: Any, results: Iterable[Any]) -> dict[str, Any]:
     raw = str(getattr(provider, "last_completion_content", "") or "")
     if not raw:
@@ -544,6 +604,118 @@ def _write_checkpoint(output: Path, checkpoint: Mapping[str, Any]) -> None:
     sv1b.write_json(_checkpoint_path(output), checkpoint)
 
 
+def _checkpoint_resume_metrics(checkpoint: Mapping[str, Any]) -> dict[str, int]:
+    applied_translations = 0
+    targeted_accepted = 0
+    standard_calls = 0
+    targeted_calls = 0
+    manual_pending = 0
+    for state in (checkpoint.get("batches") or {}).values():
+        standard_calls += int(
+            state.get("standard_batch_call_count")
+            or state.get("attempt_count")
+            or 0
+        )
+        if state.get("status") == "applied_both":
+            applied_translations += len(state.get("translations") or ())
+        manual_pending += len(state.get("manual_review_pending_outcomes") or ())
+        for item in (state.get("item_adjudications") or {}).values():
+            targeted_calls += int(item.get("attempt_count") or 0)
+            targeted_accepted += int(
+                item.get("status") == "accepted_translation"
+            )
+    return {
+        "applied_translation_count": applied_translations,
+        "targeted_accepted_result_count": targeted_accepted,
+        "manual_review_pending_count": manual_pending,
+        "standard_call_count": standard_calls,
+        "targeted_call_count": targeted_calls,
+        "avoided_duplicate_call_count": standard_calls + targeted_calls,
+    }
+
+
+def _write_disposition_ledgers(
+    output: Path,
+    *,
+    manifest: Mapping[str, Any],
+    checkpoint: Mapping[str, Any],
+) -> dict[str, Any]:
+    dispositions: dict[str, dict[str, Any]] = {}
+    for batch in manifest["batches"]:
+        state = dict((checkpoint.get("batches") or {}).get(str(batch["batch_id"])) or {})
+        outcomes = list(state.get("terminal_item_outcomes") or ())
+        if not outcomes:
+            outcomes.extend({
+                "canonical_name": str(row["canonical_name"]),
+                "category": str(row["category"]),
+                "outcome": "accepted_translation",
+                "source": "accepted_batch_checkpoint",
+            } for row in state.get("translations") or ())
+            outcomes.extend(state.get("display_preserved_outcomes") or ())
+            outcomes.extend(state.get("manual_review_pending_outcomes") or ())
+            outcomes.extend(
+                {
+                    "canonical_name": str(item["translation"]["canonical_name"]),
+                    "category": str(item["translation"]["category"]),
+                    "outcome": "accepted_translation",
+                    "source": "targeted_item_adjudication",
+                }
+                for item in (state.get("item_adjudications") or {}).values()
+                if item.get("status") == "accepted_translation"
+                and isinstance(item.get("translation"), Mapping)
+            )
+        for outcome in outcomes:
+            canonical = str(outcome["canonical_name"])
+            value = dict(outcome)
+            previous = dispositions.get(canonical)
+            if previous is not None and previous != value:
+                raise LocalizationClosureError(
+                    "localization_duplicate_or_conflicting_disposition"
+                )
+            dispositions[canonical] = value
+
+    rows = [dispositions[key] for key in sorted(dispositions)]
+    pending = [
+        row for row in rows
+        if row.get("outcome") == "manual_localization_review_pending"
+    ]
+    private = {
+        "policy_version": MANUAL_REVIEW_POLICY_VERSION,
+        "manifest_fingerprint": manifest["manifest_fingerprint"],
+        "item_dispositions": rows,
+        "disposition_count": len(rows),
+        "disposition_membership_fingerprint": sv1b.sha256_payload(rows),
+    }
+    public = {
+        "policy_version": MANUAL_REVIEW_POLICY_VERSION,
+        "manual_localization_review_pending": pending,
+        "manual_review_pending_count": len(pending),
+        "manual_review_pending_membership_fingerprint": sv1b.sha256_payload(
+            pending
+        ),
+        "canonical_content_redacted": False,
+        "security_sensitive_material_redacted": True,
+    }
+    sv1b.write_json(
+        output / "localization/localization-item-disposition-ledger-private.json",
+        private,
+    )
+    sv1b.write_json(
+        output / "localization/localization-manual-review-pending.json",
+        public,
+    )
+    return {
+        "known_disposition_count": len(rows),
+        "manual_review_pending_count": len(pending),
+        "disposition_membership_fingerprint": private[
+            "disposition_membership_fingerprint"
+        ],
+        "manual_review_pending_membership_fingerprint": public[
+            "manual_review_pending_membership_fingerprint"
+        ],
+    }
+
+
 def _migrate_legacy_blocked_batch(
     output: Path,
     *,
@@ -654,7 +826,7 @@ def _write_unresolved_item_block(
         key=lambda row: str(row.get("canonical_name")),
     )
     private = {
-        "status": "blocked_sv1b_localization_unresolved_item",
+        "status": "blocked_sv1b_localization_provider_call",
         "batch_private_ref": sv1b.sha256_payload(batch_id)[:16],
         "unresolved_items": exact,
         "unresolved_membership_fingerprint": sv1b.sha256_payload(exact),
@@ -771,6 +943,10 @@ def _resolve_batch_items(
         str(row["canonical_name"]): dict(row)
         for row in current.get("display_preserved_outcomes") or ()
     }
+    manual_by_name = {
+        str(row["canonical_name"]): dict(row)
+        for row in current.get("manual_review_pending_outcomes") or ()
+    }
     item_adjudications = {
         str(key): dict(value)
         for key, value in (current.get("item_adjudications") or {}).items()
@@ -778,17 +954,15 @@ def _resolve_batch_items(
     unexpected = list(
         (current.get("item_validation") or {}).get("unexpected_rows") or ()
     )
-    if unexpected:
-        _write_unresolved_item_block(
-            output, batch_id=batch_id, rows=unexpected
-        )
-        raise LocalizationClosureError(
-            "blocked_sv1b_localization_unresolved_item"
-        )
+    current["unexpected_response_diagnostics"] = unexpected
     unresolved = list(current.get("unresolved_items") or ())
     for unresolved_row in unresolved:
         canonical = str(unresolved_row["canonical_name"])
-        if canonical in accepted_by_name or canonical in display_by_name:
+        if (
+            canonical in accepted_by_name
+            or canonical in display_by_name
+            or canonical in manual_by_name
+        ):
             continue
         preserve = (
             _display_preserve_outcome(unresolved_row)
@@ -802,16 +976,41 @@ def _resolve_batch_items(
         if item_state.get("status") == "accepted_translation":
             accepted_by_name[canonical] = dict(item_state["translation"])
             continue
-        if int(item_state.get("attempt_count") or 0) >= MAX_ITEM_ADJUDICATION_ATTEMPTS:
-            blocked = [{
-                **dict(unresolved_row),
-                "status": item_state.get("status")
-                or "item_adjudication_attempt_exhausted",
-            }]
-            _write_unresolved_item_block(output, batch_id=batch_id, rows=blocked)
-            raise LocalizationClosureError(
-                "blocked_sv1b_localization_unresolved_item"
+        if item_state.get("status") == "explicit_display_preserved_nontranslatable":
+            display_by_name[canonical] = dict(
+                item_state["display_preserved_outcome"]
             )
+            continue
+        if item_state.get("status") == "manual_localization_review_pending":
+            manual_by_name[canonical] = dict(
+                item_state["manual_review_pending_outcome"]
+            )
+            continue
+        if int(item_state.get("attempt_count") or 0) >= MAX_ITEM_ADJUDICATION_ATTEMPTS:
+            if item_state.get("status") == "blocked_provider_call":
+                raise LocalizationClosureError(
+                    "localization_primary_provider_call_failed"
+                )
+            pending = _manual_review_pending_outcome(
+                unresolved_row,
+                batch_state=current,
+                item_state=item_state,
+            )
+            item_state["status"] = "manual_localization_review_pending"
+            item_state["manual_localization_review_pending_at"] = _utc_now()
+            item_state["manual_review_pending_outcome"] = pending
+            item_state["manual_review_pending_fingerprint"] = sv1b.sha256_payload(
+                pending
+            )
+            manual_by_name[canonical] = pending
+            item_adjudications[canonical] = item_state
+            current["item_adjudications"] = item_adjudications
+            current["manual_review_pending_outcomes"] = [
+                manual_by_name[name] for name in sorted(manual_by_name)
+            ]
+            checkpoint["batches"][batch_id] = current
+            _write_checkpoint(output, checkpoint)
+            continue
         reserved = _cost_upper_bound(TOKENS_PER_ITEM_ADJUDICATION_UPPER_BOUND)
         if round(_checkpoint_cost_upper_bound(checkpoint) + reserved, 6) > COST_CAP_USD:
             raise LocalizationClosureError("llm_item_adjudication_would_exceed_usd10")
@@ -850,7 +1049,7 @@ def _resolve_batch_items(
                 rows=[{**dict(unresolved_row), "status": "blocked_provider_call"}],
             )
             raise LocalizationClosureError(
-                "blocked_sv1b_localization_unresolved_item"
+                "blocked_sv1b_localization_provider_call"
             ) from None
         usage_tokens = _usage_tokens(
             provider, before_usage, TOKENS_PER_ITEM_ADJUDICATION_UPPER_BOUND
@@ -910,36 +1109,53 @@ def _resolve_batch_items(
                 targeted_preserve
             )
             display_by_name[canonical] = targeted_preserve
-        item_adjudications[canonical] = item_state
-        current["item_adjudications"] = item_adjudications
-        checkpoint["batches"][batch_id] = current
-        _write_checkpoint(output, checkpoint)
-        if item_state["status"] not in TERMINAL_ITEM_OUTCOMES:
-            reasons = validation["unresolved_rows"] or validation["unexpected_rows"]
-            _write_unresolved_item_block(
-                output,
-                batch_id=batch_id,
-                rows=reasons or [{
+        else:
+            pending_reasons = (
+                validation["unresolved_rows"]
+                or validation["unexpected_rows"]
+                or [{
                     **dict(unresolved_row),
                     "verdict": "unexplained",
-                }],
+                }]
             )
-            raise LocalizationClosureError(
-                "blocked_sv1b_localization_unresolved_item"
+            pending_row = dict(pending_reasons[0])
+            pending = _manual_review_pending_outcome(
+                pending_row,
+                batch_state=current,
+                item_state=item_state,
             )
+            item_state["status"] = "manual_localization_review_pending"
+            item_state["manual_localization_review_pending_at"] = _utc_now()
+            item_state["manual_review_pending_outcome"] = pending
+            item_state["manual_review_pending_fingerprint"] = sv1b.sha256_payload(
+                pending
+            )
+            manual_by_name[canonical] = pending
+        item_adjudications[canonical] = item_state
+        current["item_adjudications"] = item_adjudications
+        current["manual_review_pending_outcomes"] = [
+            manual_by_name[name] for name in sorted(manual_by_name)
+        ]
+        checkpoint["batches"][batch_id] = current
+        _write_checkpoint(output, checkpoint)
 
     expected_names = {
         str(row["canonical_name"]) for row in batch["rows"]
     }
     accepted_names = set(accepted_by_name)
     display_names = set(display_by_name)
+    manual_names = set(manual_by_name)
     if (
         accepted_names.intersection(display_names)
-        or accepted_names.union(display_names) != expected_names
+        or accepted_names.intersection(manual_names)
+        or display_names.intersection(manual_names)
+        or accepted_names.union(display_names).union(manual_names)
+        != expected_names
     ):
         raise LocalizationClosureError("localization_terminal_item_membership_invalid")
     translations = [accepted_by_name[name] for name in sorted(accepted_names)]
     display_preserved = [display_by_name[name] for name in sorted(display_names)]
+    manual_pending = [manual_by_name[name] for name in sorted(manual_names)]
     terminal_outcomes = sorted([
         *[
             {
@@ -955,12 +1171,14 @@ def _resolve_batch_items(
             for name in accepted_names
         ],
         *display_preserved,
+        *manual_pending,
     ], key=lambda row: str(row["canonical_name"]))
     current.update({
         "status": "checkpointed",
         "accepted_item_results": translations,
         "unresolved_items": [],
         "display_preserved_outcomes": display_preserved,
+        "manual_review_pending_outcomes": manual_pending,
         "item_adjudications": item_adjudications,
         "translations": translations,
         "translation_fingerprint": sv1b.sha256_payload(translations),
@@ -997,6 +1215,7 @@ def execute(
     if manifest["eligible_translation_count"] and getattr(provider, "model", None) != APPROVED_MODEL:
         raise LocalizationClosureError("localization_unapproved_model")
     checkpoint = _load_checkpoint(output, manifest)
+    resume_metrics = _checkpoint_resume_metrics(checkpoint)
 
     for batch in manifest["batches"]:
         batch_id = str(batch["batch_id"])
@@ -1032,6 +1251,9 @@ def execute(
                 checkpoint=checkpoint,
                 provider=provider,
             )
+        _write_disposition_ledgers(
+            output, manifest=manifest, checkpoint=checkpoint
+        )
         rows = state.get("translations") or []
         primary_apply = _apply_batch(primary_database, rows)
         replay_apply = _apply_batch(replay_database, rows)
@@ -1049,6 +1271,9 @@ def execute(
         })
         checkpoint["batches"][batch_id] = state
         _write_checkpoint(output, checkpoint)
+        _write_disposition_ledgers(
+            output, manifest=manifest, checkpoint=checkpoint
+        )
 
     total_cost = _checkpoint_cost_upper_bound(checkpoint)
     if total_cost > COST_CAP_USD:
@@ -1107,13 +1332,29 @@ def execute(
         for row in terminal_outcomes
         if row.get("outcome") == "explicit_display_preserved_nontranslatable"
     }
+    manual_pending = {
+        str(row["canonical_name"])
+        for row in terminal_outcomes
+        if row.get("outcome") == "manual_localization_review_pending"
+    }
+    manual_overrides = {
+        str(row["canonical_name"])
+        for row in terminal_outcomes
+        if row.get("outcome") == "manual_localization_override"
+    }
     accepted_new = {
         str(row["canonical_name"])
         for row in terminal_outcomes
         if row.get("outcome") == "accepted_translation"
     }
     remaining = set(primary_private["blocking_missing_ai_tags"])
-    unexplained = sorted(remaining - excluded - display_preserved)
+    unexplained = sorted(
+        remaining
+        - excluded
+        - display_preserved
+        - manual_pending
+        - manual_overrides
+    )
     if unexplained:
         raise LocalizationClosureError("localization_eligible_missing_after_execution")
     primary_state = sv1b._translation_logical_state(primary_database)
@@ -1143,17 +1384,27 @@ def execute(
         ),
         "eligible_outcomes_balanced": (
             manifest["eligible_translation_count"]
-            == len(accepted_new) + len(display_preserved)
+            == len(accepted_new)
+            + len(display_preserved)
+            + len(manual_pending)
+            + len(manual_overrides)
         ),
         "translation_count_balanced": (
             int(primary_state["count"]) == accepted_prior_count + len(accepted_new)
         ),
         "terminal_membership_exact": set(terminal_names) == eligible_names,
         "primary_replay_equal": primary_state == replay_state,
-        "unresolved_zero": len(unexplained) == 0,
+        "silently_missing_zero": len(unexplained) == 0,
+        "duplicate_disposition_zero": len(terminal_names) == len(set(terminal_names)),
     }
-    if not all(equations.values()):
+    localization_accounting_closed = all(equations.values())
+    if not localization_accounting_closed:
         raise LocalizationClosureError("localization_closure_equation_failed")
+    localization_translation_complete = not manual_pending
+    downstream_progression_allowed = bool(
+        localization_accounting_closed
+        and len(manual_pending) <= MAX_MANUAL_REVIEW_PENDING_FOR_DOWNSTREAM
+    )
     projected_item_cost = _cost_upper_bound(
         manifest["eligible_translation_count"]
         * TOKENS_PER_ITEM_ADJUDICATION_UPPER_BOUND
@@ -1171,15 +1422,53 @@ def execute(
             primary_vocabulary.get("blocking_missing_ai_translation_count") or 0
         ),
         "explicit_display_preserved_count": len(display_preserved),
-        "blocking_missing_ai_translation_count": len(unexplained),
+        "manual_localization_review_pending_count": len(manual_pending),
+        "blocking_missing_ai_translation_count": len(manual_pending),
     })
+    final_pending_rows = [
+        row for row in terminal_outcomes
+        if row.get("outcome") == "manual_localization_review_pending"
+    ]
+    final_pending_reasons = Counter(
+        str(row.get("validator_verdict") or "unexplained")
+        for row in final_pending_rows
+    )
+    disposition_ledger = _write_disposition_ledgers(
+        output, manifest=manifest, checkpoint=checkpoint
+    )
+    salvaged_valid_count = 0
+    for state in checkpoint["batches"].values():
+        reasons = dict(
+            (state.get("item_validation") or {}).get("per_reason_counts") or {}
+        )
+        if any(
+            int(count or 0) > 0
+            for reason, count in reasons.items()
+            if reason != "accepted_translation"
+        ):
+            salvaged_valid_count += int(
+                reasons.get("accepted_translation") or 0
+            )
+    new_standard_calls = standard_batch_calls - resume_metrics["standard_call_count"]
+    new_item_calls = (
+        item_adjudication_calls - resume_metrics["targeted_call_count"]
+    )
 
     result = {
         "passed": True,
+        "status": (
+            "localization_accounting_closed"
+            if downstream_progression_allowed
+            else "blocked_sv1b_systemic_localization_quality"
+        ),
         "policy_version": POLICY_VERSION,
         "item_validation_policy_version": ITEM_VALIDATION_POLICY_VERSION,
         "display_preserve_policy_version": DISPLAY_PRESERVE_POLICY_VERSION,
         "targeted_adjudication_prompt_version": TARGETED_ADJUDICATION_PROMPT_VERSION,
+        "manual_review_policy_version": MANUAL_REVIEW_POLICY_VERSION,
+        "manual_review_pending_threshold": (
+            MAX_MANUAL_REVIEW_PENDING_FOR_DOWNSTREAM
+        ),
         "approved_model": APPROVED_MODEL,
         "pricing_policy_version": PRICING_POLICY_VERSION,
         "manifest_fingerprint": manifest["manifest_fingerprint"],
@@ -1191,23 +1480,56 @@ def execute(
         "accepted_new_translation_count": len(accepted_new),
         "explicit_proper_noun_exclusion_count": len(excluded),
         "explicit_display_preserved_count": len(display_preserved),
+        "manual_localization_review_pending_count": len(manual_pending),
+        "manual_localization_override_count": len(manual_overrides),
         "explicit_nontranslatable_exclusion_count": (
             len(excluded) + len(display_preserved)
         ),
-        "eligible_ai_tag_missing_count": len(unexplained),
+        "eligible_ai_tag_missing_count": 0,
         "silently_missing_eligible_count": 0,
-        "localization_ambiguity_count": 0,
-        "final_untranslated_echo_count": 0,
-        "final_missing_result_count": 0,
-        "final_invalid_display_count": 0,
-        "final_invalid_aliases_count": 0,
-        "final_unexpected_result_count": 0,
-        "final_duplicate_result_count": 0,
+        "missing_disposition_count": 0,
+        "duplicate_disposition_count": 0,
+        "localization_ambiguity_count": int(
+            final_pending_reasons.get("ambiguous_needs_review") or 0
+        ),
+        "final_untranslated_echo_count": int(
+            final_pending_reasons.get("untranslated_echo") or 0
+        ),
+        "final_missing_result_count": int(
+            final_pending_reasons.get("missing_result") or 0
+        ),
+        "final_invalid_display_count": int(
+            final_pending_reasons.get("invalid_display") or 0
+        ),
+        "final_invalid_aliases_count": int(
+            final_pending_reasons.get("invalid_aliases") or 0
+        ),
+        "final_unexpected_result_count": int(
+            final_pending_reasons.get("unexpected_result") or 0
+        ),
+        "final_duplicate_result_count": int(
+            final_pending_reasons.get("duplicate_result") or 0
+        ),
+        "manual_review_pending_reason_counts": dict(
+            sorted(final_pending_reasons.items())
+        ),
         "historical_item_validation_reason_counts": dict(
             sorted(historical_reason_counts.items())
         ),
         "standard_batch_call_count": standard_batch_calls,
         "item_adjudication_call_count": item_adjudication_calls,
+        "new_standard_batch_call_count": new_standard_calls,
+        "new_item_adjudication_call_count": new_item_calls,
+        "reused_applied_translation_count": resume_metrics[
+            "applied_translation_count"
+        ],
+        "reused_targeted_result_count": resume_metrics[
+            "targeted_accepted_result_count"
+        ],
+        "salvaged_valid_result_count": salvaged_valid_count,
+        "avoided_duplicate_call_count": resume_metrics[
+            "avoided_duplicate_call_count"
+        ],
         "provider_source_localized_count": 0,
         "creator_identity_translated_count": 0,
         "provider_tags_written_to_media_tags_count": 0,
@@ -1223,13 +1545,18 @@ def execute(
         "fallback_provider_used": False,
         "image_upload_count": 0,
         "atomic_checkpoint_resume_used": True,
+        "restart_safe_dual_database_reconciliation_used": True,
         "primary_replay_translation_fingerprint_equal": True,
         "localization_membership_fingerprint": sv1b.sha256_payload(
             membership_rows
         ),
         "localization_equations": equations,
+        "disposition_ledger": disposition_ledger,
         "transport_logging": transport_logging,
-        "localization_complete": True,
+        "localization_accounting_closed": localization_accounting_closed,
+        "localization_translation_complete": localization_translation_complete,
+        "downstream_progression_allowed": downstream_progression_allowed,
+        "localization_complete": localization_translation_complete,
     }
     sv1b.write_json(output / "localization-closure-proof.json", result)
     return result

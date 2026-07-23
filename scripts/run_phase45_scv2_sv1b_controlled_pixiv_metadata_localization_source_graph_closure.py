@@ -2228,9 +2228,11 @@ def run_full_pre_network_validation(
             "scripts/run_pixiv_metadata_ingestion.py",
             "scripts/run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.py",
             "scripts/run_phase45_scv2_sv1b_localization_closure.py",
+            "scripts/run_phase45_scv2_sv1b_manual_acceptance_harness.py",
             "tests/test_pixiv_metadata_ingestion_service.py",
             "tests/test_phase45_scv2_sv1b_preflight.py",
             "tests/test_phase45_scv2_sv1b_localization_closure.py",
+            "tests/test_phase45_scv2_sv1b_manual_acceptance_harness.py",
             "scripts/phase_contracts/contract_checks.py",
             "scripts/phase_contracts/contract_registry.py",
         ),
@@ -3038,6 +3040,8 @@ def import_acquired_package_to_replay(
     )
     if (
         localization.get("passed") is not True
+        or localization.get("localization_accounting_closed") is not True
+        or localization.get("downstream_progression_allowed") is not True
         or not localization_fingerprint
         or _translation_logical_state(primary_database).get("fingerprint")
         != localization_fingerprint
@@ -3279,7 +3283,12 @@ def validate_graph_derivation_checkpoint(output: Path) -> dict[str, Any]:
     checks = {
         "acquisition_passed": values["acquisition"].get("passed") is True,
         "replay_import_passed": values["replay_import"].get("passed") is True,
-        "localization_complete": values["localization"].get("localization_complete") is True,
+        "localization_accounting_closed": values["localization"].get(
+            "localization_accounting_closed"
+        ) is True,
+        "localization_downstream_progression_allowed": values[
+            "localization"
+        ].get("downstream_progression_allowed") is True,
         "r2r_remap_safe": values["r2r"].get("target_completion_ready") is True,
         "accepted_evidence_reconciled": bool(
             values["accepted_evidence"].get("primary_reconciliation_passed") is True
@@ -4666,9 +4675,15 @@ def main() -> int:
     if (
         args.stage in localization_started_stages
         and localization_gate
-        and localization_gate.get("localization_complete") is not True
+        and localization_gate.get("localization_accounting_closed") is not True
     ):
         active_blockers.append("blocked_sv1b_normalization_or_localization")
+    elif (
+        args.stage in localization_started_stages
+        and localization_gate
+        and localization_gate.get("downstream_progression_allowed") is not True
+    ):
+        active_blockers.append("blocked_sv1b_systemic_localization_quality")
     if r2r_baseline_audit and r2r_baseline_audit.get("target_completion_ready") is not True:
         active_blockers.append("blocked_sv1b_r2r_replay")
     automated_candidate_ready = bool(manual_acceptance and manual_acceptance.get("passed") is True and not active_blockers)

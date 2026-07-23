@@ -17,7 +17,9 @@ def _write_required_proofs(output: Path) -> None:
         },
         "localization-closure-proof.json": {
             "passed": True,
-            "localization_complete": True,
+            "localization_accounting_closed": True,
+            "localization_translation_complete": False,
+            "downstream_progression_allowed": True,
             "accepted_translation_state": {"fingerprint": "b" * 64},
             "vocabulary": {"fingerprint": "c" * 64},
         },
@@ -253,6 +255,31 @@ def test_phase_delta_composition_rejects_underived_shared_name_safety() -> None:
     cases[20]["actual_result"]["identity_union_created"] = True
     with pytest.raises(harness.ManualAcceptanceHarnessError, match="shared_name_safety_invalid"):
         harness.validate_phase_delta_case_composition(cases)
+
+
+def test_phase_delta_composition_includes_every_manual_pending_localization() -> None:
+    localization = _cases("ai_tag_localization", 8, "D")
+    localization[0]["provenance"].update(
+        phase_delta="manual_localization_review_pending",
+        available_manual_pending_count=1,
+    )
+    for row in localization[1:6]:
+        row["provenance"]["phase_delta"] = "newly_generated_translation"
+        row["provenance"]["available_manual_pending_count"] = 1
+    for row in localization[6:]:
+        row["provenance"]["phase_delta"] = "proper_noun_exclusion_display"
+        row["provenance"]["available_manual_pending_count"] = 1
+    cases = [
+        *_cases("pixiv_metadata", 12, "A"),
+        *_cases("creator_clustering", 8, "B"),
+        *_cases("shared_name_cannot_link", 6, "C"),
+        *localization,
+        *_cases("search_and_negative", 6, "E"),
+    ]
+    composition = harness.validate_phase_delta_case_composition(cases)
+    assert composition["manual_localization_review_pending_case_count"] == 1
+    assert composition["new_translation_case_count"] == 5
+    assert composition["proper_noun_exclusion_display_case_count"] == 2
 
 
 def test_harness_server_is_loopback_only_and_never_embeds_paths() -> None:

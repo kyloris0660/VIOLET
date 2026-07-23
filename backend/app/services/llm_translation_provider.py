@@ -17,7 +17,7 @@ import os
 import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -27,42 +27,74 @@ _FALLBACK_HTTP_CODES = {408, 429, 500, 502, 503, 504}
 _LLM_TRANSPORT_LOGGER_NAMES = (
     "httpx",
     "httpcore",
+    "httpcore.connection",
+    "httpcore.http11",
+    "httpcore.http2",
+    "httpcore.proxy",
     "openai",
     "openai._base_client",
+    "openai._utils._logs",
     "urllib3",
+    "urllib3.connectionpool",
     "aiohttp",
+    "aiohttp.client",
     "app.services.llm_translation_provider",
     __name__,
 )
 _LLM_LOG_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(authorization|proxy-authorization|cookie|set-cookie|"
-    r"x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token)\b"
+    r"(?i)(?P<quote>['\"]?)\b(?P<key>authorization|proxy-authorization|cookie|"
+    r"set-cookie|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|"
+    r"session[_-]?(?:id|token|key))\b(?P=quote)"
     r"\s*[:=]\s*(?:bearer\s+[A-Za-z0-9._~+/=-]+|"
-    r"\"[^\"]*\"|'[^']*'|[^\s,;}\]]+)"
+    r"\"[^\"]*\"|'[^']*'|[^\s,;&}\]]+)"
 )
 _LLM_LOG_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _LLM_LOG_KEY_RE = re.compile(r"\b(?:sk-|key-)[A-Za-z0-9_-]{8,}\b")
-_LLM_LOG_HEADERS_RE = re.compile(
-    r"(?is)\b(?:request|response)?_?headers?\s*[:=]\s*(?:\{.*?\}|\[.*?\]|\(.*?\))"
-)
 _LLM_LOG_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_LLM_SENSITIVE_QUERY_KEY_RE = re.compile(
+    r"(?i)^(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth(?:orization)?|"
+    r"bearer|cookie|session(?:[_-]?(?:id|token|key))?|signature|sig|secret|"
+    r"client[_-]?secret)$"
+)
+
+
+def _redact_llm_url(match: re.Match[str]) -> str:
+    value = match.group(0)
+    try:
+        parsed = urlsplit(value)
+        netloc = parsed.netloc
+        if "@" in netloc:
+            netloc = "[REDACTED_USERINFO]@" + netloc.rsplit("@", 1)[1]
+        query = urlencode([
+            (
+                key,
+                "[REDACTED]" if _LLM_SENSITIVE_QUERY_KEY_RE.fullmatch(key) else item,
+            )
+            for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+        ])
+        return urlunsplit((parsed.scheme, netloc, parsed.path, query, parsed.fragment))
+    except Exception:
+        return "[REDACTED_ENDPOINT]"
 
 
 def redact_llm_transport_log_text(value: Any) -> str:
     """Redact credentials, headers, and endpoint material from LLM transport logs."""
 
     text_value = str(value)
-    text_value = _LLM_LOG_HEADERS_RE.sub("headers=[REDACTED]", text_value)
     text_value = _LLM_LOG_SECRET_ASSIGNMENT_RE.sub(
-        lambda match: f"{match.group(1)}=[REDACTED]", text_value
+        lambda match: (
+            f"{match.group('quote')}{match.group('key')}"
+            f"{match.group('quote')}=[REDACTED]"
+        ),
+        text_value,
     )
     text_value = _LLM_LOG_BEARER_RE.sub("Bearer [REDACTED]", text_value)
     text_value = _LLM_LOG_KEY_RE.sub("[REDACTED_API_KEY]", text_value)
-    return _LLM_LOG_URL_RE.sub("[REDACTED_ENDPOINT]", text_value)
+    return _LLM_LOG_URL_RE.sub(_redact_llm_url, text_value)
 
 
 class LLMTransportRedactionFilter(logging.Filter):
-    """Sanitize a LogRecord before any configured process handler sees it."""
+    """Sanitize an LLM/HTTP transport record while preserving diagnostics."""
 
     _violet_llm_transport_redaction_filter = True
 
@@ -71,9 +103,15 @@ class LLMTransportRedactionFilter(logging.Filter):
             return True
         record.msg = redact_llm_transport_log_text(record.getMessage())
         record.args = ()
-        record.exc_info = None
-        record.exc_text = None
-        record.stack_info = None
+        if record.exc_info and record.exc_info[1] is not None:
+            exception = record.exc_info[1]
+            exception.args = tuple(
+                redact_llm_transport_log_text(value)
+                for value in exception.args
+            )
+            record.exc_text = None
+        if record.stack_info:
+            record.stack_info = redact_llm_transport_log_text(record.stack_info)
         record._violet_llm_transport_log_redacted = True
         return True
 
@@ -87,51 +125,29 @@ def _install_llm_redaction_filter(target: Any) -> None:
     target.addFilter(LLMTransportRedactionFilter())
 
 
-def _install_process_log_record_redaction() -> bool:
-    """Redact every subsequently created LogRecord before any handler sees it."""
-
-    current_factory = logging.getLogRecordFactory()
-    if getattr(
-        current_factory,
-        "_violet_llm_transport_redaction_factory",
-        False,
-    ):
-        return True
-
-    redaction_filter = LLMTransportRedactionFilter()
-
-    def redacting_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
-        record = current_factory(*args, **kwargs)
-        redaction_filter.filter(record)
-        return record
-
-    redacting_factory._violet_llm_transport_redaction_factory = True  # type: ignore[attr-defined]
-    logging.setLogRecordFactory(redacting_factory)
-    return True
-
-
 def harden_llm_transport_logging() -> dict[str, Any]:
-    """Disable request chatter and redact every current process log handler."""
+    """Disable request chatter and redact only known LLM/HTTP transports."""
 
     hardened_loggers = []
+    attached_handler_count = 0
     for name in _LLM_TRANSPORT_LOGGER_NAMES:
         current = logging.getLogger(name)
         current.setLevel(logging.WARNING)
         _install_llm_redaction_filter(current)
         for handler in current.handlers:
             _install_llm_redaction_filter(handler)
+            attached_handler_count += 1
         hardened_loggers.append(name)
-    handler_count = 0
-    for handler in logging.getLogger().handlers:
-        _install_llm_redaction_filter(handler)
-        handler_count += 1
-    process_factory_redaction = _install_process_log_record_redaction()
     return {
-        "policy_version": "violet_llm_transport_log_redaction_v1",
+        "policy_version": "violet_llm_transport_log_redaction_v2",
         "minimum_log_level": "WARNING",
         "hardened_logger_names": sorted(set(hardened_loggers)),
-        "process_handler_count": handler_count,
-        "process_log_record_factory_redaction_enabled": process_factory_redaction,
+        "scoped_handler_count": attached_handler_count,
+        "root_handler_filters_added": 0,
+        "process_log_record_factory_redaction_enabled": False,
+        "unrelated_loggers_modified": False,
+        "non_sensitive_url_context_preserved": True,
+        "exception_context_preserved": True,
         "request_response_body_logging_enabled": False,
     }
 

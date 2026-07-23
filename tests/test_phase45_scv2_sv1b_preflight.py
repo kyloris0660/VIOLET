@@ -596,7 +596,9 @@ def _write_graph_checkpoint_fixture(output: Path) -> None:
             "primary_replay_nonderived_logical_fingerprint_equal": True,
         },
         "localization-closure-proof.json": {
-            "localization_complete": True,
+            "passed": True,
+            "localization_accounting_closed": True,
+            "downstream_progression_allowed": True,
             "accepted_translation_state": {"fingerprint": "localization-fingerprint"},
         },
         "r2r-exact-remap-audit.json": {
@@ -638,7 +640,8 @@ def test_graph_derivation_checkpoint_rejects_localization_package_drift(tmp_path
 @pytest.mark.parametrize(
     ("filename", "field"),
     [
-        ("localization-closure-proof.json", "localization_complete"),
+        ("localization-closure-proof.json", "localization_accounting_closed"),
+        ("localization-closure-proof.json", "downstream_progression_allowed"),
         ("replay-acquired-evidence-import-proof.json", "primary_replay_nonderived_logical_fingerprint_equal"),
         ("r2r-exact-remap-audit.json", "target_completion_ready"),
     ],

@@ -12675,7 +12675,7 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
     localization = _get(summary, "localization_closure", {})
     localization_equations = _get(localization, "localization_equations", {})
     localization_transport = _get(localization, "transport_logging", {})
-    final_localization_failure_keys = (
+    final_localization_reason_keys = (
         "localization_ambiguity_count",
         "final_untranslated_echo_count",
         "final_missing_result_count",
@@ -12684,6 +12684,13 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         "final_unexpected_result_count",
         "final_duplicate_result_count",
     )
+    manual_pending_count = _as_int(
+        localization.get("manual_localization_review_pending_count"), -1
+    ) if isinstance(localization, Mapping) else -1
+    manual_pending_reason_count = sum(
+        _as_int(localization.get(key), -1)
+        for key in final_localization_reason_keys
+    ) if isinstance(localization, Mapping) else -1
     if not (
         isinstance(retention, Mapping)
         and retention.get("raw_and_normalized_package_retained") is True
@@ -12695,22 +12702,31 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         and isinstance(localization, Mapping)
         and localization.get("eligible_ai_tag_missing_count") == 0
         and localization.get("silently_missing_eligible_count") == 0
-        and not any(
-            _as_int(localization.get(key), -1)
-            for key in final_localization_failure_keys
-        )
+        and localization.get("missing_disposition_count") == 0
+        and localization.get("duplicate_disposition_count") == 0
+        and localization.get("localization_accounting_closed") is True
+        and manual_pending_count >= 0
+        and manual_pending_reason_count == manual_pending_count
+        and localization.get("localization_translation_complete")
+        is (manual_pending_count == 0)
         and localization.get("item_validation_policy_version")
         == "sv1b_localization_item_validation_v1"
         and localization.get("display_preserve_policy_version")
         == "sv1b_localization_display_preserve_v1"
         and localization.get("targeted_adjudication_prompt_version")
         == "sv1b_localization_targeted_item_prompt_v1"
+        and localization.get("manual_review_policy_version")
+        == "sv1b_manual_localization_review_pending_v1"
+        and _as_int(localization.get("manual_review_pending_threshold"), -1)
+        == 8
         and _as_int(localization.get("initial_eligible_count"), -1) == 1788
         and _as_int(localization.get("explicit_proper_noun_exclusion_count"), -1)
         == 454
         and _as_int(localization.get("initial_eligible_count"), -1)
         == _as_int(localization.get("accepted_new_translation_count"), -2)
         + _as_int(localization.get("explicit_display_preserved_count"), -2)
+        + manual_pending_count
+        + _as_int(localization.get("manual_localization_override_count"), -2)
         and _as_int(localization.get("external_llm_call_count"), -1)
         == _as_int(localization.get("standard_batch_call_count"), -2)
         + _as_int(localization.get("item_adjudication_call_count"), -2)
@@ -12722,7 +12738,13 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         and localization_transport.get("minimum_log_level") == "WARNING"
         and localization_transport.get(
             "process_log_record_factory_redaction_enabled"
-        ) is True
+        ) is False
+        and _as_int(localization_transport.get("root_handler_filters_added"), -1)
+        == 0
+        and localization_transport.get("unrelated_loggers_modified") is False
+        and localization_transport.get("non_sensitive_url_context_preserved")
+        is True
+        and localization_transport.get("exception_context_preserved") is True
         and localization_transport.get("request_response_body_logging_enabled") is False
         and localization.get("provider_tags_written_to_media_tags_count") == 0
         and localization.get("original_provider_text_preserved") is True
@@ -12730,6 +12752,13 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         and localization.get("fallback_provider_used") is False
         and localization.get("image_upload_count") == 0
     ):
+        blockers.append("blocked_sv1b_normalization_or_localization")
+    elif manual_pending_count > 8:
+        if localization.get("downstream_progression_allowed") is False:
+            blockers.append("blocked_sv1b_systemic_localization_quality")
+        else:
+            blockers.append("blocked_sv1b_normalization_or_localization")
+    elif localization.get("downstream_progression_allowed") is not True:
         blockers.append("blocked_sv1b_normalization_or_localization")
 
     r2r = _get(summary, "r2r_replay_accounting", {})

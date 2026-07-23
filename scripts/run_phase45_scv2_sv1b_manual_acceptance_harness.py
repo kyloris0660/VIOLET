@@ -338,6 +338,38 @@ def _localization_cases(session: Any, output: Path) -> list[dict[str, Any]]:
         str(row["canonical_name"]): dict(row)
         for row in manifest.get("explicit_exclusions") or ()
     }
+    pending_path = output / "localization/localization-manual-review-pending.json"
+    pending_proof = (
+        sv1b.read_json(pending_path)
+        if pending_path.is_file()
+        else {"manual_localization_review_pending": []}
+    )
+    pending = {
+        str(row["canonical_name"]): dict(row)
+        for row in pending_proof.get("manual_localization_review_pending") or ()
+    }
+    if len(pending) > 8:
+        raise ManualAcceptanceHarnessError(
+            f"manual_acceptance_localization_pending_threshold_exceeded:{len(pending)}"
+        )
+    pending_rows = list(session.execute(text("""
+        SELECT t.name AS canonical_name,CAST(t.category AS text) AS category,
+               MIN(m.hash) AS media_hash,COUNT(DISTINCT mt.media_id) AS media_count
+        FROM blombooru_tags t
+        JOIN blombooru_media_tags mt ON mt.tag_id=t.id AND mt.source='ai_wd'
+        JOIN blombooru_media m ON m.id=mt.media_id
+          AND (m.mime_type LIKE 'image/%' OR CAST(m.file_type AS text)='image')
+        WHERE t.name=ANY(:pending_names)
+        GROUP BY t.name,t.category
+        ORDER BY t.name
+    """), {"pending_names": sorted(pending) or ["__no_pending__"]}).mappings())
+    if {str(row["canonical_name"]) for row in pending_rows} != set(pending):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_pending_localization_media_membership_gap"
+        )
+    remaining_slots = 8 - len(pending_rows)
+    proper_noun_target = min(2, remaining_slots)
+    translation_target = remaining_slots - proper_noun_target
     rows = list(session.execute(text("""
         SELECT tr.canonical_name,tr.display_name,tr.source,tr.status,tr.category,
                MIN(m.hash) AS media_hash,COUNT(DISTINCT mt.media_id) AS media_count
@@ -347,6 +379,8 @@ def _localization_cases(session: Any, output: Path) -> list[dict[str, Any]]:
         JOIN blombooru_media m ON m.id=mt.media_id
           AND (m.mime_type LIKE 'image/%' OR CAST(m.file_type AS text)='image')
         WHERE tr.language='zh-CN' AND tr.status='translated' AND COALESCE(tr.display_name,'')<>''
+          AND tr.canonical_name=ANY(:new_names)
+          AND tr.needs_review=false
           AND NOT EXISTS (
             SELECT 1 FROM blombooru_tag_translations other
             WHERE other.language=tr.language AND other.status<>'rejected'
@@ -354,10 +388,11 @@ def _localization_cases(session: Any, output: Path) -> list[dict[str, Any]]:
               AND other.canonical_name<>tr.canonical_name
           )
         GROUP BY tr.canonical_name,tr.display_name,tr.source,tr.status,tr.category
-          AND tr.canonical_name=ANY(:new_names)
-          AND tr.needs_review=false
-        ORDER BY tr.canonical_name LIMIT 6
-    """), {"new_names": sorted(new_names) or ["__no_new_translation__"]}).mappings())
+        ORDER BY tr.canonical_name LIMIT :translation_target
+    """), {
+        "new_names": sorted(new_names) or ["__no_new_translation__"],
+        "translation_target": translation_target,
+    }).mappings())
     exclusion_rows = list(session.execute(text("""
         SELECT t.name AS canonical_name,CAST(t.category AS text) AS category,
                MIN(m.hash) AS media_hash,COUNT(DISTINCT mt.media_id) AS media_count,
@@ -374,14 +409,62 @@ def _localization_cases(session: Any, output: Path) -> list[dict[str, Any]]:
         HAVING COUNT(tr.id) FILTER (
           WHERE tr.language='zh-CN' AND tr.status IN ('translated','reviewed')
         )=0
-        ORDER BY t.name LIMIT 2
-    """), {"excluded_names": sorted(exclusions) or ["__no_exclusion__"]}).mappings())
-    if len(rows) != 6 or len(exclusion_rows) != 2:
+        ORDER BY t.name LIMIT :proper_noun_target
+    """), {
+        "excluded_names": sorted(exclusions) or ["__no_exclusion__"],
+        "proper_noun_target": proper_noun_target,
+    }).mappings())
+    if (
+        len(rows) != translation_target
+        or len(exclusion_rows) != proper_noun_target
+    ):
         raise ManualAcceptanceHarnessError(
-            f"manual_acceptance_localization_delta_case_gap:translations={len(rows)}:exclusions={len(exclusion_rows)}"
+            "manual_acceptance_localization_delta_case_gap:"
+            f"pending={len(pending_rows)}:translations={len(rows)}:"
+            f"exclusions={len(exclusion_rows)}"
         )
     cases = []
-    for index, row in enumerate(rows, 1):
+    for index, row in enumerate(pending_rows, 1):
+        canonical = str(row["canonical_name"])
+        disposition = pending[canonical]
+        actual_ids = ml1.runtime_and_terms(session, canonical)
+        cases.append(_case(
+            f"D{index:02d}",
+            "ai_tag_localization",
+            media_hash=str(row["media_hash"]),
+            title=f"Manual localization review pending #{index}",
+            expected_behavior=(
+                "The canonical tag remains searchable and visible without a fake Chinese "
+                "translation while the exact failed localization is presented for owner review."
+            ),
+            actual_result={
+                "canonical_tag": canonical,
+                "display_name": canonical,
+                "translation_status": "manual_localization_review_pending",
+                "validator_verdict": disposition.get("validator_verdict"),
+                "failure_reason": disposition.get("failure_reason"),
+                "model_output": disposition.get("model_output"),
+                "call_attempt_history": disposition.get("call_attempt_history"),
+                "proposed_manual_review_question": disposition.get(
+                    "proposed_manual_review_question"
+                ),
+                "canonical_fallback_behavior": disposition.get(
+                    "canonical_fallback_behavior"
+                ),
+                "independent_media_count": int(row.get("media_count") or 0),
+                "runtime_result_count": len(actual_ids),
+            },
+            provenance={
+                "phase_delta": "manual_localization_review_pending",
+                "available_manual_pending_count": len(pending_rows),
+                "derived_from_current_proofs": True,
+                "policy_version": disposition.get("policy_version"),
+                "tag_category": row.get("category"),
+                "media_tag_source": "ai_wd",
+            },
+        ))
+    next_index = len(cases) + 1
+    for index, row in enumerate(rows, next_index):
         actual_ids = ml1.runtime_and_terms(session, str(row["display_name"]))
         cases.append(_case(
             f"D{index:02d}",
@@ -404,7 +487,8 @@ def _localization_cases(session: Any, output: Path) -> list[dict[str, Any]]:
                 "media_tag_source": "ai_wd",
             },
         ))
-    for offset, row in enumerate(exclusion_rows, 7):
+    next_index = len(cases) + 1
+    for offset, row in enumerate(exclusion_rows, next_index):
         canonical = str(row["canonical_name"])
         policy = exclusions[canonical]
         actual_ids = ml1.runtime_and_terms(session, canonical)
@@ -412,7 +496,7 @@ def _localization_cases(session: Any, output: Path) -> list[dict[str, Any]]:
             f"D{offset:02d}",
             "ai_tag_localization",
             media_hash=str(row["media_hash"]),
-            title=f"Proper-noun exclusion/display #{offset - 6}",
+            title=f"Proper-noun exclusion/display #{offset - next_index + 1}",
             expected_behavior=(
                 "An AI proper-noun tag remains canonical source text, has no accepted LLM translation, "
                 "and stays searchable only as a visual/source descriptor rather than identity truth."
@@ -631,7 +715,30 @@ def validate_phase_delta_case_composition(cases: Iterable[Mapping[str, Any]]) ->
         (row.get("provenance") or {}).get("phase_delta") == "proper_noun_exclusion_display"
         for row in localization
     )
-    if new_translation_count < 6 or proper_noun_exclusion_count < 2:
+    manual_pending_count = sum(
+        (row.get("provenance") or {}).get("phase_delta")
+        == "manual_localization_review_pending"
+        for row in localization
+    )
+    manual_pending_available = max(
+        (
+            int(
+                (row.get("provenance") or {}).get(
+                    "available_manual_pending_count"
+                )
+                or 0
+            )
+            for row in localization
+        ),
+        default=0,
+    )
+    expected_proper_noun_count = min(2, 8 - manual_pending_count)
+    if (
+        manual_pending_count != manual_pending_available
+        or new_translation_count
+        != 8 - manual_pending_count - expected_proper_noun_count
+        or proper_noun_exclusion_count != expected_proper_noun_count
+    ):
         raise ManualAcceptanceHarnessError("manual_acceptance_localization_delta_composition_invalid")
 
     search = by_category["search_and_negative"]
@@ -656,6 +763,7 @@ def validate_phase_delta_case_composition(cases: Iterable[Mapping[str, Any]]) ->
         "shared_name_baseline_filler_count": 6 - shared_delta_count,
         "new_translation_case_count": new_translation_count,
         "proper_noun_exclusion_display_case_count": proper_noun_exclusion_count,
+        "manual_localization_review_pending_case_count": manual_pending_count,
         "phase_delta_supported_search_case_count": 6,
         "derived_from_current_proofs": True,
     }
@@ -684,7 +792,16 @@ def build_harness(
     )
     proofs = {name: sv1b.read_json(output / name) for name in required_proofs}
     failed = [name for name, proof in proofs.items() if proof.get("passed") is not True]
-    if proofs["localization-closure-proof.json"].get("localization_complete") is not True:
+    if (
+        proofs["localization-closure-proof.json"].get(
+            "localization_accounting_closed"
+        )
+        is not True
+        or proofs["localization-closure-proof.json"].get(
+            "downstream_progression_allowed"
+        )
+        is not True
+    ):
         failed.append("localization-closure-proof.json")
     if failed:
         raise ManualAcceptanceHarnessError(f"manual_acceptance_required_proof_failed:{sorted(failed)}")
