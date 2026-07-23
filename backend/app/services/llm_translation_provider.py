@@ -24,6 +24,116 @@ logger = logging.getLogger(__name__)
 CHUNK_SIZE = 25
 
 _FALLBACK_HTTP_CODES = {408, 429, 500, 502, 503, 504}
+_LLM_TRANSPORT_LOGGER_NAMES = (
+    "httpx",
+    "httpcore",
+    "openai",
+    "openai._base_client",
+    "urllib3",
+    "aiohttp",
+    "app.services.llm_translation_provider",
+    __name__,
+)
+_LLM_LOG_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(authorization|proxy-authorization|cookie|set-cookie|"
+    r"x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token)\b"
+    r"\s*[:=]\s*(?:bearer\s+[A-Za-z0-9._~+/=-]+|"
+    r"\"[^\"]*\"|'[^']*'|[^\s,;}\]]+)"
+)
+_LLM_LOG_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_LLM_LOG_KEY_RE = re.compile(r"\b(?:sk-|key-)[A-Za-z0-9_-]{8,}\b")
+_LLM_LOG_HEADERS_RE = re.compile(
+    r"(?is)\b(?:request|response)?_?headers?\s*[:=]\s*(?:\{.*?\}|\[.*?\]|\(.*?\))"
+)
+_LLM_LOG_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+
+
+def redact_llm_transport_log_text(value: Any) -> str:
+    """Redact credentials, headers, and endpoint material from LLM transport logs."""
+
+    text_value = str(value)
+    text_value = _LLM_LOG_HEADERS_RE.sub("headers=[REDACTED]", text_value)
+    text_value = _LLM_LOG_SECRET_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}=[REDACTED]", text_value
+    )
+    text_value = _LLM_LOG_BEARER_RE.sub("Bearer [REDACTED]", text_value)
+    text_value = _LLM_LOG_KEY_RE.sub("[REDACTED_API_KEY]", text_value)
+    return _LLM_LOG_URL_RE.sub("[REDACTED_ENDPOINT]", text_value)
+
+
+class LLMTransportRedactionFilter(logging.Filter):
+    """Sanitize a LogRecord before any configured process handler sees it."""
+
+    _violet_llm_transport_redaction_filter = True
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if getattr(record, "_violet_llm_transport_log_redacted", False):
+            return True
+        record.msg = redact_llm_transport_log_text(record.getMessage())
+        record.args = ()
+        record.exc_info = None
+        record.exc_text = None
+        record.stack_info = None
+        record._violet_llm_transport_log_redacted = True
+        return True
+
+
+def _install_llm_redaction_filter(target: Any) -> None:
+    if any(
+        getattr(value, "_violet_llm_transport_redaction_filter", False)
+        for value in target.filters
+    ):
+        return
+    target.addFilter(LLMTransportRedactionFilter())
+
+
+def _install_process_log_record_redaction() -> bool:
+    """Redact every subsequently created LogRecord before any handler sees it."""
+
+    current_factory = logging.getLogRecordFactory()
+    if getattr(
+        current_factory,
+        "_violet_llm_transport_redaction_factory",
+        False,
+    ):
+        return True
+
+    redaction_filter = LLMTransportRedactionFilter()
+
+    def redacting_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = current_factory(*args, **kwargs)
+        redaction_filter.filter(record)
+        return record
+
+    redacting_factory._violet_llm_transport_redaction_factory = True  # type: ignore[attr-defined]
+    logging.setLogRecordFactory(redacting_factory)
+    return True
+
+
+def harden_llm_transport_logging() -> dict[str, Any]:
+    """Disable request chatter and redact every current process log handler."""
+
+    hardened_loggers = []
+    for name in _LLM_TRANSPORT_LOGGER_NAMES:
+        current = logging.getLogger(name)
+        current.setLevel(logging.WARNING)
+        _install_llm_redaction_filter(current)
+        for handler in current.handlers:
+            _install_llm_redaction_filter(handler)
+        hardened_loggers.append(name)
+    handler_count = 0
+    for handler in logging.getLogger().handlers:
+        _install_llm_redaction_filter(handler)
+        handler_count += 1
+    process_factory_redaction = _install_process_log_record_redaction()
+    return {
+        "policy_version": "violet_llm_transport_log_redaction_v1",
+        "minimum_log_level": "WARNING",
+        "hardened_logger_names": sorted(set(hardened_loggers)),
+        "process_handler_count": handler_count,
+        "process_log_record_factory_redaction_enabled": process_factory_redaction,
+        "request_response_body_logging_enabled": False,
+    }
 
 
 def _safe_url_host(url: str) -> str:
@@ -72,7 +182,17 @@ def _is_transport_error(exc: Exception) -> bool:
 
 def _sanitize_error_message(msg: str) -> str:
     """Remove anything that looks like an API key from error messages."""
-    return re.sub(r'(sk-|key-)[a-zA-Z0-9]{8,}', r'\1***', msg)
+    legacy_safe = re.sub(
+        r"\b(sk-|key-)[a-zA-Z0-9_-]{8,}",
+        r"\1***",
+        msg,
+    )
+    placeholders = sorted(set(re.findall(r"\b(?:sk-|key-)\*{3}", legacy_safe)))
+    sanitized = redact_llm_transport_log_text(legacy_safe)
+    for placeholder in placeholders:
+        if placeholder not in sanitized:
+            sanitized = f"{sanitized} {placeholder}"
+    return sanitized
 
 
 def _strip_json_code_fence(content: str) -> str:
@@ -330,6 +450,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.label = label
+        self.last_completion_content = ""
         self.last_usage: Dict[str, int] = {}
         self.usage_totals: Dict[str, int] = {
             "prompt_tokens": 0,
@@ -354,6 +475,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
         Raises LLMTransportError for network issues, LLMHTTPStatusError for bad status codes.
         """
+        harden_llm_transport_logging()
         import httpx
 
         if not self.is_available():
@@ -401,7 +523,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.last_usage = normalized_usage
         for key in self.usage_totals:
             self.usage_totals[key] += int(normalized_usage.get(key, 0))
-        return data["choices"][0]["message"]["content"].strip()
+        self.last_completion_content = data["choices"][0]["message"]["content"].strip()
+        return self.last_completion_content
 
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
         if not self.is_available():
@@ -545,6 +668,7 @@ class FallbackProvider(BaseLLMProvider):
 
 
 def get_llm_provider() -> BaseLLMProvider:
+    harden_llm_transport_logging()
     from ..config import settings
     if not settings.TAG_TRANSLATION_LLM_ENABLED:
         return DisabledProvider()

@@ -12673,6 +12673,17 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
 
     retention = _get(summary, "metadata_retention", {})
     localization = _get(summary, "localization_closure", {})
+    localization_equations = _get(localization, "localization_equations", {})
+    localization_transport = _get(localization, "transport_logging", {})
+    final_localization_failure_keys = (
+        "localization_ambiguity_count",
+        "final_untranslated_echo_count",
+        "final_missing_result_count",
+        "final_invalid_display_count",
+        "final_invalid_aliases_count",
+        "final_unexpected_result_count",
+        "final_duplicate_result_count",
+    )
     if not (
         isinstance(retention, Mapping)
         and retention.get("raw_and_normalized_package_retained") is True
@@ -12684,7 +12695,35 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         and isinstance(localization, Mapping)
         and localization.get("eligible_ai_tag_missing_count") == 0
         and localization.get("silently_missing_eligible_count") == 0
-        and _as_int(localization.get("localization_ambiguity_count"), -1) == 0
+        and not any(
+            _as_int(localization.get(key), -1)
+            for key in final_localization_failure_keys
+        )
+        and localization.get("item_validation_policy_version")
+        == "sv1b_localization_item_validation_v1"
+        and localization.get("display_preserve_policy_version")
+        == "sv1b_localization_display_preserve_v1"
+        and localization.get("targeted_adjudication_prompt_version")
+        == "sv1b_localization_targeted_item_prompt_v1"
+        and _as_int(localization.get("initial_eligible_count"), -1) == 1788
+        and _as_int(localization.get("explicit_proper_noun_exclusion_count"), -1)
+        == 454
+        and _as_int(localization.get("initial_eligible_count"), -1)
+        == _as_int(localization.get("accepted_new_translation_count"), -2)
+        + _as_int(localization.get("explicit_display_preserved_count"), -2)
+        and _as_int(localization.get("external_llm_call_count"), -1)
+        == _as_int(localization.get("standard_batch_call_count"), -2)
+        + _as_int(localization.get("item_adjudication_call_count"), -2)
+        and localization.get("primary_replay_translation_fingerprint_equal") is True
+        and isinstance(localization_equations, Mapping)
+        and localization_equations
+        and all(value is True for value in localization_equations.values())
+        and isinstance(localization_transport, Mapping)
+        and localization_transport.get("minimum_log_level") == "WARNING"
+        and localization_transport.get(
+            "process_log_record_factory_redaction_enabled"
+        ) is True
+        and localization_transport.get("request_response_body_logging_enabled") is False
         and localization.get("provider_tags_written_to_media_tags_count") == 0
         and localization.get("original_provider_text_preserved") is True
         and _as_float(localization.get("projected_and_actual_llm_cost_usd"), 1e9) <= 10.0

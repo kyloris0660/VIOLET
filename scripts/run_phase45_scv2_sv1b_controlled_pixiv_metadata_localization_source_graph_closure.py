@@ -2224,6 +2224,7 @@ def run_full_pre_network_validation(
         "changed_python_py_compile": (
             python, "-m", "py_compile",
             "backend/app/services/pixiv_metadata_ingestion_service.py",
+            "backend/app/services/llm_translation_provider.py",
             "scripts/run_pixiv_metadata_ingestion.py",
             "scripts/run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.py",
             "scripts/run_phase45_scv2_sv1b_localization_closure.py",

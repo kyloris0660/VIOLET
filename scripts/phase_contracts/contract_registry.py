@@ -181,6 +181,7 @@ SV1B_CONTROLLED_PIXIV_METADATA_LOCALIZATION_SOURCE_GRAPH_CLOSURE_STATUSES: tuple
     "blocked_sv1b_acquisition_incomplete",
     "blocked_sv1b_normalization_or_localization",
     "blocked_sv1b_localization_ambiguity",
+    "blocked_sv1b_localization_unresolved_item",
     "blocked_sv1b_r2r_replay",
     "blocked_sv1b_graph_safety",
     "blocked_sv1b_search_safety",
