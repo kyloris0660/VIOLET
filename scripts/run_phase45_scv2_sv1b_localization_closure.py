@@ -70,6 +70,21 @@ TERMINAL_ITEM_OUTCOMES = frozenset({
     "manual_localization_review_pending",
     "manual_localization_override",
 })
+_LOCALIZATION_VOCABULARY_PUBLIC_FIELDS = (
+    "ai_media_tag_vocabulary_count",
+    "accepted_ai_translation_count",
+    "blocking_missing_ai_translation_count",
+    "ai_vocabulary_fingerprint",
+    "missing_ai_vocabulary_fingerprint",
+)
+_SOURCE_VOCABULARY_PUBLIC_FIELDS = (
+    "provider_source_tag_vocabulary_count",
+    "creator_name_account_vocabulary_count",
+    "work_title_vocabulary_count",
+    "provider_source_vocabulary_fingerprint",
+    "creator_vocabulary_fingerprint",
+    "work_title_vocabulary_fingerprint",
+)
 TECHNICAL_DISPLAY_PRESERVE_ALLOWLIST = frozenset({
     "2d", "3d", "4k", "8k", "ai", "ar", "cmyk", "css", "dna", "fps",
     "gif", "gps", "html", "jpeg", "json", "mp4", "png", "rgb", "usb",
@@ -112,6 +127,36 @@ def _category_by_tag(database: str, names: Iterable[str]) -> dict[str, str]:
     if set(result) != set(values):
         raise LocalizationClosureError("localization_manifest_tag_membership_mismatch")
     return result
+
+
+def _localization_vocabulary_projection(
+    public: Mapping[str, Any],
+    private: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project only state that localization is responsible for aligning."""
+
+    return {
+        **{
+            field: public.get(field)
+            for field in _LOCALIZATION_VOCABULARY_PUBLIC_FIELDS
+        },
+        "eligible_ai_tag_membership_fingerprint": sv1b.sha256_payload(
+            sorted(str(value) for value in private.get("eligible_ai_tags") or ())
+        ),
+        "blocking_missing_ai_tag_membership_fingerprint": sv1b.sha256_payload(
+            sorted(
+                str(value)
+                for value in private.get("blocking_missing_ai_tags") or ()
+            )
+        ),
+    }
+
+
+def _source_vocabulary_projection(public: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        field: public.get(field)
+        for field in _SOURCE_VOCABULARY_PUBLIC_FIELDS
+    }
 
 
 def build_manifest(output: Path, *, primary_database: str, replay_database: str) -> dict[str, Any]:
@@ -1280,8 +1325,16 @@ def execute(
         raise LocalizationClosureError("actual_llm_cost_upper_bound_exceeds_usd10")
     primary_vocabulary, primary_private = sv1b._vocabulary_state(primary_database)
     replay_vocabulary, replay_private = sv1b._vocabulary_state(replay_database)
-    if primary_vocabulary != replay_vocabulary or primary_private != replay_private:
+    primary_localization_vocabulary = _localization_vocabulary_projection(
+        primary_vocabulary, primary_private
+    )
+    replay_localization_vocabulary = _localization_vocabulary_projection(
+        replay_vocabulary, replay_private
+    )
+    if primary_localization_vocabulary != replay_localization_vocabulary:
         raise LocalizationClosureError("localization_primary_replay_final_state_mismatch")
+    primary_source_vocabulary = _source_vocabulary_projection(primary_vocabulary)
+    replay_source_vocabulary = _source_vocabulary_projection(replay_vocabulary)
     excluded = {row["canonical_name"] for row in manifest["explicit_exclusions"]}
     terminal_outcomes = []
     historical_reason_counts: Counter[str] = Counter()
@@ -1547,6 +1600,15 @@ def execute(
         "atomic_checkpoint_resume_used": True,
         "restart_safe_dual_database_reconciliation_used": True,
         "primary_replay_translation_fingerprint_equal": True,
+        "primary_replay_localization_vocabulary_equal": True,
+        "pre_replay_source_vocabulary_equal": (
+            primary_source_vocabulary == replay_source_vocabulary
+        ),
+        "pre_replay_source_vocabulary_difference_expected_until_acquired_package_import": (
+            primary_source_vocabulary != replay_source_vocabulary
+        ),
+        "primary_source_vocabulary_projection": primary_source_vocabulary,
+        "replay_source_vocabulary_projection": replay_source_vocabulary,
         "localization_membership_fingerprint": sv1b.sha256_payload(
             membership_rows
         ),

@@ -402,6 +402,58 @@ def test_execute_is_checkpoint_resumable_and_applies_both_databases(
     assert checkpoint["batches"]["0001-test"]["status"] == "applied_both"
 
 
+def test_pre_replay_source_vocabulary_delta_does_not_block_localization_closure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output, _manifest_value, _applied = _install_execution_fakes(
+        tmp_path, monkeypatch
+    )
+
+    def vocabulary(database: str):
+        primary = "primary" in database
+        public = {
+            "ai_media_tag_vocabulary_count": 1,
+            "accepted_ai_translation_count": 1,
+            "blocking_missing_ai_translation_count": 0,
+            "ai_vocabulary_fingerprint": "a" * 64,
+            "missing_ai_vocabulary_fingerprint": "b" * 64,
+            "provider_source_tag_vocabulary_count": 2 if primary else 1,
+            "creator_name_account_vocabulary_count": 2 if primary else 1,
+            "work_title_vocabulary_count": 2 if primary else 1,
+            "provider_source_vocabulary_fingerprint": (
+                "c" * 64 if primary else "d" * 64
+            ),
+            "creator_vocabulary_fingerprint": (
+                "e" * 64 if primary else "f" * 64
+            ),
+            "work_title_vocabulary_fingerprint": (
+                "1" * 64 if primary else "2" * 64
+            ),
+        }
+        private = {
+            "eligible_ai_tags": ["red_hat"],
+            "blocking_missing_ai_tags": [],
+            "provider_source_tags": ["source-a", "source-b"] if primary else ["source-a"],
+            "creator_names_accounts": ["creator-a", "creator-b"] if primary else ["creator-a"],
+            "work_titles": ["title-a", "title-b"] if primary else ["title-a"],
+        }
+        return public, private
+
+    monkeypatch.setattr(closure.sv1b, "_vocabulary_state", vocabulary)
+    result = closure.execute(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        provider=_Provider(),
+    )
+    assert result["localization_accounting_closed"] is True
+    assert result["primary_replay_localization_vocabulary_equal"] is True
+    assert result["pre_replay_source_vocabulary_equal"] is False
+    assert result[
+        "pre_replay_source_vocabulary_difference_expected_until_acquired_package_import"
+    ] is True
+
+
 def test_execute_forbids_fallback_provider_before_any_call(
     tmp_path: Path, monkeypatch
 ) -> None:
