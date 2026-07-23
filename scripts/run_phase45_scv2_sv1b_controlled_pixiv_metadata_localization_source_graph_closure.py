@@ -109,6 +109,9 @@ PRIMARY_PHASE_DELTA_PROOF_NAME = "primary-phase-delta-checkpoint-proof-v2.json"
 REPLAY_ACQUIRED_IMPORT_PROOF_V2_NAME = (
     "replay-acquired-evidence-import-proof-v2.json"
 )
+PRIMARY_REPLAY_TRUSTED_METADATA_INPUT_PROOF_NAME = (
+    "primary-replay-trusted-metadata-input-proof.json"
+)
 APPROVED_DEFAULT_NON_E2E_SKIPS = frozenset({
     "tests/test_env_safety.py:570",
     "tests/test_phase38d_i6_staging_copy_retry.py:284",
@@ -2251,10 +2254,12 @@ def run_full_pre_network_validation(
             "backend/app/services/pixiv_metadata_ingestion_service.py",
             "backend/app/services/llm_translation_provider.py",
             "scripts/run_pixiv_metadata_ingestion.py",
+            "scripts/run_phase45_scv2_sv1_controlled_scale_promotion_readiness.py",
             "scripts/run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure.py",
             "scripts/run_phase45_scv2_sv1b_localization_closure.py",
             "scripts/run_phase45_scv2_sv1b_manual_acceptance_harness.py",
             "tests/test_pixiv_metadata_ingestion_service.py",
+            "tests/test_phase45_scv2_sv1_controlled_scale_promotion_readiness.py",
             "tests/test_phase45_scv2_sv1b_preflight.py",
             "tests/test_phase45_scv2_sv1b_localization_closure.py",
             "tests/test_phase45_scv2_sv1b_manual_acceptance_harness.py",
@@ -2988,6 +2993,209 @@ def filter_nonderived_source_package(
     }
 
 
+def _trusted_metadata_graph_input_projection(
+    row: Mapping[str, Any],
+) -> dict[str, Any]:
+    provenance = row.get("provenance")
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+    stable_identity = provenance.get("stable_identity_key")
+    stable_identity = (
+        dict(stable_identity)
+        if isinstance(stable_identity, Mapping)
+        else stable_identity
+    )
+    return {
+        "provider_record_key": str(row.get("provider_record_key") or ""),
+        "media_content_key": str(row.get("media_content_key") or ""),
+        "provider": str(row.get("provider") or ""),
+        "metadata_kind": str(row.get("metadata_kind") or ""),
+        "data_type_label": str(row.get("data_type_label") or ""),
+        "status": str(row.get("status") or ""),
+        "source_work_id": (
+            str(row.get("source_work_id"))
+            if row.get("source_work_id") is not None
+            else None
+        ),
+        "source_page_index": row.get("source_page_index"),
+        "title": row.get("title"),
+        "artist_id": row.get("artist_id"),
+        "artist_name": row.get("artist_name"),
+        "provenance_source": str(provenance.get("source") or ""),
+        "stable_identity_key": stable_identity,
+        "trusted_complete": bool(
+            is_trusted_complete_pixiv_metadata_record(row)
+        ),
+    }
+
+
+def compare_primary_replay_trusted_metadata_inputs(
+    primary_rows: Iterable[Mapping[str, Any]],
+    replay_rows: Iterable[Mapping[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Compare graph-effective provider trust inputs without sanitizing IDs."""
+
+    def indexed(
+        rows: Iterable[Mapping[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        values: dict[str, dict[str, Any]] = {}
+        for raw in rows:
+            projection = _trusted_metadata_graph_input_projection(raw)
+            key = projection["provider_record_key"]
+            if not key or key in values:
+                raise SV1BPreflightError(
+                    "trusted_metadata_input_stable_key_invalid"
+                )
+            values[key] = projection
+        return values
+
+    primary = indexed(primary_rows)
+    replay = indexed(replay_rows)
+    primary_keys = set(primary)
+    replay_keys = set(replay)
+    missing = sorted(primary_keys - replay_keys)
+    extra = sorted(replay_keys - primary_keys)
+    mismatched = sorted(
+        key
+        for key in primary_keys.intersection(replay_keys)
+        if canonical_json(primary[key]) != canonical_json(replay[key])
+    )
+    ledger: list[dict[str, Any]] = []
+    for key in missing:
+        ledger.append(
+            {
+                "stable_record_reference": sha256_payload(key),
+                "reason": "missing_replay_record",
+                "primary_projection_fingerprint": sha256_payload(
+                    primary[key]
+                ),
+                "replay_projection_fingerprint": None,
+            }
+        )
+    for key in extra:
+        ledger.append(
+            {
+                "stable_record_reference": sha256_payload(key),
+                "reason": "extra_replay_record",
+                "primary_projection_fingerprint": None,
+                "replay_projection_fingerprint": sha256_payload(
+                    replay[key]
+                ),
+            }
+        )
+    for key in mismatched:
+        primary_projection = primary[key]
+        replay_projection = replay[key]
+        ledger.append(
+            {
+                "stable_record_reference": sha256_payload(key),
+                "reason": "graph_effective_projection_mismatch",
+                "primary_projection_fingerprint": sha256_payload(
+                    primary_projection
+                ),
+                "replay_projection_fingerprint": sha256_payload(
+                    replay_projection
+                ),
+                "stable_identity_mismatch": (
+                    primary_projection["stable_identity_key"]
+                    != replay_projection["stable_identity_key"]
+                ),
+                "trusted_complete_mismatch": (
+                    primary_projection["trusted_complete"]
+                    != replay_projection["trusted_complete"]
+                ),
+            }
+        )
+    primary_state = [primary[key] for key in sorted(primary)]
+    replay_state = [replay[key] for key in sorted(replay)]
+    result = {
+        "proof_version": (
+            "sv1b_primary_replay_trusted_metadata_graph_inputs_v1"
+        ),
+        "primary_record_count": len(primary),
+        "replay_record_count": len(replay),
+        "missing_replay_record_count": len(missing),
+        "extra_replay_record_count": len(extra),
+        "graph_effective_projection_mismatch_count": len(mismatched),
+        "stable_identity_mismatch_count": sum(
+            row.get("stable_identity_mismatch") is True for row in ledger
+        ),
+        "trusted_complete_mismatch_count": sum(
+            row.get("trusted_complete_mismatch") is True for row in ledger
+        ),
+        "primary_trusted_complete_count": sum(
+            row["trusted_complete"] for row in primary_state
+        ),
+        "replay_trusted_complete_count": sum(
+            row["trusted_complete"] for row in replay_state
+        ),
+        "primary_projection_fingerprint": sha256_payload(primary_state),
+        "replay_projection_fingerprint": sha256_payload(replay_state),
+        "mismatch_membership_fingerprint": sha256_payload(ledger),
+        "provider_request_count": 0,
+        "read_only_database_audit": True,
+    }
+    result["passed"] = bool(
+        not missing
+        and not extra
+        and not mismatched
+        and result["primary_projection_fingerprint"]
+        == result["replay_projection_fingerprint"]
+    )
+    return result, ledger
+
+
+def audit_primary_replay_trusted_metadata_inputs(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    rows: dict[str, list[dict[str, Any]]] = {}
+    for label, database in (
+        ("primary", primary_database),
+        ("replay", replay_database),
+    ):
+        engine = engine_for(database)
+        try:
+            with engine.connect() as connection:
+                rows[label] = [
+                    dict(row)
+                    for row in connection.execute(
+                        text(
+                            """
+                            SELECT r.provider_record_key,m.hash AS media_content_key,
+                                   r.provider,r.metadata_kind,r.data_type_label,
+                                   r.status,r.source_work_id,r.source_page_index,
+                                   r.title,r.artist_id,r.artist_name,
+                                   r.raw_metadata_json,r.provenance
+                            FROM blombooru_source_metadata_records r
+                            LEFT JOIN blombooru_media m ON m.id=r.media_id
+                            ORDER BY r.provider_record_key
+                            """
+                        )
+                    ).mappings()
+                ]
+        finally:
+            engine.dispose()
+    result, ledger = compare_primary_replay_trusted_metadata_inputs(
+        rows["primary"], rows["replay"]
+    )
+    write_jsonl(
+        output
+        / "primary-replay-trusted-metadata-input-mismatch-private.jsonl",
+        ledger,
+    )
+    write_json(
+        output / PRIMARY_REPLAY_TRUSTED_METADATA_INPUT_PROOF_NAME,
+        result,
+    )
+    if result["passed"] is not True:
+        raise SV1BPreflightError(
+            "blocked_sv1b_replay_trusted_provenance_reconciliation"
+        )
+    return result
+
+
 def audit_acquisition_and_package(
     output: Path,
     *,
@@ -3063,17 +3271,33 @@ def import_acquired_package_to_replay(
             raise SV1BPreflightError(
                 "replay_acquired_evidence_phase_delta_proof_failed"
             )
+        audit_primary_replay_trusted_metadata_inputs(
+            output,
+            primary_database=primary_database,
+            replay_database=replay_database,
+        )
         return completed
     prior_path = output / "replay-acquired-evidence-import-proof.json"
     if prior_path.is_file():
         prior = read_json(prior_path)
         if prior.get("passed") is True:
+            audit_primary_replay_trusted_metadata_inputs(
+                output,
+                primary_database=primary_database,
+                replay_database=replay_database,
+            )
             return prior
-        return _complete_replay_phase_delta_import(
+        completed = _complete_replay_phase_delta_import(
             output,
             replay_database=replay_database,
             prior_import_proof=prior,
         )
+        audit_primary_replay_trusted_metadata_inputs(
+            output,
+            primary_database=primary_database,
+            replay_database=replay_database,
+        )
+        return completed
     proof = read_json(output / "acquisition-closure-and-package-proof.json")
     if proof.get("passed") is not True:
         raise SV1BPreflightError("acquisition_closure_package_proof_missing_or_failed")
@@ -3143,11 +3367,16 @@ def import_acquired_package_to_replay(
     }
     write_json(output / "replay-acquired-evidence-import-proof.json", result)
     if result["passed"] is not True:
-        return _complete_replay_phase_delta_import(
+        result = _complete_replay_phase_delta_import(
             output,
             replay_database=replay_database,
             prior_import_proof=result,
         )
+    audit_primary_replay_trusted_metadata_inputs(
+        output,
+        primary_database=primary_database,
+        replay_database=replay_database,
+    )
     return result
 
 
@@ -3684,6 +3913,9 @@ def validate_graph_derivation_checkpoint(output: Path) -> dict[str, Any]:
         "localization": output / "localization-closure-proof.json",
         "r2r": output / "r2r-exact-remap-audit.json",
         "accepted_evidence": output / "accepted-nonderived-evidence-proof.json",
+        "trusted_metadata_inputs": (
+            output / PRIMARY_REPLAY_TRUSTED_METADATA_INPUT_PROOF_NAME
+        ),
     }
     missing = [name for name, path in required.items() if not path.is_file()]
     if missing:
@@ -3706,6 +3938,9 @@ def validate_graph_derivation_checkpoint(output: Path) -> dict[str, Any]:
         "accepted_evidence_reconciled": bool(
             values["accepted_evidence"].get("primary_reconciliation_passed") is True
             and values["accepted_evidence"].get("replay_reconciliation_passed") is True
+        ),
+        "primary_replay_trusted_metadata_inputs_equal": (
+            values["trusted_metadata_inputs"].get("passed") is True
         ),
         "acquired_package_fingerprint_match": bool(
             expected_package_fingerprint

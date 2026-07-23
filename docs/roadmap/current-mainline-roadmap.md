@@ -185,3 +185,11 @@ the exact user manual-acceptance checkpoint with
 `safe_to_merge=false`, and `route_approved=false`. Do not start FL1,
 Provider-2, production, full-library execution, Entity bridge, confirmed
 assignment, truth promotion, media download, or source/iCloud mutation.
+
+PR #139 is currently stopped earlier at
+`blocked_sv1b_replay_trusted_provenance_reconciliation`: localization
+accounting is closed, but the legacy stable-package sanitizer removed nested
+provider `work_id`, causing Replay graph-effective trusted metadata inputs to
+diverge from Primary. Failed Replay derived state is preserved; cleanup,
+retry3, graph/search acceptance, and the 40-case harness require a separate
+recovery authorization.

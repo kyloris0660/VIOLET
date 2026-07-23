@@ -866,7 +866,7 @@ def _strip_row(row: Mapping[str, Any], *, drop: Sequence[str] = ()) -> dict[str,
 
 STABLE_ID_KEYS = {
     "run_id", "created_by_run_id", "source_run_id", "provider_run_id", "source_work_id",
-    "artist_id", "source_record_id", "pair_id", "observation_id", "external_id",
+    "work_id", "artist_id", "source_record_id", "pair_id", "observation_id", "external_id",
 }
 
 

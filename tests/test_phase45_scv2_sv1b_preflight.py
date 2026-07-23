@@ -20,6 +20,7 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     classify_retry1_payload_drift_rows,
     classify_search_runtime_membership,
     compare_creator_family_states,
+    compare_primary_replay_trusted_metadata_inputs,
     execute_provider_manifest,
     filter_nonderived_source_package,
     finalize_r2r_proposal_classifications,
@@ -811,6 +812,9 @@ def _write_graph_checkpoint_fixture(output: Path) -> None:
             "primary_reconciliation_passed": True,
             "replay_reconciliation_passed": True,
         },
+        "primary-replay-trusted-metadata-input-proof.json": {
+            "passed": True,
+        },
         "acquired-nonderived-evidence-package-private.json": package,
     }
     for name, value in values.items():
@@ -823,6 +827,87 @@ def test_graph_derivation_checkpoint_binds_all_reusable_memberships(tmp_path: Pa
     assert result["passed"] is True
     assert result["acquired_package_fingerprint_match"] is True
     assert result["accepted_r2r_snapshot_pinned"] is True
+    assert result["primary_replay_trusted_metadata_inputs_equal"] is True
+
+
+def test_trusted_metadata_input_comparison_detects_sanitized_work_id_loss() -> None:
+    primary = [{
+        "provider_record_key": "record-key",
+        "media_content_key": "media-key",
+        "provider": "pixiv",
+        "metadata_kind": "pixiv_ingestion_gate",
+        "data_type_label": "authenticated_provider_metadata",
+        "status": "metadata_complete",
+        "source_work_id": "1234567",
+        "source_page_index": 0,
+        "title": "title",
+        "artist_id": "artist",
+        "artist_name": "artist name",
+        "raw_metadata_json": {"id": 1234567},
+        "provenance": {
+            "source": "gallery_dl_authenticated_metadata",
+            "stable_identity_key": {
+                "provider": "pixiv",
+                "work_id": "1234567",
+                "page_index": 0,
+            },
+        },
+    }]
+    replay = [{
+        **primary[0],
+        "provenance": {
+            "source": "gallery_dl_authenticated_metadata",
+            "stable_identity_key": {
+                "provider": "pixiv",
+                "page_index": 0,
+            },
+        },
+    }]
+
+    result, ledger = compare_primary_replay_trusted_metadata_inputs(
+        primary, replay
+    )
+
+    assert result["passed"] is False
+    assert result["graph_effective_projection_mismatch_count"] == 1
+    assert result["stable_identity_mismatch_count"] == 1
+    assert result["trusted_complete_mismatch_count"] == 1
+    assert ledger[0]["stable_identity_mismatch"] is True
+    assert ledger[0]["trusted_complete_mismatch"] is True
+
+
+def test_trusted_metadata_input_comparison_accepts_exact_graph_inputs() -> None:
+    row = {
+        "provider_record_key": "record-key",
+        "media_content_key": "media-key",
+        "provider": "pixiv",
+        "metadata_kind": "pixiv_ingestion_gate",
+        "data_type_label": "authenticated_provider_metadata",
+        "status": "metadata_complete",
+        "source_work_id": "1234567",
+        "source_page_index": 0,
+        "title": "title",
+        "artist_id": "artist",
+        "artist_name": "artist name",
+        "raw_metadata_json": {"id": 1234567},
+        "provenance": {
+            "source": "gallery_dl_authenticated_metadata",
+            "stable_identity_key": {
+                "provider": "pixiv",
+                "work_id": "1234567",
+                "page_index": 0,
+            },
+        },
+    }
+
+    result, ledger = compare_primary_replay_trusted_metadata_inputs(
+        [row], [row]
+    )
+
+    assert result["passed"] is True
+    assert result["primary_trusted_complete_count"] == 1
+    assert result["replay_trusted_complete_count"] == 1
+    assert ledger == []
 
 
 def test_replay_phase_delta_transition_accepts_only_governed_queue_envelope() -> None:
@@ -897,6 +982,7 @@ def test_graph_derivation_checkpoint_rejects_localization_package_drift(tmp_path
         ("localization-closure-proof.json", "localization_accounting_closed"),
         ("localization-closure-proof.json", "downstream_progression_allowed"),
         ("replay-acquired-evidence-import-proof.json", "primary_replay_nonderived_logical_fingerprint_equal"),
+        ("primary-replay-trusted-metadata-input-proof.json", "passed"),
         ("r2r-exact-remap-audit.json", "target_completion_ready"),
     ],
 )

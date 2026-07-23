@@ -33,6 +33,14 @@ Localization, and Source-Graph Closure` is now the separately governed current
 phase. The canonical current sequence lives in
 `docs/roadmap/current-mainline-roadmap.md`.
 
+The current PR #139 execution has closed localization accounting with one
+explicit manual-review-pending item, but is blocked before graph/search/manual
+acceptance at `blocked_sv1b_replay_trusted_provenance_reconciliation`. A legacy
+stable-package sanitizer removed nested Pixiv provider `work_id`, so package
+equality did not prove graph-effective trusted-input equality. Retry2 Replay
+cleanup or retry3 creation remains unauthorized pending a separate recovery
+decision.
+
 The former SR1 interpretation is superseded: identity union and search-result
 union are different. `cannot_link` blocks identity union, but a bare name returns
 the union of every media item with legitimate direct or accepted-alias support;

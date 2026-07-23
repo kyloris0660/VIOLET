@@ -79,11 +79,7 @@ SV1-A accepted the exact 12,000-media import/AI-tagging evidence, stable-key
 promotion, and 606-family rebuild. New Pixiv metadata acquisition, localization, full graph,
 full-library, and production work remained incomplete.
 
-SV1B is active under its finite provider, graph, localization, replay, search,
-and manual-acceptance policy. Provider execution requires every hardening gate.
-It must stop at the exact 40-case candidate; until explicit user acceptance,
-`target_met`, `safe_to_merge`, and `route_approved` remain false. FL1,
-full-library/production, Entity bridge / Entity/truth, media download, and source/iCloud mutation remain unauthorized.
+PR #139 has closed localization accounting with one `manual_localization_review_pending`, but legacy stable-package sanitization removed provider `work_id`; Primary/Replay trusted graph inputs therefore differ. The exact stop is `blocked_sv1b_replay_trusted_provenance_reconciliation`; no Replay cleanup, retry3, graph/search acceptance, manual harness, FL1, production, Entity bridge/truth, media download, or source/iCloud mutation is authorized. See the [public checkpoint report](reports/phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md).
 
 ## Durable Links
 

@@ -185,6 +185,7 @@ SV1B_CONTROLLED_PIXIV_METADATA_LOCALIZATION_SOURCE_GRAPH_CLOSURE_STATUSES: tuple
     "blocked_sv1b_localization_provider_call",
     "blocked_sv1b_systemic_localization_quality",
     "blocked_sv1b_r2r_replay",
+    "blocked_sv1b_replay_trusted_provenance_reconciliation",
     "blocked_sv1b_graph_safety",
     "blocked_sv1b_search_safety",
     "blocked_sv1b_replay_mismatch",

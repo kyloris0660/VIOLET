@@ -48,7 +48,16 @@ from scripts.run_phase45_scv2_sv1_controlled_scale_promotion_readiness import (
 def test_sanitize_stable_payload_removes_development_row_references_recursively() -> None:
     payload = {
         "concept_id": 42,
-        "nested": {"media_id": 99, "signal_ids": [1, 2], "provider_record_key": "stable"},
+        "nested": {
+            "media_id": 99,
+            "signal_ids": [1, 2],
+            "provider_record_key": "stable",
+            "stable_identity_key": {
+                "provider": "pixiv",
+                "work_id": "123456",
+                "page_index": 0,
+            },
+        },
         "source_work_id": "123456",
         "artist_id": "987",
         "run_id": "accepted-run",
@@ -57,7 +66,14 @@ def test_sanitize_stable_payload_removes_development_row_references_recursively(
     result = sanitize_stable_payload(payload)
 
     assert result == {
-        "nested": {"provider_record_key": "stable"},
+        "nested": {
+            "provider_record_key": "stable",
+            "stable_identity_key": {
+                "provider": "pixiv",
+                "work_id": "123456",
+                "page_index": 0,
+            },
+        },
         "source_work_id": "123456",
         "artist_id": "987",
         "run_id": "accepted-run",
@@ -65,7 +81,9 @@ def test_sanitize_stable_payload_removes_development_row_references_recursively(
 
 
 def test_stable_id_allowlist_contains_provider_ids_but_not_database_ids() -> None:
-    assert {"source_work_id", "artist_id", "run_id"}.issubset(STABLE_ID_KEYS)
+    assert {"source_work_id", "work_id", "artist_id", "run_id"}.issubset(
+        STABLE_ID_KEYS
+    )
     assert "concept_id" not in STABLE_ID_KEYS
     assert "media_id" not in STABLE_ID_KEYS
     assert "source_metadata_record_id" not in STABLE_ID_KEYS

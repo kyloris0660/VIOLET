@@ -58,6 +58,12 @@ manual-acceptance fields pending and all completion/route booleans false. This
 does not authorize FL1, full-library, production, Entity, confirmed assignment,
 truth-route work, media download, or source/iCloud mutation.
 
+SV1B graph derivation additionally requires exact Primary/Replay equality for
+the graph-effective trusted metadata projection. Sanitized stable-package
+equality alone is insufficient because provider identity fields participate in
+the trusted-complete predicate. A mismatch must fail closed at
+`blocked_sv1b_replay_trusted_provenance_reconciliation`.
+
 ## Registered GOV3 Contracts
 
 - `python_env_contract_v1`
