@@ -27,6 +27,7 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     open_reason_for_pair,
     plan_accepted_creator_media_support_overlay,
     public_console_summary,
+    scope_creator_family_state_to_media_membership,
     sha256_payload,
     validate_graph_derivation_checkpoint,
     validate_output_root,
@@ -756,6 +757,26 @@ def test_creator_family_support_overlay_plans_exact_missing_membership() -> None
     ]
     comparison = compare_creator_family_states(accepted, current)
     assert comparison["every_changed_family_has_governed_reason"] is False
+
+
+def test_creator_family_support_scope_excludes_media_outside_manifest() -> None:
+    state = {
+        "stable-a": {
+            "concept_key": "concept-a",
+            "status": "active",
+            "concept_type_hint": "artist",
+            "media_support": ("accepted-in-scope", "accepted-outside"),
+        }
+    }
+    scoped = scope_creator_family_state_to_media_membership(
+        state,
+        {"accepted-in-scope", "new-current"},
+    )
+    assert scoped["stable-a"]["media_support"] == ("accepted-in-scope",)
+    assert state["stable-a"]["media_support"] == (
+        "accepted-in-scope",
+        "accepted-outside",
+    )
 
 
 def _write_graph_checkpoint_fixture(output: Path) -> None:

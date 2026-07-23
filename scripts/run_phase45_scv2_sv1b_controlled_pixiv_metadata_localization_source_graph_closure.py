@@ -4052,7 +4052,42 @@ def compare_creator_family_states(
     }
 
 
-def _accepted_creator_family_state() -> dict[str, dict[str, Any]]:
+def scope_creator_family_state_to_media_membership(
+    state: Mapping[str, Mapping[str, Any]],
+    media_hashes: Iterable[str],
+) -> dict[str, dict[str, Any]]:
+    membership = {str(value) for value in media_hashes}
+    return {
+        stable: {
+            **dict(row),
+            "media_support": tuple(
+                value
+                for value in (row.get("media_support") or ())
+                if str(value) in membership
+            ),
+        }
+        for stable, row in state.items()
+    }
+
+
+def _database_media_hashes(database: str) -> set[str]:
+    engine = engine_for(database)
+    try:
+        with engine.connect() as connection:
+            return {
+                str(value)
+                for (value,) in connection.execute(
+                    text("SELECT hash FROM blombooru_media")
+                )
+            }
+    finally:
+        engine.dispose()
+
+
+def _accepted_creator_family_state(
+    *,
+    media_membership: Iterable[str] | None = None,
+) -> dict[str, dict[str, Any]]:
     accepted_keys = accepted_family_concept_keys()
     accepted_outcomes = read_jsonl(ML2_PRIVATE / "family-closure-ledger.jsonl")
     accepted_mapping = _family_identity_mapping(
@@ -4071,6 +4106,11 @@ def _accepted_creator_family_state() -> dict[str, dict[str, Any]]:
     if len(accepted) != 606:
         raise SV1BPreflightError(
             f"accepted_creator_family_identity_membership_invalid:{len(accepted)}"
+        )
+    if media_membership is not None:
+        accepted = scope_creator_family_state_to_media_membership(
+            accepted,
+            media_membership,
         )
     return accepted
 
@@ -4119,7 +4159,9 @@ def apply_accepted_creator_media_support_overlay(
 
     from app.models import Media, SourceConcept, SourceConceptEvidence
 
-    accepted = _accepted_creator_family_state()
+    accepted = _accepted_creator_family_state(
+        media_membership=_database_media_hashes(database),
+    )
     current_mapping = _family_identity_mapping(database, current_outcomes)
     current = _creator_family_state(database, current_mapping)
     plan = plan_accepted_creator_media_support_overlay(accepted, current)
@@ -4255,7 +4297,9 @@ def audit_accepted_family_preservation(
     database: str,
     current_outcomes: Iterable[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    accepted = _accepted_creator_family_state()
+    accepted = _accepted_creator_family_state(
+        media_membership=_database_media_hashes(database),
+    )
     current_mapping = _family_identity_mapping(database, current_outcomes)
     result = compare_creator_family_states(
         accepted,
