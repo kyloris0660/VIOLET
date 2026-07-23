@@ -368,6 +368,80 @@ def test_graph_audit_detects_multi_stable_identity_and_cross_role() -> None:
     assert result["unauthorized_cross_role_component_count"] == 1
 
 
+def test_graph_audit_treats_large_single_concept_as_evidence_fan_in() -> None:
+    concepts = {
+        "creator-a": {
+            "status": "active",
+            "stable_identity_fingerprint": "stable-a",
+        }
+    }
+    signals = {
+        f"signal-{index}": {
+            "status": "active",
+            "role_hint": "artist",
+        }
+        for index in range(101)
+    }
+    links = [
+        {
+            "concept_key": "creator-a",
+            "signal_key": signal_key,
+            "link_status": "active",
+        }
+        for signal_key in signals
+    ]
+    result = audit_connected_component_graph(
+        concepts,
+        signals,
+        links,
+        [],
+    )
+    assert result["largest_component"] == 101
+    assert result["large_component_count"] == 1
+    assert result["large_single_concept_evidence_fan_in_count"] == 1
+    assert result["large_multi_concept_component_count"] == 0
+    assert result["unsafe_large_component_count"] == 0
+    assert result["giant_component_recurrence"] is False
+
+
+def test_graph_audit_blocks_large_multi_concept_component() -> None:
+    concepts = {
+        "creator-a": {"status": "active"},
+        "creator-b": {"status": "active"},
+    }
+    signals = {
+        f"signal-{index}": {
+            "status": "active",
+            "role_hint": "artist",
+        }
+        for index in range(101)
+    }
+    links = [
+        {
+            "concept_key": "creator-a",
+            "signal_key": signal_key,
+            "link_status": "active",
+        }
+        for signal_key in signals
+    ]
+    links.append(
+        {
+            "concept_key": "creator-b",
+            "signal_key": "signal-0",
+            "link_status": "active",
+        }
+    )
+    result = audit_connected_component_graph(
+        concepts,
+        signals,
+        links,
+        [],
+    )
+    assert result["large_multi_concept_component_count"] == 1
+    assert result["unsafe_large_component_count"] == 1
+    assert result["giant_component_recurrence"] is True
+
+
 def test_public_scan_rejects_raw_local_absolute_path_in_exact_json_bytes() -> None:
     result = scan_public("public report", {"python_identity": {"sys_executable": r"C:\Users\private\venv\Scripts\python.exe"}})
     assert result["passed"] is False

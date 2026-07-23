@@ -25,6 +25,7 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     finalize_r2r_proposal_classifications,
     outcome_for_pair,
     open_reason_for_pair,
+    plan_accepted_creator_media_support_overlay,
     public_console_summary,
     sha256_payload,
     validate_graph_derivation_checkpoint,
@@ -663,6 +664,98 @@ def test_creator_family_comparison_rejects_nonmonotonic_or_missing_identity(muta
         assert result["accepted_stable_identity_disappeared_count"] == 1
     else:
         assert result["every_changed_family_has_governed_reason"] is False
+
+
+def test_creator_family_comparison_governs_canonical_key_upgrade_with_growth() -> None:
+    accepted = {
+        "stable-a": {
+            "concept_key": "creator:pixiv:stable-a",
+            "status": "active",
+            "concept_type_hint": "artist",
+            "aliases": (("artist-a", "creator_identity_alias", "active"),),
+            "media_support": ("hash-a",),
+        }
+    }
+    current = {
+        "stable-a": {
+            "concept_key": "artist:artist-a",
+            "status": "active",
+            "concept_type_hint": "artist",
+            "aliases": (
+                ("artist-a", "creator_identity_alias", "active"),
+                ("artist-a", "provider_structured_field", "active"),
+            ),
+            "media_support": ("hash-a", "hash-b"),
+        }
+    }
+    result = compare_creator_family_states(accepted, current)
+    assert result["every_changed_family_has_governed_reason"] is True
+    assert result["changed_accepted_families"][0]["reason"] == (
+        "stable_identity_preserved_canonical_key_upgrade"
+    )
+
+
+def test_creator_family_comparison_governs_bounded_provider_display_evolution() -> None:
+    accepted = {
+        "stable-a": {
+            "concept_key": "creator:pixiv:stable-a",
+            "status": "active",
+            "concept_type_hint": "artist",
+            "aliases": (
+                ("account-a", "creator_identity_alias", "active"),
+                ("display-old", "creator_identity_alias", "active"),
+            ),
+            "media_support": ("hash-a",),
+        }
+    }
+    current = {
+        "stable-a": {
+            "concept_key": "creator:pixiv:stable-a",
+            "status": "active",
+            "concept_type_hint": "artist",
+            "aliases": (
+                ("account-a", "creator_identity_alias", "active"),
+                ("display-new", "creator_identity_alias", "active"),
+            ),
+            "media_support": ("hash-a", "hash-b"),
+        }
+    }
+    result = compare_creator_family_states(accepted, current)
+    assert result["every_changed_family_has_governed_reason"] is True
+    assert result["changed_accepted_families"][0]["reason"] == (
+        "stable_identity_preserved_provider_display_evolution"
+    )
+
+
+def test_creator_family_support_overlay_plans_exact_missing_membership() -> None:
+    accepted = {
+        "stable-a": {
+            "concept_key": "old-concept",
+            "status": "active",
+            "concept_type_hint": "artist",
+            "media_support": ("hash-a", "hash-b"),
+        }
+    }
+    current = {
+        "stable-a": {
+            "concept_key": "current-concept",
+            "status": "active",
+            "concept_type_hint": "artist",
+            "media_support": ("hash-b", "hash-c"),
+        }
+    }
+    rows = plan_accepted_creator_media_support_overlay(accepted, current)
+    assert rows == [
+        {
+            "family_ref": sha256_payload("stable-a"),
+            "concept_key": "current-concept",
+            "media_hash": "hash-a",
+            "media_ref": sha256_payload("hash-a"),
+            "reason_code": "accepted_creator_media_support_preserved_v1",
+        }
+    ]
+    comparison = compare_creator_family_states(accepted, current)
+    assert comparison["every_changed_family_has_governed_reason"] is False
 
 
 def _write_graph_checkpoint_fixture(output: Path) -> None:

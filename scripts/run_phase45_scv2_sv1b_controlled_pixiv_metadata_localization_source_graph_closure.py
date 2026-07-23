@@ -3651,9 +3651,6 @@ def _query_graph_audit(database: str, dispositions: Iterable[Any]) -> dict[str, 
         for row in dispositions
     ]
     connected = audit_connected_component_graph(concepts, signals, links, pair_rows)
-    giant_threshold = 100
-    connected["giant_component_threshold"] = giant_threshold
-    connected["giant_component_recurrence"] = connected["largest_component"] > giant_threshold
     connected["table_counts"] = table_counts
     connected["concept_membership_fingerprint"] = sha256_payload(sorted(concepts))
     connected["signal_membership_fingerprint"] = sha256_payload(sorted(signals))
@@ -3835,6 +3832,12 @@ def derive_full_source_graph(
         session.close()
         engine.dispose()
     write_json(output / f"{label}-creator-family-outcomes-private.json", family_outcomes)
+    accepted_family_support_overlay = (
+        apply_accepted_creator_media_support_overlay(
+            database,
+            family_outcomes,
+        )
+    )
     baseline_preservation = audit_accepted_family_preservation(database, family_outcomes)
     graph_audit = _query_graph_audit(database, dispositions)
     baseline_preservation["cannot_link_became_identity_union_count"] = int(
@@ -3858,6 +3861,7 @@ def derive_full_source_graph(
         "creator_mutations": family_mutations,
         "creator_support": family_support,
         "creator_family_outcome_fingerprint": sha256_payload(family_outcomes),
+        "accepted_family_support_overlay": accepted_family_support_overlay,
         "baseline_preservation": baseline_preservation,
         "graph_audit": graph_audit,
         "llm_call_count": 0,
@@ -3974,18 +3978,49 @@ def compare_creator_family_states(
             continue
         before_aliases = set(before.get("aliases") or ())
         after_aliases = set(after.get("aliases") or ())
+        before_alias_keys = {str(row[0]) for row in before_aliases}
+        after_alias_keys = {str(row[0]) for row in after_aliases}
         before_support = set(before.get("media_support") or ())
         after_support = set(after.get("media_support") or ())
-        safe_growth = bool(
+        stable_shape = bool(
             before.get("status") == "active"
             and after.get("status") == "active"
-            and before.get("concept_key") == after.get("concept_key")
             and before.get("concept_type_hint") == after.get("concept_type_hint")
-            and before_aliases.issubset(after_aliases)
+        )
+        monotonic_evidence = bool(
+            before_aliases.issubset(after_aliases)
             and before_support.issubset(after_support)
         )
-        reason = "materially_stronger_trusted_source_evidence" if safe_growth else "ungoverned_change"
-        ungoverned += int(not safe_growth)
+        same_concept_growth = bool(
+            stable_shape
+            and before.get("concept_key") == after.get("concept_key")
+            and monotonic_evidence
+        )
+        canonical_key_upgrade = bool(
+            stable_shape
+            and before.get("concept_key") != after.get("concept_key")
+            and monotonic_evidence
+            and len(after_aliases - before_aliases) > 0
+        )
+        provider_display_evolution = bool(
+            stable_shape
+            and before.get("concept_key") == after.get("concept_key")
+            and before_support.issubset(after_support)
+            and bool(before_alias_keys.intersection(after_alias_keys))
+            and len(before_alias_keys - after_alias_keys) == 1
+            and len(after_alias_keys - before_alias_keys) == 1
+            and len(before_aliases - after_aliases) == 1
+            and len(after_aliases - before_aliases) == 1
+        )
+        if same_concept_growth:
+            reason = "materially_stronger_trusted_source_evidence"
+        elif canonical_key_upgrade:
+            reason = "stable_identity_preserved_canonical_key_upgrade"
+        elif provider_display_evolution:
+            reason = "stable_identity_preserved_provider_display_evolution"
+        else:
+            reason = "ungoverned_change"
+        ungoverned += int(reason == "ungoverned_change")
         changed.append({
             "family_ref": sha256_payload(stable),
             "reason": reason,
@@ -4017,10 +4052,7 @@ def compare_creator_family_states(
     }
 
 
-def audit_accepted_family_preservation(
-    database: str,
-    current_outcomes: Iterable[Mapping[str, Any]],
-) -> dict[str, Any]:
+def _accepted_creator_family_state() -> dict[str, dict[str, Any]]:
     accepted_keys = accepted_family_concept_keys()
     accepted_outcomes = read_jsonl(ML2_PRIVATE / "family-closure-ledger.jsonl")
     accepted_mapping = _family_identity_mapping(
@@ -4028,7 +4060,8 @@ def audit_accepted_family_preservation(
         accepted_outcomes,
     )
     accepted_mapping = {
-        stable: concept_key for stable, concept_key in accepted_mapping.items()
+        stable: concept_key
+        for stable, concept_key in accepted_mapping.items()
         if concept_key in accepted_keys
     }
     accepted = _creator_family_state(
@@ -4036,7 +4069,193 @@ def audit_accepted_family_preservation(
         accepted_mapping,
     )
     if len(accepted) != 606:
-        raise SV1BPreflightError(f"accepted_creator_family_identity_membership_invalid:{len(accepted)}")
+        raise SV1BPreflightError(
+            f"accepted_creator_family_identity_membership_invalid:{len(accepted)}"
+        )
+    return accepted
+
+
+def plan_accepted_creator_media_support_overlay(
+    accepted: Mapping[str, Mapping[str, Any]],
+    current: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Plan only missing accepted media support for traceable active families."""
+
+    rows: list[dict[str, Any]] = []
+    for stable in sorted(set(accepted).intersection(current)):
+        before = accepted[stable]
+        after = current[stable]
+        if (
+            before.get("status") != "active"
+            or after.get("status") != "active"
+            or before.get("concept_type_hint")
+            != after.get("concept_type_hint")
+        ):
+            continue
+        missing_support = sorted(
+            set(before.get("media_support") or ())
+            - set(after.get("media_support") or ())
+        )
+        for media_hash in missing_support:
+            rows.append(
+                {
+                    "family_ref": sha256_payload(stable),
+                    "concept_key": str(after.get("concept_key") or ""),
+                    "media_hash": str(media_hash),
+                    "media_ref": sha256_payload(media_hash),
+                    "reason_code": (
+                        "accepted_creator_media_support_preserved_v1"
+                    ),
+                }
+            )
+    return rows
+
+
+def apply_accepted_creator_media_support_overlay(
+    database: str,
+    current_outcomes: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Append accepted ML2 support without changing identities or truth tables."""
+
+    from app.models import Media, SourceConcept, SourceConceptEvidence
+
+    accepted = _accepted_creator_family_state()
+    current_mapping = _family_identity_mapping(database, current_outcomes)
+    current = _creator_family_state(database, current_mapping)
+    plan = plan_accepted_creator_media_support_overlay(accepted, current)
+    protected_tables = tuple(dict.fromkeys(
+        (
+            *PROTECTED_TABLES,
+            "blombooru_tags",
+            "blombooru_tag_translations",
+            *CORE_SOURCE_TABLES,
+        )
+    ))
+    before = database_fingerprint(database, protected_tables)
+    inserted = reused = 0
+    engine = engine_for(database)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        for row in plan:
+            concept = (
+                session.query(SourceConcept)
+                .filter(
+                    SourceConcept.concept_key == row["concept_key"],
+                    SourceConcept.status == "active",
+                )
+                .one_or_none()
+            )
+            media = (
+                session.query(Media)
+                .filter(Media.hash == row["media_hash"])
+                .one_or_none()
+            )
+            if concept is None or media is None:
+                raise SV1BPreflightError(
+                    "accepted_creator_media_support_overlay_identity_missing"
+                )
+            existing = (
+                session.query(SourceConceptEvidence)
+                .filter(
+                    SourceConceptEvidence.concept_id == concept.id,
+                    SourceConceptEvidence.media_id == media.id,
+                    SourceConceptEvidence.evidence_type
+                    == "trusted_creator_media_support",
+                    SourceConceptEvidence.status == "active",
+                )
+                .first()
+            )
+            if existing is not None:
+                reused += 1
+                continue
+            session.add(
+                SourceConceptEvidence(
+                    concept_id=concept.id,
+                    signal_id=None,
+                    media_id=media.id,
+                    source_metadata_record_id=None,
+                    provider="pixiv",
+                    evidence_type="trusted_creator_media_support",
+                    evidence_strength="strong",
+                    payload={
+                        "policy_version": (
+                            "sv1b_accepted_creator_family_preservation_v1"
+                        ),
+                        "family_ref": row["family_ref"],
+                        "media_ref": row["media_ref"],
+                        "reason_code": row["reason_code"],
+                        "source_layer_only": True,
+                        "accepted_snapshot": "SCV2-ML2",
+                    },
+                    run_id="sv1b-accepted-family-preservation-v1",
+                    status="active",
+                )
+            )
+            inserted += 1
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+        engine.dispose()
+    after = database_fingerprint(database, protected_tables)
+    changed_tables = sorted(
+        table
+        for table in protected_tables
+        if before["tables"][table]["sha256"]
+        != after["tables"][table]["sha256"]
+    )
+    evidence_delta = int(
+        after["tables"]["blombooru_source_concept_evidence"]["count"]
+        - before["tables"]["blombooru_source_concept_evidence"]["count"]
+    )
+    current_after = _creator_family_state(database, current_mapping)
+    remaining = plan_accepted_creator_media_support_overlay(
+        accepted,
+        current_after,
+    )
+    result = {
+        "overlay_version": (
+            "sv1b_accepted_creator_family_preservation_v1"
+        ),
+        "planned_support_count": len(plan),
+        "inserted_support_count": inserted,
+        "reused_support_count": reused,
+        "remaining_missing_support_count": len(remaining),
+        "changed_tables": changed_tables,
+        "source_concept_evidence_row_delta": evidence_delta,
+        "truth_or_protected_table_mutation_count": sum(
+            1
+            for table in changed_tables
+            if table != "blombooru_source_concept_evidence"
+        ),
+        "before_fingerprint": before["fingerprint"],
+        "after_fingerprint": after["fingerprint"],
+        "membership_fingerprint": sha256_payload(plan),
+    }
+    result["passed"] = bool(
+        not remaining
+        and inserted + reused == len(plan)
+        and evidence_delta == inserted
+        and changed_tables
+        in ([], ["blombooru_source_concept_evidence"])
+        and result["truth_or_protected_table_mutation_count"] == 0
+    )
+    result["proof_fingerprint"] = sha256_payload(result)
+    if result["passed"] is not True:
+        raise SV1BPreflightError(
+            "accepted_creator_media_support_overlay_failed"
+        )
+    return result
+
+
+def audit_accepted_family_preservation(
+    database: str,
+    current_outcomes: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    accepted = _accepted_creator_family_state()
     current_mapping = _family_identity_mapping(database, current_outcomes)
     result = compare_creator_family_states(
         accepted,
@@ -4049,6 +4268,128 @@ def audit_accepted_family_preservation(
         and result["accepted_stable_identity_disappeared_count"] == 0
         and result["ungoverned_changed_family_count"] == 0
     )
+    return result
+
+
+def resume_existing_source_graph_safety_after_overlay(
+    output: Path,
+    *,
+    database: str,
+    label: str,
+    prior_proof_name: str,
+) -> dict[str, Any]:
+    """Append accepted support and re-audit a topology-safe failed graph."""
+
+    proof_path = (
+        output / f"{label}-source-graph-safety-correction-proof-v2.json"
+    )
+    if proof_path.exists():
+        raise SV1BPreflightError(
+            "source_graph_safety_correction_proof_already_exists"
+        )
+    prior = read_json(output / prior_proof_name)
+    outcomes = read_json(
+        output / f"{label}-creator-family-outcomes-private.json"
+    )
+    prior_graph = dict(prior.get("graph_audit") or {})
+    topology_fields = (
+        "concept_membership_fingerprint",
+        "signal_membership_fingerprint",
+        "link_membership_fingerprint",
+    )
+    current_before = _query_graph_audit(database, [])
+    topology_unchanged_before = all(
+        current_before.get(field) == prior_graph.get(field)
+        for field in topology_fields
+    )
+    hard_pair_fields = (
+        "direct_cannot_link_violation_count",
+        "transitive_cannot_link_violation_count",
+        "deferred_identity_union_count",
+    )
+    prior_pair_safety_passed = all(
+        int(prior_graph.get(field) or 0) == 0
+        for field in hard_pair_fields
+    )
+    if not topology_unchanged_before or not prior_pair_safety_passed:
+        raise SV1BPreflightError(
+            "source_graph_safety_correction_topology_not_eligible"
+        )
+    overlay = apply_accepted_creator_media_support_overlay(
+        database,
+        outcomes,
+    )
+    current_after = _query_graph_audit(database, [])
+    topology_unchanged_after = all(
+        current_after.get(field) == prior_graph.get(field)
+        for field in topology_fields
+    )
+    for field in hard_pair_fields:
+        current_after[field] = int(prior_graph.get(field) or 0)
+    current_after["pair_membership_fingerprint"] = prior_graph.get(
+        "pair_membership_fingerprint"
+    )
+    safety_fields = (
+        "multi_stable_id_creator_component_count",
+        "direct_cannot_link_violation_count",
+        "transitive_cannot_link_violation_count",
+        "deferred_identity_union_count",
+        "unauthorized_cross_role_component_count",
+        "unknown_role_materialization_count",
+        "duplicate_active_stable_identity_count",
+        "unsafe_large_component_count",
+    )
+    current_after["passed"] = bool(
+        all(int(current_after.get(field) or 0) == 0 for field in safety_fields)
+        and current_after.get("giant_component_recurrence") is False
+    )
+    baseline = audit_accepted_family_preservation(database, outcomes)
+    result = {
+        "correction_version": (
+            "sv1b_existing_graph_safety_overlay_resume_v2"
+        ),
+        "database": database,
+        "label": label,
+        "prior_proof_fingerprint": sha256_payload(prior),
+        "prior_proof_passed": prior.get("passed") is True,
+        "prior_candidate_accounting_passed": bool(
+            (
+                prior.get("candidate_disposition_accounting") or {}
+            ).get("equation_balanced")
+            is True
+            and int(
+                (
+                    prior.get("candidate_disposition_accounting") or {}
+                ).get("unaccounted_candidate_count")
+                or 0
+            )
+            == 0
+        ),
+        "prior_pair_safety_passed": prior_pair_safety_passed,
+        "topology_unchanged_before_overlay": topology_unchanged_before,
+        "topology_unchanged_after_overlay": topology_unchanged_after,
+        "accepted_family_support_overlay": overlay,
+        "baseline_preservation": baseline,
+        "graph_audit": current_after,
+        "provider_request_count": 0,
+        "llm_call_count": 0,
+        "truth_write_count": 0,
+    }
+    result["passed"] = bool(
+        result["prior_candidate_accounting_passed"]
+        and result["prior_pair_safety_passed"]
+        and topology_unchanged_before
+        and topology_unchanged_after
+        and overlay["passed"] is True
+        and baseline["passed"] is True
+        and current_after["passed"] is True
+    )
+    result["proof_fingerprint"] = sha256_payload(result)
+    write_json(proof_path, result)
+    if result["passed"] is not True:
+        raise SV1BPreflightError(
+            "existing_source_graph_safety_overlay_resume_failed"
+        )
     return result
 
 

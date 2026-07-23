@@ -2368,14 +2368,67 @@ def audit_connected_component_graph(
     size_distribution = Counter(str(len(row["signals"])) for row in component_rows)
     creator_roles = {"artist", "creator", "person"}
     subject_roles = {"character", "work", "source_title", "copyright"}
+    giant_component_threshold = 100
+    large_component_rows = [
+        row
+        for row in component_rows
+        if len(row["signals"]) > giant_component_threshold
+    ]
+    large_multi_concept_component_count = sum(
+        len(row["concepts"]) > 1 for row in large_component_rows
+    )
+    large_multi_stable_id_component_count = sum(
+        len(row["stable_ids"]) > 1 for row in large_component_rows
+    )
+    large_cross_role_component_count = sum(
+        bool(
+            set(row["roles"]) & creator_roles
+            and set(row["roles"]) & subject_roles
+        )
+        for row in large_component_rows
+    )
+    large_unknown_role_component_count = sum(
+        "unknown" in row["roles"] for row in large_component_rows
+    )
+    unsafe_large_component_count = sum(
+        bool(
+            len(row["concepts"]) > 1
+            or len(row["stable_ids"]) > 1
+            or (
+                set(row["roles"]) & creator_roles
+                and set(row["roles"]) & subject_roles
+            )
+            or "unknown" in row["roles"]
+        )
+        for row in large_component_rows
+    )
     return {
-        "graph_audit_algorithm_version": "active_bipartite_connected_components_v2",
+        "graph_audit_algorithm_version": "active_bipartite_connected_components_v3",
         "input_active_concept_count": len(active_concepts),
         "input_active_signal_count": len(active_signals),
         "input_active_link_count": sum(len(values) for values in signal_to_concepts.values()),
         "component_count": len(component_rows),
         "component_size_distribution": dict(sorted(size_distribution.items(), key=lambda item: int(item[0]))),
         "largest_component": max((len(row["signals"]) for row in component_rows), default=0),
+        "giant_component_threshold": giant_component_threshold,
+        "large_component_count": len(large_component_rows),
+        "large_single_concept_evidence_fan_in_count": sum(
+            len(row["concepts"]) == 1 for row in large_component_rows
+        ),
+        "large_multi_concept_component_count": (
+            large_multi_concept_component_count
+        ),
+        "large_multi_stable_id_component_count": (
+            large_multi_stable_id_component_count
+        ),
+        "large_cross_role_component_count": (
+            large_cross_role_component_count
+        ),
+        "large_unknown_role_component_count": (
+            large_unknown_role_component_count
+        ),
+        "unsafe_large_component_count": unsafe_large_component_count,
+        "giant_component_recurrence": unsafe_large_component_count > 0,
         "direct_cannot_link_violation_count": direct_cannot,
         "transitive_cannot_link_violation_count": transitive_cannot,
         "deferred_identity_union_count": deferred_union,
@@ -2487,7 +2540,9 @@ def r2r_and_graph_audit(database: str, paths: Paths) -> dict[str, Any]:
             "concept_media_support_count": concept_media_support_count,
             "source_concept_evidence_row_count": evidence_count, "search_index_count": search_count,
             "partial_historical_reference_count": partial_historical_reference_count,
-            "giant_component_recurrence": connected["largest_component"] > 100,
+            "giant_component_recurrence": connected[
+                "giant_component_recurrence"
+            ],
             "database_size_bytes": db_size,
         },
     }
