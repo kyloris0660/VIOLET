@@ -1370,18 +1370,27 @@ def audit_r2r_remap(database: str) -> tuple[dict[str, Any], list[dict[str, Any]]
         }
         if len(matches) == 1:
             target_pair_id = next(iter(matches))
+            target_candidate = matches[target_pair_id]
             classification = "proposed_comparable"
             proposals_by_target[target_pair_id].append(pair_id)
+            target_left_signal_key = target_candidate.left_signal_key
+            target_right_signal_key = target_candidate.right_signal_key
         elif len(matches) > 1 or len(left) > 1 or len(right) > 1:
             target_pair_id = None
             classification = "ambiguous_remap"
+            target_left_signal_key = None
+            target_right_signal_key = None
         else:
             target_pair_id = None
             classification = "genuine_target_missing"
+            target_left_signal_key = None
+            target_right_signal_key = None
         preliminary[pair_id] = {
             "accepted_pair_id": pair_id,
             "accepted_disposition": disposition,
             "target_pair_id": target_pair_id,
+            "target_left_signal_key": target_left_signal_key,
+            "target_right_signal_key": target_right_signal_key,
             "left_target_count": len(left),
             "right_target_count": len(right),
             "candidate_match_count": len(matches),
@@ -1438,11 +1447,24 @@ def prepare_and_audit_r2r_baseline(
     replay, replay_rows = audit_r2r_remap(replay_database)
     write_json(output / "r2r-primary-remap-private.json", primary_rows)
     write_json(output / "r2r-replay-remap-private.json", replay_rows)
+    target_specific_fields = {
+        "target_pair_id",
+        "target_left_signal_key",
+        "target_right_signal_key",
+    }
     logical_equal = [
-        {key: value for key, value in row.items() if key != "target_pair_id"}
+        {
+            key: value
+            for key, value in row.items()
+            if key not in target_specific_fields
+        }
         for row in primary_rows
     ] == [
-        {key: value for key, value in row.items() if key != "target_pair_id"}
+        {
+            key: value
+            for key, value in row.items()
+            if key not in target_specific_fields
+        }
         for row in replay_rows
     ]
     result = {
@@ -3455,12 +3477,21 @@ def _complete_replay_phase_delta_import(
 def build_full_candidate_dispositions(
     candidates: Iterable[Any],
     remap_rows: Iterable[Mapping[str, Any]],
+    *,
+    signals: Iterable[Any] | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
-    from app.services.source_concept_autonomous_closure_service import PairDisposition
+    from app.services.source_concept_autonomous_closure_service import (
+        PairDisposition,
+        pair_id_for,
+    )
 
     candidate_by_id = {str(row.pair_id): row for row in candidates}
+    signal_keys = {
+        str(row.signal_key) for row in (signals or ())
+    }
     dispositions: dict[str, Any] = {}
     accepted_comparable = 0
+    accepted_supplemental = 0
     genuine_missing = 0
     ambiguous = 0
     conflicting = 0
@@ -3480,7 +3511,31 @@ def build_full_candidate_dispositions(
         target_pair_id = str(row.get("target_pair_id") or "")
         candidate = candidate_by_id.get(target_pair_id)
         if candidate is None:
-            raise SV1BPreflightError("postacquisition_r2r_target_candidate_missing")
+            left_signal_key = str(
+                row.get("target_left_signal_key") or ""
+            )
+            right_signal_key = str(
+                row.get("target_right_signal_key") or ""
+            )
+            if (
+                not signal_keys
+                or not left_signal_key
+                or not right_signal_key
+                or left_signal_key == right_signal_key
+                or target_pair_id
+                != pair_id_for(left_signal_key, right_signal_key)
+                or (
+                    left_signal_key not in signal_keys
+                    or right_signal_key not in signal_keys
+                )
+            ):
+                raise SV1BPreflightError(
+                    "postacquisition_r2r_target_candidate_missing"
+                )
+            accepted_supplemental += 1
+        else:
+            left_signal_key = candidate.left_signal_key
+            right_signal_key = candidate.right_signal_key
         accepted_disposition = str(row.get("accepted_disposition") or "")
         if accepted_disposition not in {"must_link", "cannot_link", "deferred_nonblocking"}:
             raise SV1BPreflightError("postacquisition_r2r_disposition_invalid")
@@ -3489,8 +3544,8 @@ def build_full_candidate_dispositions(
             raise SV1BPreflightError("postacquisition_r2r_target_disposition_conflict")
         dispositions[target_pair_id] = PairDisposition(
             pair_id=target_pair_id,
-            left_signal_key=candidate.left_signal_key,
-            right_signal_key=candidate.right_signal_key,
+            left_signal_key=left_signal_key,
+            right_signal_key=right_signal_key,
             disposition=accepted_disposition,
             source="accepted_r2r_exact_logical_remap",
             pass_name="sv1b",
@@ -3521,18 +3576,26 @@ def build_full_candidate_dispositions(
         new_deferred += 1
     values = [dispositions[key] for key in sorted(dispositions)]
     counts = Counter(row.disposition for row in values)
+    expected_disposition_count = (
+        len(candidate_by_id) + accepted_supplemental
+    )
     accounting = {
         "candidate_pair_count": len(candidate_by_id),
         "accepted_comparable_pair_count": accepted_comparable,
+        "accepted_supplemental_pair_count": accepted_supplemental,
         "accepted_genuine_target_missing_count": genuine_missing,
         "accepted_ambiguous_remap_count": ambiguous,
         "accepted_conflicting_remap_count": conflicting,
         "new_deferred_nonblocking_pair_count": new_deferred,
         "disposition_counts": dict(sorted(counts.items())),
-        "unaccounted_candidate_count": len(candidate_by_id) - len(dispositions),
+        "unaccounted_candidate_count": len(
+            set(candidate_by_id) - set(dispositions)
+        ),
         "normal_needs_review_count": 0,
         "llm_call_count": 0,
-        "equation_balanced": len(candidate_by_id) == sum(counts.values()),
+        "equation_balanced": (
+            expected_disposition_count == sum(counts.values())
+        ),
     }
     if not accounting["equation_balanced"] or accounting["unaccounted_candidate_count"]:
         raise SV1BPreflightError("full_candidate_disposition_accounting_failed")
@@ -3721,7 +3784,13 @@ def derive_full_source_graph(
         candidates = build_candidate_pair_manifest(
             deterministic.edge_candidates, signals=signals, max_calls=20_000
         )
-        dispositions, disposition_accounting = build_full_candidate_dispositions(candidates, remap_rows)
+        dispositions, disposition_accounting = (
+            build_full_candidate_dispositions(
+                candidates,
+                remap_rows,
+                signals=signals,
+            )
+        )
         resolved = resolve_source_concepts(
             signals,
             run_id=f"sv1b-{label}-full",

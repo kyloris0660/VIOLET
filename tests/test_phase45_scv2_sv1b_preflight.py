@@ -518,6 +518,88 @@ def test_full_candidate_dispositions_replay_accepted_and_defer_only_new_pairs() 
     assert accounting["equation_balanced"] is True
 
 
+def test_full_candidate_dispositions_preserve_accepted_supplemental_pair() -> None:
+    from types import SimpleNamespace
+
+    from app.services.source_concept_autonomous_closure_service import (
+        pair_id_for,
+    )
+
+    signals = [
+        SimpleNamespace(signal_key="accepted-left"),
+        SimpleNamespace(signal_key="accepted-right"),
+    ]
+    accepted_pair_id = pair_id_for("accepted-left", "accepted-right")
+    dispositions, accounting = build_full_candidate_dispositions(
+        [],
+        [
+            {
+                "classification": "comparable",
+                "target_pair_id": accepted_pair_id,
+                "target_left_signal_key": "accepted-left",
+                "target_right_signal_key": "accepted-right",
+                "accepted_pair_id": "old-accepted-pair",
+                "accepted_disposition": "cannot_link",
+            }
+        ],
+        signals=signals,
+    )
+    assert {
+        row.pair_id: row.disposition for row in dispositions
+    } == {accepted_pair_id: "cannot_link"}
+    assert accounting["candidate_pair_count"] == 0
+    assert accounting["accepted_comparable_pair_count"] == 1
+    assert accounting["accepted_supplemental_pair_count"] == 1
+    assert accounting["unaccounted_candidate_count"] == 0
+    assert accounting["equation_balanced"] is True
+
+
+def test_full_candidate_dispositions_reject_missing_supplemental_endpoint() -> None:
+    with pytest.raises(
+        SV1BPreflightError,
+        match="postacquisition_r2r_target_candidate_missing",
+    ):
+        build_full_candidate_dispositions(
+            [],
+            [
+                {
+                    "classification": "comparable",
+                    "target_pair_id": "accepted-pair",
+                    "target_left_signal_key": "accepted-left",
+                    "target_right_signal_key": "",
+                    "accepted_pair_id": "old-accepted-pair",
+                    "accepted_disposition": "must_link",
+                }
+            ],
+        )
+
+
+def test_full_candidate_dispositions_reject_invented_supplemental_pair_id() -> None:
+    from types import SimpleNamespace
+
+    with pytest.raises(
+        SV1BPreflightError,
+        match="postacquisition_r2r_target_candidate_missing",
+    ):
+        build_full_candidate_dispositions(
+            [],
+            [
+                {
+                    "classification": "comparable",
+                    "target_pair_id": "invented-pair-id",
+                    "target_left_signal_key": "accepted-left",
+                    "target_right_signal_key": "accepted-right",
+                    "accepted_pair_id": "old-accepted-pair",
+                    "accepted_disposition": "must_link",
+                }
+            ],
+            signals=[
+                SimpleNamespace(signal_key="accepted-left"),
+                SimpleNamespace(signal_key="accepted-right"),
+            ],
+        )
+
+
 @pytest.mark.parametrize("classification", ["ambiguous_remap", "conflicting_remap"])
 def test_full_candidate_dispositions_reject_unsafe_accepted_remap(classification) -> None:
     with pytest.raises(SV1BPreflightError, match="postacquisition_r2r_remap_not_safe"):
