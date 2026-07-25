@@ -146,3 +146,28 @@ create/import proof fingerprint 为
 外部 provider / LLM / media 调用计数仍为 `0`。下一门为 fresh Replay
 独立 graph derivation 与 Primary logical comparison；当前 pending code 为
 `pending_sv1b_fresh_replay_graph_validation`。
+
+## 2026-07-25 fresh Replay v2 首次图派生事故
+
+首次独立 fresh-Replay 图派生保留为失败取证 checkpoint；没有清理、重置或
+重试。Package round-trip、trusted-complete equality、R2R accounting、
+606/606 accepted-family traceability、cannot-link safety、stable creator
+identity 与 large-component safety 均通过，但 graph safety 仍检测到唯一
+一个 `deferred_identity_union`。
+
+只读诊断证明存在第二个同类 identity 缺陷：SourceConcept `signal_key`
+仍使用 development `source_metadata_record_id`。因此同一个 key 在 Primary
+代表 creator account signal，在 fresh Replay 却代表 character
+parenthetical signal。这不是可接受的逻辑差异，不能豁免。
+
+当前以
+`blocked_sv1b_fresh_replay_graph_signal_identity_collision` fail closed。
+失败 graph proof fingerprint 为
+`7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6`。
+唯一获授权 fresh database 保持原位，失败 retry2 Replay 保持不变，外部调用
+计数继续为零。
+
+修复必须用 schema-aware stable source-record reference 替换数值 source-row
+identity，并证明 versioned、idempotent superseding re-derivation。不得写
+Primary、清理 derived rows、创建另一个 Replay database，或根据 row order
+猜测 provider identity。

@@ -93,8 +93,23 @@ STAGES = (
     "validate",
     "create-import",
     "derive-compare",
+    "rederive-compare",
     "search",
     "build-harness",
+)
+FAILED_FIRST_GRAPH_PROOF_FINGERPRINT = (
+    "7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6"
+)
+FAILED_FIRST_GRAPH_STATE_FINGERPRINT = (
+    "3cbabca5f2c038b6f561a65feda2113a50cfc8eb2ac9eaec2908fb6d547a77bb"
+)
+STABLE_SIGNAL_PROJECTION_FINGERPRINT = (
+    "15c3c98a2cfd71933776952fa5bd49563ef808800bac659e45cd7d3763dddacf"
+)
+FAILED_FIRST_GRAPH_CORE_RUN_ID = "sv1b-replay-v2-full"
+CORRECTED_GRAPH_LABEL = "replay-v2-stable-signal-v2"
+CORRECTED_GRAPH_CORE_RUN_ID = (
+    "sv1b-replay-v2-stable-signal-v2-full"
 )
 DERIVED_GRAPH_TABLES = (
     "blombooru_source_concept_resolution_runs",
@@ -1330,6 +1345,234 @@ def _prepare_graph_proofs(output: Path, sv1b: Any) -> dict[str, Any]:
     }
 
 
+def _stable_signal_projection(database: str) -> dict[str, Any]:
+    from sqlalchemy.orm import sessionmaker
+    from app.services.source_concept_resolver_service import (
+        SIGNAL_IDENTITY_VERSION,
+        build_source_concept_signals,
+    )
+
+    engine = engine_for(database)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        rows = sorted(
+            (
+                signal.signal_key,
+                signal.origin_type,
+                signal.provider or "",
+                signal.source_record_id or "",
+                signal.raw_value,
+                signal.display_value,
+                signal.normalized_key,
+                signal.canonical_key or "",
+                signal.role_hint,
+                signal.work_context_key or "",
+                signal.parenthetical_base or "",
+                signal.parenthetical_context or "",
+                signal.source_kind or "",
+                signal.trust_tier,
+                signal.status,
+            )
+            for signal in build_source_concept_signals(
+                session,
+                run_id="sv1b-stable-signal-v2-cross-database-proof",
+            )
+        )
+    finally:
+        session.close()
+        engine.dispose()
+    return {
+        "identity_version": SIGNAL_IDENTITY_VERSION,
+        "count": len(rows),
+        "fingerprint": sha256_payload(rows),
+    }
+
+
+def _derived_table_counts(database: str) -> dict[str, int]:
+    engine = engine_for(database)
+    try:
+        with engine.connect() as connection:
+            return {
+                table: int(
+                    connection.execute(
+                        text(f'SELECT COUNT(*) FROM "{table}"')
+                    ).scalar()
+                    or 0
+                )
+                for table in DERIVED_GRAPH_TABLES
+            }
+    finally:
+        engine.dispose()
+
+
+def _fallback_version_state(
+    database: str,
+    *,
+    overlay_version: str,
+) -> dict[str, Any]:
+    engine = engine_for(database)
+    try:
+        with engine.connect() as connection:
+            rows = sorted(
+                (
+                    dict(row)
+                    for row in connection.execute(
+                        text(
+                            """
+                            SELECT f.alias_key,m.hash AS media_content_key,
+                                   s.signal_key AS source_signal_key,
+                                   n.signal_key AS neighbor_signal_key,
+                                   f.pair_id,f.relation,f.status,f.run_id
+                            FROM blombooru_source_concept_fallback_search_index f
+                            LEFT JOIN blombooru_media m ON m.id=f.media_id
+                            JOIN blombooru_source_concept_signals s
+                              ON s.id=f.source_signal_id
+                            JOIN blombooru_source_concept_signals n
+                              ON n.id=f.neighbor_signal_id
+                            WHERE f.overlay_version=:overlay_version
+                            """
+                        ),
+                        {"overlay_version": overlay_version},
+                    ).mappings()
+                ),
+                key=canonical_json,
+            )
+    finally:
+        engine.dispose()
+    return {
+        "overlay_version": overlay_version,
+        "count": len(rows),
+        "fingerprint": sha256_payload(rows),
+    }
+
+
+def _stable_family_projection(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    values = []
+    for source in rows:
+        row = {
+            key: value
+            for key, value in source.items()
+            if key not in {"concept_ref", "concept_refs"}
+        }
+        if row.get("outcome") in {
+            "already_materialized",
+            "deterministic_must_link_materialized",
+        }:
+            row["outcome"] = "materialized"
+        values.append(row)
+    values.sort(key=canonical_json)
+    return {
+        "count": len(values),
+        "fingerprint": sha256_payload(values),
+    }
+
+
+def _validate_failed_first_graph_checkpoint(
+    output: Path,
+) -> dict[str, Any]:
+    proof_path = output / "replay-v2-source-graph-derivation-proof.json"
+    if not proof_path.is_file():
+        raise FreshReplayV2Error("failed_first_graph_proof_missing")
+    proof = read_json(proof_path)
+    graph = dict(proof.get("graph_audit") or {})
+    if not (
+        sha256_payload(proof) == FAILED_FIRST_GRAPH_PROOF_FINGERPRINT
+        and proof.get("passed") is False
+        and int(graph.get("deferred_identity_union_count") or 0) == 1
+        and all(
+            int(graph.get(field) or 0) == 0
+            for field in (
+                "direct_cannot_link_violation_count",
+                "transitive_cannot_link_violation_count",
+                "multi_stable_id_creator_component_count",
+                "unauthorized_cross_role_component_count",
+                "unknown_role_materialization_count",
+                "duplicate_active_stable_identity_count",
+                "unsafe_large_component_count",
+            )
+        )
+        and graph.get("giant_component_recurrence") is False
+    ):
+        raise FreshReplayV2Error(
+            "failed_first_graph_checkpoint_identity_mismatch"
+        )
+    current = _logical_graph_state(FRESH_REPLAY_DATABASE)
+    if current["fingerprint"] != FAILED_FIRST_GRAPH_STATE_FINGERPRINT:
+        raise FreshReplayV2Error(
+            "failed_first_graph_database_state_drift"
+        )
+    return {
+        "proof_fingerprint": sha256_payload(proof),
+        "database_state_fingerprint": current["fingerprint"],
+        "deferred_identity_union_count": 1,
+        "other_graph_safety_violation_count": 0,
+        "passed": True,
+    }
+
+
+def _refresh_stable_signal_r2r_proof(
+    output: Path,
+    sv1b: Any,
+) -> dict[str, Any]:
+    old_audit = output / "r2r-exact-remap-audit.json"
+    historical = output / "r2r-exact-remap-audit-first-graph.json"
+    _copy_if_missing(old_audit, historical)
+    primary, primary_rows = sv1b.audit_r2r_remap(PRIMARY_DATABASE)
+    replay, replay_rows = sv1b.audit_r2r_remap(FRESH_REPLAY_DATABASE)
+    ignored = {
+        "target_pair_id",
+        "target_left_signal_key",
+        "target_right_signal_key",
+    }
+    logical_primary = [
+        {key: value for key, value in row.items() if key not in ignored}
+        for row in primary_rows
+    ]
+    logical_replay = [
+        {key: value for key, value in row.items() if key not in ignored}
+        for row in replay_rows
+    ]
+    result = {
+        "proof_version": "sv1b_stable_signal_identity_v2_r2r_remap_v1",
+        "graph_inputs": {
+            "reused_from_first_graph": True,
+            "additional_input_write_count": 0,
+        },
+        "primary": primary,
+        "replay": replay,
+        "primary_replay_logical_remap_equal": (
+            logical_primary == logical_replay
+        ),
+        "logical_remap_fingerprint": sha256_payload(logical_primary),
+        "target_completion_ready": bool(
+            logical_primary == logical_replay
+            and primary["ambiguous_remap_count"] == 0
+            and primary["conflicting_remap_count"] == 0
+            and replay["ambiguous_remap_count"] == 0
+            and replay["conflicting_remap_count"] == 0
+        ),
+    }
+    if result["target_completion_ready"] is not True:
+        raise FreshReplayV2Error(
+            "stable_signal_identity_r2r_remap_failed"
+        )
+    write_json(output / "r2r-exact-remap-audit.json", result)
+    write_json(
+        output / "r2r-primary-stable-signal-v2-remap-private.json",
+        primary_rows,
+    )
+    write_json(
+        output / "r2r-replay-stable-signal-v2-remap-private.json",
+        replay_rows,
+    )
+    return {
+        "proof": result,
+        "primary_rows": primary_rows,
+        "replay_rows": replay_rows,
+    }
+
+
 def execute_derive_compare(*, output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
     import_proof = _require_import_checkpoint(output)
     from scripts import (  # noqa: WPS433
@@ -1444,15 +1687,259 @@ def execute_derive_compare(*, output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
     return result
 
 
+def execute_rederive_compare(
+    *,
+    output: Path = DEFAULT_OUTPUT,
+) -> dict[str, Any]:
+    _require_import_checkpoint(output)
+    checkpoint_path = (
+        output
+        / "fresh-replay-v2-stable-signal-rederive-compare-proof.json"
+    )
+    if checkpoint_path.is_file():
+        checkpoint = read_json(checkpoint_path)
+        if checkpoint.get("passed") is True:
+            return checkpoint
+        raise FreshReplayV2Error(
+            "stable_signal_rederive_checkpoint_invalid"
+        )
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure
+        as sv1b,
+    )
+
+    _install_external_route_guards(sv1b)
+    validate_single_fresh_database_membership(
+        existing_fresh_replay_databases(),
+        allow_target=True,
+    )
+    failed_graph = _validate_failed_first_graph_checkpoint(output)
+    failed_replay_before = forensic_database_state(
+        FAILED_REPLAY_DATABASE
+    )
+    primary_package_before = forensic_database_state(PRIMARY_DATABASE)
+    fresh_package_before = forensic_database_state(FRESH_REPLAY_DATABASE)
+    if not (
+        primary_package_before["package_fingerprint"]
+        == fresh_package_before["package_fingerprint"]
+        == EXPECTED_PACKAGE_V2_FINGERPRINT
+    ):
+        raise FreshReplayV2Error(
+            "stable_signal_rederive_nonderived_package_drift"
+        )
+    primary_signal = _stable_signal_projection(PRIMARY_DATABASE)
+    replay_signal = _stable_signal_projection(FRESH_REPLAY_DATABASE)
+    if not (
+        primary_signal == replay_signal
+        and primary_signal["fingerprint"]
+        == STABLE_SIGNAL_PROJECTION_FINGERPRINT
+    ):
+        raise FreshReplayV2Error(
+            "stable_signal_cross_database_projection_mismatch"
+        )
+    counts_before = _derived_table_counts(FRESH_REPLAY_DATABASE)
+    old_fallback_before = _fallback_version_state(
+        FRESH_REPLAY_DATABASE,
+        overlay_version=(
+            "source_concept_deferred_overlay_v2_shared_name_union"
+        ),
+    )
+    r2r_refresh = _refresh_stable_signal_r2r_proof(output, sv1b)
+    primary_expected = sv1b.build_in_memory_core_graph_proof(
+        PRIMARY_DATABASE,
+        remap_summary=r2r_refresh["proof"]["primary"],
+        remap_rows=r2r_refresh["primary_rows"],
+    )
+    if primary_expected.get("passed") is not True:
+        raise FreshReplayV2Error(
+            "primary_stable_core_graph_readonly_proof_failed"
+        )
+    replay_graph = sv1b.derive_full_source_graph(
+        output,
+        database=FRESH_REPLAY_DATABASE,
+        label=CORRECTED_GRAPH_LABEL,
+        allow_superseding_existing_graph=True,
+        supersede_prior_run_id=FAILED_FIRST_GRAPH_CORE_RUN_ID,
+    )
+    if replay_graph.get("passed") is not True:
+        raise FreshReplayV2Error(
+            "stable_signal_replay_graph_safety_failed"
+        )
+    core_comparison = {
+        "primary_expected": primary_expected[
+            "stable_core_graph_projection"
+        ],
+        "fresh_planned": replay_graph[
+            "planned_core_graph_projection"
+        ],
+        "fresh_persisted": replay_graph[
+            "persisted_core_graph_projection"
+        ],
+    }
+    core_comparison.update(
+        {
+            "primary_fresh_logical_equal": (
+                core_comparison["primary_expected"]
+                == core_comparison["fresh_planned"]
+                == core_comparison["fresh_persisted"]
+            ),
+            "numeric_row_id_equality_claimed": False,
+        }
+    )
+    primary_family = _stable_family_projection(
+        read_json(output / "primary-creator-family-outcomes-private.json")
+    )
+    replay_family = _stable_family_projection(
+        read_json(
+            output
+            / f"{CORRECTED_GRAPH_LABEL}-creator-family-outcomes-private.json"
+        )
+    )
+    family_comparison = {
+        "primary": primary_family,
+        "fresh_replay": replay_family,
+        "logical_equal": primary_family == replay_family,
+        "accepted_family_count": (
+            replay_graph["baseline_preservation"][
+                "accepted_family_count"
+            ]
+        ),
+        "accepted_family_traceable_count": (
+            replay_graph["baseline_preservation"][
+                "accepted_family_traceable_count"
+            ]
+        ),
+    }
+    counts_after = _derived_table_counts(FRESH_REPLAY_DATABASE)
+    old_fallback_after = _fallback_version_state(
+        FRESH_REPLAY_DATABASE,
+        overlay_version=(
+            "source_concept_deferred_overlay_v2_shared_name_union"
+        ),
+    )
+    fresh_package_after = forensic_database_state(FRESH_REPLAY_DATABASE)
+    failed_replay_after = forensic_database_state(
+        FAILED_REPLAY_DATABASE
+    )
+    primary_package_after = forensic_database_state(PRIMARY_DATABASE)
+    historical_proof_unchanged = (
+        sha256_payload(
+            read_json(
+                output
+                / "replay-v2-source-graph-derivation-proof.json"
+            )
+        )
+        == FAILED_FIRST_GRAPH_PROOF_FINGERPRINT
+    )
+    history_preservation = {
+        "derived_table_counts_before": counts_before,
+        "derived_table_counts_after": counts_after,
+        "no_table_row_count_decrease": all(
+            counts_after[table] >= counts_before[table]
+            for table in DERIVED_GRAPH_TABLES
+        ),
+        "old_fallback_overlay_before": old_fallback_before,
+        "old_fallback_overlay_after": old_fallback_after,
+        "old_fallback_overlay_unchanged": (
+            old_fallback_before == old_fallback_after
+        ),
+        "failed_first_graph_proof_unchanged": (
+            historical_proof_unchanged
+        ),
+        "database_recreated": False,
+        "second_fresh_database_created": False,
+        "history_delete_count": 0,
+    }
+    protected = {
+        "primary_unchanged": (
+            primary_package_before == primary_package_after
+        ),
+        "failed_retry2_replay_unchanged": (
+            failed_replay_before == failed_replay_after
+        ),
+        "fresh_nonderived_package_unchanged": (
+            fresh_package_before["package_fingerprint"]
+            == fresh_package_after["package_fingerprint"]
+            == EXPECTED_PACKAGE_V2_FINGERPRINT
+        ),
+        "fresh_translation_unchanged": (
+            fresh_package_before["translation_state"]
+            == fresh_package_after["translation_state"]
+        ),
+        "fresh_database_count": len(existing_fresh_replay_databases()),
+        "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
+        "entity_truth_write_count": 0,
+        "provider_derived_media_tags_write_count": 0,
+    }
+    result = {
+        "proof_version": (
+            "sv1b_fresh_replay_v2_stable_signal_rederive_compare_v1"
+        ),
+        "failed_first_graph_checkpoint": failed_graph,
+        "stable_signal_projection": {
+            "primary": primary_signal,
+            "fresh_replay": replay_signal,
+            "equal": primary_signal == replay_signal,
+        },
+        "r2r_remap": r2r_refresh["proof"],
+        "primary_readonly_core_graph": primary_expected,
+        "replay_graph": replay_graph,
+        "core_graph_comparison": core_comparison,
+        "creator_family_comparison": family_comparison,
+        "history_preservation": history_preservation,
+        "protected_state": protected,
+        "provider_request_count": 0,
+        "llm_call_count": 0,
+        "media_download_count": 0,
+        "passed": bool(
+            core_comparison["primary_fresh_logical_equal"]
+            and family_comparison["logical_equal"]
+            and family_comparison["accepted_family_count"] == 606
+            and family_comparison[
+                "accepted_family_traceable_count"
+            ]
+            == 606
+            and replay_graph["graph_audit"]["passed"] is True
+            and replay_graph["graph_audit"][
+                "deferred_identity_union_count"
+            ]
+            == 0
+            and history_preservation[
+                "no_table_row_count_decrease"
+            ]
+            and history_preservation[
+                "old_fallback_overlay_unchanged"
+            ]
+            and historical_proof_unchanged
+            and protected["primary_unchanged"]
+            and protected["failed_retry2_replay_unchanged"]
+            and protected["fresh_nonderived_package_unchanged"]
+            and protected["fresh_translation_unchanged"]
+            and protected["fresh_database_count"] == 1
+        ),
+    }
+    result["proof_fingerprint"] = sha256_payload(result)
+    write_json(checkpoint_path, result)
+    if result["passed"] is not True:
+        raise FreshReplayV2Error(
+            "stable_signal_rederive_compare_gate_failed"
+        )
+    return result
+
+
 def execute_search(*, output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
     checkpoint_path = output / "fresh-replay-v2-search-proof.json"
     if checkpoint_path.is_file():
         checkpoint = read_json(checkpoint_path)
         if checkpoint.get("passed") is True:
             return checkpoint
-    graph = read_json(
-        output / "fresh-replay-v2-derive-compare-proof.json"
+    graph_path = (
+        output
+        / "fresh-replay-v2-stable-signal-rederive-compare-proof.json"
     )
+    if not graph_path.is_file():
+        graph_path = output / "fresh-replay-v2-derive-compare-proof.json"
+    graph = read_json(graph_path)
     if graph.get("passed") is not True:
         raise FreshReplayV2Error("fresh_replay_graph_checkpoint_invalid")
     from scripts import (  # noqa: WPS433
@@ -1582,6 +2069,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = execute_create_import(output=output)
     elif args.stage == "derive-compare":
         result = execute_derive_compare(output=output)
+    elif args.stage == "rederive-compare":
+        result = execute_rederive_compare(output=output)
     elif args.stage == "search":
         result = execute_search(output=output)
     else:

@@ -60,6 +60,7 @@ def test_no_external_execution_stage_exists() -> None:
         "validate",
         "create-import",
         "derive-compare",
+        "rederive-compare",
         "search",
         "build-harness",
     )
@@ -137,3 +138,50 @@ def test_failed_replay_is_never_a_write_target() -> None:
             "",
         )
     )
+
+
+def test_stable_family_projection_ignores_only_local_concept_refs() -> None:
+    primary = runner._stable_family_projection(
+        [
+            {
+                "family_id": "family:stable",
+                "identity_fingerprint": "stable",
+                "outcome": "deterministic_must_link_materialized",
+                "concept_ref": "primary-local-id",
+            }
+        ]
+    )
+    replay = runner._stable_family_projection(
+        [
+            {
+                "family_id": "family:stable",
+                "identity_fingerprint": "stable",
+                "outcome": "already_materialized",
+                "concept_ref": "replay-local-id",
+            }
+        ]
+    )
+
+    assert primary == replay
+
+
+def test_stable_signal_rederive_checkpoint_is_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proof = {
+        "proof_version": "fixture",
+        "passed": True,
+    }
+    checkpoint = (
+        tmp_path
+        / "fresh-replay-v2-stable-signal-rederive-compare-proof.json"
+    )
+    runner.write_json(checkpoint, proof)
+    monkeypatch.setattr(
+        runner,
+        "_require_import_checkpoint",
+        lambda _output: {"passed": True},
+    )
+
+    assert runner.execute_rederive_compare(output=tmp_path) == proof

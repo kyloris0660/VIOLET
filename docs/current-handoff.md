@@ -8,8 +8,8 @@
 - Repository / PR: `kyloris0660/VIOLET` / Draft PR #139.
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
-- Implementation evidence HEAD: `bf3c9e8398073d506ce91cc79632863caa7aad56`.
-- Status: `sv1b_fresh_replay_v2_round_trip_passed_pending_graph_derivation`.
+- Implementation evidence HEAD: `7d804b765457a6e3518a27f545f86993fa614080`.
+- Status: `blocked_sv1b_fresh_replay_graph_signal_identity_collision`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
 
@@ -25,11 +25,12 @@
 - `doc_gov_01`: `passed` — `7c16783dab9a146c284ebfd4f9f66124b9b8ac88156bd573b5acaddf1a26ec4b`.
 - `stable_replay_package_v2_offline_validation`: `passed_with_primary_immutable_evidence_crosscheck` — `640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845`.
 - `fresh_replay_v2_create_import_round_trip`: `passed` — `935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9`.
+- `fresh_replay_v2_first_graph_derivation`: `failed_preserved_forensic_checkpoint` — `7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6`.
 
 ## Current Blocker And Owner Decision
 
-- Blocker: `pending_sv1b_fresh_replay_graph_validation` (fresh Replay v2 downstream automated validation).
-- Resolution: Fresh Replay v2 round-trip and trusted-input equality passed; independently derive and compare graph/search state.
+- Blocker: `blocked_sv1b_fresh_replay_graph_signal_identity_collision` (cross-database SourceConcept signal identity and fresh Replay graph safety).
+- Resolution: The first fresh graph derivation is preserved. Replace development numeric source-row IDs in signal identity with stable schema-aware source-record references, prove a governed idempotent superseding re-derivation, and rerun graph safety without cleaning or recreating the database.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -43,8 +44,7 @@
 
 ## Next Action
 
-- Required checkpoint: `independent_fresh_replay_graph_derivation_and_primary_logical_comparison`.
-- After package-v2 and immutable-evidence gates pass, create the single fresh Replay and continue to owner manual acceptance.
+- Required checkpoint: `stable_signal_identity_v2_and_governed_fresh_replay_graph_rederivation`.
 
 ## Durable Links
 
@@ -57,4 +57,4 @@
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
 
-Updated: `2026-07-25T23:32:00+08:00`.
+Updated: `2026-07-25T23:52:32+08:00`.

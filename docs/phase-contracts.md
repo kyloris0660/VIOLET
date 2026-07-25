@@ -67,9 +67,14 @@ retry2 Replay remains immutable forensic evidence. The owner has authorized
 exactly one fresh isolated Replay verification database after package-v2 and
 immutable acquisition-evidence gates pass. Any mismatch still fails closed at
 `blocked_sv1b_replay_trusted_provenance_reconciliation`. Fresh Replay v2
-round-trip equality passed on the owner-authorized isolated database; the
-current durable gate is `pending_sv1b_fresh_replay_graph_validation` until
-independent graph/search comparison finishes.
+round-trip equality passed on the owner-authorized isolated database. Its
+first graph derivation is preserved as a failed forensic checkpoint because
+a development numeric source-row ID produced a cross-database SourceConcept
+signal-key collision and one deferred identity union. The current durable
+gate is `blocked_sv1b_fresh_replay_graph_signal_identity_collision`.
+Continuation requires stable schema-aware signal identity plus a governed,
+idempotent superseding re-derivation that neither cleans nor recreates the
+fresh database.
 
 ## Registered GOV3 Contracts
 

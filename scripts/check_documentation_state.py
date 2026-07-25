@@ -220,7 +220,6 @@ def render_handoff(state: dict[str, Any]) -> str:
             "## Next Action",
             "",
             f"- Required checkpoint: `{state['next_required_checkpoint']}`.",
-            "- After package-v2 and immutable-evidence gates pass, create the single fresh Replay and continue to owner manual acceptance.",
             "",
             "## Durable Links",
             "",

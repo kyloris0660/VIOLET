@@ -3831,6 +3831,281 @@ def build_full_candidate_dispositions(
     return values, accounting
 
 
+def _stable_core_graph_projection_from_drafts(
+    session: Any,
+    projected: Any,
+) -> dict[str, Any]:
+    media_keys = {
+        int(row[0]): str(row[1])
+        for row in session.execute(
+            text("SELECT id,hash FROM blombooru_media")
+        )
+    }
+    record_keys = {
+        int(row[0]): f"{row[1]}:{row[2]}"
+        for row in session.execute(
+            text(
+                "SELECT id,provider,provider_record_key "
+                "FROM blombooru_source_metadata_records"
+            )
+        )
+    }
+    groups = {
+        "signal": [
+            {
+                "signal_key": row.signal_key,
+                "origin_type": row.origin_type,
+                "provider": row.provider,
+                "media_content_key": media_keys.get(row.media_id),
+                "provider_record_ref": record_keys.get(
+                    row.source_metadata_record_id
+                ),
+                "source_record_id": row.source_record_id,
+                "raw_value": row.raw_value,
+                "normalized_key": row.normalized_key,
+                "canonical_key": row.canonical_key,
+                "role_hint": row.role_hint,
+                "work_context_key": row.work_context_key,
+                "source_kind": row.source_kind,
+                "trust_tier": row.trust_tier,
+                "status": row.status,
+            }
+            for row in projected.signals
+        ],
+        "concept": [
+            {
+                "concept_key": row.concept_key,
+                "concept_type_hint": row.concept_type_hint,
+                "status": row.status,
+                "stable_identity_fingerprint": (
+                    row.evidence_summary or {}
+                ).get("stable_identity_fingerprint"),
+            }
+            for row in projected.concepts
+        ],
+        "alias": [
+            {
+                "concept_key": row.concept_key,
+                "signal_key": row.signal_key,
+                "alias_key": row.alias_key,
+                "alias_role": row.alias_role,
+                "status": row.status,
+            }
+            for row in projected.aliases
+        ],
+        "evidence": [
+            {
+                "concept_key": row.concept_key,
+                "signal_key": row.signal_key,
+                "media_content_key": media_keys.get(row.media_id),
+                "provider_record_ref": record_keys.get(
+                    row.source_metadata_record_id
+                ),
+                "provider": row.provider,
+                "evidence_type": row.evidence_type,
+                "evidence_strength": row.evidence_strength,
+                "status": row.status,
+            }
+            for row in projected.evidence
+        ],
+        "link": [
+            {
+                "concept_key": row.concept_key,
+                "signal_key": row.signal_key,
+                "link_status": row.link_status,
+                "resolution_reason_code": row.resolution_reason_code,
+                "negative_reason_code": row.negative_reason_code,
+            }
+            for row in projected.links
+        ],
+        "search": [
+            {
+                "concept_key": row.concept_key,
+                "search_key": row.search_key,
+                "alias_role": row.alias_role,
+                "status": row.status,
+            }
+            for row in projected.search_index
+        ],
+    }
+    proof_groups = {}
+    for name, rows in groups.items():
+        ordered = sorted(rows, key=canonical_json)
+        proof_groups[name] = {
+            "count": len(ordered),
+            "fingerprint": sha256_payload(ordered),
+        }
+    return {
+        "projection_version": "sv1b_stable_core_graph_projection_v1",
+        "groups": proof_groups,
+        "fingerprint": sha256_payload(proof_groups),
+    }
+
+
+def _stable_core_graph_projection_from_database(
+    database: str,
+    *,
+    run_id: str,
+) -> dict[str, Any]:
+    queries = {
+        "signal": (
+            "SELECT s.signal_key,s.origin_type,s.provider,m.hash AS media_content_key,"
+            "(r.provider || ':' || r.provider_record_key) AS provider_record_ref,"
+            "s.source_record_id,s.raw_value,s.normalized_key,s.canonical_key,"
+            "s.role_hint,s.work_context_key,s.source_kind,s.trust_tier,s.status "
+            "FROM blombooru_source_concept_signals s "
+            "LEFT JOIN blombooru_media m ON m.id=s.media_id "
+            "LEFT JOIN blombooru_source_metadata_records r "
+            "ON r.id=s.source_metadata_record_id "
+            "WHERE s.created_by_run_id=:run_id"
+        ),
+        "concept": (
+            "SELECT c.concept_key,c.concept_type_hint,c.status,"
+            "c.evidence_summary_json->>'stable_identity_fingerprint' "
+            "AS stable_identity_fingerprint "
+            "FROM blombooru_source_concepts c "
+            "WHERE c.created_by_run_id=:run_id"
+        ),
+        "alias": (
+            "SELECT c.concept_key,s.signal_key,a.alias_key,a.alias_role,a.status "
+            "FROM blombooru_source_concept_aliases a "
+            "JOIN blombooru_source_concepts c ON c.id=a.concept_id "
+            "LEFT JOIN blombooru_source_concept_signals s "
+            "ON s.id=a.source_signal_id "
+            "WHERE a.created_by_run_id=:run_id"
+        ),
+        "evidence": (
+            "SELECT c.concept_key,s.signal_key,m.hash AS media_content_key,"
+            "(r.provider || ':' || r.provider_record_key) AS provider_record_ref,"
+            "e.provider,e.evidence_type,e.evidence_strength,e.status "
+            "FROM blombooru_source_concept_evidence e "
+            "JOIN blombooru_source_concepts c ON c.id=e.concept_id "
+            "LEFT JOIN blombooru_source_concept_signals s ON s.id=e.signal_id "
+            "LEFT JOIN blombooru_media m ON m.id=e.media_id "
+            "LEFT JOIN blombooru_source_metadata_records r "
+            "ON r.id=e.source_metadata_record_id "
+            "WHERE e.run_id=:run_id"
+        ),
+        "link": (
+            "SELECT c.concept_key,s.signal_key,l.link_status,"
+            "l.resolution_reason_code,l.negative_reason_code "
+            "FROM blombooru_source_concept_signal_links l "
+            "JOIN blombooru_source_concepts c ON c.id=l.concept_id "
+            "JOIN blombooru_source_concept_signals s ON s.id=l.signal_id "
+            "WHERE l.run_id=:run_id"
+        ),
+        "search": (
+            "SELECT c.concept_key,i.search_key,i.alias_role,i.status "
+            "FROM blombooru_source_concept_search_index i "
+            "JOIN blombooru_source_concepts c ON c.id=i.concept_id "
+            "WHERE i.run_id=:run_id"
+        ),
+    }
+    engine = engine_for(database)
+    try:
+        with engine.connect() as connection:
+            groups = {}
+            for name, query in queries.items():
+                rows = sorted(
+                    (dict(row) for row in connection.execute(
+                        text(query), {"run_id": run_id}
+                    ).mappings()),
+                    key=canonical_json,
+                )
+                groups[name] = {
+                    "count": len(rows),
+                    "fingerprint": sha256_payload(rows),
+                }
+    finally:
+        engine.dispose()
+    return {
+        "projection_version": "sv1b_stable_core_graph_projection_v1",
+        "groups": groups,
+        "fingerprint": sha256_payload(groups),
+    }
+
+
+def build_in_memory_core_graph_proof(
+    database: str,
+    *,
+    remap_summary: Mapping[str, Any] | None = None,
+    remap_rows: Iterable[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build the deterministic core graph without any database write."""
+
+    from app.services.source_concept_autonomous_closure_service import (
+        build_candidate_pair_manifest,
+        project_autonomous_materialization,
+    )
+    from app.services.source_concept_resolver_service import (
+        build_source_concept_signals,
+        resolve_source_concepts,
+    )
+    from scripts import (
+        run_phase45_scv2_r2r_autonomous_recall_search_closure as r2r,
+    )
+
+    if remap_summary is None or remap_rows is None:
+        remap_summary, remap_rows = audit_r2r_remap(database)
+    remap_summary = dict(remap_summary)
+    remap_rows = list(remap_rows)
+    engine = engine_for(database)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        signals = build_source_concept_signals(
+            session,
+            run_id="sv1b-stable-signal-v2-readonly-core-proof",
+        )
+        deterministic = resolve_source_concepts(
+            signals,
+            run_id="sv1b-stable-signal-v2-readonly-deterministic",
+        )
+        candidates = build_candidate_pair_manifest(
+            deterministic.edge_candidates,
+            signals=signals,
+            max_calls=20_000,
+        )
+        dispositions, accounting = build_full_candidate_dispositions(
+            candidates,
+            remap_rows,
+            signals=signals,
+        )
+        resolved = resolve_source_concepts(
+            signals,
+            run_id="sv1b-stable-signal-v2-readonly-full",
+            llm_judgments=r2r._llm_judgments_from_dispositions(
+                {row.pair_id: row for row in dispositions}
+            ),
+        )
+        projected, projection = project_autonomous_materialization(
+            resolved,
+            dispositions=dispositions,
+        )
+        stable_projection = _stable_core_graph_projection_from_drafts(
+            session,
+            projected,
+        )
+    finally:
+        session.close()
+        engine.dispose()
+    return {
+        "database": database,
+        "r2r_remap": remap_summary,
+        "candidate_disposition_accounting": accounting,
+        "projection": projection,
+        "stable_core_graph_projection": stable_projection,
+        "provider_request_count": 0,
+        "llm_call_count": 0,
+        "media_download_count": 0,
+        "passed": bool(
+            remap_summary["ambiguous_remap_count"] == 0
+            and remap_summary["conflicting_remap_count"] == 0
+            and accounting["equation_balanced"]
+        ),
+    }
+
+
 def _query_graph_audit(database: str, dispositions: Iterable[Any]) -> dict[str, Any]:
     engine = engine_for(database)
     try:
@@ -3977,6 +4252,8 @@ def derive_full_source_graph(
     *,
     database: str,
     label: str,
+    allow_superseding_existing_graph: bool = False,
+    supersede_prior_run_id: str | None = None,
 ) -> dict[str, Any]:
     import time
     from app.services.source_concept_autonomous_closure_service import (
@@ -3984,11 +4261,13 @@ def derive_full_source_graph(
         project_autonomous_materialization,
     )
     from app.services.source_concept_resolver_service import (
+        build_source_concept_input_scope,
         build_source_concept_signals,
         persist_source_concept_resolution,
         resolve_source_concepts,
         source_signal_inventory,
     )
+    from app.models import SourceConceptSignal
     from app.services.source_concept_search_service import rebuild_source_concept_fallback_search_index
     from scripts import run_phase45_scv2_ml2_multilingual_identity_candidate_closure as ml2
     from scripts import run_phase45_scv2_r2r_autonomous_recall_search_closure as r2r
@@ -3999,18 +4278,55 @@ def derive_full_source_graph(
         if table.replace("blombooru_", "") not in NONDERIVED_SOURCE_TABLES
     )
     before = database_fingerprint(database, derived_tables)
-    if any(int(row["count"]) != 0 for row in before["tables"].values()):
+    existing_derived_rows = sum(
+        int(row["count"]) for row in before["tables"].values()
+    )
+    if existing_derived_rows and not allow_superseding_existing_graph:
         raise SV1BPreflightError(f"{label}_derived_graph_tables_not_pristine")
+    if allow_superseding_existing_graph and not supersede_prior_run_id:
+        raise SV1BPreflightError(
+            f"{label}_superseding_prior_run_id_missing"
+        )
     remap_summary, remap_rows = audit_r2r_remap(database)
     write_json(output / f"postacquisition-r2r-{label}-remap-private.json", remap_rows)
     if remap_summary["ambiguous_remap_count"] or remap_summary["conflicting_remap_count"]:
         raise SV1BPreflightError(f"{label}_postacquisition_r2r_remap_unsafe")
 
     started = time.monotonic()
+    core_run_id = f"sv1b-{label}-full"
     engine = engine_for(database)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
     try:
+        prior_input_scope = None
+        prior_active_signal_count = 0
+        if allow_superseding_existing_graph:
+            prior_signal_rows = (
+                session.query(SourceConceptSignal)
+                .filter(
+                    SourceConceptSignal.created_by_run_id
+                    == supersede_prior_run_id,
+                    SourceConceptSignal.status.in_(
+                        {
+                            "active",
+                            "needs_review",
+                            "materialized_identity",
+                            "isolated_evidence",
+                            "rejected_evidence",
+                            "deferred_nonblocking",
+                        }
+                    ),
+                )
+                .all()
+            )
+            prior_active_signal_count = len(prior_signal_rows)
+            if prior_active_signal_count == 0:
+                raise SV1BPreflightError(
+                    f"{label}_superseding_prior_active_signals_missing"
+                )
+            prior_input_scope = build_source_concept_input_scope(
+                prior_signal_rows
+            )
         signals = build_source_concept_signals(session, run_id=f"sv1b-{label}-signals")
         deterministic = resolve_source_concepts(signals, run_id=f"sv1b-{label}-deterministic")
         candidates = build_candidate_pair_manifest(
@@ -4025,7 +4341,7 @@ def derive_full_source_graph(
         )
         resolved = resolve_source_concepts(
             signals,
-            run_id=f"sv1b-{label}-full",
+            run_id=core_run_id,
             llm_judgments=r2r._llm_judgments_from_dispositions(
                 {row.pair_id: row for row in dispositions}
             ),
@@ -4033,11 +4349,18 @@ def derive_full_source_graph(
         projected, projection = project_autonomous_materialization(
             resolved, dispositions=dispositions
         )
+        planned_core_graph_projection = (
+            _stable_core_graph_projection_from_drafts(
+                session,
+                projected,
+            )
+        )
         persistence = persist_source_concept_resolution(
             session,
             projected,
             apply=True,
             inventory=source_signal_inventory(session),
+            input_scope=prior_input_scope,
             run_label=f"scv2_sv1b_{label}_full_graph",
         )
         cannot_pairs = r2r.complete_current_cannot_pairs(
@@ -4067,6 +4390,12 @@ def derive_full_source_graph(
         session.close()
         engine.dispose()
     write_json(output / f"{label}-creator-family-outcomes-private.json", family_outcomes)
+    persisted_core_graph_projection = (
+        _stable_core_graph_projection_from_database(
+            database,
+            run_id=core_run_id,
+        )
+    )
     accepted_family_support_overlay = (
         apply_accepted_creator_media_support_overlay(
             database,
@@ -4087,6 +4416,14 @@ def derive_full_source_graph(
         "candidate_disposition_accounting": disposition_accounting,
         "r2r_remap": remap_summary,
         "projection": projection,
+        "planned_core_graph_projection": planned_core_graph_projection,
+        "persisted_core_graph_projection": (
+            persisted_core_graph_projection
+        ),
+        "planned_persisted_core_graph_equal": (
+            planned_core_graph_projection
+            == persisted_core_graph_projection
+        ),
         "persistence": persistence,
         "fallback_index": fallback,
         "creator_family_count": len(families),
@@ -4100,9 +4437,23 @@ def derive_full_source_graph(
         "baseline_preservation": baseline_preservation,
         "graph_audit": graph_audit,
         "llm_call_count": 0,
+        "superseding_rederivation": {
+            "enabled": allow_superseding_existing_graph,
+            "prior_run_id": (
+                supersede_prior_run_id
+                if allow_superseding_existing_graph
+                else None
+            ),
+            "prior_active_signal_count": prior_active_signal_count,
+            "preexisting_derived_row_count": existing_derived_rows,
+            "history_delete_count": 0,
+            "database_recreated": False,
+        },
         "runtime_seconds": round(time.monotonic() - started, 3),
         "passed": bool(
             graph_audit["passed"]
+            and planned_core_graph_projection
+            == persisted_core_graph_projection
             and disposition_accounting["equation_balanced"]
             and baseline_preservation["passed"]
             and baseline_preservation["cannot_link_became_identity_union_count"] == 0

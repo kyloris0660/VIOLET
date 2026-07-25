@@ -225,6 +225,7 @@ def _media(media_id: int = 1) -> Media:
         id=media_id,
         filename=f"m{media_id}.jpg",
         path=f"/tmp/m{media_id}.jpg",
+        hash=f"{media_id:064x}",
         file_type=FileTypeEnum.image,
     )
 
@@ -390,6 +391,114 @@ def test_adapter_builds_multi_source_signals_and_medium_ai_distinction():
     assert "source_alias_candidate" in origins
     assert "provider_structured_field" in origins
     assert any(signal.origin_type == "ai_model_tag" and signal.trust_tier == "medium_ai" for signal in signals)
+
+
+def _stable_signal_projection_with_local_ids(offset: int) -> tuple[tuple[str, ...], ...]:
+    engine, session = _db()
+    metadata = SourceMetadataRecord(
+        id=offset + 1,
+        provider="pixiv",
+        provider_record_key="pixiv:stable-work:page:0",
+        artist_name="Stable Artist",
+        metadata_kind="provider_metadata",
+        data_type_label="fixture",
+        status="observed",
+    )
+    session.add(metadata)
+    session.flush()
+    session.add_all(
+        [
+            SourceNameObservation(
+                id=offset + 2,
+                source_metadata_record_id=metadata.id,
+                provider="pixiv",
+                observation_key="name:artist:stable",
+                raw_name="Stable Artist",
+                normalized_name="Stable Artist",
+                canonical_name_key="stable_artist",
+                name_role="artist",
+                source_field="artist_name",
+                requires_review=False,
+                status="observed",
+            ),
+            SourceTagObservation(
+                id=offset + 3,
+                source_metadata_record_id=metadata.id,
+                provider="pixiv",
+                observation_key="tag:character:stable",
+                raw_tag="Stable Character",
+                normalized_tag="Stable Character",
+                canonical_tag_key="stable_character",
+                source_tag_kind="provider_tag",
+                source_category_raw="character",
+                status="observed",
+            ),
+            SourceSearchableNameAssertion(
+                id=offset + 4,
+                provider="pixiv",
+                source_metadata_record_id=metadata.id,
+                assertion_key="assertion:stable-character",
+                raw_input="Stable Character",
+                normalized_input="stable character",
+                canonical_name_key="stable_character",
+                asserted_name="Stable Character",
+                asserted_role="character",
+                status="searchable_active",
+                confidence="high",
+                structured_output_schema_version="test",
+                requires_review=False,
+            ),
+            SourceNameAliasCandidate(
+                id=offset + 5,
+                source_name_key="stable_character",
+                target_name_key="stable_character_zh",
+                source_display_name="Stable Character",
+                target_display_name="稳定角色",
+                relation_type="same_source_concept",
+                evidence_source="fixture",
+                status="candidate",
+                requires_review=True,
+            ),
+        ]
+    )
+    session.commit()
+    signals = build_source_concept_signals(session, run_id="stable-signal-test")
+    projection = tuple(
+        sorted(
+            (
+                signal.signal_key,
+                signal.origin_type,
+                signal.source_kind or "",
+                signal.source_record_id or "",
+                signal.canonical_key or "",
+                signal.role_hint,
+            )
+            for signal in signals
+        )
+    )
+    session.close()
+    engine.dispose()
+    return projection
+
+
+def test_signal_identity_is_stable_across_development_row_ids():
+    assert _stable_signal_projection_with_local_ids(0) == (
+        _stable_signal_projection_with_local_ids(10_000)
+    )
+
+
+def test_signal_identity_is_schema_path_aware():
+    identity = {
+        "provider_record_key": "shared",
+        "field_name": "artist_name",
+    }
+    metadata_key = sc_resolver_service._stable_signal_suffix(
+        "source_metadata_record.structured_field", identity
+    )
+    cache_key = sc_resolver_service._stable_signal_suffix(
+        "provider_cache.structured_field", identity
+    )
+    assert metadata_key != cache_key
 
 
 def test_nested_provider_metadata_extraction_uses_name_title_allowlist():

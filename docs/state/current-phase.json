@@ -7,8 +7,8 @@
   "pr_number": 139,
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
-  "implementation_evidence_head": "bf3c9e8398073d506ce91cc79632863caa7aad56",
-  "current_status": "sv1b_fresh_replay_v2_round_trip_passed_pending_graph_derivation",
+  "implementation_evidence_head": "7d804b765457a6e3518a27f545f86993fa614080",
+  "current_status": "blocked_sv1b_fresh_replay_graph_signal_identity_collision",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -64,13 +64,18 @@
       "id": "fresh_replay_v2_create_import_round_trip",
       "result": "passed",
       "fingerprint": "935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9"
+    },
+    {
+      "id": "fresh_replay_v2_first_graph_derivation",
+      "result": "failed_preserved_forensic_checkpoint",
+      "fingerprint": "7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6"
     }
   ],
   "active_blocker": {
-    "code": "pending_sv1b_fresh_replay_graph_validation",
-    "scope": "fresh Replay v2 downstream automated validation",
+    "code": "blocked_sv1b_fresh_replay_graph_signal_identity_collision",
+    "scope": "cross-database SourceConcept signal identity and fresh Replay graph safety",
     "nonblocking_localization_item": "enpera",
-    "resolution": "Fresh Replay v2 round-trip and trusted-input equality passed; independently derive and compare graph/search state."
+    "resolution": "The first fresh graph derivation is preserved. Replace development numeric source-row IDs in signal identity with stable schema-aware source-record references, prove a governed idempotent superseding re-derivation, and rerun graph safety without cleaning or recreating the database."
   },
   "owner_decisions": [
     {
@@ -122,7 +127,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "independent_fresh_replay_graph_derivation_and_primary_logical_comparison",
+  "next_required_checkpoint": "stable_signal_identity_v2_and_governed_fresh_replay_graph_rederivation",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -149,5 +154,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-25T23:32:00+08:00"
+  "updated_at": "2026-07-25T23:52:32+08:00"
 }

@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from ..enums import TagCategoryEnum
 from ..models import (
+    Media,
     ProviderCache,
     SourceConcept,
     SourceConceptAlias,
@@ -58,7 +59,8 @@ from .source_name_candidate_extraction_service import (
 )
 from ..utils.cache import invalidate_source_concept_search_cache
 
-RESOLVER_VERSION = "source_concept_resolver_core_v5_constraint_evidence_accounting"
+RESOLVER_VERSION = "source_concept_resolver_core_v6_stable_signal_identity"
+SIGNAL_IDENTITY_VERSION = "source_concept_signal_identity_v2"
 SOURCE_CONCEPT_SCHEMA_VERSION = "source_concept_schema_v1"
 LLM_CACHE_POLICY_VERSION = "source_concept_llm_adjudication_cache_v1"
 LLM_DECISION_SCHEMA_VERSION = "source_concept_pair_decision_schema_v1"
@@ -945,6 +947,34 @@ def _make_signal(
     )
 
 
+def _stable_signal_suffix(
+    schema_path: str,
+    stable_identity: Mapping[str, Any],
+) -> str:
+    """Return a schema-aware signal suffix with no development row identity."""
+
+    normalized = {
+        str(key): value
+        for key, value in stable_identity.items()
+        if value is not None and value != ""
+    }
+    if not schema_path or not normalized:
+        raise ValueError("stable_signal_identity_missing")
+    payload = {
+        "version": SIGNAL_IDENTITY_VERSION,
+        "schema_path": schema_path,
+        "stable_identity": normalized,
+    }
+    return f"v2:{value_hash(payload, 32)}"
+
+
+def _stable_source_record_ref(
+    schema_path: str,
+    stable_identity: Mapping[str, Any],
+) -> str:
+    return f"{schema_path}:{_stable_signal_suffix(schema_path, stable_identity)}"
+
+
 def _dedupe_signals(signals: Iterable[SourceConceptSignalDraft | None]) -> tuple[SourceConceptSignalDraft, ...]:
     by_key: dict[str, SourceConceptSignalDraft] = {}
     for signal in signals:
@@ -1053,6 +1083,22 @@ def build_source_concept_signals(
     """Build provider-neutral resolver signals from current source-layer inputs."""
 
     signals: list[SourceConceptSignalDraft | None] = []
+    metadata_rows = db.query(SourceMetadataRecord).all()
+    metadata_record_ref_by_id = {
+        int(row.id): _stable_source_record_ref(
+            "source_metadata_record",
+            {
+                "provider": row.provider,
+                "provider_record_key": row.provider_record_key,
+            },
+        )
+        for row in metadata_rows
+    }
+
+    def metadata_record_ref(row_id: int | None) -> str:
+        if row_id is None or int(row_id) not in metadata_record_ref_by_id:
+            raise ValueError("stable_source_metadata_record_reference_missing")
+        return metadata_record_ref_by_id[int(row_id)]
 
     f7a_query = (
         db.query(SourceNameCandidate, SourceNameCandidateExtractionRun.run_id)
@@ -1074,7 +1120,7 @@ def build_source_concept_signals(
                 provider=row.provider,
                 media_id=row.media_id,
                 source_metadata_record_id=row.source_metadata_record_id,
-                source_record_id=str(row.source_metadata_record_id) if row.source_metadata_record_id else None,
+                source_record_id=row.candidate_key,
                 raw_value=row.raw_value,
                 display_value=row.display_name,
                 canonical_value=row.canonical_key,
@@ -1094,6 +1140,10 @@ def build_source_concept_signals(
                 },
                 source_run_id=candidate_run_id,
                 created_by_run_id=run_id,
+                signal_suffix=_stable_signal_suffix(
+                    "source_name_candidate",
+                    {"candidate_key": row.candidate_key},
+                ),
             )
         )
 
@@ -1103,11 +1153,16 @@ def build_source_concept_signals(
             blombooru_media_tags.c.source,
             blombooru_media_tags.c.confidence,
             blombooru_media_tags.c.is_suggestion,
+            Media.hash,
             Tag.id,
             Tag.name,
             Tag.category,
         )
-        .select_from(blombooru_media_tags.join(Tag, Tag.id == blombooru_media_tags.c.tag_id))
+        .select_from(
+            blombooru_media_tags
+            .join(Tag, Tag.id == blombooru_media_tags.c.tag_id)
+            .join(Media, Media.id == blombooru_media_tags.c.media_id)
+        )
         .where(
             or_(
                 Tag.category.in_([TagCategoryEnum.character, TagCategoryEnum.artist, TagCategoryEnum.copyright]),
@@ -1117,11 +1172,20 @@ def build_source_concept_signals(
             )
         )
     ).all()
-    for media_id, source, confidence, is_suggestion, tag_id, name, category in media_tag_rows:
+    for media_id, source, confidence, is_suggestion, media_hash, tag_id, name, category in media_tag_rows:
         role, trust, signal_status = _trust_for_media_tag(category, source, bool(is_suggestion), name)
         if trust == "rejected":
             continue
+        if not media_hash:
+            raise ValueError("stable_media_content_key_missing")
         origin_type = "ai_model_tag" if is_ai_tag_source(source) or is_suggestion else "normal_media_tag"
+        media_tag_identity = {
+            "media_content_key": str(media_hash),
+            "tag_name": name,
+            "tag_category": enum_value(category),
+            "source": source or "media_tags",
+            "is_suggestion": bool(is_suggestion),
+        }
         signals.append(
             _make_signal(
                 origin_type=origin_type,
@@ -1130,7 +1194,9 @@ def build_source_concept_signals(
                 provider=source or "media_tags",
                 media_id=int(media_id) if media_id is not None else None,
                 source_metadata_record_id=None,
-                source_record_id=None,
+                source_record_id=_stable_source_record_ref(
+                    "media_tag", media_tag_identity
+                ),
                 raw_value=name,
                 display_value=name,
                 canonical_value=name,
@@ -1146,6 +1212,9 @@ def build_source_concept_signals(
                     "source": source,
                 },
                 created_by_run_id=run_id,
+                signal_suffix=_stable_signal_suffix(
+                    "media_tag", media_tag_identity
+                ),
             )
         )
 
@@ -1166,7 +1235,7 @@ def build_source_concept_signals(
                 provider=row.provider,
                 media_id=None,
                 source_metadata_record_id=row.source_metadata_record_id,
-                source_record_id=str(row.source_metadata_record_id) if row.source_metadata_record_id else None,
+                source_record_id=row.assertion_key,
                 raw_value=row.asserted_name or row.raw_input,
                 display_value=row.asserted_name or row.raw_input,
                 canonical_value=row.canonical_name_key,
@@ -1182,6 +1251,10 @@ def build_source_concept_signals(
                     "source_name_observation_id": row.source_name_observation_id,
                 },
                 created_by_run_id=run_id,
+                signal_suffix=_stable_signal_suffix(
+                    "source_searchable_name_assertion",
+                    {"assertion_key": row.assertion_key},
+                ),
             )
         )
 
@@ -1202,7 +1275,15 @@ def build_source_concept_signals(
                 provider=row.provider,
                 media_id=row.media_id,
                 source_metadata_record_id=row.source_metadata_record_id,
-                source_record_id=str(row.source_metadata_record_id),
+                source_record_id=_stable_source_record_ref(
+                    "source_name_observation",
+                    {
+                        "provider_record_ref": metadata_record_ref(
+                            row.source_metadata_record_id
+                        ),
+                        "observation_key": row.observation_key,
+                    },
+                ),
                 raw_value=row.raw_name,
                 display_value=row.normalized_name or row.raw_name,
                 canonical_value=row.canonical_name_key,
@@ -1213,6 +1294,15 @@ def build_source_concept_signals(
                 status=status,
                 evidence_payload={"observation_key": row.observation_key, "source_field": row.source_field},
                 created_by_run_id=run_id,
+                signal_suffix=_stable_signal_suffix(
+                    "source_name_observation",
+                    {
+                        "provider_record_ref": metadata_record_ref(
+                            row.source_metadata_record_id
+                        ),
+                        "observation_key": row.observation_key,
+                    },
+                ),
             )
         )
 
@@ -1238,7 +1328,15 @@ def build_source_concept_signals(
                 provider=row.provider,
                 media_id=None,
                 source_metadata_record_id=row.source_metadata_record_id,
-                source_record_id=str(row.source_metadata_record_id),
+                source_record_id=_stable_source_record_ref(
+                    "source_tag_observation",
+                    {
+                        "provider_record_ref": metadata_record_ref(
+                            row.source_metadata_record_id
+                        ),
+                        "observation_key": row.observation_key,
+                    },
+                ),
                 raw_value=row.raw_tag,
                 display_value=row.normalized_tag or row.raw_tag,
                 canonical_value=row.canonical_tag_key,
@@ -1255,6 +1353,15 @@ def build_source_concept_signals(
                     "non_concept_reason": "general_source_tag_without_name_context" if trust == "rejected" else None,
                 },
                 created_by_run_id=run_id,
+                signal_suffix=_stable_signal_suffix(
+                    "source_tag_observation",
+                    {
+                        "provider_record_ref": metadata_record_ref(
+                            row.source_metadata_record_id
+                        ),
+                        "observation_key": row.observation_key,
+                    },
+                ),
             )
         )
 
@@ -1266,6 +1373,12 @@ def build_source_concept_signals(
             "evidence_source": row.evidence_source,
             "source_name_key": row.source_name_key,
             "target_name_key": row.target_name_key,
+        }
+        alias_identity = {
+            "source_name_key": row.source_name_key,
+            "target_name_key": row.target_name_key,
+            "relation_type": row.relation_type,
+            "evidence_source": row.evidence_source,
         }
         for side, key_value, display in (
             ("source", row.source_name_key, row.source_display_name),
@@ -1279,7 +1392,9 @@ def build_source_concept_signals(
                     provider=row.evidence_source,
                     media_id=None,
                     source_metadata_record_id=None,
-                    source_record_id=None,
+                    source_record_id=_stable_source_record_ref(
+                        "source_name_alias_candidate", alias_identity
+                    ),
                     raw_value=display,
                     display_value=display,
                     canonical_value=key_value,
@@ -1290,13 +1405,22 @@ def build_source_concept_signals(
                     status=status,
                     evidence_payload=edge_payload,
                     created_by_run_id=run_id,
-                    signal_suffix=f"{row.id}:{side}",
+                    signal_suffix=_stable_signal_suffix(
+                        "source_name_alias_candidate",
+                        {**alias_identity, "side": side},
+                    ),
                 )
             )
 
-    for row in db.query(SourceMetadataRecord).all():
+    for row in metadata_rows:
         for field_name, value, role, trust in _structured_fields_from_metadata(row):
             status = "active" if trust in STRONG_TRUST and role != "source_title" else "needs_review"
+            field_identity = {
+                "provider": row.provider,
+                "provider_record_key": row.provider_record_key,
+                "field_name": field_name,
+                "value_fingerprint": value_hash(value, 32),
+            }
             signals.append(
                 _make_signal(
                     origin_type="provider_structured_field",
@@ -1320,12 +1444,22 @@ def build_source_concept_signals(
                     },
                     source_run_id=row.provider_run_id,
                     created_by_run_id=run_id,
-                    signal_suffix=f"{row.id}:{field_name}:{value_hash(value, 12)}",
+                    signal_suffix=_stable_signal_suffix(
+                        "source_metadata_record.structured_field",
+                        field_identity,
+                    ),
                 )
             )
 
     for row in db.query(ProviderCache).all():
         for field_name, value, role, trust in _structured_fields_from_provider_cache(row):
+            field_identity = {
+                "provider": row.provider,
+                "query_hash": row.query_hash,
+                "query_type": row.query_type,
+                "field_name": field_name,
+                "value_fingerprint": value_hash(value, 32),
+            }
             signals.append(
                 _make_signal(
                     origin_type="provider_structured_field",
@@ -1334,7 +1468,9 @@ def build_source_concept_signals(
                     provider=row.provider,
                     media_id=None,
                     source_metadata_record_id=None,
-                    source_record_id=row.query_hash,
+                    source_record_id=_stable_source_record_ref(
+                        "provider_cache", field_identity
+                    ),
                     raw_value=value,
                     display_value=value,
                     role_hint=role,
@@ -1344,7 +1480,10 @@ def build_source_concept_signals(
                     status="needs_review",
                     evidence_payload={"query_type": row.query_type, "response_status": row.response_status},
                     created_by_run_id=run_id,
-                    signal_suffix=f"{row.id}:{field_name}:{value_hash(value, 12)}",
+                    signal_suffix=_stable_signal_suffix(
+                        "provider_cache.structured_field",
+                        field_identity,
+                    ),
                 )
             )
 
