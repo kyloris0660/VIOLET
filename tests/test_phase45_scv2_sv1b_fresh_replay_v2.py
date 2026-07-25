@@ -370,3 +370,43 @@ def test_first_graph_checkpoint_accepts_exact_corrected_stage_state(
         "corrected_graph_committed_projection_scope_failed"
     )
     assert result["database_state_fingerprint"] == "corrected-state"
+
+
+def test_pinned_history_does_not_follow_evolved_live_artifact(
+    tmp_path: Path,
+) -> None:
+    live = tmp_path / "live.json"
+    historical = tmp_path / "historical.json"
+    historical.write_text('{"stage":"first"}\n', encoding="utf-8")
+    pinned = runner.sha256_file(historical)
+    live.write_text('{"stage":"current"}\n', encoding="utf-8")
+
+    runner._preserve_pinned_history(
+        live,
+        historical,
+        expected_file_fingerprint=pinned,
+    )
+
+    assert historical.read_text(encoding="utf-8") == (
+        '{"stage":"first"}\n'
+    )
+    assert live.read_text(encoding="utf-8") == '{"stage":"current"}\n'
+
+
+def test_pinned_history_drift_fails_closed(tmp_path: Path) -> None:
+    live = tmp_path / "live.json"
+    historical = tmp_path / "historical.json"
+    live.write_text('{"stage":"current"}\n', encoding="utf-8")
+    historical.write_text('{"stage":"drift"}\n', encoding="utf-8")
+
+    with pytest.raises(
+        runner.FreshReplayV2Error,
+        match="historical_artifact_copy_drift",
+    ):
+        runner._preserve_pinned_history(
+            live,
+            historical,
+            expected_file_fingerprint=runner.sha256_payload(
+                {"not": "the file hash"}
+            ),
+        )

@@ -117,6 +117,9 @@ CORRECTED_GRAPH_FAILED_SCOPE_PROOF_FINGERPRINT = (
 CORRECTED_GRAPH_FAILED_SCOPE_DATABASE_STATE_FINGERPRINT = (
     "ead590616e9448504461abec5886276cbaa3acd87f28188bf731ca8252f2bac3"
 )
+FIRST_GRAPH_R2R_AUDIT_FILE_FINGERPRINT = (
+    "cac03b398f740f7e24b39173eb2fde6ad723c7c16129fc8a639685b8bc3e9e7d"
+)
 DERIVED_GRAPH_TABLES = (
     "blombooru_source_concept_resolution_runs",
     "blombooru_source_concept_signals",
@@ -1143,6 +1146,27 @@ def _copy_if_missing(source: Path, target: Path) -> None:
     shutil.copy2(source, target)
 
 
+def _preserve_pinned_history(
+    source: Path,
+    target: Path,
+    *,
+    expected_file_fingerprint: str,
+) -> None:
+    """Preserve an immutable historical copy after the live file evolves."""
+
+    if not target.exists():
+        if sha256_file(source) != expected_file_fingerprint:
+            raise FreshReplayV2Error(
+                f"historical_artifact_source_drift:{source.name}"
+            )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    if sha256_file(target) != expected_file_fingerprint:
+        raise FreshReplayV2Error(
+            f"historical_artifact_copy_drift:{target.name}"
+        )
+
+
 def _install_external_route_guards(module: Any) -> None:
     def blocked(*_args: Any, **_kwargs: Any) -> Any:
         raise FreshReplayV2Error("external_execution_route_forbidden")
@@ -1548,7 +1572,13 @@ def _refresh_stable_signal_r2r_proof(
 ) -> dict[str, Any]:
     old_audit = output / "r2r-exact-remap-audit.json"
     historical = output / "r2r-exact-remap-audit-first-graph.json"
-    _copy_if_missing(old_audit, historical)
+    _preserve_pinned_history(
+        old_audit,
+        historical,
+        expected_file_fingerprint=(
+            FIRST_GRAPH_R2R_AUDIT_FILE_FINGERPRINT
+        ),
+    )
     primary, primary_rows = sv1b.audit_r2r_remap(PRIMARY_DATABASE)
     replay, replay_rows = sv1b.audit_r2r_remap(FRESH_REPLAY_DATABASE)
     ignored = {
