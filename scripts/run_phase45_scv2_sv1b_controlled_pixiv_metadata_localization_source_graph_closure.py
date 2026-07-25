@@ -5524,7 +5524,11 @@ def run_sv1b_search_validation(
     return result
 
 
-def compare_primary_replay_search_results(output: Path) -> dict[str, Any]:
+def compare_primary_replay_search_results(
+    output: Path,
+    *,
+    graph_comparison_override: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     primary = read_json(output / "primary-search-validation-proof.json")
     replay = read_json(output / "replay-search-validation-proof.json")
     compared_fields = (
@@ -5533,17 +5537,71 @@ def compare_primary_replay_search_results(output: Path) -> dict[str, Any]:
         "superseded_only_result_count", "invalid_deleted_only_result_count",
         "and_leakage_count", "search_caused_identity_mutation_count",
         "lifecycle_status_violation_count", "supported_query_missing_result_count",
-        "workload_fingerprint", "logical_result_fingerprint", "index_counts",
+        "workload_fingerprint", "logical_result_fingerprint",
     )
     mismatches = [key for key in compared_fields if primary.get(key) != replay.get(key)]
+    physical_index_count_mismatches = [
+        "index_counts"
+        for _ in (0,)
+        if primary.get("index_counts") != replay.get("index_counts")
+    ]
+    graph_search_projection = None
+    if graph_comparison_override is not None:
+        core = dict(
+            graph_comparison_override.get("core_graph_comparison") or {}
+        )
+        graph_search_projection = {
+            "primary_expected": (
+                (core.get("primary_expected") or {})
+                .get("groups", {})
+                .get("search")
+            ),
+            "fresh_planned": (
+                (core.get("fresh_planned") or {})
+                .get("groups", {})
+                .get("search")
+            ),
+            "fresh_persisted": (
+                (core.get("fresh_persisted") or {})
+                .get("groups", {})
+                .get("search")
+            ),
+        }
+        graph_search_projection["logical_equal"] = bool(
+            graph_comparison_override.get("passed") is True
+            and graph_search_projection["primary_expected"]
+            == graph_search_projection["fresh_planned"]
+            == graph_search_projection["fresh_persisted"]
+            and graph_search_projection["primary_expected"] is not None
+        )
+    else:
+        graph_search_projection = {
+            "logical_equal": not physical_index_count_mismatches,
+            "fallback_to_physical_counts": True,
+        }
     result = {
         "compared_fields": list(compared_fields),
         "mismatched_fields": mismatches,
         "unexplained_logical_mismatch_count": len(mismatches),
+        "physical_index_counts": {
+            "primary": primary.get("index_counts"),
+            "replay": replay.get("index_counts"),
+            "mismatched_fields": physical_index_count_mismatches,
+            "equality_required": graph_comparison_override is None,
+            "history_preserving_diagnostic_only": (
+                graph_comparison_override is not None
+            ),
+        },
+        "stable_graph_search_projection": graph_search_projection,
         "numeric_row_id_equality_claimed": False,
         "primary_passed": primary.get("passed") is True,
         "replay_passed": replay.get("passed") is True,
-        "passed": bool(primary.get("passed") is True and replay.get("passed") is True and not mismatches),
+        "passed": bool(
+            primary.get("passed") is True
+            and replay.get("passed") is True
+            and not mismatches
+            and graph_search_projection["logical_equal"] is True
+        ),
     }
     write_json(output / "primary-replay-search-comparison-proof.json", result)
     if result["passed"] is not True:

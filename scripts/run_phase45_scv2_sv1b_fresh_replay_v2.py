@@ -2143,7 +2143,10 @@ def execute_search(*, output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
         graph_proof_override=graph["replay_graph"],
         graph_comparison_override=graph,
     )
-    comparison = sv1b.compare_primary_replay_search_results(output)
+    comparison = sv1b.compare_primary_replay_search_results(
+        output,
+        graph_comparison_override=graph,
+    )
     failed_before = read_json(
         output / "read-only-preflight-proof.json"
     )["failed_replay_forensic_state"]

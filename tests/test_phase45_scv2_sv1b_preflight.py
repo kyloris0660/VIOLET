@@ -21,6 +21,7 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     classify_search_runtime_membership,
     compare_creator_family_states,
     compare_primary_replay_trusted_metadata_inputs,
+    compare_primary_replay_search_results,
     execute_provider_manifest,
     filter_nonderived_source_package,
     finalize_r2r_proposal_classifications,
@@ -1135,3 +1136,78 @@ def test_search_validation_explicit_graph_proof_override_fails_closed(
             graph_proof_override={"passed": False},
             graph_comparison_override={"passed": True},
         )
+
+
+def test_search_comparison_uses_stable_graph_projection_over_history_counts(
+    tmp_path: Path,
+) -> None:
+    shared = {
+        "passed": True,
+        "case_count": 1,
+        "category_case_counts": {"accepted_creator_alias": 1},
+        "lifecycle_status_case_counts": {},
+        "supported_result_count": 1,
+        "unsupported_result_count": 0,
+        "rejected_only_result_count": 0,
+        "superseded_only_result_count": 0,
+        "invalid_deleted_only_result_count": 0,
+        "and_leakage_count": 0,
+        "search_caused_identity_mutation_count": 0,
+        "lifecycle_status_violation_count": 0,
+        "supported_query_missing_result_count": 0,
+        "workload_fingerprint": "workload",
+        "logical_result_fingerprint": "logical",
+    }
+    (tmp_path / "primary-search-validation-proof.json").write_text(
+        json.dumps(
+            {
+                **shared,
+                "index_counts": {
+                    "source_concept_search_index": 10,
+                    "source_concept_fallback_search_index": 20,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "replay-search-validation-proof.json").write_text(
+        json.dumps(
+            {
+                **shared,
+                "index_counts": {
+                    "source_concept_search_index": 12,
+                    "source_concept_fallback_search_index": 40,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    stable_search = {"count": 7, "fingerprint": "stable-search"}
+    graph = {
+        "passed": True,
+        "core_graph_comparison": {
+            name: {"groups": {"search": stable_search}}
+            for name in (
+                "primary_expected",
+                "fresh_planned",
+                "fresh_persisted",
+            )
+        },
+    }
+
+    result = compare_primary_replay_search_results(
+        tmp_path,
+        graph_comparison_override=graph,
+    )
+
+    assert result["passed"] is True
+    assert result["mismatched_fields"] == []
+    assert result["stable_graph_search_projection"][
+        "logical_equal"
+    ] is True
+    assert result["physical_index_counts"]["mismatched_fields"] == [
+        "index_counts"
+    ]
+    assert result["physical_index_counts"][
+        "history_preserving_diagnostic_only"
+    ] is True

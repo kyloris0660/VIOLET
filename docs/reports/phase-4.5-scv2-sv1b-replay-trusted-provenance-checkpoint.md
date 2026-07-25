@@ -249,3 +249,19 @@ tag translation 解析为 canonical `Tag`，再查询 `media_tags`。因此当�
 修复只收窄 expected model 到 direct media-tag support；不补写 tag、不改
 runtime 产品语义、不写数据库。失败 proof 保留，下一步是离线
 Primary/fresh search rerun。
+
+endpoint-aligned rerun 后，Primary 与 fresh Replay 各 76 个 case 均独立
+通过：workload fingerprint 与 logical-result fingerprint 完全相等，
+supported results 均为 `1,496`；unsupported、missing、rejected、
+superseded、invalid、AND leakage、lifecycle violation 与 protected-table
+mutation 均为 `0`。
+
+最终 comparison 仅因 `index_counts` 失败。Primary 物理 search /
+fallback index 为 `9,682 / 141,323`，fresh 为 `9,709 / 282,676`；
+fresh 数字包含按授权保留的 superseded graph 与两代 fallback overlay
+历史，不能作为跨库逻辑 identity。失败 comparison proof fingerprint 为
+`4def842dce3a43d1352bbd76aa90ff762e1d2bd96740cb6a681f4690339de438`。
+当前 blocker 为
+`blocked_sv1b_search_physical_history_count_comparison`。修复门使用已经
+通过的 stable graph search projection 比较 current logical stable keys，
+物理行数继续作为 history-preservation diagnostic 报告，不删除历史。

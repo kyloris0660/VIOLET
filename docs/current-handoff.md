@@ -9,7 +9,7 @@
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
 - Implementation evidence HEAD: `78bc87f635a729a7e45bbb26199c24871770e60e`.
-- Status: `blocked_sv1b_search_expected_support_overprojection`.
+- Status: `blocked_sv1b_search_physical_history_count_comparison`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
 
@@ -29,8 +29,8 @@
 
 ## Current Blocker And Owner Decision
 
-- Blocker: `blocked_sv1b_search_expected_support_overprojection` (independent expected-support model for translated tag search).
-- Resolution: The 76-case Primary search run had zero unsupported, lifecycle, AND-leakage, or mutation findings, but two duplicate-category cases overexpected one source-name-only media row. Restrict translation expectation propagation to endpoint-queryable direct media-tag support, preserve the failed proof, and rerun Primary/fresh search validation.
+- Blocker: `blocked_sv1b_search_physical_history_count_comparison` (Primary and history-preserving fresh Replay search logical comparison).
+- Resolution: Endpoint-aligned Primary and fresh Replay 76-case search validations both passed with identical workload and logical-result fingerprints. Their final comparison failed only because it treated physical index row counts as logical equality even though fresh Replay intentionally preserves superseded graph and fallback-overlay history. Use the already-passed stable graph search projection for logical equality and retain physical counts as diagnostics.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -44,7 +44,7 @@
 
 ## Next Action
 
-- Required checkpoint: `endpoint_aligned_translation_support_and_primary_fresh_search_rerun`.
+- Required checkpoint: `stable_graph_search_projection_and_runtime_logical_result_comparison`.
 
 ## Durable Links
 
@@ -56,4 +56,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T01:27:00+08:00`.
+Updated: `2026-07-26T01:32:01+08:00`.

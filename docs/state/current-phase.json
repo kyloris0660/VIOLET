@@ -8,7 +8,7 @@
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
   "implementation_evidence_head": "78bc87f635a729a7e45bbb26199c24871770e60e",
-  "current_status": "blocked_sv1b_search_expected_support_overprojection",
+  "current_status": "blocked_sv1b_search_physical_history_count_comparison",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -72,10 +72,10 @@
     }
   ],
   "active_blocker": {
-    "code": "blocked_sv1b_search_expected_support_overprojection",
-    "scope": "independent expected-support model for translated tag search",
+    "code": "blocked_sv1b_search_physical_history_count_comparison",
+    "scope": "Primary and history-preserving fresh Replay search logical comparison",
     "nonblocking_localization_item": "enpera",
-    "resolution": "The 76-case Primary search run had zero unsupported, lifecycle, AND-leakage, or mutation findings, but two duplicate-category cases overexpected one source-name-only media row. Restrict translation expectation propagation to endpoint-queryable direct media-tag support, preserve the failed proof, and rerun Primary/fresh search validation."
+    "resolution": "Endpoint-aligned Primary and fresh Replay 76-case search validations both passed with identical workload and logical-result fingerprints. Their final comparison failed only because it treated physical index row counts as logical equality even though fresh Replay intentionally preserves superseded graph and fallback-overlay history. Use the already-passed stable graph search projection for logical equality and retain physical counts as diagnostics."
   },
   "owner_decisions": [
     {
@@ -123,7 +123,8 @@
     "fresh_replay_graph_recovery_proof_fingerprint": "60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089",
     "fresh_replay_graph_core_fingerprint": "67832751561266d9c106ae8169b5e98a049e14f2b0aebb84d985cb99e42d9d5f",
     "fresh_replay_graph_scope_reconciliation_fingerprint": "74051974c583c346c4026d268caa849a1fc18d451acdd0bffc62625e40a722b8",
-    "primary_search_overprojection_failed_proof_fingerprint": "49139f7005b8423d2fcb40e289bdbac17a73e5817f1c2709f1104739be36f175"
+    "primary_search_overprojection_failed_proof_fingerprint": "49139f7005b8423d2fcb40e289bdbac17a73e5817f1c2709f1104739be36f175",
+    "search_physical_history_comparison_failed_proof_fingerprint": "4def842dce3a43d1352bbd76aa90ff762e1d2bd96740cb6a681f4690339de438"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
@@ -133,7 +134,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "endpoint_aligned_translation_support_and_primary_fresh_search_rerun",
+  "next_required_checkpoint": "stable_graph_search_projection_and_runtime_logical_result_comparison",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -160,5 +161,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T01:27:00+08:00"
+  "updated_at": "2026-07-26T01:32:01+08:00"
 }
