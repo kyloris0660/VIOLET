@@ -1109,6 +1109,52 @@ def _active_harness_proof_path(output: Path) -> Path:
     return output / "manual-acceptance-harness-proof.json"
 
 
+def _prevalidation_bindings(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    source = sv1b.read_json(
+        output / "manual-acceptance-harness-proof.json"
+    )
+    existing_cases = sv1b.read_json(
+        output / "manual-acceptance/case-manifest-private.json"
+    )
+    regenerated_cases, _composition = _generate_cases(
+        output, primary_database=primary_database
+    )
+    if regenerated_cases != existing_cases:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_case_regeneration_drift"
+        )
+    relative_proof_sources, proofs = _resolve_proof_sources(
+        output, source.get("proof_sources")
+    )
+    current = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_proof_sources,
+        proofs=proofs,
+        cases=existing_cases,
+    )
+    expected = dict(source["bindings"])
+    for value in (current, expected):
+        value.pop("git_head", None)
+        value.pop("binding_fingerprint", None)
+    if current != expected:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_prevalidation_evidence_drift"
+        )
+    return _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_proof_sources,
+        proofs=proofs,
+        cases=existing_cases,
+    )
+
+
 def _current_bindings(
     output: Path,
     *,
@@ -1163,13 +1209,21 @@ def create_app(
     *,
     primary_database: str,
     replay_database: str,
+    prevalidation: bool = False,
 ):
     from fastapi import Body, FastAPI, HTTPException
     from fastapi.responses import FileResponse, HTMLResponse
 
     output = output.resolve()
-    bindings = _current_bindings(
-        output, primary_database=primary_database, replay_database=replay_database
+    binding_loader = (
+        _prevalidation_bindings
+        if prevalidation
+        else _current_bindings
+    )
+    bindings = binding_loader(
+        output,
+        primary_database=primary_database,
+        replay_database=replay_database,
     )
     cases = sv1b.read_json(output / "manual-acceptance/case-manifest-private.json")
     case_ids = {str(row["case_id"]) for row in cases}
@@ -1272,6 +1326,7 @@ def main() -> int:
     parser.add_argument("--replay-db", required=True)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--build", action="store_true")
+    parser.add_argument("--prevalidate", action="store_true")
     args = parser.parse_args()
     if os.getenv("VIOLET_ENV") != "test":
         raise ManualAcceptanceHarnessError("manual_acceptance_requires_violet_env_test")
@@ -1295,6 +1350,7 @@ def main() -> int:
         args.output,
         primary_database=args.primary_db,
         replay_database=args.replay_db,
+        prevalidation=args.prevalidate,
     )
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0

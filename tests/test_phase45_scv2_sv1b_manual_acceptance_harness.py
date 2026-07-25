@@ -460,6 +460,59 @@ def test_final_binding_regenerates_cases_and_preserves_source_proof(
     engine.dispose()
 
 
+def test_prevalidation_allows_git_only_drift_but_not_evidence_drift(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "a" * 40)
+    _patch_case_builders(monkeypatch)
+    harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "b" * 40)
+    bindings = harness._prevalidation_bindings(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    assert bindings["git_head"] == "b" * 40
+
+    proof_path = output / "primary-search-validation-proof.json"
+    proof = json.loads(proof_path.read_text(encoding="utf-8"))
+    proof["logical_result_fingerprint"] = "0" * 64
+    proof_path.write_text(json.dumps(proof), encoding="utf-8")
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="prevalidation_evidence_drift",
+    ):
+        harness._prevalidation_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
 def test_harness_rejects_proof_source_escape(
     tmp_path: Path, monkeypatch
 ) -> None:
