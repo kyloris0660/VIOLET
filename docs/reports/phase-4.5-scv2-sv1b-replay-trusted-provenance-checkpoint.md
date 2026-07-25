@@ -229,3 +229,9 @@ Replay、fresh non-derived package 与 translation state 均保持不变，fresh
 数据库数量仍为 `1`，provider / gallery-dl / LLM / media / thumbnail
 调用仍为 `0`。下一 durable gate 是
 `pending_sv1b_fresh_replay_search_validation`。
+
+search validation 的 checkpoint 入口也已改为显式接收通过验证的 fresh
+graph comparison proof；默认旧阶段文件名行为保持不变。这样 fresh
+Replay 不会回退读取不存在或过时的
+`primary-replay-source-graph-comparison-proof.json`，且未通过的 override
+仍会在数据库访问前 fail closed。
