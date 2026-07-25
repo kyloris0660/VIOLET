@@ -12647,8 +12647,11 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         "metadata_complete", "terminal_remote_unavailable", "deferred_nonblocking_source_page_mismatch"
     ))
     work_closed = sum(_as_int(_get(work_outcomes, key, -1), -1) for key in (
-        "metadata_complete", "terminal_remote_unavailable", "deferred_nonblocking_source_page_mismatch"
+        "metadata_complete",
+        "terminal_remote_unavailable",
+        "deferred_nonblocking_source_page_mismatch",
     ))
+    work_closed += _as_int(_get(work_outcomes, "mixed_closed", 0), 0)
     open_outcome_keys = (
         "unattempted", "pending", "retryable", "authentication_failure",
         "rate_limit_failure", "network_failure", "generic_provider_failure",

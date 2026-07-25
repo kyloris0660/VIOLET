@@ -8006,6 +8006,20 @@ def test_sv1b_contract_accepts_only_pending_user_automated_candidate() -> None:
     assert result.route_approved is False
 
 
+def test_sv1b_contract_accepts_work_level_mixed_closed_when_pages_are_terminal() -> None:
+    summary = _sv1b_contract_summary()
+    work_outcomes = summary["acquisition_accounting"]["work_outcome_counts"]
+    work_outcomes["metadata_complete"] -= 10
+    work_outcomes["mixed_closed"] = 10
+
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+
+    assert result.passed is True
+
+
 def test_sv1b_contract_allows_one_pending_but_blocks_systemic_quality_above_eight() -> None:
     accepted = check_phase_contract(
         "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
