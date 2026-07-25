@@ -306,3 +306,67 @@ def test_failed_scope_projection_checkpoint_recovers_without_graph_write(
     assert reconciliation["passed"] is True
     assert reconciliation["database_write_count"] == 0
     assert reconciliation["historical_failed_proof_rewritten"] is False
+
+
+def test_first_graph_checkpoint_accepts_exact_corrected_stage_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = {
+        "passed": False,
+        "graph_audit": {
+            "deferred_identity_union_count": 1,
+            "direct_cannot_link_violation_count": 0,
+            "transitive_cannot_link_violation_count": 0,
+            "multi_stable_id_creator_component_count": 0,
+            "unauthorized_cross_role_component_count": 0,
+            "unknown_role_materialization_count": 0,
+            "duplicate_active_stable_identity_count": 0,
+            "unsafe_large_component_count": 0,
+            "giant_component_recurrence": False,
+        },
+    }
+    corrected = {
+        "passed": False,
+        "graph_audit": {
+            "passed": True,
+            "deferred_identity_union_count": 0,
+        },
+    }
+    runner.write_json(
+        tmp_path / "replay-v2-source-graph-derivation-proof.json",
+        first,
+    )
+    runner.write_json(
+        tmp_path
+        / f"{runner.CORRECTED_GRAPH_LABEL}-source-graph-derivation-proof.json",
+        corrected,
+    )
+    monkeypatch.setattr(
+        runner,
+        "FAILED_FIRST_GRAPH_PROOF_FINGERPRINT",
+        runner.sha256_payload(first),
+    )
+    monkeypatch.setattr(
+        runner,
+        "CORRECTED_GRAPH_FAILED_SCOPE_PROOF_FINGERPRINT",
+        runner.sha256_payload(corrected),
+    )
+    monkeypatch.setattr(
+        runner,
+        "CORRECTED_GRAPH_FAILED_SCOPE_DATABASE_STATE_FINGERPRINT",
+        "corrected-state",
+    )
+    monkeypatch.setattr(
+        runner,
+        "_logical_graph_state",
+        lambda _database: {"fingerprint": "corrected-state"},
+    )
+
+    result = runner._validate_failed_first_graph_checkpoint(tmp_path)
+
+    assert result["passed"] is True
+    assert result["database_state_stage"] == (
+        "corrected_graph_committed_projection_scope_failed"
+    )
+    assert result["database_state_fingerprint"] == "corrected-state"

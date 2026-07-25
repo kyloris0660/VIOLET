@@ -114,6 +114,9 @@ CORRECTED_GRAPH_CORE_RUN_ID = (
 CORRECTED_GRAPH_FAILED_SCOPE_PROOF_FINGERPRINT = (
     "3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04"
 )
+CORRECTED_GRAPH_FAILED_SCOPE_DATABASE_STATE_FINGERPRINT = (
+    "ead590616e9448504461abec5886276cbaa3acd87f28188bf731ca8252f2bac3"
+)
 DERIVED_GRAPH_TABLES = (
     "blombooru_source_concept_resolution_runs",
     "blombooru_source_concept_signals",
@@ -1501,13 +1504,38 @@ def _validate_failed_first_graph_checkpoint(
             "failed_first_graph_checkpoint_identity_mismatch"
         )
     current = _logical_graph_state(FRESH_REPLAY_DATABASE)
-    if current["fingerprint"] != FAILED_FIRST_GRAPH_STATE_FINGERPRINT:
+    corrected_path = (
+        output
+        / f"{CORRECTED_GRAPH_LABEL}-source-graph-derivation-proof.json"
+    )
+    if corrected_path.is_file():
+        corrected = read_json(corrected_path)
+        corrected_graph = dict(corrected.get("graph_audit") or {})
+        if not (
+            sha256_payload(corrected)
+            == CORRECTED_GRAPH_FAILED_SCOPE_PROOF_FINGERPRINT
+            and corrected.get("passed") is False
+            and corrected_graph.get("passed") is True
+            and corrected_graph.get("deferred_identity_union_count") == 0
+            and current["fingerprint"]
+            == CORRECTED_GRAPH_FAILED_SCOPE_DATABASE_STATE_FINGERPRINT
+        ):
+            raise FreshReplayV2Error(
+                "corrected_graph_stage_checkpoint_identity_mismatch"
+            )
+        database_state_stage = (
+            "corrected_graph_committed_projection_scope_failed"
+        )
+    elif current["fingerprint"] == FAILED_FIRST_GRAPH_STATE_FINGERPRINT:
+        database_state_stage = "first_graph_failed"
+    else:
         raise FreshReplayV2Error(
             "failed_first_graph_database_state_drift"
         )
     return {
         "proof_fingerprint": sha256_payload(proof),
         "database_state_fingerprint": current["fingerprint"],
+        "database_state_stage": database_state_stage,
         "deferred_identity_union_count": 1,
         "other_graph_safety_violation_count": 0,
         "passed": True,
