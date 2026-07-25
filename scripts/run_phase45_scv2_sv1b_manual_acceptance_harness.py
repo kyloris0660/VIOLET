@@ -1215,6 +1215,22 @@ def normalize_submission(
     return normalized
 
 
+def _resolve_accepted_media_path(
+    stored_path: str,
+    storage_root: Path,
+) -> Path | None:
+    candidate = Path(stored_path)
+    resolved = (
+        candidate.resolve()
+        if candidate.is_absolute()
+        else (storage_root / candidate).resolve()
+    )
+    root = storage_root.resolve()
+    if root not in resolved.parents or not resolved.is_file():
+        return None
+    return resolved
+
+
 def create_app(
     output: Path,
     *,
@@ -1256,8 +1272,10 @@ def create_app(
         for value in (row.get("thumbnail_path"), row.get("path")):
             if not value:
                 continue
-            path = Path(str(value)).resolve()
-            if storage_root in path.parents and path.is_file():
+            path = _resolve_accepted_media_path(
+                str(value), storage_root
+            )
+            if path is not None:
                 media_paths[label] = path
                 break
     missing_media = sorted(allowed_labels - set(media_paths))

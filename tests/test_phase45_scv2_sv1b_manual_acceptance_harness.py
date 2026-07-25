@@ -580,6 +580,21 @@ def test_normalize_submission_requires_exact_case_membership_and_bounded_decisio
         )
 
 
+def test_media_path_resolution_anchors_relative_paths_and_blocks_escape(
+    tmp_path: Path,
+) -> None:
+    storage = tmp_path / "storage"
+    media = storage / "media" / "original" / "case.jpg"
+    media.parent.mkdir(parents=True)
+    media.write_bytes(b"safe")
+    assert harness._resolve_accepted_media_path(
+        "media/original/case.jpg", storage
+    ) == media.resolve()
+    assert harness._resolve_accepted_media_path(
+        "../outside.jpg", storage
+    ) is None
+
+
 def test_phase_delta_composition_rejects_underived_shared_name_safety() -> None:
     cases = [
         *_cases("pixiv_metadata", 12, "A"),
@@ -622,7 +637,7 @@ def test_harness_server_is_loopback_only_and_never_embeds_paths() -> None:
     source = Path(harness.__file__).read_text(encoding="utf-8")
     assert 'uvicorn.run(app, host="127.0.0.1"' in source
     assert 'os.getenv("APP_PORT"' in source
-    assert "storage_root in path.parents" in source
+    assert "root not in resolved.parents" in source
     assert '"source_url"' not in source
     assert '"path":' not in source
     assert "SCV2-SV1B 40-case 手工验收" in harness._HTML
