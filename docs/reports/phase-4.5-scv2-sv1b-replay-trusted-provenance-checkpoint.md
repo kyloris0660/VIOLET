@@ -199,3 +199,8 @@ checkpoint projection 排除 `superseded` 历史行，并对已提交 graph
 fingerprint 复核仍为
 `ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f`，
 外部调用仍为 `0`。
+
+恢复入口也改为 stage-aware：第一次失败 proof 继续按原 fingerprint
+验证；一旦精确的 corrected failed-scope proof 已存在，就验证该 proof
+及其对应的当前数据库状态，不再错误要求当前数据库永久等于第一次失败图。
+这条恢复路径不会再次调用 graph derivation，也不会写数据库。
