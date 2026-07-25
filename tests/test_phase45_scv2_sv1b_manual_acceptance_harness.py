@@ -217,6 +217,97 @@ def test_current_bindings_invalidates_on_proof_drift(tmp_path: Path, monkeypatch
     engine.dispose()
 
 
+def test_harness_uses_explicit_relative_proof_sources_and_detects_drift(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    fresh_graph = output / "fresh-replay-v2-final-graph-proof.json"
+    fresh_graph.write_text(
+        json.dumps({"passed": True, "logical_graph": "fresh-v2"}),
+        encoding="utf-8",
+    )
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "f" * 40)
+    _patch_case_builders(monkeypatch)
+    graph_slots = {
+        "primary-source-graph-derivation-proof.json": fresh_graph.name,
+        "replay-source-graph-derivation-proof.json": fresh_graph.name,
+        "primary-replay-source-graph-comparison-proof.json": fresh_graph.name,
+    }
+    proof = harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        proof_sources=graph_slots,
+    )
+    assert all(
+        proof["proof_sources"][slot] == fresh_graph.name
+        for slot in graph_slots
+    )
+    assert len(proof["bindings"]["proof_source_map_fingerprint"]) == 64
+
+    fresh_graph.write_text(
+        json.dumps(
+            {"passed": True, "logical_graph": "unexpected-drift"}
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="binding_invalidated",
+    ):
+        harness._current_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
+def test_harness_rejects_proof_source_escape(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="proof_source_escape",
+    ):
+        harness.build_harness(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+            proof_sources={
+                "primary-source-graph-derivation-proof.json": (
+                    "../outside.json"
+                )
+            },
+        )
+
+
 def test_normalize_submission_requires_exact_case_membership_and_bounded_decisions() -> None:
     case_ids = {"A01", "A02"}
     normalized = harness.normalize_submission(

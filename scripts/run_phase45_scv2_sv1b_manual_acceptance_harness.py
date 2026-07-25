@@ -668,6 +668,46 @@ def _proof_bindings(proofs: Mapping[str, Mapping[str, Any]]) -> dict[str, str]:
     }
 
 
+REQUIRED_PROOF_SLOTS = (
+    "acquisition-closure-and-package-proof.json",
+    "localization-closure-proof.json",
+    "primary-source-graph-derivation-proof.json",
+    "replay-source-graph-derivation-proof.json",
+    "primary-replay-source-graph-comparison-proof.json",
+    "primary-search-validation-proof.json",
+    "replay-search-validation-proof.json",
+    "primary-replay-search-comparison-proof.json",
+)
+
+
+def _resolve_proof_sources(
+    output: Path,
+    proof_sources: Mapping[str, str | Path] | None,
+) -> tuple[dict[str, str], dict[str, Mapping[str, Any]]]:
+    overrides = dict(proof_sources or {})
+    unknown = sorted(set(overrides) - set(REQUIRED_PROOF_SLOTS))
+    if unknown:
+        raise ManualAcceptanceHarnessError(
+            f"manual_acceptance_unknown_proof_slot:{unknown}"
+        )
+    relative_sources: dict[str, str] = {}
+    proofs: dict[str, Mapping[str, Any]] = {}
+    for slot in REQUIRED_PROOF_SLOTS:
+        source = Path(overrides.get(slot, slot))
+        if source.is_absolute():
+            raise ManualAcceptanceHarnessError(
+                f"manual_acceptance_absolute_proof_source_forbidden:{slot}"
+            )
+        path = (output / source).resolve()
+        if output != path.parent and output not in path.parents:
+            raise ManualAcceptanceHarnessError(
+                f"manual_acceptance_proof_source_escape:{slot}"
+            )
+        relative_sources[slot] = path.relative_to(output).as_posix()
+        proofs[slot] = sv1b.read_json(path)
+    return relative_sources, proofs
+
+
 def validate_phase_delta_case_composition(cases: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     values = [dict(row) for row in cases]
     by_category: dict[str, list[dict[str, Any]]] = {
@@ -775,22 +815,15 @@ def build_harness(
     primary_database: str,
     replay_database: str,
     port: int = DEFAULT_PORT,
+    proof_sources: Mapping[str, str | Path] | None = None,
 ) -> dict[str, Any]:
     output = output.resolve()
     sv1b.validate_owned_output_root(
         output, primary_database=primary_database, replay_database=replay_database
     )
-    required_proofs = (
-        "acquisition-closure-and-package-proof.json",
-        "localization-closure-proof.json",
-        "primary-source-graph-derivation-proof.json",
-        "replay-source-graph-derivation-proof.json",
-        "primary-replay-source-graph-comparison-proof.json",
-        "primary-search-validation-proof.json",
-        "replay-search-validation-proof.json",
-        "primary-replay-search-comparison-proof.json",
+    relative_proof_sources, proofs = _resolve_proof_sources(
+        output, proof_sources
     )
-    proofs = {name: sv1b.read_json(output / name) for name in required_proofs}
     failed = [name for name, proof in proofs.items() if proof.get("passed") is not True]
     if (
         proofs["localization-closure-proof.json"].get(
@@ -849,6 +882,9 @@ def build_harness(
         "replay_database": replay_binding,
         "media_manifest_fingerprint": sv1b.ACCEPTED_MANIFEST_FINGERPRINT,
         **_proof_bindings(proofs),
+        "proof_source_map_fingerprint": sv1b.sha256_payload(
+            relative_proof_sources
+        ),
         "acceptance_case_manifest_fingerprint": case_fingerprint,
     }
     bindings["binding_fingerprint"] = sv1b.sha256_payload(bindings)
@@ -866,6 +902,7 @@ def build_harness(
         "provider_urls_exposed": False,
         "localhost_url": f"http://127.0.0.1:{int(port)}",
         "acceptance_case_manifest_fingerprint": case_fingerprint,
+        "proof_sources": relative_proof_sources,
         "bindings": bindings,
         "result_path_relative": "manual-acceptance/manual-acceptance-result.json",
         "manual_acceptance_required": True,
@@ -888,23 +925,18 @@ def _current_bindings(
     proof = sv1b.read_json(output / "manual-acceptance-harness-proof.json")
     cases = sv1b.read_json(output / "manual-acceptance/case-manifest-private.json")
     expected = proof["bindings"]
-    proof_names = (
-        "acquisition-closure-and-package-proof.json",
-        "localization-closure-proof.json",
-        "primary-source-graph-derivation-proof.json",
-        "replay-source-graph-derivation-proof.json",
-        "primary-replay-source-graph-comparison-proof.json",
-        "primary-search-validation-proof.json",
-        "replay-search-validation-proof.json",
-        "primary-replay-search-comparison-proof.json",
+    relative_proof_sources, proofs = _resolve_proof_sources(
+        output, proof.get("proof_sources")
     )
-    proofs = {name: sv1b.read_json(output / name) for name in proof_names}
     current = {
         "git_head": _git_head(),
         "primary_database": _database_binding(primary_database),
         "replay_database": _database_binding(replay_database),
         "media_manifest_fingerprint": sv1b.ACCEPTED_MANIFEST_FINGERPRINT,
         **_proof_bindings(proofs),
+        "proof_source_map_fingerprint": sv1b.sha256_payload(
+            relative_proof_sources
+        ),
         "acceptance_case_manifest_fingerprint": sv1b.sha256_payload(cases),
     }
     current.pop("binding_fingerprint", None)

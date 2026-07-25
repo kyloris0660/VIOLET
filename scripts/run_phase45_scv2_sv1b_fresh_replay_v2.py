@@ -2191,11 +2191,22 @@ def execute_build_harness(
         run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
     )
 
+    graph_proof_source = (
+        "fresh-replay-v2-stable-signal-rederive-compare-proof.json"
+    )
+    graph_proof_slots = {
+        "primary-source-graph-derivation-proof.json": graph_proof_source,
+        "replay-source-graph-derivation-proof.json": graph_proof_source,
+        "primary-replay-source-graph-comparison-proof.json": (
+            graph_proof_source
+        ),
+    }
     proof = harness.build_harness(
         output,
         primary_database=PRIMARY_DATABASE,
         replay_database=FRESH_REPLAY_DATABASE,
         port=port,
+        proof_sources=graph_proof_slots,
     )
     failed_before = read_json(
         output / "read-only-preflight-proof.json"
