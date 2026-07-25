@@ -77,13 +77,14 @@ explicitly superseded historical rows. The stage-aware no-write reconciliation
 then passed: stable signals, R2R remap, Primary expected core, fresh planned
 core, fresh persisted core, and 606/606 family preservation are logically
 equal, while both failed proofs remain immutable. The current durable gate is
-The endpoint-aligned Primary and fresh Replay 76-case runs both pass with
-identical workload and logical-result fingerprints. The current gate is
-`blocked_sv1b_search_physical_history_count_comparison`: the comparison must
-use the already-passed stable graph search projection for logical equality,
-because fresh Replay intentionally retains superseded graph and fallback
-overlay rows. Physical index totals remain reported diagnostics, not a
-cross-database identity contract. Both failed search proofs remain preserved.
+The endpoint-aligned Primary and fresh Replay 76-case runs and their stable
+logical comparison pass with identical workload/result fingerprints, zero
+missing or unsupported results, zero AND leakage, zero lifecycle violation,
+and zero protected-table mutation. Physical history totals remain diagnostics,
+and both failed search proofs remain preserved. The current gate is
+`pending_sv1b_phase_delta_manual_acceptance_harness`: build the exact 40-case
+phase-delta harness, include `enpera`, and complete real localhost browser
+validation before stopping at owner manual acceptance.
 
 ## Registered GOV3 Contracts
 

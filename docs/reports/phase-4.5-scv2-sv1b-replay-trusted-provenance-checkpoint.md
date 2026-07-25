@@ -265,3 +265,19 @@ fresh 数字包含按授权保留的 superseded graph 与两代 fallback overlay
 `blocked_sv1b_search_physical_history_count_comparison`。修复门使用已经
 通过的 stable graph search projection 比较 current logical stable keys，
 物理行数继续作为 history-preservation diagnostic 报告，不删除历史。
+
+stable logical comparison rerun 已通过。fresh Replay search proof
+fingerprint 为
+`8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a`；
+workload / logical-result fingerprints 分别为
+`5207da2426d791c6872f46b1c566d8094b4eb133f603fd577a7fbe7ca9d2efeb`
+与
+`244d1451b4779e1bc65cccea582af90143fb7c75e1be3557b0d791af5ac6a7b8`。
+Primary/fresh 各 76 case、1,496 supported results，所有 missing、
+unsupported、AND leakage、lifecycle violation 与 protected-table mutation
+均为 `0`。stable graph search projection 的 Primary expected / fresh
+planned / fresh persisted 均为 `6,987` 条，fingerprint 相等。
+
+当前 durable gate 为
+`pending_sv1b_phase_delta_manual_acceptance_harness`；下一步只允许生成
+40-case harness、纳入 `enpera` 并做真实 localhost browser validation。

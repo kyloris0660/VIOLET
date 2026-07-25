@@ -9,7 +9,7 @@
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
 - Implementation evidence HEAD: `d26b06d37c7e4b62e1915c435b5a4a9729be61fd`.
-- Status: `blocked_sv1b_search_physical_history_count_comparison`.
+- Status: `sv1b_fresh_replay_search_passed_pending_manual_harness`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
 
@@ -26,11 +26,12 @@
 - `stable_replay_package_v2_offline_validation`: `passed_with_primary_immutable_evidence_crosscheck` — `640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845`.
 - `fresh_replay_v2_create_import_round_trip`: `passed` — `935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9`.
 - `fresh_replay_v2_graph_recovery_and_logical_comparison`: `passed_with_failed_checkpoints_preserved` — `60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089`.
+- `fresh_replay_v2_search_lifecycle_and_and_validation`: `passed_with_physical_history_counts_diagnostic_only` — `8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a`.
 
 ## Current Blocker And Owner Decision
 
-- Blocker: `blocked_sv1b_search_physical_history_count_comparison` (Primary and history-preserving fresh Replay search logical comparison).
-- Resolution: Endpoint-aligned Primary and fresh Replay 76-case search validations both passed with identical workload and logical-result fingerprints. Their final comparison failed only because it treated physical index row counts as logical equality even though fresh Replay intentionally preserves superseded graph and fallback-overlay history. Use the already-passed stable graph search projection for logical equality and retain physical counts as diagnostics.
+- Blocker: `pending_sv1b_phase_delta_manual_acceptance_harness` (phase-delta 40-case harness and real localhost browser validation).
+- Resolution: Primary and fresh Replay search lifecycle, media-level AND, and stable graph search projection comparisons passed with zero logical mismatches or protected-table mutations. Build the exact phase-delta 40-case harness, include enpera as a localization manual case, and run real localhost browser validation.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -44,7 +45,7 @@
 
 ## Next Action
 
-- Required checkpoint: `stable_graph_search_projection_and_runtime_logical_result_comparison`.
+- Required checkpoint: `phase_delta_40_case_harness_and_real_browser_validation`.
 
 ## Durable Links
 
@@ -56,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T01:32:47+08:00`.
+Updated: `2026-07-26T01:36:30+08:00`.

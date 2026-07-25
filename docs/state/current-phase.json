@@ -8,7 +8,7 @@
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
   "implementation_evidence_head": "d26b06d37c7e4b62e1915c435b5a4a9729be61fd",
-  "current_status": "blocked_sv1b_search_physical_history_count_comparison",
+  "current_status": "sv1b_fresh_replay_search_passed_pending_manual_harness",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -69,13 +69,18 @@
       "id": "fresh_replay_v2_graph_recovery_and_logical_comparison",
       "result": "passed_with_failed_checkpoints_preserved",
       "fingerprint": "60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089"
+    },
+    {
+      "id": "fresh_replay_v2_search_lifecycle_and_and_validation",
+      "result": "passed_with_physical_history_counts_diagnostic_only",
+      "fingerprint": "8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a"
     }
   ],
   "active_blocker": {
-    "code": "blocked_sv1b_search_physical_history_count_comparison",
-    "scope": "Primary and history-preserving fresh Replay search logical comparison",
+    "code": "pending_sv1b_phase_delta_manual_acceptance_harness",
+    "scope": "phase-delta 40-case harness and real localhost browser validation",
     "nonblocking_localization_item": "enpera",
-    "resolution": "Endpoint-aligned Primary and fresh Replay 76-case search validations both passed with identical workload and logical-result fingerprints. Their final comparison failed only because it treated physical index row counts as logical equality even though fresh Replay intentionally preserves superseded graph and fallback-overlay history. Use the already-passed stable graph search projection for logical equality and retain physical counts as diagnostics."
+    "resolution": "Primary and fresh Replay search lifecycle, media-level AND, and stable graph search projection comparisons passed with zero logical mismatches or protected-table mutations. Build the exact phase-delta 40-case harness, include enpera as a localization manual case, and run real localhost browser validation."
   },
   "owner_decisions": [
     {
@@ -124,7 +129,10 @@
     "fresh_replay_graph_core_fingerprint": "67832751561266d9c106ae8169b5e98a049e14f2b0aebb84d985cb99e42d9d5f",
     "fresh_replay_graph_scope_reconciliation_fingerprint": "74051974c583c346c4026d268caa849a1fc18d451acdd0bffc62625e40a722b8",
     "primary_search_overprojection_failed_proof_fingerprint": "49139f7005b8423d2fcb40e289bdbac17a73e5817f1c2709f1104739be36f175",
-    "search_physical_history_comparison_failed_proof_fingerprint": "4def842dce3a43d1352bbd76aa90ff762e1d2bd96740cb6a681f4690339de438"
+    "search_physical_history_comparison_failed_proof_fingerprint": "4def842dce3a43d1352bbd76aa90ff762e1d2bd96740cb6a681f4690339de438",
+    "fresh_replay_search_proof_fingerprint": "8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a",
+    "fresh_replay_search_workload_fingerprint": "5207da2426d791c6872f46b1c566d8094b4eb133f603fd577a7fbe7ca9d2efeb",
+    "fresh_replay_search_logical_result_fingerprint": "244d1451b4779e1bc65cccea582af90143fb7c75e1be3557b0d791af5ac6a7b8"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
@@ -134,7 +142,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "stable_graph_search_projection_and_runtime_logical_result_comparison",
+  "next_required_checkpoint": "phase_delta_40_case_harness_and_real_browser_validation",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -161,5 +169,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T01:32:47+08:00"
+  "updated_at": "2026-07-26T01:36:30+08:00"
 }
