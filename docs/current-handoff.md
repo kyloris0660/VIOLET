@@ -9,7 +9,7 @@
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
 - Implementation evidence HEAD: `57131a53724f5a285e9bdc1894c17471cc4a2811`.
-- Status: `sv1b_fresh_replay_v2_graph_passed_pending_search_validation`.
+- Status: `blocked_sv1b_search_expected_support_overprojection`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
 
@@ -29,8 +29,8 @@
 
 ## Current Blocker And Owner Decision
 
-- Blocker: `pending_sv1b_fresh_replay_search_validation` (Primary and fresh Replay search lifecycle and media-level AND semantics).
-- Resolution: Stable-signal graph recovery and Primary/fresh logical comparison passed with both failed graph proofs preserved. Run the offline search lifecycle and media-level AND comparison; no provider, LLM, media, or old-Replay route is authorized.
+- Blocker: `blocked_sv1b_search_expected_support_overprojection` (independent expected-support model for translated tag search).
+- Resolution: The 76-case Primary search run had zero unsupported, lifecycle, AND-leakage, or mutation findings, but two duplicate-category cases overexpected one source-name-only media row. Restrict translation expectation propagation to endpoint-queryable direct media-tag support, preserve the failed proof, and rerun Primary/fresh search validation.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -44,7 +44,7 @@
 
 ## Next Action
 
-- Required checkpoint: `fresh_replay_search_lifecycle_and_media_level_and_validation`.
+- Required checkpoint: `endpoint_aligned_translation_support_and_primary_fresh_search_rerun`.
 
 ## Durable Links
 
@@ -56,4 +56,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T01:20:29+08:00`.
+Updated: `2026-07-26T01:26:14+08:00`.

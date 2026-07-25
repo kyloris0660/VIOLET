@@ -235,3 +235,17 @@ graph comparison proof；默认旧阶段文件名行为保持不变。这样 fre
 Replay 不会回退读取不存在或过时的
 `primary-replay-source-graph-comparison-proof.json`，且未通过的 override
 仍会在数据库访问前 fail closed。
+
+第一次 Primary search validation 执行了 76 个实际查询并保留失败 proof
+`49139f7005b8423d2fcb40e289bdbac17a73e5817f1c2709f1104739be36f175`。
+unsupported、rejected/superseded/invalid-only、lifecycle violation、AND
+leakage 与 protected-table mutation 均为 `0`；两条不同类别 case 指向同一
+中文 display term，并各自 overexpect 同一条 source-name-only media。
+
+根因是独立 expected-support 模型把 tag translation 传播到所有
+source-name/provider-work/SourceConcept support；实际 endpoint 只把受信
+tag translation 解析为 canonical `Tag`，再查询 `media_tags`。因此当前
+以 `blocked_sv1b_search_expected_support_overprojection` fail closed。
+修复只收窄 expected model 到 direct media-tag support；不补写 tag、不改
+runtime 产品语义、不写数据库。失败 proof 保留，下一步是离线
+Primary/fresh search rerun。

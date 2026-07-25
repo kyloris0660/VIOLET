@@ -1463,10 +1463,22 @@ def apply_translation_support_relations(
     support_index: dict[str, dict[int, set[str]]],
     translation_rows: Sequence[Mapping[str, Any]],
 ) -> None:
-    """Project accepted translation evidence onto existing direct tag support."""
+    """Project translations only onto endpoint-queryable media-tag support.
+
+    Tag display localization does not translate source-name, provider-work,
+    or SourceConcept evidence. The runtime endpoint resolves a trusted
+    translation to canonical ``Tag`` names and then queries ``media_tags``;
+    the independent expectation must preserve that same boundary.
+    """
 
     from app.utils.search_parser import _translation_alias_map
 
+    translatable_support_types = {
+        "direct_media_tag",
+        "direct_media_tag_exact_text",
+        "direct_media_tag_query_key_variant",
+        "direct_media_tag_parenthetical_variant",
+    }
     alias_map = _translation_alias_map(translation_rows)
     for alias_value, canonical_names in alias_map.items():
         canonical_media: set[int] = set()
@@ -1475,7 +1487,14 @@ def apply_translation_support_relations(
             canonical_keys.update((canonical_source_key(canonical_name), exact_support_key(canonical_name)))
             canonical_keys.discard("")
             for canonical_key in canonical_keys:
-                canonical_media.update(support_index.get(canonical_key, {}))
+                for media_id, support_types in support_index.get(
+                    canonical_key,
+                    {},
+                ).items():
+                    if translatable_support_types.intersection(
+                        support_types
+                    ):
+                        canonical_media.add(int(media_id))
         if not canonical_media:
             continue
         alias_keys = set(_source_concept_key_candidates(alias_value))

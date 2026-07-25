@@ -8,7 +8,7 @@
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
   "implementation_evidence_head": "57131a53724f5a285e9bdc1894c17471cc4a2811",
-  "current_status": "sv1b_fresh_replay_v2_graph_passed_pending_search_validation",
+  "current_status": "blocked_sv1b_search_expected_support_overprojection",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -72,10 +72,10 @@
     }
   ],
   "active_blocker": {
-    "code": "pending_sv1b_fresh_replay_search_validation",
-    "scope": "Primary and fresh Replay search lifecycle and media-level AND semantics",
+    "code": "blocked_sv1b_search_expected_support_overprojection",
+    "scope": "independent expected-support model for translated tag search",
     "nonblocking_localization_item": "enpera",
-    "resolution": "Stable-signal graph recovery and Primary/fresh logical comparison passed with both failed graph proofs preserved. Run the offline search lifecycle and media-level AND comparison; no provider, LLM, media, or old-Replay route is authorized."
+    "resolution": "The 76-case Primary search run had zero unsupported, lifecycle, AND-leakage, or mutation findings, but two duplicate-category cases overexpected one source-name-only media row. Restrict translation expectation propagation to endpoint-queryable direct media-tag support, preserve the failed proof, and rerun Primary/fresh search validation."
   },
   "owner_decisions": [
     {
@@ -122,7 +122,8 @@
     "fresh_replay_current_forensic_state_fingerprint": "62e997dfdbe94edc5f51996832fc301dcedbb654d91c0c73ddbd395c9c7baeb8",
     "fresh_replay_graph_recovery_proof_fingerprint": "60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089",
     "fresh_replay_graph_core_fingerprint": "67832751561266d9c106ae8169b5e98a049e14f2b0aebb84d985cb99e42d9d5f",
-    "fresh_replay_graph_scope_reconciliation_fingerprint": "74051974c583c346c4026d268caa849a1fc18d451acdd0bffc62625e40a722b8"
+    "fresh_replay_graph_scope_reconciliation_fingerprint": "74051974c583c346c4026d268caa849a1fc18d451acdd0bffc62625e40a722b8",
+    "primary_search_overprojection_failed_proof_fingerprint": "49139f7005b8423d2fcb40e289bdbac17a73e5817f1c2709f1104739be36f175"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
@@ -132,7 +133,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "fresh_replay_search_lifecycle_and_media_level_and_validation",
+  "next_required_checkpoint": "endpoint_aligned_translation_support_and_primary_fresh_search_rerun",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -159,5 +160,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T01:20:29+08:00"
+  "updated_at": "2026-07-26T01:26:14+08:00"
 }

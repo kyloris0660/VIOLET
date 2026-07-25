@@ -1209,8 +1209,41 @@ def test_translation_support_inherits_exact_and_parenthetical_direct_tags() -> N
         ],
     )
     inherited = support[ml1_runner.canonical_source_key("blue hair translated")]
-    assert set(inherited) == {1, 2, 3}
+    assert set(inherited) == {1, 2}
     assert all("accepted_search_only_translation_relation" in types for types in inherited.values())
+    assert 3 not in inherited
+
+
+def test_translation_support_does_not_translate_source_name_evidence() -> None:
+    canonical = ml1_runner.exact_support_key("!")
+    alias = ml1_runner.canonical_source_key("translated exclamation")
+    support = {
+        canonical: {
+            1: {"direct_media_tag_exact_text"},
+            2: {
+                "direct_source_name_exact_text",
+                "exact_provider_work_metadata",
+            },
+        }
+    }
+
+    ml1_runner.apply_translation_support_relations(
+        support,
+        [
+            {
+                "canonical_name": "!",
+                "display_name": "translated exclamation",
+                "aliases_json": [],
+                "category": "general",
+                "source": "llm",
+                "status": "translated",
+                "needs_review": False,
+            }
+        ],
+    )
+
+    assert set(support[alias]) == {1}
+    assert 2 not in support[alias]
 
 
 def test_runtime_support_sql_mirrors_endpoint_source_name_review_gate() -> None:
