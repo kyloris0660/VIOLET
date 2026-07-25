@@ -8,7 +8,7 @@
 - Repository / PR: `kyloris0660/VIOLET` / Draft PR #139.
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
-- Implementation evidence HEAD: `d26b06d37c7e4b62e1915c435b5a4a9729be61fd`.
+- Implementation evidence HEAD: `304021604066d6643517596b980876ca088226cb`.
 - Status: `sv1b_fresh_replay_search_passed_pending_manual_harness`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
@@ -31,7 +31,7 @@
 ## Current Blocker And Owner Decision
 
 - Blocker: `pending_sv1b_phase_delta_manual_acceptance_harness` (phase-delta 40-case harness and real localhost browser validation).
-- Resolution: Primary and fresh Replay search lifecycle, media-level AND, and stable graph search projection comparisons passed with zero logical mismatches or protected-table mutations. Build the exact phase-delta 40-case harness, include enpera as a localization manual case, and run real localhost browser validation.
+- Resolution: Primary and fresh Replay search lifecycle, media-level AND, and stable graph search projection comparisons passed with zero logical mismatches or protected-table mutations. The harness now binds logical proof slots to explicit output-root-relative evidence sources and revalidates those sources on startup. Build the exact phase-delta 40-case harness, include enpera as a localization manual case, and run real localhost browser validation.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -57,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T01:36:30+08:00`.
+Updated: `2026-07-26T01:41:47+08:00`.
