@@ -28,6 +28,7 @@ from scripts.run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source
     open_reason_for_pair,
     plan_accepted_creator_media_support_overlay,
     public_console_summary,
+    run_sv1b_search_validation,
     scope_creator_family_state_to_media_membership,
     sha256_payload,
     validate_graph_derivation_checkpoint,
@@ -1118,3 +1119,19 @@ def test_r2r_target_collision_classification_is_fail_closed(accepted, expected) 
         accepted,
     )
     assert {pair_id: row["classification"] for pair_id, row in preliminary.items()} == expected
+
+
+def test_search_validation_explicit_graph_proof_override_fails_closed(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        SV1BPreflightError,
+        match="graph_proof_missing_or_failed",
+    ):
+        run_sv1b_search_validation(
+            tmp_path,
+            database="blombooru_strict_test",
+            label="fresh-replay",
+            graph_proof_override={"passed": False},
+            graph_comparison_override={"passed": True},
+        )

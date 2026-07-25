@@ -2131,11 +2131,17 @@ def execute_search(*, output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
         output,
         database=PRIMARY_DATABASE,
         label="primary",
+        graph_proof_override=graph[
+            "primary_readonly_core_graph"
+        ],
+        graph_comparison_override=graph,
     )
     replay = sv1b.run_sv1b_search_validation(
         output,
         database=FRESH_REPLAY_DATABASE,
         label="replay",
+        graph_proof_override=graph["replay_graph"],
+        graph_comparison_override=graph,
     )
     comparison = sv1b.compare_primary_replay_search_results(output)
     failed_before = read_json(

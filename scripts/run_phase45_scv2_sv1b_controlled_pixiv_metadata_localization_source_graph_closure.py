@@ -5322,12 +5322,26 @@ def run_sv1b_search_validation(
     *,
     database: str,
     label: str,
+    graph_proof_override: Mapping[str, Any] | None = None,
+    graph_comparison_override: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     import time
     from scripts import run_phase45_scv2_ml1_multilingual_alias_source_metadata_closure as ml1
 
-    graph_proof = read_json(output / f"{label}-source-graph-derivation-proof.json")
-    graph_comparison = read_json(output / "primary-replay-source-graph-comparison-proof.json")
+    graph_proof = (
+        dict(graph_proof_override)
+        if graph_proof_override is not None
+        else read_json(
+            output / f"{label}-source-graph-derivation-proof.json"
+        )
+    )
+    graph_comparison = (
+        dict(graph_comparison_override)
+        if graph_comparison_override is not None
+        else read_json(
+            output / "primary-replay-source-graph-comparison-proof.json"
+        )
+    )
     if graph_proof.get("passed") is not True or graph_comparison.get("passed") is not True:
         raise SV1BPreflightError(f"{label}_graph_proof_missing_or_failed")
     before = database_fingerprint(database, SEARCH_PROTECTED_TABLES)
