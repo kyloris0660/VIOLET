@@ -204,3 +204,8 @@ fingerprint 复核仍为
 验证；一旦精确的 corrected failed-scope proof 已存在，就验证该 proof
 及其对应的当前数据库状态，不再错误要求当前数据库永久等于第一次失败图。
 这条恢复路径不会再次调用 graph derivation，也不会写数据库。
+
+同理，第一次图的 R2R audit 副本改为 pinned historical artifact：
+历史文件按固定 file fingerprint 验证，当前 live audit 可随 stable-signal
+阶段演进；不再错误要求两者永久字节相等。其他 accepted artifact copy
+gate 未被放宽。
