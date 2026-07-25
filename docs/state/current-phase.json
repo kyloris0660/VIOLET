@@ -7,7 +7,7 @@
   "pr_number": 139,
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
-  "implementation_evidence_head": "304021604066d6643517596b980876ca088226cb",
+  "implementation_evidence_head": "90bb39035b12eca9e2bc8805647692023b531ee1",
   "current_status": "sv1b_fresh_replay_search_passed_pending_manual_harness",
   "target_met": false,
   "safe_to_merge": false,
@@ -80,7 +80,7 @@
     "code": "pending_sv1b_phase_delta_manual_acceptance_harness",
     "scope": "phase-delta 40-case harness and real localhost browser validation",
     "nonblocking_localization_item": "enpera",
-    "resolution": "Primary and fresh Replay search lifecycle, media-level AND, and stable graph search projection comparisons passed with zero logical mismatches or protected-table mutations. The harness now binds logical proof slots to explicit output-root-relative evidence sources and revalidates those sources on startup. Build the exact phase-delta 40-case harness, include enpera as a localization manual case, and run real localhost browser validation."
+    "resolution": "Primary and fresh Replay search lifecycle, media-level AND, and stable graph search projection comparisons passed with zero logical mismatches or protected-table mutations. The harness binds logical proof slots to explicit output-root-relative evidence sources, revalidates those sources on startup, and selects newly acquired exact metadata only from accepted stable-package-v2 authenticated-provider membership. Build the exact phase-delta 40-case harness, include enpera as a localization manual case, and run real localhost browser validation."
   },
   "owner_decisions": [
     {
@@ -169,5 +169,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T01:41:47+08:00"
+  "updated_at": "2026-07-26T01:46:20+08:00"
 }
