@@ -394,6 +394,70 @@ def test_harness_uses_explicit_relative_proof_sources_and_detects_drift(
     engine.dispose()
 
 
+def test_final_binding_regenerates_cases_and_preserves_source_proof(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "a" * 40)
+    _patch_case_builders(monkeypatch)
+    source = harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    source_text = (
+        output / "manual-acceptance-harness-proof.json"
+    ).read_text(encoding="utf-8")
+
+    monkeypatch.setattr(harness, "_git_head", lambda: "b" * 40)
+    final = harness.finalize_harness_binding(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    assert final["case_manifest_regenerated_equal"] is True
+    assert final["bindings"]["git_head"] == "b" * 40
+    assert (
+        output / "manual-acceptance-harness-proof.json"
+    ).read_text(encoding="utf-8") == source_text
+    assert final[
+        "supersedes_harness_proof_fingerprint"
+    ] == harness.sv1b.sha256_payload(source)
+    assert harness._current_bindings(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    ) == final["bindings"]
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="final_binding_already_exists",
+    ):
+        harness.finalize_harness_binding(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
 def test_harness_rejects_proof_source_escape(
     tmp_path: Path, monkeypatch
 ) -> None:

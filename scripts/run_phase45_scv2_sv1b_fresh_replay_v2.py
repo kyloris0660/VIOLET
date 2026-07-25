@@ -96,6 +96,7 @@ STAGES = (
     "rederive-compare",
     "search",
     "build-harness",
+    "finalize-harness-binding",
 )
 FAILED_FIRST_GRAPH_PROOF_FINGERPRINT = (
     "7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6"
@@ -2241,6 +2242,74 @@ def execute_build_harness(
     return result
 
 
+def execute_finalize_harness_binding(
+    *,
+    output: Path = DEFAULT_OUTPUT,
+) -> dict[str, Any]:
+    checkpoint_path = (
+        output / "fresh-replay-v2-final-manual-checkpoint-proof.json"
+    )
+    if checkpoint_path.is_file():
+        raise FreshReplayV2Error(
+            "fresh_replay_final_manual_checkpoint_already_exists"
+        )
+    source = read_json(
+        output / "fresh-replay-v2-manual-checkpoint-proof.json"
+    )
+    if source.get("passed") is not True:
+        raise FreshReplayV2Error(
+            "fresh_replay_manual_checkpoint_invalid"
+        )
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
+    )
+
+    final_harness = harness.finalize_harness_binding(
+        output,
+        primary_database=PRIMARY_DATABASE,
+        replay_database=FRESH_REPLAY_DATABASE,
+    )
+    failed_before = read_json(
+        output / "read-only-preflight-proof.json"
+    )["failed_replay_forensic_state"]
+    failed_after = forensic_database_state(FAILED_REPLAY_DATABASE)
+    result = {
+        "proof_version": (
+            "sv1b_fresh_replay_v2_final_manual_checkpoint_v1"
+        ),
+        "source_manual_checkpoint_fingerprint": (
+            source["proof_fingerprint"]
+        ),
+        "harness": final_harness,
+        "failed_replay_unchanged": failed_before == failed_after,
+        "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
+        "status": (
+            "automated_sv1b_candidate_ready_manual_acceptance_pending"
+        ),
+        "target_met": False,
+        "safe_to_merge": False,
+        "route_approved": False,
+        "manual_acceptance_required": True,
+        "manual_acceptance_status": "pending_user",
+        "next_phase_started": False,
+        "passed": bool(
+            final_harness.get("passed") is True
+            and final_harness.get(
+                "case_manifest_regenerated_equal"
+            )
+            is True
+            and failed_before == failed_after
+        ),
+    }
+    result["proof_fingerprint"] = sha256_payload(result)
+    write_json(checkpoint_path, result)
+    if result["passed"] is not True:
+        raise FreshReplayV2Error(
+            "fresh_replay_final_manual_checkpoint_failed"
+        )
+    return result
+
+
 def public_summary(stage: str, result: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "phase": PHASE,
@@ -2272,6 +2341,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = execute_rederive_compare(output=output)
     elif args.stage == "search":
         result = execute_search(output=output)
+    elif args.stage == "finalize-harness-binding":
+        result = execute_finalize_harness_binding(output=output)
     else:
         result = execute_build_harness(output=output, port=args.port)
     print(

@@ -27,6 +27,9 @@ from scripts import run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization
 
 
 HARNESS_VERSION = "sv1b_phase_delta_manual_acceptance_harness_v2"
+FINAL_HARNESS_PROOF_NAME = (
+    "manual-acceptance-harness-final-binding-proof.json"
+)
 DEFAULT_PORT = 8031
 CATEGORY_COUNTS = {
     "pixiv_metadata": 12,
@@ -869,6 +872,77 @@ def validate_phase_delta_case_composition(cases: Iterable[Mapping[str, Any]]) ->
     }
 
 
+def _generate_cases(
+    output: Path,
+    *,
+    primary_database: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    engine = sv1b.engine_for(primary_database)
+    session = sessionmaker(bind=engine)()
+    try:
+        cases = [
+            *_pixiv_metadata_cases(session, output),
+            *_creator_clustering_cases(
+                session, output, primary_database
+            ),
+            *_shared_name_cases(session, output),
+            *_localization_cases(session, output),
+            *_search_cases(session, output),
+        ]
+        session.rollback()
+    finally:
+        session.close()
+        engine.dispose()
+    counts = Counter(str(row["category"]) for row in cases)
+    if len(cases) != 40 or dict(counts) != CATEGORY_COUNTS:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_case_composition_invalid:"
+            f"count={len(cases)}:categories={dict(counts)}"
+        )
+    case_ids = [str(row["case_id"]) for row in cases]
+    if len(case_ids) != len(set(case_ids)):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_case_id_duplicate"
+        )
+    return cases, validate_phase_delta_case_composition(cases)
+
+
+def _build_bindings(
+    *,
+    primary_database: str,
+    replay_database: str,
+    relative_proof_sources: Mapping[str, str],
+    proofs: Mapping[str, Mapping[str, Any]],
+    cases: list[dict[str, Any]],
+) -> dict[str, Any]:
+    primary_binding = _database_binding(primary_database)
+    replay_binding = _database_binding(replay_database)
+    if (
+        primary_binding["media_count"] != sv1b.EXPECTED_MEDIA_COUNT
+        or replay_binding["media_count"] != sv1b.EXPECTED_MEDIA_COUNT
+    ):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_database_membership_invalid"
+        )
+    bindings = {
+        "git_head": _git_head(),
+        "primary_database": primary_binding,
+        "replay_database": replay_binding,
+        "media_manifest_fingerprint": (
+            sv1b.ACCEPTED_MANIFEST_FINGERPRINT
+        ),
+        **_proof_bindings(proofs),
+        "proof_source_map_fingerprint": sv1b.sha256_payload(
+            relative_proof_sources
+        ),
+        "acceptance_case_manifest_fingerprint": (
+            sv1b.sha256_payload(cases)
+        ),
+    }
+    bindings["binding_fingerprint"] = sv1b.sha256_payload(bindings)
+    return bindings
+
+
 def build_harness(
     output: Path,
     *,
@@ -905,49 +979,26 @@ def build_harness(
         primary_binding["media_count"] != sv1b.EXPECTED_MEDIA_COUNT
         or replay_binding["media_count"] != sv1b.EXPECTED_MEDIA_COUNT
     ):
-        raise ManualAcceptanceHarnessError("manual_acceptance_database_membership_invalid")
-
-    engine = sv1b.engine_for(primary_database)
-    session = sessionmaker(bind=engine)()
-    try:
-        cases = [
-            *_pixiv_metadata_cases(session, output),
-            *_creator_clustering_cases(session, output, primary_database),
-            *_shared_name_cases(session, output),
-            *_localization_cases(session, output),
-            *_search_cases(session, output),
-        ]
-        session.rollback()
-    finally:
-        session.close()
-        engine.dispose()
-    counts = Counter(str(row["category"]) for row in cases)
-    if len(cases) != 40 or dict(counts) != CATEGORY_COUNTS:
         raise ManualAcceptanceHarnessError(
-            f"manual_acceptance_case_composition_invalid:count={len(cases)}:categories={dict(counts)}"
+            "manual_acceptance_database_membership_invalid"
         )
-    case_ids = [str(row["case_id"]) for row in cases]
-    if len(case_ids) != len(set(case_ids)):
-        raise ManualAcceptanceHarnessError("manual_acceptance_case_id_duplicate")
-    phase_delta_composition = validate_phase_delta_case_composition(cases)
+    cases, phase_delta_composition = _generate_cases(
+        output, primary_database=primary_database
+    )
+    counts = Counter(str(row["category"]) for row in cases)
 
     manual_root = output / "manual-acceptance"
     manual_root.mkdir(parents=True, exist_ok=False)
     case_manifest_path = manual_root / "case-manifest-private.json"
     sv1b.write_json(case_manifest_path, cases)
     case_fingerprint = sv1b.sha256_payload(cases)
-    bindings = {
-        "git_head": _git_head(),
-        "primary_database": primary_binding,
-        "replay_database": replay_binding,
-        "media_manifest_fingerprint": sv1b.ACCEPTED_MANIFEST_FINGERPRINT,
-        **_proof_bindings(proofs),
-        "proof_source_map_fingerprint": sv1b.sha256_payload(
-            relative_proof_sources
-        ),
-        "acceptance_case_manifest_fingerprint": case_fingerprint,
-    }
-    bindings["binding_fingerprint"] = sv1b.sha256_payload(bindings)
+    bindings = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_proof_sources,
+        proofs=proofs,
+        cases=cases,
+    )
     proof = {
         "harness_version": HARNESS_VERSION,
         "required": True,
@@ -976,31 +1027,105 @@ def build_harness(
     return proof
 
 
+def finalize_harness_binding(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+) -> dict[str, Any]:
+    output = output.resolve()
+    sv1b.validate_owned_output_root(
+        output,
+        primary_database=primary_database,
+        replay_database=replay_database,
+    )
+    final_path = output / FINAL_HARNESS_PROOF_NAME
+    if final_path.exists():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_final_binding_already_exists"
+        )
+    source = sv1b.read_json(
+        output / "manual-acceptance-harness-proof.json"
+    )
+    if source.get("passed") is not True:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_source_harness_failed"
+        )
+    existing_cases = sv1b.read_json(
+        output / "manual-acceptance/case-manifest-private.json"
+    )
+    regenerated_cases, phase_delta_composition = _generate_cases(
+        output, primary_database=primary_database
+    )
+    if regenerated_cases != existing_cases:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_case_regeneration_drift"
+        )
+    relative_proof_sources, proofs = _resolve_proof_sources(
+        output, source.get("proof_sources")
+    )
+    failed = [
+        name
+        for name, proof in proofs.items()
+        if proof.get("passed") is not True
+    ]
+    if failed:
+        raise ManualAcceptanceHarnessError(
+            f"manual_acceptance_required_proof_failed:{sorted(failed)}"
+        )
+    bindings = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_proof_sources,
+        proofs=proofs,
+        cases=regenerated_cases,
+    )
+    final = dict(source)
+    final.update(
+        {
+            "binding_version": (
+                "sv1b_manual_acceptance_final_binding_v1"
+            ),
+            "supersedes_harness_proof_fingerprint": (
+                sv1b.sha256_payload(source)
+            ),
+            "case_manifest_regenerated_equal": True,
+            "phase_delta_composition": phase_delta_composition,
+            "proof_sources": relative_proof_sources,
+            "bindings": bindings,
+            "passed": True,
+        }
+    )
+    sv1b.write_json(final_path, final)
+    return final
+
+
+def _active_harness_proof_path(output: Path) -> Path:
+    final = output / FINAL_HARNESS_PROOF_NAME
+    if final.is_file():
+        return final
+    return output / "manual-acceptance-harness-proof.json"
+
+
 def _current_bindings(
     output: Path,
     *,
     primary_database: str,
     replay_database: str,
 ) -> dict[str, Any]:
-    proof = sv1b.read_json(output / "manual-acceptance-harness-proof.json")
+    proof = sv1b.read_json(_active_harness_proof_path(output))
     cases = sv1b.read_json(output / "manual-acceptance/case-manifest-private.json")
     expected = proof["bindings"]
     relative_proof_sources, proofs = _resolve_proof_sources(
         output, proof.get("proof_sources")
     )
-    current = {
-        "git_head": _git_head(),
-        "primary_database": _database_binding(primary_database),
-        "replay_database": _database_binding(replay_database),
-        "media_manifest_fingerprint": sv1b.ACCEPTED_MANIFEST_FINGERPRINT,
-        **_proof_bindings(proofs),
-        "proof_source_map_fingerprint": sv1b.sha256_payload(
-            relative_proof_sources
-        ),
-        "acceptance_case_manifest_fingerprint": sv1b.sha256_payload(cases),
-    }
-    current.pop("binding_fingerprint", None)
-    current["binding_fingerprint"] = sv1b.sha256_payload(current)
+    current = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_proof_sources,
+        proofs=proofs,
+        cases=cases,
+    )
     if current != expected:
         raise ManualAcceptanceHarnessError("manual_acceptance_binding_invalidated")
     return current

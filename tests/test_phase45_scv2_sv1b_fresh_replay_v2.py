@@ -67,6 +67,7 @@ def test_no_external_execution_stage_exists() -> None:
         "rederive-compare",
         "search",
         "build-harness",
+        "finalize-harness-binding",
     )
     assert runner.EXTERNAL_ROUTE_BUDGET == {
         "provider_requests": 0,
