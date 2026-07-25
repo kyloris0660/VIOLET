@@ -111,6 +111,9 @@ CORRECTED_GRAPH_LABEL = "replay-v2-stable-signal-v2"
 CORRECTED_GRAPH_CORE_RUN_ID = (
     "sv1b-replay-v2-stable-signal-v2-full"
 )
+CORRECTED_GRAPH_FAILED_SCOPE_PROOF_FINGERPRINT = (
+    "3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04"
+)
 DERIVED_GRAPH_TABLES = (
     "blombooru_source_concept_resolution_runs",
     "blombooru_source_concept_signals",
@@ -1754,13 +1757,23 @@ def execute_rederive_compare(
         raise FreshReplayV2Error(
             "primary_stable_core_graph_readonly_proof_failed"
         )
-    replay_graph = sv1b.derive_full_source_graph(
-        output,
-        database=FRESH_REPLAY_DATABASE,
-        label=CORRECTED_GRAPH_LABEL,
-        allow_superseding_existing_graph=True,
-        supersede_prior_run_id=FAILED_FIRST_GRAPH_CORE_RUN_ID,
+    corrected_graph_path = (
+        output
+        / f"{CORRECTED_GRAPH_LABEL}-source-graph-derivation-proof.json"
     )
+    if corrected_graph_path.is_file():
+        replay_graph = _recover_scope_filtered_graph_checkpoint(
+            output=output,
+            sv1b=sv1b,
+        )
+    else:
+        replay_graph = sv1b.derive_full_source_graph(
+            output,
+            database=FRESH_REPLAY_DATABASE,
+            label=CORRECTED_GRAPH_LABEL,
+            allow_superseding_existing_graph=True,
+            supersede_prior_run_id=FAILED_FIRST_GRAPH_CORE_RUN_ID,
+        )
     if replay_graph.get("passed") is not True:
         raise FreshReplayV2Error(
             "stable_signal_replay_graph_safety_failed"
@@ -1925,6 +1938,114 @@ def execute_rederive_compare(
             "stable_signal_rederive_compare_gate_failed"
         )
     return result
+
+
+def _recover_scope_filtered_graph_checkpoint(
+    *,
+    output: Path,
+    sv1b: Any,
+) -> dict[str, Any]:
+    """Recover a completed re-derive whose proof included superseded history.
+
+    The graph transaction already committed before the fail-closed proof gate.
+    This recovery performs no graph write and preserves the failed proof. It
+    only accepts the checkpoint when the original failure was exclusively the
+    persisted projection's inclusion of explicitly superseded historical rows.
+    """
+
+    failed_path = (
+        output
+        / f"{CORRECTED_GRAPH_LABEL}-source-graph-derivation-proof.json"
+    )
+    failed = read_json(failed_path)
+    failed_fingerprint = sha256_payload(failed)
+    if (
+        failed_fingerprint
+        != CORRECTED_GRAPH_FAILED_SCOPE_PROOF_FINGERPRINT
+    ):
+        raise FreshReplayV2Error(
+            "corrected_graph_failed_scope_checkpoint_drift"
+        )
+    planned = failed.get("planned_core_graph_projection")
+    original_persisted = failed.get("persisted_core_graph_projection")
+    corrected_persisted = (
+        sv1b._stable_core_graph_projection_from_database(
+            FRESH_REPLAY_DATABASE,
+            run_id=CORRECTED_GRAPH_CORE_RUN_ID,
+        )
+    )
+    graph_audit = failed.get("graph_audit") or {}
+    baseline = failed.get("baseline_preservation") or {}
+    disposition = (
+        failed.get("candidate_disposition_accounting") or {}
+    )
+    checks = {
+        "historical_failed_proof_preserved": (
+            sha256_payload(read_json(failed_path))
+            == failed_fingerprint
+        ),
+        "original_proof_failed": failed.get("passed") is False,
+        "original_projection_mismatch": planned != original_persisted,
+        "corrected_projection_equal": planned == corrected_persisted,
+        "graph_audit_passed": graph_audit.get("passed") is True,
+        "deferred_identity_union_zero": (
+            graph_audit.get("deferred_identity_union_count") == 0
+        ),
+        "cannot_link_violation_zero": (
+            graph_audit.get("direct_cannot_link_violation_count") == 0
+            and graph_audit.get(
+                "transitive_cannot_link_violation_count"
+            )
+            == 0
+        ),
+        "disposition_accounting_balanced": (
+            disposition.get("equation_balanced") is True
+        ),
+        "baseline_preservation_passed": baseline.get("passed") is True,
+        "accepted_families_preserved": (
+            baseline.get("accepted_family_count") == 606
+            and baseline.get("accepted_family_traceable_count") == 606
+        ),
+    }
+    reconciliation = {
+        "proof_version": (
+            "sv1b_replay_v2_persisted_projection_scope_reconciliation_v1"
+        ),
+        "historical_failed_proof_fingerprint": failed_fingerprint,
+        "historical_failed_proof_rewritten": False,
+        "database_write_count": 0,
+        "excluded_status": "superseded",
+        "original_persisted_projection": original_persisted,
+        "corrected_persisted_projection": corrected_persisted,
+        "checks": checks,
+        "passed": all(checks.values()),
+    }
+    reconciliation["proof_fingerprint"] = sha256_payload(
+        reconciliation
+    )
+    write_json(
+        output
+        / "fresh-replay-v2-stable-signal-projection-scope-reconciliation-proof.json",
+        reconciliation,
+    )
+    if reconciliation["passed"] is not True:
+        raise FreshReplayV2Error(
+            "corrected_graph_projection_scope_reconciliation_failed"
+        )
+    recovered = dict(failed)
+    recovered.update(
+        {
+            "persisted_core_graph_projection": corrected_persisted,
+            "planned_persisted_core_graph_equal": True,
+            "historical_failed_proof_fingerprint": failed_fingerprint,
+            "scope_reconciliation_proof_fingerprint": reconciliation[
+                "proof_fingerprint"
+            ],
+            "scope_reconciliation_database_write_count": 0,
+            "passed": True,
+        }
+    )
+    return recovered
 
 
 def execute_search(*, output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:

@@ -239,7 +239,6 @@ def render_handoff(state: dict[str, Any]) -> str:
         )
     lines.extend(
         [
-            "",
             f"Updated: `{state['updated_at']}`.",
             "",
         ]
@@ -255,6 +254,19 @@ def check_handoff(state: dict[str, Any], *, path: Path = HANDOFF_PATH) -> None:
     line_count = len(actual.splitlines())
     if not 40 <= line_count <= 60:
         raise DocumentationStateError(f"handoff_line_count_out_of_range:{line_count}")
+
+
+def write_handoff(
+    state: dict[str, Any],
+    *,
+    path: Path = HANDOFF_PATH,
+) -> None:
+    """Atomically render the non-authoritative handoff from current state."""
+
+    rendered = render_handoff(state)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(rendered, encoding="utf-8", newline="\n")
+    temporary.replace(path)
 
 
 def check_documentation_state(*, root: Path = ROOT) -> dict[str, Any]:
@@ -278,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--render", action="store_true")
+    mode.add_argument("--write", action="store_true")
     args = parser.parse_args(argv)
     try:
         state = load_state()
@@ -285,6 +298,10 @@ def main(argv: list[str] | None = None) -> int:
             validate_state(state)
             sys.stdout.write(render_handoff(state))
             return 0
+        if args.write:
+            validate_state(state)
+            validate_roadmaps(state)
+            write_handoff(state)
         result = check_documentation_state()
     except DocumentationStateError as exc:
         print(json.dumps({"passed": False, "error": str(exc)}, ensure_ascii=False))

@@ -8,6 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import run_phase45_scv2_sv1b_fresh_replay_v2 as runner
+from scripts import (
+    run_phase45_scv2_sv1b_controlled_pixiv_metadata_localization_source_graph_closure
+    as sv1b,
+)
 
 
 def test_fresh_database_identity_is_strict_and_distinct() -> None:
@@ -185,3 +189,120 @@ def test_stable_signal_rederive_checkpoint_is_idempotent(
     )
 
     assert runner.execute_rederive_compare(output=tmp_path) == proof
+
+
+def test_persisted_core_projection_excludes_superseded_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queries: list[tuple[str, dict[str, str]]] = []
+
+    class EmptyResult:
+        def mappings(self) -> "EmptyResult":
+            return self
+
+        def __iter__(self):
+            return iter(())
+
+    class Connection:
+        def execute(self, statement, parameters):
+            queries.append((str(statement), dict(parameters)))
+            return EmptyResult()
+
+    class ConnectionContext:
+        def __enter__(self) -> Connection:
+            return Connection()
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    class Engine:
+        def connect(self) -> ConnectionContext:
+            return ConnectionContext()
+
+        def dispose(self) -> None:
+            return None
+
+    monkeypatch.setattr(sv1b, "engine_for", lambda _database: Engine())
+
+    result = sv1b._stable_core_graph_projection_from_database(
+        "blombooru_strict_test",
+        run_id="stable-run",
+    )
+
+    assert result["groups"]
+    assert len(queries) == 6
+    for query, parameters in queries:
+        assert "<>:superseded_status" in query
+        assert parameters == {
+            "run_id": "stable-run",
+            "superseded_status": "superseded",
+        }
+
+
+def test_failed_scope_projection_checkpoint_recovers_without_graph_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planned = {
+        "projection_version": "fixture",
+        "groups": {"signal": {"count": 1, "fingerprint": "current"}},
+        "fingerprint": "current",
+    }
+    failed = {
+        "passed": False,
+        "planned_core_graph_projection": planned,
+        "persisted_core_graph_projection": {
+            "projection_version": "fixture",
+            "groups": {
+                "signal": {"count": 2, "fingerprint": "with-history"}
+            },
+            "fingerprint": "with-history",
+        },
+        "graph_audit": {
+            "passed": True,
+            "deferred_identity_union_count": 0,
+            "direct_cannot_link_violation_count": 0,
+            "transitive_cannot_link_violation_count": 0,
+        },
+        "baseline_preservation": {
+            "passed": True,
+            "accepted_family_count": 606,
+            "accepted_family_traceable_count": 606,
+        },
+        "candidate_disposition_accounting": {
+            "equation_balanced": True,
+        },
+    }
+    failed_path = (
+        tmp_path
+        / f"{runner.CORRECTED_GRAPH_LABEL}-source-graph-derivation-proof.json"
+    )
+    runner.write_json(failed_path, failed)
+    original_bytes = failed_path.read_bytes()
+    monkeypatch.setattr(
+        runner,
+        "CORRECTED_GRAPH_FAILED_SCOPE_PROOF_FINGERPRINT",
+        runner.sha256_payload(failed),
+    )
+    fake_sv1b = SimpleNamespace(
+        _stable_core_graph_projection_from_database=(
+            lambda _database, run_id: planned
+        )
+    )
+
+    recovered = runner._recover_scope_filtered_graph_checkpoint(
+        output=tmp_path,
+        sv1b=fake_sv1b,
+    )
+
+    assert recovered["passed"] is True
+    assert recovered["planned_persisted_core_graph_equal"] is True
+    assert recovered["scope_reconciliation_database_write_count"] == 0
+    assert failed_path.read_bytes() == original_bytes
+    reconciliation = runner.read_json(
+        tmp_path
+        / "fresh-replay-v2-stable-signal-projection-scope-reconciliation-proof.json"
+    )
+    assert reconciliation["passed"] is True
+    assert reconciliation["database_write_count"] == 0
+    assert reconciliation["historical_failed_proof_rewritten"] is False

@@ -45,7 +45,10 @@ def test_current_phase_schema_and_status_fields_are_consistent() -> None:
     assert state["target_met"] is False
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
-    assert state["manual_acceptance_status"] == "not_started_replay_recovery"
+    assert state["manual_acceptance_status"] in {
+        "not_started_replay_recovery",
+        "pending_user",
+    }
     assert state["next_phase_started"] is False
     assert state["active_blocker"]["code"]
     assert state["active_blocker"]["scope"]
@@ -63,6 +66,20 @@ def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
     assert "this file is not the fact source" in rendered
     assert state["current_status"] in rendered
     assert state["next_required_checkpoint"] in rendered
+
+
+def test_handoff_writer_atomically_renders_current_state(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "current-handoff.md"
+    state = _state()
+
+    documentation_state.write_handoff(state, path=target)
+
+    assert target.read_text(encoding="utf-8") == (
+        documentation_state.render_handoff(state)
+    )
+    assert not target.with_suffix(".md.tmp").exists()
 
 
 def test_current_phase_links_report_adr_and_contract_are_consistent() -> None:

@@ -70,11 +70,14 @@ immutable acquisition-evidence gates pass. Any mismatch still fails closed at
 round-trip equality passed on the owner-authorized isolated database. Its
 first graph derivation is preserved as a failed forensic checkpoint because
 a development numeric source-row ID produced a cross-database SourceConcept
-signal-key collision and one deferred identity union. The current durable
-gate is `blocked_sv1b_fresh_replay_graph_signal_identity_collision`.
-Continuation requires stable schema-aware signal identity plus a governed,
-idempotent superseding re-derivation that neither cleans nor recreates the
-fresh database.
+signal-key collision and one deferred identity union. Stable signal identity
+v2 then removed that union; its graph safety audit passed with 606/606 accepted
+families, but the fail-closed persisted-checkpoint projection included
+explicitly superseded historical rows. The current durable gate is
+`blocked_sv1b_fresh_replay_persisted_projection_scope`. Continuation requires
+a non-superseded current-run projection and a no-write reconciliation of the
+already committed graph; it must preserve both failed proofs and must neither
+clean nor recreate the fresh database.
 
 ## Registered GOV3 Contracts
 

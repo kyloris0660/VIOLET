@@ -8,7 +8,7 @@
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
   "implementation_evidence_head": "d44e22ffb94a26b528aa08b67cba7a2d4b2e2557",
-  "current_status": "blocked_sv1b_fresh_replay_graph_signal_identity_collision",
+  "current_status": "blocked_sv1b_fresh_replay_persisted_projection_scope",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -69,13 +69,18 @@
       "id": "fresh_replay_v2_first_graph_derivation",
       "result": "failed_preserved_forensic_checkpoint",
       "fingerprint": "7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6"
+    },
+    {
+      "id": "fresh_replay_v2_stable_signal_graph_rederivation",
+      "result": "graph_safety_passed_projection_scope_failed_preserved",
+      "fingerprint": "3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04"
     }
   ],
   "active_blocker": {
-    "code": "blocked_sv1b_fresh_replay_graph_signal_identity_collision",
-    "scope": "cross-database SourceConcept signal identity and fresh Replay graph safety",
+    "code": "blocked_sv1b_fresh_replay_persisted_projection_scope",
+    "scope": "fresh Replay stable core graph persisted-checkpoint projection",
     "nonblocking_localization_item": "enpera",
-    "resolution": "The first fresh graph derivation is preserved. Replace development numeric source-row IDs in signal identity with stable schema-aware source-record references, prove a governed idempotent superseding re-derivation, and rerun graph safety without cleaning or recreating the database."
+    "resolution": "Stable signal identity v2 removed the deferred identity union and the corrected graph safety audit passed. The failed proof is preserved because its persisted projection included explicitly superseded history rows. Restrict the checkpoint projection to current non-superseded rows, reconcile the already committed graph without another graph write, and rerun the logical comparison."
   },
   "owner_decisions": [
     {
@@ -117,7 +122,9 @@
     "primary_immutable_identity_ledger_fingerprint": "9ae4c936d20384b377cc80e4c21ca5315d1afaeb2deb3e24627eddbf2666456c",
     "fresh_replay_create_import_proof_fingerprint": "935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9",
     "fresh_replay_baseline_fingerprint": "1c7926f4544be8b83ad5231c6f1faac8459cf7af2551f9588a889367ff496025",
-    "failed_replay_forensic_state_fingerprint": "ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f"
+    "failed_replay_forensic_state_fingerprint": "ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f",
+    "fresh_replay_stable_signal_failed_scope_proof_fingerprint": "3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04",
+    "fresh_replay_current_forensic_state_fingerprint": "62e997dfdbe94edc5f51996832fc301dcedbb654d91c0c73ddbd395c9c7baeb8"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
@@ -127,7 +134,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "stable_signal_identity_v2_and_governed_fresh_replay_graph_rederivation",
+  "next_required_checkpoint": "non_superseded_persisted_projection_reconciliation_and_graph_logical_comparison",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -154,5 +161,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T00:32:00+08:00"
+  "updated_at": "2026-07-26T01:10:00+08:00"
 }

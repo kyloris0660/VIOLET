@@ -171,3 +171,31 @@ parenthetical signal。这不是可接受的逻辑差异，不能豁免。
 identity，并证明 versioned、idempotent superseding re-derivation。不得写
 Primary、清理 derived rows、创建另一个 Replay database，或根据 row order
 猜测 provider identity。
+
+## 2026-07-26 stable signal v2 重派生检查点
+
+stable signal identity v2 已将 SourceConcept signal identity 改为
+schema-aware stable source-record reference。真实 Primary / fresh Replay
+signal projection 为 `126,127 / 126,127`，missing / extra 为 `0 / 0`，
+fingerprint 为
+`15c3c98a2cfd71933776952fa5bd49563ef808800bac659e45cd7d3763dddacf`。
+
+受控 superseding 重派生已提交到同一个 fresh Replay，未创建第二个数据库。
+图安全审计通过：`deferred_identity_union_count=0`、direct/transitive
+cannot-link violation 均为 `0`、unsafe large / cross-role / unknown-role
+均为 `0`，accepted creator families 为 `606 / 606`。但整体证明按设计
+fail closed，因为 persisted core projection 把明确标为 `superseded`
+的历史 signal/concept/alias 行也计入当前 run，导致 planned / persisted
+signal count 为 `126,127 / 252,164`。evidence 和 link 的当前逻辑投影
+已经相等；这不是新的 graph safety 违规。
+
+失败证明 fingerprint 为
+`3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04`，
+保持不重写。当前 blocker 为
+`blocked_sv1b_fresh_replay_persisted_projection_scope`。修复仅允许让
+checkpoint projection 排除 `superseded` 历史行，并对已提交 graph
+执行零数据库写入的作用域 reconciliation；不得再次派生、清理历史、
+重建数据库或修改旧 failed retry2 Replay。旧 failed Replay forensic
+fingerprint 复核仍为
+`ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f`，
+外部调用仍为 `0`。

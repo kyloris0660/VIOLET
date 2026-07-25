@@ -161,6 +161,7 @@ SEARCH_PROTECTED_TABLES = (
 COMPLETE_STATUSES = frozenset({"metadata_complete", "observed", "active", "accepted"})
 TERMINAL_STATUSES = frozenset({"terminal_remote_unavailable"})
 DEFERRED_STATUSES = frozenset({"deferred_nonblocking_source_page_mismatch"})
+STABLE_CORE_SUPERSEDED_STATUS = "superseded"
 PAGE_OUTCOME_TRUSTED_EXACT_COMPLETE = "trusted_exact_complete"
 PAGE_OUTCOME_EXACT_TERMINAL = "exact_terminal"
 PAGE_OUTCOME_EXACT_GOVERNED_MISMATCH = "exact_governed_page_mismatch"
@@ -3957,14 +3958,16 @@ def _stable_core_graph_projection_from_database(
             "LEFT JOIN blombooru_media m ON m.id=s.media_id "
             "LEFT JOIN blombooru_source_metadata_records r "
             "ON r.id=s.source_metadata_record_id "
-            "WHERE s.created_by_run_id=:run_id"
+            "WHERE s.created_by_run_id=:run_id "
+            "AND s.status<>:superseded_status"
         ),
         "concept": (
             "SELECT c.concept_key,c.concept_type_hint,c.status,"
             "c.evidence_summary_json->>'stable_identity_fingerprint' "
             "AS stable_identity_fingerprint "
             "FROM blombooru_source_concepts c "
-            "WHERE c.created_by_run_id=:run_id"
+            "WHERE c.created_by_run_id=:run_id "
+            "AND c.status<>:superseded_status"
         ),
         "alias": (
             "SELECT c.concept_key,s.signal_key,a.alias_key,a.alias_role,a.status "
@@ -3972,7 +3975,8 @@ def _stable_core_graph_projection_from_database(
             "JOIN blombooru_source_concepts c ON c.id=a.concept_id "
             "LEFT JOIN blombooru_source_concept_signals s "
             "ON s.id=a.source_signal_id "
-            "WHERE a.created_by_run_id=:run_id"
+            "WHERE a.created_by_run_id=:run_id "
+            "AND a.status<>:superseded_status"
         ),
         "evidence": (
             "SELECT c.concept_key,s.signal_key,m.hash AS media_content_key,"
@@ -3984,7 +3988,8 @@ def _stable_core_graph_projection_from_database(
             "LEFT JOIN blombooru_media m ON m.id=e.media_id "
             "LEFT JOIN blombooru_source_metadata_records r "
             "ON r.id=e.source_metadata_record_id "
-            "WHERE e.run_id=:run_id"
+            "WHERE e.run_id=:run_id "
+            "AND e.status<>:superseded_status"
         ),
         "link": (
             "SELECT c.concept_key,s.signal_key,l.link_status,"
@@ -3992,13 +3997,15 @@ def _stable_core_graph_projection_from_database(
             "FROM blombooru_source_concept_signal_links l "
             "JOIN blombooru_source_concepts c ON c.id=l.concept_id "
             "JOIN blombooru_source_concept_signals s ON s.id=l.signal_id "
-            "WHERE l.run_id=:run_id"
+            "WHERE l.run_id=:run_id "
+            "AND l.link_status<>:superseded_status"
         ),
         "search": (
             "SELECT c.concept_key,i.search_key,i.alias_role,i.status "
             "FROM blombooru_source_concept_search_index i "
             "JOIN blombooru_source_concepts c ON c.id=i.concept_id "
-            "WHERE i.run_id=:run_id"
+            "WHERE i.run_id=:run_id "
+            "AND i.status<>:superseded_status"
         ),
     }
     engine = engine_for(database)
@@ -4008,7 +4015,13 @@ def _stable_core_graph_projection_from_database(
             for name, query in queries.items():
                 rows = sorted(
                     (dict(row) for row in connection.execute(
-                        text(query), {"run_id": run_id}
+                        text(query),
+                        {
+                            "run_id": run_id,
+                            "superseded_status": (
+                                STABLE_CORE_SUPERSEDED_STATUS
+                            ),
+                        },
                     ).mappings()),
                     key=canonical_json,
                 )
