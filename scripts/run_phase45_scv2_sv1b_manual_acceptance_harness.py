@@ -83,21 +83,75 @@ def _fallback_media_hash(session: Any) -> str:
     return str(value)
 
 
-def _pixiv_metadata_cases(session: Any, output: Path) -> list[dict[str, Any]]:
-    initial_pages = sv1b.read_jsonl(output / "candidate-page-media-manifest-private.jsonl")
-    initially_open = {
-        (
-            str(row["media_stable_key"]),
-            str(row["stable_work_id"]),
-            int(row["requested_page_index"]),
+def _newly_acquired_exact_metadata_membership(
+    output: Path,
+) -> set[tuple[str, str, str, int]]:
+    closure = sv1b.read_json(
+        output / "acquisition-closure-and-package-proof.json"
+    )
+    package = sv1b.read_json(
+        output / "acquired-nonderived-evidence-package-private.json"
+    )
+    if (
+        closure.get("passed") is not True
+        or not closure.get("accepted_acquisition_package_fingerprint")
+        or package.get("schema_version")
+        != "sv1b.stable-replay-evidence.v2"
+        or package.get("package_fingerprint")
+        != (closure.get("package") or {}).get(
+            "stable_package_fingerprint"
         )
-        for row in initial_pages
-        if str(row.get("acquisition_state")) in {
-            sv1b.PAGE_OUTCOME_UNACQUIRED,
-            sv1b.PAGE_OUTCOME_CONFLICTING,
-            sv1b.PAGE_OUTCOME_UNEXPLAINED,
-        }
+        or any(
+            int((package.get("external_route_budget") or {}).get(key) or 0)
+            != 0
+            for key in (
+                "gallery_dl_requests",
+                "llm_calls",
+                "media_downloads",
+                "provider_requests",
+                "thumbnail_downloads",
+            )
+        )
+    ):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_acquisition_package_binding_invalid"
+        )
+    members = {
+        (
+            str(row.get("media_content_key") or ""),
+            str(row.get("provider_record_key") or ""),
+            str(row.get("source_work_id") or ""),
+            int(row.get("source_page_index") or 0),
+        )
+        for row in (
+            (package.get("tables") or {}).get(
+                "source_metadata_records"
+            )
+            or ()
+        )
+        if row.get("provider") == "pixiv"
+        and row.get("metadata_kind") == "pixiv_ingestion_gate"
+        and row.get("data_type_label")
+        == "authenticated_provider_metadata"
+        and row.get("status") == "metadata_complete"
+        and (row.get("provenance") or {}).get("source")
+        == "gallery_dl_authenticated_metadata"
+        and row.get("media_content_key")
+        and row.get("provider_record_key")
+        and row.get("source_work_id") is not None
+        and row.get("source_page_index") is not None
     }
+    if len(members) < 12:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_acquisition_package_phase_delta_gap"
+        )
+    return members
+
+
+def _pixiv_metadata_cases(session: Any, output: Path) -> list[dict[str, Any]]:
+    phase_delta_membership = _newly_acquired_exact_metadata_membership(
+        output
+    )
     rows = list(session.execute(text("""
         SELECT r.id,r.provider,r.provider_record_key,r.source_work_id,r.source_page_index,
                r.metadata_kind,r.data_type_label,r.raw_metadata_json,
@@ -116,8 +170,14 @@ def _pixiv_metadata_cases(session: Any, output: Path) -> list[dict[str, Any]]:
     rows = [
         row for row in rows
         if (
-            str(row["hash"]), str(row["source_work_id"]), int(row["source_page_index"])
-        ) in initially_open
+            str(row["hash"]),
+            str(row["provider_record_key"]),
+            str(row["source_work_id"]),
+            int(row["source_page_index"]),
+        )
+        in phase_delta_membership
+        and (row.get("provenance") or {}).get("source")
+        == "gallery_dl_authenticated_metadata"
         and sv1b._is_trusted_exact_complete_record(
             row, str(row["source_work_id"]), int(row["source_page_index"])
         )

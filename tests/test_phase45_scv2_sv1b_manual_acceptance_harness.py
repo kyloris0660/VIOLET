@@ -13,6 +13,7 @@ def _write_required_proofs(output: Path) -> None:
     values = {
         "acquisition-closure-and-package-proof.json": {
             "passed": True,
+            "accepted_acquisition_package_fingerprint": "9" * 64,
             "package": {"acquired_metadata_package_fingerprint": "a" * 64},
         },
         "localization-closure-proof.json": {
@@ -42,6 +43,118 @@ def _write_required_proofs(output: Path) -> None:
     }
     for name, value in values.items():
         (output / name).write_text(json.dumps(value), encoding="utf-8")
+
+
+def test_new_metadata_membership_uses_accepted_package_phase_delta_only(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    package = {
+        "schema_version": "sv1b.stable-replay-evidence.v2",
+        "package_fingerprint": "1" * 64,
+        "external_route_budget": {
+            "gallery_dl_requests": 0,
+            "llm_calls": 0,
+            "media_downloads": 0,
+            "provider_requests": 0,
+            "thumbnail_downloads": 0,
+        },
+        "tables": {
+            "source_metadata_records": [
+                *[
+                    {
+                        "media_content_key": f"media-{index}",
+                        "provider_record_key": f"record-{index}",
+                        "provider": "pixiv",
+                        "source_work_id": str(1000 + index),
+                        "source_page_index": index,
+                        "metadata_kind": "pixiv_ingestion_gate",
+                        "data_type_label": (
+                            "authenticated_provider_metadata"
+                        ),
+                        "status": "metadata_complete",
+                        "provenance": {
+                            "source": (
+                                "gallery_dl_authenticated_metadata"
+                            )
+                        },
+                    }
+                    for index in range(12)
+                ],
+                {
+                    "media_content_key": "baseline-media",
+                    "provider_record_key": "baseline-record",
+                    "provider": "pixiv",
+                    "source_work_id": "42",
+                    "source_page_index": 0,
+                    "metadata_kind": "pixiv_ingestion_gate",
+                    "data_type_label": "local_runtime_source_prior",
+                    "status": "metadata_complete",
+                    "provenance": {
+                        "source": "canonical_pixiv_filename_path_prior"
+                    },
+                },
+            ]
+        },
+    }
+    (output / "acquired-nonderived-evidence-package-private.json").write_text(
+        json.dumps(package), encoding="utf-8"
+    )
+    (
+        output / "acquisition-closure-and-package-proof.json"
+    ).write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "accepted_acquisition_package_fingerprint": "2" * 64,
+                "package": {"stable_package_fingerprint": "1" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    membership = harness._newly_acquired_exact_metadata_membership(
+        output
+    )
+    assert len(membership) == 12
+    assert all(row[0] != "baseline-media" for row in membership)
+
+
+def test_new_metadata_membership_fails_on_nonzero_external_route_budget(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    (
+        output / "acquired-nonderived-evidence-package-private.json"
+    ).write_text(
+        json.dumps(
+            {
+                "schema_version": "sv1b.stable-replay-evidence.v2",
+                "package_fingerprint": "1" * 64,
+                "external_route_budget": {"provider_requests": 1},
+                "tables": {"source_metadata_records": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (
+        output / "acquisition-closure-and-package-proof.json"
+    ).write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "accepted_acquisition_package_fingerprint": "2" * 64,
+                "package": {"stable_package_fingerprint": "1" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="acquisition_package_binding_invalid",
+    ):
+        harness._newly_acquired_exact_metadata_membership(output)
 
 
 def _cases(category: str, count: int, prefix: str) -> list[dict]:
