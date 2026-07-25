@@ -76,14 +76,17 @@ families, but the fail-closed persisted-checkpoint projection included
 explicitly superseded historical rows. The stage-aware no-write reconciliation
 then passed: stable signals, R2R remap, Primary expected core, fresh planned
 core, fresh persisted core, and 606/606 family preservation are logically
-equal, while both failed proofs remain immutable. The current durable gate is
-The endpoint-aligned Primary and fresh Replay 76-case runs and their stable
+equal, while both failed proofs remain immutable. The endpoint-aligned Primary
+and fresh Replay 76-case runs and their stable
 logical comparison pass with identical workload/result fingerprints, zero
 missing or unsupported results, zero AND leakage, zero lifecycle violation,
 and zero protected-table mutation. Physical history totals remain diagnostics,
-and both failed search proofs remain preserved. The current gate is
-`pending_sv1b_phase_delta_manual_acceptance_harness`: build the exact 40-case
-phase-delta harness, include `enpera`, and complete real localhost browser
+and both failed search proofs remain preserved. The 40-case phase-delta
+selection also passes and includes `enpera`; its pre-final proof remains
+preserved. The current gate is
+`pending_sv1b_final_harness_binding_and_browser_validation`: after the final
+public state commit, regenerate the same case membership read-only, write one
+new non-overwriting final Git binding, and complete real localhost browser
 validation before stopping at owner manual acceptance.
 
 ## Registered GOV3 Contracts

@@ -281,3 +281,20 @@ planned / fresh persisted 均为 `6,987` 条，fingerprint 相等。
 当前 durable gate 为
 `pending_sv1b_phase_delta_manual_acceptance_harness`；下一步只允许生成
 40-case harness、纳入 `enpera` 并做真实 localhost browser validation。
+
+## 2026-07-26 phase-delta harness 选择检查点
+
+40-case phase-delta 选择已通过并保留为 pre-final private checkpoint：
+12 个 newly acquired exact metadata、8 个 new/materially changed creator
+family、6 个明确标注的 shared-name baseline preservation filler、5 个新翻译、
+2 个 proper-noun exclusion/display、`enpera` 作为唯一 manual localization
+case，以及 6 个 phase-delta search case。Case manifest fingerprint 为
+`6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5`。
+
+初始 harness proof 绑定当时 Git HEAD 并保持不覆盖。为避免公共状态提交导致
+dashboard 的 Git binding 失效，新增的一次性 final-binding gate 会只读重新生成
+相同案例并要求 exact membership equality，然后写入新的 proof；旧 proof 不重写。
+当前 blocker 为
+`pending_sv1b_final_harness_binding_and_browser_validation`。该步骤仍保持
+provider、gallery-dl、LLM、media、thumbnail 调用计数全部为零，失败 retry2
+Replay 不变。

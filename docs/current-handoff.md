@@ -8,8 +8,8 @@
 - Repository / PR: `kyloris0660/VIOLET` / Draft PR #139.
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
-- Implementation evidence HEAD: `90bb39035b12eca9e2bc8805647692023b531ee1`.
-- Status: `sv1b_fresh_replay_search_passed_pending_manual_harness`.
+- Implementation evidence HEAD: `f3172f4d88d6a43ca7a243c5577021a5a0b46de8`.
+- Status: `sv1b_phase_delta_harness_generated_pending_final_binding_browser_validation`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
 
@@ -20,18 +20,18 @@
 - `provider_acquisition`: `accepted_immutable_input` — `df6008c1b469beaf9bd7f47e8a9af460188b2ad7e1218366a76e2d17e77d8636`.
 - `localization_accounting`: `closed_with_one_manual_pending` — `41dcd1db481544dac6805000e678c98af03332cd592c557331c997df2293c3bd`.
 - `r2r_exact_remap`: `passed` — `25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc`.
-- `primary_graph_safety`: `passed` — `93cce55769a9912090446020c655e4c7ac73fe19c2e61946713110028caddf9f`.
 - `failed_retry2_replay_forensic_capture`: `preserved_immutable` — `efff5ee1746ba961552da57304ef1726250d063921d9e5551ef0fef5c9e92c0d`.
 - `doc_gov_01`: `passed` — `7c16783dab9a146c284ebfd4f9f66124b9b8ac88156bd573b5acaddf1a26ec4b`.
 - `stable_replay_package_v2_offline_validation`: `passed_with_primary_immutable_evidence_crosscheck` — `640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845`.
 - `fresh_replay_v2_create_import_round_trip`: `passed` — `935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9`.
 - `fresh_replay_v2_graph_recovery_and_logical_comparison`: `passed_with_failed_checkpoints_preserved` — `60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089`.
 - `fresh_replay_v2_search_lifecycle_and_and_validation`: `passed_with_physical_history_counts_diagnostic_only` — `8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a`.
+- `phase_delta_40_case_harness_selection`: `passed_pending_final_git_binding_and_browser_validation` — `6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5`.
 
 ## Current Blocker And Owner Decision
 
-- Blocker: `pending_sv1b_phase_delta_manual_acceptance_harness` (phase-delta 40-case harness and real localhost browser validation).
-- Resolution: Primary and fresh Replay search lifecycle, media-level AND, and stable graph search projection comparisons passed with zero logical mismatches or protected-table mutations. The harness binds logical proof slots to explicit output-root-relative evidence sources, revalidates those sources on startup, and selects newly acquired exact metadata only from accepted stable-package-v2 authenticated-provider membership. Build the exact phase-delta 40-case harness, include enpera as a localization manual case, and run real localhost browser validation.
+- Blocker: `pending_sv1b_final_harness_binding_and_browser_validation` (final Git-bound phase-delta harness proof and real localhost browser validation).
+- Resolution: The exact 40-case selection passed with 12 newly acquired metadata, 8 changed creator families, 6 labelled shared-name preservation fillers, 5 new translations, 2 proper-noun exclusions, enpera as the one manual localization case, and 6 phase-delta search cases. After the final public state commit, regenerate the same case membership read-only, write one new non-overwriting final Git binding, and run real localhost browser validation.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -45,7 +45,7 @@
 
 ## Next Action
 
-- Required checkpoint: `phase_delta_40_case_harness_and_real_browser_validation`.
+- Required checkpoint: `final_harness_git_binding_and_real_browser_validation`.
 
 ## Durable Links
 
@@ -57,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T01:46:20+08:00`.
+Updated: `2026-07-26T01:52:48+08:00`.

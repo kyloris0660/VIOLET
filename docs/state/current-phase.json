@@ -41,11 +41,6 @@
       "fingerprint": "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
     },
     {
-      "id": "primary_graph_safety",
-      "result": "passed",
-      "fingerprint": "93cce55769a9912090446020c655e4c7ac73fe19c2e61946713110028caddf9f"
-    },
-    {
       "id": "failed_retry2_replay_forensic_capture",
       "result": "preserved_immutable",
       "fingerprint": "efff5ee1746ba961552da57304ef1726250d063921d9e5551ef0fef5c9e92c0d"
