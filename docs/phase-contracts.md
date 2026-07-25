@@ -40,6 +40,8 @@ When acceptance is required and pending, the executable contract must enforce
 
 ## Current Phase Boundary
 
+<!-- CURRENT_PHASE: SCV2-SV1B -->
+
 PR #138 is merged and accepted at
 `46861489fa0b3b05ae917a99a3932897efd70365`; its accepted evidence HEAD is
 `af073ca0ad2a9df9418cf072dc381d7b2c10216a`. SV1-A registered and passed
@@ -48,20 +50,22 @@ PR #138 is merged and accepted at
 `target_met` remained false. New Pixiv metadata, localization, full source-graph
 closure, the full library, and production remain incomplete.
 
-SCV2-SV1B is now the current separately governed phase. Before any provider
-request it must close persistent spacing, manifest-scoped outcomes,
-conflict/mismatch persistence, terminal precedence, and credential/redaction
-hardening. It must create and pass
+SCV2-SV1B is the current separately governed phase. Its finite provider and
+localization execution are accepted immutable inputs; this recovery permits no
+provider, Pixiv, gallery-dl, LLM, media, or thumbnail request. It must create
+and pass
 `sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
 and stop at `automated_sv1b_candidate_ready_manual_acceptance_pending` with the
 manual-acceptance fields pending and all completion/route booleans false. This
 does not authorize FL1, full-library, production, Entity, confirmed assignment,
 truth-route work, media download, or source/iCloud mutation.
 
-SV1B graph derivation additionally requires exact Primary/Replay equality for
-the graph-effective trusted metadata projection. Sanitized stable-package
-equality alone is insufficient because provider identity fields participate in
-the trusted-complete predicate. A mismatch must fail closed at
+SV1B graph derivation requires a versioned schema-aware stable replay package,
+exact Primary/fresh-Replay package round-trip equality, graph-effective trusted
+metadata equality, and trusted-complete verdict/count equality. The failed
+retry2 Replay remains immutable forensic evidence. The owner has authorized
+exactly one fresh isolated Replay verification database after package-v2 and
+immutable acquisition-evidence gates pass. Any mismatch still fails closed at
 `blocked_sv1b_replay_trusted_provenance_reconciliation`.
 
 ## Registered GOV3 Contracts

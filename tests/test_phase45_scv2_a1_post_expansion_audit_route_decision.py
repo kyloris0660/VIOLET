@@ -449,12 +449,12 @@ def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     roadmap = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
     workflow = (ROOT / "docs" / "test-workflow.md").read_text(encoding="utf-8")
 
-    assert "SCV2-R2" in handoff
-    assert "PR #133" in handoff
-    assert "target_met_constraint_aware_r2" in handoff
+    assert "SCV2-SV1B" in handoff
+    assert "Draft PR #139" in handoff
+    assert "target_met=false" in handoff
     assert "Phase 4.5-SCV2-A1" in roadmap
     assert "ChatGPT review pack" in workflow
-    assert "Entity bridge" in handoff
+    assert "Entity/truth/media_tags promotion" in handoff
 
 
 def test_review_pack_policy_document_includes_required_categories() -> None:

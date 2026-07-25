@@ -119,14 +119,13 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
     handoff = read_text(ROOT / "docs" / "current-handoff.md")
     line_count = len(handoff.splitlines())
 
-    assert line_count <= 90
-    assert "PR #138" in handoff
+    assert 40 <= line_count <= 60
+    assert "docs/state/current-phase.json" in handoff
     assert "SCV2-SV1B" in handoff
-    assert "PR #135" in handoff
-    assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in handoff
-    assert "Search-result union is not identity union" in handoff
-    assert "metadata acquisition" in handoff
-    assert "remain unauthorized" in handoff
+    assert "Draft PR #139" in handoff
+    assert "schema-aware stable replay package v2" in handoff
+    assert "external-call budget: `0`" in handoff
+    assert "provider/Pixiv/gallery-dl/LLM/media calls" in handoff
     assert "Phase 4.4-B0" not in handoff
     assert "Phase 4.4-D1G" not in handoff
 

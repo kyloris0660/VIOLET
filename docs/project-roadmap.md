@@ -21,6 +21,8 @@ The finished system should:
 
 ## Current Active Roadmap
 
+<!-- CURRENT_PHASE: SCV2-SV1B -->
+
 PR #138 is merged and accepted in `origin/main` at
 `46861489fa0b3b05ae917a99a3932897efd70365`; its accepted SV1-A evidence HEAD is
 `af073ca0ad2a9df9418cf072dc381d7b2c10216a`. SV1-A is an accepted partial
@@ -33,13 +35,21 @@ Localization, and Source-Graph Closure` is now the separately governed current
 phase. The canonical current sequence lives in
 `docs/roadmap/current-mainline-roadmap.md`.
 
-The current PR #139 execution has closed localization accounting with one
-explicit manual-review-pending item, but is blocked before graph/search/manual
-acceptance at `blocked_sv1b_replay_trusted_provenance_reconciliation`. A legacy
+The current PR #139 execution has closed acquisition and localization
+accounting, completed exact R2R remap, and passed Primary graph safety. A legacy
 stable-package sanitizer removed nested Pixiv provider `work_id`, so package
-equality did not prove graph-effective trusted-input equality. Retry2 Replay
-cleanup or retry3 creation remains unauthorized pending a separate recovery
-decision.
+equality did not prove graph-effective trusted-input equality. The failed
+retry2 Replay remains immutable. The project owner has authorized a
+schema-aware stable replay package v2 and exactly one fresh isolated Replay
+verification database after offline and immutable-evidence gates pass. This
+recovery authorizes no provider, Pixiv, gallery-dl, LLM, media, thumbnail,
+Primary recreation, acquisition replay, localization replay, FL1, production,
+Provider-2, Entity, or truth-path work.
+
+`DOC-GOV-02` remains bounded debt owned by FL1 planning: archive the historical
+project-roadmap body, extract the detailed AGENTS runbook, and remove stale
+historical text that still calls R1R the current next phase. It is due before
+FL1 planning and does not block the authorized fresh Replay recovery.
 
 The former SR1 interpretation is superseded: identity union and search-result
 union are different. `cannot_link` blocks identity union, but a bare name returns

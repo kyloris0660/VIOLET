@@ -173,23 +173,22 @@ public summary for exact aggregate evidence.
 
 ## Current Phase and Stop Boundary
 
-`SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure`
-is current. It must independently close new Pixiv metadata, localization, and
-the source graph for the accepted 12,000-media manifest while preserving the
-accepted SV1-A evidence. The full library and production remain incomplete.
+<!-- CURRENT_PHASE: SCV2-SV1B -->
 
-SV1B's automated execution may use only its approved finite provider and
-text-only localization routes after all hardening gates pass. It must stop at
-the exact user manual-acceptance checkpoint with
+`SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure`
+is current. Acquisition, localization accounting, R2R exact remap, and Primary
+graph safety are accepted execution inputs. The failed retry2 Replay exposed a
+legacy package common-mode loss and remains an immutable forensic checkpoint.
+
+The project owner has authorized schema-aware stable replay package v2 and
+exactly one fresh isolated Replay verification database after offline package
+and immutable-acquisition-evidence gates pass. This recovery has zero external
+call budget: no provider, Pixiv, gallery-dl, LLM, media, thumbnail, Primary
+recreation, acquisition replay, or localization replay is authorized.
+
+SV1B must still stop at the exact user manual-acceptance checkpoint with
 `manual_acceptance_status=pending_user`, `target_met=false`,
 `safe_to_merge=false`, and `route_approved=false`. Do not start FL1,
 Provider-2, production, full-library execution, Entity bridge, confirmed
-assignment, truth promotion, media download, or source/iCloud mutation.
-
-PR #139 is currently stopped earlier at
-`blocked_sv1b_replay_trusted_provenance_reconciliation`: localization
-accounting is closed, but the legacy stable-package sanitizer removed nested
-provider `work_id`, causing Replay graph-effective trusted metadata inputs to
-diverge from Primary. Failed Replay derived state is preserved; cleanup,
-retry3, graph/search acceptance, and the 40-case harness require a separate
-recovery authorization.
+assignment, truth promotion, or source/iCloud mutation. The machine-readable
+current state is `docs/state/current-phase.json`.

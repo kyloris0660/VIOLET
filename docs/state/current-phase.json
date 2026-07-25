@@ -1,0 +1,136 @@
+{
+  "schema_version": "violet.current-phase.v1",
+  "phase_id": "SCV2-SV1B",
+  "phase_title": "Controlled Pixiv Metadata, Localization, and Source-Graph Closure",
+  "repository": "kyloris0660/VIOLET",
+  "branch": "codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure",
+  "pr_number": 139,
+  "draft": true,
+  "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
+  "implementation_evidence_head": "0b74f559507dcec74705fe632ceafe227b904124",
+  "current_status": "authorized_sv1b_fresh_replay_v2_pending_package_validation",
+  "target_met": false,
+  "safe_to_merge": false,
+  "route_approved": false,
+  "manual_acceptance_status": "not_started_replay_recovery",
+  "next_phase_started": false,
+  "completed_checkpoints": [
+    {
+      "id": "checkpoint_a_accepted_baseline",
+      "result": "passed",
+      "fingerprint": "681d16aaefb390177bec54dd113e626a8a6f3408f89ba2be92d0caca195752b4"
+    },
+    {
+      "id": "checkpoint_b_primary_phase_delta",
+      "result": "passed",
+      "fingerprint": "2243ef27f0ce29399caa367af8c88547286d4ffe003df445cbe0ce707df5ed19"
+    },
+    {
+      "id": "provider_acquisition",
+      "result": "accepted_immutable_input",
+      "fingerprint": "df6008c1b469beaf9bd7f47e8a9af460188b2ad7e1218366a76e2d17e77d8636"
+    },
+    {
+      "id": "localization_accounting",
+      "result": "closed_with_one_manual_pending",
+      "fingerprint": "41dcd1db481544dac6805000e678c98af03332cd592c557331c997df2293c3bd"
+    },
+    {
+      "id": "r2r_exact_remap",
+      "result": "passed",
+      "fingerprint": "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
+    },
+    {
+      "id": "primary_graph_safety",
+      "result": "passed",
+      "fingerprint": "93cce55769a9912090446020c655e4c7ac73fe19c2e61946713110028caddf9f"
+    },
+    {
+      "id": "failed_retry2_replay_forensic_capture",
+      "result": "preserved_immutable",
+      "fingerprint": "efff5ee1746ba961552da57304ef1726250d063921d9e5551ef0fef5c9e92c0d"
+    },
+    {
+      "id": "doc_gov_01",
+      "result": "passed",
+      "fingerprint": "7c16783dab9a146c284ebfd4f9f66124b9b8ac88156bd573b5acaddf1a26ec4b"
+    }
+  ],
+  "active_blocker": {
+    "code": "blocked_sv1b_replay_trusted_provenance_reconciliation",
+    "scope": "failed retry2 Replay only",
+    "nonblocking_localization_item": "enpera",
+    "resolution": "Build schema-aware stable replay package v2 and one fresh isolated Replay verification database."
+  },
+  "owner_decisions": [
+    {
+      "id": "owner_authorized_fresh_replay_v2_20260725",
+      "decision": "Preserve the failed retry2 Replay as immutable forensic evidence and create exactly one fresh isolated Replay verification database after package-v2 gates pass."
+    },
+    {
+      "id": "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1",
+      "decision": "Historical phase-scoped credential-risk waiver remains recorded; this recovery authorizes no provider or credential use."
+    }
+  ],
+  "authorized_operations": [
+    "DOC-GOV-01 documentation-state implementation and checks",
+    "schema-aware stable replay package v2 implementation and offline validation",
+    "read-only cross-check of Primary stable identity against immutable accepted acquisition evidence",
+    "creation of exactly one fresh isolated Replay verification database after all gates pass",
+    "import of accepted acquisition, localization, R2R, and Primary non-derived evidence into the fresh Replay",
+    "independent fresh Replay graph/search derivation and manual-acceptance preparation"
+  ],
+  "forbidden_operations": [
+    "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
+    "Pixiv, gallery-dl, provider, LLM, media, or thumbnail request",
+    "Primary recreation or acquisition/localization replay",
+    "production, FL1, Provider-2, Entity, EntityAlias, confirmed assignment, truth promotion, or provider-derived media_tags write",
+    "merge, Ready transition, reviewer trigger, main push, or force-push"
+  ],
+  "protected_evidence": {
+    "manifest_fingerprint": "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
+    "primary_database": "blombooru_scv2_sv1b_metadata_graph_closure_test_20260721_retry2",
+    "failed_replay_database": "blombooru_scv2_sv1b_replay_verification_test_20260721_retry2",
+    "acquisition_package_fingerprint": "df6008c1b469beaf9bd7f47e8a9af460188b2ad7e1218366a76e2d17e77d8636",
+    "normalized_package_fingerprint": "b85eac282489bb280719527972ef9e94f6955dc0536f53b3e05e0702b8a58609",
+    "translation_fingerprint": "41dcd1db481544dac6805000e678c98af03332cd592c557331c997df2293c3bd",
+    "failed_replay_graph_effective_mismatch_count": 13261,
+    "failed_replay_trusted_complete_mismatch_count": 6074
+  },
+  "current_replay_strategy": {
+    "package_schema_version": "sv1b.stable-replay-evidence.v2",
+    "failed_replay_disposition": "immutable_forensic_checkpoint",
+    "fresh_replay_database": null,
+    "fresh_replay_database_creation_limit": 1,
+    "external_call_budget": 0,
+    "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
+  },
+  "next_required_checkpoint": "stable_replay_package_v2_offline_validation_and_primary_immutable_evidence_cross_check",
+  "durable_links": [
+    {
+      "label": "Current mainline roadmap",
+      "path": "docs/roadmap/current-mainline-roadmap.md"
+    },
+    {
+      "label": "Phase contracts",
+      "path": "docs/phase-contracts.md"
+    },
+    {
+      "label": "Replay provenance incident",
+      "path": "docs/reports/phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md"
+    },
+    {
+      "label": "Stable replay evidence v2 ADR",
+      "path": "docs/decisions/ADR-0001-stable-replay-evidence-v2.md"
+    }
+  ],
+  "deferred_debt": [
+    {
+      "id": "DOC-GOV-02",
+      "owner": "FL1 planning owner",
+      "reason": "Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.",
+      "due_before": "FL1 planning"
+    }
+  ],
+  "updated_at": "2026-07-25T22:28:00+08:00"
+}

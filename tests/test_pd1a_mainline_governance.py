@@ -77,9 +77,9 @@ def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:
 def test_handoff_points_to_current_mainline_roadmap() -> None:
     text = _read("docs/current-handoff.md")
 
-    assert "docs/roadmap/current-mainline-roadmap.md" in text
-    assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in text
-    assert "Search-result union is not identity union" in text
-    assert "remain unauthorized" in text
+    assert "roadmap/current-mainline-roadmap.md" in text
+    assert "SCV2-SV1B" in text
+    assert "Draft PR #139" in text
+    assert "provider/Pixiv/gallery-dl/LLM/media calls" in text
     assert "Current phase | `S3A-M2-R" not in text
     _assert_split_s2g_not_active(text)
