@@ -8,7 +8,7 @@
 - Repository / PR: `kyloris0660/VIOLET` / Draft PR #139.
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
-- Implementation evidence HEAD: `0b74f559507dcec74705fe632ceafe227b904124`.
+- Implementation evidence HEAD: `bf3c9e8398073d506ce91cc79632863caa7aad56`.
 - Status: `authorized_sv1b_fresh_replay_v2_pending_creation`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
@@ -57,4 +57,4 @@
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
 
-Updated: `2026-07-25T23:32:00+08:00`.
+Updated: `2026-07-25T23:21:00+08:00`.

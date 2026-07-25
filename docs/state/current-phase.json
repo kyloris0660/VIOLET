@@ -7,7 +7,7 @@
   "pr_number": 139,
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
-  "implementation_evidence_head": "0b74f559507dcec74705fe632ceafe227b904124",
+  "implementation_evidence_head": "bf3c9e8398073d506ce91cc79632863caa7aad56",
   "current_status": "authorized_sv1b_fresh_replay_v2_pending_creation",
   "target_met": false,
   "safe_to_merge": false,
@@ -146,5 +146,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-25T23:32:00+08:00"
+  "updated_at": "2026-07-25T23:21:00+08:00"
 }

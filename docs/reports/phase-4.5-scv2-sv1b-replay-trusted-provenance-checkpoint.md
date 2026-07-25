@@ -125,3 +125,7 @@ membership fingerprint 为
 下一门是创建负责人授权的唯一 fresh Replay v2 并执行
 export → import → re-export、graph-effective、trusted verdict 三重相等。
 失败 retry2 Replay 至此仍未发生任何写入。
+
+fresh-Replay-v2 runner 与 fail-closed 安全测试已绑定到
+`bf3c9e8398073d506ce91cc79632863caa7aad56`；完整 pre-creation non-E2E
+结果为 `3,511 passed / 4 approved skips`，外部调用预算保持为零。
