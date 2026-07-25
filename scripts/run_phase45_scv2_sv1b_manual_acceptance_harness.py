@@ -1324,7 +1324,11 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--primary-db", required=True)
     parser.add_argument("--replay-db", required=True)
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("APP_PORT", str(DEFAULT_PORT))),
+    )
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--prevalidate", action="store_true")
     args = parser.parse_args()

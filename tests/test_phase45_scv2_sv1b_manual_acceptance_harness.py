@@ -608,6 +608,7 @@ def test_phase_delta_composition_includes_every_manual_pending_localization() ->
 def test_harness_server_is_loopback_only_and_never_embeds_paths() -> None:
     source = Path(harness.__file__).read_text(encoding="utf-8")
     assert 'uvicorn.run(app, host="127.0.0.1"' in source
+    assert 'os.getenv("APP_PORT"' in source
     assert "storage_root in path.parents" in source
     assert '"source_url"' not in source
     assert '"path":' not in source
