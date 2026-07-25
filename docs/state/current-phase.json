@@ -8,7 +8,7 @@
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
   "implementation_evidence_head": "2e85b9ee54625cb08a02dfe15599446d96819e32",
-  "current_status": "blocked_sv1b_fresh_replay_persisted_projection_scope",
+  "current_status": "sv1b_fresh_replay_v2_graph_passed_pending_search_validation",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -66,21 +66,16 @@
       "fingerprint": "935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9"
     },
     {
-      "id": "fresh_replay_v2_first_graph_derivation",
-      "result": "failed_preserved_forensic_checkpoint",
-      "fingerprint": "7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6"
-    },
-    {
-      "id": "fresh_replay_v2_stable_signal_graph_rederivation",
-      "result": "graph_safety_passed_projection_scope_failed_preserved",
-      "fingerprint": "3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04"
+      "id": "fresh_replay_v2_graph_recovery_and_logical_comparison",
+      "result": "passed_with_failed_checkpoints_preserved",
+      "fingerprint": "60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089"
     }
   ],
   "active_blocker": {
-    "code": "blocked_sv1b_fresh_replay_persisted_projection_scope",
-    "scope": "fresh Replay stable core graph persisted-checkpoint projection",
+    "code": "pending_sv1b_fresh_replay_search_validation",
+    "scope": "Primary and fresh Replay search lifecycle and media-level AND semantics",
     "nonblocking_localization_item": "enpera",
-    "resolution": "Stable signal identity v2 removed the deferred identity union and the corrected graph safety audit passed. The failed proof is preserved because its persisted projection included explicitly superseded history rows. Restrict the checkpoint projection to current non-superseded rows, reconcile the already committed graph without another graph write, and rerun the logical comparison."
+    "resolution": "Stable-signal graph recovery and Primary/fresh logical comparison passed with both failed graph proofs preserved. Run the offline search lifecycle and media-level AND comparison; no provider, LLM, media, or old-Replay route is authorized."
   },
   "owner_decisions": [
     {
@@ -124,7 +119,10 @@
     "fresh_replay_baseline_fingerprint": "1c7926f4544be8b83ad5231c6f1faac8459cf7af2551f9588a889367ff496025",
     "failed_replay_forensic_state_fingerprint": "ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f",
     "fresh_replay_stable_signal_failed_scope_proof_fingerprint": "3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04",
-    "fresh_replay_current_forensic_state_fingerprint": "62e997dfdbe94edc5f51996832fc301dcedbb654d91c0c73ddbd395c9c7baeb8"
+    "fresh_replay_current_forensic_state_fingerprint": "62e997dfdbe94edc5f51996832fc301dcedbb654d91c0c73ddbd395c9c7baeb8",
+    "fresh_replay_graph_recovery_proof_fingerprint": "60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089",
+    "fresh_replay_graph_core_fingerprint": "67832751561266d9c106ae8169b5e98a049e14f2b0aebb84d985cb99e42d9d5f",
+    "fresh_replay_graph_scope_reconciliation_fingerprint": "74051974c583c346c4026d268caa849a1fc18d451acdd0bffc62625e40a722b8"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
@@ -134,7 +132,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "non_superseded_persisted_projection_reconciliation_and_graph_logical_comparison",
+  "next_required_checkpoint": "fresh_replay_search_lifecycle_and_media_level_and_validation",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -161,5 +159,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T01:08:00+08:00"
+  "updated_at": "2026-07-26T01:18:04+08:00"
 }

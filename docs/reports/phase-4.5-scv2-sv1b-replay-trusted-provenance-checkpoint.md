@@ -209,3 +209,23 @@ fingerprint 复核仍为
 历史文件按固定 file fingerprint 验证，当前 live audit 可随 stable-signal
 阶段演进；不再错误要求两者永久字节相等。其他 accepted artifact copy
 gate 未被放宽。
+
+scope reconciliation 与最终 graph logical comparison 已通过。最终 proof
+fingerprint 为
+`60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089`，
+scope reconciliation fingerprint 为
+`74051974c583c346c4026d268caa849a1fc18d451acdd0bffc62625e40a722b8`。
+stable signal 为 `126,127 / 126,127`；Primary expected / fresh planned /
+fresh persisted core 三方 fingerprint 均为
+`67832751561266d9c106ae8169b5e98a049e14f2b0aebb84d985cb99e42d9d5f`。
+图审计的 deferred union、direct/transitive cannot-link、cross-role、
+unknown-role 与 unsafe-large 计数全部为 `0`；606/606 accepted families
+可追溯。Primary / fresh creator-family logical projection 为
+`1,371 / 1,371`，fingerprint 相等；new families `765`，materially changed
+accepted families `460`。
+
+恢复过程的 graph database write count 为 `0`；Primary、failed retry2
+Replay、fresh non-derived package 与 translation state 均保持不变，fresh
+数据库数量仍为 `1`，provider / gallery-dl / LLM / media / thumbnail
+调用仍为 `0`。下一 durable gate 是
+`pending_sv1b_fresh_replay_search_validation`。

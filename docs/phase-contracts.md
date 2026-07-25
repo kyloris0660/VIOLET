@@ -73,11 +73,13 @@ a development numeric source-row ID produced a cross-database SourceConcept
 signal-key collision and one deferred identity union. Stable signal identity
 v2 then removed that union; its graph safety audit passed with 606/606 accepted
 families, but the fail-closed persisted-checkpoint projection included
-explicitly superseded historical rows. The current durable gate is
-`blocked_sv1b_fresh_replay_persisted_projection_scope`. Continuation requires
-a non-superseded current-run projection and a no-write reconciliation of the
-already committed graph; it must preserve both failed proofs and must neither
-clean nor recreate the fresh database.
+explicitly superseded historical rows. The stage-aware no-write reconciliation
+then passed: stable signals, R2R remap, Primary expected core, fresh planned
+core, fresh persisted core, and 606/606 family preservation are logically
+equal, while both failed proofs remain immutable. The current durable gate is
+`pending_sv1b_fresh_replay_search_validation`; continuation is limited to
+offline search lifecycle and media-level AND validation before the manual
+acceptance harness.
 
 ## Registered GOV3 Contracts
 

@@ -9,7 +9,7 @@
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
 - Implementation evidence HEAD: `2e85b9ee54625cb08a02dfe15599446d96819e32`.
-- Status: `blocked_sv1b_fresh_replay_persisted_projection_scope`.
+- Status: `sv1b_fresh_replay_v2_graph_passed_pending_search_validation`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
 
@@ -25,13 +25,12 @@
 - `doc_gov_01`: `passed` — `7c16783dab9a146c284ebfd4f9f66124b9b8ac88156bd573b5acaddf1a26ec4b`.
 - `stable_replay_package_v2_offline_validation`: `passed_with_primary_immutable_evidence_crosscheck` — `640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845`.
 - `fresh_replay_v2_create_import_round_trip`: `passed` — `935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9`.
-- `fresh_replay_v2_first_graph_derivation`: `failed_preserved_forensic_checkpoint` — `7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6`.
-- `fresh_replay_v2_stable_signal_graph_rederivation`: `graph_safety_passed_projection_scope_failed_preserved` — `3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04`.
+- `fresh_replay_v2_graph_recovery_and_logical_comparison`: `passed_with_failed_checkpoints_preserved` — `60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089`.
 
 ## Current Blocker And Owner Decision
 
-- Blocker: `blocked_sv1b_fresh_replay_persisted_projection_scope` (fresh Replay stable core graph persisted-checkpoint projection).
-- Resolution: Stable signal identity v2 removed the deferred identity union and the corrected graph safety audit passed. The failed proof is preserved because its persisted projection included explicitly superseded history rows. Restrict the checkpoint projection to current non-superseded rows, reconcile the already committed graph without another graph write, and rerun the logical comparison.
+- Blocker: `pending_sv1b_fresh_replay_search_validation` (Primary and fresh Replay search lifecycle and media-level AND semantics).
+- Resolution: Stable-signal graph recovery and Primary/fresh logical comparison passed with both failed graph proofs preserved. Run the offline search lifecycle and media-level AND comparison; no provider, LLM, media, or old-Replay route is authorized.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -45,7 +44,7 @@
 
 ## Next Action
 
-- Required checkpoint: `non_superseded_persisted_projection_reconciliation_and_graph_logical_comparison`.
+- Required checkpoint: `fresh_replay_search_lifecycle_and_media_level_and_validation`.
 
 ## Durable Links
 
@@ -57,4 +56,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T01:08:00+08:00`.
+Updated: `2026-07-26T01:18:04+08:00`.
