@@ -107,3 +107,21 @@ export → fresh import → re-export、graph-effective、trusted-complete 三�
 - [Stable replay evidence v2 ADR](../decisions/ADR-0001-stable-replay-evidence-v2.md)
 - [Current handoff](../current-handoff.md)
 - [Phase contracts](../phase-contracts.md)
+
+## 2026-07-25 package v2 离线修复检查点
+
+`sv1b.stable-replay-evidence.v2` 已完成 schema-aware 离线导出与真实 Primary
+只读核验。导出保留 `17,193` 条 metadata，trusted-complete verdict 保持
+`6,605`，未把 Primary 中原本缺失的 nested identity 推断为可信事实。
+accepted acquisition package 的 stable-key membership 与顶层 provider facts
+逐条交叉核验结果为：missing `0`、extra `0`、accepted provider-fact mutation
+`0`、stable-identity conflict `0`、unsupported identity `0`。字段级
+preservation/loss ledger 的 silent/graph-effective loss 均为 `0`。
+
+package fingerprint 为
+`640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845`；
+membership fingerprint 为
+`7540ba28da284c99ae835e87b79527dbc4ebf9d28c613add19a9892e11e6869f`。
+下一门是创建负责人授权的唯一 fresh Replay v2 并执行
+export → import → re-export、graph-effective、trusted verdict 三重相等。
+失败 retry2 Replay 至此仍未发生任何写入。

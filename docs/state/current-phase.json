@@ -8,7 +8,7 @@
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
   "implementation_evidence_head": "0b74f559507dcec74705fe632ceafe227b904124",
-  "current_status": "authorized_sv1b_fresh_replay_v2_pending_package_validation",
+  "current_status": "authorized_sv1b_fresh_replay_v2_pending_creation",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -54,13 +54,23 @@
       "id": "doc_gov_01",
       "result": "passed",
       "fingerprint": "7c16783dab9a146c284ebfd4f9f66124b9b8ac88156bd573b5acaddf1a26ec4b"
+    },
+    {
+      "id": "stable_replay_package_v2_offline_validation",
+      "result": "passed",
+      "fingerprint": "640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845"
+    },
+    {
+      "id": "primary_immutable_evidence_crosscheck",
+      "result": "passed_zero_provider_fact_mutation",
+      "fingerprint": "9ae4c936d20384b377cc80e4c21ca5315d1afaeb2deb3e24627eddbf2666456c"
     }
   ],
   "active_blocker": {
     "code": "blocked_sv1b_replay_trusted_provenance_reconciliation",
     "scope": "failed retry2 Replay only",
     "nonblocking_localization_item": "enpera",
-    "resolution": "Build schema-aware stable replay package v2 and one fresh isolated Replay verification database."
+    "resolution": "The schema-aware stable replay package v2 and immutable-evidence cross-check passed; create and verify the one fresh isolated Replay database."
   },
   "owner_decisions": [
     {
@@ -95,17 +105,21 @@
     "normalized_package_fingerprint": "b85eac282489bb280719527972ef9e94f6955dc0536f53b3e05e0702b8a58609",
     "translation_fingerprint": "41dcd1db481544dac6805000e678c98af03332cd592c557331c997df2293c3bd",
     "failed_replay_graph_effective_mismatch_count": 13261,
-    "failed_replay_trusted_complete_mismatch_count": 6074
+    "failed_replay_trusted_complete_mismatch_count": 6074,
+    "stable_replay_package_v2_fingerprint": "640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845",
+    "stable_replay_membership_fingerprint": "7540ba28da284c99ae835e87b79527dbc4ebf9d28c613add19a9892e11e6869f",
+    "stable_replay_graph_projection_fingerprint": "b211a4790f78e33553d66f74e3594365a4a2c7aca51822559b10a4d81ab726a2",
+    "primary_immutable_identity_ledger_fingerprint": "9ae4c936d20384b377cc80e4c21ca5315d1afaeb2deb3e24627eddbf2666456c"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
     "failed_replay_disposition": "immutable_forensic_checkpoint",
-    "fresh_replay_database": null,
+    "fresh_replay_database": "blombooru_scv2_sv1b_replay_v2_verification_test_20260725",
     "fresh_replay_database_creation_limit": 1,
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "stable_replay_package_v2_offline_validation_and_primary_immutable_evidence_cross_check",
+  "next_required_checkpoint": "single_fresh_replay_v2_creation_import_and_round_trip_equality",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -132,5 +146,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-25T22:28:00+08:00"
+  "updated_at": "2026-07-25T23:32:00+08:00"
 }

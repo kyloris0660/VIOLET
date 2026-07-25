@@ -322,7 +322,19 @@ def test_complete_reuse_materializes_search_evidence_for_new_media(db) -> None:
     assert db.query(SourceTagObservation).filter(
         SourceTagObservation.source_metadata_record_id == queue.id
     ).count() == 1
-    assert queue.raw_metadata_json["_pixiv_ingestion_reuse"]["source_metadata_record_id"] == source.id
+    reuse = queue.raw_metadata_json["_pixiv_ingestion_reuse"]
+    assert reuse["source_provider_record_key"] == source.provider_record_key
+    assert reuse["source_record_fingerprint"]
+    assert "source_metadata_record_id" not in reuse
+    assert queue.provenance["source_provider_record_key"] == source.provider_record_key
+    assert "source_metadata_record_id" not in queue.provenance
+    reused_name = db.query(SourceNameObservation).filter(
+        SourceNameObservation.media_id == 91
+    ).one()
+    assert reused_name.provenance["reused_from_provider_record_key"] == (
+        source.provider_record_key
+    )
+    assert "reused_from_source_metadata_record_id" not in reused_name.provenance
     assert queue_media_for_pixiv_metadata(
         db, {"id": 91, "filename": "123456789_p0.jpg", "path": "media/91.jpg"}
     ).state == PixivMetadataState.COMPLETE.value

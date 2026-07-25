@@ -83,6 +83,34 @@ def _record_value(record: SourceMetadataRecord | Mapping[str, Any], field: str) 
     return record.get(field) if isinstance(record, Mapping) else getattr(record, field, None)
 
 
+def stable_pixiv_source_record_fingerprint(
+    record: SourceMetadataRecord | Mapping[str, Any],
+) -> str:
+    """Return a cross-database reference fingerprint without a numeric row ID."""
+
+    payload = {
+        "provider_record_key": _record_value(record, "provider_record_key"),
+        "provider": _record_value(record, "provider"),
+        "source_work_id": _record_value(record, "source_work_id"),
+        "source_page_index": _record_value(record, "source_page_index"),
+        "metadata_kind": _record_value(record, "metadata_kind"),
+        "data_type_label": _record_value(record, "data_type_label"),
+        "status": _record_value(record, "status"),
+        "title": _record_value(record, "title"),
+        "artist_id": _record_value(record, "artist_id"),
+        "artist_name": _record_value(record, "artist_name"),
+    }
+    return hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def is_trusted_complete_pixiv_metadata_record(
     record: SourceMetadataRecord | Mapping[str, Any],
 ) -> bool:
@@ -132,6 +160,19 @@ def is_trusted_complete_pixiv_metadata_record(
     if source == "compatible_complete_record_reuse":
         reuse = raw.get("_pixiv_ingestion_reuse")
         reuse = reuse if isinstance(reuse, Mapping) else {}
+        stable_key = str(provenance.get("source_provider_record_key") or "")
+        reuse_stable_key = str(reuse.get("source_provider_record_key") or "")
+        stable_fingerprint = str(provenance.get("source_record_fingerprint") or "")
+        reuse_fingerprint = str(reuse.get("source_record_fingerprint") or "")
+        if stable_key or reuse_stable_key or stable_fingerprint or reuse_fingerprint:
+            return bool(
+                stable_key
+                and stable_key == reuse_stable_key
+                and stable_fingerprint
+                and stable_fingerprint == reuse_fingerprint
+            )
+        # Accepted pre-v2 Primary rows remain readable for immutable evidence
+        # comparison. New writes and v2 replay packages never emit this form.
         return bool(
             provenance.get("source_metadata_record_id") is not None
             and reuse.get("source_metadata_record_id") == provenance.get("source_metadata_record_id")
@@ -668,9 +709,14 @@ def _materialize_reused_complete_evidence(
     if not is_trusted_complete_pixiv_metadata_record(source_record):
         raise PixivMetadataGateError("untrusted_complete_record_reuse_rejected")
 
+    source_provider_record_key = str(source_record.provider_record_key or "")
+    source_record_fingerprint = stable_pixiv_source_record_fingerprint(source_record)
+    if not source_provider_record_key:
+        raise PixivMetadataGateError("stable_source_record_key_missing")
     source_raw = dict(source_record.raw_metadata_json or {})
     source_raw["_pixiv_ingestion_reuse"] = {
-        "source_metadata_record_id": int(source_record.id),
+        "source_provider_record_key": source_provider_record_key,
+        "source_record_fingerprint": source_record_fingerprint,
         "stable_identity_key": {
             "provider": "pixiv",
             "work_id": str(queue_record.source_work_id),
@@ -684,7 +730,8 @@ def _materialize_reused_complete_evidence(
     queue_record.raw_metadata_json = source_raw
     queue_record.provenance = {
         "source": "compatible_complete_record_reuse",
-        "source_metadata_record_id": int(source_record.id),
+        "source_provider_record_key": source_provider_record_key,
+        "source_record_fingerprint": source_record_fingerprint,
         "parser_version": PARSER_VERSION,
         "stable_identity_key": {
             "provider": "pixiv",
@@ -734,7 +781,8 @@ def _materialize_reused_complete_evidence(
                     confidence=row.confidence,
                     provenance={
                         **dict(row.provenance or {}),
-                        "reused_from_source_metadata_record_id": int(source_record.id),
+                        "reused_from_provider_record_key": source_provider_record_key,
+                        "reused_from_source_record_fingerprint": source_record_fingerprint,
                     },
                     requires_review=bool(row.requires_review),
                     status=row.status,
@@ -1574,6 +1622,7 @@ def _created_by_pr136_pixiv_observation_path(observation: SourceNameObservation)
     provenance = provenance if isinstance(provenance, Mapping) else {}
     return (
         str(provenance.get("source") or "") == "gallery_dl_authenticated_metadata"
+        or provenance.get("reused_from_provider_record_key") is not None
         or provenance.get("reused_from_source_metadata_record_id") is not None
     )
 

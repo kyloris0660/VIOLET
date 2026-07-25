@@ -9,7 +9,7 @@
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
 - Implementation evidence HEAD: `0b74f559507dcec74705fe632ceafe227b904124`.
-- Status: `authorized_sv1b_fresh_replay_v2_pending_package_validation`.
+- Status: `authorized_sv1b_fresh_replay_v2_pending_creation`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
 
@@ -23,11 +23,13 @@
 - `primary_graph_safety`: `passed` — `93cce55769a9912090446020c655e4c7ac73fe19c2e61946713110028caddf9f`.
 - `failed_retry2_replay_forensic_capture`: `preserved_immutable` — `efff5ee1746ba961552da57304ef1726250d063921d9e5551ef0fef5c9e92c0d`.
 - `doc_gov_01`: `passed` — `7c16783dab9a146c284ebfd4f9f66124b9b8ac88156bd573b5acaddf1a26ec4b`.
+- `stable_replay_package_v2_offline_validation`: `passed` — `640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845`.
+- `primary_immutable_evidence_crosscheck`: `passed_zero_provider_fact_mutation` — `9ae4c936d20384b377cc80e4c21ca5315d1afaeb2deb3e24627eddbf2666456c`.
 
 ## Current Blocker And Owner Decision
 
 - Blocker: `blocked_sv1b_replay_trusted_provenance_reconciliation` (failed retry2 Replay only).
-- Resolution: Build schema-aware stable replay package v2 and one fresh isolated Replay verification database.
+- Resolution: The schema-aware stable replay package v2 and immutable-evidence cross-check passed; create and verify the one fresh isolated Replay database.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -41,7 +43,7 @@
 
 ## Next Action
 
-- Required checkpoint: `stable_replay_package_v2_offline_validation_and_primary_immutable_evidence_cross_check`.
+- Required checkpoint: `single_fresh_replay_v2_creation_import_and_round_trip_equality`.
 - After package-v2 and immutable-evidence gates pass, create the single fresh Replay and continue to owner manual acceptance.
 
 ## Durable Links
@@ -55,4 +57,4 @@
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
 
-Updated: `2026-07-25T22:28:00+08:00`.
+Updated: `2026-07-25T23:32:00+08:00`.
