@@ -7,12 +7,12 @@
   "pr_number": 139,
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
-  "implementation_evidence_head": "863500cc70ef68e6475f549b188d27961805ef75",
-  "current_status": "sv1b_phase_delta_harness_generated_pending_final_binding_browser_validation",
+  "implementation_evidence_head": "b42ffafbd4cb6174440ea01135a4b4aad066c064",
+  "current_status": "automated_sv1b_candidate_ready_manual_acceptance_pending",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
-  "manual_acceptance_status": "not_started_replay_recovery",
+  "manual_acceptance_status": "pending_user",
   "next_phase_started": false,
   "completed_checkpoints": [
     {
@@ -71,16 +71,16 @@
       "fingerprint": "8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a"
     },
     {
-      "id": "phase_delta_40_case_harness_selection",
-      "result": "passed_pending_final_git_binding_and_browser_validation",
-      "fingerprint": "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5"
+      "id": "phase_delta_40_case_harness_and_browser_prevalidation",
+      "result": "passed_pending_owner_manual_acceptance",
+      "fingerprint": "4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef"
     }
   ],
   "active_blocker": {
-    "code": "pending_sv1b_final_harness_binding_and_browser_validation",
-    "scope": "final Git-bound phase-delta harness proof and real localhost browser validation",
+    "code": "pending_user_manual_acceptance",
+    "scope": "owner manual acceptance of the exact Git-bound 40-case localhost harness",
     "nonblocking_localization_item": "enpera",
-    "resolution": "The exact 40-case selection passed with 12 newly acquired metadata, 8 changed creator families, 6 labelled shared-name preservation fillers, 5 new translations, 2 proper-noun exclusions, enpera as the one manual localization case, and 6 phase-delta search cases. Run the audited-port browser prevalidation, then commit final public state and regenerate the same case membership read-only before writing one new non-overwriting final Git binding for the strict dashboard."
+    "resolution": "Automated replay, graph, search, 40-case selection, and real localhost browser prevalidation have passed. Commit this final public state, write the one non-overwriting final Git binding for the unchanged case membership, re-open the strict dashboard, and stop for the owner's manual decision; no automated result may substitute for that decision."
   },
   "owner_decisions": [
     {
@@ -134,7 +134,9 @@
     "fresh_replay_search_workload_fingerprint": "5207da2426d791c6872f46b1c566d8094b4eb133f603fd577a7fbe7ca9d2efeb",
     "fresh_replay_search_logical_result_fingerprint": "244d1451b4779e1bc65cccea582af90143fb7c75e1be3557b0d791af5ac6a7b8",
     "manual_acceptance_case_manifest_fingerprint": "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5",
-    "pre_final_binding_manual_checkpoint_fingerprint": "70d1d06fec7a77f10c4b225bd83b40f797f8a9ea15377fbd94658b8ddd6f8db1"
+    "pre_final_binding_manual_checkpoint_fingerprint": "70d1d06fec7a77f10c4b225bd83b40f797f8a9ea15377fbd94658b8ddd6f8db1",
+    "browser_prevalidation_proof_fingerprint": "4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef",
+    "final_public_redaction_proof_fingerprint": "99b76bfd51502ab65f357e34cdc9f950981e94a6a30a710f6873a1a6719da445"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
@@ -144,7 +146,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "final_harness_git_binding_and_real_browser_validation",
+  "next_required_checkpoint": "owner_manual_acceptance_of_git_bound_40_case_harness",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -171,5 +173,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T02:15:27+08:00"
+  "updated_at": "2026-07-26T02:46:00+08:00"
 }

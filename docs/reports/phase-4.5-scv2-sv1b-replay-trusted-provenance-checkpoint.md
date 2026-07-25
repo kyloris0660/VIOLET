@@ -298,3 +298,34 @@ dashboard 的 Git binding 失效，新增的一次性 final-binding gate 会只�
 `pending_sv1b_final_harness_binding_and_browser_validation`。该步骤仍保持
 provider、gallery-dl、LLM、media、thumbnail 调用计数全部为零，失败 retry2
 Replay 不变。
+
+## 2026-07-26 浏览器预验证与负责人停止点
+
+受控 `VIOLET_ENV=test` localhost 服务在审计后的动态端口 `8012` 启动。
+Codex in-app browser 实际加载了 40 个 case，组成精确为
+`12 / 8 / 6 / 8 / 6`；40/40 媒体图片加载成功、破图为 0、控制台
+warning/error 为 0，`enpera` 已纳入 localization manual case。交互探针完成
+后通过页面重载恢复 40/40 `pending`，未点击导出、未生成 owner result。
+
+当前 durable 状态推进为
+`automated_sv1b_candidate_ready_manual_acceptance_pending`，blocker 为
+`pending_user_manual_acceptance`。本次公共状态 commit 后只允许写入一次
+non-overwriting final Git binding，并以 strict dashboard 验证该绑定；自动化
+不得代替负责人提交验收结果。五个状态字段保持：
+
+```text
+target_met = false
+safe_to_merge = false
+route_approved = false
+manual_acceptance_status = pending_user
+next_phase_started = false
+```
+
+provider、Pixiv、gallery-dl、LLM、media/thumbnail 请求仍为 0；failed retry2
+Replay 仍保持其取证指纹不变。
+
+Authoritative contract 复核同时识别并修正了一个仅限 work-level 的聚合缺口：
+10 个 `mixed_closed` work 的所有页面均处于三种允许终态，但旧 contract 未把该
+聚合类计入闭合 work。页面级允许终态未放宽；真实证据 summary 现以
+`6,074 / 1,655 / 28` 个 page 终态和
+`5,953 / 1,050 / 15 / 10` 个 work 聚合闭合项通过 contract。

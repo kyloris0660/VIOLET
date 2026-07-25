@@ -1172,6 +1172,11 @@ The phase contract must keep `target_met=false`, `safe_to_merge=false`, and
 tests, agent browser runs, and generated dashboards cannot substitute for the
 user's explicit acceptance.
 
+Current SCV2-SV1B status: the automated candidate and 40-case localhost
+prevalidation are complete, `manual_acceptance_status=pending_user`, and FL1
+has not started. See `docs/state/current-phase.json` for the authoritative
+current checkpoint.
+
 ### Safety Rules
 
 **Never commit:**

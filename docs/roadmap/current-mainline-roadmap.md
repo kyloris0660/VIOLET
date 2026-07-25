@@ -192,3 +192,8 @@ SV1B must still stop at the exact user manual-acceptance checkpoint with
 Provider-2, production, full-library execution, Entity bridge, confirmed
 assignment, truth promotion, or source/iCloud mutation. The machine-readable
 current state is `docs/state/current-phase.json`.
+
+The automated SV1B candidate has now reached its owner stop:
+`manual_acceptance_status=pending_user`. The 40-case localhost harness passed
+agent browser prevalidation, but only the owner may export the acceptance
+result; FL1 remains unstarted.

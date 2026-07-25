@@ -83,11 +83,13 @@ missing or unsupported results, zero AND leakage, zero lifecycle violation,
 and zero protected-table mutation. Physical history totals remain diagnostics,
 and both failed search proofs remain preserved. The 40-case phase-delta
 selection also passes and includes `enpera`; its pre-final proof remains
-preserved. The current gate is
-`pending_sv1b_final_harness_binding_and_browser_validation`: after the final
-public state commit, regenerate the same case membership read-only, write one
-new non-overwriting final Git binding, and complete real localhost browser
-validation before stopping at owner manual acceptance.
+preserved. Real localhost browser prevalidation passed with 40/40 cases and
+media images loaded, exact category counts `12/8/6/8/6`, no browser console
+warning/error, and no result export. The current gate is
+`pending_user_manual_acceptance`: the final public-state commit must receive
+one non-overwriting Git binding for the unchanged case membership, the strict
+dashboard must start against that binding, and automation must stop without
+submitting the owner's result.
 
 ## Registered GOV3 Contracts
 

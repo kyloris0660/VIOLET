@@ -8,10 +8,10 @@
 - Repository / PR: `kyloris0660/VIOLET` / Draft PR #139.
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
-- Implementation evidence HEAD: `863500cc70ef68e6475f549b188d27961805ef75`.
-- Status: `sv1b_phase_delta_harness_generated_pending_final_binding_browser_validation`.
+- Implementation evidence HEAD: `b42ffafbd4cb6174440ea01135a4b4aad066c064`.
+- Status: `automated_sv1b_candidate_ready_manual_acceptance_pending`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
+- `manual_acceptance_status=pending_user`; `next_phase_started=false`.
 
 ## Completed Checkpoints
 
@@ -26,12 +26,12 @@
 - `fresh_replay_v2_create_import_round_trip`: `passed` — `935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9`.
 - `fresh_replay_v2_graph_recovery_and_logical_comparison`: `passed_with_failed_checkpoints_preserved` — `60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089`.
 - `fresh_replay_v2_search_lifecycle_and_and_validation`: `passed_with_physical_history_counts_diagnostic_only` — `8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a`.
-- `phase_delta_40_case_harness_selection`: `passed_pending_final_git_binding_and_browser_validation` — `6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5`.
+- `phase_delta_40_case_harness_and_browser_prevalidation`: `passed_pending_owner_manual_acceptance` — `4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef`.
 
 ## Current Blocker And Owner Decision
 
-- Blocker: `pending_sv1b_final_harness_binding_and_browser_validation` (final Git-bound phase-delta harness proof and real localhost browser validation).
-- Resolution: The exact 40-case selection passed with 12 newly acquired metadata, 8 changed creator families, 6 labelled shared-name preservation fillers, 5 new translations, 2 proper-noun exclusions, enpera as the one manual localization case, and 6 phase-delta search cases. Run the audited-port browser prevalidation, then commit final public state and regenerate the same case membership read-only before writing one new non-overwriting final Git binding for the strict dashboard.
+- Blocker: `pending_user_manual_acceptance` (owner manual acceptance of the exact Git-bound 40-case localhost harness).
+- Resolution: Automated replay, graph, search, 40-case selection, and real localhost browser prevalidation have passed. Commit this final public state, write the one non-overwriting final Git binding for the unchanged case membership, re-open the strict dashboard, and stop for the owner's manual decision; no automated result may substitute for that decision.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -45,7 +45,7 @@
 
 ## Next Action
 
-- Required checkpoint: `final_harness_git_binding_and_real_browser_validation`.
+- Required checkpoint: `owner_manual_acceptance_of_git_bound_40_case_harness`.
 
 ## Durable Links
 
@@ -57,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T02:15:27+08:00`.
+Updated: `2026-07-26T02:46:00+08:00`.
