@@ -1142,6 +1142,13 @@ def _install_external_route_guards(module: Any) -> None:
 def _prepare_graph_proofs(output: Path, sv1b: Any) -> dict[str, Any]:
     package = read_json(output / "stable-replay-package-v2-private.json")
     package_payload_fingerprint = sha256_payload(package)
+    package_binding_path = (
+        output / "acquired-nonderived-evidence-package-private.json"
+    )
+    if not package_binding_path.exists():
+        write_json(package_binding_path, package)
+    elif read_json(package_binding_path) != package:
+        raise FreshReplayV2Error("stable_package_graph_binding_drift")
     _copy_if_missing(
         OLD_OUTPUT / "localization-closure-proof.json",
         output / "localization-closure-proof.json",

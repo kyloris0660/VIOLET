@@ -47,9 +47,9 @@ def test_current_phase_schema_and_status_fields_are_consistent() -> None:
     assert state["route_approved"] is False
     assert state["manual_acceptance_status"] == "not_started_replay_recovery"
     assert state["next_phase_started"] is False
-    assert state["active_blocker"]["code"] == (
-        "blocked_sv1b_replay_trusted_provenance_reconciliation"
-    )
+    assert state["active_blocker"]["code"]
+    assert state["active_blocker"]["scope"]
+    assert state["active_blocker"]["resolution"]
     assert state["current_replay_strategy"]["fresh_replay_database_creation_limit"] == 1
     assert state["current_replay_strategy"]["external_call_budget"] == 0
 
@@ -77,6 +77,7 @@ def test_current_phase_links_report_adr_and_contract_are_consistent() -> None:
     blocker = state["active_blocker"]["code"]
     assert blocker in incident
     assert blocker in contract
+    assert blocker in HANDOFF_PATH.read_text(encoding="utf-8")
     assert "schema-aware" in incident
     assert "schema-aware" in adr
     assert "fresh isolated Replay" in incident

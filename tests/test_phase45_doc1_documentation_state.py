@@ -117,13 +117,19 @@ def test_readme_is_public_entrypoint_not_phase_changelog() -> None:
 
 def test_current_handoff_is_slim_and_current_route_focused() -> None:
     handoff = read_text(ROOT / "docs" / "current-handoff.md")
+    state = json.loads(
+        (ROOT / "docs" / "state" / "current-phase.json").read_text(
+            encoding="utf-8"
+        )
+    )
     line_count = len(handoff.splitlines())
 
     assert 40 <= line_count <= 60
     assert "docs/state/current-phase.json" in handoff
     assert "SCV2-SV1B" in handoff
     assert "Draft PR #139" in handoff
-    assert "schema-aware stable replay package v2" in handoff
+    assert state["current_replay_strategy"]["package_schema_version"] in handoff
+    assert state["active_blocker"]["code"] in handoff
     assert "external-call budget: `0`" in handoff
     assert "provider/Pixiv/gallery-dl/LLM/media calls" in handoff
     assert "Phase 4.4-B0" not in handoff

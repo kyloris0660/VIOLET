@@ -8,7 +8,7 @@
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
   "implementation_evidence_head": "bf3c9e8398073d506ce91cc79632863caa7aad56",
-  "current_status": "authorized_sv1b_fresh_replay_v2_pending_creation",
+  "current_status": "sv1b_fresh_replay_v2_round_trip_passed_pending_graph_derivation",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -57,20 +57,20 @@
     },
     {
       "id": "stable_replay_package_v2_offline_validation",
-      "result": "passed",
+      "result": "passed_with_primary_immutable_evidence_crosscheck",
       "fingerprint": "640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845"
     },
     {
-      "id": "primary_immutable_evidence_crosscheck",
-      "result": "passed_zero_provider_fact_mutation",
-      "fingerprint": "9ae4c936d20384b377cc80e4c21ca5315d1afaeb2deb3e24627eddbf2666456c"
+      "id": "fresh_replay_v2_create_import_round_trip",
+      "result": "passed",
+      "fingerprint": "935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9"
     }
   ],
   "active_blocker": {
-    "code": "blocked_sv1b_replay_trusted_provenance_reconciliation",
-    "scope": "failed retry2 Replay only",
+    "code": "pending_sv1b_fresh_replay_graph_validation",
+    "scope": "fresh Replay v2 downstream automated validation",
     "nonblocking_localization_item": "enpera",
-    "resolution": "The schema-aware stable replay package v2 and immutable-evidence cross-check passed; create and verify the one fresh isolated Replay database."
+    "resolution": "Fresh Replay v2 round-trip and trusted-input equality passed; independently derive and compare graph/search state."
   },
   "owner_decisions": [
     {
@@ -109,7 +109,10 @@
     "stable_replay_package_v2_fingerprint": "640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845",
     "stable_replay_membership_fingerprint": "7540ba28da284c99ae835e87b79527dbc4ebf9d28c613add19a9892e11e6869f",
     "stable_replay_graph_projection_fingerprint": "b211a4790f78e33553d66f74e3594365a4a2c7aca51822559b10a4d81ab726a2",
-    "primary_immutable_identity_ledger_fingerprint": "9ae4c936d20384b377cc80e4c21ca5315d1afaeb2deb3e24627eddbf2666456c"
+    "primary_immutable_identity_ledger_fingerprint": "9ae4c936d20384b377cc80e4c21ca5315d1afaeb2deb3e24627eddbf2666456c",
+    "fresh_replay_create_import_proof_fingerprint": "935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9",
+    "fresh_replay_baseline_fingerprint": "1c7926f4544be8b83ad5231c6f1faac8459cf7af2551f9588a889367ff496025",
+    "failed_replay_forensic_state_fingerprint": "ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
@@ -119,7 +122,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "single_fresh_replay_v2_creation_import_and_round_trip_equality",
+  "next_required_checkpoint": "independent_fresh_replay_graph_derivation_and_primary_logical_comparison",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -146,5 +149,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-25T23:21:00+08:00"
+  "updated_at": "2026-07-25T23:32:00+08:00"
 }

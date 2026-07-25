@@ -66,7 +66,10 @@ metadata equality, and trusted-complete verdict/count equality. The failed
 retry2 Replay remains immutable forensic evidence. The owner has authorized
 exactly one fresh isolated Replay verification database after package-v2 and
 immutable acquisition-evidence gates pass. Any mismatch still fails closed at
-`blocked_sv1b_replay_trusted_provenance_reconciliation`.
+`blocked_sv1b_replay_trusted_provenance_reconciliation`. Fresh Replay v2
+round-trip equality passed on the owner-authorized isolated database; the
+current durable gate is `pending_sv1b_fresh_replay_graph_validation` until
+independent graph/search comparison finishes.
 
 ## Registered GOV3 Contracts
 

@@ -129,3 +129,20 @@ export → import → re-export、graph-effective、trusted verdict 三重相等
 fresh-Replay-v2 runner 与 fail-closed 安全测试已绑定到
 `bf3c9e8398073d506ce91cc79632863caa7aad56`；完整 pre-creation non-E2E
 结果为 `3,511 passed / 4 approved skips`，外部调用预算保持为零。
+
+## Fresh Replay v2 create/import 结果
+
+负责人授权的唯一 fresh Replay
+`blombooru_scv2_sv1b_replay_v2_verification_test_20260725` 已创建。
+Primary / fresh Replay metadata 为 `17,193 / 17,193`，missing / extra 为
+`0 / 0`，trusted-complete 为 `6,605 / 6,605`，translation rows 为
+`5,519 / 5,519`。graph-effective、stable identity 与 trusted verdict
+mismatch 均为 `0`；第二次同包导入新增 `0` 行。
+
+create/import proof fingerprint 为
+`935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9`。
+失败 retry2 Replay 的前后 forensic state fingerprint 均为
+`ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f`。
+外部 provider / LLM / media 调用计数仍为 `0`。下一门为 fresh Replay
+独立 graph derivation 与 Primary logical comparison；当前 pending code 为
+`pending_sv1b_fresh_replay_graph_validation`。
