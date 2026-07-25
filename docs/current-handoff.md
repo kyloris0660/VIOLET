@@ -8,7 +8,7 @@
 - Repository / PR: `kyloris0660/VIOLET` / Draft PR #139.
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
-- Implementation evidence HEAD: `f3172f4d88d6a43ca7a243c5577021a5a0b46de8`.
+- Implementation evidence HEAD: `2e1597f03552f02e196f35332b6cd86cc08bd913`.
 - Status: `sv1b_phase_delta_harness_generated_pending_final_binding_browser_validation`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `manual_acceptance_status=not_started_replay_recovery`; `next_phase_started=false`.
@@ -31,7 +31,7 @@
 ## Current Blocker And Owner Decision
 
 - Blocker: `pending_sv1b_final_harness_binding_and_browser_validation` (final Git-bound phase-delta harness proof and real localhost browser validation).
-- Resolution: The exact 40-case selection passed with 12 newly acquired metadata, 8 changed creator families, 6 labelled shared-name preservation fillers, 5 new translations, 2 proper-noun exclusions, enpera as the one manual localization case, and 6 phase-delta search cases. After the final public state commit, regenerate the same case membership read-only, write one new non-overwriting final Git binding, and run real localhost browser validation.
+- Resolution: The exact 40-case selection passed with 12 newly acquired metadata, 8 changed creator families, 6 labelled shared-name preservation fillers, 5 new translations, 2 proper-noun exclusions, enpera as the one manual localization case, and 6 phase-delta search cases. Run the audited-port browser prevalidation, then commit final public state and regenerate the same case membership read-only before writing one new non-overwriting final Git binding for the strict dashboard.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
@@ -57,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T01:52:48+08:00`.
+Updated: `2026-07-26T02:03:38+08:00`.
