@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -155,6 +156,18 @@ def test_new_metadata_membership_fails_on_nonzero_external_route_budget(
         match="acquisition_package_binding_invalid",
     ):
         harness._newly_acquired_exact_metadata_membership(output)
+
+
+def test_case_manifest_equality_normalizes_datetime_json_representation() -> None:
+    timestamp = datetime(2026, 7, 22, 3, 4, 5, tzinfo=timezone.utc)
+    assert harness._case_manifests_equal(
+        [{"case_id": "A01", "retrieved_at": timestamp}],
+        [{"case_id": "A01", "retrieved_at": str(timestamp)}],
+    )
+    assert not harness._case_manifests_equal(
+        [{"case_id": "A01", "retrieved_at": timestamp}],
+        [{"case_id": "A02", "retrieved_at": str(timestamp)}],
+    )
 
 
 def _cases(category: str, count: int, prefix: str) -> list[dict]:

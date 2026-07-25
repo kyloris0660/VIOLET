@@ -943,6 +943,13 @@ def _build_bindings(
     return bindings
 
 
+def _case_manifests_equal(
+    left: list[dict[str, Any]],
+    right: list[dict[str, Any]],
+) -> bool:
+    return sv1b.sha256_payload(left) == sv1b.sha256_payload(right)
+
+
 def build_harness(
     output: Path,
     *,
@@ -1058,7 +1065,9 @@ def finalize_harness_binding(
     regenerated_cases, phase_delta_composition = _generate_cases(
         output, primary_database=primary_database
     )
-    if regenerated_cases != existing_cases:
+    if not _case_manifests_equal(
+        regenerated_cases, existing_cases
+    ):
         raise ManualAcceptanceHarnessError(
             "manual_acceptance_case_regeneration_drift"
         )
@@ -1124,7 +1133,9 @@ def _prevalidation_bindings(
     regenerated_cases, _composition = _generate_cases(
         output, primary_database=primary_database
     )
-    if regenerated_cases != existing_cases:
+    if not _case_manifests_equal(
+        regenerated_cases, existing_cases
+    ):
         raise ManualAcceptanceHarnessError(
             "manual_acceptance_case_regeneration_drift"
         )
