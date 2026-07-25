@@ -2245,6 +2245,7 @@ def execute_build_harness(
 def execute_finalize_harness_binding(
     *,
     output: Path = DEFAULT_OUTPUT,
+    port: int = 8031,
 ) -> dict[str, Any]:
     checkpoint_path = (
         output / "fresh-replay-v2-final-manual-checkpoint-proof.json"
@@ -2268,6 +2269,7 @@ def execute_finalize_harness_binding(
         output,
         primary_database=PRIMARY_DATABASE,
         replay_database=FRESH_REPLAY_DATABASE,
+        port=port,
     )
     failed_before = read_json(
         output / "read-only-preflight-proof.json"
@@ -2342,7 +2344,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.stage == "search":
         result = execute_search(output=output)
     elif args.stage == "finalize-harness-binding":
-        result = execute_finalize_harness_binding(output=output)
+        result = execute_finalize_harness_binding(
+            output=output, port=args.port
+        )
     else:
         result = execute_build_harness(output=output, port=args.port)
     print(

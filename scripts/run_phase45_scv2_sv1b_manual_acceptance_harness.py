@@ -1032,6 +1032,7 @@ def finalize_harness_binding(
     *,
     primary_database: str,
     replay_database: str,
+    port: int = DEFAULT_PORT,
 ) -> dict[str, Any]:
     output = output.resolve()
     sv1b.validate_owned_output_root(
@@ -1093,6 +1094,7 @@ def finalize_harness_binding(
             "phase_delta_composition": phase_delta_composition,
             "proof_sources": relative_proof_sources,
             "bindings": bindings,
+            "localhost_url": f"http://127.0.0.1:{int(port)}",
             "passed": True,
         }
     )

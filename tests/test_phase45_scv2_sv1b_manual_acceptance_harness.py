@@ -432,9 +432,11 @@ def test_final_binding_regenerates_cases_and_preserves_source_proof(
         output,
         primary_database="blombooru_sv1b_primary_test",
         replay_database="blombooru_sv1b_replay_test",
+        port=8012,
     )
     assert final["case_manifest_regenerated_equal"] is True
     assert final["bindings"]["git_head"] == "b" * 40
+    assert final["localhost_url"] == "http://127.0.0.1:8012"
     assert (
         output / "manual-acceptance-harness-proof.json"
     ).read_text(encoding="utf-8") == source_text
