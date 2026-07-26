@@ -1,6 +1,19 @@
 # SCV2-SV1B Replay Trusted-Provenance Checkpoint
 
-## 当前结论
+<!-- AUTHORITATIVE_CURRENT_STATUS: automated_sv1b_candidate_ready_manual_acceptance_pending -->
+<!-- AUTHORITATIVE_MANUAL_ACCEPTANCE_STATUS: pending_user -->
+
+## 权威当前状态
+
+本报告的权威当前状态为
+`automated_sv1b_candidate_ready_manual_acceptance_pending`，当前 blocker 为
+`pending_user_manual_acceptance`，且 `manual_acceptance_status=pending_user`。
+Fresh Replay v2、graph/search、40-case harness 与自动浏览器预验证均已完成；
+负责人手工验收尚未发生，自动化不得代替负责人导出验收结果。
+
+<!-- HISTORICAL_STATUSES_BELOW: historical_superseded -->
+
+## 事故初始结论（historical / superseded；不是当前阶段状态）
 
 PR #139 的 acquisition、localization accounting、R2R exact remap 与 Primary
 graph safety 已形成受保护输入。旧 retry2 Replay 的 graph-effective provenance
@@ -9,7 +22,7 @@ graph safety 已形成受保护输入。旧 retry2 Replay 的 graph-effective pr
 保留失败 Replay 为不可变取证证据；完成 schema-aware stable replay package
 v2 后，只创建一个 fresh isolated Replay verification database。
 
-当前状态字段仍为：
+当时状态字段（historical / superseded）为：
 
 ```text
 target_met = false
@@ -122,7 +135,7 @@ package fingerprint 为
 `640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845`；
 membership fingerprint 为
 `7540ba28da284c99ae835e87b79527dbc4ebf9d28c613add19a9892e11e6869f`。
-下一门是创建负责人授权的唯一 fresh Replay v2 并执行
+当时下一门（historical / superseded）是创建负责人授权的唯一 fresh Replay v2 并执行
 export → import → re-export、graph-effective、trusted verdict 三重相等。
 失败 retry2 Replay 至此仍未发生任何写入。
 
@@ -143,8 +156,8 @@ create/import proof fingerprint 为
 `935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9`。
 失败 retry2 Replay 的前后 forensic state fingerprint 均为
 `ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f`。
-外部 provider / LLM / media 调用计数仍为 `0`。下一门为 fresh Replay
-独立 graph derivation 与 Primary logical comparison；当前 pending code 为
+外部 provider / LLM / media 调用计数仍为 `0`。当时下一门（historical / superseded）为 fresh Replay
+独立 graph derivation 与 Primary logical comparison；当时 pending code 为
 `pending_sv1b_fresh_replay_graph_validation`。
 
 ## 2026-07-25 fresh Replay v2 首次图派生事故
@@ -160,7 +173,7 @@ identity 与 large-component safety 均通过，但 graph safety 仍检测到唯
 代表 creator account signal，在 fresh Replay 却代表 character
 parenthetical signal。这不是可接受的逻辑差异，不能豁免。
 
-当前以
+当时以 historical / superseded
 `blocked_sv1b_fresh_replay_graph_signal_identity_collision` fail closed。
 失败 graph proof fingerprint 为
 `7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6`。
@@ -191,7 +204,7 @@ signal count 为 `126,127 / 252,164`。evidence 和 link 的当前逻辑投影
 
 失败证明 fingerprint 为
 `3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04`，
-保持不重写。当前 blocker 为
+保持不重写。当时 blocker（historical / superseded）为
 `blocked_sv1b_fresh_replay_persisted_projection_scope`。修复仅允许让
 checkpoint projection 排除 `superseded` 历史行，并对已提交 graph
 执行零数据库写入的作用域 reconciliation；不得再次派生、清理历史、
@@ -261,7 +274,7 @@ fallback index 为 `9,682 / 141,323`，fresh 为 `9,709 / 282,676`；
 fresh 数字包含按授权保留的 superseded graph 与两代 fallback overlay
 历史，不能作为跨库逻辑 identity。失败 comparison proof fingerprint 为
 `4def842dce3a43d1352bbd76aa90ff762e1d2bd96740cb6a681f4690339de438`。
-当前 blocker 为
+当时 blocker（historical / superseded）为
 `blocked_sv1b_search_physical_history_count_comparison`。修复门使用已经
 通过的 stable graph search projection 比较 current logical stable keys，
 物理行数继续作为 history-preservation diagnostic 报告，不删除历史。
@@ -278,7 +291,7 @@ unsupported、AND leakage、lifecycle violation 与 protected-table mutation
 均为 `0`。stable graph search projection 的 Primary expected / fresh
 planned / fresh persisted 均为 `6,987` 条，fingerprint 相等。
 
-当前 durable gate 为
+当时 durable gate（historical / superseded）为
 `pending_sv1b_phase_delta_manual_acceptance_harness`；下一步只允许生成
 40-case harness、纳入 `enpera` 并做真实 localhost browser validation。
 
@@ -294,12 +307,12 @@ case，以及 6 个 phase-delta search case。Case manifest fingerprint 为
 初始 harness proof 绑定当时 Git HEAD 并保持不覆盖。为避免公共状态提交导致
 dashboard 的 Git binding 失效，新增的一次性 final-binding gate 会只读重新生成
 相同案例并要求 exact membership equality，然后写入新的 proof；旧 proof 不重写。
-当前 blocker 为
+当时 blocker（historical / superseded）为
 `pending_sv1b_final_harness_binding_and_browser_validation`。该步骤仍保持
 provider、gallery-dl、LLM、media、thumbnail 调用计数全部为零，失败 retry2
 Replay 不变。
 
-## 2026-07-26 浏览器预验证与负责人停止点
+## 2026-07-26 首次浏览器预验证与负责人停止点（historical / captured）
 
 受控 `VIOLET_ENV=test` localhost 服务在审计后的动态端口 `8012` 启动。
 Codex in-app browser 实际加载了 40 个 case，组成精确为
@@ -307,10 +320,10 @@ Codex in-app browser 实际加载了 40 个 case，组成精确为
 warning/error 为 0，`enpera` 已纳入 localization manual case。交互探针完成
 后通过页面重载恢复 40/40 `pending`，未点击导出、未生成 owner result。
 
-当前 durable 状态推进为
+当时 durable 状态推进为
 `automated_sv1b_candidate_ready_manual_acceptance_pending`，blocker 为
-`pending_user_manual_acceptance`。本次公共状态 commit 后只允许写入一次
-non-overwriting final Git binding，并以 strict dashboard 验证该绑定；自动化
+`pending_user_manual_acceptance`。随后旧 final binding v1 以 non-overwriting
+方式绑定当时 Git HEAD，并由 strict dashboard 完成预验证；自动化
 不得代替负责人提交验收结果。五个状态字段保持：
 
 ```text
@@ -329,3 +342,17 @@ Authoritative contract 复核同时识别并修正了一个仅限 work-level 的
 聚合类计入闭合 work。页面级允许终态未放宽；真实证据 summary 现以
 `6,074 / 1,655 / 28` 个 page 终态和
 `5,953 / 1,050 / 15 / 10` 个 work 聚合闭合项通过 contract。
+
+## 2026-07-26 reviewer audit closeout（权威当前路线）
+
+reviewer audit 发现本报告的历史 blocker 与当前状态缺少机器可读角色边界，
+部分 replay-v2 comparison/proof 又把“检查已通过”写成固定布尔值或只检查
+stable reference 非空。项目负责人已授权一次纯只读 audit closeout：修正文档
+当前事实、从实际 comparison 派生 proof、校验 stable key 的 package membership
+与 exact fingerprint，并在公共修复 commit 后创建唯一、版本化且不覆盖 v1 的
+final binding v2。该授权不包含数据库写入、重新派生、provider/LLM/media 路径
+或负责人验收。
+
+本节与文档顶部的权威标记共同代表当前状态；此前所有 blocker、数据库创建、
+导入、派生、首轮 binding 与浏览器记录均为 historical / superseded checkpoint，
+不得解释为仍待执行的无条件命令。

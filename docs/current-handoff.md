@@ -31,15 +31,15 @@
 ## Current Blocker And Owner Decision
 
 - Blocker: `pending_user_manual_acceptance` (owner manual acceptance of the exact Git-bound 40-case localhost harness).
-- Resolution: Automated replay, graph, search, 40-case selection, and real localhost browser prevalidation have passed. Commit this final public state, write the one non-overwriting final Git binding for the unchanged case membership, re-open the strict dashboard, and stop for the owner's manual decision; no automated result may substitute for that decision.
+- Resolution: Owner manual acceptance remains the only unresolved checkpoint. The active versioned binding must match the current Git and protected evidence before strict dashboard use; if either changes, automation must fail closed until a separately authorized non-overwriting binding is created. No automated prevalidation may substitute for the owner's decision.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
-- Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only.
+- Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only; public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
 - `enpera` remains one governed localization manual case and is not a Replay blocker.
 
 ## Allowed / Forbidden
 
-- Allowed: DOC-GOV-01, package-v2 offline validation, immutable-evidence cross-check, one fresh Replay, independent graph/search validation.
+- Allowed: read-only verification, strict dashboard startup, owner result export, and the one authorized non-overwriting audit-closeout binding v2.
 - Forbidden: mutation of failed retry2 Replay; provider/Pixiv/gallery-dl/LLM/media calls; Primary/acquisition/localization replay.
 - Forbidden: production, FL1, Provider-2, Entity/truth/media_tags promotion, merge, Ready transition, reviewer trigger, main push, or force-push.
 
@@ -57,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-26T02:46:00+08:00`.
+Updated: `2026-07-26T16:30:00+08:00`.

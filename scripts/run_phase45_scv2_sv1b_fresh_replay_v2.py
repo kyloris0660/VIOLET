@@ -39,6 +39,8 @@ from scripts.stable_replay_package_v2 import (  # noqa: E402
     graph_effective_projection,
     import_package,
     sha256_payload,
+    validate_package,
+    validate_stable_reference_integrity,
     verify_external_routes_forbidden,
     write_package,
 )
@@ -97,6 +99,19 @@ STAGES = (
     "search",
     "build-harness",
     "finalize-harness-binding",
+    "audit-closeout-binding-v2",
+)
+EXPECTED_FAILED_REPLAY_FORENSIC_FINGERPRINT = (
+    "ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f"
+)
+EXPECTED_FINAL_BINDING_V1_FILE_SHA256 = (
+    "0fde89e2867af4ca1d9835dce2a38f7aacd6d536f6463cb944909668c47fb490"
+)
+EXPECTED_FINAL_BINDING_V1_FINGERPRINT = (
+    "6c0f33ca3f16afd18b900114cc72e508dfae2b14ae97f6a0d3724f5c407485a7"
+)
+EXPECTED_CASE_MANIFEST_FINGERPRINT = (
+    "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5"
 )
 FAILED_FIRST_GRAPH_PROOF_FINGERPRINT = (
     "7449ba378e957b76ab04ce721f77d8623acf030903a12c8c870bfc7b5b3e5ad6"
@@ -728,6 +743,7 @@ def _load_immutable_execution_evidence() -> tuple[
     dict[str, Any],
     list[dict[str, Any]],
     list[dict[str, Any]],
+    list[dict[str, Any]],
 ]:
     accepted = read_json(
         OLD_OUTPUT / "acquired-nonderived-evidence-package-private.json"
@@ -740,7 +756,15 @@ def _load_immutable_execution_evidence() -> tuple[
         / "provider-execution-checkpoint-r2-route-viability"
         / "final-work-outcome-ledger.json"
     )
-    return accepted, pages, outcomes
+    route_viability = read_json(
+        OLD_OUTPUT
+        / "provider-execution-checkpoint-r2-route-viability"
+        / "route-viability-canary-ledger.json"
+    )
+    attempts = route_viability.get("attempts")
+    if not isinstance(attempts, list):
+        raise FreshReplayV2Error("route_viability_attempts_missing")
+    return accepted, pages, outcomes, attempts
 
 
 def _assert_repository_preflight() -> dict[str, Any]:
@@ -807,12 +831,15 @@ def validate_read_only(
         package = export_package_from_engine(primary_engine)
     finally:
         primary_engine.dispose()
-    accepted, pages, outcomes = _load_immutable_execution_evidence()
+    accepted, pages, outcomes, route_viability_attempts = (
+        _load_immutable_execution_evidence()
+    )
     crosscheck, ledger = cross_validate_primary_stable_identity(
         package,
         accepted,
         candidate_pages=pages,
         final_work_outcomes=outcomes,
+        route_viability_attempts=route_viability_attempts,
     )
     projection = graph_effective_projection(package)
     primary_translation = translation_state(PRIMARY_DATABASE)
@@ -992,6 +1019,8 @@ def execute_create_import(
     write_json(output / "read-only-preflight-proof.json", preflight)
     write_jsonl(output / "primary-immutable-identity-ledger.jsonl", ledger)
     write_package(output / "stable-replay-package-v2-private.json", package)
+    validate_package(package)
+    stable_reference_integrity = validate_stable_reference_integrity(package)
     write_json(
         output / "stable-replay-package-v2-proof.json",
         {
@@ -1009,7 +1038,15 @@ def execute_create_import(
                 "primary_identity_crosscheck"
             ],
             "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
-            "passed": True,
+            "stable_reference_integrity": stable_reference_integrity,
+            "passed": bool(
+                package.get("schema_version") == SCHEMA_VERSION
+                and preflight["primary_identity_crosscheck"].get("passed")
+                is True
+                and stable_reference_integrity.get("passed") is True
+                and package.get("external_route_budget")
+                == EXTERNAL_ROUTE_BUDGET
+            ),
         },
     )
     database_creation = create_database_schema(FRESH_REPLAY_DATABASE)
@@ -1060,7 +1097,9 @@ def execute_create_import(
         "creation_count": 1,
         "baseline_copy": baseline_copy,
         "translation_copy": translation_copy,
-        "primary_replay_baseline_equal": True,
+        "primary_replay_baseline_equal": (
+            primary_baseline == replay_baseline
+        ),
         "baseline_fingerprint": primary_baseline["fingerprint"],
         "first_import": first_import,
         "idempotent_second_import": second_import,
@@ -1075,13 +1114,15 @@ def execute_create_import(
         },
         "missing_metadata_rows": round_trip["missing_row_count"],
         "extra_metadata_rows": round_trip["extra_row_count"],
-        "graph_effective_projection_mismatch_count": (
-            0
-            if round_trip["graph_effective_projection_equal"]
-            else 1
-        ),
-        "stable_identity_mismatch_count": 0,
-        "trusted_complete_verdict_mismatch_count": 0,
+        "graph_effective_projection_mismatch_count": round_trip[
+            "graph_effective_projection_mismatch_count"
+        ],
+        "stable_identity_mismatch_count": round_trip[
+            "stable_identity_mismatch_count"
+        ],
+        "trusted_complete_verdict_mismatch_count": round_trip[
+            "trusted_complete_verdict_mismatch_count"
+        ],
         "trusted_complete_rows": {
             "primary": EXPECTED_TRUSTED_COMPLETE_COUNT,
             "replay": replay_projection["trusted_complete_count"],
@@ -1099,13 +1140,22 @@ def execute_create_import(
         ],
         "failed_replay_before_fingerprint": failed_before["fingerprint"],
         "failed_replay_after_fingerprint": failed_after["fingerprint"],
-        "failed_replay_unchanged": True,
+        "failed_replay_unchanged": failed_before == failed_after,
         "development_numeric_row_id_copy_count": 0,
         "provider_request_count": 0,
         "llm_call_count": 0,
         "media_download_count": 0,
         "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
-        "passed": True,
+        "passed": bool(
+            primary_baseline == replay_baseline
+            and round_trip["passed"] is True
+            and replay_projection["trusted_complete_count"]
+            == EXPECTED_TRUSTED_COMPLETE_COUNT
+            and replay_projection["projection_fingerprint"]
+            == EXPECTED_PRIMARY_GRAPH_PROJECTION_FINGERPRINT
+            and sum(second_import["inserted_counts"].values()) == 0
+            and failed_before == failed_after
+        ),
     }
     result["proof_fingerprint"] = sha256_payload(result)
     write_json(output / "fresh-replay-v2-create-import-proof.json", result)
@@ -1214,6 +1264,22 @@ def _prepare_graph_proofs(output: Path, sv1b: Any) -> dict[str, Any]:
     )
     if not (output / "localization").exists():
         shutil.copytree(OLD_OUTPUT / "localization", output / "localization")
+    primary_engine = engine_for(PRIMARY_DATABASE)
+    replay_engine = engine_for(FRESH_REPLAY_DATABASE)
+    try:
+        primary_package = export_package_from_engine(primary_engine)
+        replay_package = export_package_from_engine(replay_engine)
+    finally:
+        primary_engine.dispose()
+        replay_engine.dispose()
+    comparison = compare_round_trip_packages(primary_package, replay_package)
+    comparison_fingerprint = sha256_payload(comparison)
+    stable_package_valid = bool(
+        package.get("schema_version") == SCHEMA_VERSION
+        and package.get("package_fingerprint")
+        == primary_package.get("package_fingerprint")
+        and comparison.get("passed") is True
+    )
     acquisition = {
         "proof_version": "sv1b_fresh_replay_v2_acquisition_input_binding_v1",
         "accepted_acquisition_package_fingerprint": (
@@ -1229,21 +1295,41 @@ def _prepare_graph_proofs(output: Path, sv1b: Any) -> dict[str, Any]:
             ],
         },
         "provider_request_count": 0,
-        "passed": True,
+        "validation_checks": {
+            "stable_package_valid": stable_package_valid,
+            "provider_request_count_zero": True,
+        },
+        "passed": bool(stable_package_valid),
     }
     write_json(
         output / "acquisition-closure-and-package-proof.json",
         acquisition,
     )
+    primary_reconciliation_passed = bool(
+        comparison["package_fingerprint_equal"]
+        and comparison["membership_fingerprint_equal"]
+        and comparison["graph_effective_projection_equal"]
+        and comparison["missing_row_count"] == 0
+    )
+    replay_reconciliation_passed = bool(
+        primary_reconciliation_passed
+        and comparison["extra_row_count"] == 0
+        and comparison["trusted_complete_count_equal"]
+    )
+    accepted_nonderived = {
+        "package_schema_version": SCHEMA_VERSION,
+        "primary_reconciliation_passed": primary_reconciliation_passed,
+        "replay_reconciliation_passed": replay_reconciliation_passed,
+        "package_fingerprint": package["package_fingerprint"],
+        "comparison_fingerprint": comparison_fingerprint,
+        "comparison": comparison,
+    }
+    accepted_nonderived["passed"] = bool(
+        primary_reconciliation_passed and replay_reconciliation_passed
+    )
     write_json(
         output / "accepted-nonderived-evidence-proof.json",
-        {
-            "package_schema_version": SCHEMA_VERSION,
-            "primary_reconciliation_passed": True,
-            "replay_reconciliation_passed": True,
-            "package_fingerprint": package["package_fingerprint"],
-            "passed": True,
-        },
+        accepted_nonderived,
     )
     localization = read_json(output / "localization-closure-proof.json")
     localization_fingerprint = str(
@@ -1252,35 +1338,32 @@ def _prepare_graph_proofs(output: Path, sv1b: Any) -> dict[str, Any]:
         )
         or ""
     )
-    replay_import = read_json(
-        output / "fresh-replay-v2-create-import-proof.json"
+    replay_import_logical_equal = bool(comparison["passed"] is True)
+    replay_import_proof = {
+        "proof_version": "sv1b_fresh_replay_v2_import_binding_v1",
+        "acquired_metadata_package_fingerprint": (
+            package_payload_fingerprint
+        ),
+        "stable_package_fingerprint": package[
+            "package_fingerprint"
+        ],
+        "localization_package_fingerprint": localization_fingerprint,
+        "primary_replay_nonderived_logical_fingerprint_equal": (
+            replay_import_logical_equal
+        ),
+        "comparison_fingerprint": comparison_fingerprint,
+        "round_trip": comparison,
+        "provider_request_count": 0,
+    }
+    replay_import_proof["passed"] = bool(
+        replay_import_logical_equal
+        and bool(localization_fingerprint)
+        and replay_import_proof["provider_request_count"] == 0
     )
     write_json(
         output / "replay-acquired-evidence-import-proof.json",
-        {
-            "proof_version": "sv1b_fresh_replay_v2_import_binding_v1",
-            "acquired_metadata_package_fingerprint": (
-                package_payload_fingerprint
-            ),
-            "stable_package_fingerprint": package[
-                "package_fingerprint"
-            ],
-            "localization_package_fingerprint": localization_fingerprint,
-            "primary_replay_nonderived_logical_fingerprint_equal": True,
-            "round_trip": replay_import["round_trip"],
-            "provider_request_count": 0,
-            "passed": True,
-        },
+        replay_import_proof,
     )
-    primary_engine = engine_for(PRIMARY_DATABASE)
-    replay_engine = engine_for(FRESH_REPLAY_DATABASE)
-    try:
-        primary_package = export_package_from_engine(primary_engine)
-        replay_package = export_package_from_engine(replay_engine)
-    finally:
-        primary_engine.dispose()
-        replay_engine.dispose()
-    comparison = compare_round_trip_packages(primary_package, replay_package)
     trusted = {
         "proof_version": "sv1b_primary_fresh_replay_v2_trusted_inputs_v1",
         "primary_record_count": primary_package["table_counts"][
@@ -1291,13 +1374,15 @@ def _prepare_graph_proofs(output: Path, sv1b: Any) -> dict[str, Any]:
         ],
         "missing_replay_record_count": comparison["missing_row_count"],
         "extra_replay_record_count": comparison["extra_row_count"],
-        "graph_effective_projection_mismatch_count": (
-            0
-            if comparison["graph_effective_projection_equal"]
-            else 1
-        ),
-        "stable_identity_mismatch_count": 0,
-        "trusted_complete_mismatch_count": 0,
+        "graph_effective_projection_mismatch_count": comparison[
+            "graph_effective_projection_mismatch_count"
+        ],
+        "stable_identity_mismatch_count": comparison[
+            "stable_identity_mismatch_count"
+        ],
+        "trusted_complete_mismatch_count": comparison[
+            "trusted_complete_verdict_mismatch_count"
+        ],
         "primary_trusted_complete_count": (
             graph_effective_projection(primary_package)[
                 "trusted_complete_count"
@@ -1318,8 +1403,9 @@ def _prepare_graph_proofs(output: Path, sv1b: Any) -> dict[str, Any]:
                 "projection_fingerprint"
             ]
         ),
+        "comparison_fingerprint": comparison_fingerprint,
         "provider_request_count": 0,
-        "passed": comparison["passed"] is True,
+        "passed": bool(comparison["passed"] is True),
     }
     write_json(
         output / "primary-replay-trusted-metadata-input-proof.json",
@@ -2312,6 +2398,192 @@ def execute_finalize_harness_binding(
     return result
 
 
+def execute_audit_closeout_binding_v2(
+    *,
+    output: Path = DEFAULT_OUTPUT,
+    port: int = 8031,
+) -> dict[str, Any]:
+    """Revalidate protected evidence read-only, then bind the audit-fix HEAD."""
+
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
+    )
+
+    output = output.resolve()
+    _validate_resume_ownership(output)
+    audit_path = output / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_NAME
+    binding_path = output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    if audit_path.exists() or binding_path.exists():
+        raise FreshReplayV2Error(
+            "audit_closeout_binding_v2_or_validation_already_exists"
+        )
+    old_binding_path = output / harness.FINAL_HARNESS_PROOF_NAME
+    if not old_binding_path.is_file():
+        raise FreshReplayV2Error("final_binding_v1_missing")
+    old_binding = read_json(old_binding_path)
+    cases = read_json(output / "manual-acceptance/case-manifest-private.json")
+    case_fingerprint = sha256_payload(cases)
+    preflight, primary_package, ledger = validate_read_only(
+        output=output,
+        allow_existing_target=True,
+    )
+    fresh_engine = engine_for(FRESH_REPLAY_DATABASE)
+    try:
+        replay_package = export_package_from_engine(fresh_engine)
+    finally:
+        fresh_engine.dispose()
+    round_trip = compare_round_trip_packages(
+        primary_package,
+        replay_package,
+    )
+    stable_reference_integrity = validate_stable_reference_integrity(
+        primary_package
+    )
+    failed_state = forensic_database_state(FAILED_REPLAY_DATABASE)
+    fresh_state = forensic_database_state(FRESH_REPLAY_DATABASE)
+    relative_sources, proofs = harness._resolve_proof_sources(  # noqa: SLF001
+        output,
+        old_binding.get("proof_sources"),
+    )
+    current_bindings = harness._build_bindings(  # noqa: SLF001
+        primary_database=PRIMARY_DATABASE,
+        replay_database=FRESH_REPLAY_DATABASE,
+        relative_proof_sources=relative_sources,
+        proofs=proofs,
+        cases=cases,
+    )
+    immutable_old = dict(old_binding["bindings"])
+    immutable_current = dict(current_bindings)
+    for value in (immutable_old, immutable_current):
+        value.pop("git_head", None)
+        value.pop("binding_fingerprint", None)
+    checks = {
+        "old_binding_v1_file_unchanged": (
+            sha256_file(old_binding_path)
+            == EXPECTED_FINAL_BINDING_V1_FILE_SHA256
+        ),
+        "old_binding_v1_fingerprint_unchanged": (
+            old_binding.get("bindings", {}).get("binding_fingerprint")
+            == EXPECTED_FINAL_BINDING_V1_FINGERPRINT
+        ),
+        "case_manifest_unchanged": (
+            case_fingerprint == EXPECTED_CASE_MANIFEST_FINGERPRINT
+        ),
+        "package_fingerprint_unchanged": (
+            primary_package["package_fingerprint"]
+            == EXPECTED_PACKAGE_V2_FINGERPRINT
+            == replay_package["package_fingerprint"]
+        ),
+        "package_membership_unchanged": (
+            primary_package["membership_fingerprint"]
+            == EXPECTED_PACKAGE_V2_MEMBERSHIP_FINGERPRINT
+            == replay_package["membership_fingerprint"]
+        ),
+        "metadata_count_equal": (
+            primary_package["table_counts"]["source_metadata_records"]
+            == EXPECTED_METADATA_COUNT
+            == replay_package["table_counts"]["source_metadata_records"]
+        ),
+        "trusted_complete_equal": (
+            round_trip["source_trusted_complete_count"]
+            == EXPECTED_TRUSTED_COMPLETE_COUNT
+            == round_trip["replay_trusted_complete_count"]
+        ),
+        "translations_equal": (
+            preflight["primary_translation_state"]["count"]
+            == EXPECTED_TRANSLATION_COUNT
+            == fresh_state["translation_state"]["count"]
+            and preflight["primary_translation_state"]["fingerprint"]
+            == EXPECTED_TRANSLATION_FINGERPRINT
+            == fresh_state["translation_state"]["fingerprint"]
+        ),
+        "stable_reference_integrity": (
+            stable_reference_integrity["passed"] is True
+        ),
+        "primary_identity_support": (
+            preflight["primary_identity_crosscheck"]["passed"] is True
+            and preflight["primary_identity_crosscheck"][
+                "phase_acquired_identity_unsupported_count"
+            ]
+            == 0
+        ),
+        "round_trip": round_trip["passed"] is True,
+        "failed_replay_unchanged": (
+            failed_state["fingerprint"]
+            == EXPECTED_FAILED_REPLAY_FORENSIC_FINGERPRINT
+        ),
+        "graph_search_case_bindings_unchanged": (
+            immutable_old == immutable_current
+        ),
+        "external_routes_zero": (
+            preflight["repository"]["external_route_counts"]
+            == EXTERNAL_ROUTE_BUDGET
+        ),
+    }
+    audit = {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v2",
+        "git_head": git("rev-parse", "HEAD"),
+        "checks": checks,
+        "protected_evidence_unchanged": all(checks.values()),
+        "old_binding_v1": {
+            "file_sha256": sha256_file(old_binding_path),
+            "binding_fingerprint": old_binding["bindings"][
+                "binding_fingerprint"
+            ],
+        },
+        "case_manifest_fingerprint": case_fingerprint,
+        "package_fingerprint": primary_package["package_fingerprint"],
+        "package_membership_fingerprint": primary_package[
+            "membership_fingerprint"
+        ],
+        "stable_reference_integrity": stable_reference_integrity,
+        "primary_identity_crosscheck": preflight[
+            "primary_identity_crosscheck"
+        ],
+        "primary_identity_ledger_membership_fingerprint": sha256_payload(
+            ledger
+        ),
+        "round_trip": round_trip,
+        "failed_replay_forensic_fingerprint": failed_state["fingerprint"],
+        "fresh_replay_forensic_fingerprint": fresh_state["fingerprint"],
+        "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
+        "database_write_count": 0,
+        "new_database_count": 0,
+    }
+    audit["passed"] = bool(audit["protected_evidence_unchanged"])
+    audit["proof_fingerprint"] = sha256_payload(audit)
+    if audit["passed"] is not True:
+        raise FreshReplayV2Error(
+            "audit_closeout_read_only_validation_failed:"
+            + canonical_json(
+                sorted(key for key, value in checks.items() if not value)
+            )
+        )
+    write_json(audit_path, audit)
+    final_binding = harness.finalize_audit_closeout_binding_v2(
+        output,
+        primary_database=PRIMARY_DATABASE,
+        replay_database=FRESH_REPLAY_DATABASE,
+        port=port,
+    )
+    return {
+        "proof_version": "sv1b_audit_closeout_binding_v2_execution",
+        "audit_validation_proof_fingerprint": audit["proof_fingerprint"],
+        "binding_fingerprint": final_binding["bindings"][
+            "binding_fingerprint"
+        ],
+        "supersedes_final_binding_fingerprint": final_binding[
+            "supersedes_final_binding_fingerprint"
+        ],
+        "status": (
+            "automated_sv1b_candidate_ready_manual_acceptance_pending"
+        ),
+        "passed": bool(
+            audit["passed"] is True and final_binding["passed"] is True
+        ),
+    }
+
+
 def public_summary(stage: str, result: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "phase": PHASE,
@@ -2346,6 +2618,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.stage == "finalize-harness-binding":
         result = execute_finalize_harness_binding(
             output=output, port=args.port
+        )
+    elif args.stage == "audit-closeout-binding-v2":
+        result = execute_audit_closeout_binding_v2(
+            output=output,
+            port=args.port,
         )
     else:
         result = execute_build_harness(output=output, port=args.port)

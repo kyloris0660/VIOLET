@@ -176,15 +176,13 @@ public summary for exact aggregate evidence.
 <!-- CURRENT_PHASE: SCV2-SV1B -->
 
 `SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure`
-is current. Acquisition, localization accounting, R2R exact remap, and Primary
-graph safety are accepted execution inputs. The failed retry2 Replay exposed a
-legacy package common-mode loss and remains an immutable forensic checkpoint.
-
-The project owner has authorized schema-aware stable replay package v2 and
-exactly one fresh isolated Replay verification database after offline package
-and immutable-acquisition-evidence gates pass. This recovery has zero external
-call budget: no provider, Pixiv, gallery-dl, LLM, media, thumbnail, Primary
-recreation, acquisition replay, or localization replay is authorized.
+is current. Acquisition, localization accounting, R2R exact remap, fresh Replay
+v2, graph/search validation, and the 40-case browser prevalidation are complete.
+The failed retry2 Replay remains an immutable forensic checkpoint. The current
+authorization is restricted to read-only audit verification, strict dashboard
+startup, owner result export, and the one versioned non-overwriting
+audit-closeout binding v2. Database create/import/derive and all external routes
+are no longer authorized.
 
 SV1B must still stop at the exact user manual-acceptance checkpoint with
 `manual_acceptance_status=pending_user`, `target_met=false`,

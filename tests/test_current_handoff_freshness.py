@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import copy
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,9 @@ def test_current_phase_schema_and_status_fields_are_consistent() -> None:
     assert state["active_blocker"]["resolution"]
     assert state["current_replay_strategy"]["fresh_replay_database_creation_limit"] == 1
     assert state["current_replay_strategy"]["external_call_budget"] == 0
+    assert state["public_state_boundary"] == (
+        "public_safe_governance_only_no_private_proof_payloads_or_paths"
+    )
 
 
 def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
@@ -100,6 +104,14 @@ def test_current_phase_links_report_adr_and_contract_are_consistent() -> None:
     assert "fresh isolated Replay" in incident
     assert "development numeric row ids" in adr.lower()
     assert "Primary export -> fresh import -> Replay re-export" in adr
+    top = "\n".join(incident.splitlines()[:20])
+    assert (
+        f"AUTHORITATIVE_CURRENT_STATUS: {state['current_status']}" in top
+    )
+    assert (
+        "AUTHORITATIVE_MANUAL_ACCEPTANCE_STATUS: "
+        f"{state['manual_acceptance_status']}" in top
+    )
 
 
 def test_each_active_roadmap_declares_exactly_one_current_phase() -> None:
@@ -119,7 +131,7 @@ def test_state_change_without_handoff_regeneration_fails_closed(tmp_path: Path) 
     copied_root = _copy_docs_root(tmp_path)
     state_path = copied_root / "docs" / "state" / "current-phase.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
-    state["current_status"] = "changed_without_handoff_regeneration"
+    state["updated_at"] = "2099-01-01T00:00:00+00:00"
     state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     with pytest.raises(
@@ -165,3 +177,149 @@ def test_historical_reports_remain_historical_and_outside_generated_state() -> N
     assert historical.relative_to(ROOT).as_posix() not in {
         link["path"] for link in state["durable_links"]
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("current_status", "blocked_sv1b_replay", "pending_user_status_fields_conflict"),
+        ("target_met", True, "pending_user_status_fields_conflict"),
+        ("safe_to_merge", True, "pending_user_status_fields_conflict"),
+        ("route_approved", True, "pending_user_status_fields_conflict"),
+        ("next_phase_started", True, "sv1b_cannot_start_next_phase"),
+    ],
+)
+def test_pending_user_five_field_combinations_fail_closed(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    state = copy.deepcopy(_state())
+    state[field] = value
+
+    with pytest.raises(documentation_state.DocumentationStateError, match=error):
+        documentation_state.validate_state(state)
+
+
+@pytest.mark.parametrize(
+    "authorization",
+    [
+        "create another Replay database",
+        "import accepted evidence into Replay",
+        "derive fresh Replay graph",
+    ],
+)
+def test_pending_user_cannot_authorize_completed_database_operations(
+    authorization: str,
+) -> None:
+    state = copy.deepcopy(_state())
+    state["authorized_operations"].append(authorization)
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="pending_user_database_operation_authorized",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_completed_future_command_in_blocker_resolution_fails_closed() -> None:
+    state = copy.deepcopy(_state())
+    state["active_blocker"]["resolution"] = (
+        "Commit this final public state before owner acceptance."
+    )
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="blocker_resolution_contains_completed_future_command",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_linked_incident_must_declare_authoritative_current_state_at_top(
+    tmp_path: Path,
+) -> None:
+    copied_root = _copy_docs_root(tmp_path)
+    incident = (
+        copied_root
+        / "docs"
+        / "reports"
+        / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md"
+    )
+    incident.write_text(
+        incident.read_text(encoding="utf-8").replace(
+            "AUTHORITATIVE_CURRENT_STATUS: "
+            "automated_sv1b_candidate_ready_manual_acceptance_pending",
+            "AUTHORITATIVE_CURRENT_STATUS: historical_blocker",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="incident_authoritative_state_mismatch",
+    ):
+        documentation_state.check_documentation_state(root=copied_root)
+
+
+def test_historical_incident_status_requires_superseded_marker(
+    tmp_path: Path,
+) -> None:
+    copied_root = _copy_docs_root(tmp_path)
+    incident = (
+        copied_root
+        / "docs"
+        / "reports"
+        / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md"
+    )
+    incident.write_text(
+        incident.read_text(encoding="utf-8").replace(
+            "<!-- HISTORICAL_STATUSES_BELOW: historical_superseded -->",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="incident_historical_status_marker_missing",
+    ):
+        documentation_state.check_documentation_state(root=copied_root)
+
+
+def test_historical_checkpoint_summary_cannot_masquerade_as_current(
+    tmp_path: Path,
+) -> None:
+    copied_root = _copy_docs_root(tmp_path)
+    summary_path = (
+        copied_root
+        / "docs"
+        / "reports"
+        / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint-summary.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["record_role"] = "authoritative_current_state"
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="incident_summary_role_not_historical",
+    ):
+        documentation_state.check_documentation_state(root=copied_root)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["accepted_mainline_base", "implementation_evidence_head"],
+)
+def test_current_phase_git_heads_must_be_ancestors(field: str) -> None:
+    state = copy.deepcopy(_state())
+    state[field] = "f" * 40
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match=f"{field}_not_ancestor_of_head",
+    ):
+        documentation_state.validate_git_ancestry(state)

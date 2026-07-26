@@ -51,9 +51,12 @@ PR #138 is merged and accepted at
 closure, the full library, and production remain incomplete.
 
 SCV2-SV1B is the current separately governed phase. Its finite provider and
-localization execution are accepted immutable inputs; this recovery permits no
-provider, Pixiv, gallery-dl, LLM, media, or thumbnail request. It must create
-and pass
+localization execution are accepted immutable inputs; the single authorized
+fresh Replay v2 and graph/search derivations are complete. The current stop
+permits only read-only audit verification, strict dashboard startup, owner
+result export, and one versioned non-overwriting audit-closeout binding v2.
+It permits no database create/import/derive or provider, Pixiv, gallery-dl,
+LLM, media, or thumbnail request. The phase must continue to pass
 `sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
 and stop at `automated_sv1b_candidate_ready_manual_acceptance_pending` with the
 manual-acceptance fields pending and all completion/route booleans false. This
@@ -86,10 +89,9 @@ selection also passes and includes `enpera`; its pre-final proof remains
 preserved. Real localhost browser prevalidation passed with 40/40 cases and
 media images loaded, exact category counts `12/8/6/8/6`, no browser console
 warning/error, and no result export. The current gate is
-`pending_user_manual_acceptance`: the final public-state commit must receive
-one non-overwriting Git binding for the unchanged case membership, the strict
-dashboard must start against that binding, and automation must stop without
-submitting the owner's result.
+`pending_user_manual_acceptance`: the active versioned binding must match the
+current Git and protected evidence before strict dashboard use, and automation
+must stop without submitting the owner's result.
 
 ## Registered GOV3 Contracts
 

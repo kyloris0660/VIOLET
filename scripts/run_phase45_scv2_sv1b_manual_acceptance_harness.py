@@ -30,6 +30,15 @@ HARNESS_VERSION = "sv1b_phase_delta_manual_acceptance_harness_v2"
 FINAL_HARNESS_PROOF_NAME = (
     "manual-acceptance-harness-final-binding-proof.json"
 )
+AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME = (
+    "manual-acceptance-harness-audit-closeout-final-binding-v2-proof.json"
+)
+AUDIT_CLOSEOUT_VALIDATION_PROOF_NAME = (
+    "fresh-replay-v2-audit-closeout-validation-proof.json"
+)
+EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT = (
+    "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5"
+)
 DEFAULT_PORT = 8031
 CATEGORY_COUNTS = {
     "pixiv_metadata": 12,
@@ -1111,7 +1120,147 @@ def finalize_harness_binding(
     return final
 
 
+def finalize_audit_closeout_binding_v2(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+    port: int = DEFAULT_PORT,
+) -> dict[str, Any]:
+    """Create the one non-overwriting audit-closeout binding after public fixes."""
+
+    output = output.resolve()
+    sv1b.validate_owned_output_root(
+        output,
+        primary_database=primary_database,
+        replay_database=replay_database,
+    )
+    old_path = output / FINAL_HARNESS_PROOF_NAME
+    final_path = output / AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    audit_path = output / AUDIT_CLOSEOUT_VALIDATION_PROOF_NAME
+    if final_path.exists():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_binding_v2_already_exists"
+        )
+    if not old_path.is_file():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_final_binding_v1_missing"
+        )
+    if not audit_path.is_file():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_validation_missing"
+        )
+    old = sv1b.read_json(old_path)
+    audit = sv1b.read_json(audit_path)
+    if (
+        old.get("passed") is not True
+        or old.get("binding_version")
+        != "sv1b_manual_acceptance_final_binding_v1"
+        or audit.get("passed") is not True
+        or audit.get("proof_version")
+        != "sv1b_audit_closeout_read_only_validation_v2"
+    ):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_source_invalid"
+        )
+    existing_cases = sv1b.read_json(
+        output / "manual-acceptance/case-manifest-private.json"
+    )
+    case_fingerprint = sv1b.sha256_payload(existing_cases)
+    if case_fingerprint != EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_case_manifest_mismatch"
+        )
+    regenerated_cases, phase_delta_composition = _generate_cases(
+        output,
+        primary_database=primary_database,
+    )
+    if not _case_manifests_equal(regenerated_cases, existing_cases):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_case_regeneration_drift"
+        )
+    relative_proof_sources, proofs = _resolve_proof_sources(
+        output,
+        old.get("proof_sources"),
+    )
+    failed = [
+        name
+        for name, proof in proofs.items()
+        if proof.get("passed") is not True
+    ]
+    if failed:
+        raise ManualAcceptanceHarnessError(
+            f"manual_acceptance_required_proof_failed:{sorted(failed)}"
+        )
+    bindings = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_proof_sources,
+        proofs=proofs,
+        cases=regenerated_cases,
+    )
+    immutable_old = dict(old["bindings"])
+    immutable_new = dict(bindings)
+    for value in (immutable_old, immutable_new):
+        value.pop("git_head", None)
+        value.pop("binding_fingerprint", None)
+    protected_bindings_unchanged = immutable_old == immutable_new
+    audit_fingerprint = str(audit.get("proof_fingerprint") or "")
+    validation_bound = bool(
+        len(audit_fingerprint) == 64
+        and audit.get("protected_evidence_unchanged") is True
+        and audit.get("stable_reference_integrity", {}).get("passed") is True
+        and audit.get("round_trip", {}).get("passed") is True
+    )
+    checks = {
+        "old_binding_v1_passed": old.get("passed") is True,
+        "case_manifest_exact": (
+            case_fingerprint == EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT
+        ),
+        "case_manifest_regenerated_equal": True,
+        "protected_bindings_unchanged": protected_bindings_unchanged,
+        "audit_validation_bound": validation_bound,
+        "new_git_head_bound": bindings.get("git_head") == _git_head(),
+    }
+    final = dict(old)
+    final.update(
+        {
+            "proof_version": "sv1b_manual_acceptance_audit_closeout_binding_v2",
+            "binding_version": (
+                "sv1b_manual_acceptance_audit_closeout_final_binding_v2"
+            ),
+            "supersedes_final_binding_fingerprint": old["bindings"][
+                "binding_fingerprint"
+            ],
+            "supersedes_final_binding_file_sha256": sv1b.sha256_file(
+                old_path
+            ),
+            "audit_closeout_validation": {
+                "proof_path": AUDIT_CLOSEOUT_VALIDATION_PROOF_NAME,
+                "proof_fingerprint": audit_fingerprint,
+                "proof_file_sha256": sv1b.sha256_file(audit_path),
+            },
+            "case_manifest_regenerated_equal": True,
+            "phase_delta_composition": phase_delta_composition,
+            "proof_sources": relative_proof_sources,
+            "bindings": bindings,
+            "localhost_url": f"http://127.0.0.1:{int(port)}",
+            "checks": checks,
+            "passed": all(checks.values()),
+        }
+    )
+    if final["passed"] is not True:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_binding_v2_failed"
+        )
+    sv1b.write_json(final_path, final)
+    return final
+
+
 def _active_harness_proof_path(output: Path) -> Path:
+    audit_v2 = output / AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    if audit_v2.is_file():
+        return audit_v2
     final = output / FINAL_HARNESS_PROOF_NAME
     if final.is_file():
         return final

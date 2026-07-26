@@ -68,6 +68,7 @@ def test_no_external_execution_stage_exists() -> None:
         "search",
         "build-harness",
         "finalize-harness-binding",
+        "audit-closeout-binding-v2",
     )
     assert runner.EXTERNAL_ROUTE_BUDGET == {
         "provider_requests": 0,
@@ -127,6 +128,19 @@ def test_runner_source_has_no_provider_or_llm_execution_command() -> None:
     assert "complete_json(" not in source
     assert "requests.get(" not in source
     assert "httpx." not in source
+
+
+def test_reconciliation_and_mismatch_proofs_are_computed_not_hardcoded() -> None:
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+
+    assert '"primary_reconciliation_passed": True' not in source
+    assert '"replay_reconciliation_passed": True' not in source
+    assert '"stable_identity_mismatch_count": 0' not in source
+    assert '"trusted_complete_verdict_mismatch_count": 0' not in source
+    assert '"stable_identity_mismatch_count"' in source
+    assert '"trusted_complete_verdict_mismatch_count"' in source
+    assert 'round_trip[' in source
+    assert 'comparison[' in source
 
 
 def test_failed_replay_is_never_a_write_target() -> None:

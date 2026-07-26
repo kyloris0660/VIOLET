@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,7 @@ REQUIRED_FIELDS = {
     "authorized_operations",
     "forbidden_operations",
     "protected_evidence",
+    "public_state_boundary",
     "current_replay_strategy",
     "next_required_checkpoint",
     "durable_links",
@@ -62,6 +64,27 @@ PUBLIC_FORBIDDEN = (
     re.compile(r"(?i)\b(?:api[_-]?key|refresh[_-]?token|bearer)\s*[:=]\s*\S+"),
     re.compile(r"(?i)\.local_manifests"),
 )
+PENDING_USER_STATUS = "automated_sv1b_candidate_ready_manual_acceptance_pending"
+PENDING_USER_BLOCKER = "pending_user_manual_acceptance"
+PENDING_USER_FORBIDDEN_AUTHORIZATION_TERMS = (
+    "create",
+    "creation",
+    "import",
+    "derive",
+    "derivation",
+    "rebuild",
+    "re-derive",
+)
+COMPLETED_FUTURE_COMMANDS = (
+    "commit this final public state",
+    "create the fresh replay",
+    "import the acquired",
+    "derive the replay",
+    "write the one non-overwriting final git binding",
+)
+AUTHORITATIVE_STATUS_MARKER = "AUTHORITATIVE_CURRENT_STATUS"
+AUTHORITATIVE_MANUAL_MARKER = "AUTHORITATIVE_MANUAL_ACCEPTANCE_STATUS"
+HISTORICAL_STATUS_MARKER = "HISTORICAL_STATUSES_BELOW: historical_superseded"
 
 
 class DocumentationStateError(ValueError):
@@ -107,7 +130,13 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     if state["phase_id"] == "SCV2-SV1B" and state["next_phase_started"]:
         raise DocumentationStateError("sv1b_cannot_start_next_phase")
     if state["manual_acceptance_status"] == "pending_user":
-        if state["target_met"] or state["safe_to_merge"] or state["route_approved"]:
+        if (
+            state["current_status"] != PENDING_USER_STATUS
+            or state["target_met"]
+            or state["safe_to_merge"]
+            or state["route_approved"]
+            or state["next_phase_started"]
+        ):
             raise DocumentationStateError("pending_user_status_fields_conflict")
     blocker = state["active_blocker"]
     if not isinstance(blocker, dict) or not blocker.get("code") or not blocker.get("resolution"):
@@ -119,8 +148,29 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         raise DocumentationStateError("next_required_checkpoint_missing")
     joined_authorized = "\n".join(map(str, authorized))
     joined_forbidden = "\n".join(map(str, forbidden))
-    if "fresh isolated Replay" not in joined_authorized:
-        raise DocumentationStateError("fresh_replay_authorization_missing")
+    if state["manual_acceptance_status"] == "pending_user":
+        if blocker.get("code") != PENDING_USER_BLOCKER:
+            raise DocumentationStateError("pending_user_blocker_conflict")
+        forbidden_authorizations = [
+            term
+            for term in PENDING_USER_FORBIDDEN_AUTHORIZATION_TERMS
+            if re.search(rf"\b{re.escape(term)}\b", joined_authorized, re.IGNORECASE)
+        ]
+        if forbidden_authorizations:
+            raise DocumentationStateError(
+                "pending_user_database_operation_authorized:"
+                + ",".join(forbidden_authorizations)
+            )
+        stale_commands = [
+            command
+            for command in COMPLETED_FUTURE_COMMANDS
+            if command in str(blocker["resolution"]).casefold()
+        ]
+        if stale_commands:
+            raise DocumentationStateError(
+                "blocker_resolution_contains_completed_future_command:"
+                + ",".join(stale_commands)
+            )
     for required in ("provider", "LLM", "failed retry2 Replay", "merge"):
         if required.lower() not in joined_forbidden.lower():
             raise DocumentationStateError(f"forbidden_operation_missing:{required}")
@@ -131,6 +181,10 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         raise DocumentationStateError("fresh_replay_creation_limit_invalid")
     if strategy.get("external_call_budget") != 0:
         raise DocumentationStateError("external_call_budget_must_be_zero")
+    if state.get("public_state_boundary") != (
+        "public_safe_governance_only_no_private_proof_payloads_or_paths"
+    ):
+        raise DocumentationStateError("public_state_boundary_invalid")
     for link in _require_nonempty_list(state, "durable_links"):
         if not isinstance(link, dict) or not link.get("label") or not link.get("path"):
             raise DocumentationStateError("durable_link_invalid")
@@ -145,6 +199,78 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     for pattern in PUBLIC_FORBIDDEN:
         if pattern.search(serialized):
             raise DocumentationStateError(f"public_state_redaction_failure:{pattern.pattern}")
+
+
+def validate_git_ancestry(state: dict[str, Any], *, root: Path = ROOT) -> None:
+    for field in ("accepted_mainline_base", "implementation_evidence_head"):
+        completed = subprocess.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                str(state[field]),
+                "HEAD",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise DocumentationStateError(f"{field}_not_ancestor_of_head")
+
+
+def validate_linked_incident_state(
+    state: dict[str, Any],
+    *,
+    root: Path = ROOT,
+) -> None:
+    incident_links = [
+        link
+        for link in state["durable_links"]
+        if "incident" in str(link.get("label", "")).casefold()
+    ]
+    if len(incident_links) != 1:
+        raise DocumentationStateError("active_incident_link_count_invalid")
+    incident = (root / incident_links[0]["path"]).read_text(encoding="utf-8")
+    top = "\n".join(incident.splitlines()[:20])
+    required = (
+        f"<!-- {AUTHORITATIVE_STATUS_MARKER}: {state['current_status']} -->",
+        (
+            f"<!-- {AUTHORITATIVE_MANUAL_MARKER}: "
+            f"{state['manual_acceptance_status']} -->"
+        ),
+    )
+    if any(marker not in top for marker in required):
+        raise DocumentationStateError("incident_authoritative_state_mismatch")
+    if HISTORICAL_STATUS_MARKER not in incident:
+        raise DocumentationStateError("incident_historical_status_marker_missing")
+
+    summary_path = (
+        root
+        / "docs"
+        / "reports"
+        / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint-summary.json"
+    )
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DocumentationStateError(f"incident_summary_unreadable:{exc}") from exc
+    if summary.get("record_role") != "historical_forensic_checkpoint":
+        raise DocumentationStateError("incident_summary_role_not_historical")
+    if summary.get("authoritative_current_state_path") != (
+        "docs/state/current-phase.json"
+    ):
+        raise DocumentationStateError("incident_summary_authoritative_path_invalid")
+    if not summary.get("captured_status") or not summary.get(
+        "captured_manual_acceptance_status"
+    ):
+        raise DocumentationStateError("incident_summary_captured_state_missing")
+    if summary.get("status") != summary.get("captured_status"):
+        raise DocumentationStateError("incident_summary_status_role_ambiguous")
+    if summary.get("superseded_by") != state["current_status"]:
+        raise DocumentationStateError("incident_summary_supersession_mismatch")
 
 
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -207,13 +333,13 @@ def render_handoff(state: dict[str, Any]) -> str:
             f"- Blocker: `{blocker['code']}` ({blocker['scope']}).",
             f"- Resolution: {blocker['resolution']}",
             f"- Failed retry2 Replay: `{strategy['failed_replay_disposition']}`; no in-place repair.",
-            f"- Package strategy: `{strategy['package_schema_version']}` with stable source keys/fingerprints only.",
+            f"- Package strategy: `{strategy['package_schema_version']}` with stable source keys/fingerprints only; public state boundary: `{state['public_state_boundary']}`.",
             f"- Fresh Replay creation limit: `{strategy['fresh_replay_database_creation_limit']}`; external-call budget: `{strategy['external_call_budget']}`.",
             "- `enpera` remains one governed localization manual case and is not a Replay blocker.",
             "",
             "## Allowed / Forbidden",
             "",
-            "- Allowed: DOC-GOV-01, package-v2 offline validation, immutable-evidence cross-check, one fresh Replay, independent graph/search validation.",
+            "- Allowed: read-only verification, strict dashboard startup, owner result export, and the one authorized non-overwriting audit-closeout binding v2.",
             "- Forbidden: mutation of failed retry2 Replay; provider/Pixiv/gallery-dl/LLM/media calls; Primary/acquisition/localization replay.",
             "- Forbidden: production, FL1, Provider-2, Entity/truth/media_tags promotion, merge, Ready transition, reviewer trigger, main push, or force-push.",
             "",
@@ -272,6 +398,9 @@ def write_handoff(
 def check_documentation_state(*, root: Path = ROOT) -> dict[str, Any]:
     state = load_state(root / "docs" / "state" / "current-phase.json")
     validate_state(state, root=root)
+    if root.resolve() == ROOT.resolve():
+        validate_git_ancestry(state, root=root)
+    validate_linked_incident_state(state, root=root)
     validate_roadmaps(state, root=root)
     check_handoff(state, path=root / "docs" / "current-handoff.md")
     return {

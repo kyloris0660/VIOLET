@@ -35,16 +35,15 @@ Localization, and Source-Graph Closure` is now the separately governed current
 phase. The canonical current sequence lives in
 `docs/roadmap/current-mainline-roadmap.md`.
 
-The current PR #139 execution has closed acquisition and localization
-accounting, completed exact R2R remap, and passed Primary graph safety. A legacy
-stable-package sanitizer removed nested Pixiv provider `work_id`, so package
-equality did not prove graph-effective trusted-input equality. The failed
-retry2 Replay remains immutable. The project owner has authorized a
-schema-aware stable replay package v2 and exactly one fresh isolated Replay
-verification database after offline and immutable-evidence gates pass. This
-recovery authorizes no provider, Pixiv, gallery-dl, LLM, media, thumbnail,
-Primary recreation, acquisition replay, localization replay, FL1, production,
-Provider-2, Entity, or truth-path work.
+The current PR #139 execution has closed acquisition/localization accounting,
+completed exact R2R remap, built and verified the single authorized fresh
+Replay v2, and passed graph/search plus the 40-case browser prevalidation. The
+failed retry2 Replay remains immutable. The current stop is
+`pending_user_manual_acceptance`; authorization is restricted to read-only
+audit verification, strict dashboard startup, owner result export, and the one
+versioned non-overwriting audit-closeout binding v2. No database
+create/import/derive, provider, Pixiv, gallery-dl, LLM, media, thumbnail, FL1,
+production, Provider-2, Entity, or truth-path work is authorized.
 
 `DOC-GOV-02` remains bounded debt owned by FL1 planning: archive the historical
 project-roadmap body, extract the detailed AGENTS runbook, and remove stale

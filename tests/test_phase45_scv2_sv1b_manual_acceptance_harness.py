@@ -473,6 +473,102 @@ def test_final_binding_regenerates_cases_and_preserves_source_proof(
     engine.dispose()
 
 
+def test_audit_closeout_binding_v2_supersedes_without_overwriting_v1(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "a" * 40)
+    _patch_case_builders(monkeypatch)
+    harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    harness.finalize_harness_binding(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    v1_path = output / harness.FINAL_HARNESS_PROOF_NAME
+    v1_bytes = v1_path.read_bytes()
+    cases = harness.sv1b.read_json(
+        output / "manual-acceptance/case-manifest-private.json"
+    )
+    monkeypatch.setattr(
+        harness,
+        "EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT",
+        harness.sv1b.sha256_payload(cases),
+    )
+    audit = {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v2",
+        "protected_evidence_unchanged": True,
+        "stable_reference_integrity": {"passed": True},
+        "round_trip": {"passed": True},
+    }
+    audit["passed"] = all(
+        (
+            audit["protected_evidence_unchanged"],
+            audit["stable_reference_integrity"]["passed"],
+            audit["round_trip"]["passed"],
+        )
+    )
+    audit["proof_fingerprint"] = harness.sv1b.sha256_payload(audit)
+    harness.sv1b.write_json(
+        output / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_NAME,
+        audit,
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "b" * 40)
+
+    v2 = harness.finalize_audit_closeout_binding_v2(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        port=8012,
+    )
+
+    assert v1_path.read_bytes() == v1_bytes
+    assert v2["passed"] is True
+    assert v2["bindings"]["git_head"] == "b" * 40
+    assert v2["supersedes_final_binding_fingerprint"]
+    assert harness._active_harness_proof_path(output).name == (
+        harness.AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    )
+    assert harness._current_bindings(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    ) == v2["bindings"]
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="audit_closeout_binding_v2_already_exists",
+    ):
+        harness.finalize_audit_closeout_binding_v2(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
 def test_prevalidation_allows_git_only_drift_but_not_evidence_drift(
     tmp_path: Path, monkeypatch
 ) -> None:

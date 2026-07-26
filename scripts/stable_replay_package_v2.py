@@ -1118,6 +1118,7 @@ def validate_package(package: Mapping[str, Any]) -> None:
                         raise StableReplayPackageV2Error(
                             f"unknown_graph_effective_field:{logical}.{field}"
                         )
+    validate_stable_reference_integrity(package)
     ledger = package.get("preservation_loss_ledger")
     if not isinstance(ledger, Mapping):
         raise StableReplayPackageV2Error("preservation_loss_ledger_missing")
@@ -1132,6 +1133,150 @@ def validate_package(package: Mapping[str, Any]) -> None:
     )
     if package.get("package_fingerprint") != expected:
         raise StableReplayPackageV2Error("package_fingerprint_mismatch")
+
+
+def validate_stable_reference_integrity(
+    package: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate every stable source-record key/fingerprint pair in JSON fields."""
+
+    tables = package.get("tables")
+    if not isinstance(tables, Mapping):
+        raise StableReplayPackageV2Error("table_membership_invalid")
+    metadata_rows = tables.get("source_metadata_records")
+    if not isinstance(metadata_rows, list):
+        raise StableReplayPackageV2Error("source_metadata_records_missing")
+    fingerprint_by_key: dict[str, str] = {}
+    for row in metadata_rows:
+        if not isinstance(row, Mapping) or not row.get("provider_record_key"):
+            raise StableReplayPackageV2Error("source_metadata_record_key_invalid")
+        key = str(row["provider_record_key"])
+        if key in fingerprint_by_key:
+            raise StableReplayPackageV2Error(
+                "duplicate_stable_key:source_metadata_records"
+            )
+        fingerprint_by_key[key] = stable_source_record_fingerprint(row)
+
+    references: list[dict[str, str]] = []
+    discovered_reference_pair_count = 0
+
+    def check_pair(
+        value: Mapping[str, Any],
+        *,
+        key_field: str,
+        fingerprint_field: str,
+        path: str,
+    ) -> None:
+        nonlocal discovered_reference_pair_count
+        if key_field not in value and fingerprint_field not in value:
+            return
+        discovered_reference_pair_count += 1
+        key = value.get(key_field)
+        fingerprint = value.get(fingerprint_field)
+        if key in (None, "") or fingerprint in (None, ""):
+            raise StableReplayPackageV2Error(
+                f"stable_reference_pair_incomplete:{path}.{key_field}"
+            )
+        stable_key = str(key)
+        expected = fingerprint_by_key.get(stable_key)
+        if expected is None:
+            raise StableReplayPackageV2Error(
+                f"stable_reference_unknown_key:{path}.{key_field}"
+            )
+        if str(fingerprint) != expected:
+            raise StableReplayPackageV2Error(
+                f"stable_reference_fingerprint_mismatch:{path}.{key_field}"
+            )
+        references.append(
+            {
+                "path": path,
+                "key_field": key_field,
+                "stable_key": stable_key,
+                "stable_fingerprint": expected,
+            }
+        )
+
+    def walk(value: Any, *, path: str, reuse_list_item: bool = False) -> None:
+        if isinstance(value, Mapping):
+            if reuse_list_item:
+                check_pair(
+                    value,
+                    key_field="provider_record_key",
+                    fingerprint_field="source_record_fingerprint",
+                    path=path,
+                )
+            else:
+                for key_field, fingerprint_field in (
+                    (
+                        "source_provider_record_key",
+                        "source_record_fingerprint",
+                    ),
+                    (
+                        "reused_from_provider_record_key",
+                        "reused_from_source_record_fingerprint",
+                    ),
+                    (
+                        "attempted_queue_provider_record_key",
+                        "attempted_queue_record_fingerprint",
+                    ),
+                ):
+                    check_pair(
+                        value,
+                        key_field=key_field,
+                        fingerprint_field=fingerprint_field,
+                        path=path,
+                    )
+            for key, child in value.items():
+                child_path = f"{path}.{key}"
+                if key == "reused_complete_record_references":
+                    if not isinstance(child, list):
+                        raise StableReplayPackageV2Error(
+                            "reused_complete_record_references_shape_invalid"
+                        )
+                    for item in child:
+                        walk(
+                            item,
+                            path=f"{child_path}[]",
+                            reuse_list_item=True,
+                        )
+                else:
+                    walk(child, path=child_path)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child, path=f"{path}[]")
+
+    for index, row in enumerate(metadata_rows):
+        for field in ("raw_metadata_json", "provenance"):
+            walk(
+                row.get(field),
+                path=f"$.source_metadata_records[{index}].{field}",
+            )
+    references.sort(
+        key=lambda row: (
+            row["path"],
+            row["key_field"],
+            row["stable_key"],
+            row["stable_fingerprint"],
+        )
+    )
+    checks = {
+        "source_record_keys_unique": (
+            len(fingerprint_by_key) == len(metadata_rows)
+        ),
+        "all_discovered_references_verified": (
+            len(references) == discovered_reference_pair_count
+        ),
+    }
+    failed_check_count = sum(value is not True for value in checks.values())
+    return {
+        "checked_source_record_count": len(metadata_rows),
+        "discovered_reference_pair_count": discovered_reference_pair_count,
+        "reference_count": len(references),
+        "failed_check_count": failed_check_count,
+        "checks": checks,
+        "reference_membership_fingerprint": sha256_payload(references),
+        "passed": failed_check_count == 0,
+    }
 
 
 def graph_effective_projection(package: Mapping[str, Any]) -> dict[str, Any]:
@@ -1178,6 +1323,50 @@ def compare_round_trip_packages(
     validate_package(replay_package)
     source_projection = graph_effective_projection(source_package)
     replay_projection = graph_effective_projection(replay_package)
+    source_membership = _stable_membership_by_table(source_package)
+    replay_membership = _stable_membership_by_table(replay_package)
+    missing_by_table: dict[str, int] = {}
+    extra_by_table: dict[str, int] = {}
+    missing_membership: list[str] = []
+    extra_membership: list[str] = []
+    for logical in sorted(source_membership):
+        missing = sorted(source_membership[logical] - replay_membership[logical])
+        extra = sorted(replay_membership[logical] - source_membership[logical])
+        missing_by_table[logical] = len(missing)
+        extra_by_table[logical] = len(extra)
+        missing_membership.extend(f"{logical}:{value}" for value in missing)
+        extra_membership.extend(f"{logical}:{value}" for value in extra)
+    source_rows = {
+        str(row["provider_record_key"]): row
+        for row in source_projection["rows"]
+    }
+    replay_rows = {
+        str(row["provider_record_key"]): row
+        for row in replay_projection["rows"]
+    }
+    common_keys = sorted(set(source_rows) & set(replay_rows))
+    projection_mismatches = [
+        key for key in common_keys if source_rows[key] != replay_rows[key]
+    ]
+    stable_identity_mismatches = [
+        key
+        for key in common_keys
+        if source_rows[key].get("stable_identity_key")
+        != replay_rows[key].get("stable_identity_key")
+    ]
+    trusted_verdict_mismatches = [
+        key
+        for key in common_keys
+        if source_rows[key].get("trusted_complete")
+        != replay_rows[key].get("trusted_complete")
+    ]
+    mismatch_membership = {
+        "missing": missing_membership,
+        "extra": extra_membership,
+        "graph_effective_projection": projection_mismatches,
+        "stable_identity": stable_identity_mismatches,
+        "trusted_complete_verdict": trusted_verdict_mismatches,
+    }
     result = {
         "schema_version": SCHEMA_VERSION,
         "package_fingerprint_equal": (
@@ -1198,8 +1387,22 @@ def compare_round_trip_packages(
         ),
         "source_trusted_complete_count": source_projection["trusted_complete_count"],
         "replay_trusted_complete_count": replay_projection["trusted_complete_count"],
-        "missing_row_count": 0,
-        "extra_row_count": 0,
+        "missing_stable_membership_by_table": missing_by_table,
+        "extra_stable_membership_by_table": extra_by_table,
+        "missing_row_count": len(missing_membership),
+        "extra_row_count": len(extra_membership),
+        "graph_effective_projection_mismatch_count": len(
+            projection_mismatches
+        ),
+        "stable_identity_mismatch_count": len(stable_identity_mismatches),
+        "trusted_complete_verdict_mismatch_count": len(
+            trusted_verdict_mismatches
+        ),
+        "missing_membership_fingerprint": sha256_payload(missing_membership),
+        "extra_membership_fingerprint": sha256_payload(extra_membership),
+        "mismatch_membership_fingerprint": sha256_payload(
+            mismatch_membership
+        ),
         "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
     }
     result["passed"] = all(
@@ -1210,8 +1413,22 @@ def compare_round_trip_packages(
             "graph_effective_projection_equal",
             "trusted_complete_count_equal",
         )
-    )
+    ) and result["missing_row_count"] == 0 and result["extra_row_count"] == 0
     return result
+
+
+def _stable_membership_by_table(
+    package: Mapping[str, Any],
+) -> dict[str, set[str]]:
+    memberships: dict[str, set[str]] = {}
+    for logical, schema in SCHEMA_BY_LOGICAL.items():
+        memberships[logical] = {
+            canonical_json(
+                [row.get(field) for field in schema.stable_key_fields]
+            )
+            for row in package["tables"][logical]
+        }
+    return memberships
 
 
 def verify_external_routes_forbidden(operation_counts: Mapping[str, Any]) -> None:
@@ -1270,6 +1487,7 @@ def cross_validate_primary_stable_identity(
     *,
     candidate_pages: Sequence[Mapping[str, Any]],
     final_work_outcomes: Sequence[Mapping[str, Any]],
+    route_viability_attempts: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Cross-check Primary identity against accepted immutable execution evidence."""
 
@@ -1299,11 +1517,20 @@ def cross_validate_primary_stable_identity(
         for row in final_work_outcomes
         if row.get("work_id") not in (None, "")
     }
+    independently_verified_route_references = {
+        str(row.get("private_stable_work_reference"))
+        for row in route_viability_attempts
+        if row.get("result_class") == "route_viable"
+        and row.get("route_viability") is True
+        and row.get("returned_work_consistency") is True
+        and row.get("private_stable_work_reference")
+    }
     ledger: list[dict[str, Any]] = []
     accepted_provider_fact_mutations = 0
     stable_identity_mismatches = 0
     unsupported_identities = 0
     legacy_raw_projection_mismatches = 0
+    support_counts: Counter[str] = Counter()
     primary_rows = primary_package["tables"]["source_metadata_records"]
     for row in primary_rows:
         key = str(row["provider_record_key"])
@@ -1366,19 +1593,49 @@ def cross_validate_primary_stable_identity(
             row.get("raw_metadata_json")
         )
         outcome_support = work_id in final_work_ids
-        accepted_stable_fact_support = bool(fact_match and work_id)
+        route_viability_support = bool(
+            work_id
+            and hashlib.sha256(work_id.encode("utf-8")).hexdigest()
+            in independently_verified_route_references
+        )
+        accepted_checkpoint_immutability_support = fact_match
+        provenance_source = str(provenance.get("source") or "").casefold()
+        phase_acquired_identity = bool(
+            work_id
+            and candidate_support
+            and provenance_source == "gallery_dl_authenticated_metadata"
+        )
+        phase_acquired_independent_support = bool(
+            raw_support or outcome_support or route_viability_support
+        )
         supported = bool(
-            not work_id
-            or (
-                fact_match
-                and stable_match
-                and (
-                    accepted_stable_fact_support
-                    or candidate_support
-                    or raw_support
-                    or outcome_support
-                )
+            fact_match
+            and stable_match
+            and (
+                not phase_acquired_identity
+                or phase_acquired_independent_support
             )
+        )
+        support_counts["accepted_checkpoint_immutability_support"] += int(
+            accepted_checkpoint_immutability_support
+        )
+        support_counts["independent_candidate_page_support"] += int(
+            candidate_support
+        )
+        support_counts["independent_persisted_raw_support"] += int(
+            raw_support
+        )
+        support_counts["independent_work_outcome_support"] += int(
+            outcome_support
+        )
+        support_counts["independent_route_viability_support"] += int(
+            route_viability_support
+        )
+        support_counts["phase_acquired_identity"] += int(
+            phase_acquired_identity
+        )
+        support_counts["phase_acquired_independent_support"] += int(
+            phase_acquired_identity and phase_acquired_independent_support
         )
         if not supported:
             unsupported_identities += 1
@@ -1392,10 +1649,17 @@ def cross_validate_primary_stable_identity(
                 "legacy_raw_projection_match_supplemental_only": raw_projection_match,
                 "stable_identity_match": stable_match,
                 "stable_identity_work_present": stable_identity_work_present,
-                "accepted_acquisition_stable_fact_support": accepted_stable_fact_support,
-                "candidate_page_support": candidate_support,
-                "persisted_raw_provider_identity_support": raw_support,
-                "accepted_work_outcome_support": outcome_support,
+                "accepted_checkpoint_immutability_support": (
+                    accepted_checkpoint_immutability_support
+                ),
+                "independent_candidate_page_support": candidate_support,
+                "independent_persisted_raw_support": raw_support,
+                "independent_work_outcome_support": outcome_support,
+                "independent_route_viability_support": route_viability_support,
+                "phase_acquired_identity": phase_acquired_identity,
+                "phase_acquired_independent_support": (
+                    phase_acquired_independent_support
+                ),
                 "immutable_identity_support_passed": supported,
             }
         )
@@ -1413,6 +1677,20 @@ def cross_validate_primary_stable_identity(
         "legacy_raw_projection_mismatch_count": legacy_raw_projection_mismatches,
         "candidate_page_evidence_count": len(candidate_membership),
         "accepted_work_outcome_evidence_count": len(final_work_ids),
+        "accepted_route_viability_evidence_count": len(
+            independently_verified_route_references
+        ),
+        "support_classification_counts": dict(sorted(support_counts.items())),
+        "phase_acquired_identity_count": support_counts[
+            "phase_acquired_identity"
+        ],
+        "phase_acquired_identity_independent_support_count": support_counts[
+            "phase_acquired_independent_support"
+        ],
+        "phase_acquired_identity_unsupported_count": (
+            support_counts["phase_acquired_identity"]
+            - support_counts["phase_acquired_independent_support"]
+        ),
         "ledger_membership_fingerprint": sha256_payload(ledger),
         "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
         "primary_not_assumed_authoritative": True,
@@ -1424,6 +1702,7 @@ def cross_validate_primary_stable_identity(
         and accepted_provider_fact_mutations == 0
         and stable_identity_mismatches == 0
         and unsupported_identities == 0
+        and proof["phase_acquired_identity_unsupported_count"] == 0
     )
     return proof, ledger
 

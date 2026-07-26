@@ -80,7 +80,7 @@
     "code": "pending_user_manual_acceptance",
     "scope": "owner manual acceptance of the exact Git-bound 40-case localhost harness",
     "nonblocking_localization_item": "enpera",
-    "resolution": "Automated replay, graph, search, 40-case selection, and real localhost browser prevalidation have passed. Commit this final public state, write the one non-overwriting final Git binding for the unchanged case membership, re-open the strict dashboard, and stop for the owner's manual decision; no automated result may substitute for that decision."
+    "resolution": "Owner manual acceptance remains the only unresolved checkpoint. The active versioned binding must match the current Git and protected evidence before strict dashboard use; if either changes, automation must fail closed until a separately authorized non-overwriting binding is created. No automated prevalidation may substitute for the owner's decision."
   },
   "owner_decisions": [
     {
@@ -90,15 +90,17 @@
     {
       "id": "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1",
       "decision": "Historical phase-scoped credential-risk waiver remains recorded; this recovery authorizes no provider or credential use."
+    },
+    {
+      "id": "owner_authorized_sv1b_audit_closeout_binding_v2_20260726",
+      "decision": "Permit read-only audit closeout and exactly one versioned non-overwriting final binding v2; preserve every prior database, package, proof, binding, and owner-pending result state."
     }
   ],
   "authorized_operations": [
-    "DOC-GOV-01 documentation-state implementation and checks",
-    "schema-aware stable replay package v2 implementation and offline validation",
-    "read-only cross-check of Primary stable identity against immutable accepted acquisition evidence",
-    "creation of exactly one fresh isolated Replay verification database after all gates pass",
-    "import of accepted acquisition, localization, R2R, and Primary non-derived evidence into the fresh Replay",
-    "independent fresh Replay graph/search derivation and manual-acceptance preparation"
+    "read-only verification of protected package, database, graph, search, localization, and case evidence",
+    "strict localhost dashboard startup against the active versioned binding",
+    "owner acceptance result export to the private governed result path",
+    "exactly one versioned non-overwriting audit-closeout final binding v2 in the currently authorized closeout"
   ],
   "forbidden_operations": [
     "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
@@ -107,6 +109,7 @@
     "production, FL1, Provider-2, Entity, EntityAlias, confirmed assignment, truth promotion, or provider-derived media_tags write",
     "merge, Ready transition, reviewer trigger, main push, or force-push"
   ],
+  "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
   "protected_evidence": {
     "manifest_fingerprint": "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
     "primary_database": "blombooru_scv2_sv1b_metadata_graph_closure_test_20260721_retry2",
@@ -173,5 +176,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T02:46:00+08:00"
+  "updated_at": "2026-07-26T16:30:00+08:00"
 }
