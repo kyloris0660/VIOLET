@@ -69,6 +69,7 @@ def test_no_external_execution_stage_exists() -> None:
         "build-harness",
         "finalize-harness-binding",
         "audit-closeout-binding-v2",
+        "audit-closeout-binding-v3",
     )
     assert runner.EXTERNAL_ROUTE_BUDGET == {
         "provider_requests": 0,

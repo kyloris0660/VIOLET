@@ -1159,6 +1159,12 @@ def validate_stable_reference_integrity(
 
     references: list[dict[str, str]] = []
     discovered_reference_pair_count = 0
+    verified_reference_pair_count = 0
+    incomplete_reference_pair_count = 0
+    unknown_reference_key_count = 0
+    mismatched_reference_fingerprint_count = 0
+    field_counts: dict[str, Counter[str]] = {}
+    failures: list[str] = []
 
     def check_pair(
         value: Mapping[str, Any],
@@ -1166,27 +1172,44 @@ def validate_stable_reference_integrity(
         key_field: str,
         fingerprint_field: str,
         path: str,
+        field_scope: str,
     ) -> None:
         nonlocal discovered_reference_pair_count
+        nonlocal verified_reference_pair_count
+        nonlocal incomplete_reference_pair_count
+        nonlocal unknown_reference_key_count
+        nonlocal mismatched_reference_fingerprint_count
         if key_field not in value and fingerprint_field not in value:
             return
         discovered_reference_pair_count += 1
+        field_counts[field_scope]["discovered"] += 1
         key = value.get(key_field)
         fingerprint = value.get(fingerprint_field)
         if key in (None, "") or fingerprint in (None, ""):
-            raise StableReplayPackageV2Error(
+            incomplete_reference_pair_count += 1
+            field_counts[field_scope]["incomplete"] += 1
+            failures.append(
                 f"stable_reference_pair_incomplete:{path}.{key_field}"
             )
+            return
         stable_key = str(key)
         expected = fingerprint_by_key.get(stable_key)
         if expected is None:
-            raise StableReplayPackageV2Error(
+            unknown_reference_key_count += 1
+            field_counts[field_scope]["unknown_key"] += 1
+            failures.append(
                 f"stable_reference_unknown_key:{path}.{key_field}"
             )
+            return
         if str(fingerprint) != expected:
-            raise StableReplayPackageV2Error(
+            mismatched_reference_fingerprint_count += 1
+            field_counts[field_scope]["mismatch"] += 1
+            failures.append(
                 f"stable_reference_fingerprint_mismatch:{path}.{key_field}"
             )
+            return
+        verified_reference_pair_count += 1
+        field_counts[field_scope]["verified"] += 1
         references.append(
             {
                 "path": path,
@@ -1196,7 +1219,13 @@ def validate_stable_reference_integrity(
             }
         )
 
-    def walk(value: Any, *, path: str, reuse_list_item: bool = False) -> None:
+    def walk(
+        value: Any,
+        *,
+        path: str,
+        field_scope: str,
+        reuse_list_item: bool = False,
+    ) -> None:
         if isinstance(value, Mapping):
             if reuse_list_item:
                 check_pair(
@@ -1204,6 +1233,7 @@ def validate_stable_reference_integrity(
                     key_field="provider_record_key",
                     fingerprint_field="source_record_fingerprint",
                     path=path,
+                    field_scope=field_scope,
                 )
             else:
                 for key_field, fingerprint_field in (
@@ -1225,6 +1255,7 @@ def validate_stable_reference_integrity(
                         key_field=key_field,
                         fingerprint_field=fingerprint_field,
                         path=path,
+                        field_scope=field_scope,
                     )
             for key, child in value.items():
                 child_path = f"{path}.{key}"
@@ -1237,20 +1268,36 @@ def validate_stable_reference_integrity(
                         walk(
                             item,
                             path=f"{child_path}[]",
+                            field_scope=field_scope,
                             reuse_list_item=True,
                         )
                 else:
-                    walk(child, path=child_path)
+                    walk(child, path=child_path, field_scope=field_scope)
         elif isinstance(value, list):
             for child in value:
-                walk(child, path=f"{path}[]")
+                walk(child, path=f"{path}[]", field_scope=field_scope)
 
-    for index, row in enumerate(metadata_rows):
-        for field in ("raw_metadata_json", "provenance"):
-            walk(
-                row.get(field),
-                path=f"$.source_metadata_records[{index}].{field}",
+    for schema in TABLE_SCHEMAS:
+        rows = tables.get(schema.logical_name)
+        if not isinstance(rows, list):
+            raise StableReplayPackageV2Error(
+                f"stable_reference_table_missing:{schema.logical_name}"
             )
+        for field in schema.json_fields:
+            field_scope = f"{schema.logical_name}.{field}"
+            field_counts[field_scope] = Counter()
+        for index, row in enumerate(rows):
+            if not isinstance(row, Mapping):
+                raise StableReplayPackageV2Error(
+                    f"stable_reference_row_invalid:{schema.logical_name}:{index}"
+                )
+            for field in schema.json_fields:
+                field_scope = f"{schema.logical_name}.{field}"
+                walk(
+                    row.get(field),
+                    path=f"$.{schema.logical_name}[{index}].{field}",
+                    field_scope=field_scope,
+                )
     references.sort(
         key=lambda row: (
             row["path"],
@@ -1264,19 +1311,49 @@ def validate_stable_reference_integrity(
             len(fingerprint_by_key) == len(metadata_rows)
         ),
         "all_discovered_references_verified": (
-            len(references) == discovered_reference_pair_count
+            verified_reference_pair_count == discovered_reference_pair_count
+        ),
+        "incomplete_reference_pairs_zero": incomplete_reference_pair_count == 0,
+        "unknown_reference_keys_zero": unknown_reference_key_count == 0,
+        "mismatched_reference_fingerprints_zero": (
+            mismatched_reference_fingerprint_count == 0
         ),
     }
     failed_check_count = sum(value is not True for value in checks.values())
-    return {
+    result = {
         "checked_source_record_count": len(metadata_rows),
         "discovered_reference_pair_count": discovered_reference_pair_count,
-        "reference_count": len(references),
+        "verified_reference_pair_count": verified_reference_pair_count,
+        "reference_count": verified_reference_pair_count,
+        "incomplete_reference_pair_count": incomplete_reference_pair_count,
+        "unknown_reference_key_count": unknown_reference_key_count,
+        "mismatched_reference_fingerprint_count": (
+            mismatched_reference_fingerprint_count
+        ),
+        "json_field_reference_counts": {
+            scope: {
+                key: int(counts.get(key, 0))
+                for key in (
+                    "discovered",
+                    "verified",
+                    "incomplete",
+                    "unknown_key",
+                    "mismatch",
+                )
+            }
+            for scope, counts in sorted(field_counts.items())
+        },
         "failed_check_count": failed_check_count,
         "checks": checks,
         "reference_membership_fingerprint": sha256_payload(references),
         "passed": failed_check_count == 0,
     }
+    if failures:
+        raise StableReplayPackageV2Error(
+            "stable_reference_integrity_failed:"
+            + "|".join(sorted(failures))
+        )
+    return result
 
 
 def graph_effective_projection(package: Mapping[str, Any]) -> dict[str, Any]:
@@ -1485,6 +1562,8 @@ def cross_validate_primary_stable_identity(
     primary_package: Mapping[str, Any],
     accepted_v1_package: Mapping[str, Any],
     *,
+    phase_acquired_membership: Sequence[Mapping[str, Any]] = (),
+    historical_baseline_provider_keys: Sequence[str] = (),
     candidate_pages: Sequence[Mapping[str, Any]],
     final_work_outcomes: Sequence[Mapping[str, Any]],
     route_viability_attempts: Sequence[Mapping[str, Any]] = (),
@@ -1503,6 +1582,27 @@ def cross_validate_primary_stable_identity(
     }
     if len(accepted_by_key) != len(accepted_rows):
         raise StableReplayPackageV2Error("accepted_v1_duplicate_provider_record_key")
+    def page_membership(
+        rows: Sequence[Mapping[str, Any]],
+    ) -> set[tuple[str, str, int]]:
+        return {
+            (
+                str(row.get("media_stable_key") or ""),
+                str(row.get("stable_work_id") or ""),
+                int(row.get("requested_page_index") or 0),
+            )
+            for row in rows
+            if row.get("media_stable_key") and row.get("stable_work_id")
+        }
+
+    phase_membership_keys = {
+        str(row.get("provider_record_key") or "")
+        for row in phase_acquired_membership
+        if row.get("provider_record_key")
+    }
+    historical_baseline_keys = {
+        str(value) for value in historical_baseline_provider_keys if value
+    }
     candidate_membership = {
         (
             str(row.get("media_stable_key") or ""),
@@ -1531,6 +1631,8 @@ def cross_validate_primary_stable_identity(
     unsupported_identities = 0
     legacy_raw_projection_mismatches = 0
     support_counts: Counter[str] = Counter()
+    observed_phase_membership: list[str] = []
+    phase_provenance_missing_membership_count = 0
     primary_rows = primary_package["tables"]["source_metadata_records"]
     for row in primary_rows:
         key = str(row["provider_record_key"])
@@ -1600,11 +1702,26 @@ def cross_validate_primary_stable_identity(
         )
         accepted_checkpoint_immutability_support = fact_match
         provenance_source = str(provenance.get("source") or "").casefold()
+        stable_page_membership = (
+            str(row.get("media_content_key") or ""),
+            work_id,
+            int(page_index or 0),
+        )
         phase_acquired_identity = bool(
             work_id
-            and candidate_support
             and provenance_source == "gallery_dl_authenticated_metadata"
+            and key in phase_membership_keys
         )
+        if phase_acquired_identity:
+            observed_phase_membership.append(key)
+        if (
+            work_id
+            and provenance_source == "gallery_dl_authenticated_metadata"
+            and key not in phase_membership_keys
+            and key not in historical_baseline_keys
+            and str(row.get("metadata_kind") or "") == "pixiv_ingestion_gate"
+        ):
+            phase_provenance_missing_membership_count += 1
         phase_acquired_independent_support = bool(
             raw_support or outcome_support or route_viability_support
         )
@@ -1676,6 +1793,16 @@ def cross_validate_primary_stable_identity(
         "unsupported_stable_identity_count": unsupported_identities,
         "legacy_raw_projection_mismatch_count": legacy_raw_projection_mismatches,
         "candidate_page_evidence_count": len(candidate_membership),
+        "expected_phase_acquired_identity_count": len(phase_membership_keys),
+        "observed_phase_acquired_identity_count": len(
+            set(observed_phase_membership)
+        ),
+        "phase_acquired_membership_fingerprint": sha256_payload(
+            sorted(phase_membership_keys)
+        ),
+        "phase_provenance_but_missing_phase_membership_count": (
+            phase_provenance_missing_membership_count
+        ),
         "accepted_work_outcome_evidence_count": len(final_work_ids),
         "accepted_route_viability_evidence_count": len(
             independently_verified_route_references
@@ -1703,6 +1830,9 @@ def cross_validate_primary_stable_identity(
         and stable_identity_mismatches == 0
         and unsupported_identities == 0
         and proof["phase_acquired_identity_unsupported_count"] == 0
+        and proof["observed_phase_acquired_identity_count"]
+        == proof["expected_phase_acquired_identity_count"]
+        and proof["phase_provenance_but_missing_phase_membership_count"] == 0
     )
     return proof, ledger
 

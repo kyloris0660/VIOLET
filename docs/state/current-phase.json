@@ -94,13 +94,17 @@
     {
       "id": "owner_authorized_sv1b_audit_closeout_binding_v2_20260726",
       "decision": "Permit read-only audit closeout and exactly one versioned non-overwriting final binding v2; preserve every prior database, package, proof, binding, and owner-pending result state."
+    },
+    {
+      "id": "owner_authorized_sv1b_audit_closeout_binding_v3_20260726",
+      "decision": "Permit the bounded reviewer-discovered evidence-contract closeout and exactly one versioned non-overwriting final binding v3 on the resulting exact Git HEAD; preserve v1/v2, every database, protected package, proof, case manifest, and owner-pending result state."
     }
   ],
   "authorized_operations": [
     "read-only verification of protected package, database, graph, search, localization, and case evidence",
     "strict localhost dashboard startup against the active versioned binding",
     "owner acceptance result export to the private governed result path",
-    "exactly one versioned non-overwriting audit-closeout final binding v2 in the currently authorized closeout"
+    "exactly one versioned non-overwriting audit-closeout final binding v3 in the currently authorized closeout"
   ],
   "forbidden_operations": [
     "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
@@ -176,5 +180,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T16:30:00+08:00"
+  "updated_at": "2026-07-26T15:44:47+08:00"
 }

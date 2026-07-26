@@ -22,13 +22,16 @@ graph safety 已形成受保护输入。旧 retry2 Replay 的 graph-effective pr
 保留失败 Replay 为不可变取证证据；完成 schema-aware stable replay package
 v2 后，只创建一个 fresh isolated Replay verification database。
 
-当时状态字段（historical / superseded）为：
+当时状态字段（historical / superseded）来自
+`initial_retry2_replay_reconciliation_blocker` checkpoint；它与配套 summary
+JSON 的 `captured_checkpoint_role` 和 `captured_manual_acceptance_status`
+描述同一取证时点，不代表当前 pending-user 状态：
 
 ```text
 target_met = false
 safe_to_merge = false
 route_approved = false
-manual_acceptance_status = not_started_replay_recovery
+manual_acceptance_status = not_started_blocked
 next_phase_started = false
 ```
 
@@ -352,6 +355,15 @@ stable reference 非空。项目负责人已授权一次纯只读 audit closeout
 与 exact fingerprint，并在公共修复 commit 后创建唯一、版本化且不覆盖 v1 的
 final binding v2。该授权不包含数据库写入、重新派生、provider/LLM/media 路径
 或负责人验收。
+
+## 2026-07-26 evidence-contract final binding v3 授权
+
+项目负责人随后授权一次范围更窄的 reviewer-discovered contract closeout：
+完整扫描所有声明 JSON field 的 stable references；以独立阶段 membership
+先识别 phase-acquired identity，再分别核验 candidate/raw/outcome/route
+support；并把 audit proof 的 exact HEAD、自指纹与文件 SHA 纳入唯一、版本化、
+不覆盖 v1/v2 的 final binding v3。该授权仍不包含任何数据库写入、重新
+import/derive、provider/LLM/media 路径或负责人验收。
 
 本节与文档顶部的权威标记共同代表当前状态；此前所有 blocker、数据库创建、
 导入、派生、首轮 binding 与浏览器记录均为 historical / superseded checkpoint，

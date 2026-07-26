@@ -476,6 +476,11 @@ def test_compatible_complete_reuse_uses_stable_reference_not_numeric_row_id() ->
     ]
     assert integrity["failed_check_count"] == 0
     assert all(integrity["checks"].values())
+    assert set(integrity["json_field_reference_counts"]) == {
+        f"{logical}.{field}"
+        for logical, schema in SCHEMA_BY_LOGICAL.items()
+        for field in schema.json_fields
+    }
 
 
 @pytest.mark.parametrize(
@@ -526,6 +531,55 @@ def test_nested_reused_complete_reference_is_referentially_validated() -> None:
         StableReplayPackageV2Error,
         match="stable_reference_fingerprint_mismatch",
     ):
+        validate_package(package)
+
+
+@pytest.mark.parametrize(
+    ("logical", "field", "mutation", "error"),
+    [
+        (
+            "source_name_observations",
+            "provenance",
+            {
+                "source_provider_record_key": "pixiv:missing:p0",
+                "source_record_fingerprint": "0" * 64,
+            },
+            "stable_reference_unknown_key",
+        ),
+        (
+            "source_name_observations",
+            "provenance",
+            {
+                "source_provider_record_key": "pixiv:123456789:p0:provider",
+                "source_record_fingerprint": "0" * 64,
+            },
+            "stable_reference_fingerprint_mismatch",
+        ),
+        (
+            "source_metadata_evidence",
+            "provenance",
+            {"source_provider_record_key": "pixiv:123456789:p0:provider"},
+            "stable_reference_pair_incomplete",
+        ),
+        (
+            "source_searchable_name_assertions",
+            "provenance_summary",
+            {"attempted_queue_record_fingerprint": "0" * 64},
+            "stable_reference_pair_incomplete",
+        ),
+    ],
+)
+def test_all_declared_json_fields_fail_closed_for_stable_references(
+    logical: str,
+    field: str,
+    mutation: dict[str, str],
+    error: str,
+) -> None:
+    package = _package()
+    package["tables"][logical][0][field] = mutation
+    _refresh_package_fingerprint(package)
+
+    with pytest.raises(StableReplayPackageV2Error, match=error):
         validate_package(package)
 
 
@@ -813,6 +867,11 @@ def test_phase_acquired_identity_requires_independent_execution_or_raw_support()
     proof, ledger = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
+        phase_acquired_membership=[
+            {
+                "provider_record_key": queue["provider_record_key"],
+            }
+        ],
         candidate_pages=[
             {
                 "media_stable_key": "media-content-b",
@@ -854,6 +913,11 @@ def test_phase_acquired_identity_accepts_independent_route_viability_support() -
     proof, ledger = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
+        phase_acquired_membership=[
+            {
+                "provider_record_key": queue["provider_record_key"],
+            }
+        ],
         candidate_pages=[
             {
                 "media_stable_key": "media-content-b",
@@ -886,3 +950,73 @@ def test_phase_acquired_identity_accepts_independent_route_viability_support() -
     assert queue_ledger["immutable_identity_support_passed"] is True
     assert proof["passed"] is True
     assert proof["phase_acquired_identity_unsupported_count"] == 0
+
+
+def test_phase_provenance_cannot_fall_open_when_candidate_support_is_missing() -> None:
+    rows, maps = _realistic_rows()
+    queue = rows["source_metadata_records"][1]
+    queue["provenance"]["source"] = "gallery_dl_authenticated_metadata"
+    queue["raw_metadata_json"] = {"filename": "must-not-infer-identity.jpg"}
+    primary = build_package_from_rows(rows, maps=maps)
+    accepted_v1 = {
+        "tables": {
+            "source_metadata_records": copy.deepcopy(
+                primary["tables"]["source_metadata_records"]
+            )
+        }
+    }
+    membership = {"provider_record_key": queue["provider_record_key"]}
+
+    proof, ledger = cross_validate_primary_stable_identity(
+        primary,
+        accepted_v1,
+        phase_acquired_membership=[membership],
+        candidate_pages=[],
+        final_work_outcomes=[],
+    )
+
+    queue_ledger = next(
+        row
+        for row in ledger
+        if row["provider_record_key"] == queue["provider_record_key"]
+    )
+    assert queue_ledger["phase_acquired_identity"] is True
+    assert queue_ledger["independent_candidate_page_support"] is False
+    assert queue_ledger["immutable_identity_support_passed"] is False
+    assert proof["expected_phase_acquired_identity_count"] == 1
+    assert proof["observed_phase_acquired_identity_count"] == 1
+    assert proof["phase_acquired_identity_unsupported_count"] == 1
+    assert proof["passed"] is False
+
+
+def test_phase_provenance_missing_immutable_membership_fails_closed() -> None:
+    rows, maps = _realistic_rows()
+    queue = rows["source_metadata_records"][1]
+    queue["provenance"]["source"] = "gallery_dl_authenticated_metadata"
+    queue["raw_metadata_json"] = {"filename": "must-not-infer-identity.jpg"}
+    primary = build_package_from_rows(rows, maps=maps)
+    accepted_v1 = {
+        "tables": {
+            "source_metadata_records": copy.deepcopy(
+                primary["tables"]["source_metadata_records"]
+            )
+        }
+    }
+
+    proof, ledger = cross_validate_primary_stable_identity(
+        primary,
+        accepted_v1,
+        phase_acquired_membership=[],
+        historical_baseline_provider_keys=[],
+        candidate_pages=[],
+        final_work_outcomes=[],
+    )
+
+    queue_ledger = next(
+        row
+        for row in ledger
+        if row["provider_record_key"] == queue["provider_record_key"]
+    )
+    assert queue_ledger["phase_acquired_identity"] is False
+    assert proof["phase_provenance_but_missing_phase_membership_count"] == 1
+    assert proof["passed"] is False

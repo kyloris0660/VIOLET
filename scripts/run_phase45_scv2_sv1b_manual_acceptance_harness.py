@@ -36,6 +36,12 @@ AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME = (
 AUDIT_CLOSEOUT_VALIDATION_PROOF_NAME = (
     "fresh-replay-v2-audit-closeout-validation-proof.json"
 )
+AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME = (
+    "manual-acceptance-harness-audit-closeout-final-binding-v3-proof.json"
+)
+AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME = (
+    "fresh-replay-v2-audit-closeout-validation-v3-proof.json"
+)
 EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT = (
     "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5"
 )
@@ -923,6 +929,7 @@ def _build_bindings(
     relative_proof_sources: Mapping[str, str],
     proofs: Mapping[str, Mapping[str, Any]],
     cases: list[dict[str, Any]],
+    audit_binding: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     primary_binding = _database_binding(primary_database)
     replay_binding = _database_binding(replay_database)
@@ -948,8 +955,58 @@ def _build_bindings(
             sv1b.sha256_payload(cases)
         ),
     }
+    if audit_binding is not None:
+        bindings["audit_validation"] = dict(audit_binding)
     bindings["binding_fingerprint"] = sv1b.sha256_payload(bindings)
     return bindings
+
+
+def _validated_audit_v3_binding(output: Path) -> dict[str, str]:
+    audit_path = output / AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME
+    if not audit_path.is_file():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_validation_v3_missing"
+        )
+    audit = sv1b.read_json(audit_path)
+    declared = str(audit.get("proof_fingerprint") or "")
+    calculated = sv1b.sha256_payload(
+        {
+            key: value
+            for key, value in audit.items()
+            if key != "proof_fingerprint"
+        }
+    )
+    checks = {
+        "proof_version": (
+            audit.get("proof_version")
+            == "sv1b_audit_closeout_read_only_validation_v3"
+        ),
+        "passed": audit.get("passed") is True,
+        "self_fingerprint": declared == calculated,
+        "git_head": audit.get("git_head") == _git_head(),
+        "stable_reference": (
+            audit.get("stable_reference_integrity", {}).get("passed") is True
+        ),
+        "phase_acquired_support": (
+            audit.get("primary_identity_crosscheck", {}).get("passed") is True
+            and audit.get("primary_identity_crosscheck", {}).get(
+                "phase_acquired_identity_unsupported_count"
+            )
+            == 0
+        ),
+        "round_trip": audit.get("round_trip", {}).get("passed") is True,
+    }
+    if not all(checks.values()):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_validation_v3_invalid:"
+            f"{sorted(key for key, value in checks.items() if not value)}"
+        )
+    return {
+        "proof_path": AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME,
+        "proof_fingerprint": declared,
+        "proof_file_sha256": sv1b.sha256_file(audit_path),
+        "git_head": str(audit["git_head"]),
+    }
 
 
 def _case_manifests_equal(
@@ -1257,7 +1314,120 @@ def finalize_audit_closeout_binding_v2(
     return final
 
 
+def finalize_audit_closeout_binding_v3(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+    port: int = DEFAULT_PORT,
+) -> dict[str, Any]:
+    """Bind the exact audit proof bytes and current HEAD without overwriting v2."""
+
+    output = output.resolve()
+    sv1b.validate_owned_output_root(
+        output,
+        primary_database=primary_database,
+        replay_database=replay_database,
+    )
+    v2_path = output / AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    final_path = output / AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    if final_path.exists():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_binding_v3_already_exists"
+        )
+    if not v2_path.is_file():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_binding_v2_missing"
+        )
+    v2 = sv1b.read_json(v2_path)
+    audit_binding = _validated_audit_v3_binding(output)
+    existing_cases = sv1b.read_json(
+        output / "manual-acceptance/case-manifest-private.json"
+    )
+    case_fingerprint = sv1b.sha256_payload(existing_cases)
+    if case_fingerprint != EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_case_manifest_mismatch"
+        )
+    regenerated_cases, phase_delta_composition = _generate_cases(
+        output, primary_database=primary_database
+    )
+    if not _case_manifests_equal(regenerated_cases, existing_cases):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_case_regeneration_drift"
+        )
+    relative_sources, proofs = _resolve_proof_sources(
+        output, v2.get("proof_sources")
+    )
+    current_without_audit = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_sources,
+        proofs=proofs,
+        cases=regenerated_cases,
+    )
+    immutable_v2 = dict(v2["bindings"])
+    immutable_current = dict(current_without_audit)
+    for value in (immutable_v2, immutable_current):
+        value.pop("git_head", None)
+        value.pop("binding_fingerprint", None)
+        value.pop("audit_validation", None)
+    bindings = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_sources,
+        proofs=proofs,
+        cases=regenerated_cases,
+        audit_binding=audit_binding,
+    )
+    checks = {
+        "binding_v2_passed": v2.get("passed") is True,
+        "case_manifest_exact": (
+            case_fingerprint == EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT
+        ),
+        "case_manifest_regenerated_equal": True,
+        "protected_bindings_unchanged": immutable_v2 == immutable_current,
+        "audit_validation_bound": (
+            bindings["audit_validation"] == audit_binding
+        ),
+        "new_git_head_bound": bindings["git_head"] == _git_head(),
+    }
+    final = dict(v2)
+    final.update(
+        {
+            "proof_version": (
+                "sv1b_manual_acceptance_audit_closeout_binding_v3"
+            ),
+            "binding_version": (
+                "sv1b_manual_acceptance_audit_closeout_final_binding_v3"
+            ),
+            "supersedes_final_binding_fingerprint": v2["bindings"][
+                "binding_fingerprint"
+            ],
+            "supersedes_final_binding_file_sha256": sv1b.sha256_file(
+                v2_path
+            ),
+            "audit_closeout_validation": audit_binding,
+            "phase_delta_composition": phase_delta_composition,
+            "proof_sources": relative_sources,
+            "bindings": bindings,
+            "localhost_url": f"http://127.0.0.1:{int(port)}",
+            "checks": checks,
+            "passed": all(checks.values()),
+        }
+    )
+    if final["passed"] is not True:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_binding_v3_failed"
+        )
+    sv1b.write_json(final_path, final)
+    return final
+
+
 def _active_harness_proof_path(output: Path) -> Path:
+    audit_v3 = output / AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    if audit_v3.is_file():
+        return audit_v3
     audit_v2 = output / AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
     if audit_v2.is_file():
         return audit_v2
@@ -1321,11 +1491,17 @@ def _current_bindings(
     primary_database: str,
     replay_database: str,
 ) -> dict[str, Any]:
-    proof = sv1b.read_json(_active_harness_proof_path(output))
+    active_path = _active_harness_proof_path(output)
+    proof = sv1b.read_json(active_path)
     cases = sv1b.read_json(output / "manual-acceptance/case-manifest-private.json")
     expected = proof["bindings"]
     relative_proof_sources, proofs = _resolve_proof_sources(
         output, proof.get("proof_sources")
+    )
+    audit_binding = (
+        _validated_audit_v3_binding(output)
+        if active_path.name == AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+        else None
     )
     current = _build_bindings(
         primary_database=primary_database,
@@ -1333,6 +1509,7 @@ def _current_bindings(
         relative_proof_sources=relative_proof_sources,
         proofs=proofs,
         cases=cases,
+        audit_binding=audit_binding,
     )
     if current != expected:
         raise ManualAcceptanceHarnessError("manual_acceptance_binding_invalidated")

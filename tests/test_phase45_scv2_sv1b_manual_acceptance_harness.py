@@ -557,6 +557,76 @@ def test_audit_closeout_binding_v2_supersedes_without_overwriting_v1(
         primary_database="blombooru_sv1b_primary_test",
         replay_database="blombooru_sv1b_replay_test",
     ) == v2["bindings"]
+    v2_path = output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    v2_bytes = v2_path.read_bytes()
+    audit_v3 = {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v3",
+        "git_head": "b" * 40,
+        "protected_evidence_unchanged": True,
+        "stable_reference_integrity": {"passed": True},
+        "primary_identity_crosscheck": {
+            "passed": True,
+            "phase_acquired_identity_unsupported_count": 0,
+        },
+        "round_trip": {"passed": True},
+        "passed": True,
+    }
+    audit_v3["proof_fingerprint"] = harness.sv1b.sha256_payload(audit_v3)
+    audit_v3_path = (
+        output / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME
+    )
+    harness.sv1b.write_json(audit_v3_path, audit_v3)
+    v3 = harness.finalize_audit_closeout_binding_v3(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        port=8012,
+    )
+    assert v1_path.read_bytes() == v1_bytes
+    assert v2_path.read_bytes() == v2_bytes
+    assert v3["passed"] is True
+    assert v3["bindings"]["audit_validation"]["git_head"] == "b" * 40
+    assert harness._active_harness_proof_path(output).name == (
+        harness.AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    )
+    assert harness._current_bindings(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    ) == v3["bindings"]
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="audit_closeout_binding_v3_already_exists",
+    ):
+        harness.finalize_audit_closeout_binding_v3(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    audit_v3_bytes = audit_v3_path.read_bytes()
+    audit_v3_path.unlink()
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="audit_closeout_validation_v3_missing",
+    ):
+        harness._current_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    audit_v3_path.write_bytes(audit_v3_bytes)
+    tampered = harness.sv1b.read_json(audit_v3_path)
+    tampered["protected_evidence_unchanged"] = False
+    harness.sv1b.write_json(audit_v3_path, tampered)
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="validation_v3_invalid",
+    ):
+        harness._current_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
     with pytest.raises(
         harness.ManualAcceptanceHarnessError,
         match="audit_closeout_binding_v2_already_exists",
@@ -567,6 +637,46 @@ def test_audit_closeout_binding_v2_supersedes_without_overwriting_v1(
             replay_database="blombooru_sv1b_replay_test",
         )
     engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("missing_git_head", "old_git_head", "arbitrary_fingerprint"),
+)
+def test_audit_v3_self_validation_fails_closed(
+    tmp_path: Path, monkeypatch, mutation: str
+) -> None:
+    monkeypatch.setattr(harness, "_git_head", lambda: "c" * 40)
+    audit = {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v3",
+        "git_head": "c" * 40,
+        "stable_reference_integrity": {"passed": True},
+        "primary_identity_crosscheck": {
+            "passed": True,
+            "phase_acquired_identity_unsupported_count": 0,
+        },
+        "round_trip": {"passed": True},
+        "passed": True,
+    }
+    audit["proof_fingerprint"] = harness.sv1b.sha256_payload(audit)
+    if mutation == "missing_git_head":
+        audit.pop("git_head")
+        audit["proof_fingerprint"] = harness.sv1b.sha256_payload(audit)
+    elif mutation == "old_git_head":
+        audit["git_head"] = "d" * 40
+        audit["proof_fingerprint"] = harness.sv1b.sha256_payload(audit)
+    else:
+        audit["proof_fingerprint"] = "e" * 64
+    harness.sv1b.write_json(
+        tmp_path / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME,
+        audit,
+    )
+
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="validation_v3_invalid",
+    ):
+        harness._validated_audit_v3_binding(tmp_path)
 
 
 def test_prevalidation_allows_git_only_drift_but_not_evidence_drift(

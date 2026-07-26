@@ -100,6 +100,7 @@ STAGES = (
     "build-harness",
     "finalize-harness-binding",
     "audit-closeout-binding-v2",
+    "audit-closeout-binding-v3",
 )
 EXPECTED_FAILED_REPLAY_FORENSIC_FINGERPRINT = (
     "ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f"
@@ -109,6 +110,12 @@ EXPECTED_FINAL_BINDING_V1_FILE_SHA256 = (
 )
 EXPECTED_FINAL_BINDING_V1_FINGERPRINT = (
     "6c0f33ca3f16afd18b900114cc72e508dfae2b14ae97f6a0d3724f5c407485a7"
+)
+EXPECTED_FINAL_BINDING_V2_FILE_SHA256 = (
+    "ef26642cd022e9abf0fa680d3eb8779c79b196b2f1c94c6d2178b759e69fb696"
+)
+EXPECTED_FINAL_BINDING_V2_FINGERPRINT = (
+    "4045f223925bc3c9871c3fb82954b1330fa777923ea0be17927dde487986b6b0"
 )
 EXPECTED_CASE_MANIFEST_FINGERPRINT = (
     "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5"
@@ -742,6 +749,8 @@ def forensic_database_state(database: str) -> dict[str, Any]:
 def _load_immutable_execution_evidence() -> tuple[
     dict[str, Any],
     list[dict[str, Any]],
+    list[str],
+    list[dict[str, Any]],
     list[dict[str, Any]],
     list[dict[str, Any]],
 ]:
@@ -750,6 +759,12 @@ def _load_immutable_execution_evidence() -> tuple[
     )
     pages = read_jsonl(
         OLD_OUTPUT / "candidate-page-media-manifest-private.jsonl"
+    )
+    pre_provider = read_json(
+        OLD_OUTPUT
+        / "canary-route-viability-resume-r1"
+        / "current-primary-read-only-export"
+        / "stable-key-evidence-package.json"
     )
     outcomes = read_json(
         OLD_OUTPUT
@@ -764,7 +779,50 @@ def _load_immutable_execution_evidence() -> tuple[
     attempts = route_viability.get("attempts")
     if not isinstance(attempts, list):
         raise FreshReplayV2Error("route_viability_attempts_missing")
-    return accepted, pages, outcomes, attempts
+    accepted_rows = accepted.get("tables", {}).get(
+        "source_metadata_records", []
+    )
+    page_membership = {
+        (
+            str(page.get("media_stable_key") or ""),
+            str(page.get("stable_work_id") or ""),
+            int(page.get("requested_page_index") or 0),
+        )
+        for page in pages
+    }
+    phase_membership = [
+        {"provider_record_key": str(row["provider_record_key"])}
+        for row in accepted_rows
+        if isinstance(row, Mapping)
+        and (
+            str(row.get("media_content_key") or ""),
+            str(row.get("source_work_id") or ""),
+            int(row.get("source_page_index") or 0),
+        )
+        in page_membership
+        and isinstance(row.get("provenance"), Mapping)
+        and str(row["provenance"].get("source") or "").casefold()
+        == "gallery_dl_authenticated_metadata"
+    ]
+    historical_baseline_provider_keys = [
+        str(row["provider_record_key"])
+        for row in pre_provider.get("tables", {}).get(
+            "source_metadata_records", []
+        )
+        if isinstance(row, Mapping)
+        and row.get("provider_record_key")
+        and isinstance(row.get("provenance"), Mapping)
+        and str(row["provenance"].get("source") or "").casefold()
+        == "gallery_dl_authenticated_metadata"
+    ]
+    return (
+        accepted,
+        phase_membership,
+        historical_baseline_provider_keys,
+        pages,
+        outcomes,
+        attempts,
+    )
 
 
 def _assert_repository_preflight() -> dict[str, Any]:
@@ -831,12 +889,21 @@ def validate_read_only(
         package = export_package_from_engine(primary_engine)
     finally:
         primary_engine.dispose()
-    accepted, pages, outcomes, route_viability_attempts = (
-        _load_immutable_execution_evidence()
-    )
+    (
+        accepted,
+        phase_membership,
+        historical_baseline_provider_keys,
+        pages,
+        outcomes,
+        route_viability_attempts,
+    ) = _load_immutable_execution_evidence()
     crosscheck, ledger = cross_validate_primary_stable_identity(
         package,
         accepted,
+        phase_acquired_membership=phase_membership,
+        historical_baseline_provider_keys=(
+            historical_baseline_provider_keys
+        ),
         candidate_pages=pages,
         final_work_outcomes=outcomes,
         route_viability_attempts=route_viability_attempts,
@@ -2584,6 +2651,203 @@ def execute_audit_closeout_binding_v2(
     }
 
 
+def execute_audit_closeout_binding_v3(
+    *,
+    output: Path = DEFAULT_OUTPUT,
+    port: int = 8031,
+) -> dict[str, Any]:
+    """Create or safely resume the one read-only audit proof and v3 binding."""
+
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
+    )
+
+    output = output.resolve()
+    _validate_resume_ownership(output)
+    audit_path = output / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME
+    binding_path = output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    if binding_path.exists():
+        raise FreshReplayV2Error(
+            "audit_closeout_binding_v3_already_exists"
+        )
+    old_binding_path = output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    if not old_binding_path.is_file():
+        raise FreshReplayV2Error("final_binding_v2_missing")
+
+    if audit_path.exists():
+        harness._validated_audit_v3_binding(output)  # noqa: SLF001
+        audit = read_json(audit_path)
+    else:
+        old_binding = read_json(old_binding_path)
+        cases = read_json(
+            output / "manual-acceptance/case-manifest-private.json"
+        )
+        case_fingerprint = sha256_payload(cases)
+        preflight, primary_package, ledger = validate_read_only(
+            output=output,
+            allow_existing_target=True,
+        )
+        fresh_engine = engine_for(FRESH_REPLAY_DATABASE)
+        try:
+            replay_package = export_package_from_engine(fresh_engine)
+        finally:
+            fresh_engine.dispose()
+        round_trip = compare_round_trip_packages(
+            primary_package, replay_package
+        )
+        stable_reference_integrity = validate_stable_reference_integrity(
+            primary_package
+        )
+        failed_state = forensic_database_state(FAILED_REPLAY_DATABASE)
+        fresh_state = forensic_database_state(FRESH_REPLAY_DATABASE)
+        relative_sources, proofs = harness._resolve_proof_sources(  # noqa: SLF001
+            output, old_binding.get("proof_sources")
+        )
+        current_bindings = harness._build_bindings(  # noqa: SLF001
+            primary_database=PRIMARY_DATABASE,
+            replay_database=FRESH_REPLAY_DATABASE,
+            relative_proof_sources=relative_sources,
+            proofs=proofs,
+            cases=cases,
+        )
+        immutable_old = dict(old_binding["bindings"])
+        immutable_current = dict(current_bindings)
+        for value in (immutable_old, immutable_current):
+            value.pop("git_head", None)
+            value.pop("binding_fingerprint", None)
+            value.pop("audit_validation", None)
+        checks = {
+            "old_binding_v2_file_unchanged": (
+                sha256_file(old_binding_path)
+                == EXPECTED_FINAL_BINDING_V2_FILE_SHA256
+            ),
+            "old_binding_v2_fingerprint_unchanged": (
+                old_binding.get("bindings", {}).get("binding_fingerprint")
+                == EXPECTED_FINAL_BINDING_V2_FINGERPRINT
+            ),
+            "case_manifest_unchanged": (
+                case_fingerprint == EXPECTED_CASE_MANIFEST_FINGERPRINT
+            ),
+            "package_fingerprint_unchanged": (
+                primary_package["package_fingerprint"]
+                == EXPECTED_PACKAGE_V2_FINGERPRINT
+                == replay_package["package_fingerprint"]
+            ),
+            "package_membership_unchanged": (
+                primary_package["membership_fingerprint"]
+                == EXPECTED_PACKAGE_V2_MEMBERSHIP_FINGERPRINT
+                == replay_package["membership_fingerprint"]
+            ),
+            "metadata_count_equal": (
+                primary_package["table_counts"]["source_metadata_records"]
+                == EXPECTED_METADATA_COUNT
+                == replay_package["table_counts"]["source_metadata_records"]
+            ),
+            "trusted_complete_equal": (
+                round_trip["source_trusted_complete_count"]
+                == EXPECTED_TRUSTED_COMPLETE_COUNT
+                == round_trip["replay_trusted_complete_count"]
+            ),
+            "translations_equal": (
+                preflight["primary_translation_state"]["count"]
+                == EXPECTED_TRANSLATION_COUNT
+                == fresh_state["translation_state"]["count"]
+                and preflight["primary_translation_state"]["fingerprint"]
+                == EXPECTED_TRANSLATION_FINGERPRINT
+                == fresh_state["translation_state"]["fingerprint"]
+            ),
+            "stable_reference_integrity": (
+                stable_reference_integrity["passed"] is True
+            ),
+            "primary_identity_support": (
+                preflight["primary_identity_crosscheck"]["passed"] is True
+                and preflight["primary_identity_crosscheck"][
+                    "phase_acquired_identity_unsupported_count"
+                ]
+                == 0
+            ),
+            "round_trip": round_trip["passed"] is True,
+            "failed_replay_unchanged": (
+                failed_state["fingerprint"]
+                == EXPECTED_FAILED_REPLAY_FORENSIC_FINGERPRINT
+            ),
+            "graph_search_case_bindings_unchanged": (
+                immutable_old == immutable_current
+            ),
+            "external_routes_zero": (
+                preflight["repository"]["external_route_counts"]
+                == EXTERNAL_ROUTE_BUDGET
+            ),
+        }
+        audit = {
+            "proof_version": "sv1b_audit_closeout_read_only_validation_v3",
+            "git_head": git("rev-parse", "HEAD"),
+            "checks": checks,
+            "protected_evidence_unchanged": all(checks.values()),
+            "old_binding_v2": {
+                "file_sha256": sha256_file(old_binding_path),
+                "binding_fingerprint": old_binding["bindings"][
+                    "binding_fingerprint"
+                ],
+            },
+            "case_manifest_fingerprint": case_fingerprint,
+            "package_fingerprint": primary_package["package_fingerprint"],
+            "package_membership_fingerprint": primary_package[
+                "membership_fingerprint"
+            ],
+            "stable_reference_integrity": stable_reference_integrity,
+            "primary_identity_crosscheck": preflight[
+                "primary_identity_crosscheck"
+            ],
+            "primary_identity_ledger_membership_fingerprint": sha256_payload(
+                ledger
+            ),
+            "round_trip": round_trip,
+            "failed_replay_forensic_fingerprint": failed_state["fingerprint"],
+            "fresh_replay_forensic_fingerprint": fresh_state["fingerprint"],
+            "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
+            "database_write_count": 0,
+            "new_database_count": 0,
+            "passed": all(checks.values()),
+        }
+        audit["proof_fingerprint"] = sha256_payload(audit)
+        if audit["passed"] is not True:
+            raise FreshReplayV2Error(
+                "audit_closeout_read_only_validation_v3_failed:"
+                + canonical_json(
+                    sorted(
+                        key for key, value in checks.items() if not value
+                    )
+                )
+            )
+        write_json(audit_path, audit)
+        harness._validated_audit_v3_binding(output)  # noqa: SLF001
+
+    final_binding = harness.finalize_audit_closeout_binding_v3(
+        output,
+        primary_database=PRIMARY_DATABASE,
+        replay_database=FRESH_REPLAY_DATABASE,
+        port=port,
+    )
+    return {
+        "proof_version": "sv1b_audit_closeout_binding_v3_execution",
+        "audit_validation_proof_fingerprint": audit["proof_fingerprint"],
+        "audit_validation_file_sha256": sha256_file(audit_path),
+        "binding_fingerprint": final_binding["bindings"][
+            "binding_fingerprint"
+        ],
+        "supersedes_final_binding_fingerprint": final_binding[
+            "supersedes_final_binding_fingerprint"
+        ],
+        "status": (
+            "automated_sv1b_candidate_ready_manual_acceptance_pending"
+        ),
+        "passed": bool(
+            audit["passed"] is True and final_binding["passed"] is True
+        ),
+    }
+
+
 def public_summary(stage: str, result: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "phase": PHASE,
@@ -2621,6 +2885,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.stage == "audit-closeout-binding-v2":
         result = execute_audit_closeout_binding_v2(
+            output=output,
+            port=args.port,
+        )
+    elif args.stage == "audit-closeout-binding-v3":
+        result = execute_audit_closeout_binding_v3(
             output=output,
             port=args.port,
         )

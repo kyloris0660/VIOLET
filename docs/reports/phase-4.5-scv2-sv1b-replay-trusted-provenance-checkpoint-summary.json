@@ -2,6 +2,7 @@
   "phase": "SCV2-SV1B",
   "pr": 139,
   "record_role": "historical_forensic_checkpoint",
+  "captured_checkpoint_role": "initial_retry2_replay_reconciliation_blocker",
   "captured_status": "blocked_sv1b_replay_trusted_provenance_reconciliation",
   "captured_manual_acceptance_status": "not_started_blocked",
   "superseded_by": "automated_sv1b_candidate_ready_manual_acceptance_pending",
