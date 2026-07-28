@@ -58,6 +58,7 @@ MANUAL_STATUSES = {
     "accepted_user",
 }
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
 PUBLIC_FORBIDDEN = (
     re.compile(r"[A-Za-z]:\\"),
     re.compile(r"(?i)\b(?:authorization|cookie|set-cookie)\s*[:=]"),
@@ -161,6 +162,18 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
                 "pending_user_database_operation_authorized:"
                 + ",".join(forbidden_authorizations)
             )
+        binding_authorizations = [
+            operation
+            for operation in authorized
+            if "audit-closeout final binding" in str(operation)
+        ]
+        if (
+            len(binding_authorizations) != 1
+            or "binding v4" not in str(binding_authorizations[0])
+        ):
+            raise DocumentationStateError(
+                "pending_user_active_binding_authorization_invalid"
+            )
         stale_commands = [
             command
             for command in COMPLETED_FUTURE_COMMANDS
@@ -185,6 +198,34 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "public_safe_governance_only_no_private_proof_payloads_or_paths"
     ):
         raise DocumentationStateError("public_state_boundary_invalid")
+    if state["phase_id"] == "SCV2-SV1B":
+        protected = state["protected_evidence"]
+        if (
+            protected.get("canonical_phase_acquired_membership_count")
+            != 7271
+            or protected.get("canonical_phase_acquired_missing_count") != 0
+            or protected.get(
+                "canonical_phase_acquired_unsupported_count"
+            )
+            != 0
+            or not HEX64.fullmatch(
+                str(
+                    protected.get(
+                        "canonical_phase_acquired_membership_fingerprint"
+                    )
+                    or ""
+                )
+            )
+            or protected.get(
+                "superseded_candidate_provenance_membership_count"
+            )
+            != 7257
+            or protected.get("production_library_consumed_or_modified")
+            is not False
+        ):
+            raise DocumentationStateError(
+                "sv1b_canonical_phase_membership_state_invalid"
+            )
     for link in _require_nonempty_list(state, "durable_links"):
         if not isinstance(link, dict) or not link.get("label") or not link.get("path"):
             raise DocumentationStateError("durable_link_invalid")
@@ -339,7 +380,12 @@ def render_handoff(state: dict[str, Any]) -> str:
             "",
             "## Allowed / Forbidden",
             "",
-            "- Allowed: read-only verification, strict dashboard startup, owner result export, and the one authorized non-overwriting audit-closeout binding v2.",
+            "- Allowed: "
+            + "; ".join(
+                str(operation)
+                for operation in state["authorized_operations"]
+            )
+            + ".",
             "- Forbidden: mutation of failed retry2 Replay; provider/Pixiv/gallery-dl/LLM/media calls; Primary/acquisition/localization replay.",
             "- Forbidden: production, FL1, Provider-2, Entity/truth/media_tags promotion, merge, Ready transition, reviewer trigger, main push, or force-push.",
             "",

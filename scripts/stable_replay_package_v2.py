@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -392,6 +393,152 @@ def stable_source_record_fingerprint(row: Mapping[str, Any]) -> str:
     """Fingerprint provider facts without a development row identity."""
 
     return stable_pixiv_source_record_fingerprint(row)
+
+
+def derive_phase_acquired_membership(
+    accepted_package: Mapping[str, Any],
+    pre_provider_package: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Derive phase membership only from canonical stable-record differences."""
+
+    def stable_index(
+        package: Mapping[str, Any],
+        *,
+        label: str,
+    ) -> tuple[dict[str, str], dict[str, Mapping[str, Any]]]:
+        tables = package.get("tables")
+        if not isinstance(tables, Mapping):
+            raise StableReplayPackageV2Error(
+                f"phase_membership_tables_missing:{label}"
+            )
+        rows = tables.get("source_metadata_records")
+        if not isinstance(rows, list):
+            raise StableReplayPackageV2Error(
+                f"phase_membership_records_missing:{label}"
+            )
+        fingerprints: dict[str, str] = {}
+        records: dict[str, Mapping[str, Any]] = {}
+        for index, row in enumerate(rows):
+            if not isinstance(row, Mapping):
+                raise StableReplayPackageV2Error(
+                    f"phase_membership_record_invalid:{label}:{index}"
+                )
+            key = str(row.get("provider_record_key") or "")
+            if not key:
+                raise StableReplayPackageV2Error(
+                    f"phase_membership_stable_key_missing:{label}:{index}"
+                )
+            fingerprint = stable_source_record_fingerprint(row)
+            if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+                raise StableReplayPackageV2Error(
+                    f"phase_membership_fingerprint_missing:{label}:{index}"
+                )
+            if key in fingerprints:
+                reason = (
+                    "conflicting"
+                    if fingerprints[key] != fingerprint
+                    else "duplicate"
+                )
+                raise StableReplayPackageV2Error(
+                    f"phase_membership_{reason}_stable_key:{label}:{key}"
+                )
+            fingerprints[key] = fingerprint
+            records[key] = row
+        return fingerprints, records
+
+    accepted, accepted_rows = stable_index(
+        accepted_package,
+        label="accepted",
+    )
+    baseline, _baseline_rows = stable_index(
+        pre_provider_package,
+        label="pre_provider",
+    )
+    accepted_only = sorted(set(accepted) - set(baseline))
+    baseline_only = sorted(set(baseline) - set(accepted))
+    changed = sorted(
+        key
+        for key in set(accepted) & set(baseline)
+        if accepted[key] != baseline[key]
+    )
+    unchanged = sorted(
+        key
+        for key in set(accepted) & set(baseline)
+        if accepted[key] == baseline[key]
+    )
+    accepted_only_set = set(accepted_only)
+    members = [
+        {
+            "provider_record_key": key,
+            "stable_source_record_fingerprint": accepted[key],
+            "membership_reason": (
+                "accepted_only_stable_key"
+                if key in accepted_only_set
+                else "changed_canonical_stable_fingerprint"
+            ),
+        }
+        for key in sorted((*accepted_only, *changed))
+    ]
+    transitions: Counter[tuple[str, str]] = Counter()
+    changed_field_counts: Counter[str] = Counter()
+    for key in changed:
+        before = _baseline_rows[key]
+        after = accepted_rows[key]
+        changed_fields = sorted(
+            field
+            for field in (
+                "provider_record_key",
+                "provider",
+                "source_work_id",
+                "source_page_index",
+                "metadata_kind",
+                "data_type_label",
+                "status",
+                "title",
+                "artist_id",
+                "artist_name",
+            )
+            if before.get(field) != after.get(field)
+        )
+        changed_field_counts.update(changed_fields)
+        transitions[
+            (
+                str(before.get("status") or ""),
+                str(after.get("status") or ""),
+            )
+        ] += 1
+    proof = {
+        "proof_version": "sv1b_canonical_phase_membership_v1",
+        "accepted_record_count": len(accepted),
+        "pre_provider_record_count": len(baseline),
+        "accepted_unique_stable_key_count": len(accepted),
+        "pre_provider_unique_stable_key_count": len(baseline),
+        "accepted_only_stable_key_count": len(accepted_only),
+        "pre_provider_only_stable_key_count": len(baseline_only),
+        "changed_canonical_fingerprint_count": len(changed),
+        "unchanged_canonical_fingerprint_count": len(unchanged),
+        "expected_phase_acquired_identity_count": len(members),
+        "phase_acquired_membership_fingerprint": sha256_payload(
+            sorted(row["provider_record_key"] for row in members)
+        ),
+        "status_transition_counts": [
+            {
+                "from": before,
+                "to": after,
+                "count": count,
+            }
+            for (before, after), count in sorted(transitions.items())
+        ],
+        "changed_stable_field_counts": dict(
+            sorted(changed_field_counts.items())
+        ),
+        "candidate_or_support_used_to_derive_membership": False,
+        "duplicate_stable_key_count": 0,
+        "missing_stable_key_or_fingerprint_count": 0,
+        "conflicting_stable_fingerprint_count": 0,
+    }
+    proof["passed"] = bool(not baseline_only)
+    return proof, members
 
 
 class _Ledger:
@@ -1562,8 +1709,7 @@ def cross_validate_primary_stable_identity(
     primary_package: Mapping[str, Any],
     accepted_v1_package: Mapping[str, Any],
     *,
-    phase_acquired_membership: Sequence[Mapping[str, Any]] = (),
-    historical_baseline_provider_keys: Sequence[str] = (),
+    pre_provider_v1_package: Mapping[str, Any],
     candidate_pages: Sequence[Mapping[str, Any]],
     final_work_outcomes: Sequence[Mapping[str, Any]],
     route_viability_attempts: Sequence[Mapping[str, Any]] = (),
@@ -1582,6 +1728,16 @@ def cross_validate_primary_stable_identity(
     }
     if len(accepted_by_key) != len(accepted_rows):
         raise StableReplayPackageV2Error("accepted_v1_duplicate_provider_record_key")
+    phase_membership_proof, phase_acquired_membership = (
+        derive_phase_acquired_membership(
+            accepted_v1_package,
+            pre_provider_v1_package,
+        )
+    )
+    if phase_membership_proof["passed"] is not True:
+        raise StableReplayPackageV2Error(
+            "canonical_phase_membership_derivation_failed"
+        )
     def page_membership(
         rows: Sequence[Mapping[str, Any]],
     ) -> set[tuple[str, str, int]]:
@@ -1600,9 +1756,6 @@ def cross_validate_primary_stable_identity(
         for row in phase_acquired_membership
         if row.get("provider_record_key")
     }
-    historical_baseline_keys = {
-        str(value) for value in historical_baseline_provider_keys if value
-    }
     candidate_membership = {
         (
             str(row.get("media_stable_key") or ""),
@@ -1611,6 +1764,20 @@ def cross_validate_primary_stable_identity(
         )
         for row in candidate_pages
         if row.get("media_stable_key") and row.get("stable_work_id")
+    }
+    superseded_candidate_provenance_keys = {
+        str(row.get("provider_record_key") or "")
+        for row in accepted_rows
+        if row.get("provider_record_key")
+        and isinstance(row.get("provenance"), Mapping)
+        and str(row["provenance"].get("source") or "").casefold()
+        == "gallery_dl_authenticated_metadata"
+        and (
+            str(row.get("media_content_key") or ""),
+            str(row.get("source_work_id") or ""),
+            int(row.get("source_page_index") or 0),
+        )
+        in candidate_membership
     }
     final_work_ids = {
         str(row.get("work_id"))
@@ -1632,7 +1799,6 @@ def cross_validate_primary_stable_identity(
     legacy_raw_projection_mismatches = 0
     support_counts: Counter[str] = Counter()
     observed_phase_membership: list[str] = []
-    phase_provenance_missing_membership_count = 0
     primary_rows = primary_package["tables"]["source_metadata_records"]
     for row in primary_rows:
         key = str(row["provider_record_key"])
@@ -1701,29 +1867,16 @@ def cross_validate_primary_stable_identity(
             in independently_verified_route_references
         )
         accepted_checkpoint_immutability_support = fact_match
-        provenance_source = str(provenance.get("source") or "").casefold()
-        stable_page_membership = (
-            str(row.get("media_content_key") or ""),
-            work_id,
-            int(page_index or 0),
-        )
         phase_acquired_identity = bool(
-            work_id
-            and provenance_source == "gallery_dl_authenticated_metadata"
-            and key in phase_membership_keys
+            key in phase_membership_keys
         )
         if phase_acquired_identity:
             observed_phase_membership.append(key)
-        if (
-            work_id
-            and provenance_source == "gallery_dl_authenticated_metadata"
-            and key not in phase_membership_keys
-            and key not in historical_baseline_keys
-            and str(row.get("metadata_kind") or "") == "pixiv_ingestion_gate"
-        ):
-            phase_provenance_missing_membership_count += 1
         phase_acquired_independent_support = bool(
-            raw_support or outcome_support or route_viability_support
+            candidate_support
+            or raw_support
+            or outcome_support
+            or route_viability_support
         )
         supported = bool(
             fact_match
@@ -1782,8 +1935,12 @@ def cross_validate_primary_stable_identity(
         )
     missing_accepted = sorted(set(accepted_by_key) - {str(row["provider_record_key"]) for row in primary_rows})
     extra_primary = sorted({str(row["provider_record_key"]) for row in primary_rows} - set(accepted_by_key))
+    observed_phase_membership_keys = set(observed_phase_membership)
+    missing_phase_membership = sorted(
+        phase_membership_keys - observed_phase_membership_keys
+    )
     proof = {
-        "proof_version": "sv1b_primary_immutable_identity_crosscheck_v2",
+        "proof_version": "sv1b_primary_immutable_identity_crosscheck_v3",
         "primary_record_count": len(primary_rows),
         "accepted_v1_record_count": len(accepted_rows),
         "missing_accepted_record_count": len(missing_accepted),
@@ -1795,14 +1952,34 @@ def cross_validate_primary_stable_identity(
         "candidate_page_evidence_count": len(candidate_membership),
         "expected_phase_acquired_identity_count": len(phase_membership_keys),
         "observed_phase_acquired_identity_count": len(
-            set(observed_phase_membership)
+            observed_phase_membership_keys
+        ),
+        "missing_phase_acquired_identity_count": len(
+            missing_phase_membership
         ),
         "phase_acquired_membership_fingerprint": sha256_payload(
             sorted(phase_membership_keys)
         ),
-        "phase_provenance_but_missing_phase_membership_count": (
-            phase_provenance_missing_membership_count
-        ),
+        "canonical_phase_membership": phase_membership_proof,
+        "superseded_historical_candidate_provenance_membership": {
+            "authoritative": False,
+            "count": len(superseded_candidate_provenance_keys),
+            "membership_fingerprint": sha256_payload(
+                sorted(superseded_candidate_provenance_keys)
+            ),
+            "intersection_count": len(
+                phase_membership_keys
+                & superseded_candidate_provenance_keys
+            ),
+            "canonical_only_count": len(
+                phase_membership_keys
+                - superseded_candidate_provenance_keys
+            ),
+            "historical_only_count": len(
+                superseded_candidate_provenance_keys
+                - phase_membership_keys
+            ),
+        },
         "accepted_work_outcome_evidence_count": len(final_work_ids),
         "accepted_route_viability_evidence_count": len(
             independently_verified_route_references
@@ -1832,7 +2009,8 @@ def cross_validate_primary_stable_identity(
         and proof["phase_acquired_identity_unsupported_count"] == 0
         and proof["observed_phase_acquired_identity_count"]
         == proof["expected_phase_acquired_identity_count"]
-        and proof["phase_provenance_but_missing_phase_membership_count"] == 0
+        and proof["missing_phase_acquired_identity_count"] == 0
+        and phase_membership_proof["passed"] is True
     )
     return proof, ledger
 

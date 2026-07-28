@@ -59,6 +59,23 @@ def test_current_phase_schema_and_status_fields_are_consistent() -> None:
     assert state["public_state_boundary"] == (
         "public_safe_governance_only_no_private_proof_payloads_or_paths"
     )
+    protected = state["protected_evidence"]
+    assert protected["canonical_phase_acquired_membership_count"] == 7271
+    assert protected[
+        "canonical_phase_acquired_membership_fingerprint"
+    ] == "47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1"
+    assert protected["canonical_phase_acquired_missing_count"] == 0
+    assert protected["canonical_phase_acquired_unsupported_count"] == 0
+    assert protected["superseded_candidate_provenance_membership_count"] == 7257
+    assert protected["production_library_consumed_or_modified"] is False
+    assert any(
+        "binding v4" in operation
+        for operation in state["authorized_operations"]
+    )
+    assert not any(
+        "binding v3" in operation
+        for operation in state["authorized_operations"]
+    )
 
 
 def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
@@ -70,6 +87,12 @@ def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
     assert "this file is not the fact source" in rendered
     assert state["current_status"] in rendered
     assert state["next_required_checkpoint"] in rendered
+    assert all(
+        operation in rendered
+        for operation in state["authorized_operations"]
+    )
+    assert "binding v2" not in rendered
+    assert "binding v4" in rendered
 
 
 def test_handoff_writer_atomically_renders_current_state(
@@ -231,6 +254,43 @@ def test_completed_future_command_in_blocker_resolution_fails_closed() -> None:
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="blocker_resolution_contains_completed_future_command",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_pending_user_requires_single_active_binding_v4_authorization() -> None:
+    state = copy.deepcopy(_state())
+    state["authorized_operations"][-1] = (
+        "exactly one versioned non-overwriting audit-closeout final binding v3"
+    )
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="pending_user_active_binding_authorization_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("canonical_phase_acquired_membership_count", 7257),
+        ("canonical_phase_acquired_missing_count", 1),
+        ("canonical_phase_acquired_unsupported_count", 1),
+        ("canonical_phase_acquired_membership_fingerprint", "0" * 63),
+        ("production_library_consumed_or_modified", True),
+    ),
+)
+def test_sv1b_canonical_membership_public_state_fails_closed(
+    field: str,
+    value: object,
+) -> None:
+    state = copy.deepcopy(_state())
+    state["protected_evidence"][field] = value
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="sv1b_canonical_phase_membership_state_invalid",
     ):
         documentation_state.validate_state(state)
 

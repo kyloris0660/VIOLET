@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from scripts import stable_replay_package_v2 as stable_replay
 from app.services.pixiv_metadata_ingestion_service import (
     is_trusted_complete_pixiv_metadata_record,
 )
@@ -21,6 +22,7 @@ from scripts.stable_replay_package_v2 import (
     build_package_from_rows,
     compare_round_trip_packages,
     cross_validate_primary_stable_identity,
+    derive_phase_acquired_membership,
     graph_effective_projection,
     sha256_payload,
     stable_source_record_fingerprint,
@@ -442,6 +444,7 @@ def test_conflicting_nested_work_id_is_detected_by_immutable_crosscheck() -> Non
     proof, _ = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
+        pre_provider_v1_package=copy.deepcopy(accepted_v1),
         candidate_pages=[],
         final_work_outcomes=[],
     )
@@ -782,6 +785,7 @@ def test_primary_identity_crosscheck_uses_immutable_stable_evidence() -> None:
     proof, ledger = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
+        pre_provider_v1_package=copy.deepcopy(accepted_v1),
         candidate_pages=[
             {
                 "media_stable_key": "media-content-b",
@@ -814,6 +818,11 @@ def test_primary_identity_crosscheck_blocks_accepted_provider_fact_mutation() ->
     proof, _ = cross_validate_primary_stable_identity(
         primary,
         {"tables": {"source_metadata_records": accepted_rows}},
+        pre_provider_v1_package={
+            "tables": {
+                "source_metadata_records": copy.deepcopy(accepted_rows)
+            }
+        },
         candidate_pages=[],
         final_work_outcomes=[{"work_id": "123456789"}],
     )
@@ -838,6 +847,7 @@ def test_primary_identity_crosscheck_allows_baseline_immutability_without_guessi
     proof, ledger = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
+        pre_provider_v1_package=copy.deepcopy(accepted_v1),
         candidate_pages=[],
         final_work_outcomes=[],
     )
@@ -850,7 +860,7 @@ def test_primary_identity_crosscheck_allows_baseline_immutability_without_guessi
     assert proof["filename_or_row_order_identity_inference_used"] is False
 
 
-def test_phase_acquired_identity_requires_independent_execution_or_raw_support() -> None:
+def test_changed_fingerprint_without_candidate_is_phase_acquired_and_unsupported() -> None:
     rows, maps = _realistic_rows()
     queue = rows["source_metadata_records"][1]
     queue["provenance"]["source"] = "gallery_dl_authenticated_metadata"
@@ -863,22 +873,18 @@ def test_phase_acquired_identity_requires_independent_execution_or_raw_support()
             )
         }
     }
+    pre_provider = copy.deepcopy(accepted_v1)
+    next(
+        row
+        for row in pre_provider["tables"]["source_metadata_records"]
+        if row["provider_record_key"] == queue["provider_record_key"]
+    )["status"] = "metadata_pending"
 
     proof, ledger = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
-        phase_acquired_membership=[
-            {
-                "provider_record_key": queue["provider_record_key"],
-            }
-        ],
-        candidate_pages=[
-            {
-                "media_stable_key": "media-content-b",
-                "stable_work_id": "123456789",
-                "requested_page_index": 0,
-            }
-        ],
+        pre_provider_v1_package=pre_provider,
+        candidate_pages=[],
         final_work_outcomes=[],
     )
 
@@ -888,6 +894,7 @@ def test_phase_acquired_identity_requires_independent_execution_or_raw_support()
         if row["provider_record_key"] == queue["provider_record_key"]
     )
     assert queue_ledger["phase_acquired_identity"] is True
+    assert queue_ledger["independent_candidate_page_support"] is False
     assert queue_ledger["independent_persisted_raw_support"] is False
     assert queue_ledger["independent_work_outcome_support"] is False
     assert queue_ledger["immutable_identity_support_passed"] is False
@@ -908,23 +915,19 @@ def test_phase_acquired_identity_accepts_independent_route_viability_support() -
             )
         }
     }
+    pre_provider = copy.deepcopy(accepted_v1)
+    next(
+        row
+        for row in pre_provider["tables"]["source_metadata_records"]
+        if row["provider_record_key"] == queue["provider_record_key"]
+    )["status"] = "metadata_pending"
     work_id = str(queue["source_work_id"])
 
     proof, ledger = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
-        phase_acquired_membership=[
-            {
-                "provider_record_key": queue["provider_record_key"],
-            }
-        ],
-        candidate_pages=[
-            {
-                "media_stable_key": "media-content-b",
-                "stable_work_id": work_id,
-                "requested_page_index": 0,
-            }
-        ],
+        pre_provider_v1_package=pre_provider,
+        candidate_pages=[],
         final_work_outcomes=[],
         route_viability_attempts=[
             {
@@ -952,7 +955,7 @@ def test_phase_acquired_identity_accepts_independent_route_viability_support() -
     assert proof["phase_acquired_identity_unsupported_count"] == 0
 
 
-def test_phase_provenance_cannot_fall_open_when_candidate_support_is_missing() -> None:
+def test_changed_fingerprint_with_candidate_support_passes() -> None:
     rows, maps = _realistic_rows()
     queue = rows["source_metadata_records"][1]
     queue["provenance"]["source"] = "gallery_dl_authenticated_metadata"
@@ -965,13 +968,24 @@ def test_phase_provenance_cannot_fall_open_when_candidate_support_is_missing() -
             )
         }
     }
-    membership = {"provider_record_key": queue["provider_record_key"]}
+    pre_provider = copy.deepcopy(accepted_v1)
+    next(
+        row
+        for row in pre_provider["tables"]["source_metadata_records"]
+        if row["provider_record_key"] == queue["provider_record_key"]
+    )["status"] = "metadata_pending"
 
     proof, ledger = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
-        phase_acquired_membership=[membership],
-        candidate_pages=[],
+        pre_provider_v1_package=pre_provider,
+        candidate_pages=[
+            {
+                "media_stable_key": "media-content-b",
+                "stable_work_id": "123456789",
+                "requested_page_index": 0,
+            }
+        ],
         final_work_outcomes=[],
     )
 
@@ -981,15 +995,18 @@ def test_phase_provenance_cannot_fall_open_when_candidate_support_is_missing() -
         if row["provider_record_key"] == queue["provider_record_key"]
     )
     assert queue_ledger["phase_acquired_identity"] is True
-    assert queue_ledger["independent_candidate_page_support"] is False
-    assert queue_ledger["immutable_identity_support_passed"] is False
+    assert queue_ledger["independent_candidate_page_support"] is True
+    assert queue_ledger["immutable_identity_support_passed"] is True
     assert proof["expected_phase_acquired_identity_count"] == 1
     assert proof["observed_phase_acquired_identity_count"] == 1
-    assert proof["phase_acquired_identity_unsupported_count"] == 1
-    assert proof["passed"] is False
+    assert proof["phase_acquired_identity_unsupported_count"] == 0
+    assert proof["passed"] is True
+    assert proof[
+        "superseded_historical_candidate_provenance_membership"
+    ]["authoritative"] is False
 
 
-def test_phase_provenance_missing_immutable_membership_fails_closed() -> None:
+def test_unchanged_fingerprint_with_candidate_does_not_create_membership() -> None:
     rows, maps = _realistic_rows()
     queue = rows["source_metadata_records"][1]
     queue["provenance"]["source"] = "gallery_dl_authenticated_metadata"
@@ -1006,9 +1023,14 @@ def test_phase_provenance_missing_immutable_membership_fails_closed() -> None:
     proof, ledger = cross_validate_primary_stable_identity(
         primary,
         accepted_v1,
-        phase_acquired_membership=[],
-        historical_baseline_provider_keys=[],
-        candidate_pages=[],
+        pre_provider_v1_package=copy.deepcopy(accepted_v1),
+        candidate_pages=[
+            {
+                "media_stable_key": "media-content-b",
+                "stable_work_id": "123456789",
+                "requested_page_index": 0,
+            }
+        ],
         final_work_outcomes=[],
     )
 
@@ -1018,5 +1040,135 @@ def test_phase_provenance_missing_immutable_membership_fails_closed() -> None:
         if row["provider_record_key"] == queue["provider_record_key"]
     )
     assert queue_ledger["phase_acquired_identity"] is False
-    assert proof["phase_provenance_but_missing_phase_membership_count"] == 1
-    assert proof["passed"] is False
+    assert queue_ledger["independent_candidate_page_support"] is True
+    assert proof["expected_phase_acquired_identity_count"] == 0
+    assert proof["passed"] is True
+
+
+def test_canonical_membership_includes_changed_and_new_keys_without_candidate() -> None:
+    rows, maps = _realistic_rows()
+    accepted = build_package_from_rows(rows, maps=maps)
+    accepted_v1 = {
+        "tables": {
+            "source_metadata_records": copy.deepcopy(
+                accepted["tables"]["source_metadata_records"]
+            )
+        }
+    }
+    baseline = copy.deepcopy(accepted_v1)
+    changed_key = baseline["tables"]["source_metadata_records"][1][
+        "provider_record_key"
+    ]
+    baseline["tables"]["source_metadata_records"][1]["status"] = (
+        "metadata_pending"
+    )
+    new_row = copy.deepcopy(
+        accepted_v1["tables"]["source_metadata_records"][0]
+    )
+    new_row["provider_record_key"] = "pixiv:new:p0"
+    accepted_v1["tables"]["source_metadata_records"].append(new_row)
+
+    proof, membership = derive_phase_acquired_membership(
+        accepted_v1,
+        baseline,
+    )
+
+    assert proof["passed"] is True
+    assert proof["accepted_only_stable_key_count"] == 1
+    assert proof["changed_canonical_fingerprint_count"] == 1
+    assert {
+        row["provider_record_key"] for row in membership
+    } == {changed_key, "pixiv:new:p0"}
+
+
+def test_candidate_only_key_cannot_create_canonical_membership() -> None:
+    primary = _package()
+    accepted_v1 = {
+        "tables": {
+            "source_metadata_records": copy.deepcopy(
+                primary["tables"]["source_metadata_records"]
+            )
+        }
+    }
+
+    proof, ledger = cross_validate_primary_stable_identity(
+        primary,
+        accepted_v1,
+        pre_provider_v1_package=copy.deepcopy(accepted_v1),
+        candidate_pages=[
+            {
+                "media_stable_key": "candidate-only-media",
+                "stable_work_id": "candidate-only-work",
+                "requested_page_index": 9,
+            }
+        ],
+        final_work_outcomes=[],
+    )
+
+    assert proof["expected_phase_acquired_identity_count"] == 0
+    assert proof["observed_phase_acquired_identity_count"] == 0
+    assert not any(row["phase_acquired_identity"] for row in ledger)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    (
+        ("missing_key", "phase_membership_stable_key_missing"),
+        ("duplicate", "phase_membership_duplicate_stable_key"),
+        ("conflicting", "phase_membership_conflicting_stable_key"),
+    ),
+)
+def test_canonical_membership_rejects_invalid_stable_identity(
+    mutation: str,
+    expected_error: str,
+) -> None:
+    primary = _package()
+    accepted_v1 = {
+        "tables": {
+            "source_metadata_records": copy.deepcopy(
+                primary["tables"]["source_metadata_records"]
+            )
+        }
+    }
+    baseline = copy.deepcopy(accepted_v1)
+    if mutation == "missing_key":
+        accepted_v1["tables"]["source_metadata_records"][0][
+            "provider_record_key"
+        ] = ""
+    else:
+        duplicate = copy.deepcopy(
+            accepted_v1["tables"]["source_metadata_records"][1]
+        )
+        if mutation == "conflicting":
+            duplicate["status"] = "metadata_pending"
+        accepted_v1["tables"]["source_metadata_records"].append(duplicate)
+
+    with pytest.raises(StableReplayPackageV2Error, match=expected_error):
+        derive_phase_acquired_membership(accepted_v1, baseline)
+
+
+def test_canonical_membership_rejects_missing_computed_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = _package()
+    accepted_v1 = {
+        "tables": {
+            "source_metadata_records": copy.deepcopy(
+                primary["tables"]["source_metadata_records"]
+            )
+        }
+    }
+    monkeypatch.setattr(
+        stable_replay,
+        "stable_source_record_fingerprint",
+        lambda _row: "",
+    )
+
+    with pytest.raises(
+        StableReplayPackageV2Error,
+        match="phase_membership_fingerprint_missing",
+    ):
+        derive_phase_acquired_membership(
+            accepted_v1,
+            copy.deepcopy(accepted_v1),
+        )

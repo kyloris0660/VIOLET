@@ -679,6 +679,93 @@ def test_audit_v3_self_validation_fails_closed(
         harness._validated_audit_v3_binding(tmp_path)
 
 
+def test_v4_is_active_and_current_binding_uses_canonical_audit_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "run"
+    (output / "manual-acceptance").mkdir(parents=True)
+    cases = [{"case_id": "A01"}]
+    harness.sv1b.write_json(
+        output / "manual-acceptance/case-manifest-private.json",
+        cases,
+    )
+    audit_binding = {
+        "proof_path": harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V4_NAME,
+        "proof_fingerprint": "a" * 64,
+        "proof_file_sha256": "b" * 64,
+        "git_head": "c" * 40,
+    }
+    expected = {"binding_fingerprint": "d" * 64}
+    harness.sv1b.write_json(
+        output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME,
+        {
+            "audit_closeout_validation": audit_binding,
+            "bindings": expected,
+            "proof_sources": {},
+        },
+    )
+    observed: dict[str, str] = {}
+
+    def validate(_output, *, expected_file_sha256=None):
+        observed["sha"] = str(expected_file_sha256)
+        return audit_binding
+
+    monkeypatch.setattr(harness, "_validated_audit_v4_binding", validate)
+    monkeypatch.setattr(
+        harness,
+        "_resolve_proof_sources",
+        lambda *_args, **_kwargs: ({}, {}),
+    )
+    monkeypatch.setattr(
+        harness,
+        "_build_bindings",
+        lambda **_kwargs: expected,
+    )
+
+    assert harness._active_harness_proof_path(output).name == (
+        harness.AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME
+    )
+    assert harness._current_bindings(
+        output,
+        primary_database="blombooru_primary_test",
+        replay_database="blombooru_replay_test",
+    ) == expected
+    assert observed["sha"] == "b" * 64
+
+
+def test_v4_second_create_is_rejected_before_any_evidence_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    (tmp_path / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME).write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="audit_closeout_binding_v4_already_exists",
+    ):
+        harness.finalize_audit_closeout_binding_v4(
+            tmp_path,
+            primary_database="blombooru_primary_test",
+            replay_database="blombooru_replay_test",
+        )
+
+
+def test_dashboard_reload_revalidates_active_binding() -> None:
+    source = Path(harness.__file__).read_text(encoding="utf-8")
+
+    assert "refreshed = binding_loader(" in source
+    assert "manual_acceptance_reload_binding_drift" in source
+
+
 def test_prevalidation_allows_git_only_drift_but_not_evidence_drift(
     tmp_path: Path, monkeypatch
 ) -> None:

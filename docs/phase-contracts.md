@@ -54,7 +54,13 @@ SCV2-SV1B is the current separately governed phase. Its finite provider and
 localization execution are accepted immutable inputs; the single authorized
 fresh Replay v2 and graph/search derivations are complete. The current stop
 permits only read-only audit verification, strict dashboard startup, owner
-result export, and one versioned non-overwriting audit-closeout binding v2.
+result export, and one versioned non-overwriting audit-closeout binding v4.
+The phase-acquired identity membership is derived only from canonical stable
+key/fingerprint differences between the immutable accepted and pre-provider
+packages: `7,271 / 7,271`, missing `0`, unsupported `0`, fingerprint
+`47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`.
+The historical `7,257` candidate/provenance set is superseded and is not an
+acceptance denominator.
 It permits no database create/import/derive or provider, Pixiv, gallery-dl,
 LLM, media, or thumbnail request. The phase must continue to pass
 `sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`

@@ -98,13 +98,17 @@
     {
       "id": "owner_authorized_sv1b_audit_closeout_binding_v3_20260726",
       "decision": "Permit the bounded reviewer-discovered evidence-contract closeout and exactly one versioned non-overwriting final binding v3 on the resulting exact Git HEAD; preserve v1/v2, every database, protected package, proof, case manifest, and owner-pending result state."
+    },
+    {
+      "id": "owner_reconciled_sv1b_canonical_phase_membership_and_binding_v4_20260728",
+      "decision": "Accept the canonical accepted-vs-pre-provider stable-fingerprint difference as the authoritative 7,271-record phase-acquired membership, supersede the historical candidate/provenance-derived 7,257 set, and permit exactly one non-overwriting final binding v4 after the bounded evidence-contract fixes pass."
     }
   ],
   "authorized_operations": [
     "read-only verification of protected package, database, graph, search, localization, and case evidence",
     "strict localhost dashboard startup against the active versioned binding",
     "owner acceptance result export to the private governed result path",
-    "exactly one versioned non-overwriting audit-closeout final binding v3 in the currently authorized closeout"
+    "exactly one versioned non-overwriting audit-closeout final binding v4 in the currently authorized closeout"
   ],
   "forbidden_operations": [
     "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
@@ -141,6 +145,12 @@
     "fresh_replay_search_workload_fingerprint": "5207da2426d791c6872f46b1c566d8094b4eb133f603fd577a7fbe7ca9d2efeb",
     "fresh_replay_search_logical_result_fingerprint": "244d1451b4779e1bc65cccea582af90143fb7c75e1be3557b0d791af5ac6a7b8",
     "manual_acceptance_case_manifest_fingerprint": "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5",
+    "canonical_phase_acquired_membership_count": 7271,
+    "canonical_phase_acquired_membership_fingerprint": "47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1",
+    "canonical_phase_acquired_missing_count": 0,
+    "canonical_phase_acquired_unsupported_count": 0,
+    "superseded_candidate_provenance_membership_count": 7257,
+    "production_library_consumed_or_modified": false,
     "pre_final_binding_manual_checkpoint_fingerprint": "70d1d06fec7a77f10c4b225bd83b40f797f8a9ea15377fbd94658b8ddd6f8db1",
     "browser_prevalidation_proof_fingerprint": "4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef",
     "final_public_redaction_proof_fingerprint": "99b76bfd51502ab65f357e34cdc9f950981e94a6a30a710f6873a1a6719da445"
@@ -180,5 +190,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-26T15:44:47+08:00"
+  "updated_at": "2026-07-28T21:39:37+08:00"
 }

@@ -181,7 +181,12 @@ v2, graph/search validation, and the 40-case browser prevalidation are complete.
 The failed retry2 Replay remains an immutable forensic checkpoint. The current
 authorization is restricted to read-only audit verification, strict dashboard
 startup, owner result export, and the one versioned non-overwriting
-audit-closeout binding v2. Database create/import/derive and all external routes
+audit-closeout binding v4. Its authoritative phase membership is the canonical
+accepted-vs-pre-provider stable-fingerprint difference: `7,271 / 7,271`,
+missing `0`, unsupported `0`, fingerprint
+`47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`.
+The former `7,257` candidate/provenance-derived set is historical and
+superseded. Database create/import/derive and all external routes
 are no longer authorized.
 
 SV1B must still stop at the exact user manual-acceptance checkpoint with

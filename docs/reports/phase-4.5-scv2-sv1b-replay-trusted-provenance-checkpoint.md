@@ -368,3 +368,22 @@ import/derive、provider/LLM/media 路径或负责人验收。
 本节与文档顶部的权威标记共同代表当前状态；此前所有 blocker、数据库创建、
 导入、派生、首轮 binding 与浏览器记录均为 historical / superseded checkpoint，
 不得解释为仍待执行的无条件命令。
+
+## 2026-07-28 canonical phase-membership reconciliation 与 binding v4 授权
+
+负责人已裁定 phase-acquired membership 只能由 immutable accepted package 与
+immutable pre-provider package 的 canonical stable key/fingerprint 差分确定。
+只读复核得到两侧各 `17,193` 个唯一 stable key、accepted-only `0`、fingerprint
+未变 `9,922`、fingerprint 改变 `7,271`；authoritative membership 为
+`7,271 / 7,271`，missing `0`、unsupported `0`，fingerprint 为
+`47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`。
+
+此前 `7,257` 是 candidate/provenance-derived historical set，现已 superseded：
+与 canonical set 交集 `5,589`、canonical-only `1,682`、historical-only
+`1,668`。candidate page、persisted raw、work outcome 与 route viability 仅用于
+独立 support 验证，不得改变 membership。
+
+本次授权只允许在新的 tracked HEAD 上创建 exactly one、non-overwriting binding
+v4，并在 strict localhost dashboard 上做自动浏览器预验证。负责人随后另行导入
+production library 的新图片不属于本 PR；本轮不读取、不比较、不快照且不修改
+production，只消费固定的三个 strict-test 数据库与既有 immutable evidence。

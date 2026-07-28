@@ -101,6 +101,7 @@ STAGES = (
     "finalize-harness-binding",
     "audit-closeout-binding-v2",
     "audit-closeout-binding-v3",
+    "audit-closeout-binding-v4",
 )
 EXPECTED_FAILED_REPLAY_FORENSIC_FINGERPRINT = (
     "ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f"
@@ -116,6 +117,53 @@ EXPECTED_FINAL_BINDING_V2_FILE_SHA256 = (
 )
 EXPECTED_FINAL_BINDING_V2_FINGERPRINT = (
     "4045f223925bc3c9871c3fb82954b1330fa777923ea0be17927dde487986b6b0"
+)
+EXPECTED_AUDIT_V3_FILE_SHA256 = (
+    "92fd61277b61c7a1d95e74590bb9f3d6f9393ab4fcb14eee81a8b023bb8edcc5"
+)
+EXPECTED_AUDIT_V3_FINGERPRINT = (
+    "4b03245089adb9b4c2442e3ba87b25c4fdf071782e3b46113a885873723d1da5"
+)
+EXPECTED_FINAL_BINDING_V3_FILE_SHA256 = (
+    "77df0c6beaad36c0d05df9be8229f3511a05c1ae46c6a88eb8f7962892cc903c"
+)
+EXPECTED_FINAL_BINDING_V3_FINGERPRINT = (
+    "6cd25b3bf83dae3fbb53e6d5fef0f72ed66a5fbb4569a0d021ab44e49ccd86b9"
+)
+EXPECTED_BROWSER_V3_FILE_SHA256 = (
+    "91958c979240e88b6d4330aa8415ddd0c649ff1799f457c55aac411c83a44f9b"
+)
+EXPECTED_ACCEPTED_PACKAGE_FILE_SHA256 = (
+    "851adfccc5567ac5e0733ce45c588cc3db4ae073422fbd680cd61d45816bce17"
+)
+EXPECTED_PRE_PROVIDER_PACKAGE_FILE_SHA256 = (
+    "b553fb9419feb600d7b07c5cf0b60cea058072539401af3775c7c988e7bc51ff"
+)
+EXPECTED_PRE_PROVIDER_PACKAGE_FINGERPRINT = (
+    "d218b75e3f84819cdfd2f1490184a688811ebd418b694cd68d84cd17929c5c08"
+)
+EXPECTED_CANONICAL_PHASE_MEMBERSHIP_FINGERPRINT = (
+    "47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1"
+)
+EXPECTED_PHASE_STATUS_TRANSITIONS = (
+    (
+        "filename_identity_conflict",
+        "deferred_nonblocking_source_page_mismatch",
+        8,
+    ),
+    ("filename_identity_conflict", "metadata_complete", 778),
+    (
+        "filename_identity_conflict",
+        "terminal_remote_unavailable",
+        1_258,
+    ),
+    (
+        "metadata_pending",
+        "deferred_nonblocking_source_page_mismatch",
+        20,
+    ),
+    ("metadata_pending", "metadata_complete", 4_811),
+    ("metadata_pending", "terminal_remote_unavailable", 396),
 )
 EXPECTED_CASE_MANIFEST_FINGERPRINT = (
     "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5"
@@ -198,6 +246,34 @@ def write_json(path: Path, value: Any) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def write_json_exclusive_atomic(path: Path, value: Any) -> None:
+    """Publish complete JSON bytes exactly once without replacing evidence."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise FreshReplayV2Error(f"exclusive_proof_already_exists:{path.name}")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.complete.tmp")
+    encoded = (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+            default=str,
+        )
+        + "\n"
+    ).encode("utf-8")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.link(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def write_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> None:
@@ -748,8 +824,7 @@ def forensic_database_state(database: str) -> dict[str, Any]:
 
 def _load_immutable_execution_evidence() -> tuple[
     dict[str, Any],
-    list[dict[str, Any]],
-    list[str],
+    dict[str, Any],
     list[dict[str, Any]],
     list[dict[str, Any]],
     list[dict[str, Any]],
@@ -779,50 +854,183 @@ def _load_immutable_execution_evidence() -> tuple[
     attempts = route_viability.get("attempts")
     if not isinstance(attempts, list):
         raise FreshReplayV2Error("route_viability_attempts_missing")
-    accepted_rows = accepted.get("tables", {}).get(
-        "source_metadata_records", []
-    )
-    page_membership = {
-        (
-            str(page.get("media_stable_key") or ""),
-            str(page.get("stable_work_id") or ""),
-            int(page.get("requested_page_index") or 0),
-        )
-        for page in pages
-    }
-    phase_membership = [
-        {"provider_record_key": str(row["provider_record_key"])}
-        for row in accepted_rows
-        if isinstance(row, Mapping)
-        and (
-            str(row.get("media_content_key") or ""),
-            str(row.get("source_work_id") or ""),
-            int(row.get("source_page_index") or 0),
-        )
-        in page_membership
-        and isinstance(row.get("provenance"), Mapping)
-        and str(row["provenance"].get("source") or "").casefold()
-        == "gallery_dl_authenticated_metadata"
-    ]
-    historical_baseline_provider_keys = [
-        str(row["provider_record_key"])
-        for row in pre_provider.get("tables", {}).get(
-            "source_metadata_records", []
-        )
-        if isinstance(row, Mapping)
-        and row.get("provider_record_key")
-        and isinstance(row.get("provenance"), Mapping)
-        and str(row["provenance"].get("source") or "").casefold()
-        == "gallery_dl_authenticated_metadata"
-    ]
     return (
         accepted,
-        phase_membership,
-        historical_baseline_provider_keys,
+        pre_provider,
         pages,
         outcomes,
         attempts,
     )
+
+
+def _protected_source_evidence_manifest() -> dict[str, Any]:
+    """Bind every immutable local input used by the v4 audit conclusion."""
+
+    specs = {
+        "accepted_stable_package_and_persisted_raw": (
+            OLD_OUTPUT / "acquired-nonderived-evidence-package-private.json"
+        ),
+        "immutable_pre_provider_package": (
+            OLD_OUTPUT
+            / "canary-route-viability-resume-r1"
+            / "current-primary-read-only-export"
+            / "stable-key-evidence-package.json"
+        ),
+        "candidate_page_membership": (
+            OLD_OUTPUT / "candidate-page-media-manifest-private.jsonl"
+        ),
+        "work_outcome_ledger": (
+            OLD_OUTPUT
+            / "provider-execution-checkpoint-r2-route-viability"
+            / "final-work-outcome-ledger.json"
+        ),
+        "route_viability_ledger": (
+            OLD_OUTPUT
+            / "provider-execution-checkpoint-r2-route-viability"
+            / "route-viability-canary-ledger.json"
+        ),
+    }
+    files: dict[str, dict[str, Any]] = {}
+    for label, path in specs.items():
+        resolved = path.resolve()
+        if OLD_OUTPUT.resolve() not in resolved.parents or not resolved.is_file():
+            raise FreshReplayV2Error(
+                f"protected_source_evidence_missing_or_escaped:{label}"
+            )
+        if "production" in str(resolved).casefold():
+            raise FreshReplayV2Error(
+                f"production_path_forbidden_in_evidence:{label}"
+            )
+        payload = (
+            read_jsonl(resolved)
+            if resolved.suffix.casefold() == ".jsonl"
+            else read_json(resolved)
+        )
+        files[label] = {
+            "relative_path": resolved.relative_to(ROOT).as_posix(),
+            "file_sha256": sha256_file(resolved),
+            "canonical_payload_fingerprint": sha256_payload(payload),
+        }
+    manifest = {
+        "manifest_version": "sv1b_audit_source_evidence_v4",
+        "files": files,
+        "database_inputs": [
+            PRIMARY_DATABASE,
+            FAILED_REPLAY_DATABASE,
+            FRESH_REPLAY_DATABASE,
+        ],
+        "all_database_inputs_are_strict_test_identities": all(
+            is_strict_test_database_name(database)
+            for database in (
+                PRIMARY_DATABASE,
+                FAILED_REPLAY_DATABASE,
+                FRESH_REPLAY_DATABASE,
+            )
+        ),
+        "production_database_access_count": 0,
+        "production_path_input_count": 0,
+        "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
+    }
+    manifest["membership_fingerprint"] = sha256_payload(manifest)
+    return manifest
+
+
+def _validate_owner_phase_membership_reconciliation(
+    crosscheck: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+) -> dict[str, bool]:
+    canonical = crosscheck.get("canonical_phase_membership", {})
+    transitions = tuple(
+        (
+            str(row.get("from") or ""),
+            str(row.get("to") or ""),
+            int(row.get("count") or 0),
+        )
+        for row in canonical.get("status_transition_counts", [])
+        if isinstance(row, Mapping)
+    )
+    files = evidence.get("files", {})
+    expected_count = sum(row[2] for row in EXPECTED_PHASE_STATUS_TRANSITIONS)
+    checks = {
+        "accepted_file_sha": (
+            files.get(
+                "accepted_stable_package_and_persisted_raw", {}
+            ).get("file_sha256")
+            == EXPECTED_ACCEPTED_PACKAGE_FILE_SHA256
+        ),
+        "accepted_package_fingerprint": (
+            files.get(
+                "accepted_stable_package_and_persisted_raw", {}
+            ).get("canonical_payload_fingerprint")
+            == ACCEPTED_ACQUISITION_PACKAGE_FINGERPRINT
+        ),
+        "pre_provider_file_sha": (
+            files.get("immutable_pre_provider_package", {}).get(
+                "file_sha256"
+            )
+            == EXPECTED_PRE_PROVIDER_PACKAGE_FILE_SHA256
+        ),
+        "pre_provider_package_fingerprint": (
+            files.get("immutable_pre_provider_package", {}).get(
+                "canonical_payload_fingerprint"
+            )
+            == EXPECTED_PRE_PROVIDER_PACKAGE_FINGERPRINT
+        ),
+        "unique_membership": (
+            canonical.get("accepted_unique_stable_key_count")
+            == EXPECTED_METADATA_COUNT
+            == canonical.get("pre_provider_unique_stable_key_count")
+        ),
+        "no_duplicate_missing_conflicting_identity": (
+            canonical.get("duplicate_stable_key_count") == 0
+            and canonical.get(
+                "missing_stable_key_or_fingerprint_count"
+            )
+            == 0
+            and canonical.get("conflicting_stable_fingerprint_count")
+            == 0
+        ),
+        "no_accepted_or_baseline_only_key": (
+            canonical.get("accepted_only_stable_key_count") == 0
+            and canonical.get("pre_provider_only_stable_key_count") == 0
+        ),
+        "canonical_count_derived": (
+            canonical.get("changed_canonical_fingerprint_count")
+            == expected_count
+            == crosscheck.get("expected_phase_acquired_identity_count")
+            == crosscheck.get("observed_phase_acquired_identity_count")
+        ),
+        "canonical_membership_fingerprint": (
+            crosscheck.get("phase_acquired_membership_fingerprint")
+            == EXPECTED_CANONICAL_PHASE_MEMBERSHIP_FINGERPRINT
+            == canonical.get("phase_acquired_membership_fingerprint")
+        ),
+        "canonical_membership_complete_and_supported": (
+            crosscheck.get("missing_phase_acquired_identity_count") == 0
+            and crosscheck.get(
+                "phase_acquired_identity_unsupported_count"
+            )
+            == 0
+        ),
+        "status_transitions_exact": (
+            transitions == EXPECTED_PHASE_STATUS_TRANSITIONS
+        ),
+        "membership_support_decoupled": (
+            canonical.get(
+                "candidate_or_support_used_to_derive_membership"
+            )
+            is False
+        ),
+        "strict_test_database_inputs_only": (
+            evidence.get(
+                "all_database_inputs_are_strict_test_identities"
+            )
+            is True
+            and evidence.get("production_database_access_count") == 0
+            and evidence.get("production_path_input_count") == 0
+        ),
+    }
+    return checks
 
 
 def _assert_repository_preflight() -> dict[str, Any]:
@@ -891,8 +1099,7 @@ def validate_read_only(
         primary_engine.dispose()
     (
         accepted,
-        phase_membership,
-        historical_baseline_provider_keys,
+        pre_provider,
         pages,
         outcomes,
         route_viability_attempts,
@@ -900,13 +1107,17 @@ def validate_read_only(
     crosscheck, ledger = cross_validate_primary_stable_identity(
         package,
         accepted,
-        phase_acquired_membership=phase_membership,
-        historical_baseline_provider_keys=(
-            historical_baseline_provider_keys
-        ),
+        pre_provider_v1_package=pre_provider,
         candidate_pages=pages,
         final_work_outcomes=outcomes,
         route_viability_attempts=route_viability_attempts,
+    )
+    protected_source_evidence = _protected_source_evidence_manifest()
+    owner_reconciliation_checks = (
+        _validate_owner_phase_membership_reconciliation(
+            crosscheck,
+            protected_source_evidence,
+        )
     )
     projection = graph_effective_projection(package)
     primary_translation = translation_state(PRIMARY_DATABASE)
@@ -932,6 +1143,9 @@ def validate_read_only(
             == EXPECTED_PRIMARY_GRAPH_PROJECTION_FINGERPRINT
         ),
         "immutable_identity_crosscheck": crosscheck["passed"] is True,
+        "owner_phase_membership_reconciliation": all(
+            owner_reconciliation_checks.values()
+        ),
         "accepted_provider_fact_mutation_zero": (
             crosscheck["accepted_provider_fact_mutation_count"] == 0
         ),
@@ -970,6 +1184,10 @@ def validate_read_only(
         ],
         "primary_translation_state": primary_translation,
         "primary_identity_crosscheck": crosscheck,
+        "owner_phase_membership_reconciliation_checks": (
+            owner_reconciliation_checks
+        ),
+        "protected_source_evidence": protected_source_evidence,
         "failed_replay_forensic_state": failed_replay,
         "fresh_database_creation_count_before": len(
             existing_fresh_replay_databases()
@@ -2848,6 +3066,363 @@ def execute_audit_closeout_binding_v3(
     }
 
 
+def _prior_v1_v2_v3_proof_bindings(
+    output: Path,
+    harness: Any,
+) -> tuple[dict[str, dict[str, Any]], dict[str, bool]]:
+    prior_specs = {
+        harness.FINAL_HARNESS_PROOF_NAME: (
+            EXPECTED_FINAL_BINDING_V1_FILE_SHA256
+        ),
+        harness.AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME: (
+            EXPECTED_FINAL_BINDING_V2_FILE_SHA256
+        ),
+        harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME: (
+            EXPECTED_AUDIT_V3_FILE_SHA256
+        ),
+        harness.AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME: (
+            EXPECTED_FINAL_BINDING_V3_FILE_SHA256
+        ),
+        (
+            "fresh-replay-v2-audit-closeout-v3-"
+            "strict-browser-prevalidation-proof.json"
+        ): EXPECTED_BROWSER_V3_FILE_SHA256,
+    }
+    prior_files: dict[str, dict[str, Any]] = {}
+    for name, expected_sha in prior_specs.items():
+        path = output / name
+        if not path.is_file():
+            raise FreshReplayV2Error(f"prior_v1_v2_v3_proof_missing:{name}")
+        actual_sha = sha256_file(path)
+        prior_files[name] = {
+            "file_sha256": actual_sha,
+            "expected_file_sha256": expected_sha,
+            "unchanged": actual_sha == expected_sha,
+        }
+    v3_audit = read_json(
+        output / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME
+    )
+    v3_binding = read_json(
+        output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    )
+    prior_fingerprint_checks = {
+        "v3_audit_fingerprint": (
+            v3_audit.get("proof_fingerprint")
+            == EXPECTED_AUDIT_V3_FINGERPRINT
+        ),
+        "v3_binding_fingerprint": (
+            v3_binding.get("bindings", {}).get("binding_fingerprint")
+            == EXPECTED_FINAL_BINDING_V3_FINGERPRINT
+        ),
+    }
+    return prior_files, prior_fingerprint_checks
+
+
+def _build_audit_closeout_v4_payload(
+    output: Path,
+) -> dict[str, Any]:
+    """Recompute every conclusion input for v4 without mutating a database."""
+
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
+    )
+
+    output = output.resolve()
+    _validate_resume_ownership(output)
+    prior_files, prior_fingerprint_checks = (
+        _prior_v1_v2_v3_proof_bindings(output, harness)
+    )
+    v3_binding = read_json(
+        output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    )
+    cases_path = output / "manual-acceptance/case-manifest-private.json"
+    cases = read_json(cases_path)
+    case_fingerprint = sha256_payload(cases)
+    preflight, primary_package, ledger = validate_read_only(
+        output=output,
+        allow_existing_target=True,
+    )
+    fresh_engine = engine_for(FRESH_REPLAY_DATABASE)
+    try:
+        replay_package = export_package_from_engine(fresh_engine)
+    finally:
+        fresh_engine.dispose()
+    round_trip = compare_round_trip_packages(
+        primary_package,
+        replay_package,
+    )
+    stable_reference_integrity = validate_stable_reference_integrity(
+        primary_package
+    )
+    failed_state = forensic_database_state(FAILED_REPLAY_DATABASE)
+    fresh_state = forensic_database_state(FRESH_REPLAY_DATABASE)
+    relative_sources, proofs = harness._resolve_proof_sources(  # noqa: SLF001
+        output,
+        v3_binding.get("proof_sources"),
+    )
+    current_bindings = harness._build_bindings(  # noqa: SLF001
+        primary_database=PRIMARY_DATABASE,
+        replay_database=FRESH_REPLAY_DATABASE,
+        relative_proof_sources=relative_sources,
+        proofs=proofs,
+        cases=cases,
+    )
+    immutable_v3 = dict(v3_binding["bindings"])
+    immutable_current = dict(current_bindings)
+    for value in (immutable_v3, immutable_current):
+        value.pop("git_head", None)
+        value.pop("binding_fingerprint", None)
+        value.pop("audit_validation", None)
+    phase_crosscheck = preflight["primary_identity_crosscheck"]
+    source_evidence = preflight["protected_source_evidence"]
+    reconciliation_checks = preflight[
+        "owner_phase_membership_reconciliation_checks"
+    ]
+    checks = {
+        "prior_v1_v2_v3_files_unchanged": all(
+            row["unchanged"] for row in prior_files.values()
+        ),
+        "prior_v3_declared_fingerprints_unchanged": all(
+            prior_fingerprint_checks.values()
+        ),
+        "case_manifest_exact": (
+            case_fingerprint == EXPECTED_CASE_MANIFEST_FINGERPRINT
+        ),
+        "stable_reference_integrity": (
+            stable_reference_integrity.get("passed") is True
+        ),
+        "canonical_phase_membership": (
+            phase_crosscheck.get("passed") is True
+            and phase_crosscheck.get(
+                "phase_acquired_membership_fingerprint"
+            )
+            == EXPECTED_CANONICAL_PHASE_MEMBERSHIP_FINGERPRINT
+            and phase_crosscheck.get(
+                "missing_phase_acquired_identity_count"
+            )
+            == 0
+            and phase_crosscheck.get(
+                "phase_acquired_identity_unsupported_count"
+            )
+            == 0
+            and all(reconciliation_checks.values())
+        ),
+        "primary_fresh_round_trip": round_trip.get("passed") is True,
+        "protected_source_evidence_bound": (
+            source_evidence.get("production_database_access_count") == 0
+            and source_evidence.get("production_path_input_count") == 0
+            and source_evidence.get(
+                "all_database_inputs_are_strict_test_identities"
+            )
+            is True
+        ),
+        "protected_package_and_database_state": (
+            primary_package["package_fingerprint"]
+            == EXPECTED_PACKAGE_V2_FINGERPRINT
+            == replay_package["package_fingerprint"]
+            and primary_package["membership_fingerprint"]
+            == EXPECTED_PACKAGE_V2_MEMBERSHIP_FINGERPRINT
+            == replay_package["membership_fingerprint"]
+            and failed_state["fingerprint"]
+            == EXPECTED_FAILED_REPLAY_FORENSIC_FINGERPRINT
+        ),
+        "graph_search_case_bindings_unchanged": (
+            immutable_v3 == immutable_current
+        ),
+        "exact_git_head": (
+            current_bindings["git_head"] == git("rev-parse", "HEAD")
+        ),
+        "external_routes_zero": (
+            preflight["repository"]["external_route_counts"]
+            == EXTERNAL_ROUTE_BUDGET
+        ),
+    }
+    audit = {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v4",
+        "git_head": git("rev-parse", "HEAD"),
+        "checks": checks,
+        "prior_immutable_proofs": prior_files,
+        "prior_declared_fingerprint_checks": prior_fingerprint_checks,
+        "case_manifest": {
+            "relative_path": cases_path.relative_to(ROOT).as_posix(),
+            "file_sha256": sha256_file(cases_path),
+            "membership_fingerprint": case_fingerprint,
+        },
+        "protected_source_evidence": source_evidence,
+        "stable_reference_integrity": stable_reference_integrity,
+        "primary_identity_crosscheck": phase_crosscheck,
+        "primary_identity_ledger_membership_fingerprint": sha256_payload(
+            ledger
+        ),
+        "round_trip": round_trip,
+        "logical_database_bindings": {
+            "primary": current_bindings["primary_database"],
+            "fresh_replay": current_bindings["replay_database"],
+            "failed_replay_forensic_fingerprint": failed_state[
+                "fingerprint"
+            ],
+            "fresh_replay_forensic_fingerprint": fresh_state[
+                "fingerprint"
+            ],
+        },
+        "graph_search_localization_bindings": {
+            key: value
+            for key, value in current_bindings.items()
+            if key
+            not in {
+                "git_head",
+                "binding_fingerprint",
+                "primary_database",
+                "replay_database",
+            }
+        },
+        "production_database_access_count": 0,
+        "database_write_count": 0,
+        "new_database_count": 0,
+        "external_route_counts": dict(EXTERNAL_ROUTE_BUDGET),
+        "passed": all(checks.values()),
+    }
+    return audit
+
+
+def validate_audit_closeout_v4(
+    output: Path,
+    *,
+    expected_file_sha256: str | None = None,
+) -> dict[str, str]:
+    """Self-check and fully recompute an existing v4 audit proof."""
+
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
+    )
+
+    audit_path = (
+        output.resolve() / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V4_NAME
+    )
+    if not audit_path.is_file():
+        raise FreshReplayV2Error("audit_closeout_validation_v4_missing")
+    audit = read_json(audit_path)
+    declared = str(audit.get("proof_fingerprint") or "")
+    calculated = sha256_payload(
+        {
+            key: value
+            for key, value in audit.items()
+            if key != "proof_fingerprint"
+        }
+    )
+    current = _build_audit_closeout_v4_payload(output.resolve())
+    current["proof_fingerprint"] = sha256_payload(current)
+    checks = {
+        "proof_version": (
+            audit.get("proof_version")
+            == "sv1b_audit_closeout_read_only_validation_v4"
+        ),
+        "passed": audit.get("passed") is True,
+        "self_fingerprint": declared == calculated,
+        "exact_git_head": audit.get("git_head") == git("rev-parse", "HEAD"),
+        "recomputed_payload_exact": audit == current,
+        "file_sha_exact": (
+            expected_file_sha256 is None
+            or sha256_file(audit_path) == expected_file_sha256
+        ),
+    }
+    if not all(checks.values()):
+        raise FreshReplayV2Error(
+            "audit_closeout_validation_v4_invalid:"
+            + canonical_json(
+                sorted(key for key, value in checks.items() if not value)
+            )
+        )
+    return {
+        "proof_path": harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V4_NAME,
+        "proof_fingerprint": declared,
+        "proof_file_sha256": sha256_file(audit_path),
+        "git_head": str(audit["git_head"]),
+        "protected_source_evidence_membership_fingerprint": str(
+            audit["protected_source_evidence"]["membership_fingerprint"]
+        ),
+        "stable_reference_membership_fingerprint": str(
+            audit["stable_reference_integrity"][
+                "reference_membership_fingerprint"
+            ]
+        ),
+        "canonical_phase_membership_fingerprint": str(
+            audit["primary_identity_crosscheck"][
+                "phase_acquired_membership_fingerprint"
+            ]
+        ),
+        "round_trip_mismatch_membership_fingerprint": str(
+            audit["round_trip"]["mismatch_membership_fingerprint"]
+        ),
+    }
+
+
+def execute_audit_closeout_binding_v4(
+    *,
+    output: Path = DEFAULT_OUTPUT,
+    port: int = 8031,
+) -> dict[str, Any]:
+    """Create or safely resume exactly one non-overwriting v4 binding."""
+
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
+    )
+
+    output = output.resolve()
+    _validate_resume_ownership(output)
+    audit_path = output / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V4_NAME
+    binding_path = output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME
+    if binding_path.exists():
+        raise FreshReplayV2Error("audit_closeout_binding_v4_already_exists")
+    if not (
+        output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    ).is_file():
+        raise FreshReplayV2Error("final_binding_v3_missing")
+    if audit_path.exists():
+        audit_binding = validate_audit_closeout_v4(output)
+        audit = read_json(audit_path)
+    else:
+        audit = _build_audit_closeout_v4_payload(output)
+        audit["proof_fingerprint"] = sha256_payload(audit)
+        if audit["passed"] is not True:
+            raise FreshReplayV2Error(
+                "audit_closeout_read_only_validation_v4_failed:"
+                + canonical_json(
+                    sorted(
+                        key
+                        for key, value in audit["checks"].items()
+                        if not value
+                    )
+                )
+            )
+        write_json_exclusive_atomic(audit_path, audit)
+        audit_binding = validate_audit_closeout_v4(output)
+    final_binding = harness.finalize_audit_closeout_binding_v4(
+        output,
+        primary_database=PRIMARY_DATABASE,
+        replay_database=FRESH_REPLAY_DATABASE,
+        port=port,
+        audit_binding=audit_binding,
+    )
+    return {
+        "proof_version": "sv1b_audit_closeout_binding_v4_execution",
+        "audit_validation_proof_fingerprint": audit["proof_fingerprint"],
+        "audit_validation_file_sha256": sha256_file(audit_path),
+        "binding_fingerprint": final_binding["bindings"][
+            "binding_fingerprint"
+        ],
+        "supersedes_final_binding_fingerprint": final_binding[
+            "supersedes_final_binding_fingerprint"
+        ],
+        "status": (
+            "automated_sv1b_candidate_ready_manual_acceptance_pending"
+        ),
+        "passed": bool(
+            audit["passed"] is True and final_binding["passed"] is True
+        ),
+    }
+
+
 def public_summary(stage: str, result: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "phase": PHASE,
@@ -2890,6 +3465,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.stage == "audit-closeout-binding-v3":
         result = execute_audit_closeout_binding_v3(
+            output=output,
+            port=args.port,
+        )
+    elif args.stage == "audit-closeout-binding-v4":
+        result = execute_audit_closeout_binding_v4(
             output=output,
             port=args.port,
         )

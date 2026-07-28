@@ -30,6 +30,23 @@ def test_fresh_database_identity_is_strict_and_distinct() -> None:
         "blombooru_testimony",
     ):
         assert runner.is_strict_test_database_name(unsafe) is False
+    assert runner.PRIMARY_DATABASE == (
+        "blombooru_scv2_sv1b_metadata_graph_closure_test_20260721_retry2"
+    )
+    assert runner.FAILED_REPLAY_DATABASE == (
+        "blombooru_scv2_sv1b_replay_verification_test_20260721_retry2"
+    )
+    assert runner.FRESH_REPLAY_DATABASE == (
+        "blombooru_scv2_sv1b_replay_v2_verification_test_20260725"
+    )
+    assert all(
+        "production" not in database.casefold()
+        for database in (
+            runner.PRIMARY_DATABASE,
+            runner.FAILED_REPLAY_DATABASE,
+            runner.FRESH_REPLAY_DATABASE,
+        )
+    )
 
 
 def test_single_fresh_database_policy_rejects_any_second_database() -> None:
@@ -70,6 +87,7 @@ def test_no_external_execution_stage_exists() -> None:
         "finalize-harness-binding",
         "audit-closeout-binding-v2",
         "audit-closeout-binding-v3",
+        "audit-closeout-binding-v4",
     )
     assert runner.EXTERNAL_ROUTE_BUDGET == {
         "provider_requests": 0,
@@ -426,3 +444,401 @@ def test_pinned_history_drift_fails_closed(tmp_path: Path) -> None:
                 {"not": "the file hash"}
             ),
         )
+
+
+def _audit_v4_fixture(head: str) -> dict:
+    return {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v4",
+        "git_head": head,
+        "checks": {"all": True},
+        "protected_source_evidence": {
+            "membership_fingerprint": "1" * 64,
+        },
+        "stable_reference_integrity": {
+            "passed": True,
+            "reference_membership_fingerprint": "2" * 64,
+        },
+        "primary_identity_crosscheck": {
+            "passed": True,
+            "phase_acquired_membership_fingerprint": "3" * 64,
+        },
+        "round_trip": {
+            "passed": True,
+            "mismatch_membership_fingerprint": "4" * 64,
+        },
+        "passed": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "missing_git_head",
+        "old_git_head",
+        "arbitrary_fingerprint",
+        "payload_tamper",
+        "file_sha_mismatch",
+    ),
+)
+def test_audit_v4_self_head_payload_and_file_validation_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    from scripts import (
+        run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
+    )
+
+    head = "a" * 40
+    payload = _audit_v4_fixture(head)
+    payload["proof_fingerprint"] = runner.sha256_payload(payload)
+    if mutation == "missing_git_head":
+        payload.pop("git_head")
+        payload["proof_fingerprint"] = runner.sha256_payload(
+            {
+                key: value
+                for key, value in payload.items()
+                if key != "proof_fingerprint"
+            }
+        )
+    elif mutation == "old_git_head":
+        payload["git_head"] = "b" * 40
+        payload["proof_fingerprint"] = runner.sha256_payload(
+            {
+                key: value
+                for key, value in payload.items()
+                if key != "proof_fingerprint"
+            }
+        )
+    elif mutation == "arbitrary_fingerprint":
+        payload["proof_fingerprint"] = "e" * 64
+    elif mutation == "payload_tamper":
+        payload["checks"]["all"] = False
+    path = tmp_path / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V4_NAME
+    runner.write_json(path, payload)
+    monkeypatch.setattr(runner, "git", lambda *_args: head)
+    monkeypatch.setattr(
+        runner,
+        "_build_audit_closeout_v4_payload",
+        lambda _output: _audit_v4_fixture(head),
+    )
+
+    with pytest.raises(
+        runner.FreshReplayV2Error,
+        match="audit_closeout_validation_v4_invalid",
+    ):
+        runner.validate_audit_closeout_v4(
+            tmp_path,
+            expected_file_sha256=(
+                "0" * 64
+                if mutation == "file_sha_mismatch"
+                else None
+            ),
+        )
+
+
+def test_exclusive_atomic_proof_write_rejects_second_create(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "proof.json"
+    runner.write_json_exclusive_atomic(path, {"version": 1})
+    original = path.read_bytes()
+
+    with pytest.raises(
+        runner.FreshReplayV2Error,
+        match="exclusive_proof_already_exists",
+    ):
+        runner.write_json_exclusive_atomic(path, {"version": 2})
+
+    assert path.read_bytes() == original
+
+
+def test_prior_v1_v2_v3_exact_sha_drift_is_detected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = SimpleNamespace(
+        FINAL_HARNESS_PROOF_NAME="v1.json",
+        AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME="v2.json",
+        AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME="audit-v3.json",
+        AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME="binding-v3.json",
+    )
+    values = {
+        "v1.json": {"passed": True},
+        "v2.json": {"passed": True},
+        "audit-v3.json": {"proof_fingerprint": "a" * 64},
+        "binding-v3.json": {
+            "bindings": {"binding_fingerprint": "b" * 64}
+        },
+        (
+            "fresh-replay-v2-audit-closeout-v3-"
+            "strict-browser-prevalidation-proof.json"
+        ): {"passed": True},
+    }
+    for name, value in values.items():
+        runner.write_json(tmp_path / name, value)
+    monkeypatch.setattr(
+        runner,
+        "EXPECTED_FINAL_BINDING_V1_FILE_SHA256",
+        runner.sha256_file(tmp_path / "v1.json"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "EXPECTED_FINAL_BINDING_V2_FILE_SHA256",
+        runner.sha256_file(tmp_path / "v2.json"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "EXPECTED_AUDIT_V3_FILE_SHA256",
+        runner.sha256_file(tmp_path / "audit-v3.json"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "EXPECTED_FINAL_BINDING_V3_FILE_SHA256",
+        runner.sha256_file(tmp_path / "binding-v3.json"),
+    )
+    browser_name = (
+        "fresh-replay-v2-audit-closeout-v3-"
+        "strict-browser-prevalidation-proof.json"
+    )
+    monkeypatch.setattr(
+        runner,
+        "EXPECTED_BROWSER_V3_FILE_SHA256",
+        runner.sha256_file(tmp_path / browser_name),
+    )
+    monkeypatch.setattr(
+        runner,
+        "EXPECTED_AUDIT_V3_FINGERPRINT",
+        "a" * 64,
+    )
+    monkeypatch.setattr(
+        runner,
+        "EXPECTED_FINAL_BINDING_V3_FINGERPRINT",
+        "b" * 64,
+    )
+
+    files, declared = runner._prior_v1_v2_v3_proof_bindings(
+        tmp_path,
+        harness,
+    )
+    assert all(row["unchanged"] for row in files.values())
+    assert all(declared.values())
+
+    runner.write_json(tmp_path / browser_name, {"passed": False})
+    files, _declared = runner._prior_v1_v2_v3_proof_bindings(
+        tmp_path,
+        harness,
+    )
+    assert files[browser_name]["unchanged"] is False
+
+
+def test_audit_v4_recovery_revalidates_before_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import (
+        run_phase45_scv2_sv1b_manual_acceptance_harness as harness,
+    )
+
+    (tmp_path / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME).write_text(
+        "{}",
+        encoding="utf-8",
+    )
+    audit = _audit_v4_fixture("a" * 40)
+    audit["proof_fingerprint"] = runner.sha256_payload(audit)
+    runner.write_json(
+        tmp_path / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V4_NAME,
+        audit,
+    )
+    monkeypatch.setattr(runner, "_validate_resume_ownership", lambda _o: None)
+    calls = {"validate": 0, "finalize": 0}
+
+    def validate(_output, *, expected_file_sha256=None):
+        calls["validate"] += 1
+        assert expected_file_sha256 is None
+        return {
+            "proof_path": "audit-v4.json",
+            "proof_fingerprint": audit["proof_fingerprint"],
+            "proof_file_sha256": "f" * 64,
+            "git_head": "a" * 40,
+        }
+
+    monkeypatch.setattr(runner, "validate_audit_closeout_v4", validate)
+    monkeypatch.setattr(
+        harness,
+        "finalize_audit_closeout_binding_v4",
+        lambda *_args, **_kwargs: {
+            "passed": True,
+            "bindings": {"binding_fingerprint": "c" * 64},
+            "supersedes_final_binding_fingerprint": "d" * 64,
+        },
+    )
+
+    result = runner.execute_audit_closeout_binding_v4(output=tmp_path)
+
+    assert result["passed"] is True
+    assert calls["validate"] == 1
+
+
+@pytest.mark.parametrize(
+    "relative",
+    (
+        "acquired-nonderived-evidence-package-private.json",
+        (
+            "canary-route-viability-resume-r1/"
+            "current-primary-read-only-export/"
+            "stable-key-evidence-package.json"
+        ),
+        "candidate-page-media-manifest-private.jsonl",
+        (
+            "provider-execution-checkpoint-r2-route-viability/"
+            "final-work-outcome-ledger.json"
+        ),
+        (
+            "provider-execution-checkpoint-r2-route-viability/"
+            "route-viability-canary-ledger.json"
+        ),
+    ),
+)
+def test_protected_raw_evidence_tamper_changes_v4_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative: str,
+) -> None:
+    root = tmp_path / "immutable"
+    files = (
+        "acquired-nonderived-evidence-package-private.json",
+        (
+            "canary-route-viability-resume-r1/"
+            "current-primary-read-only-export/"
+            "stable-key-evidence-package.json"
+        ),
+        "candidate-page-media-manifest-private.jsonl",
+        (
+            "provider-execution-checkpoint-r2-route-viability/"
+            "final-work-outcome-ledger.json"
+        ),
+        (
+            "provider-execution-checkpoint-r2-route-viability/"
+            "route-viability-canary-ledger.json"
+        ),
+    )
+    for name in files:
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            '{"value":1}\n',
+            encoding="utf-8",
+        )
+    monkeypatch.setattr(runner, "OLD_OUTPUT", root)
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    before = runner._protected_source_evidence_manifest()
+    (root / relative).write_text('{"value":2}\n', encoding="utf-8")
+    after = runner._protected_source_evidence_manifest()
+
+    assert before["membership_fingerprint"] != after[
+        "membership_fingerprint"
+    ]
+
+
+def test_production_path_cannot_become_v4_evidence_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "production-evidence"
+    paths = (
+        root / "acquired-nonderived-evidence-package-private.json",
+        root
+        / "canary-route-viability-resume-r1"
+        / "current-primary-read-only-export"
+        / "stable-key-evidence-package.json",
+        root / "candidate-page-media-manifest-private.jsonl",
+        root
+        / "provider-execution-checkpoint-r2-route-viability"
+        / "final-work-outcome-ledger.json",
+        root
+        / "provider-execution-checkpoint-r2-route-viability"
+        / "route-viability-canary-ledger.json",
+    )
+    for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(runner, "OLD_OUTPUT", root)
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+
+    with pytest.raises(
+        runner.FreshReplayV2Error,
+        match="production_path_forbidden_in_evidence",
+    ):
+        runner._protected_source_evidence_manifest()
+
+
+def test_owner_reconciliation_asserts_canonical_membership_and_support_separately() -> None:
+    expected_count = sum(
+        count
+        for _before, _after, count in runner.EXPECTED_PHASE_STATUS_TRANSITIONS
+    )
+    crosscheck = {
+        "expected_phase_acquired_identity_count": expected_count,
+        "observed_phase_acquired_identity_count": expected_count,
+        "missing_phase_acquired_identity_count": 0,
+        "phase_acquired_identity_unsupported_count": 0,
+        "phase_acquired_membership_fingerprint": (
+            runner.EXPECTED_CANONICAL_PHASE_MEMBERSHIP_FINGERPRINT
+        ),
+        "canonical_phase_membership": {
+            "accepted_unique_stable_key_count": 17193,
+            "pre_provider_unique_stable_key_count": 17193,
+            "duplicate_stable_key_count": 0,
+            "missing_stable_key_or_fingerprint_count": 0,
+            "conflicting_stable_fingerprint_count": 0,
+            "accepted_only_stable_key_count": 0,
+            "pre_provider_only_stable_key_count": 0,
+            "changed_canonical_fingerprint_count": expected_count,
+            "phase_acquired_membership_fingerprint": (
+                runner.EXPECTED_CANONICAL_PHASE_MEMBERSHIP_FINGERPRINT
+            ),
+            "status_transition_counts": [
+                {"from": before, "to": after, "count": count}
+                for before, after, count in (
+                    runner.EXPECTED_PHASE_STATUS_TRANSITIONS
+                )
+            ],
+            "candidate_or_support_used_to_derive_membership": False,
+        },
+    }
+    evidence = {
+        "files": {
+            "accepted_stable_package_and_persisted_raw": {
+                "file_sha256": runner.EXPECTED_ACCEPTED_PACKAGE_FILE_SHA256,
+                "canonical_payload_fingerprint": (
+                    runner.ACCEPTED_ACQUISITION_PACKAGE_FINGERPRINT
+                ),
+            },
+            "immutable_pre_provider_package": {
+                "file_sha256": (
+                    runner.EXPECTED_PRE_PROVIDER_PACKAGE_FILE_SHA256
+                ),
+                "canonical_payload_fingerprint": (
+                    runner.EXPECTED_PRE_PROVIDER_PACKAGE_FINGERPRINT
+                ),
+            },
+        },
+        "all_database_inputs_are_strict_test_identities": True,
+        "production_database_access_count": 0,
+        "production_path_input_count": 0,
+    }
+
+    checks = runner._validate_owner_phase_membership_reconciliation(
+        crosscheck,
+        evidence,
+    )
+    assert all(checks.values())
+
+    crosscheck["phase_acquired_identity_unsupported_count"] = 1
+    checks = runner._validate_owner_phase_membership_reconciliation(
+        crosscheck,
+        evidence,
+    )
+    assert checks["canonical_count_derived"] is True
+    assert checks["canonical_membership_complete_and_supported"] is False

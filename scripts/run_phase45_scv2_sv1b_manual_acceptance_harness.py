@@ -42,6 +42,12 @@ AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME = (
 AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME = (
     "fresh-replay-v2-audit-closeout-validation-v3-proof.json"
 )
+AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME = (
+    "manual-acceptance-harness-audit-closeout-final-binding-v4-proof.json"
+)
+AUDIT_CLOSEOUT_VALIDATION_PROOF_V4_NAME = (
+    "fresh-replay-v2-audit-closeout-validation-v4-proof.json"
+)
 EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT = (
     "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5"
 )
@@ -1009,6 +1015,26 @@ def _validated_audit_v3_binding(output: Path) -> dict[str, str]:
     }
 
 
+def _validated_audit_v4_binding(
+    output: Path,
+    *,
+    expected_file_sha256: str | None = None,
+) -> dict[str, str]:
+    """Use the runner's canonical full-evidence v4 validation path."""
+
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_fresh_replay_v2 as fresh_runner,
+    )
+
+    try:
+        return fresh_runner.validate_audit_closeout_v4(
+            output,
+            expected_file_sha256=expected_file_sha256,
+        )
+    except fresh_runner.FreshReplayV2Error as exc:
+        raise ManualAcceptanceHarnessError(str(exc)) from exc
+
+
 def _case_manifests_equal(
     left: list[dict[str, Any]],
     right: list[dict[str, Any]],
@@ -1424,7 +1450,137 @@ def finalize_audit_closeout_binding_v3(
     return final
 
 
+def finalize_audit_closeout_binding_v4(
+    output: Path,
+    *,
+    primary_database: str,
+    replay_database: str,
+    port: int = DEFAULT_PORT,
+    audit_binding: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Bind canonical audit bytes and all evidence once without replacing v3."""
+
+    from scripts import (  # noqa: WPS433
+        run_phase45_scv2_sv1b_fresh_replay_v2 as fresh_runner,
+    )
+
+    output = output.resolve()
+    sv1b.validate_owned_output_root(
+        output,
+        primary_database=primary_database,
+        replay_database=replay_database,
+    )
+    v3_path = output / AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    final_path = output / AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME
+    if final_path.exists():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_binding_v4_already_exists"
+        )
+    if not v3_path.is_file():
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_binding_v3_missing"
+        )
+    v3 = sv1b.read_json(v3_path)
+    canonical_audit = _validated_audit_v4_binding(output)
+    if audit_binding is not None and dict(audit_binding) != canonical_audit:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_v4_recovery_drift"
+        )
+    existing_cases = sv1b.read_json(
+        output / "manual-acceptance/case-manifest-private.json"
+    )
+    case_fingerprint = sv1b.sha256_payload(existing_cases)
+    if case_fingerprint != EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_case_manifest_mismatch"
+        )
+    regenerated_cases, phase_delta_composition = _generate_cases(
+        output,
+        primary_database=primary_database,
+    )
+    if not _case_manifests_equal(regenerated_cases, existing_cases):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_case_regeneration_drift"
+        )
+    relative_sources, proofs = _resolve_proof_sources(
+        output,
+        v3.get("proof_sources"),
+    )
+    current_without_audit = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_sources,
+        proofs=proofs,
+        cases=regenerated_cases,
+    )
+    immutable_v3 = dict(v3["bindings"])
+    immutable_current = dict(current_without_audit)
+    for value in (immutable_v3, immutable_current):
+        value.pop("git_head", None)
+        value.pop("binding_fingerprint", None)
+        value.pop("audit_validation", None)
+    bindings = _build_bindings(
+        primary_database=primary_database,
+        replay_database=replay_database,
+        relative_proof_sources=relative_sources,
+        proofs=proofs,
+        cases=regenerated_cases,
+        audit_binding=canonical_audit,
+    )
+    checks = {
+        "binding_v3_passed": v3.get("passed") is True,
+        "binding_v3_file_unchanged": (
+            sv1b.sha256_file(v3_path)
+            == fresh_runner.EXPECTED_FINAL_BINDING_V3_FILE_SHA256
+        ),
+        "case_manifest_exact": (
+            case_fingerprint == EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT
+        ),
+        "case_manifest_regenerated_equal": True,
+        "protected_bindings_unchanged": (
+            immutable_v3 == immutable_current
+        ),
+        "canonical_audit_validation_bound": (
+            bindings["audit_validation"] == canonical_audit
+        ),
+        "new_git_head_bound": bindings["git_head"] == _git_head(),
+    }
+    final = dict(v3)
+    final.update(
+        {
+            "proof_version": (
+                "sv1b_manual_acceptance_audit_closeout_binding_v4"
+            ),
+            "binding_version": (
+                "sv1b_manual_acceptance_audit_closeout_final_binding_v4"
+            ),
+            "supersedes_final_binding_fingerprint": v3["bindings"][
+                "binding_fingerprint"
+            ],
+            "supersedes_final_binding_file_sha256": sv1b.sha256_file(
+                v3_path
+            ),
+            "audit_closeout_validation": canonical_audit,
+            "phase_delta_composition": phase_delta_composition,
+            "proof_sources": relative_sources,
+            "bindings": bindings,
+            "localhost_url": f"http://127.0.0.1:{int(port)}",
+            "checks": checks,
+            "passed": all(checks.values()),
+        }
+    )
+    if final["passed"] is not True:
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_audit_closeout_binding_v4_failed"
+        )
+    fresh_runner.write_json_exclusive_atomic(final_path, final)
+    return final
+
+
 def _active_harness_proof_path(output: Path) -> Path:
+    audit_v4 = output / AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME
+    if audit_v4.is_file():
+        return audit_v4
     audit_v3 = output / AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
     if audit_v3.is_file():
         return audit_v3
@@ -1499,9 +1655,21 @@ def _current_bindings(
         output, proof.get("proof_sources")
     )
     audit_binding = (
-        _validated_audit_v3_binding(output)
-        if active_path.name == AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
-        else None
+        _validated_audit_v4_binding(
+            output,
+            expected_file_sha256=str(
+                proof.get("audit_closeout_validation", {}).get(
+                    "proof_file_sha256"
+                )
+                or ""
+            ),
+        )
+        if active_path.name == AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME
+        else (
+            _validated_audit_v3_binding(output)
+            if active_path.name == AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+            else None
+        )
     )
     current = _build_bindings(
         primary_database=primary_database,
@@ -1614,6 +1782,15 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
+        refreshed = binding_loader(
+            output,
+            primary_database=primary_database,
+            replay_database=replay_database,
+        )
+        if refreshed != bindings:
+            raise ManualAcceptanceHarnessError(
+                "manual_acceptance_reload_binding_drift"
+            )
         return _HTML
 
     @app.get("/api/cases")
