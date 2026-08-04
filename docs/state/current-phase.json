@@ -74,13 +74,21 @@
       "id": "phase_delta_40_case_harness_and_browser_prevalidation",
       "result": "passed_pending_owner_manual_acceptance",
       "fingerprint": "4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef"
+    },
+    {
+      "id": "owner_manual_acceptance_v4_result",
+      "result": "submitted_33_pass_6_fail_1_pending_bounded_remediation_required",
+      "fingerprint": "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9"
     }
   ],
   "active_blocker": {
     "code": "pending_user_manual_acceptance",
     "scope": "owner manual acceptance of the exact Git-bound 40-case localhost harness",
-    "nonblocking_localization_item": "enpera",
-    "resolution": "Owner manual acceptance remains the only unresolved checkpoint. The active versioned binding must match the current Git and protected evidence before strict dashboard use; if either changes, automation must fail closed until a separately authorized non-overwriting binding is created. No automated prevalidation may substitute for the owner's decision."
+    "nonblocking_localization_items": [
+      "enpera",
+      "two owner-rejected opaque symbol translations using canonical fallback"
+    ],
+    "resolution": "The v4 owner result is preserved as historical acceptance evidence and authorized one bounded remediation. Owner manual acceptance of the new v5 40-case harness remains unresolved; automated prevalidation cannot substitute for the owner's decision."
   },
   "owner_decisions": [
     {
@@ -102,13 +110,17 @@
     {
       "id": "owner_reconciled_sv1b_canonical_phase_membership_and_binding_v4_20260728",
       "decision": "Accept the canonical accepted-vs-pre-provider stable-fingerprint difference as the authoritative 7,271-record phase-acquired membership, supersede the historical candidate/provenance-derived 7,257 set, and permit exactly one non-overwriting final binding v4 after the bounded evidence-contract fixes pass."
+    },
+    {
+      "id": "owner_authorized_sv1b_manual_acceptance_remediation_v5_20260804",
+      "decision": "Preserve the submitted v4 result, correct the A11 media binding, enforce conservative creator identity evidence, revoke two opaque symbol localizations to canonical fallback, and permit exactly one non-overwriting final binding v5 before a new owner review."
     }
   ],
   "authorized_operations": [
     "read-only verification of protected package, database, graph, search, localization, and case evidence",
     "strict localhost dashboard startup against the active versioned binding",
     "owner acceptance result export to the private governed result path",
-    "exactly one versioned non-overwriting audit-closeout final binding v4 in the currently authorized closeout"
+    "exactly one versioned non-overwriting audit-closeout final binding v5 in the currently authorized closeout"
   ],
   "forbidden_operations": [
     "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
@@ -145,6 +157,7 @@
     "fresh_replay_search_workload_fingerprint": "5207da2426d791c6872f46b1c566d8094b4eb133f603fd577a7fbe7ca9d2efeb",
     "fresh_replay_search_logical_result_fingerprint": "244d1451b4779e1bc65cccea582af90143fb7c75e1be3557b0d791af5ac6a7b8",
     "manual_acceptance_case_manifest_fingerprint": "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5",
+    "historical_v4_owner_result_fingerprint": "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9",
     "canonical_phase_acquired_membership_count": 7271,
     "canonical_phase_acquired_membership_fingerprint": "47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1",
     "canonical_phase_acquired_missing_count": 0,
@@ -190,5 +203,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-07-28T21:39:37+08:00"
+  "updated_at": "2026-08-04T23:00:45+08:00"
 }

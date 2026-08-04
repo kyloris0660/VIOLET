@@ -183,6 +183,15 @@ def _cases(category: str, count: int, prefix: str) -> list[dict]:
                 available_changed_component_count=8,
             )
             actual["lifecycle_correct"] = True
+            actual.update(
+                identity_aliases=[f"creator-{index}"],
+                identity_union_created=False,
+                conservative_independence_preserved=True,
+                identity_union_basis="insufficient_multiple_strong_aliases",
+                stable_identity_anchor_present=True,
+                media_count_used_as_identity_evidence=False,
+                string_similarity_used_as_identity_evidence=False,
+            )
         elif category == "shared_name_cannot_link":
             provenance.update(
                 phase_delta="newly_acquired_alias_or_graph_edge",
@@ -220,6 +229,16 @@ def _patch_case_builders(monkeypatch, *, metadata_count: int = 12) -> None:
     monkeypatch.setattr(harness, "_shared_name_cases", lambda _session, _output: _cases("shared_name_cannot_link", 6, "C"))
     monkeypatch.setattr(harness, "_localization_cases", lambda _session, _output: _cases("ai_tag_localization", 8, "D"))
     monkeypatch.setattr(harness, "_search_cases", lambda _session, _output: _cases("search_and_negative", 6, "E"))
+    monkeypatch.setattr(
+        harness,
+        "validate_pixiv_case_media_source_bindings",
+        lambda *_args, **_kwargs: {
+            "case_count": 12,
+            "unique_media_count": 12,
+            "binding_membership_fingerprint": "f" * 64,
+            "passed": True,
+        },
+    )
 
 
 def test_build_harness_emits_exact_bound_40_case_pending_user_candidate(tmp_path: Path, monkeypatch) -> None:
@@ -924,6 +943,113 @@ def test_phase_delta_composition_includes_every_manual_pending_localization() ->
     assert composition["manual_localization_review_pending_case_count"] == 1
     assert composition["new_translation_case_count"] == 5
     assert composition["proper_noun_exclusion_display_case_count"] == 2
+
+
+def test_metadata_case_binding_rejects_a10_a11_duplicate_media(
+    monkeypatch,
+) -> None:
+    rows = [
+        {
+            "hash": "same-media",
+            "source_work_id": "100",
+            "source_page_index": 0,
+            "artist_id": "creator-1",
+            "source_binding_fingerprint": "a" * 64,
+        },
+        {
+            "hash": "other-media",
+            "source_work_id": "200",
+            "source_page_index": 0,
+            "artist_id": "creator-2",
+            "source_binding_fingerprint": "b" * 64,
+        },
+    ]
+    monkeypatch.setattr(
+        harness, "_validated_pixiv_metadata_rows", lambda *_args: rows
+    )
+    cases = []
+    for index in range(12):
+        row = rows[index % 2]
+        cases.append(
+            harness._case(
+                f"A{index + 1:02d}",
+                "pixiv_metadata",
+                media_hash=("same-media" if index in {9, 10} else f"m-{index}"),
+                title="metadata",
+                expected_behavior="exact",
+                actual_result={
+                    "work_id": row["source_work_id"],
+                    "page_index": row["source_page_index"],
+                    "creator_stable_id": row["artist_id"],
+                    "source_binding_fingerprint": row[
+                        "source_binding_fingerprint"
+                    ],
+                },
+                provenance={"derived_from_current_proofs": True},
+            )
+        )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="metadata_media_binding_not_one_to_one",
+    ):
+        harness.validate_pixiv_case_media_source_bindings(
+            cases, object(), Path("unused")
+        )
+
+
+def test_metadata_case_binding_rejects_work_page_creator_drift(
+    monkeypatch,
+) -> None:
+    rows = [
+        {
+            "hash": f"media-{index}",
+            "source_work_id": str(100 + index),
+            "source_page_index": index,
+            "artist_id": f"creator-{index}",
+            "source_binding_fingerprint": f"{index:064x}",
+        }
+        for index in range(12)
+    ]
+    monkeypatch.setattr(
+        harness, "_validated_pixiv_metadata_rows", lambda *_args: rows
+    )
+    cases = [
+        harness._case(
+            f"A{index + 1:02d}",
+            "pixiv_metadata",
+            media_hash=row["hash"],
+            title="metadata",
+            expected_behavior="exact",
+            actual_result={
+                "work_id": "wrong" if index == 10 else row["source_work_id"],
+                "page_index": row["source_page_index"],
+                "creator_stable_id": row["artist_id"],
+                "source_binding_fingerprint": row[
+                    "source_binding_fingerprint"
+                ],
+            },
+            provenance={"derived_from_current_proofs": True},
+        )
+        for index, row in enumerate(rows)
+    ]
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="metadata_case_binding_drift",
+    ):
+        harness.validate_pixiv_case_media_source_bindings(
+            cases, object(), Path("unused")
+        )
+
+
+def test_media_content_hash_check_is_exact(tmp_path: Path) -> None:
+    path = tmp_path / "media.bin"
+    path.write_bytes(b"bound media")
+    import hashlib
+
+    assert harness._media_content_hash_matches(
+        path, hashlib.sha256(b"bound media").hexdigest()
+    )
+    assert not harness._media_content_hash_matches(path, "0" * 64)
 
 
 def test_harness_server_is_loopback_only_and_never_embeds_paths() -> None:

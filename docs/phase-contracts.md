@@ -54,7 +54,8 @@ SCV2-SV1B is the current separately governed phase. Its finite provider and
 localization execution are accepted immutable inputs; the single authorized
 fresh Replay v2 and graph/search derivations are complete. The current stop
 permits only read-only audit verification, strict dashboard startup, owner
-result export, and one versioned non-overwriting audit-closeout binding v4.
+result export, and one versioned non-overwriting manual-acceptance remediation
+binding v5. The submitted v4 result remains immutable historical evidence.
 The phase-acquired identity membership is derived only from canonical stable
 key/fingerprint differences between the immutable accepted and pre-provider
 packages: `7,271 / 7,271`, missing `0`, unsupported `0`, fingerprint

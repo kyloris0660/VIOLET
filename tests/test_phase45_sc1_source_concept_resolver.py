@@ -1924,6 +1924,56 @@ def test_llm_cannot_link_blocks_stable_identity_anchor_union():
     assert result.summary["transitive_cannot_violation_count"] == 0
 
 
+def test_artist_same_surface_without_stable_identity_remains_independent():
+    left = _signal(
+        "left",
+        "same artist",
+        role="artist",
+        media_id=1,
+        payload={},
+    )
+    right = _signal(
+        "right",
+        "same artist",
+        role="artist",
+        media_id=1,
+        payload={},
+    )
+    result = resolve_source_concepts([left, right], run_id="sc1-test")
+    assert len(result.concepts) == 2
+    guards = [
+        edge
+        for edge in result.edge_candidates
+        if edge.edge_type == "creator_identity_guard"
+    ]
+    assert guards
+    assert guards[0].union_allowed is False
+
+
+def test_artist_same_provider_stable_id_may_union_different_names():
+    payload = {"stable_creator_id": "creator-42"}
+    left = _signal(
+        "left",
+        "display artist",
+        role="artist",
+        provider="pixiv",
+        payload=payload,
+    )
+    right = _signal(
+        "right",
+        "account_artist",
+        role="artist",
+        provider="pixiv",
+        payload=payload,
+    )
+    result = resolve_source_concepts([left, right], run_id="sc1-test")
+    assert len(result.concepts) == 1
+    assert any(
+        edge.edge_type == "stable_identity_anchor"
+        for edge in result.edge_candidates
+    )
+
+
 def test_llm_budget_block_returns_before_provider_initialization():
     left = _signal("left", "Kamisato Ayaka", trust="weak", status="needs_review", media_id=1, source_record_id=1)
     right = _signal("right", "\u795e\u91cc\u7dbe\u83ef", trust="weak", status="needs_review", media_id=1, source_record_id=1)

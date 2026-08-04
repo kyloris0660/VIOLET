@@ -41,7 +41,8 @@ Replay v2, and passed graph/search plus the 40-case browser prevalidation. The
 failed retry2 Replay remains immutable. The current stop is
 `pending_user_manual_acceptance`; authorization is restricted to read-only
 audit verification, strict dashboard startup, owner result export, and the one
-versioned non-overwriting audit-closeout binding v4. Canonical phase membership
+versioned non-overwriting manual-acceptance remediation binding v5. The v4
+result is preserved as immutable historical evidence. Canonical phase membership
 is `7,271 / 7,271` with missing `0`, unsupported `0`, and fingerprint
 `47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`;
 the former `7,257` candidate/provenance set is historical and superseded. No database

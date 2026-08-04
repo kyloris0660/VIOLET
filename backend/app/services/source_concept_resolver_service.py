@@ -46,6 +46,10 @@ from ..models import (
     Tag,
     blombooru_media_tags,
 )
+from .creator_identity_policy import (
+    creator_identity_union_verdict,
+    stable_creator_identity_key,
+)
 from .source_metadata_registry_service import canonical_source_key, normalize_source_text
 from .source_name_candidate_extraction_service import (
     CandidateDraft,
@@ -1084,6 +1088,7 @@ def build_source_concept_signals(
 
     signals: list[SourceConceptSignalDraft | None] = []
     metadata_rows = db.query(SourceMetadataRecord).all()
+    metadata_row_by_id = {int(row.id): row for row in metadata_rows}
     metadata_record_ref_by_id = {
         int(row.id): _stable_source_record_ref(
             "source_metadata_record",
@@ -1260,6 +1265,11 @@ def build_source_concept_signals(
 
     for row in db.query(SourceNameObservation).all():
         role = role_from_source_role(row.name_role)
+        parent_metadata = (
+            metadata_row_by_id.get(int(row.source_metadata_record_id))
+            if row.source_metadata_record_id is not None
+            else None
+        )
         status = "needs_review" if row.requires_review else source_status_to_concept_status(row.status, default="active")
         trust = "medium"
         if role in {"unknown", "source_title"}:
@@ -1292,7 +1302,16 @@ def build_source_concept_signals(
                 trust_tier=trust,
                 confidence=row.confidence,
                 status=status,
-                evidence_payload={"observation_key": row.observation_key, "source_field": row.source_field},
+                evidence_payload={
+                    "observation_key": row.observation_key,
+                    "source_field": row.source_field,
+                    "stable_creator_id": (
+                        parent_metadata.artist_id
+                        if row.name_role in {"artist", "creator"}
+                        and parent_metadata is not None
+                        else None
+                    ),
+                },
                 created_by_run_id=run_id,
                 signal_suffix=_stable_signal_suffix(
                     "source_name_observation",
@@ -1441,6 +1460,9 @@ def build_source_concept_signals(
                         "provider_record_key": row.provider_record_key,
                         "metadata_kind": row.metadata_kind,
                         "data_type_label": row.data_type_label,
+                        "stable_creator_id": (
+                            row.artist_id if role == "artist" else None
+                        ),
                     },
                     source_run_id=row.provider_run_id,
                     created_by_run_id=run_id,
@@ -1971,7 +1993,13 @@ def signal_identity_anchor(
             anchor = _concept_key_from_parts(role, surface, "work", context)
         else:
             anchor = _concept_key_from_parts(role, surface)
-    elif role in {"artist", "work"}:
+    elif role == "artist":
+        stable_identity = stable_creator_identity_key(signal)
+        if not stable_identity:
+            return None
+        anchor = _concept_key_from_parts(role, stable_identity)
+        surface = stable_identity
+    elif role == "work":
         anchor = _concept_key_from_parts(role, surface)
     else:
         return None
@@ -2188,6 +2216,22 @@ def _pair_edge(
             union_allowed=False,
             payload={"left_role": left.role_hint, "right_role": right.role_hint},
         )
+
+    if "artist" in {left.role_hint, right.role_hint}:
+        creator_verdict = creator_identity_union_verdict(left, right)
+        if creator_verdict["identity_union_allowed"] is not True:
+            return _edge(
+                left,
+                right,
+                edge_type="creator_identity_guard",
+                weight=0.0,
+                evidence_source=block_key,
+                status="needs_review",
+                reason_code="creator_identity_strong_evidence_missing",
+                negative_reason_code="creator_identity_strong_evidence_missing",
+                union_allowed=False,
+                payload=creator_verdict,
+            )
 
     if "unknown" in {left.role_hint, right.role_hint}:
         manual_confirmed = any(

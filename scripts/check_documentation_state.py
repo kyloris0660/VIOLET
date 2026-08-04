@@ -169,7 +169,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         ]
         if (
             len(binding_authorizations) != 1
-            or "binding v4" not in str(binding_authorizations[0])
+            or "binding v5" not in str(binding_authorizations[0])
         ):
             raise DocumentationStateError(
                 "pending_user_active_binding_authorization_invalid"
@@ -376,7 +376,6 @@ def render_handoff(state: dict[str, Any]) -> str:
             f"- Failed retry2 Replay: `{strategy['failed_replay_disposition']}`; no in-place repair.",
             f"- Package strategy: `{strategy['package_schema_version']}` with stable source keys/fingerprints only; public state boundary: `{state['public_state_boundary']}`.",
             f"- Fresh Replay creation limit: `{strategy['fresh_replay_database_creation_limit']}`; external-call budget: `{strategy['external_call_budget']}`.",
-            "- `enpera` remains one governed localization manual case and is not a Replay blocker.",
             "",
             "## Allowed / Forbidden",
             "",

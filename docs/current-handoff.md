@@ -27,19 +27,19 @@
 - `fresh_replay_v2_graph_recovery_and_logical_comparison`: `passed_with_failed_checkpoints_preserved` — `60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089`.
 - `fresh_replay_v2_search_lifecycle_and_and_validation`: `passed_with_physical_history_counts_diagnostic_only` — `8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a`.
 - `phase_delta_40_case_harness_and_browser_prevalidation`: `passed_pending_owner_manual_acceptance` — `4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef`.
+- `owner_manual_acceptance_v4_result`: `submitted_33_pass_6_fail_1_pending_bounded_remediation_required` — `6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9`.
 
 ## Current Blocker And Owner Decision
 
 - Blocker: `pending_user_manual_acceptance` (owner manual acceptance of the exact Git-bound 40-case localhost harness).
-- Resolution: Owner manual acceptance remains the only unresolved checkpoint. The active versioned binding must match the current Git and protected evidence before strict dashboard use; if either changes, automation must fail closed until a separately authorized non-overwriting binding is created. No automated prevalidation may substitute for the owner's decision.
+- Resolution: The v4 owner result is preserved as historical acceptance evidence and authorized one bounded remediation. Owner manual acceptance of the new v5 40-case harness remains unresolved; automated prevalidation cannot substitute for the owner's decision.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only; public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
-- `enpera` remains one governed localization manual case and is not a Replay blocker.
 
 ## Allowed / Forbidden
 
-- Allowed: read-only verification of protected package, database, graph, search, localization, and case evidence; strict localhost dashboard startup against the active versioned binding; owner acceptance result export to the private governed result path; exactly one versioned non-overwriting audit-closeout final binding v4 in the currently authorized closeout.
+- Allowed: read-only verification of protected package, database, graph, search, localization, and case evidence; strict localhost dashboard startup against the active versioned binding; owner acceptance result export to the private governed result path; exactly one versioned non-overwriting audit-closeout final binding v5 in the currently authorized closeout.
 - Forbidden: mutation of failed retry2 Replay; provider/Pixiv/gallery-dl/LLM/media calls; Primary/acquisition/localization replay.
 - Forbidden: production, FL1, Provider-2, Entity/truth/media_tags promotion, merge, Ready transition, reviewer trigger, main push, or force-push.
 
@@ -57,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-07-28T21:39:37+08:00`.
+Updated: `2026-08-04T23:00:45+08:00`.

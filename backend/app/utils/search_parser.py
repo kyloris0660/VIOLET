@@ -12,6 +12,10 @@ from ..enums import ContentClassEnum
 from ..models import (Album, Media, RatingEnum, Tag, TagCategoryEnum,
                       blombooru_album_media, blombooru_media_tags)
 from ..services.source_metadata_registry_service import canonical_source_key
+from ..services.tag_localization_policy import (
+    is_display_alias_manually_revoked,
+    is_translation_effectively_accepted,
+)
 
 _TAG_ZH_REVERSE = None
 _DB_ALIAS_CACHE = None
@@ -31,6 +35,8 @@ def _translation_alias_trusted_for_search(row) -> bool:
     source = str(value("source") or "").casefold()
     status = str(value("status") or "").casefold()
     needs_review = bool(value("needs_review"))
+    if not is_translation_effectively_accepted(value("canonical_name")):
+        return False
     if category not in PROPER_NOUN_CATEGORIES:
         return True
     if source in TRUSTED_PROPER_NOUN_TRANSLATION_SOURCES:
@@ -165,6 +171,8 @@ def _load_db_alias_cache(db: Session | None = None):
 def resolve_zh_alias(tag_name: str, db: Session | None = None) -> str:
     """Resolve a Chinese tag alias to its canonical English tag name.
     Priority: DB translations > static dict > original name."""
+    if is_display_alias_manually_revoked(tag_name):
+        return tag_name
     db_cache = _load_db_alias_cache(db)
     targets: set[str] = set()
     exact_targets = db_cache.get(tag_name, ())
