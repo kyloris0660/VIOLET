@@ -39,7 +39,7 @@
 
 ## Allowed / Forbidden
 
-- Allowed: read-only verification of protected package, database, graph, search, localization, and case evidence; strict localhost dashboard startup against the active versioned binding; owner acceptance result export to the private governed result path; exactly one versioned non-overwriting audit-closeout final binding v5 in the currently authorized closeout.
+- Allowed: read-only verification of protected package, database, graph, search, localization, and case evidence; strict localhost dashboard startup against the active versioned binding; owner acceptance result export to the private governed result path; exactly one successful versioned non-overwriting audit-closeout final binding v5 in the currently authorized closeout; preserve the failed dashboard-startup attempt as inactive evidence.
 - Forbidden: mutation of failed retry2 Replay; provider/Pixiv/gallery-dl/LLM/media calls; Primary/acquisition/localization replay.
 - Forbidden: production, FL1, Provider-2, Entity/truth/media_tags promotion, merge, Ready transition, reviewer trigger, main push, or force-push.
 
@@ -57,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-08-04T23:00:45+08:00`.
+Updated: `2026-08-04T23:14:27+08:00`.

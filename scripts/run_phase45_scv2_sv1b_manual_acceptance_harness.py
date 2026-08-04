@@ -2633,6 +2633,26 @@ def _media_content_hash_matches(path: Path, expected_hash: str) -> bool:
     return digest.hexdigest() == expected
 
 
+def _validated_media_display_path(
+    row: Mapping[str, Any], storage_root: Path
+) -> Path | None:
+    """Bind the original bytes to the DB hash before using a derived thumbnail."""
+
+    original = _resolve_accepted_media_path(
+        str(row.get("path") or ""), storage_root
+    )
+    if original is None:
+        return None
+    if not _media_content_hash_matches(original, str(row.get("hash") or "")):
+        raise ManualAcceptanceHarnessError(
+            "manual_acceptance_media_content_hash_mismatch"
+        )
+    thumbnail = _resolve_accepted_media_path(
+        str(row.get("thumbnail_path") or ""), storage_root
+    )
+    return thumbnail or original
+
+
 def create_app(
     output: Path,
     *,
@@ -2671,19 +2691,9 @@ def create_app(
         label = _safe_media_label(str(row["hash"]))
         if label not in allowed_labels:
             continue
-        for value in (row.get("thumbnail_path"), row.get("path")):
-            if not value:
-                continue
-            path = _resolve_accepted_media_path(
-                str(value), storage_root
-            )
-            if path is not None:
-                if not _media_content_hash_matches(path, str(row["hash"])):
-                    raise ManualAcceptanceHarnessError(
-                        "manual_acceptance_media_content_hash_mismatch"
-                    )
-                media_paths[label] = path
-                break
+        path = _validated_media_display_path(row, storage_root)
+        if path is not None:
+            media_paths[label] = path
     missing_media = sorted(allowed_labels - set(media_paths))
     if missing_media:
         raise ManualAcceptanceHarnessError(

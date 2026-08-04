@@ -120,7 +120,7 @@
     "read-only verification of protected package, database, graph, search, localization, and case evidence",
     "strict localhost dashboard startup against the active versioned binding",
     "owner acceptance result export to the private governed result path",
-    "exactly one versioned non-overwriting audit-closeout final binding v5 in the currently authorized closeout"
+    "exactly one successful versioned non-overwriting audit-closeout final binding v5 in the currently authorized closeout; preserve the failed dashboard-startup attempt as inactive evidence"
   ],
   "forbidden_operations": [
     "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
@@ -203,5 +203,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-08-04T23:00:45+08:00"
+  "updated_at": "2026-08-04T23:14:27+08:00"
 }

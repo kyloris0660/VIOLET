@@ -1052,6 +1052,47 @@ def test_media_content_hash_check_is_exact(tmp_path: Path) -> None:
     assert not harness._media_content_hash_matches(path, "0" * 64)
 
 
+def test_media_binding_hashes_original_before_serving_thumbnail(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+
+    storage = tmp_path / "storage"
+    original = storage / "media" / "original" / "case.jpg"
+    thumbnail = storage / "media" / "thumbnails" / "case.jpg"
+    original.parent.mkdir(parents=True)
+    thumbnail.parent.mkdir(parents=True)
+    original.write_bytes(b"original media bytes")
+    thumbnail.write_bytes(b"derived thumbnail bytes")
+    row = {
+        "hash": hashlib.sha256(b"original media bytes").hexdigest(),
+        "path": "media/original/case.jpg",
+        "thumbnail_path": "media/thumbnails/case.jpg",
+    }
+    assert harness._validated_media_display_path(row, storage) == thumbnail
+
+
+def test_media_binding_rejects_original_content_hash_drift(
+    tmp_path: Path,
+) -> None:
+    storage = tmp_path / "storage"
+    original = storage / "media" / "original" / "case.jpg"
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"drifted media bytes")
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="media_content_hash_mismatch",
+    ):
+        harness._validated_media_display_path(
+            {
+                "hash": "0" * 64,
+                "path": "media/original/case.jpg",
+                "thumbnail_path": None,
+            },
+            storage,
+        )
+
+
 def test_harness_server_is_loopback_only_and_never_embeds_paths() -> None:
     source = Path(harness.__file__).read_text(encoding="utf-8")
     assert 'uvicorn.run(app, host="127.0.0.1"' in source
