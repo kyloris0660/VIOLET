@@ -83,12 +83,12 @@
   ],
   "active_blocker": {
     "code": "pending_user_manual_acceptance",
-    "scope": "owner manual acceptance of the exact Git-bound 40-case localhost harness",
+    "scope": "owner manual acceptance of the exact Git-bound 40-case static localhost review packet",
     "nonblocking_localization_items": [
       "enpera",
       "two owner-rejected opaque symbol translations using canonical fallback"
     ],
-    "resolution": "The v4 owner result is preserved as historical acceptance evidence and authorized one bounded remediation. Owner manual acceptance of the new v5 40-case harness remains unresolved; automated prevalidation cannot substitute for the owner's decision."
+    "resolution": "The v4 owner result and v5-r2 semantic evidence are preserved as historical evidence. The unusable dynamic presentation is superseded only after one non-overwriting static v5-r3 packet is bound to the resulting Git HEAD; owner manual acceptance remains unresolved and automated prevalidation cannot substitute for the owner's decision."
   },
   "owner_decisions": [
     {
@@ -114,18 +114,22 @@
     {
       "id": "owner_authorized_sv1b_manual_acceptance_remediation_v5_20260804",
       "decision": "Preserve the submitted v4 result, correct the A11 media binding, enforce conservative creator identity evidence, revoke two opaque symbol localizations to canonical fallback, and permit exactly one non-overwriting final binding v5 before a new owner review."
+    },
+    {
+      "id": "owner_authorized_sv1b_static_manual_acceptance_packet_v5_r3_20260805",
+      "decision": "Preserve v4, v5, and v5-r2 evidence; replace only the unusable dynamic presentation with exactly one non-overwriting Git-bound v5-r3 static review packet assembled from verified v5-r2 cases and already-local media, with no database, provider, LLM, download, or production access."
     }
   ],
   "authorized_operations": [
-    "read-only verification of protected package, database, graph, search, localization, and case evidence",
-    "strict localhost dashboard startup against the active versioned binding",
-    "owner acceptance result export to the private governed result path",
-    "exactly one successful versioned non-overwriting audit-closeout final binding v5 in the currently authorized closeout; preserve the failed dashboard-startup attempt as inactive evidence"
+    "read-only file and checksum verification of protected v5-r2 case, binding, audit, and already-local presentation-media evidence",
+    "exactly one versioned non-overwriting final binding v5-r3 for a Git-bound static review packet generated without database or external-route access",
+    "strict localhost static packet startup and owner acceptance result export to the new private governed result path"
   ],
   "forbidden_operations": [
     "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
-    "Pixiv, gallery-dl, provider, LLM, media, or thumbnail request",
-    "Primary recreation or acquisition/localization replay",
+    "database access or mutation, replay import or derivation, graph/search execution, or production access",
+    "Pixiv, gallery-dl, provider, LLM, external media, or thumbnail request",
+    "Primary recreation or acquisition/localization replay; owner decisions or prior v4/v5/v5-r2 evidence overwrite",
     "production, FL1, Provider-2, Entity, EntityAlias, confirmed assignment, truth promotion, or provider-derived media_tags write",
     "merge, Ready transition, reviewer trigger, main push, or force-push"
   ],
@@ -156,7 +160,9 @@
     "fresh_replay_search_proof_fingerprint": "8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a",
     "fresh_replay_search_workload_fingerprint": "5207da2426d791c6872f46b1c566d8094b4eb133f603fd577a7fbe7ca9d2efeb",
     "fresh_replay_search_logical_result_fingerprint": "244d1451b4779e1bc65cccea582af90143fb7c75e1be3557b0d791af5ac6a7b8",
-    "manual_acceptance_case_manifest_fingerprint": "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5",
+    "manual_acceptance_case_manifest_fingerprint": "1513bf40b9125a374c15c10741822f2351a3f70a4f26e83e0d5bf027929cf0a5",
+    "manual_acceptance_case_manifest_file_sha256": "b37eb60dc90418959a6b3a7be188dedc29eb29ebf8c85c5303dd8665bdfdad5c",
+    "historical_v4_case_manifest_fingerprint": "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5",
     "historical_v4_owner_result_fingerprint": "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9",
     "canonical_phase_acquired_membership_count": 7271,
     "canonical_phase_acquired_membership_fingerprint": "47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1",
@@ -176,7 +182,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "owner_manual_acceptance_of_git_bound_40_case_harness",
+  "next_required_checkpoint": "owner_manual_acceptance_of_git_bound_40_case_static_review_packet",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -203,5 +209,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-08-04T23:14:27+08:00"
+  "updated_at": "2026-08-05T18:00:00+08:00"
 }

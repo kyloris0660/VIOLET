@@ -69,7 +69,7 @@ def test_current_phase_schema_and_status_fields_are_consistent() -> None:
     assert protected["superseded_candidate_provenance_membership_count"] == 7257
     assert protected["production_library_consumed_or_modified"] is False
     assert any(
-        "binding v5" in operation
+        "final binding v5-r3" in operation
         for operation in state["authorized_operations"]
     )
     assert not any(
@@ -92,7 +92,7 @@ def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
         for operation in state["authorized_operations"]
     )
     assert "binding v2" not in rendered
-    assert "binding v5" in rendered
+    assert "final binding v5-r3" in rendered
 
 
 def test_handoff_writer_atomically_renders_current_state(
@@ -258,7 +258,7 @@ def test_completed_future_command_in_blocker_resolution_fails_closed() -> None:
         documentation_state.validate_state(state)
 
 
-def test_pending_user_requires_single_active_binding_v5_authorization() -> None:
+def test_pending_user_requires_single_versioned_active_binding_authorization() -> None:
     state = copy.deepcopy(_state())
     state["authorized_operations"][-1] = (
         "exactly one versioned non-overwriting audit-closeout final binding v3"

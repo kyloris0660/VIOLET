@@ -31,21 +31,21 @@
 
 ## Current Blocker And Owner Decision
 
-- Blocker: `pending_user_manual_acceptance` (owner manual acceptance of the exact Git-bound 40-case localhost harness).
-- Resolution: The v4 owner result is preserved as historical acceptance evidence and authorized one bounded remediation. Owner manual acceptance of the new v5 40-case harness remains unresolved; automated prevalidation cannot substitute for the owner's decision.
+- Blocker: `pending_user_manual_acceptance` (owner manual acceptance of the exact Git-bound 40-case static localhost review packet).
+- Resolution: The v4 owner result and v5-r2 semantic evidence are preserved as historical evidence. The unusable dynamic presentation is superseded only after one non-overwriting static v5-r3 packet is bound to the resulting Git HEAD; owner manual acceptance remains unresolved and automated prevalidation cannot substitute for the owner's decision.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
 - Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only; public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`.
 - Fresh Replay creation limit: `1`; external-call budget: `0`.
 
 ## Allowed / Forbidden
 
-- Allowed: read-only verification of protected package, database, graph, search, localization, and case evidence; strict localhost dashboard startup against the active versioned binding; owner acceptance result export to the private governed result path; exactly one successful versioned non-overwriting audit-closeout final binding v5 in the currently authorized closeout; preserve the failed dashboard-startup attempt as inactive evidence.
+- Allowed: read-only file and checksum verification of protected v5-r2 case, binding, audit, and already-local presentation-media evidence; exactly one versioned non-overwriting final binding v5-r3 for a Git-bound static review packet generated without database or external-route access; strict localhost static packet startup and owner acceptance result export to the new private governed result path.
 - Forbidden: mutation of failed retry2 Replay; provider/Pixiv/gallery-dl/LLM/media calls; Primary/acquisition/localization replay.
 - Forbidden: production, FL1, Provider-2, Entity/truth/media_tags promotion, merge, Ready transition, reviewer trigger, main push, or force-push.
 
 ## Next Action
 
-- Required checkpoint: `owner_manual_acceptance_of_git_bound_40_case_harness`.
+- Required checkpoint: `owner_manual_acceptance_of_git_bound_40_case_static_review_packet`.
 
 ## Durable Links
 
@@ -57,4 +57,4 @@
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-08-04T23:14:27+08:00`.
+Updated: `2026-08-05T18:00:00+08:00`.

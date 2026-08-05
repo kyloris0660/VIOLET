@@ -165,12 +165,22 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         binding_authorizations = [
             operation
             for operation in authorized
-            if "audit-closeout final binding" in str(operation)
+            if re.search(
+                r"\bfinal binding v\d+(?:-r\d+)?\b",
+                str(operation),
+                re.IGNORECASE,
+            )
         ]
-        if (
-            len(binding_authorizations) != 1
-            or "binding v5" not in str(binding_authorizations[0])
-        ):
+        binding_versions = (
+            re.findall(
+                r"\bfinal binding (v\d+(?:-r\d+)?)\b",
+                str(binding_authorizations[0]),
+                re.IGNORECASE,
+            )
+            if len(binding_authorizations) == 1
+            else []
+        )
+        if len(binding_authorizations) != 1 or len(binding_versions) != 1:
             raise DocumentationStateError(
                 "pending_user_active_binding_authorization_invalid"
             )
