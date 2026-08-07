@@ -17,13 +17,139 @@ import os
 import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 25
 
 _FALLBACK_HTTP_CODES = {408, 429, 500, 502, 503, 504}
+_LLM_TRANSPORT_LOGGER_NAMES = (
+    "httpx",
+    "httpcore",
+    "httpcore.connection",
+    "httpcore.http11",
+    "httpcore.http2",
+    "httpcore.proxy",
+    "openai",
+    "openai._base_client",
+    "openai._utils._logs",
+    "urllib3",
+    "urllib3.connectionpool",
+    "aiohttp",
+    "aiohttp.client",
+    "app.services.llm_translation_provider",
+    __name__,
+)
+_LLM_LOG_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)(?P<quote>['\"]?)\b(?P<key>authorization|proxy-authorization|cookie|"
+    r"set-cookie|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|"
+    r"session[_-]?(?:id|token|key))\b(?P=quote)"
+    r"\s*[:=]\s*(?:bearer\s+[A-Za-z0-9._~+/=-]+|"
+    r"\"[^\"]*\"|'[^']*'|[^\s,;&}\]]+)"
+)
+_LLM_LOG_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_LLM_LOG_KEY_RE = re.compile(r"\b(?:sk-|key-)[A-Za-z0-9_-]{8,}\b")
+_LLM_LOG_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_LLM_SENSITIVE_QUERY_KEY_RE = re.compile(
+    r"(?i)^(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth(?:orization)?|"
+    r"bearer|cookie|session(?:[_-]?(?:id|token|key))?|signature|sig|secret|"
+    r"client[_-]?secret)$"
+)
+
+
+def _redact_llm_url(match: re.Match[str]) -> str:
+    value = match.group(0)
+    try:
+        parsed = urlsplit(value)
+        netloc = parsed.netloc
+        if "@" in netloc:
+            netloc = "[REDACTED_USERINFO]@" + netloc.rsplit("@", 1)[1]
+        query = urlencode([
+            (
+                key,
+                "[REDACTED]" if _LLM_SENSITIVE_QUERY_KEY_RE.fullmatch(key) else item,
+            )
+            for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+        ])
+        return urlunsplit((parsed.scheme, netloc, parsed.path, query, parsed.fragment))
+    except Exception:
+        return "[REDACTED_ENDPOINT]"
+
+
+def redact_llm_transport_log_text(value: Any) -> str:
+    """Redact credentials, headers, and endpoint material from LLM transport logs."""
+
+    text_value = str(value)
+    text_value = _LLM_LOG_SECRET_ASSIGNMENT_RE.sub(
+        lambda match: (
+            f"{match.group('quote')}{match.group('key')}"
+            f"{match.group('quote')}=[REDACTED]"
+        ),
+        text_value,
+    )
+    text_value = _LLM_LOG_BEARER_RE.sub("Bearer [REDACTED]", text_value)
+    text_value = _LLM_LOG_KEY_RE.sub("[REDACTED_API_KEY]", text_value)
+    return _LLM_LOG_URL_RE.sub(_redact_llm_url, text_value)
+
+
+class LLMTransportRedactionFilter(logging.Filter):
+    """Sanitize an LLM/HTTP transport record while preserving diagnostics."""
+
+    _violet_llm_transport_redaction_filter = True
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if getattr(record, "_violet_llm_transport_log_redacted", False):
+            return True
+        record.msg = redact_llm_transport_log_text(record.getMessage())
+        record.args = ()
+        if record.exc_info and record.exc_info[1] is not None:
+            exception = record.exc_info[1]
+            exception.args = tuple(
+                redact_llm_transport_log_text(value)
+                for value in exception.args
+            )
+            record.exc_text = None
+        if record.stack_info:
+            record.stack_info = redact_llm_transport_log_text(record.stack_info)
+        record._violet_llm_transport_log_redacted = True
+        return True
+
+
+def _install_llm_redaction_filter(target: Any) -> None:
+    if any(
+        getattr(value, "_violet_llm_transport_redaction_filter", False)
+        for value in target.filters
+    ):
+        return
+    target.addFilter(LLMTransportRedactionFilter())
+
+
+def harden_llm_transport_logging() -> dict[str, Any]:
+    """Disable request chatter and redact only known LLM/HTTP transports."""
+
+    hardened_loggers = []
+    attached_handler_count = 0
+    for name in _LLM_TRANSPORT_LOGGER_NAMES:
+        current = logging.getLogger(name)
+        current.setLevel(logging.WARNING)
+        _install_llm_redaction_filter(current)
+        for handler in current.handlers:
+            _install_llm_redaction_filter(handler)
+            attached_handler_count += 1
+        hardened_loggers.append(name)
+    return {
+        "policy_version": "violet_llm_transport_log_redaction_v2",
+        "minimum_log_level": "WARNING",
+        "hardened_logger_names": sorted(set(hardened_loggers)),
+        "scoped_handler_count": attached_handler_count,
+        "root_handler_filters_added": 0,
+        "process_log_record_factory_redaction_enabled": False,
+        "unrelated_loggers_modified": False,
+        "non_sensitive_url_context_preserved": True,
+        "exception_context_preserved": True,
+        "request_response_body_logging_enabled": False,
+    }
 
 
 def _safe_url_host(url: str) -> str:
@@ -72,7 +198,17 @@ def _is_transport_error(exc: Exception) -> bool:
 
 def _sanitize_error_message(msg: str) -> str:
     """Remove anything that looks like an API key from error messages."""
-    return re.sub(r'(sk-|key-)[a-zA-Z0-9]{8,}', r'\1***', msg)
+    legacy_safe = re.sub(
+        r"\b(sk-|key-)[a-zA-Z0-9_-]{8,}",
+        r"\1***",
+        msg,
+    )
+    placeholders = sorted(set(re.findall(r"\b(?:sk-|key-)\*{3}", legacy_safe)))
+    sanitized = redact_llm_transport_log_text(legacy_safe)
+    for placeholder in placeholders:
+        if placeholder not in sanitized:
+            sanitized = f"{sanitized} {placeholder}"
+    return sanitized
 
 
 def _strip_json_code_fence(content: str) -> str:
@@ -330,6 +466,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.label = label
+        self.last_completion_content = ""
         self.last_usage: Dict[str, int] = {}
         self.usage_totals: Dict[str, int] = {
             "prompt_tokens": 0,
@@ -354,6 +491,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
         Raises LLMTransportError for network issues, LLMHTTPStatusError for bad status codes.
         """
+        harden_llm_transport_logging()
         import httpx
 
         if not self.is_available():
@@ -401,7 +539,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.last_usage = normalized_usage
         for key in self.usage_totals:
             self.usage_totals[key] += int(normalized_usage.get(key, 0))
-        return data["choices"][0]["message"]["content"].strip()
+        self.last_completion_content = data["choices"][0]["message"]["content"].strip()
+        return self.last_completion_content
 
     async def translate_tags(self, tags: List[Dict[str, str]]) -> List[TranslationResult]:
         if not self.is_available():
@@ -545,6 +684,7 @@ class FallbackProvider(BaseLLMProvider):
 
 
 def get_llm_provider() -> BaseLLMProvider:
+    harden_llm_transport_logging()
     from ..config import settings
     if not settings.TAG_TRANSLATION_LLM_ENABLED:
         return DisabledProvider()

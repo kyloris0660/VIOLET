@@ -25,6 +25,7 @@ from ..models import (
     SourceSearchableNameAssertion,
     SourceTagObservation,
     Tag,
+    TagTranslation,
 )
 from .source_concept_search_service import (
     list_media_source_concepts,
@@ -180,7 +181,40 @@ def _tag_names_for_source_keys(db: Session | None, keys: set[str]) -> set[str]:
     if not keys or db is None:
         return set()
 
-    conditions = [Tag.name.in_(keys)]
+    tag_key_cache_name = "source_soft_search_tag_names_by_canonical_key_v1"
+    if tag_key_cache_name not in db.info:
+        tag_names_by_key: dict[str, set[str]] = {}
+        for tag_name, in db.query(Tag.name).all():
+            key = canonical_source_key(tag_name)
+            if key:
+                tag_names_by_key.setdefault(key, set()).add(str(tag_name))
+        db.info[tag_key_cache_name] = tag_names_by_key
+    canonical_tag_names: set[str] = set()
+    for key in keys:
+        canonical_tag_names.update(db.info[tag_key_cache_name].get(key, set()))
+
+    cache_key = "source_soft_search_translation_alias_map_v1"
+    translated_names: set[str] = set()
+    if cache_key not in db.info:
+        from ..utils.search_parser import _translation_alias_map
+
+        rows = (
+            db.query(TagTranslation)
+            .filter(TagTranslation.language == "zh-CN", TagTranslation.status != "rejected")
+            .all()
+        )
+        alias_map = _translation_alias_map(rows)
+        by_key: dict[str, set[str]] = {}
+        for alias, canonical_names in alias_map.items():
+            alias_key = canonical_source_key(alias)
+            if alias_key:
+                by_key.setdefault(alias_key, set()).update(canonical_names)
+        db.info[cache_key] = by_key
+    translation_map = db.info[cache_key]
+    for key in keys:
+        translated_names.update(translation_map.get(key, set()))
+
+    conditions = [Tag.name.in_(keys | translated_names | canonical_tag_names)]
     for key in sorted(keys):
         if key and re.match(r"^[a-z0-9_]+$", key):
             conditions.append(Tag.name.like(f"{_escape_like_pattern(key)}\\_(%", escape=LIKE_ESCAPE))

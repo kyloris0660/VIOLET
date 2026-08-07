@@ -1,0 +1,249 @@
+{
+  "schema_version": "violet.current-phase.v1",
+  "phase_id": "SCV2-SV1B",
+  "phase_title": "Controlled Pixiv Metadata, Localization, and Source-Graph Closure",
+  "repository": "kyloris0660/VIOLET",
+  "branch": "codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure",
+  "pr_number": 139,
+  "draft": true,
+  "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
+  "implementation_evidence_head": "e7ada8e83593cbb639f0c1fd4442f76e47537e8d",
+  "current_status": "sv1b_accepted_with_known_nonblocking_limitations",
+  "target_met": false,
+  "safe_to_merge": true,
+  "route_approved": true,
+  "manual_acceptance_status": "accepted_with_known_nonblocking_limitations",
+  "next_phase_started": false,
+  "manual_acceptance_summary": {
+    "case_count": 40,
+    "pass_count": 37,
+    "owner_waived_nonblocking_known_limitation_count": 3,
+    "pending_count": 0,
+    "unwaived_fail_count": 0,
+    "owner_waived_case_ids": [
+      "B01",
+      "B04",
+      "B08"
+    ],
+    "owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
+    "underlying_mismatch_preserved": true
+  },
+  "route_authorization": {
+    "approved": true,
+    "scope": "SCV2-FL1_planning_only_no_execution",
+    "fl1_data_execution_authorized": false,
+    "production_authorized": false
+  },
+  "completed_checkpoints": [
+    {
+      "id": "checkpoint_a_accepted_baseline",
+      "result": "passed",
+      "fingerprint": "681d16aaefb390177bec54dd113e626a8a6f3408f89ba2be92d0caca195752b4"
+    },
+    {
+      "id": "checkpoint_b_primary_phase_delta",
+      "result": "passed",
+      "fingerprint": "2243ef27f0ce29399caa367af8c88547286d4ffe003df445cbe0ce707df5ed19"
+    },
+    {
+      "id": "provider_acquisition",
+      "result": "accepted_immutable_input",
+      "fingerprint": "df6008c1b469beaf9bd7f47e8a9af460188b2ad7e1218366a76e2d17e77d8636"
+    },
+    {
+      "id": "localization_accounting",
+      "result": "closed_with_one_manual_pending",
+      "fingerprint": "41dcd1db481544dac6805000e678c98af03332cd592c557331c997df2293c3bd"
+    },
+    {
+      "id": "r2r_exact_remap",
+      "result": "passed",
+      "fingerprint": "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc"
+    },
+    {
+      "id": "failed_retry2_replay_forensic_capture",
+      "result": "preserved_immutable",
+      "fingerprint": "efff5ee1746ba961552da57304ef1726250d063921d9e5551ef0fef5c9e92c0d"
+    },
+    {
+      "id": "doc_gov_01",
+      "result": "passed",
+      "fingerprint": "7c16783dab9a146c284ebfd4f9f66124b9b8ac88156bd573b5acaddf1a26ec4b"
+    },
+    {
+      "id": "stable_replay_package_v2_offline_validation",
+      "result": "passed_with_primary_immutable_evidence_crosscheck",
+      "fingerprint": "640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845"
+    },
+    {
+      "id": "fresh_replay_v2_create_import_round_trip",
+      "result": "passed",
+      "fingerprint": "935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9"
+    },
+    {
+      "id": "fresh_replay_v2_graph_recovery_and_logical_comparison",
+      "result": "passed_with_failed_checkpoints_preserved",
+      "fingerprint": "60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089"
+    },
+    {
+      "id": "fresh_replay_v2_search_lifecycle_and_and_validation",
+      "result": "passed_with_physical_history_counts_diagnostic_only",
+      "fingerprint": "8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a"
+    },
+    {
+      "id": "phase_delta_40_case_harness_and_browser_prevalidation",
+      "result": "passed_pending_owner_manual_acceptance",
+      "fingerprint": "4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef"
+    },
+    {
+      "id": "owner_manual_acceptance_v4_result",
+      "result": "submitted_33_pass_6_fail_1_pending_bounded_remediation_required",
+      "fingerprint": "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9"
+    },
+    {
+      "id": "owner_manual_acceptance_final_composite",
+      "result": "accepted_37_pass_3_owner_waived_nonblocking_0_pending_0_unwaived_fail",
+      "fingerprint": "091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca"
+    }
+  ],
+  "active_blocker": {
+    "code": "none_sv1b_owner_acceptance_complete",
+    "scope": "SCV2-SV1B owner acceptance is complete with three explicitly scoped nonblocking placeholder-creator identity limitations",
+    "resolution": "The executable owner-closeout contract derives 37 PASS, three owner-waived nonblocking known limitations, zero pending, and zero unwaived failure. The underlying B01/B04/B08 mismatches remain recorded and the waiver does not extend beyond SCV2-SV1B."
+  },
+  "owner_decisions": [
+    {
+      "id": "owner_authorized_fresh_replay_v2_20260725",
+      "decision": "Preserve the failed retry2 Replay as immutable forensic evidence and create exactly one fresh isolated Replay verification database after package-v2 gates pass."
+    },
+    {
+      "id": "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1",
+      "decision": "Historical phase-scoped credential-risk waiver remains recorded; this recovery authorizes no provider or credential use."
+    },
+    {
+      "id": "owner_authorized_sv1b_audit_closeout_binding_v2_20260726",
+      "decision": "Permit read-only audit closeout and exactly one versioned non-overwriting final binding v2; preserve every prior database, package, proof, binding, and owner-pending result state."
+    },
+    {
+      "id": "owner_authorized_sv1b_audit_closeout_binding_v3_20260726",
+      "decision": "Permit the bounded reviewer-discovered evidence-contract closeout and exactly one versioned non-overwriting final binding v3 on the resulting exact Git HEAD; preserve v1/v2, every database, protected package, proof, case manifest, and owner-pending result state."
+    },
+    {
+      "id": "owner_reconciled_sv1b_canonical_phase_membership_and_binding_v4_20260728",
+      "decision": "Accept the canonical accepted-vs-pre-provider stable-fingerprint difference as the authoritative 7,271-record phase-acquired membership, supersede the historical candidate/provenance-derived 7,257 set, and permit exactly one non-overwriting final binding v4 after the bounded evidence-contract fixes pass."
+    },
+    {
+      "id": "owner_authorized_sv1b_manual_acceptance_remediation_v5_20260804",
+      "decision": "Preserve the submitted v4 result, correct the A11 media binding, enforce conservative creator identity evidence, revoke two opaque symbol localizations to canonical fallback, and permit exactly one non-overwriting final binding v5 before a new owner review."
+    },
+    {
+      "id": "owner_authorized_sv1b_static_manual_acceptance_packet_v5_r3_20260805",
+      "decision": "Preserve v4, v5, and v5-r2 evidence; replace only the unusable dynamic presentation with exactly one non-overwriting Git-bound v5-r3 static review packet assembled from verified v5-r2 cases and already-local media, with no database, provider, LLM, download, or production access."
+    },
+    {
+      "id": "owner_final_sv1b_acceptance_decision_v1_20260807",
+      "decision": "Accept the final composite as 37 PASS and three distinct owner-waived nonblocking placeholder-creator identity limitations with zero pending and zero unwaived failure; authorize PR #139 Ready and squash merge only after executable gates pass, followed by SCV2-FL1 planning only."
+    },
+    {
+      "id": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
+      "decision": "Accept B01, B04, and B08 only as SCV2-SV1B nonblocking known limitations without converting their underlying mismatches to PASS; reopen if the pattern affects real creators, reliable provider accounts, normal search results, or truth paths."
+    }
+  ],
+  "authorized_operations": [
+    "read-only verification of protected SV1B evidence and the immutable final composite owner-acceptance package",
+    "Ready transition and squash merge of PR #139 only after the owner-closeout phase contract and all local validation gates pass",
+    "after accepted main synchronization, create a separate SCV2-FL1 planning-only branch and Draft PR with DOC-GOV-02 closure"
+  ],
+  "forbidden_operations": [
+    "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
+    "database access or mutation, replay import or derivation, graph/search execution, or production access",
+    "provider/Pixiv/gallery-dl/LLM/media calls or external thumbnail request",
+    "Primary recreation or acquisition/localization replay; owner decisions or prior v4/v5/v5-r2 evidence overwrite",
+    "FL1 data execution, production, Provider-2, Entity/truth/media_tags promotion, EntityAlias, confirmed assignment, or provider-derived media_tags write",
+    "reviewer trigger, direct main push, force-push, or merge bypass"
+  ],
+  "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
+  "protected_evidence": {
+    "manifest_fingerprint": "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
+    "primary_database": "blombooru_scv2_sv1b_metadata_graph_closure_test_20260721_retry2",
+    "failed_replay_database": "blombooru_scv2_sv1b_replay_verification_test_20260721_retry2",
+    "acquisition_package_fingerprint": "df6008c1b469beaf9bd7f47e8a9af460188b2ad7e1218366a76e2d17e77d8636",
+    "normalized_package_fingerprint": "b85eac282489bb280719527972ef9e94f6955dc0536f53b3e05e0702b8a58609",
+    "translation_fingerprint": "41dcd1db481544dac6805000e678c98af03332cd592c557331c997df2293c3bd",
+    "failed_replay_graph_effective_mismatch_count": 13261,
+    "failed_replay_trusted_complete_mismatch_count": 6074,
+    "stable_replay_package_v2_fingerprint": "640c52445524aa69f540a64a41800b9eb5a746d9a234ba6582b5a2ef1feb7845",
+    "stable_replay_membership_fingerprint": "7540ba28da284c99ae835e87b79527dbc4ebf9d28c613add19a9892e11e6869f",
+    "stable_replay_graph_projection_fingerprint": "b211a4790f78e33553d66f74e3594365a4a2c7aca51822559b10a4d81ab726a2",
+    "primary_immutable_identity_ledger_fingerprint": "9ae4c936d20384b377cc80e4c21ca5315d1afaeb2deb3e24627eddbf2666456c",
+    "fresh_replay_create_import_proof_fingerprint": "935f82bdadd502471240c04eac03c400f5c808978d891832b71f95efa2069ab9",
+    "fresh_replay_baseline_fingerprint": "1c7926f4544be8b83ad5231c6f1faac8459cf7af2551f9588a889367ff496025",
+    "failed_replay_forensic_state_fingerprint": "ad30e3c38b254b3290f6b849072270c04e05a843e11c815cedb9c70881780b8f",
+    "fresh_replay_stable_signal_failed_scope_proof_fingerprint": "3fade25d12b60601717359af94348ca76f08a6c22d12a829af38b4e5fa459c04",
+    "fresh_replay_current_forensic_state_fingerprint": "62e997dfdbe94edc5f51996832fc301dcedbb654d91c0c73ddbd395c9c7baeb8",
+    "fresh_replay_graph_recovery_proof_fingerprint": "60dac8c58184dbecebb1798ddb5dcb7f112d6096d7fac656d9373cf135c6f089",
+    "fresh_replay_graph_core_fingerprint": "67832751561266d9c106ae8169b5e98a049e14f2b0aebb84d985cb99e42d9d5f",
+    "fresh_replay_graph_scope_reconciliation_fingerprint": "74051974c583c346c4026d268caa849a1fc18d451acdd0bffc62625e40a722b8",
+    "primary_search_overprojection_failed_proof_fingerprint": "49139f7005b8423d2fcb40e289bdbac17a73e5817f1c2709f1104739be36f175",
+    "search_physical_history_comparison_failed_proof_fingerprint": "4def842dce3a43d1352bbd76aa90ff762e1d2bd96740cb6a681f4690339de438",
+    "fresh_replay_search_proof_fingerprint": "8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a",
+    "fresh_replay_search_workload_fingerprint": "5207da2426d791c6872f46b1c566d8094b4eb133f603fd577a7fbe7ca9d2efeb",
+    "fresh_replay_search_logical_result_fingerprint": "244d1451b4779e1bc65cccea582af90143fb7c75e1be3557b0d791af5ac6a7b8",
+    "manual_acceptance_case_manifest_fingerprint": "1513bf40b9125a374c15c10741822f2351a3f70a4f26e83e0d5bf027929cf0a5",
+    "manual_acceptance_case_manifest_file_sha256": "b37eb60dc90418959a6b3a7be188dedc29eb29ebf8c85c5303dd8665bdfdad5c",
+    "historical_v4_case_manifest_fingerprint": "6e18cbdd046b91681563f2538a3f17256f299feb5b955af14d5d76f9f409b0d5",
+    "historical_v4_owner_result_fingerprint": "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9",
+    "canonical_phase_acquired_membership_count": 7271,
+    "canonical_phase_acquired_membership_fingerprint": "47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1",
+    "canonical_phase_acquired_missing_count": 0,
+    "canonical_phase_acquired_unsupported_count": 0,
+    "superseded_candidate_provenance_membership_count": 7257,
+    "production_library_consumed_or_modified": false,
+    "pre_final_binding_manual_checkpoint_fingerprint": "70d1d06fec7a77f10c4b225bd83b40f797f8a9ea15377fbd94658b8ddd6f8db1",
+    "browser_prevalidation_proof_fingerprint": "4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef",
+    "final_public_redaction_proof_fingerprint": "99b76bfd51502ab65f357e34cdc9f950981e94a6a30a710f6873a1a6719da445",
+    "final_composite_acceptance_fingerprint": "091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca",
+    "final_composite_acceptance_file_sha256": "47f2b4a5f35462a0fe0969e030a8282c216f4a1213f36a032bffa5cfa1683eef",
+    "final_owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
+  },
+  "current_replay_strategy": {
+    "package_schema_version": "sv1b.stable-replay-evidence.v2",
+    "failed_replay_disposition": "immutable_forensic_checkpoint",
+    "fresh_replay_database": "blombooru_scv2_sv1b_replay_v2_verification_test_20260725",
+    "fresh_replay_database_creation_limit": 1,
+    "external_call_budget": 0,
+    "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
+  },
+  "next_required_checkpoint": "squash_merge_pr139_then_begin_scoped_scV2_fl1_planning",
+  "durable_links": [
+    {
+      "label": "Current mainline roadmap",
+      "path": "docs/roadmap/current-mainline-roadmap.md"
+    },
+    {
+      "label": "Phase contracts",
+      "path": "docs/phase-contracts.md"
+    },
+    {
+      "label": "Replay provenance incident",
+      "path": "docs/reports/phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md"
+    },
+    {
+      "label": "Stable replay evidence v2 ADR",
+      "path": "docs/decisions/ADR-0001-stable-replay-evidence-v2.md"
+    },
+    {
+      "label": "SV1B owner acceptance closeout",
+      "path": "docs/reports/phase-4.5-scv2-sv1b-owner-acceptance-closeout.md"
+    }
+  ],
+  "deferred_debt": [
+    {
+      "id": "DOC-GOV-02",
+      "owner": "FL1 planning owner",
+      "reason": "Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.",
+      "due_before": "FL1 planning"
+    }
+  ],
+  "updated_at": "2026-08-07T18:30:00+08:00"
+}

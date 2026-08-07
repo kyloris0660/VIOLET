@@ -73,6 +73,10 @@ from app.services.source_concept_search_service import (  # noqa: E402
     list_media_source_concepts,
     source_layer_search_path_media_ids,
 )
+from app.services.creator_identity_policy import (  # noqa: E402
+    CREATOR_IDENTITY_POLICY_VERSION,
+    is_placeholder_creator_name,
+)
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     _upsert_name_observation,
     is_pixiv_creator_observation_compatible_with_parent,
@@ -603,10 +607,30 @@ def build_manifests(
 ]:
     metadata_by_id = {int(row["id"]): row for row in metadata_rows}
     _, creator_private, aliases_by_creator = ml1.build_creator_audit(metadata_rows, observation_rows)
-    eligible_aliases = {
-        creator_id: {normalize_source_text(value) for value in aliases if normalize_source_text(value)}
+    policy_aliases = {
+        creator_id: {
+            normalize_source_text(value)
+            for value in aliases
+            if normalize_source_text(value)
+            and not is_placeholder_creator_name(value)
+        }
         for creator_id, aliases in aliases_by_creator.items()
-        if len({normalize_source_text(value) for value in aliases if normalize_source_text(value)}) >= 2
+    }
+    excluded_placeholder_alias_count = sum(
+        len(
+            {
+                normalize_source_text(value)
+                for value in aliases
+                if normalize_source_text(value)
+                and is_placeholder_creator_name(value)
+            }
+        )
+        for aliases in aliases_by_creator.values()
+    )
+    eligible_aliases = {
+        creator_id: aliases
+        for creator_id, aliases in policy_aliases.items()
+        if len(aliases) >= 2
     }
     records_by_creator: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for row in creator_private:
@@ -857,6 +881,11 @@ def build_manifests(
             "inactive_concept_reuse_count": 0,
             "preexisting_partial_concept_fragmentation_family_count": fragmented_family_count,
             "preexisting_partial_concept_reference_family_count": partial_reference_family_count,
+            "creator_identity_policy_version": CREATOR_IDENTITY_POLICY_VERSION,
+            "placeholder_identity_alias_exclusion_count": excluded_placeholder_alias_count,
+            "single_alias_family_kept_independent_count": sum(
+                len(aliases) == 1 for aliases in policy_aliases.values()
+            ),
         },
     )
 

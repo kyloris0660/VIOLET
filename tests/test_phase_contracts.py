@@ -7658,3 +7658,574 @@ def test_sv1_contract_blocks_when_only_non_scale_graph_has_violation(database: s
     active_error = next(error for error in result.errors if error.code == "sv1_active_blockers_incomplete")
     assert "blocked_sv1_graph_safety" in active_error.expected
     assert "sv1_target_overclaimed" in _error_codes(result)
+
+
+def _sv1b_contract_summary() -> dict[str, object]:
+    stages = [
+        "accepted_baseline_checkpoint",
+        "superseded_retry1_forensic_classification",
+        "primary_phase_delta_checkpoint",
+        "provider_pre_execution_hardening",
+        "credential_redaction_preflight",
+        "canonical_candidate_manifest",
+        "finite_metadata_acquisition",
+        "metadata_normalization_retention",
+        "localization_closure",
+        "source_graph_rebuild",
+        "accepted_baseline_preservation",
+        "connected_component_graph_audit",
+        "search_lifecycle_and_and_validation",
+        "clean_replay_verification",
+        "manual_acceptance_harness",
+        "full_validation_and_immutable_proof",
+    ]
+    graph = {
+        "multi_stable_id_creator_component_count": 0,
+        "direct_cannot_link_violation_count": 0,
+        "transitive_cannot_link_violation_count": 0,
+        "deferred_identity_union_count": 0,
+        "unauthorized_cross_role_component_count": 0,
+        "unknown_role_materialization_count": 0,
+        "duplicate_active_stable_identity_count": 0,
+        "giant_component_recurrence": False,
+        "concept_signal_link_membership_fingerprint": "graph-fingerprint",
+        "pair_membership_fingerprint": "pair-fingerprint",
+    }
+    page_closed_outcomes = {
+        "metadata_complete": 7661,
+        "terminal_remote_unavailable": 80,
+        "deferred_nonblocking_source_page_mismatch": 16,
+        "unattempted": 0,
+        "pending": 0,
+        "retryable": 0,
+        "authentication_failure": 0,
+        "rate_limit_failure": 0,
+        "network_failure": 0,
+        "generic_provider_failure": 0,
+        "parser_failure": 0,
+        "normalization_failure": 0,
+        "unresolved_identity_conflict": 0,
+        "unexplained_outcome": 0,
+        "blocking_failure": 0,
+    }
+    work_closed_outcomes = dict(page_closed_outcomes)
+    work_closed_outcomes["metadata_complete"] = 6932
+    return {
+        "pipeline_contract": {
+            "contract_id": "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+            "status": "automated_sv1b_candidate_ready_manual_acceptance_pending",
+            "target_met": False,
+            "safe_to_merge": False,
+            "route_approved": False,
+            "manual_acceptance_required": True,
+            "manual_acceptance_status": "pending_user",
+            "active_blockers": [],
+            "executed_stages": stages,
+        },
+        "repository_sync_preflight": {
+            "passed": True,
+            "accepted_merge_sha": "46861489fa0b3b05ae917a99a3932897efd70365",
+            "accepted_evidence_head": "af073ca0ad2a9df9418cf072dc381d7b2c10216a",
+            "branch_start_sha": "46861489fa0b3b05ae917a99a3932897efd70365",
+            "local_main_equals_origin_main_before_branch": True,
+            "tracked_change_count_before_sync": 0,
+            "staged_change_count_before_sync": 0,
+            "user_owned_artifacts_preserved": True,
+        },
+        "environment_isolation": {
+            "passed": True,
+            "violet_env": "test",
+            "primary_database_identity": "blombooru_custom_sv1b_primary_test",
+            "replay_database_identity": "blombooru_custom_sv1b_replay_test",
+            "accepted_storage_read_only": True,
+            "production_selected": False,
+        },
+        "immutable_input_proof": {
+            "passed": True,
+            "manifest_fingerprint": "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
+            "all_before_after_fingerprints_equal": True,
+            "accepted_database_mutation_count": 0,
+            "accepted_storage_mutation_count": 0,
+        },
+        "accepted_baseline_checkpoint": {
+            "checkpoint": "A_ACCEPTED_BASELINE",
+            "passed": True,
+            "manifest_fingerprint": "5f7ccaec155db688db72ed4a762cbd7d2977382e80344c385e3d40fcf6bd610f",
+            "accepted_r2r_snapshot_fingerprint": "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc",
+            "provider_tooling_executed_before_checkpoint": False,
+            "checkpoint_fingerprint": "checkpoint-a-fingerprint",
+            "primary": {
+                "accepted_stable_key_reconciliation": {
+                    "missing_accepted_stable_keys": 0,
+                    "extra_nonderived_stable_keys": 0,
+                    "accepted_payload_drift": 0,
+                },
+                "derived_graph_row_count": 0,
+                "phase_owned_delta_row_count": 0,
+                "phase_owned_provider_execution_row_count": 0,
+            },
+            "replay": {
+                "accepted_stable_key_reconciliation": {
+                    "missing_accepted_stable_keys": 0,
+                    "extra_nonderived_stable_keys": 0,
+                    "accepted_payload_drift": 0,
+                },
+                "derived_graph_row_count": 0,
+                "phase_owned_delta_row_count": 0,
+                "phase_owned_provider_execution_row_count": 0,
+            },
+        },
+        "retry1_forensics": {
+            "passed": True,
+            "read_only": True,
+            "retry1_provider_execution_authorized": False,
+            "payload_drift_row_count": 489,
+            "accepted_provider_fact_mutation_count": 0,
+            "stable_identity_change_count": 0,
+        },
+        "primary_phase_delta_checkpoint": {
+            "checkpoint": "B_PRIMARY_PHASE_DELTA",
+            "passed": True,
+            "accepted_rows_missing": 0,
+            "accepted_stable_identities_changed": 0,
+            "accepted_provider_facts_changed": 0,
+            "phase_delta_envelope_failure_count": 0,
+            "accepted_baseline_plus_phase_delta_equation_passed": True,
+            "retry1_deterministic_transformation_reproduced": True,
+            "phase_delta_fingerprint": "phase-delta-fingerprint",
+        },
+        "provider_hardening": {
+            "persistent_cross_process_spacing_passed": True,
+            "spacing_survives_restart_and_resume": True,
+            "manifest_scoped_outcome_keys_passed": True,
+            "conflict_mismatch_persistence_passed": True,
+            "terminal_classifier_precedence_passed": True,
+            "finite_manifest_passed": True,
+            "no_concurrent_duplicate_execution": True,
+            "metadata_only_command_passed": True,
+            "subprocess_arguments_redacted": True,
+            "subprocess_environment_redacted": True,
+            "minimum_spacing_seconds": 2.0,
+            "maximum_attempts_per_work": 3,
+            "fallback_provider_used": False,
+            "media_download_enabled": False,
+        },
+        "credential_preflight": {
+            "approved_local_route_available": True,
+            "operator_confirmation_policy_passed": True,
+            "delimiter_aware_fingerprint_scan_passed": True,
+            "redacted_authentication_preflight_passed": True,
+            "secret_value_exposed": False,
+            "raw_configuration_output_exposed": False,
+        },
+        "candidate_accounting": {
+            "manifest_media_count": 12000,
+            "canonical_candidate_media_count": 6496,
+            "explicit_non_candidate_media_count": 5504,
+            "accounting_equality_passed": True,
+            "independently_reproduced": True,
+            "change_from_sv1a_fully_accounted": True,
+            "unclassified_count": 0,
+            "unexplained_count": 0,
+            "page_media_manifest_fingerprint": "page-fingerprint",
+            "distinct_work_manifest_fingerprint": "work-fingerprint",
+            "page_media_manifest_row_count": 7757,
+            "distinct_work_manifest_row_count": 7028,
+        },
+        "acquisition_accounting": {
+            "requested_page_count": 7757,
+            "distinct_work_count": 7028,
+            "page_outcome_counts": dict(page_closed_outcomes),
+            "work_outcome_counts": dict(work_closed_outcomes),
+            "page_equation_passed": True,
+            "work_equation_passed": True,
+            "checkpoint_after_every_attempt": True,
+            "out_of_manifest_attempt_count": 0,
+            "concurrent_duplicate_attempt_count": 0,
+        },
+        "metadata_retention": {
+            "raw_and_normalized_package_retained": True,
+            "creator_identity_fields_retained": True,
+            "work_title_and_provider_tags_retained": True,
+            "trusted_parent_policy_passed": True,
+            "entity_truth_write_count": 0,
+            "media_tags_truth_write_count": 0,
+        },
+        "localization_closure": {
+            "eligible_ai_tag_missing_count": 0,
+            "silently_missing_eligible_count": 0,
+            "localization_ambiguity_count": 0,
+            "final_untranslated_echo_count": 1,
+            "final_missing_result_count": 0,
+            "final_invalid_display_count": 0,
+            "final_invalid_aliases_count": 0,
+            "final_unexpected_result_count": 0,
+            "final_duplicate_result_count": 0,
+            "item_validation_policy_version": "sv1b_localization_item_validation_v1",
+            "display_preserve_policy_version": "sv1b_localization_display_preserve_v1",
+            "targeted_adjudication_prompt_version": "sv1b_localization_targeted_item_prompt_v1",
+            "manual_review_policy_version": "sv1b_manual_localization_review_pending_v1",
+            "manual_review_pending_threshold": 8,
+            "initial_eligible_count": 1788,
+            "accepted_new_translation_count": 1787,
+            "explicit_proper_noun_exclusion_count": 454,
+            "explicit_display_preserved_count": 0,
+            "manual_localization_review_pending_count": 1,
+            "manual_localization_override_count": 0,
+            "missing_disposition_count": 0,
+            "duplicate_disposition_count": 0,
+            "standard_batch_call_count": 72,
+            "item_adjudication_call_count": 0,
+            "external_llm_call_count": 72,
+            "primary_replay_translation_fingerprint_equal": True,
+            "localization_equations": {
+                "initial_missing_balanced": True,
+                "eligible_outcomes_balanced": True,
+                "translation_count_balanced": True,
+                "terminal_membership_exact": True,
+                "primary_replay_equal": True,
+                "silently_missing_zero": True,
+                "duplicate_disposition_zero": True,
+            },
+            "localization_accounting_closed": True,
+            "localization_translation_complete": False,
+            "downstream_progression_allowed": True,
+            "transport_logging": {
+                "minimum_log_level": "WARNING",
+                "root_handler_filters_added": 0,
+                "process_log_record_factory_redaction_enabled": False,
+                "unrelated_loggers_modified": False,
+                "non_sensitive_url_context_preserved": True,
+                "exception_context_preserved": True,
+                "request_response_body_logging_enabled": False,
+            },
+            "provider_tags_written_to_media_tags_count": 0,
+            "original_provider_text_preserved": True,
+            "projected_and_actual_llm_cost_usd": 0.0,
+            "fallback_provider_used": False,
+            "image_upload_count": 0,
+        },
+        "r2r_replay_accounting": {
+            "accepted_snapshot_fingerprint": "25090761abff2c2ae9f7ef8d9ea04904c47a9f3a43ce03ab660a39502ae792fc",
+            "exact_endpoint_and_disposition_membership_passed": True,
+            "accepted_pair_count": 3319,
+            "comparable_count": 3319,
+            "genuine_target_missing_count": 0,
+            "ambiguous_remap_count": 0,
+            "conflicting_remap_count": 0,
+            "compatibility_derived_from_verified_pairs": True,
+        },
+        "baseline_preservation": {
+            "accepted_family_count": 606,
+            "accepted_family_traceable_count": 606,
+            "accepted_stable_identity_disappeared_count": 0,
+            "cannot_link_became_identity_union_count": 0,
+            "search_only_became_identity_count": 0,
+            "every_changed_family_has_governed_reason": True,
+        },
+        "primary_graph_safety": dict(graph),
+        "replay_graph_safety": dict(graph),
+        "primary_replay_comparison": {
+            "checkpoint_membership_gate_passed": True,
+            "unexplained_logical_mismatch_count": 0,
+            "numeric_row_id_equality_claimed": False,
+        },
+        "search_validation": {
+            "counters_derived_from_returned_rows": True,
+            "independent_expected_membership_used": True,
+            "blombooru_tags_protected": True,
+            "unsupported_result_count": 0,
+            "rejected_only_result_count": 0,
+            "superseded_only_result_count": 0,
+            "invalid_deleted_only_result_count": 0,
+            "and_leakage_count": 0,
+            "search_caused_identity_mutation_count": 0,
+            "lifecycle_status_violation_count": 0,
+            "supported_query_missing_result_count": 0,
+            "p95_latency_ms": 10.0,
+        },
+        "validation": {
+            "failed_test_count": 0,
+            "unexplained_skip_count": 0,
+            "exact_approved_skip_membership_passed": True,
+            "full_default_non_e2e_passed": True,
+            "environment_specific_profiles_passed": True,
+            "json_parse_passed": True,
+            "public_redaction_passed": True,
+            "git_diff_check_passed": True,
+            "real_browser_validation_passed": True,
+        },
+        "manual_acceptance": {
+            "required": True,
+            "status": "pending_user",
+            "case_count": 40,
+            "category_case_counts": {
+                "pixiv_metadata": 12,
+                "creator_clustering": 8,
+                "shared_name_cannot_link": 6,
+                "ai_tag_localization": 8,
+                "search_and_negative": 6,
+            },
+            "actual_backend_services_used": True,
+            "result_private_and_uncommitted": True,
+            "absolute_paths_exposed": False,
+            "acceptance_case_manifest_fingerprint": "acceptance-fingerprint",
+            "localhost_url": "http://127.0.0.1:8012/",
+        },
+        "operation_counts": {
+            "media_downloads": 0,
+            "media_imports": 0,
+            "ai_tagging_runs": 0,
+            "classification_runs": 0,
+            "production_operations": 0,
+            "full_library_operations": 0,
+            "entity_operations": 0,
+            "confirmed_assignment_operations": 0,
+            "media_tags_truth_writes": 0,
+            "source_icloud_mutations": 0,
+            "fallback_provider_calls": 0,
+            "hidden_daemon_starts": 0,
+            "fl1_operations": 0,
+        },
+        "route_decision": {
+            "route_approved": False,
+            "recommended_next_phase": "SCV2-FL1",
+            "next_phase_started": False,
+        },
+    }
+
+
+def test_sv1b_contract_accepts_only_pending_user_automated_candidate() -> None:
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        _sv1b_contract_summary(),
+    )
+    assert result.passed is True
+    assert result.target_met_claimed is False
+    assert result.safe_to_merge_claimed is False
+    assert result.route_approved is False
+
+
+def test_sv1b_contract_accepts_work_level_mixed_closed_when_pages_are_terminal() -> None:
+    summary = _sv1b_contract_summary()
+    work_outcomes = summary["acquisition_accounting"]["work_outcome_counts"]
+    work_outcomes["metadata_complete"] -= 10
+    work_outcomes["mixed_closed"] = 10
+
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+
+    assert result.passed is True
+
+
+def test_sv1b_contract_allows_one_pending_but_blocks_systemic_quality_above_eight() -> None:
+    accepted = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        _sv1b_contract_summary(),
+    )
+    assert accepted.passed is True
+
+    summary = _sv1b_contract_summary()
+    localization = summary["localization_closure"]
+    localization["accepted_new_translation_count"] = 1779
+    localization["manual_localization_review_pending_count"] = 9
+    localization["final_untranslated_echo_count"] = 9
+    localization["downstream_progression_allowed"] = False
+    pipeline = summary["pipeline_contract"]
+    pipeline["status"] = "blocked_sv1b_systemic_localization_quality"
+    pipeline["manual_acceptance_status"] = "not_started_blocked"
+    pipeline["active_blockers"] = [
+        "blocked_sv1b_systemic_localization_quality"
+    ]
+    blocked = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+    assert blocked.passed is True
+    assert blocked.target_met_claimed is False
+    assert blocked.safe_to_merge_claimed is False
+
+
+def test_sv1b_contract_accepts_only_the_exact_phase_scoped_credential_waiver() -> None:
+    summary = _sv1b_contract_summary()
+    summary["credential_preflight"] = {
+        "approved_local_route_available": True,
+        "operator_confirmation_policy_passed": True,
+        "delimiter_aware_fingerprint_scan_passed": False,
+        "credential_risk_waiver_accepted": True,
+        "credential_risk_waiver_policy": "operator_accepted_existing_local_pixiv_credential_risk_sv1b_v1",
+        "credential_rotation_performed": False,
+        "known_compromised_secret_fingerprint_scan_performed": False,
+        "generic_delimiter_aware_secret_scan_passed": True,
+        "raw_credential_exposure_count": 0,
+        "raw_config_exposure_count": 0,
+        "credential_like_value_finding_count": 0,
+        "redacted_authentication_preflight_passed": True,
+        "secret_value_exposed": False,
+        "raw_configuration_output_exposed": False,
+    }
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+    assert result.passed is True
+    summary["credential_preflight"]["credential_risk_waiver_policy"] = "operator_accepted_wrong_scope_v1"
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+    assert result.passed is False
+    assert "blocked_sv1b_provider_authentication" in next(
+        item.expected for item in result.errors if item.code == "sv1b_active_blockers_incomplete"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "blocker"),
+    [
+        ("accepted_baseline_checkpoint.primary.phase_owned_delta_row_count", 1, "blocked_sv1b_accepted_baseline_checkpoint"),
+        ("retry1_forensics.accepted_provider_fact_mutation_count", 1, "blocked_sv1b_accepted_provider_fact_mutation"),
+        ("primary_phase_delta_checkpoint.accepted_provider_facts_changed", 1, "blocked_sv1b_primary_phase_delta_checkpoint"),
+        ("provider_hardening.spacing_survives_restart_and_resume", False, "blocked_sv1b_provider_hardening"),
+        ("credential_preflight.redacted_authentication_preflight_passed", False, "blocked_sv1b_provider_authentication"),
+        ("acquisition_accounting.page_outcome_counts.retryable", 1, "blocked_sv1b_acquisition_incomplete"),
+        ("localization_closure.eligible_ai_tag_missing_count", 1, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.localization_ambiguity_count", 1, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.final_untranslated_echo_count", 2, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.display_preserve_policy_version", "wrong-policy", "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.external_llm_call_count", 71, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.localization_equations.eligible_outcomes_balanced", False, "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.transport_logging.minimum_log_level", "INFO", "blocked_sv1b_normalization_or_localization"),
+        ("localization_closure.transport_logging.process_log_record_factory_redaction_enabled", True, "blocked_sv1b_normalization_or_localization"),
+        ("r2r_replay_accounting.ambiguous_remap_count", 1, "blocked_sv1b_r2r_replay"),
+        ("primary_graph_safety.transitive_cannot_link_violation_count", 1, "blocked_sv1b_graph_safety"),
+        ("search_validation.and_leakage_count", 1, "blocked_sv1b_search_safety"),
+        ("manual_acceptance.case_count", 39, "blocked_sv1b_manual_acceptance_harness"),
+    ],
+)
+def test_sv1b_contract_independently_derives_fail_closed_blockers(
+    path: str, value: object, blocker: str
+) -> None:
+    summary = _sv1b_contract_summary()
+    _set_nested(summary, path, value)
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+    assert result.passed is False
+    finding = next(item for item in result.errors if item.code == "sv1b_active_blockers_incomplete")
+    assert blocker in finding.expected
+    assert "sv1b_completion_overclaimed" in _error_codes(result)
+
+
+def test_sv1b_contract_never_allows_manual_acceptance_or_merge_claim_in_automation() -> None:
+    summary = _sv1b_contract_summary()
+    _set_nested(summary, "pipeline_contract.manual_acceptance_status", "accepted")
+    _set_nested(summary, "pipeline_contract.target_met", True)
+    _set_nested(summary, "pipeline_contract.safe_to_merge", True)
+    result = check_phase_contract(
+        "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+        summary,
+    )
+    assert result.passed is False
+    assert "sv1b_pending_claim_incomplete" in _error_codes(result)
+
+
+def _sv1b_owner_closeout_summary() -> dict[str, object]:
+    return {
+        "pipeline_contract": {
+            "contract_id": "sv1b_owner_acceptance_closeout_contract_v1",
+            "status": "sv1b_accepted_with_known_nonblocking_limitations",
+            "target_met": False,
+            "safe_to_merge": True,
+            "route_approved": True,
+            "manual_acceptance_required": True,
+            "manual_acceptance_status": "accepted_with_known_nonblocking_limitations",
+            "active_blockers": [],
+        },
+        "composite_acceptance": {
+            "passed": True,
+            "manual_acceptance_status": "accepted_with_known_nonblocking_limitations",
+            "case_count": 40,
+            "pass_count": 37,
+            "owner_waived_nonblocking_known_limitation_count": 3,
+            "pending_count": 0,
+            "unwaived_fail_count": 0,
+            "owner_waived_case_ids": ["B01", "B04", "B08"],
+            "owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
+            "underlying_mismatch_preserved": True,
+            "waiver_scope": "SCV2-SV1B_only",
+            "file_sha256": "composite-file-sha",
+            "composite_fingerprint": "composite-fingerprint",
+            "binding_fingerprint": "4992ed754539ef1f14500825d0fd78fc448e26846780cd4c64bacc5c2c6c3f81",
+            "case_manifest_sha256": "b37eb60dc90418959a6b3a7be188dedc29eb29ebf8c85c5303dd8665bdfdad5c",
+            "delta_audit_sha256": "fe3455b9b9fd2cfcb13d242f01208a378ef69342896905044c789523aaaadbb1",
+            "old_result_sha256": "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9",
+        },
+        "behavior_neutral_carry_forward": {
+            "passed": True,
+            "accepted_implementation_head": "e7ada8e83593cbb639f0c1fd4442f76e47537e8d",
+            "closeout_head": "f" * 40,
+            "file_sha256": "carry-file-sha",
+            "proof_fingerprint": "carry-fingerprint",
+            "runtime_data_search_graph_localization_semantics_changed": False,
+            "changed_files": ["docs/state/current-phase.json"],
+        },
+        "operation_counts": {
+            "database_access": 0,
+            "database_write": 0,
+            "provider_request": 0,
+            "llm_request": 0,
+            "media_download": 0,
+            "production_access": 0,
+            "entity_truth_write": 0,
+            "provider_derived_media_tags_write": 0,
+        },
+        "route_decision": {
+            "route_approved": True,
+            "route_scope": "SCV2-FL1_planning_only_no_execution",
+            "fl1_data_execution_authorized": False,
+            "production_authorized": False,
+            "next_phase_started": False,
+        },
+    }
+
+
+def test_sv1b_owner_closeout_contract_accepts_scoped_owner_waivers() -> None:
+    result = check_phase_contract(
+        "sv1b_owner_acceptance_closeout_contract_v1",
+        _sv1b_owner_closeout_summary(),
+    )
+
+    assert result.passed is True
+    assert result.target_met_claimed is False
+    assert result.safe_to_merge_claimed is True
+    assert result.route_approved is True
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "code"),
+    [
+        ("composite_acceptance.pass_count", 40, "sv1b_closeout_composite_invalid"),
+        ("composite_acceptance.owner_waived_case_ids", [], "sv1b_closeout_composite_invalid"),
+        ("composite_acceptance.waiver_scope", "SCV2-FL1", "sv1b_closeout_composite_invalid"),
+        ("behavior_neutral_carry_forward.runtime_data_search_graph_localization_semantics_changed", True, "sv1b_closeout_carry_forward_invalid"),
+        ("operation_counts.database_access", 1, "sv1b_closeout_forbidden_activity"),
+        ("route_decision.fl1_data_execution_authorized", True, "sv1b_closeout_route_scope_invalid"),
+        ("route_decision.route_scope", "production", "sv1b_closeout_route_scope_invalid"),
+    ],
+)
+def test_sv1b_owner_closeout_contract_fails_closed(
+    path: str, value: object, code: str
+) -> None:
+    summary = _sv1b_owner_closeout_summary()
+    _set_nested(summary, path, value)
+
+    result = check_phase_contract(
+        "sv1b_owner_acceptance_closeout_contract_v1", summary
+    )
+
+    assert result.passed is False
+    assert code in _error_codes(result)

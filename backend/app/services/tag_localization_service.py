@@ -23,6 +23,10 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ..models import Tag, TagTranslation
+from .tag_localization_policy import (
+    is_display_alias_manually_revoked,
+    is_translation_effectively_accepted,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,8 @@ def _load_static_dict() -> Dict:
 def get_tag_display_name(db: Session, tag_name: str, lang: str = "zh-CN") -> str:
     """Return Chinese display name or fallback to canonical.
     Priority: reviewed/manual DB > static dict > llm DB > canonical."""
+    if not is_translation_effectively_accepted(tag_name):
+        return tag_name
     trans = (
         db.query(TagTranslation)
         .filter(
@@ -122,7 +128,9 @@ def get_tag_display_names_batch(db: Session, tag_names: List[str], lang: str = "
                 db_map[t.canonical_name] = t
 
     for name in tag_names:
-        if name in db_map:
+        if not is_translation_effectively_accepted(name):
+            result[name] = name
+        elif name in db_map:
             result[name] = db_map[name].display_name
         elif name in static["tags"]:
             result[name] = static["tags"][name]
@@ -135,6 +143,8 @@ def get_tag_display_names_batch(db: Session, tag_names: List[str], lang: str = "
 def resolve_tag_alias(db: Session, query_token: str, lang: str = "zh-CN") -> str:
     """Resolve a Chinese search term to its canonical English tag name.
     Checks DB aliases first, then static dict, then returns original."""
+    if is_display_alias_manually_revoked(query_token):
+        return query_token
     trans = (
         db.query(TagTranslation)
         .filter(
@@ -148,7 +158,13 @@ def resolve_tag_alias(db: Session, query_token: str, lang: str = "zh-CN") -> str
         .all()
     )
     if trans:
-        best = _pick_best_translation(trans)
+        best = _pick_best_translation(
+            [
+                row
+                for row in trans
+                if is_translation_effectively_accepted(row.canonical_name)
+            ]
+        )
         if best:
             return best.canonical_name
 

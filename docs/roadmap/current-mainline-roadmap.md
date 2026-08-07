@@ -1,10 +1,10 @@
 # Current Mainline Roadmap
 
-Status: PR #137 is merged and accepted in `origin/main` at
-`7fca41151cc9e1d5b48cfe243279e66296346bae`. Its accepted ML2 evidence-code
-commit is `00398a0b5b1a46d010e82c2b6f72796dbdb47918`. The separately governed
-SCV2-SV1 execution has reached its bounded promotion-readiness target on the
-feature branch; its normal PR remains unmerged and no later phase is active.
+Status: PR #138 is merged and accepted in `origin/main` at
+`46861489fa0b3b05ae917a99a3932897efd70365`. Its accepted SV1-A evidence HEAD is
+`af073ca0ad2a9df9418cf072dc381d7b2c10216a`. SV1-A is an accepted partial
+milestone with `target_met=false`; SCV2-SV1B is now the separately governed
+current phase.
 
 ## Accepted Mainline
 
@@ -22,6 +22,11 @@ feature branch; its normal PR remains unmerged and no later phase is active.
    `7fca41151cc9e1d5b48cfe243279e66296346bae`. Its final bounded result is
    `target_met_multilingual_identity_candidate_closure`; the accepted logical
    evidence and isolated ML2 database are immutable inputs to SV1.
+7. SCV2-SV1-A merged in PR #138 at
+   `46861489fa0b3b05ae917a99a3932897efd70365`, with accepted evidence HEAD
+   `af073ca0ad2a9df9418cf072dc381d7b2c10216a`. It accepted the 12,000-media
+   import and AI-tagging evidence, stable-key promotion, and accepted 606-family
+   rebuild as partial work; `target_met` remained false.
 
 ## Corrected Route Semantics
 
@@ -166,13 +171,33 @@ a bounded dev/test promotion-readiness result, not semantic, full-library,
 production, provider, or Entity readiness. See the committed SV1 report and
 public summary for exact aggregate evidence.
 
-## Stop Boundary
+## Current Phase and Stop Boundary
 
-SCV2-SV1-A is merge-safe partial work on its feature branch but remains unmerged.
-Its immediate recommendation is `SCV2-SV1B: Controlled Pixiv Metadata,
-Localization, and Source-Graph Closure`; it does not approve or start SV1B or
-FL1. Do
-not start PX1-B broad acquisition, Provider-2, production, full-library
-execution, Entity bridge, confirmed assignment, truth promotion, or another
-later phase. Provider/Pixiv/gallery-dl/LLM calls and production/Entity/truth
-routes remain unauthorized.
+<!-- CURRENT_PHASE: SCV2-SV1B -->
+
+`SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure`
+has completed owner acceptance. Acquisition, localization accounting, R2R exact
+remap, fresh Replay v2, graph/search validation, and the immutable 40-case review
+evidence remain accepted. The failed retry2 Replay remains an immutable forensic
+checkpoint. Authoritative phase membership remains `7,271 / 7,271`, missing `0`,
+unsupported `0`, fingerprint
+`47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`;
+the former `7,257` candidate/provenance set is historical and superseded.
+
+The final acceptance accounting is `37 PASS`, `3 owner-waived nonblocking known
+limitations`, `0 PENDING`, and `0 unwaived FAIL`. B01, B04, and B08 remain
+underlying mismatches rather than PASS. Waiver
+`owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807`
+is limited to SCV2-SV1B placeholder/default creator signals and must be reopened
+if the pattern affects real creators, reliable provider identities, normal
+search results, or truth paths.
+
+`sv1b_owner_acceptance_closeout_contract_v1` derives
+`target_met=false`, `safe_to_merge=true`, `route_approved=true`, and
+`manual_acceptance_status=accepted_with_known_nonblocking_limitations`. Route
+approval authorizes only squash-merging PR #139 after all gates pass and then
+starting isolated SCV2-FL1 planning. It authorizes no FL1 data execution,
+production, Provider-2, database, provider, LLM, media, Entity/truth, or
+provider-derived media_tags operation. `DOC-GOV-02` remains due before FL1
+planning proceeds. The machine-readable fact source is
+`docs/state/current-phase.json`.

@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, migrate_add_source_concept_fallback_search_index
-from app.models import TagTranslation
+from app.models import Tag, TagTranslation
 from app.services.pixiv_metadata_ingestion_service import PixivMetadataGateError
 from app.services import source_assertion_search_service as source_search
 from app.utils.search_parser import parse_search_query
@@ -761,7 +761,13 @@ def test_matching_pending_queue_yields_to_trusted_complete_contradiction() -> No
     media = [{"id": 1, "filename": "123456789_p0.jpg", "path": "media/123456789_p0.jpg", "thumbnail_path": None, "source": None, "uploaded_at": None}]
     metadata = [
         {"id": 10, "provider": "pixiv", "media_id": 1, "source_work_id": "123456789", "source_page_index": 0, "metadata_kind": "pixiv_ingestion_gate", "status": "metadata_pending"},
-        {"id": 11, "provider": "pixiv", "media_id": 1, "source_work_id": "999999999", "source_page_index": 1, "metadata_kind": "provider_metadata", "data_type_label": "authenticated_provider_metadata", "status": "metadata_complete"},
+        {
+            "id": 11, "provider": "pixiv", "media_id": 1,
+            "source_work_id": "999999999", "source_page_index": 1,
+            "metadata_kind": "provider_metadata", "data_type_label": "authenticated_provider_metadata",
+            "status": "metadata_complete", "raw_metadata_json": {"id": 999999999},
+            "provenance": {"source": "gallery_dl_authenticated_metadata"},
+        },
     ]
     public, candidates, work_rows = ml1_runner.build_pixiv_accounting(media, metadata)
     assert candidates[0].status == "filename_identity_conflict"
@@ -958,10 +964,11 @@ def test_durable_documents_encode_corrected_search_semantics() -> None:
     report = (ROOT / "docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure.md").read_text(encoding="utf-8")
     summary = json.loads((ROOT / "docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure-summary.json").read_text(encoding="utf-8"))
 
-    combined = "\n".join((policy, handoff, roadmap))
-    assert "Search-result union is not identity union" in combined
+    combined = "\n".join((policy, roadmap))
+    assert "Search-result union combines media sets" in combined
+    assert "It is not identity union" in combined
     assert "media-level AND intersection" in combined
-    assert "SCV2-ML1" in handoff and "SCV2-ML1" in roadmap
+    assert "SCV2-SV1B" in handoff and "SCV2-ML1" in roadmap
     assert "Interpretation erratum" in report
     erratum = summary["search_semantics_interpretation_erratum"]
     assert erratum["old_interpretation_superseded"] is True
@@ -1002,13 +1009,92 @@ def test_parse_search_query_uses_explicit_snapshot_session_for_aliases() -> None
         session_b.commit()
         assert parse_search_query("snapshot_specific_alias", db=session_a)["tags"]["include"] == ["canonical_a"]
         assert parse_search_query("snapshot_specific_alias", db=session_b)["tags"]["include"] == ["canonical_b"]
-        assert "search_parser_translation_alias_map_v1" in session_a.info
-        assert "search_parser_translation_alias_map_v1" in session_b.info
+        assert "search_parser_translation_alias_map_v2" in session_a.info
+        assert "search_parser_translation_alias_map_v2" in session_b.info
     finally:
         session_a.close()
         session_b.close()
         engine_a.dispose()
         engine_b.dispose()
+
+
+def test_ambiguous_equal_priority_translation_alias_expands_to_tag_union() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[Tag.__table__, TagTranslation.__table__])
+    session = sessionmaker(bind=engine)()
+    try:
+        session.add_all(
+            [
+                Tag(name="canonical_a"),
+                Tag(name="canonical_b"),
+                TagTranslation(
+                    canonical_name="canonical_a",
+                    language="zh-CN",
+                    display_name="shared_translation_alias",
+                    source="static",
+                    status="translated",
+                    needs_review=False,
+                ),
+                TagTranslation(
+                    canonical_name="canonical_b",
+                    language="zh-CN",
+                    display_name="shared_translation_alias",
+                    source="static",
+                    status="translated",
+                    needs_review=False,
+                ),
+            ]
+        )
+        session.commit()
+        parsed = parse_search_query("shared_translation_alias", db=session)
+        assert parsed["tags"]["include"] == ["shared_translation_alias"]
+        assert source_search._tag_names_for_source_keys(
+            session, {"shared_translation_alias"}
+        ) == {"canonical_a", "canonical_b"}
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_canonical_alias_collision_unions_equal_priority_but_not_lower_priority() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[Tag.__table__, TagTranslation.__table__])
+    session = sessionmaker(bind=engine)()
+    try:
+        session.add_all(
+            [
+                Tag(name="canonical_a"),
+                Tag(name="canonical_b"),
+                Tag(name="canonical_c"),
+                Tag(name="canonical display tag"),
+                TagTranslation(
+                    canonical_name="canonical_a", language="zh-CN",
+                    display_name="shared alias", source="static",
+                    status="translated", needs_review=False,
+                ),
+                TagTranslation(
+                    canonical_name="canonical_b", language="zh-CN",
+                    display_name="shared_alias", source="static",
+                    status="translated", needs_review=False,
+                ),
+                TagTranslation(
+                    canonical_name="canonical_c", language="zh-CN",
+                    display_name="shared alias", source="imported",
+                    status="translated", needs_review=False,
+                ),
+            ]
+        )
+        session.commit()
+        assert parse_search_query('"shared alias"', db=session)["tags"]["include"] == ["shared alias"]
+        assert source_search._tag_names_for_source_keys(
+            session, {"shared_alias"}
+        ) == {"canonical_a", "canonical_b"}
+        assert source_search._tag_names_for_source_keys(
+            session, {"canonical_display_tag"}
+        ) == {"canonical display tag"}
+    finally:
+        session.close()
+        engine.dispose()
 
 
 def test_old_r2_schema_clone_adds_fallback_index_before_dry_run(tmp_path: Path) -> None:
@@ -1123,8 +1209,41 @@ def test_translation_support_inherits_exact_and_parenthetical_direct_tags() -> N
         ],
     )
     inherited = support[ml1_runner.canonical_source_key("blue hair translated")]
-    assert set(inherited) == {1, 2, 3}
+    assert set(inherited) == {1, 2}
     assert all("accepted_search_only_translation_relation" in types for types in inherited.values())
+    assert 3 not in inherited
+
+
+def test_translation_support_does_not_translate_source_name_evidence() -> None:
+    canonical = ml1_runner.exact_support_key("!")
+    alias = ml1_runner.canonical_source_key("translated exclamation")
+    support = {
+        canonical: {
+            1: {"direct_media_tag_exact_text"},
+            2: {
+                "direct_source_name_exact_text",
+                "exact_provider_work_metadata",
+            },
+        }
+    }
+
+    ml1_runner.apply_translation_support_relations(
+        support,
+        [
+            {
+                "canonical_name": "!",
+                "display_name": "translated exclamation",
+                "aliases_json": [],
+                "category": "general",
+                "source": "llm",
+                "status": "translated",
+                "needs_review": False,
+            }
+        ],
+    )
+
+    assert set(support[alias]) == {1}
+    assert 2 not in support[alias]
 
 
 def test_runtime_support_sql_mirrors_endpoint_source_name_review_gate() -> None:
@@ -1268,11 +1387,13 @@ def test_creator_audit_detects_account_loss_without_destroying_stable_id() -> No
             "metadata_kind": "provider_metadata",
             "status": "metadata_complete",
             "source_work_id": "123456789",
-            "source_page_index": 0,
-            "media_id": 1,
-            "artist_id": "42",
+                "source_page_index": 0,
+                "media_id": 1,
+                "data_type_label": "authenticated_provider_metadata",
+                "artist_id": "42",
             "artist_name": "Display",
-            "raw_metadata_json": {"user": {"id": 42, "name": "Display", "account": "handle"}},
+                "raw_metadata_json": {"user": {"id": 42, "name": "Display", "account": "handle"}},
+                "provenance": {"source": "gallery_dl_authenticated_metadata"},
         }
     ]
     observations = [
@@ -1308,16 +1429,18 @@ def test_creator_audit_counts_creator_account_first_and_deduplicates_compatible_
             "metadata_kind": "provider_metadata",
             "status": "metadata_complete",
             "source_work_id": "123456789",
-            "source_page_index": 0,
-            "media_id": 1,
-            "artist_id": "42",
+                "source_page_index": 0,
+                "media_id": 1,
+                "data_type_label": "authenticated_provider_metadata",
+                "artist_id": "42",
             "artist_name": "Display",
             "raw_metadata_json": {
                 "creator_account": "handle",
                 "user_account": "handle",
                 "artist_account": "handle",
-                "user": {"account": "handle"},
-            },
+                    "user": {"account": "handle"},
+                },
+                "provenance": {"source": "gallery_dl_authenticated_metadata"},
         }
     ]
     observations = [

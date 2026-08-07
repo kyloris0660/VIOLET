@@ -58,7 +58,9 @@ MAX_EVIDENCE_ITEMS_PER_CONCEPT = 12
 # V2 keeps cannot-link diagnostics but no longer globally suppresses direct
 # same-name evidence. Rebuild only on an isolated ML1 clone; accepted R2R rows
 # remain immutable historical evidence.
-R2R_FALLBACK_INDEX_VERSION = "source_concept_deferred_overlay_v2_shared_name_union"
+R2R_FALLBACK_INDEX_VERSION = (
+    "source_concept_deferred_overlay_v3_stable_signal_identity"
+)
 R2R_FALLBACK_DISPOSITION_VERSION = "r2r_machine_disposition_v1"
 REDACTED_TEXT = "[redacted source value]"
 MEDIA_EXTENSION_PARTS = (

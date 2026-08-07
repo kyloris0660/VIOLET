@@ -1,0 +1,1104 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+from sqlalchemy import create_engine
+
+from scripts import run_phase45_scv2_sv1b_manual_acceptance_harness as harness
+
+
+def _write_required_proofs(output: Path) -> None:
+    values = {
+        "acquisition-closure-and-package-proof.json": {
+            "passed": True,
+            "accepted_acquisition_package_fingerprint": "9" * 64,
+            "package": {"acquired_metadata_package_fingerprint": "a" * 64},
+        },
+        "localization-closure-proof.json": {
+            "passed": True,
+            "localization_accounting_closed": True,
+            "localization_translation_complete": False,
+            "downstream_progression_allowed": True,
+            "accepted_translation_state": {"fingerprint": "b" * 64},
+            "vocabulary": {"fingerprint": "c" * 64},
+        },
+        "primary-source-graph-derivation-proof.json": {"passed": True},
+        "replay-source-graph-derivation-proof.json": {"passed": True},
+        "primary-replay-source-graph-comparison-proof.json": {
+            "passed": True,
+            "primary": {"fingerprint": "d" * 64},
+            "replay": {"fingerprint": "d" * 64},
+        },
+        "primary-search-validation-proof.json": {
+            "passed": True,
+            "logical_result_fingerprint": "e" * 64,
+        },
+        "replay-search-validation-proof.json": {
+            "passed": True,
+            "logical_result_fingerprint": "e" * 64,
+        },
+        "primary-replay-search-comparison-proof.json": {"passed": True},
+    }
+    for name, value in values.items():
+        (output / name).write_text(json.dumps(value), encoding="utf-8")
+
+
+def test_new_metadata_membership_uses_accepted_package_phase_delta_only(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    package = {
+        "schema_version": "sv1b.stable-replay-evidence.v2",
+        "package_fingerprint": "1" * 64,
+        "external_route_budget": {
+            "gallery_dl_requests": 0,
+            "llm_calls": 0,
+            "media_downloads": 0,
+            "provider_requests": 0,
+            "thumbnail_downloads": 0,
+        },
+        "tables": {
+            "source_metadata_records": [
+                *[
+                    {
+                        "media_content_key": f"media-{index}",
+                        "provider_record_key": f"record-{index}",
+                        "provider": "pixiv",
+                        "source_work_id": str(1000 + index),
+                        "source_page_index": index,
+                        "metadata_kind": "pixiv_ingestion_gate",
+                        "data_type_label": (
+                            "authenticated_provider_metadata"
+                        ),
+                        "status": "metadata_complete",
+                        "provenance": {
+                            "source": (
+                                "gallery_dl_authenticated_metadata"
+                            )
+                        },
+                    }
+                    for index in range(12)
+                ],
+                {
+                    "media_content_key": "baseline-media",
+                    "provider_record_key": "baseline-record",
+                    "provider": "pixiv",
+                    "source_work_id": "42",
+                    "source_page_index": 0,
+                    "metadata_kind": "pixiv_ingestion_gate",
+                    "data_type_label": "local_runtime_source_prior",
+                    "status": "metadata_complete",
+                    "provenance": {
+                        "source": "canonical_pixiv_filename_path_prior"
+                    },
+                },
+            ]
+        },
+    }
+    (output / "acquired-nonderived-evidence-package-private.json").write_text(
+        json.dumps(package), encoding="utf-8"
+    )
+    (
+        output / "acquisition-closure-and-package-proof.json"
+    ).write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "accepted_acquisition_package_fingerprint": "2" * 64,
+                "package": {"stable_package_fingerprint": "1" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    membership = harness._newly_acquired_exact_metadata_membership(
+        output
+    )
+    assert len(membership) == 12
+    assert all(row[0] != "baseline-media" for row in membership)
+
+
+def test_new_metadata_membership_fails_on_nonzero_external_route_budget(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    (
+        output / "acquired-nonderived-evidence-package-private.json"
+    ).write_text(
+        json.dumps(
+            {
+                "schema_version": "sv1b.stable-replay-evidence.v2",
+                "package_fingerprint": "1" * 64,
+                "external_route_budget": {"provider_requests": 1},
+                "tables": {"source_metadata_records": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (
+        output / "acquisition-closure-and-package-proof.json"
+    ).write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "accepted_acquisition_package_fingerprint": "2" * 64,
+                "package": {"stable_package_fingerprint": "1" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="acquisition_package_binding_invalid",
+    ):
+        harness._newly_acquired_exact_metadata_membership(output)
+
+
+def test_case_manifest_equality_normalizes_datetime_json_representation() -> None:
+    timestamp = datetime(2026, 7, 22, 3, 4, 5, tzinfo=timezone.utc)
+    assert harness._case_manifests_equal(
+        [{"case_id": "A01", "retrieved_at": timestamp}],
+        [{"case_id": "A01", "retrieved_at": str(timestamp)}],
+    )
+    assert not harness._case_manifests_equal(
+        [{"case_id": "A01", "retrieved_at": timestamp}],
+        [{"case_id": "A02", "retrieved_at": str(timestamp)}],
+    )
+
+
+def _cases(category: str, count: int, prefix: str) -> list[dict]:
+    values = []
+    for index in range(1, count + 1):
+        actual = {"passed": True}
+        provenance = {"source_layer_only": True, "derived_from_current_proofs": True}
+        if category == "pixiv_metadata":
+            provenance["phase_delta"] = "newly_acquired_exact_metadata"
+        elif category == "creator_clustering":
+            provenance.update(
+                phase_delta="new_or_materially_changed_creator_component",
+                available_changed_component_count=8,
+            )
+            actual["lifecycle_correct"] = True
+            actual.update(
+                identity_aliases=[f"creator-{index}"],
+                identity_union_created=False,
+                conservative_independence_preserved=True,
+                identity_union_basis="insufficient_multiple_strong_aliases",
+                stable_identity_anchor_present=True,
+                media_count_used_as_identity_evidence=False,
+                string_similarity_used_as_identity_evidence=False,
+            )
+        elif category == "shared_name_cannot_link":
+            provenance.update(
+                phase_delta="newly_acquired_alias_or_graph_edge",
+                available_phase_delta_case_count=6,
+            )
+            actual.update(
+                identity_union_created=False,
+                cannot_link_safety_passed=True,
+                lifecycle_correct=True,
+            )
+        elif category == "ai_tag_localization":
+            provenance["phase_delta"] = (
+                "newly_generated_translation" if index <= 6 else "proper_noun_exclusion_display"
+            )
+        elif category == "search_and_negative":
+            provenance.update(
+                phase_delta="new_localization",
+                supported_by_phase_delta=True,
+            )
+        values.append(harness._case(
+            f"{prefix}{index:02d}",
+            category,
+            media_hash=f"hash-{prefix}-{index}",
+            title=f"case {index}",
+            expected_behavior="expected",
+            actual_result=actual,
+            provenance=provenance,
+        ))
+    return values
+
+
+def _patch_case_builders(monkeypatch, *, metadata_count: int = 12) -> None:
+    monkeypatch.setattr(harness, "_pixiv_metadata_cases", lambda _session, _output: _cases("pixiv_metadata", metadata_count, "A"))
+    monkeypatch.setattr(harness, "_creator_clustering_cases", lambda _session, _output, _database: _cases("creator_clustering", 8, "B"))
+    monkeypatch.setattr(harness, "_shared_name_cases", lambda _session, _output: _cases("shared_name_cannot_link", 6, "C"))
+    monkeypatch.setattr(harness, "_localization_cases", lambda _session, _output: _cases("ai_tag_localization", 8, "D"))
+    monkeypatch.setattr(harness, "_search_cases", lambda _session, _output: _cases("search_and_negative", 6, "E"))
+    monkeypatch.setattr(
+        harness,
+        "validate_pixiv_case_media_source_bindings",
+        lambda *_args, **_kwargs: {
+            "case_count": 12,
+            "unique_media_count": 12,
+            "binding_membership_fingerprint": "f" * 64,
+            "passed": True,
+        },
+    )
+
+
+def test_build_harness_emits_exact_bound_40_case_pending_user_candidate(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(harness.sv1b, "validate_owned_output_root", lambda *_args, **_kwargs: {"passed": True})
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {"database_identity": database, "fingerprint": database + "-fp", "media_count": 12000},
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "f" * 40)
+    _patch_case_builders(monkeypatch)
+
+    proof = harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    assert proof["case_count"] == 40
+    assert proof["category_case_counts"] == harness.CATEGORY_COUNTS
+    assert proof["status"] == "pending_user"
+    assert proof["manual_acceptance_status"] == "pending_user"
+    assert proof["target_met"] is False
+    assert proof["safe_to_merge"] is False
+    assert proof["route_approved"] is False
+    assert proof["absolute_paths_exposed"] is False
+    assert len(proof["acceptance_case_manifest_fingerprint"]) == 64
+
+    monkeypatch.setattr(harness, "_git_head", lambda: "0" * 40)
+    with pytest.raises(harness.ManualAcceptanceHarnessError, match="binding_invalidated"):
+        harness._current_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
+def test_build_harness_fails_closed_on_case_composition_gap(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(harness.sv1b, "validate_owned_output_root", lambda *_args, **_kwargs: {"passed": True})
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "f" * 40)
+    _patch_case_builders(monkeypatch, metadata_count=11)
+    with pytest.raises(harness.ManualAcceptanceHarnessError, match="case_composition_invalid"):
+        harness.build_harness(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
+def test_build_harness_fails_closed_on_database_membership_gap(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    monkeypatch.setattr(harness.sv1b, "validate_owned_output_root", lambda *_args, **_kwargs: {"passed": True})
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 11999 if "primary" in database else 12000,
+        },
+    )
+    with pytest.raises(harness.ManualAcceptanceHarnessError, match="database_membership_invalid"):
+        harness.build_harness(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+
+
+def test_current_bindings_invalidates_on_proof_drift(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(harness.sv1b, "validate_owned_output_root", lambda *_args, **_kwargs: {"passed": True})
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {"database_identity": database, "fingerprint": database + "-fp", "media_count": 12000},
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "f" * 40)
+    _patch_case_builders(monkeypatch)
+    harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    proof_path = output / "primary-search-validation-proof.json"
+    proof = json.loads(proof_path.read_text(encoding="utf-8"))
+    proof["runtime_ms"] = 1
+    proof_path.write_text(json.dumps(proof), encoding="utf-8")
+    with pytest.raises(harness.ManualAcceptanceHarnessError, match="binding_invalidated"):
+        harness._current_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
+def test_harness_uses_explicit_relative_proof_sources_and_detects_drift(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    fresh_graph = output / "fresh-replay-v2-final-graph-proof.json"
+    fresh_graph.write_text(
+        json.dumps({"passed": True, "logical_graph": "fresh-v2"}),
+        encoding="utf-8",
+    )
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "f" * 40)
+    _patch_case_builders(monkeypatch)
+    graph_slots = {
+        "primary-source-graph-derivation-proof.json": fresh_graph.name,
+        "replay-source-graph-derivation-proof.json": fresh_graph.name,
+        "primary-replay-source-graph-comparison-proof.json": fresh_graph.name,
+    }
+    proof = harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        proof_sources=graph_slots,
+    )
+    assert all(
+        proof["proof_sources"][slot] == fresh_graph.name
+        for slot in graph_slots
+    )
+    assert len(proof["bindings"]["proof_source_map_fingerprint"]) == 64
+
+    fresh_graph.write_text(
+        json.dumps(
+            {"passed": True, "logical_graph": "unexpected-drift"}
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="binding_invalidated",
+    ):
+        harness._current_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
+def test_final_binding_regenerates_cases_and_preserves_source_proof(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "a" * 40)
+    _patch_case_builders(monkeypatch)
+    source = harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    source_text = (
+        output / "manual-acceptance-harness-proof.json"
+    ).read_text(encoding="utf-8")
+
+    monkeypatch.setattr(harness, "_git_head", lambda: "b" * 40)
+    final = harness.finalize_harness_binding(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        port=8012,
+    )
+    assert final["case_manifest_regenerated_equal"] is True
+    assert final["bindings"]["git_head"] == "b" * 40
+    assert final["localhost_url"] == "http://127.0.0.1:8012"
+    assert (
+        output / "manual-acceptance-harness-proof.json"
+    ).read_text(encoding="utf-8") == source_text
+    assert final[
+        "supersedes_harness_proof_fingerprint"
+    ] == harness.sv1b.sha256_payload(source)
+    assert harness._current_bindings(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    ) == final["bindings"]
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="final_binding_already_exists",
+    ):
+        harness.finalize_harness_binding(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
+def test_audit_closeout_binding_v2_supersedes_without_overwriting_v1(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "a" * 40)
+    _patch_case_builders(monkeypatch)
+    harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    harness.finalize_harness_binding(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    v1_path = output / harness.FINAL_HARNESS_PROOF_NAME
+    v1_bytes = v1_path.read_bytes()
+    cases = harness.sv1b.read_json(
+        output / "manual-acceptance/case-manifest-private.json"
+    )
+    monkeypatch.setattr(
+        harness,
+        "EXPECTED_AUDIT_CASE_MANIFEST_FINGERPRINT",
+        harness.sv1b.sha256_payload(cases),
+    )
+    audit = {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v2",
+        "protected_evidence_unchanged": True,
+        "stable_reference_integrity": {"passed": True},
+        "round_trip": {"passed": True},
+    }
+    audit["passed"] = all(
+        (
+            audit["protected_evidence_unchanged"],
+            audit["stable_reference_integrity"]["passed"],
+            audit["round_trip"]["passed"],
+        )
+    )
+    audit["proof_fingerprint"] = harness.sv1b.sha256_payload(audit)
+    harness.sv1b.write_json(
+        output / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_NAME,
+        audit,
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "b" * 40)
+
+    v2 = harness.finalize_audit_closeout_binding_v2(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        port=8012,
+    )
+
+    assert v1_path.read_bytes() == v1_bytes
+    assert v2["passed"] is True
+    assert v2["bindings"]["git_head"] == "b" * 40
+    assert v2["supersedes_final_binding_fingerprint"]
+    assert harness._active_harness_proof_path(output).name == (
+        harness.AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    )
+    assert harness._current_bindings(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    ) == v2["bindings"]
+    v2_path = output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V2_NAME
+    v2_bytes = v2_path.read_bytes()
+    audit_v3 = {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v3",
+        "git_head": "b" * 40,
+        "protected_evidence_unchanged": True,
+        "stable_reference_integrity": {"passed": True},
+        "primary_identity_crosscheck": {
+            "passed": True,
+            "phase_acquired_identity_unsupported_count": 0,
+        },
+        "round_trip": {"passed": True},
+        "passed": True,
+    }
+    audit_v3["proof_fingerprint"] = harness.sv1b.sha256_payload(audit_v3)
+    audit_v3_path = (
+        output / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME
+    )
+    harness.sv1b.write_json(audit_v3_path, audit_v3)
+    v3 = harness.finalize_audit_closeout_binding_v3(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+        port=8012,
+    )
+    assert v1_path.read_bytes() == v1_bytes
+    assert v2_path.read_bytes() == v2_bytes
+    assert v3["passed"] is True
+    assert v3["bindings"]["audit_validation"]["git_head"] == "b" * 40
+    assert harness._active_harness_proof_path(output).name == (
+        harness.AUDIT_CLOSEOUT_FINAL_BINDING_V3_NAME
+    )
+    assert harness._current_bindings(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    ) == v3["bindings"]
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="audit_closeout_binding_v3_already_exists",
+    ):
+        harness.finalize_audit_closeout_binding_v3(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    audit_v3_bytes = audit_v3_path.read_bytes()
+    audit_v3_path.unlink()
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="audit_closeout_validation_v3_missing",
+    ):
+        harness._current_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    audit_v3_path.write_bytes(audit_v3_bytes)
+    tampered = harness.sv1b.read_json(audit_v3_path)
+    tampered["protected_evidence_unchanged"] = False
+    harness.sv1b.write_json(audit_v3_path, tampered)
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="validation_v3_invalid",
+    ):
+        harness._current_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="audit_closeout_binding_v2_already_exists",
+    ):
+        harness.finalize_audit_closeout_binding_v2(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("missing_git_head", "old_git_head", "arbitrary_fingerprint"),
+)
+def test_audit_v3_self_validation_fails_closed(
+    tmp_path: Path, monkeypatch, mutation: str
+) -> None:
+    monkeypatch.setattr(harness, "_git_head", lambda: "c" * 40)
+    audit = {
+        "proof_version": "sv1b_audit_closeout_read_only_validation_v3",
+        "git_head": "c" * 40,
+        "stable_reference_integrity": {"passed": True},
+        "primary_identity_crosscheck": {
+            "passed": True,
+            "phase_acquired_identity_unsupported_count": 0,
+        },
+        "round_trip": {"passed": True},
+        "passed": True,
+    }
+    audit["proof_fingerprint"] = harness.sv1b.sha256_payload(audit)
+    if mutation == "missing_git_head":
+        audit.pop("git_head")
+        audit["proof_fingerprint"] = harness.sv1b.sha256_payload(audit)
+    elif mutation == "old_git_head":
+        audit["git_head"] = "d" * 40
+        audit["proof_fingerprint"] = harness.sv1b.sha256_payload(audit)
+    else:
+        audit["proof_fingerprint"] = "e" * 64
+    harness.sv1b.write_json(
+        tmp_path / harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V3_NAME,
+        audit,
+    )
+
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="validation_v3_invalid",
+    ):
+        harness._validated_audit_v3_binding(tmp_path)
+
+
+def test_v4_is_active_and_current_binding_uses_canonical_audit_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "run"
+    (output / "manual-acceptance").mkdir(parents=True)
+    cases = [{"case_id": "A01"}]
+    harness.sv1b.write_json(
+        output / "manual-acceptance/case-manifest-private.json",
+        cases,
+    )
+    audit_binding = {
+        "proof_path": harness.AUDIT_CLOSEOUT_VALIDATION_PROOF_V4_NAME,
+        "proof_fingerprint": "a" * 64,
+        "proof_file_sha256": "b" * 64,
+        "git_head": "c" * 40,
+    }
+    expected = {"binding_fingerprint": "d" * 64}
+    harness.sv1b.write_json(
+        output / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME,
+        {
+            "audit_closeout_validation": audit_binding,
+            "bindings": expected,
+            "proof_sources": {},
+        },
+    )
+    observed: dict[str, str] = {}
+
+    def validate(_output, *, expected_file_sha256=None):
+        observed["sha"] = str(expected_file_sha256)
+        return audit_binding
+
+    monkeypatch.setattr(harness, "_validated_audit_v4_binding", validate)
+    monkeypatch.setattr(
+        harness,
+        "_resolve_proof_sources",
+        lambda *_args, **_kwargs: ({}, {}),
+    )
+    monkeypatch.setattr(
+        harness,
+        "_build_bindings",
+        lambda **_kwargs: expected,
+    )
+
+    assert harness._active_harness_proof_path(output).name == (
+        harness.AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME
+    )
+    assert harness._current_bindings(
+        output,
+        primary_database="blombooru_primary_test",
+        replay_database="blombooru_replay_test",
+    ) == expected
+    assert observed["sha"] == "b" * 64
+
+
+def test_v4_second_create_is_rejected_before_any_evidence_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    (tmp_path / harness.AUDIT_CLOSEOUT_FINAL_BINDING_V4_NAME).write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="audit_closeout_binding_v4_already_exists",
+    ):
+        harness.finalize_audit_closeout_binding_v4(
+            tmp_path,
+            primary_database="blombooru_primary_test",
+            replay_database="blombooru_replay_test",
+        )
+
+
+def test_dashboard_reload_revalidates_active_binding() -> None:
+    source = Path(harness.__file__).read_text(encoding="utf-8")
+
+    assert "refreshed = binding_loader(" in source
+    assert "manual_acceptance_reload_binding_drift" in source
+
+
+def test_prevalidation_allows_git_only_drift_but_not_evidence_drift(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(harness.sv1b, "engine_for", lambda _database: engine)
+    monkeypatch.setattr(
+        harness,
+        "_database_binding",
+        lambda database: {
+            "database_identity": database,
+            "fingerprint": database + "-fp",
+            "media_count": 12000,
+        },
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "a" * 40)
+    _patch_case_builders(monkeypatch)
+    harness.build_harness(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    monkeypatch.setattr(harness, "_git_head", lambda: "b" * 40)
+    bindings = harness._prevalidation_bindings(
+        output,
+        primary_database="blombooru_sv1b_primary_test",
+        replay_database="blombooru_sv1b_replay_test",
+    )
+    assert bindings["git_head"] == "b" * 40
+
+    proof_path = output / "primary-search-validation-proof.json"
+    proof = json.loads(proof_path.read_text(encoding="utf-8"))
+    proof["logical_result_fingerprint"] = "0" * 64
+    proof_path.write_text(json.dumps(proof), encoding="utf-8")
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="prevalidation_evidence_drift",
+    ):
+        harness._prevalidation_bindings(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+        )
+    engine.dispose()
+
+
+def test_harness_rejects_proof_source_escape(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    _write_required_proofs(output)
+    monkeypatch.setattr(
+        harness.sv1b,
+        "validate_owned_output_root",
+        lambda *_args, **_kwargs: {"passed": True},
+    )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="proof_source_escape",
+    ):
+        harness.build_harness(
+            output,
+            primary_database="blombooru_sv1b_primary_test",
+            replay_database="blombooru_sv1b_replay_test",
+            proof_sources={
+                "primary-source-graph-derivation-proof.json": (
+                    "../outside.json"
+                )
+            },
+        )
+
+
+def test_normalize_submission_requires_exact_case_membership_and_bounded_decisions() -> None:
+    case_ids = {"A01", "A02"}
+    normalized = harness.normalize_submission(
+        {
+            "results": [
+                {"case_id": "A02", "decision": "FAIL", "comment": "problem"},
+                {"case_id": "A01", "decision": "PASS", "comment": "ok"},
+            ]
+        },
+        case_ids,
+    )
+    assert normalized == [
+        {"case_id": "A01", "decision": "pass", "comment": "ok"},
+        {"case_id": "A02", "decision": "fail", "comment": "problem"},
+    ]
+    with pytest.raises(harness.ManualAcceptanceHarnessError, match="case_membership_mismatch"):
+        harness.normalize_submission(
+            {"results": [{"case_id": "A01"}, {"case_id": "A03"}]},
+            case_ids,
+        )
+    with pytest.raises(harness.ManualAcceptanceHarnessError, match="decision_invalid"):
+        harness.normalize_submission(
+            {"results": [{"case_id": "A01", "decision": "accept"}, {"case_id": "A02"}]},
+            case_ids,
+        )
+
+
+def test_media_path_resolution_anchors_relative_paths_and_blocks_escape(
+    tmp_path: Path,
+) -> None:
+    storage = tmp_path / "storage"
+    media = storage / "media" / "original" / "case.jpg"
+    media.parent.mkdir(parents=True)
+    media.write_bytes(b"safe")
+    assert harness._resolve_accepted_media_path(
+        "media/original/case.jpg", storage
+    ) == media.resolve()
+    assert harness._resolve_accepted_media_path(
+        "../outside.jpg", storage
+    ) is None
+
+
+def test_phase_delta_composition_rejects_underived_shared_name_safety() -> None:
+    cases = [
+        *_cases("pixiv_metadata", 12, "A"),
+        *_cases("creator_clustering", 8, "B"),
+        *_cases("shared_name_cannot_link", 6, "C"),
+        *_cases("ai_tag_localization", 8, "D"),
+        *_cases("search_and_negative", 6, "E"),
+    ]
+    cases[20]["actual_result"]["identity_union_created"] = True
+    with pytest.raises(harness.ManualAcceptanceHarnessError, match="shared_name_safety_invalid"):
+        harness.validate_phase_delta_case_composition(cases)
+
+
+def test_phase_delta_composition_includes_every_manual_pending_localization() -> None:
+    localization = _cases("ai_tag_localization", 8, "D")
+    localization[0]["provenance"].update(
+        phase_delta="manual_localization_review_pending",
+        available_manual_pending_count=1,
+    )
+    for row in localization[1:6]:
+        row["provenance"]["phase_delta"] = "newly_generated_translation"
+        row["provenance"]["available_manual_pending_count"] = 1
+    for row in localization[6:]:
+        row["provenance"]["phase_delta"] = "proper_noun_exclusion_display"
+        row["provenance"]["available_manual_pending_count"] = 1
+    cases = [
+        *_cases("pixiv_metadata", 12, "A"),
+        *_cases("creator_clustering", 8, "B"),
+        *_cases("shared_name_cannot_link", 6, "C"),
+        *localization,
+        *_cases("search_and_negative", 6, "E"),
+    ]
+    composition = harness.validate_phase_delta_case_composition(cases)
+    assert composition["manual_localization_review_pending_case_count"] == 1
+    assert composition["new_translation_case_count"] == 5
+    assert composition["proper_noun_exclusion_display_case_count"] == 2
+
+
+def test_metadata_case_binding_rejects_a10_a11_duplicate_media(
+    monkeypatch,
+) -> None:
+    rows = [
+        {
+            "hash": "same-media",
+            "source_work_id": "100",
+            "source_page_index": 0,
+            "artist_id": "creator-1",
+            "source_binding_fingerprint": "a" * 64,
+        },
+        {
+            "hash": "other-media",
+            "source_work_id": "200",
+            "source_page_index": 0,
+            "artist_id": "creator-2",
+            "source_binding_fingerprint": "b" * 64,
+        },
+    ]
+    monkeypatch.setattr(
+        harness, "_validated_pixiv_metadata_rows", lambda *_args: rows
+    )
+    cases = []
+    for index in range(12):
+        row = rows[index % 2]
+        cases.append(
+            harness._case(
+                f"A{index + 1:02d}",
+                "pixiv_metadata",
+                media_hash=("same-media" if index in {9, 10} else f"m-{index}"),
+                title="metadata",
+                expected_behavior="exact",
+                actual_result={
+                    "work_id": row["source_work_id"],
+                    "page_index": row["source_page_index"],
+                    "creator_stable_id": row["artist_id"],
+                    "source_binding_fingerprint": row[
+                        "source_binding_fingerprint"
+                    ],
+                },
+                provenance={"derived_from_current_proofs": True},
+            )
+        )
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="metadata_media_binding_not_one_to_one",
+    ):
+        harness.validate_pixiv_case_media_source_bindings(
+            cases, object(), Path("unused")
+        )
+
+
+def test_metadata_case_binding_rejects_work_page_creator_drift(
+    monkeypatch,
+) -> None:
+    rows = [
+        {
+            "hash": f"media-{index}",
+            "source_work_id": str(100 + index),
+            "source_page_index": index,
+            "artist_id": f"creator-{index}",
+            "source_binding_fingerprint": f"{index:064x}",
+        }
+        for index in range(12)
+    ]
+    monkeypatch.setattr(
+        harness, "_validated_pixiv_metadata_rows", lambda *_args: rows
+    )
+    cases = [
+        harness._case(
+            f"A{index + 1:02d}",
+            "pixiv_metadata",
+            media_hash=row["hash"],
+            title="metadata",
+            expected_behavior="exact",
+            actual_result={
+                "work_id": "wrong" if index == 10 else row["source_work_id"],
+                "page_index": row["source_page_index"],
+                "creator_stable_id": row["artist_id"],
+                "source_binding_fingerprint": row[
+                    "source_binding_fingerprint"
+                ],
+            },
+            provenance={"derived_from_current_proofs": True},
+        )
+        for index, row in enumerate(rows)
+    ]
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="metadata_case_binding_drift",
+    ):
+        harness.validate_pixiv_case_media_source_bindings(
+            cases, object(), Path("unused")
+        )
+
+
+def test_media_content_hash_check_is_exact(tmp_path: Path) -> None:
+    path = tmp_path / "media.bin"
+    path.write_bytes(b"bound media")
+    import hashlib
+
+    assert harness._media_content_hash_matches(
+        path, hashlib.sha256(b"bound media").hexdigest()
+    )
+    assert not harness._media_content_hash_matches(path, "0" * 64)
+
+
+def test_media_binding_hashes_original_before_serving_thumbnail(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+
+    storage = tmp_path / "storage"
+    original = storage / "media" / "original" / "case.jpg"
+    thumbnail = storage / "media" / "thumbnails" / "case.jpg"
+    original.parent.mkdir(parents=True)
+    thumbnail.parent.mkdir(parents=True)
+    original.write_bytes(b"original media bytes")
+    thumbnail.write_bytes(b"derived thumbnail bytes")
+    row = {
+        "hash": hashlib.sha256(b"original media bytes").hexdigest(),
+        "path": "media/original/case.jpg",
+        "thumbnail_path": "media/thumbnails/case.jpg",
+    }
+    assert harness._validated_media_display_path(row, storage) == thumbnail
+
+
+def test_media_binding_rejects_original_content_hash_drift(
+    tmp_path: Path,
+) -> None:
+    storage = tmp_path / "storage"
+    original = storage / "media" / "original" / "case.jpg"
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"drifted media bytes")
+    with pytest.raises(
+        harness.ManualAcceptanceHarnessError,
+        match="media_content_hash_mismatch",
+    ):
+        harness._validated_media_display_path(
+            {
+                "hash": "0" * 64,
+                "path": "media/original/case.jpg",
+                "thumbnail_path": None,
+            },
+            storage,
+        )
+
+
+def test_harness_server_is_loopback_only_and_never_embeds_paths() -> None:
+    source = Path(harness.__file__).read_text(encoding="utf-8")
+    assert 'uvicorn.run(app, host="127.0.0.1"' in source
+    assert 'os.getenv("APP_PORT"' in source
+    assert "root not in resolved.parents" in source
+    assert '"source_url"' not in source
+    assert '"path":' not in source
+    assert "SCV2-SV1B 40-case 手工验收" in harness._HTML
+    assert "导出不会修改数据库" in harness._HTML

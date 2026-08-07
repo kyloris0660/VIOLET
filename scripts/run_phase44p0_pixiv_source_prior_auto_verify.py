@@ -33,12 +33,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.models import Media  # noqa: E402
-from app.services.pixiv_filename_prior_service import (  # noqa: E402
-    PIXIV_PRIOR_PATTERN,
-    PIXIV_PRIOR_RE,
-    extract_pixiv_filename_prior_from_text as _extract_canonical_pixiv_prior,
-)
-
 PHASE = "4.4-P0"
 REPORT_MD = Path("docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification.md")
 REPORT_JSON = Path("docs/reports/phase-4.4p0-pixiv-filename-source-prior-auto-verification-summary.json")
@@ -47,6 +41,11 @@ LOCAL_VERIFY_JSON = Path(".local_manifests/phase-4.4p0-pixiv-auto-verify-details
 LOCAL_SHEET_MD = Path(".local_manifests/phase-4.4p0-pixiv-auto-verify-sheet.md")
 LOCAL_SHEET_CSV = Path(".local_manifests/phase-4.4p0-pixiv-auto-verify-sheet.csv")
 
+# Historical Phase 4.4-P0 evidence used this exact, narrower grammar. Keep it
+# local so later runtime denominator changes cannot retrospectively alter the
+# accepted report or its focused tests.
+PIXIV_PRIOR_PATTERN = r"(?<!\d)(?P<pixiv_work_id>[1-9]\d{5,11})_p(?P<page_index>\d+)(?!\d)"
+PIXIV_PRIOR_RE = re.compile(PIXIV_PRIOR_PATTERN)
 PIXIV_CANDIDATE_RE = re.compile(r"(?<!\d)(?P<pixiv_work_id>\d+)_p(?P<page_index>\d+)(?!\d)", re.IGNORECASE)
 WRITE_SQL_RE = re.compile(
     r"^\s*(insert|update|delete|merge|alter|drop|truncate|create|replace|grant|revoke|copy\s+.+\s+from|vacuum)\b",
@@ -233,7 +232,16 @@ def metadata_fields_for_pixiv(media: Media) -> list[tuple[str, str, str | None]]
 
 
 def extract_pixiv_filename_prior_from_text(value: str | None) -> list[dict[str, Any]]:
-    return _extract_canonical_pixiv_prior(value)
+    text_value = str(value or "")
+    return [
+        {
+            "pixiv_work_id": match.group("pixiv_work_id"),
+            "page_index": int(match.group("page_index")),
+            "token": match.group(0),
+            "span": [match.start(), match.end()],
+        }
+        for match in PIXIV_PRIOR_RE.finditer(text_value)
+    ]
 
 
 def detect_pixiv_filename_variants(value: str | None) -> list[dict[str, Any]]:

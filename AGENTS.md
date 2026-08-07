@@ -6,6 +6,16 @@ This repository is **V.I.O.L.E.T.** (Visual Image Organizer for Local Evaluation
 
 The project goal is a personal, local anime image library with Danbooru-style tag-based retrieval and Chinese localization. See `docs/project-roadmap.md` for the full phase plan and `docs/current-handoff.md` for the latest state.
 
+### Current-state documentation protocol
+
+- At the start of every task, read and validate `docs/state/current-phase.json`;
+  load only the active reports, ADRs, contracts, and roadmaps linked from it.
+- After every durable checkpoint or status change, update the state immediately,
+  regenerate `docs/current-handoff.md`, and run
+  `scripts/check_documentation_state.py --check`.
+- Run the same check before commit, push, stop, handoff, and final response.
+  Do not defer current-state documentation until the end of a phase.
+
 ### Architecture overview
 
 - **Backend:** FastAPI (Python 3.10+), SQLAlchemy ORM, PostgreSQL 17

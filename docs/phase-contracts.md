@@ -21,17 +21,85 @@ or `safe_to_merge` must declare a registered contract and pass the contract
 checker before making that claim. If no matching contract exists, create or
 extend a contract first.
 
+## Mandatory Manual Acceptance Rule
+
+User manual acceptance is required after every two substantive behavioral/data
+phases and before any full-library or production route. Media import, AI
+tagging, provider acquisition, graph/resolver behavior, search behavior,
+localization, runtime/UI behavior, and production workflows are substantive.
+Docs-only, report-only, contract-only, and behavior-neutral repair phases do not
+increment or reset the counter.
+
+Acceptance is valid only for its exact Git HEAD, database identity, media
+manifest fingerprint, acquired metadata package fingerprint, graph/search
+fingerprints, and acceptance-case manifest fingerprint. Later runtime, data,
+search, graph, or localization changes invalidate affected acceptance cases.
+When acceptance is required and pending, the executable contract must enforce
+`manual_acceptance_required=true`, `manual_acceptance_status=pending_user`,
+`target_met=false`, `safe_to_merge=false`, and `route_approved=false`.
+
 ## Current Phase Boundary
 
-PR #137 is merged and accepted at
-`7fca41151cc9e1d5b48cfe243279e66296346bae`; its final bounded status is
-`target_met_multilingual_identity_candidate_closure`. The accepted ML2 logical
-evidence and isolated database are immutable inputs to the separately governed
-SCV2-SV1 controlled-scale and promotion-readiness phase. SV1 registered and
-passed `sv1_controlled_scale_promotion_readiness_contract_v1` for its bounded
-feature-branch partial SV1-A result. The contract does not authorize production,
-full-library, provider, Entity, confirmed assignment, truth-route work, or
-starting SV1B/FL1.
+<!-- CURRENT_PHASE: SCV2-SV1B -->
+
+PR #138 is merged and accepted at
+`46861489fa0b3b05ae917a99a3932897efd70365`; its accepted evidence HEAD is
+`af073ca0ad2a9df9418cf072dc381d7b2c10216a`. SV1-A registered and passed
+`sv1_controlled_scale_promotion_readiness_contract_v1` for the accepted partial
+12,000-media, AI-tagging, stable-key promotion, and 606-family rebuild result;
+`target_met` remained false. New Pixiv metadata, localization, full source-graph
+closure, the full library, and production remain incomplete.
+
+SCV2-SV1B is the current separately governed phase. Its finite provider and
+localization execution are accepted immutable inputs; the single authorized
+fresh Replay v2 and graph/search derivations are complete. The current stop
+records completed owner acceptance. The submitted v4 result and all v4/v5/v5-r2/
+v5-r3 bindings remain immutable historical evidence.
+The phase-acquired identity membership is derived only from canonical stable
+key/fingerprint differences between the immutable accepted and pre-provider
+packages: `7,271 / 7,271`, missing `0`, unsupported `0`, fingerprint
+`47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`.
+The historical `7,257` candidate/provenance set is superseded and is not an
+acceptance denominator.
+The final composite records `37 PASS`, `3 owner-waived nonblocking known
+limitations`, `0 PENDING`, and `0 unwaived FAIL`. B01, B04, and B08 retain their
+underlying mismatches and are not PASS. The phase-scoped waiver must not be
+applied to real creator identities, reliable provider accounts, normal search
+results, truth paths, FL1, production, Provider-2, or another PR.
+
+The new `sv1b_owner_acceptance_closeout_contract_v1` derives
+`status=sv1b_accepted_with_known_nonblocking_limitations`, `target_met=false`,
+`safe_to_merge=true`, and `route_approved=true`. The route scope is exactly
+`SCV2-FL1_planning_only_no_execution`; all database access/write, provider,
+Pixiv, gallery-dl, LLM, media, production, Entity/truth, provider-derived
+media_tags, and FL1 data execution remain forbidden.
+
+SV1B graph derivation requires a versioned schema-aware stable replay package,
+exact Primary/fresh-Replay package round-trip equality, graph-effective trusted
+metadata equality, and trusted-complete verdict/count equality. The failed
+retry2 Replay remains immutable forensic evidence. The owner has authorized
+exactly one fresh isolated Replay verification database after package-v2 and
+immutable acquisition-evidence gates pass. Any mismatch still fails closed at
+`blocked_sv1b_replay_trusted_provenance_reconciliation`. Fresh Replay v2
+round-trip equality passed on the owner-authorized isolated database. Its
+first graph derivation is preserved as a failed forensic checkpoint because
+a development numeric source-row ID produced a cross-database SourceConcept
+signal-key collision and one deferred identity union. Stable signal identity
+v2 then removed that union; its graph safety audit passed with 606/606 accepted
+families, but the fail-closed persisted-checkpoint projection included
+explicitly superseded historical rows. The stage-aware no-write reconciliation
+then passed: stable signals, R2R remap, Primary expected core, fresh planned
+core, fresh persisted core, and 606/606 family preservation are logically
+equal, while both failed proofs remain immutable. The endpoint-aligned Primary
+and fresh Replay 76-case runs and their stable
+logical comparison pass with identical workload/result fingerprints, zero
+missing or unsupported results, zero AND leakage, zero lifecycle violation,
+and zero protected-table mutation. Physical history totals remain diagnostics,
+and both failed search proofs remain preserved. The 40-case phase-delta
+selection and immutable evidence binding are preserved. The current gate is
+`none_sv1b_owner_acceptance_complete`; PR #139 may transition to Ready and
+squash merge only after the owner-closeout contract and final local validation
+pass.
 
 ## Registered GOV3 Contracts
 
@@ -49,6 +117,8 @@ starting SV1B/FL1.
 - `ml1_multilingual_alias_source_metadata_closure_contract_v1`
 - `ml2_multilingual_identity_candidate_closure_contract_v1`
 - `sv1_controlled_scale_promotion_readiness_contract_v1`
+- `sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
+- `sv1b_owner_acceptance_closeout_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`

@@ -11,6 +11,11 @@ from sqlalchemy.orm import Query, Session, aliased
 from ..enums import ContentClassEnum
 from ..models import (Album, Media, RatingEnum, Tag, TagCategoryEnum,
                       blombooru_album_media, blombooru_media_tags)
+from ..services.source_metadata_registry_service import canonical_source_key
+from ..services.tag_localization_policy import (
+    is_display_alias_manually_revoked,
+    is_translation_effectively_accepted,
+)
 
 _TAG_ZH_REVERSE = None
 _DB_ALIAS_CACHE = None
@@ -30,6 +35,8 @@ def _translation_alias_trusted_for_search(row) -> bool:
     source = str(value("source") or "").casefold()
     status = str(value("status") or "").casefold()
     needs_review = bool(value("needs_review"))
+    if not is_translation_effectively_accepted(value("canonical_name")):
+        return False
     if category not in PROPER_NOUN_CATEGORIES:
         return True
     if source in TRUSTED_PROPER_NOUN_TRANSLATION_SOURCES:
@@ -53,29 +60,60 @@ def _load_zh_tag_reverse():
     return _TAG_ZH_REVERSE
 
 
-def _translation_alias_map(rows) -> dict[str, str]:
-    cache = {}
+def _translation_alias_map(rows) -> dict[str, tuple[str, ...]]:
+    cache: dict[str, dict[str, Any]] = {}
     source_priority = {"manual": 0, "static": 1, "llm": 2, "imported": 3}
+
+    def value(row: Any, name: str) -> Any:
+        return row.get(name) if isinstance(row, Mapping) else getattr(row, name, None)
+
+    def add(alias: Any, canonical: Any, source: Any) -> None:
+        key = str(alias or "").strip()
+        target = str(canonical or "").strip()
+        if not key or not target:
+            return
+        new_priority = source_priority.get(str(source or "").casefold(), 99)
+        existing = cache.get(key)
+        if existing is None or new_priority < int(existing["priority"]):
+            cache[key] = {"priority": new_priority, "canonicals": {target}}
+        elif new_priority == int(existing["priority"]):
+            existing["canonicals"].add(target)
+
     for row in rows:
         if not _translation_alias_trusted_for_search(row):
             continue
-        key = row.display_name
-        existing_priority = source_priority.get(cache.get(key, {}).get("_source", ""), 99)
-        new_priority = source_priority.get(row.source, 99)
-        if key not in cache or new_priority < existing_priority:
-            cache[key] = {"canonical": row.canonical_name, "_source": row.source}
-        if row.aliases_json:
+        display_name = value(row, "display_name")
+        canonical_name = value(row, "canonical_name")
+        source = value(row, "source")
+        aliases_json = value(row, "aliases_json")
+        add(display_name, canonical_name, source)
+        if aliases_json:
             try:
-                aliases = json.loads(row.aliases_json) if isinstance(row.aliases_json, str) else row.aliases_json
+                aliases = json.loads(aliases_json) if isinstance(aliases_json, str) else aliases_json
                 for alias in aliases or ():
-                    if not alias:
-                        continue
-                    alias_existing = source_priority.get(cache.get(alias, {}).get("_source", ""), 99)
-                    if alias not in cache or new_priority < alias_existing:
-                        cache[alias] = {"canonical": row.canonical_name, "_source": row.source}
+                    add(alias, canonical_name, source)
             except (json.JSONDecodeError, TypeError):
                 pass
-    return {key: value["canonical"] for key, value in cache.items()}
+    return {
+        key: tuple(sorted(value["canonicals"]))
+        for key, value in cache.items()
+    }
+
+
+def _translation_alias_cache(rows) -> dict[str, tuple[str, ...]]:
+    exact = _translation_alias_map(rows)
+    canonical_groups: dict[str, set[str]] = {}
+    for alias, targets in exact.items():
+        key = canonical_source_key(alias)
+        if key:
+            canonical_groups.setdefault(key, set()).update(targets)
+    return {
+        **exact,
+        **{
+            f"__canonical_alias__:{key}": tuple(sorted(targets))
+            for key, targets in canonical_groups.items()
+        },
+    }
 
 
 def _load_db_alias_cache(db: Session | None = None):
@@ -84,7 +122,7 @@ def _load_db_alias_cache(db: Session | None = None):
     global _DB_ALIAS_CACHE, _DB_ALIAS_CACHE_TIME
 
     if db is not None:
-        session_cache_key = "search_parser_translation_alias_map_v1"
+        session_cache_key = "search_parser_translation_alias_map_v2"
         if session_cache_key in db.info:
             return db.info[session_cache_key]
         from ..models import TagTranslation
@@ -94,7 +132,7 @@ def _load_db_alias_cache(db: Session | None = None):
             .filter(TagTranslation.language == "zh-CN", TagTranslation.status != "rejected")
             .all()
         )
-        alias_map = _translation_alias_map(rows)
+        alias_map = _translation_alias_cache(rows)
         db.info[session_cache_key] = alias_map
         return alias_map
 
@@ -119,7 +157,7 @@ def _load_db_alias_cache(db: Session | None = None):
                 .all()
             )
 
-            _DB_ALIAS_CACHE = _translation_alias_map(rows)
+            _DB_ALIAS_CACHE = _translation_alias_cache(rows)
             _DB_ALIAS_CACHE_TIME = now
         finally:
             db.close()
@@ -133,12 +171,36 @@ def _load_db_alias_cache(db: Session | None = None):
 def resolve_zh_alias(tag_name: str, db: Session | None = None) -> str:
     """Resolve a Chinese tag alias to its canonical English tag name.
     Priority: DB translations > static dict > original name."""
+    if is_display_alias_manually_revoked(tag_name):
+        return tag_name
     db_cache = _load_db_alias_cache(db)
-    if tag_name in db_cache:
-        return db_cache[tag_name]
+    targets: set[str] = set()
+    exact_targets = db_cache.get(tag_name, ())
+    if isinstance(exact_targets, str):
+        targets.add(exact_targets)
+    else:
+        targets.update(exact_targets)
+    canonical_targets = db_cache.get(
+        f"__canonical_alias__:{canonical_source_key(tag_name)}", ()
+    )
+    if isinstance(canonical_targets, str):
+        targets.add(canonical_targets)
+    else:
+        targets.update(canonical_targets)
+    if targets:
+        if len(targets) == 1:
+            return next(iter(targets))
+        # Preserve an ambiguous display alias so the endpoint source-soft
+        # search layer can expand it to the union of every equally trusted
+        # canonical tag instead of silently choosing one identity.
+        return tag_name
 
     reverse = _load_zh_tag_reverse()
-    return reverse.get(tag_name, tag_name)
+    target = reverse.get(tag_name, tag_name)
+    if isinstance(target, str):
+        return target
+    values = tuple(sorted({str(value) for value in target if value}))
+    return values[0] if len(values) == 1 else tag_name
 
 
 def invalidate_translation_cache():
