@@ -40,66 +40,47 @@ When acceptance is required and pending, the executable contract must enforce
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-SV1B -->
+<!-- CURRENT_PHASE: SCV2-FL1 -->
 
-PR #138 is merged and accepted at
-`46861489fa0b3b05ae917a99a3932897efd70365`; its accepted evidence HEAD is
-`af073ca0ad2a9df9418cf072dc381d7b2c10216a`. SV1-A registered and passed
-`sv1_controlled_scale_promotion_readiness_contract_v1` for the accepted partial
-12,000-media, AI-tagging, stable-key promotion, and 606-family rebuild result;
-`target_met` remained false. New Pixiv metadata, localization, full source-graph
-closure, the full library, and production remain incomplete.
+PR #139 / SCV2-SV1B is merged and accepted in `origin/main` at
+`33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner-closeout contract
+recorded `37 PASS`, `3 owner-waived nonblocking known limitations`, `0 PENDING`,
+and `0 unwaived FAIL`. The B01/B04/B08 mismatches remain historical evidence;
+their waiver is limited to SV1B placeholder/default creator signals and does not
+authorize FL1 behavior, scale, production, or truth promotion.
 
-SCV2-SV1B is the current separately governed phase. Its finite provider and
-localization execution are accepted immutable inputs; the single authorized
-fresh Replay v2 and graph/search derivations are complete. The current stop
-records completed owner acceptance. The submitted v4 result and all v4/v5/v5-r2/
-v5-r3 bindings remain immutable historical evidence.
-The phase-acquired identity membership is derived only from canonical stable
-key/fingerprint differences between the immutable accepted and pre-provider
-packages: `7,271 / 7,271`, missing `0`, unsupported `0`, fingerprint
-`47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`.
-The historical `7,257` candidate/provenance set is superseded and is not an
-acceptance denominator.
-The final composite records `37 PASS`, `3 owner-waived nonblocking known
-limitations`, `0 PENDING`, and `0 unwaived FAIL`. B01, B04, and B08 retain their
-underlying mismatches and are not PASS. The phase-scoped waiver must not be
-applied to real creator identities, reliable provider accounts, normal search
-results, truth paths, FL1, production, Provider-2, or another PR.
+`SCV2-FL1: Isolated Full-Library Dev/Test Planning` is the current phase. The
+current gate is `pending_owner_fl1_implementation_plan_approval`. Planning has
+started, but implementation and data execution have not. The state must remain:
 
-The new `sv1b_owner_acceptance_closeout_contract_v1` derives
-`status=sv1b_accepted_with_known_nonblocking_limitations`, `target_met=false`,
-`safe_to_merge=true`, and `route_approved=true`. The route scope is exactly
-`SCV2-FL1_planning_only_no_execution`; all database access/write, provider,
-Pixiv, gallery-dl, LLM, media, production, Entity/truth, provider-derived
-media_tags, and FL1 data execution remain forbidden.
+- `status=fl1_planning_ready_owner_approval_pending`
+- `target_met=false`
+- `safe_to_merge=false`
+- `route_approved=false`
+- `manual_acceptance_status=not_applicable_planning_only`
+- `next_phase_started=true`
 
-SV1B graph derivation requires a versioned schema-aware stable replay package,
-exact Primary/fresh-Replay package round-trip equality, graph-effective trusted
-metadata equality, and trusted-complete verdict/count equality. The failed
-retry2 Replay remains immutable forensic evidence. The owner has authorized
-exactly one fresh isolated Replay verification database after package-v2 and
-immutable acquisition-evidence gates pass. Any mismatch still fails closed at
-`blocked_sv1b_replay_trusted_provenance_reconciliation`. Fresh Replay v2
-round-trip equality passed on the owner-authorized isolated database. Its
-first graph derivation is preserved as a failed forensic checkpoint because
-a development numeric source-row ID produced a cross-database SourceConcept
-signal-key collision and one deferred identity union. Stable signal identity
-v2 then removed that union; its graph safety audit passed with 606/606 accepted
-families, but the fail-closed persisted-checkpoint projection included
-explicitly superseded historical rows. The stage-aware no-write reconciliation
-then passed: stable signals, R2R remap, Primary expected core, fresh planned
-core, fresh persisted core, and 606/606 family preservation are logically
-equal, while both failed proofs remain immutable. The endpoint-aligned Primary
-and fresh Replay 76-case runs and their stable
-logical comparison pass with identical workload/result fingerprints, zero
-missing or unsupported results, zero AND leakage, zero lifecycle violation,
-and zero protected-table mutation. Physical history totals remain diagnostics,
-and both failed search proofs remain preserved. The 40-case phase-delta
-selection and immutable evidence binding are preserved. The current gate is
-`none_sv1b_owner_acceptance_complete`; PR #139 may transition to Ready and
-squash merge only after the owner-closeout contract and final local validation
-pass.
+The current documentation-state checker is the executable planning governance
+gate. It requires a single active phase marker, a generated handoff, exact
+accepted-mainline ancestry, a Draft planning PR, public-safe durable links, and
+an explicit zero-execution boundary.
+
+No FL1 implementation contract is registered yet. Before any database,
+filesystem, inventory, import, classification, AI-tagging, localization,
+graph/search, or external operation, a separate implementation PR must register
+and test `scv2_fl1_isolated_full_library_dev_test_contract_v1` (or an equivalent
+owner-approved identifier). That future contract must derive exact Git/Python/
+DB/storage/source identities, manifest and denominator accounting, item/batch
+restart state, mutation allowlist/denylist, failure budgets, accepted-evidence
+reuse/loss, external-call/cost counts, redaction, and manual-acceptance gates.
+
+Current planning authorizes no production or production comparison, no source
+root read, no database creation/connection/write, no test storage creation, no
+inventory run, no import, no classification or AI tagging, no provider/Pixiv/
+gallery-dl/LLM/media/thumbnail request, no localization or graph/search
+derivation, and no Entity/truth/provider-derived `media_tags` write. Owner
+approval of the plan may authorize a later implementation PR, but never data
+execution by implication.
 
 ## Registered GOV3 Contracts
 

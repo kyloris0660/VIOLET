@@ -447,14 +447,17 @@ def test_public_dirty_worktree_status_is_redacted() -> None:
 def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
+    archived_roadmap = (
+        ROOT / "docs" / "roadmap" / "archive" / "project-roadmap-through-scv2-sv1b.md"
+    ).read_text(encoding="utf-8")
     workflow = (ROOT / "docs" / "test-workflow.md").read_text(encoding="utf-8")
 
-    assert "SCV2-SV1B" in handoff
-    assert "Draft PR #139" in handoff
+    assert "SCV2-FL1" in handoff
+    assert "Draft PR" in handoff
     assert "target_met=false" in handoff
-    assert "Phase 4.5-SCV2-A1" in roadmap
+    assert "Phase 4.5-SCV2-A1" in archived_roadmap
     assert "ChatGPT review pack" in workflow
-    assert "Entity/truth/media_tags promotion" in handoff
+    assert "Entity, EntityAlias, confirmed assignment, user truth" in handoff
 
 
 def test_review_pack_policy_document_includes_required_categories() -> None:

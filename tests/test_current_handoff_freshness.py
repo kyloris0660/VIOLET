@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import shutil
-import copy
 from pathlib import Path
 
 import pytest
@@ -15,19 +15,6 @@ from scripts import check_documentation_state as documentation_state
 ROOT = Path(__file__).resolve().parent.parent
 STATE_PATH = ROOT / "docs" / "state" / "current-phase.json"
 HANDOFF_PATH = ROOT / "docs" / "current-handoff.md"
-INCIDENT_PATH = (
-    ROOT
-    / "docs"
-    / "reports"
-    / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md"
-)
-ADR_PATH = ROOT / "docs" / "decisions" / "ADR-0001-stable-replay-evidence-v2.md"
-CLOSEOUT_SUMMARY_PATH = (
-    ROOT
-    / "docs"
-    / "reports"
-    / "phase-4.5-scv2-sv1b-owner-acceptance-closeout-summary.json"
-)
 
 
 def _state() -> dict[str, object]:
@@ -40,46 +27,45 @@ def _copy_docs_root(tmp_path: Path) -> Path:
     return copied_root
 
 
-def test_current_phase_schema_and_status_fields_are_consistent() -> None:
+def test_current_phase_schema_and_fl1_planning_boundary_are_consistent() -> None:
     state = _state()
 
     documentation_state.validate_state(state)
-    assert state["schema_version"] == "violet.current-phase.v1"
-    assert state["phase_id"] == "SCV2-SV1B"
+    assert state["schema_version"] == "violet.current-phase.v2"
+    assert state["phase_id"] == "SCV2-FL1"
     assert state["repository"] == "kyloris0660/VIOLET"
-    assert state["pr_number"] == 139
     assert state["draft"] is True
+    assert state["pr_number"] is None or state["pr_number"] > 0
+    assert state["current_status"] == documentation_state.FL1_STATUS
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is True
-    assert state["route_approved"] is True
-    assert state["manual_acceptance_status"] == (
-        "accepted_with_known_nonblocking_limitations"
-    )
-    assert state["next_phase_started"] is False
-    assert state["active_blocker"]["code"]
-    assert state["active_blocker"]["scope"]
-    assert state["active_blocker"]["resolution"]
-    assert state["current_replay_strategy"]["fresh_replay_database_creation_limit"] == 1
-    assert state["current_replay_strategy"]["external_call_budget"] == 0
-    assert state["public_state_boundary"] == (
-        "public_safe_governance_only_no_private_proof_payloads_or_paths"
-    )
-    protected = state["protected_evidence"]
-    assert protected["canonical_phase_acquired_membership_count"] == 7271
-    assert protected[
-        "canonical_phase_acquired_membership_fingerprint"
-    ] == "47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1"
-    assert protected["canonical_phase_acquired_missing_count"] == 0
-    assert protected["canonical_phase_acquired_unsupported_count"] == 0
-    assert protected["superseded_candidate_provenance_membership_count"] == 7257
-    assert protected["production_library_consumed_or_modified"] is False
-    assert state["manual_acceptance_summary"]["pass_count"] == 37
-    assert state["manual_acceptance_summary"][
-        "owner_waived_nonblocking_known_limitation_count"
-    ] == 3
-    assert state["route_authorization"]["scope"] == (
-        "SCV2-FL1_planning_only_no_execution"
-    )
+    assert state["safe_to_merge"] is False
+    assert state["route_approved"] is False
+    assert state["manual_acceptance_status"] == documentation_state.FL1_MANUAL_STATUS
+    assert state["next_phase_started"] is True
+    assert state["active_blocker"]["code"] == documentation_state.FL1_BLOCKER
+    assert state["planning_boundary"] == {
+        "planning_only": True,
+        "implementation_authorized": False,
+        "data_execution_authorized": False,
+        "production_authorized": False,
+        "database_access_authorized": False,
+        "source_root_access_authorized": False,
+        "provider_or_llm_authorized": False,
+        "media_or_thumbnail_download_authorized": False,
+        "projected_external_cost_usd": 0,
+    }
+
+
+def test_prior_sv1b_acceptance_is_preserved_without_waiver_inheritance() -> None:
+    prior = _state()["prior_phase_acceptance"]
+
+    assert prior["merge_commit"] == "33af4111e1595dac3ece0ac50002556d466f0138"
+    assert prior["pass_count"] == 37
+    assert prior["owner_waived_nonblocking_known_limitation_count"] == 3
+    assert prior["pending_count"] == 0
+    assert prior["unwaived_fail_count"] == 0
+    assert prior["owner_waived_case_ids"] == ["B01", "B04", "B08"]
+    assert prior["waiver_inherited_by_fl1"] is False
 
 
 def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
@@ -89,69 +75,33 @@ def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
     assert HANDOFF_PATH.read_text(encoding="utf-8") == rendered
     assert 40 <= len(rendered.splitlines()) <= 60
     assert "this file is not the fact source" in rendered
+    assert "SCV2-FL1" in rendered
     assert state["current_status"] in rendered
     assert state["next_required_checkpoint"] in rendered
-    assert all(
-        operation in rendered
-        for operation in state["authorized_operations"]
-    )
-    assert "binding v2" not in rendered
-    assert "squash merge" in rendered
+    assert "implementation/data/production authorization: `false/false/false`" in rendered
+    assert all(operation in rendered for operation in state["authorized_operations"])
 
 
-def test_handoff_writer_atomically_renders_current_state(
-    tmp_path: Path,
-) -> None:
+def test_handoff_writer_atomically_renders_current_state(tmp_path: Path) -> None:
     target = tmp_path / "current-handoff.md"
     state = _state()
 
     documentation_state.write_handoff(state, path=target)
 
-    assert target.read_text(encoding="utf-8") == (
-        documentation_state.render_handoff(state)
-    )
+    assert target.read_text(encoding="utf-8") == documentation_state.render_handoff(state)
     assert not target.with_suffix(".md.tmp").exists()
 
 
-def test_current_phase_links_report_adr_and_contract_are_consistent() -> None:
+def test_current_phase_durable_links_exist_and_are_public_docs() -> None:
     state = _state()
     documentation_state.check_documentation_state()
-    incident = INCIDENT_PATH.read_text(encoding="utf-8")
-    adr = ADR_PATH.read_text(encoding="utf-8")
-    contract = (ROOT / "docs" / "phase-contracts.md").read_text(encoding="utf-8")
 
-    for link in state["durable_links"]:
-        assert (ROOT / link["path"]).is_file()
-    blocker = state["active_blocker"]["code"]
-    assert blocker in incident
-    assert blocker in contract
-    assert blocker in HANDOFF_PATH.read_text(encoding="utf-8")
-    assert "schema-aware" in incident
-    assert "schema-aware" in adr
-    assert "fresh isolated Replay" in incident
-    assert "development numeric row ids" in adr.lower()
-    assert "Primary export -> fresh import -> Replay re-export" in adr
-    top = "\n".join(incident.splitlines()[:20])
-    assert (
-        f"AUTHORITATIVE_CURRENT_STATUS: {state['current_status']}" in top
-    )
-    assert (
-        "AUTHORITATIVE_MANUAL_ACCEPTANCE_STATUS: "
-        f"{state['manual_acceptance_status']}" in top
-    )
-
-
-def test_public_owner_closeout_summary_preserves_waiver_overlay() -> None:
-    payload = json.loads(CLOSEOUT_SUMMARY_PATH.read_text(encoding="utf-8"))
-
-    assert payload["contract_id"] == "sv1b_owner_acceptance_closeout_contract_v1"
-    assert payload["pass_count"] == 37
-    assert payload["owner_waived_nonblocking_known_limitation_count"] == 3
-    assert payload["pending_count"] == 0
-    assert payload["unwaived_fail_count"] == 0
-    assert payload["owner_waived_case_ids"] == ["B01", "B04", "B08"]
-    assert payload["underlying_mismatch_preserved"] is True
-    assert payload["route_scope"] == "SCV2-FL1_planning_only_no_execution"
+    paths = {link["path"] for link in state["durable_links"]}
+    assert "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md" in paths
+    assert "docs/governance/doc-gov-02-closeout.md" in paths
+    assert "docs/roadmap/archive/project-roadmap-through-scv2-sv1b.md" in paths
+    assert "docs/development/agent-runbook.md" in paths
+    assert all((ROOT / path).is_file() for path in paths)
 
 
 def test_each_active_roadmap_declares_exactly_one_current_phase() -> None:
@@ -167,326 +117,178 @@ def test_each_active_roadmap_declares_exactly_one_current_phase() -> None:
     documentation_state.validate_roadmaps(state)
 
 
+def test_doc_gov_02_separates_active_entrypoints_from_history() -> None:
+    project = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
+    archive = (
+        ROOT / "docs" / "roadmap" / "archive" / "project-roadmap-through-scv2-sv1b.md"
+    ).read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "development" / "agent-runbook.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert len(project.splitlines()) < 150
+    assert len(agents.splitlines()) < 150
+    assert len(archive.splitlines()) > 1000
+    assert len(runbook.splitlines()) > 500
+    assert "CURRENT_PHASE: SCV2-FL1" in project
+    assert "CURRENT_PHASE: SCV2-SV1B" in archive
+    assert "current next technical phase" not in project.casefold()
+    assert "docs/development/agent-runbook.md" in agents
+
+
+def test_fl1_plan_covers_required_dev_test_contract_and_stop_points() -> None:
+    plan = (
+        ROOT
+        / "docs"
+        / "plans"
+        / "phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
+    ).read_text(encoding="utf-8")
+
+    for heading in (
+        "## 2. Goals",
+        "## 3. Non-Goals",
+        "## 4. Isolation Design",
+        "## 5. Full-Library Inventory Denominator",
+        "## 6. Duplicate, Unsupported, And Cloud-Recall Policy",
+        "## 7. Batch Import And Recovery",
+        "## 8. Classification And Local AI Tagging",
+        "## 9. SV1-A / SV1-B Evidence Reuse",
+        "## 10. Metadata, Localization, And Graph Extension Route",
+        "## 11. Provider And External Request Boundary",
+        "## 12. Mutation Allowlist And Forbidden Tables",
+        "## 13. Failure Budget And Fail-Closed Conditions",
+        "## 14. Manual Acceptance And Stop Points",
+        "## 15. Executable Contract And Tests",
+        "## 16. Proposed PR Split",
+        "## 18. Approval Boundary",
+    ):
+        assert heading in plan
+    assert "VIOLET_ENV=test" in plan
+    assert "projected cost: zero" in plan
+    assert "waiver_inherited_by_fl1" not in plan
+    assert "No implementation PR may silently include execution authority" in plan
+    assert "production" in plan.casefold()
+
+
 def test_state_change_without_handoff_regeneration_fails_closed(tmp_path: Path) -> None:
     copied_root = _copy_docs_root(tmp_path)
     state_path = copied_root / "docs" / "state" / "current-phase.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["updated_at"] = "2099-01-01T00:00:00+00:00"
-    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    state_path.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="generated_handoff_drift",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="generated_handoff_drift"):
         documentation_state.check_documentation_state(root=copied_root)
 
 
 def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
     copied_root = _copy_docs_root(tmp_path)
     roadmap = copied_root / "docs" / "project-roadmap.md"
-    text = roadmap.read_text(encoding="utf-8")
     roadmap.write_text(
-        text.replace(
-            "<!-- CURRENT_PHASE: SCV2-SV1B -->",
+        roadmap.read_text(encoding="utf-8").replace(
             "<!-- CURRENT_PHASE: SCV2-FL1 -->",
+            "<!-- CURRENT_PHASE: SCV2-SV1B -->",
         ),
         encoding="utf-8",
     )
 
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="current_phase_marker_count",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="current_phase_conflict"):
         documentation_state.check_documentation_state(root=copied_root)
 
 
-def test_historical_reports_remain_historical_and_outside_generated_state() -> None:
-    state = _state()
-    historical = (
-        ROOT
-        / "docs"
-        / "reports"
-        / "phase-4.5-scv2-ml2-multilingual-identity-candidate-closure-summary.json"
-    )
-    payload = json.loads(historical.read_text(encoding="utf-8"))
-
-    assert payload["pipeline_contract"]["status"] == (
-        "target_met_multilingual_identity_candidate_closure"
-    )
-    assert payload["pipeline_contract"]["safe_to_merge"] is True
-    assert historical.relative_to(ROOT).as_posix() not in {
-        link["path"] for link in state["durable_links"]
-    }
-
-
 @pytest.mark.parametrize(
-    ("field", "value", "error"),
+    ("field", "value"),
     [
-        ("current_status", "blocked_sv1b_replay", "pending_user_status_fields_conflict"),
-        ("target_met", True, "pending_user_status_fields_conflict"),
-        ("safe_to_merge", True, "pending_user_status_fields_conflict"),
-        ("route_approved", True, "pending_user_status_fields_conflict"),
-        ("next_phase_started", True, "sv1b_cannot_start_next_phase"),
+        ("current_status", "fl1_execution_running"),
+        ("target_met", True),
+        ("safe_to_merge", True),
+        ("route_approved", True),
+        ("manual_acceptance_status", "accepted_user"),
+        ("next_phase_started", False),
     ],
 )
-def test_pending_user_five_field_combinations_fail_closed(
-    field: str,
-    value: object,
-    error: str,
-) -> None:
+def test_fl1_planning_status_conflicts_fail_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
-    state.update(
-        {
-            "current_status": documentation_state.PENDING_USER_STATUS,
-            "target_met": False,
-            "safe_to_merge": False,
-            "route_approved": False,
-            "manual_acceptance_status": "pending_user",
-            "next_phase_started": False,
-            "active_blocker": {
-                "code": documentation_state.PENDING_USER_BLOCKER,
-                "scope": "owner manual acceptance",
-                "resolution": "Wait for the owner's exact bound decision.",
-            },
-            "authorized_operations": [
-                "exactly one final binding v5-r3"
-            ],
-        }
-    )
     state[field] = value
 
-    with pytest.raises(documentation_state.DocumentationStateError, match=error):
-        documentation_state.validate_state(state)
-
-
-@pytest.mark.parametrize(
-    "authorization",
-    [
-        "create another Replay database",
-        "import accepted evidence into Replay",
-        "derive fresh Replay graph",
-    ],
-)
-def test_pending_user_cannot_authorize_completed_database_operations(
-    authorization: str,
-) -> None:
-    state = copy.deepcopy(_state())
-    state.update(
-        {
-            "current_status": documentation_state.PENDING_USER_STATUS,
-            "safe_to_merge": False,
-            "route_approved": False,
-            "manual_acceptance_status": "pending_user",
-            "active_blocker": {
-                "code": documentation_state.PENDING_USER_BLOCKER,
-                "scope": "owner manual acceptance",
-                "resolution": "Wait for the owner's exact bound decision.",
-            },
-            "authorized_operations": ["exactly one final binding v5-r3"],
-        }
-    )
-    state["authorized_operations"].append(authorization)
-
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="pending_user_database_operation_authorized",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_completed_future_command_in_blocker_resolution_fails_closed() -> None:
-    state = copy.deepcopy(_state())
-    state.update(
-        {
-            "current_status": documentation_state.PENDING_USER_STATUS,
-            "safe_to_merge": False,
-            "route_approved": False,
-            "manual_acceptance_status": "pending_user",
-            "active_blocker": {
-                "code": documentation_state.PENDING_USER_BLOCKER,
-                "scope": "owner manual acceptance",
-                "resolution": "Wait for the owner's exact bound decision.",
-            },
-            "authorized_operations": ["exactly one final binding v5-r3"],
-        }
-    )
-    state["active_blocker"]["resolution"] = (
-        "Commit this final public state before owner acceptance."
-    )
-
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="blocker_resolution_contains_completed_future_command",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_pending_user_requires_single_versioned_active_binding_authorization() -> None:
-    state = copy.deepcopy(_state())
-    state.update(
-        {
-            "current_status": documentation_state.PENDING_USER_STATUS,
-            "safe_to_merge": False,
-            "route_approved": False,
-            "manual_acceptance_status": "pending_user",
-            "active_blocker": {
-                "code": documentation_state.PENDING_USER_BLOCKER,
-                "scope": "owner manual acceptance",
-                "resolution": "Wait for the owner's exact bound decision.",
-            },
-            "authorized_operations": [
-                "exactly one final binding v5-r3",
-                "exactly one final binding v3",
-            ],
-        }
-    )
-
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="pending_user_active_binding_authorization_invalid",
+        match="fl1_planning_status_fields_conflict",
     ):
         documentation_state.validate_state(state)
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    (
-        ("canonical_phase_acquired_membership_count", 7257),
-        ("canonical_phase_acquired_missing_count", 1),
-        ("canonical_phase_acquired_unsupported_count", 1),
-        ("canonical_phase_acquired_membership_fingerprint", "0" * 63),
-        ("production_library_consumed_or_modified", True),
-    ),
-)
-def test_sv1b_canonical_membership_public_state_fails_closed(
-    field: str,
-    value: object,
-) -> None:
-    state = copy.deepcopy(_state())
-    state["protected_evidence"][field] = value
-
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="sv1b_canonical_phase_membership_state_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-@pytest.mark.parametrize(
-    ("path", "value", "error"),
     [
-        ("safe_to_merge", False, "accepted_closeout_status_fields_conflict"),
-        ("route_approved", False, "accepted_closeout_status_fields_conflict"),
-        (
-            "manual_acceptance_summary.pass_count",
-            40,
-            "accepted_closeout_summary_invalid",
-        ),
-        (
-            "manual_acceptance_summary.owner_waived_case_ids",
-            [],
-            "accepted_closeout_summary_invalid",
-        ),
-        (
-            "route_authorization.scope",
-            "SCV2-FL1_execution",
-            "accepted_closeout_route_invalid",
-        ),
+        ("planning_only", False),
+        ("implementation_authorized", True),
+        ("data_execution_authorized", True),
+        ("production_authorized", True),
+        ("database_access_authorized", True),
+        ("source_root_access_authorized", True),
+        ("provider_or_llm_authorized", True),
+        ("media_or_thumbnail_download_authorized", True),
+        ("projected_external_cost_usd", 0.01),
     ],
 )
-def test_accepted_closeout_state_fails_closed(
-    path: str, value: object, error: str
-) -> None:
+def test_fl1_execution_boundary_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
-    cursor = state
-    parts = path.split(".")
-    for part in parts[:-1]:
-        cursor = cursor[part]
-    cursor[parts[-1]] = value
+    state["planning_boundary"][field] = value
 
-    with pytest.raises(documentation_state.DocumentationStateError, match=error):
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_planning_boundary_invalid",
+    ):
         documentation_state.validate_state(state)
 
 
-def test_linked_incident_must_declare_authoritative_current_state_at_top(
-    tmp_path: Path,
-) -> None:
-    copied_root = _copy_docs_root(tmp_path)
-    incident = (
-        copied_root
-        / "docs"
-        / "reports"
-        / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md"
-    )
-    incident.write_text(
-        incident.read_text(encoding="utf-8").replace(
-            "AUTHORITATIVE_CURRENT_STATUS: "
-            "sv1b_accepted_with_known_nonblocking_limitations",
-            "AUTHORITATIVE_CURRENT_STATUS: historical_blocker",
-        ),
-        encoding="utf-8",
-    )
+def test_fl1_authorized_operations_cannot_grant_execution() -> None:
+    state = copy.deepcopy(_state())
+    state["authorized_operations"].append("database creation for FL1")
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="incident_authoritative_state_mismatch",
+        match="fl1_planning_authorizes_execution",
     ):
-        documentation_state.check_documentation_state(root=copied_root)
-
-
-def test_historical_incident_status_requires_superseded_marker(
-    tmp_path: Path,
-) -> None:
-    copied_root = _copy_docs_root(tmp_path)
-    incident = (
-        copied_root
-        / "docs"
-        / "reports"
-        / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md"
-    )
-    incident.write_text(
-        incident.read_text(encoding="utf-8").replace(
-            "<!-- HISTORICAL_STATUSES_BELOW: historical_superseded -->",
-            "",
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="incident_historical_status_marker_missing",
-    ):
-        documentation_state.check_documentation_state(root=copied_root)
-
-
-def test_historical_checkpoint_summary_cannot_masquerade_as_current(
-    tmp_path: Path,
-) -> None:
-    copied_root = _copy_docs_root(tmp_path)
-    summary_path = (
-        copied_root
-        / "docs"
-        / "reports"
-        / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint-summary.json"
-    )
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    summary["record_role"] = "authoritative_current_state"
-    summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="incident_summary_role_not_historical",
-    ):
-        documentation_state.check_documentation_state(root=copied_root)
+        documentation_state.validate_state(state)
 
 
 @pytest.mark.parametrize(
     "field",
-    ["accepted_mainline_base", "implementation_evidence_head"],
+    [
+        "database_operation_count",
+        "provider_operation_count",
+        "llm_operation_count",
+        "media_or_thumbnail_operation_count",
+    ],
 )
+def test_fl1_operation_counts_must_stay_zero(field: str) -> None:
+    state = copy.deepcopy(_state())
+    state["protected_evidence"][field] = 1
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_planning_operation_counts_nonzero",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_sv1b_waiver_cannot_be_inherited_by_fl1() -> None:
+    state = copy.deepcopy(_state())
+    state["prior_phase_acceptance"]["waiver_inherited_by_fl1"] = True
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_prior_phase_acceptance_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+@pytest.mark.parametrize("field", ["accepted_mainline_base", "implementation_evidence_head"])
 def test_current_phase_git_heads_must_be_ancestors(field: str) -> None:
     state = copy.deepcopy(_state())
     state[field] = "f" * 40

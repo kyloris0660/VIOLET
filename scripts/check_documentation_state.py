@@ -1,4 +1,4 @@
-"""Fail-closed current-phase documentation state checker and handoff renderer."""
+"""Fail-closed current-phase state checker and generated handoff renderer."""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / "docs" / "state" / "current-phase.json"
 HANDOFF_PATH = ROOT / "docs" / "current-handoff.md"
-ROADMAP_PATHS = (
+ACTIVE_ROUTE_PATHS = (
     ROOT / "docs" / "roadmap" / "current-mainline-roadmap.md",
     ROOT / "docs" / "project-roadmap.md",
+    ROOT / "docs" / "phase-contracts.md",
 )
-CONTRACT_PATH = ROOT / "docs" / "phase-contracts.md"
-SCHEMA_VERSION = "violet.current-phase.v1"
+SCHEMA_VERSION = "violet.current-phase.v2"
 STATUS_FIELDS = (
     "target_met",
     "safe_to_merge",
@@ -39,8 +39,8 @@ REQUIRED_FIELDS = {
     "implementation_evidence_head",
     "current_status",
     *STATUS_FIELDS,
-    "manual_acceptance_summary",
-    "route_authorization",
+    "prior_phase_acceptance",
+    "planning_boundary",
     "completed_checkpoints",
     "active_blocker",
     "owner_decisions",
@@ -48,56 +48,26 @@ REQUIRED_FIELDS = {
     "forbidden_operations",
     "protected_evidence",
     "public_state_boundary",
-    "current_replay_strategy",
     "next_required_checkpoint",
     "durable_links",
     "deferred_debt",
     "updated_at",
 }
-MANUAL_STATUSES = {
-    "not_started_replay_recovery",
-    "pending_user",
-    "accepted_user",
-    "accepted_with_known_nonblocking_limitations",
-}
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
-HEX64 = re.compile(r"^[0-9a-f]{64}$")
 PUBLIC_FORBIDDEN = (
     re.compile(r"[A-Za-z]:\\"),
     re.compile(r"(?i)\b(?:authorization|cookie|set-cookie)\s*[:=]"),
     re.compile(r"(?i)\b(?:api[_-]?key|refresh[_-]?token|bearer)\s*[:=]\s*\S+"),
     re.compile(r"(?i)\.local_manifests"),
 )
-PENDING_USER_STATUS = "automated_sv1b_candidate_ready_manual_acceptance_pending"
-PENDING_USER_BLOCKER = "pending_user_manual_acceptance"
-CLOSEOUT_STATUS = "sv1b_accepted_with_known_nonblocking_limitations"
-CLOSEOUT_BLOCKER = "none_sv1b_owner_acceptance_complete"
-CLOSEOUT_WAIVER = (
-    "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
-)
-PENDING_USER_FORBIDDEN_AUTHORIZATION_TERMS = (
-    "create",
-    "creation",
-    "import",
-    "derive",
-    "derivation",
-    "rebuild",
-    "re-derive",
-)
-COMPLETED_FUTURE_COMMANDS = (
-    "commit this final public state",
-    "create the fresh replay",
-    "import the acquired",
-    "derive the replay",
-    "write the one non-overwriting final git binding",
-)
-AUTHORITATIVE_STATUS_MARKER = "AUTHORITATIVE_CURRENT_STATUS"
-AUTHORITATIVE_MANUAL_MARKER = "AUTHORITATIVE_MANUAL_ACCEPTANCE_STATUS"
-HISTORICAL_STATUS_MARKER = "HISTORICAL_STATUSES_BELOW: historical_superseded"
+FL1_STATUS = "fl1_planning_ready_owner_approval_pending"
+FL1_BLOCKER = "pending_owner_fl1_implementation_plan_approval"
+FL1_MANUAL_STATUS = "not_applicable_planning_only"
+SV1B_WAIVER = "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
 
 
 class DocumentationStateError(ValueError):
-    """Raised when the public current-state contract is inconsistent."""
+    """Raised when current public documentation state is inconsistent."""
 
 
 def load_state(path: Path = STATE_PATH) -> dict[str, Any]:
@@ -110,11 +80,77 @@ def load_state(path: Path = STATE_PATH) -> dict[str, Any]:
     return payload
 
 
-def _require_nonempty_list(state: dict[str, Any], key: str) -> list[Any]:
+def _require_list(
+    state: dict[str, Any], key: str, *, allow_empty: bool = False
+) -> list[Any]:
     value = state.get(key)
-    if not isinstance(value, list) or not value:
-        raise DocumentationStateError(f"{key}_must_be_nonempty_list")
+    if not isinstance(value, list) or (not value and not allow_empty):
+        suffix = "list" if allow_empty else "nonempty_list"
+        raise DocumentationStateError(f"{key}_must_be_{suffix}")
     return value
+
+
+def _validate_fl1_state(state: dict[str, Any]) -> None:
+    if (
+        state["current_status"] != FL1_STATUS
+        or state["target_met"] is not False
+        or state["safe_to_merge"] is not False
+        or state["route_approved"] is not False
+        or state["manual_acceptance_status"] != FL1_MANUAL_STATUS
+        or state["next_phase_started"] is not True
+    ):
+        raise DocumentationStateError("fl1_planning_status_fields_conflict")
+    blocker = state["active_blocker"]
+    if blocker.get("code") != FL1_BLOCKER:
+        raise DocumentationStateError("fl1_planning_blocker_conflict")
+
+    boundary = state["planning_boundary"]
+    expected_boundary = {
+        "planning_only": True,
+        "implementation_authorized": False,
+        "data_execution_authorized": False,
+        "production_authorized": False,
+        "database_access_authorized": False,
+        "source_root_access_authorized": False,
+        "provider_or_llm_authorized": False,
+        "media_or_thumbnail_download_authorized": False,
+        "projected_external_cost_usd": 0,
+    }
+    if not isinstance(boundary, dict) or any(
+        boundary.get(key) != value for key, value in expected_boundary.items()
+    ):
+        raise DocumentationStateError("fl1_planning_boundary_invalid")
+
+    prior = state["prior_phase_acceptance"]
+    if not isinstance(prior, dict) or any(
+        (
+            prior.get("phase_id") != "SCV2-SV1B",
+            prior.get("merge_commit") != state["accepted_mainline_base"],
+            prior.get("pass_count") != 37,
+            prior.get("owner_waived_nonblocking_known_limitation_count") != 3,
+            prior.get("pending_count") != 0,
+            prior.get("unwaived_fail_count") != 0,
+            sorted(prior.get("owner_waived_case_ids") or ())
+            != ["B01", "B04", "B08"],
+            prior.get("owner_waiver_identity") != SV1B_WAIVER,
+            prior.get("waiver_inherited_by_fl1") is not False,
+        )
+    ):
+        raise DocumentationStateError("fl1_prior_phase_acceptance_invalid")
+
+    protected = state["protected_evidence"]
+    if not isinstance(protected, dict) or any(
+        protected.get(key) != 0
+        for key in (
+            "database_operation_count",
+            "provider_operation_count",
+            "llm_operation_count",
+            "media_or_thumbnail_operation_count",
+        )
+    ):
+        raise DocumentationStateError("fl1_planning_operation_counts_nonzero")
+    if protected.get("production_consumed_or_modified_during_fl1_planning") is not False:
+        raise DocumentationStateError("fl1_planning_production_boundary_invalid")
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -123,184 +159,99 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         raise DocumentationStateError(f"missing_fields:{','.join(missing)}")
     if state["schema_version"] != SCHEMA_VERSION:
         raise DocumentationStateError("unsupported_schema_version")
+    if state["repository"] != "kyloris0660/VIOLET":
+        raise DocumentationStateError("repository_mismatch")
     if not HEX40.fullmatch(str(state["accepted_mainline_base"])):
         raise DocumentationStateError("accepted_mainline_base_invalid")
     if not HEX40.fullmatch(str(state["implementation_evidence_head"])):
         raise DocumentationStateError("implementation_evidence_head_invalid")
-    if state["repository"] != "kyloris0660/VIOLET":
-        raise DocumentationStateError("repository_mismatch")
-    if state["pr_number"] != 139 or state["draft"] is not True:
-        raise DocumentationStateError("pr_or_draft_mismatch")
+    if state["pr_number"] is not None and (
+        isinstance(state["pr_number"], bool)
+        or not isinstance(state["pr_number"], int)
+        or state["pr_number"] <= 0
+    ):
+        raise DocumentationStateError("pr_number_invalid")
+    if state["draft"] is not True:
+        raise DocumentationStateError("planning_pr_must_be_draft")
     for key in ("target_met", "safe_to_merge", "route_approved", "next_phase_started"):
         if not isinstance(state[key], bool):
             raise DocumentationStateError(f"{key}_must_be_boolean")
-    if state["manual_acceptance_status"] not in MANUAL_STATUSES:
+    if not isinstance(state["manual_acceptance_status"], str) or not state[
+        "manual_acceptance_status"
+    ]:
         raise DocumentationStateError("manual_acceptance_status_invalid")
-    if state["phase_id"] == "SCV2-SV1B" and state["next_phase_started"]:
-        raise DocumentationStateError("sv1b_cannot_start_next_phase")
-    if state["manual_acceptance_status"] == "pending_user":
-        if (
-            state["current_status"] != PENDING_USER_STATUS
-            or state["target_met"]
-            or state["safe_to_merge"]
-            or state["route_approved"]
-            or state["next_phase_started"]
-        ):
-            raise DocumentationStateError("pending_user_status_fields_conflict")
-    if state["manual_acceptance_status"] == (
-        "accepted_with_known_nonblocking_limitations"
-    ):
-        if (
-            state["current_status"] != CLOSEOUT_STATUS
-            or state["target_met"]
-            or state["safe_to_merge"] is not True
-            or state["route_approved"] is not True
-            or state["next_phase_started"]
-        ):
-            raise DocumentationStateError("accepted_closeout_status_fields_conflict")
     blocker = state["active_blocker"]
-    if not isinstance(blocker, dict) or not blocker.get("code") or not blocker.get("resolution"):
+    if not isinstance(blocker, dict) or not all(
+        blocker.get(key) for key in ("code", "scope", "resolution")
+    ):
         raise DocumentationStateError("active_blocker_invalid")
-    _require_nonempty_list(state, "owner_decisions")
-    authorized = _require_nonempty_list(state, "authorized_operations")
-    forbidden = _require_nonempty_list(state, "forbidden_operations")
+    _require_list(state, "completed_checkpoints")
+    _require_list(state, "owner_decisions")
+    authorized = _require_list(state, "authorized_operations")
+    forbidden = _require_list(state, "forbidden_operations")
+    _require_list(state, "deferred_debt", allow_empty=True)
     if not state["next_required_checkpoint"]:
         raise DocumentationStateError("next_required_checkpoint_missing")
-    joined_authorized = "\n".join(map(str, authorized))
-    joined_forbidden = "\n".join(map(str, forbidden))
-    if state["manual_acceptance_status"] == "pending_user":
-        if blocker.get("code") != PENDING_USER_BLOCKER:
-            raise DocumentationStateError("pending_user_blocker_conflict")
-        forbidden_authorizations = [
-            term
-            for term in PENDING_USER_FORBIDDEN_AUTHORIZATION_TERMS
-            if re.search(rf"\b{re.escape(term)}\b", joined_authorized, re.IGNORECASE)
-        ]
-        if forbidden_authorizations:
-            raise DocumentationStateError(
-                "pending_user_database_operation_authorized:"
-                + ",".join(forbidden_authorizations)
-            )
-        binding_authorizations = [
-            operation
-            for operation in authorized
-            if re.search(
-                r"\bfinal binding v\d+(?:-r\d+)?\b",
-                str(operation),
-                re.IGNORECASE,
-            )
-        ]
-        binding_versions = (
-            re.findall(
-                r"\bfinal binding (v\d+(?:-r\d+)?)\b",
-                str(binding_authorizations[0]),
-                re.IGNORECASE,
-            )
-            if len(binding_authorizations) == 1
-            else []
-        )
-        if len(binding_authorizations) != 1 or len(binding_versions) != 1:
-            raise DocumentationStateError(
-                "pending_user_active_binding_authorization_invalid"
-            )
-        stale_commands = [
-            command
-            for command in COMPLETED_FUTURE_COMMANDS
-            if command in str(blocker["resolution"]).casefold()
-        ]
-        if stale_commands:
-            raise DocumentationStateError(
-                "blocker_resolution_contains_completed_future_command:"
-                + ",".join(stale_commands)
-            )
-    if state["manual_acceptance_status"] == (
-        "accepted_with_known_nonblocking_limitations"
-    ):
-        if blocker.get("code") != CLOSEOUT_BLOCKER:
-            raise DocumentationStateError("accepted_closeout_blocker_conflict")
-        acceptance = state["manual_acceptance_summary"]
-        if not isinstance(acceptance, dict) or (
-            acceptance.get("case_count") != 40
-            or acceptance.get("pass_count") != 37
-            or acceptance.get("owner_waived_nonblocking_known_limitation_count")
-            != 3
-            or acceptance.get("pending_count") != 0
-            or acceptance.get("unwaived_fail_count") != 0
-            or sorted(acceptance.get("owner_waived_case_ids") or ())
-            != ["B01", "B04", "B08"]
-            or acceptance.get("owner_waiver_identity") != CLOSEOUT_WAIVER
-            or acceptance.get("underlying_mismatch_preserved") is not True
-        ):
-            raise DocumentationStateError("accepted_closeout_summary_invalid")
-        route = state["route_authorization"]
-        if not isinstance(route, dict) or (
-            route.get("approved") is not True
-            or route.get("scope") != "SCV2-FL1_planning_only_no_execution"
-            or route.get("fl1_data_execution_authorized") is not False
-            or route.get("production_authorized") is not False
-        ):
-            raise DocumentationStateError("accepted_closeout_route_invalid")
-        if "squash merge" not in joined_authorized.casefold():
-            raise DocumentationStateError(
-                "accepted_closeout_merge_authorization_missing"
-            )
-    for required in ("provider", "LLM", "failed retry2 Replay"):
-        if required.lower() not in joined_forbidden.lower():
-            raise DocumentationStateError(f"forbidden_operation_missing:{required}")
-    if state["manual_acceptance_status"] == "pending_user":
-        if "merge" not in joined_forbidden.casefold():
-            raise DocumentationStateError("forbidden_operation_missing:merge")
-    elif "direct main push" not in joined_forbidden.casefold():
-        raise DocumentationStateError("forbidden_operation_missing:direct main push")
-    strategy = state["current_replay_strategy"]
-    if strategy.get("package_schema_version") != "sv1b.stable-replay-evidence.v2":
-        raise DocumentationStateError("replay_package_version_invalid")
-    if strategy.get("fresh_replay_database_creation_limit") != 1:
-        raise DocumentationStateError("fresh_replay_creation_limit_invalid")
-    if strategy.get("external_call_budget") != 0:
-        raise DocumentationStateError("external_call_budget_must_be_zero")
     if state.get("public_state_boundary") != (
         "public_safe_governance_only_no_private_proof_payloads_or_paths"
     ):
         raise DocumentationStateError("public_state_boundary_invalid")
-    if state["phase_id"] == "SCV2-SV1B":
-        protected = state["protected_evidence"]
-        if (
-            protected.get("canonical_phase_acquired_membership_count")
-            != 7271
-            or protected.get("canonical_phase_acquired_missing_count") != 0
-            or protected.get(
-                "canonical_phase_acquired_unsupported_count"
-            )
-            != 0
-            or not HEX64.fullmatch(
-                str(
-                    protected.get(
-                        "canonical_phase_acquired_membership_fingerprint"
-                    )
-                    or ""
-                )
-            )
-            or protected.get(
-                "superseded_candidate_provenance_membership_count"
-            )
-            != 7257
-            or protected.get("production_library_consumed_or_modified")
-            is not False
+
+    if state["phase_id"] == "SCV2-FL1":
+        _validate_fl1_state(state)
+    else:
+        raise DocumentationStateError("unsupported_active_phase")
+
+    joined_authorized = "\n".join(map(str, authorized)).casefold()
+    joined_forbidden = "\n".join(map(str, forbidden)).casefold()
+    authorization_deny_terms = (
+        "database creation",
+        "database write",
+        "production access",
+        "source root access",
+        "inventory execution",
+        "import execution",
+        "provider execution",
+        "llm execution",
+        "media download",
+        "classification execution",
+        "ai tagging execution",
+    )
+    if any(term in joined_authorized for term in authorization_deny_terms):
+        raise DocumentationStateError("fl1_planning_authorizes_execution")
+    for required in (
+        "database",
+        "production",
+        "source",
+        "provider",
+        "llm",
+        "media",
+        "entity",
+        "truth",
+        "direct main push",
+        "merge",
+    ):
+        if required not in joined_forbidden:
+            raise DocumentationStateError(f"forbidden_operation_missing:{required}")
+
+    for checkpoint in state["completed_checkpoints"]:
+        if not isinstance(checkpoint, dict) or not checkpoint.get("id") or not checkpoint.get("result"):
+            raise DocumentationStateError("completed_checkpoint_invalid")
+    for decision in state["owner_decisions"]:
+        if not isinstance(decision, dict) or not decision.get("id") or not decision.get("decision"):
+            raise DocumentationStateError("owner_decision_invalid")
+    for debt in state["deferred_debt"]:
+        if not isinstance(debt, dict) or not all(
+            debt.get(key) for key in ("id", "owner", "reason", "due_before")
         ):
-            raise DocumentationStateError(
-                "sv1b_canonical_phase_membership_state_invalid"
-            )
-    for link in _require_nonempty_list(state, "durable_links"):
+            raise DocumentationStateError("deferred_debt_invalid")
+    for link in _require_list(state, "durable_links"):
         if not isinstance(link, dict) or not link.get("label") or not link.get("path"):
             raise DocumentationStateError("durable_link_invalid")
         target = (root / link["path"]).resolve()
         if root.resolve() not in target.parents or not target.is_file():
             raise DocumentationStateError(f"durable_link_missing:{link.get('path')}")
-    debts = _require_nonempty_list(state, "deferred_debt")
-    for debt in debts:
-        if not all(debt.get(key) for key in ("id", "owner", "reason", "due_before")):
-            raise DocumentationStateError("deferred_debt_invalid")
+
     serialized = json.dumps(state, ensure_ascii=False, sort_keys=True)
     for pattern in PUBLIC_FORBIDDEN:
         if pattern.search(serialized):
@@ -310,13 +261,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
 def validate_git_ancestry(state: dict[str, Any], *, root: Path = ROOT) -> None:
     for field in ("accepted_mainline_base", "implementation_evidence_head"):
         completed = subprocess.run(
-            [
-                "git",
-                "merge-base",
-                "--is-ancestor",
-                str(state[field]),
-                "HEAD",
-            ],
+            ["git", "merge-base", "--is-ancestor", str(state[field]), "HEAD"],
             cwd=root,
             capture_output=True,
             text=True,
@@ -327,76 +272,36 @@ def validate_git_ancestry(state: dict[str, Any], *, root: Path = ROOT) -> None:
             raise DocumentationStateError(f"{field}_not_ancestor_of_head")
 
 
-def validate_linked_incident_state(
-    state: dict[str, Any],
-    *,
-    root: Path = ROOT,
-) -> None:
-    incident_links = [
-        link
-        for link in state["durable_links"]
-        if "incident" in str(link.get("label", "")).casefold()
-    ]
-    if len(incident_links) != 1:
-        raise DocumentationStateError("active_incident_link_count_invalid")
-    incident = (root / incident_links[0]["path"]).read_text(encoding="utf-8")
-    top = "\n".join(incident.splitlines()[:20])
-    required = (
-        f"<!-- {AUTHORITATIVE_STATUS_MARKER}: {state['current_status']} -->",
-        (
-            f"<!-- {AUTHORITATIVE_MANUAL_MARKER}: "
-            f"{state['manual_acceptance_status']} -->"
-        ),
-    )
-    if any(marker not in top for marker in required):
-        raise DocumentationStateError("incident_authoritative_state_mismatch")
-    if HISTORICAL_STATUS_MARKER not in incident:
-        raise DocumentationStateError("incident_historical_status_marker_missing")
-
-    summary_path = (
-        root
-        / "docs"
-        / "reports"
-        / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint-summary.json"
-    )
-    try:
-        summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise DocumentationStateError(f"incident_summary_unreadable:{exc}") from exc
-    if summary.get("record_role") != "historical_forensic_checkpoint":
-        raise DocumentationStateError("incident_summary_role_not_historical")
-    if summary.get("authoritative_current_state_path") != (
-        "docs/state/current-phase.json"
-    ):
-        raise DocumentationStateError("incident_summary_authoritative_path_invalid")
-    if not summary.get("captured_status") or not summary.get(
-        "captured_manual_acceptance_status"
-    ):
-        raise DocumentationStateError("incident_summary_captured_state_missing")
-    if summary.get("status") != summary.get("captured_status"):
-        raise DocumentationStateError("incident_summary_status_role_ambiguous")
-    if summary.get("superseded_by") != state["current_status"]:
-        raise DocumentationStateError("incident_summary_supersession_mismatch")
-
-
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
     marker = f"<!-- CURRENT_PHASE: {state['phase_id']} -->"
-    for path in (
-        root / "docs" / "roadmap" / "current-mainline-roadmap.md",
-        root / "docs" / "project-roadmap.md",
-        root / "docs" / "phase-contracts.md",
+    for relative in (
+        Path("docs/roadmap/current-mainline-roadmap.md"),
+        Path("docs/project-roadmap.md"),
+        Path("docs/phase-contracts.md"),
     ):
-        text = path.read_text(encoding="utf-8")
-        if text.count(marker) != 1:
-            raise DocumentationStateError(
-                f"current_phase_marker_count:{path.relative_to(root)}:{text.count(marker)}"
-            )
-        conflicting = re.findall(r"<!-- CURRENT_PHASE: ([A-Z0-9-]+) -->", text)
-        if conflicting != [state["phase_id"]]:
-            raise DocumentationStateError(f"current_phase_conflict:{path.relative_to(root)}")
+        text = (root / relative).read_text(encoding="utf-8")
+        markers = re.findall(r"<!-- CURRENT_PHASE: ([A-Z0-9-]+) -->", text)
+        if markers != [state["phase_id"]] or text.count(marker) != 1:
+            raise DocumentationStateError(f"current_phase_conflict:{relative.as_posix()}")
     contract = (root / "docs" / "phase-contracts.md").read_text(encoding="utf-8")
     if state["active_blocker"]["code"] not in contract:
         raise DocumentationStateError("active_blocker_missing_from_contract")
+    active_text = "\n".join(
+        (root / relative).read_text(encoding="utf-8")
+        for relative in (
+            Path("docs/project-roadmap.md"),
+            Path("docs/roadmap/current-mainline-roadmap.md"),
+            Path("docs/phase-contracts.md"),
+        )
+    ).casefold()
+    stale_current_claims = (
+        "r1r is required as the current next phase",
+        "r1r remains the current next technical phase",
+        "start `r1r` only after",
+        "full­lib-e1 as the next implementation",
+    )
+    if any(claim in active_text for claim in stale_current_claims):
+        raise DocumentationStateError("stale_active_route_claim")
 
 
 def _link_for_handoff(link: dict[str, str]) -> str:
@@ -408,7 +313,12 @@ def _link_for_handoff(link: dict[str, str]) -> str:
 
 def render_handoff(state: dict[str, Any]) -> str:
     blocker = state["active_blocker"]
-    strategy = state["current_replay_strategy"]
+    boundary = state["planning_boundary"]
+    pr_label = (
+        f"Draft PR #{state['pr_number']}"
+        if state["pr_number"] is not None
+        else "Draft PR pending creation"
+    )
     lines = [
         "# Current Handoff - V.I.O.L.E.T.",
         "",
@@ -417,13 +327,13 @@ def render_handoff(state: dict[str, Any]) -> str:
         "## Current Facts",
         "",
         f"- Phase: `{state['phase_id']}` — {state['phase_title']}.",
-        f"- Repository / PR: `{state['repository']}` / {'Draft ' if state['draft'] else ''}PR #{state['pr_number']}.",
+        f"- Repository / PR: `{state['repository']}` / {pr_label}.",
         f"- Branch: `{state['branch']}`.",
         f"- Accepted mainline base: `{state['accepted_mainline_base']}`.",
         f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}`.",
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
-        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}`.",
+        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (planning only).",
         "",
         "## Completed Checkpoints",
         "",
@@ -434,24 +344,18 @@ def render_handoff(state: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Current Gate And Owner Decision",
+            "## Current Gate And Boundary",
             "",
             f"- Gate: `{blocker['code']}` ({blocker['scope']}).",
             f"- Resolution: {blocker['resolution']}",
-            f"- Failed retry2 Replay: `{strategy['failed_replay_disposition']}`; no in-place repair.",
-            f"- Package strategy: `{strategy['package_schema_version']}` with stable source keys/fingerprints only; external-call budget: `{strategy['external_call_budget']}`; public state boundary: `{state['public_state_boundary']}`.",
+            f"- Planning only: `{str(boundary['planning_only']).lower()}`; implementation/data/production authorization: `false/false/false`.",
+            f"- Database/source/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `${boundary['projected_external_cost_usd']}`.",
+            f"- Public state boundary: `{state['public_state_boundary']}`.",
             "",
             "## Allowed / Forbidden",
             "",
-            "- Allowed: "
-            + "; ".join(
-                str(operation)
-                for operation in state["authorized_operations"]
-            )
-            + ".",
-            "- Forbidden: "
-            + "; ".join(str(operation) for operation in state["forbidden_operations"])
-            + ".",
+            "- Allowed: " + "; ".join(map(str, state["authorized_operations"])) + ".",
+            "- Forbidden: " + "; ".join(map(str, state["forbidden_operations"])) + ".",
             "",
             "## Next Action",
             "",
@@ -462,23 +366,15 @@ def render_handoff(state: dict[str, Any]) -> str:
         ]
     )
     lines.extend(f"- {_link_for_handoff(link)}" for link in state["durable_links"])
-    lines.extend(
-        [
-            "",
-            "## Deferred Debt",
-            "",
-        ]
-    )
-    for debt in state["deferred_debt"]:
-        lines.append(
-            f"- `{debt['id']}` — owner: {debt['owner']}; due before: `{debt['due_before']}`; {debt['reason']}"
-        )
-    lines.extend(
-        [
-            f"Updated: `{state['updated_at']}`.",
-            "",
-        ]
-    )
+    lines.extend(["", "## Deferred Debt", ""])
+    if state["deferred_debt"]:
+        for debt in state["deferred_debt"]:
+            lines.append(
+                f"- `{debt['id']}` — owner: {debt['owner']}; due before: `{debt['due_before']}`; {debt['reason']}"
+            )
+    else:
+        lines.append("- None.")
+    lines.extend([f"Updated: `{state['updated_at']}`.", ""])
     return "\n".join(lines)
 
 
@@ -492,11 +388,7 @@ def check_handoff(state: dict[str, Any], *, path: Path = HANDOFF_PATH) -> None:
         raise DocumentationStateError(f"handoff_line_count_out_of_range:{line_count}")
 
 
-def write_handoff(
-    state: dict[str, Any],
-    *,
-    path: Path = HANDOFF_PATH,
-) -> None:
+def write_handoff(state: dict[str, Any], *, path: Path = HANDOFF_PATH) -> None:
     """Atomically render the non-authoritative handoff from current state."""
 
     rendered = render_handoff(state)
@@ -510,7 +402,6 @@ def check_documentation_state(*, root: Path = ROOT) -> dict[str, Any]:
     validate_state(state, root=root)
     if root.resolve() == ROOT.resolve():
         validate_git_ancestry(state, root=root)
-    validate_linked_incident_state(state, root=root)
     validate_roadmaps(state, root=root)
     check_handoff(state, path=root / "docs" / "current-handoff.md")
     return {
