@@ -5,7 +5,7 @@
 ## Current Facts
 
 - Phase: `SCV2-FL1` — Isolated Full-Library Dev/Test Planning.
-- Repository / PR: `kyloris0660/VIOLET` / Draft PR pending creation.
+- Repository / PR: `kyloris0660/VIOLET` / Draft PR #140.
 - Branch: `codex/scv2-fl1-isolated-full-library-dev-test-planning`.
 - Accepted mainline base: `33af4111e1595dac3ece0ac50002556d466f0138`.
 - Implementation evidence HEAD: `33af4111e1595dac3ece0ac50002556d466f0138`.
@@ -51,4 +51,4 @@
 ## Deferred Debt
 
 - `FL1-PRE-01` — owner: future FL1 implementation owner; due before: `any FL1 implementation or data execution`; Exact strict-test database identities, local test storage, source manifest, capacity, runtime bounds, failure budget, and manual sample size require explicit implementation and inventory approvals.
-Updated: `2026-08-08T00:03:35+08:00`.
+Updated: `2026-08-08T00:08:00+08:00`.

@@ -4,7 +4,7 @@
   "phase_title": "Isolated Full-Library Dev/Test Planning",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-fl1-isolated-full-library-dev-test-planning",
-  "pr_number": null,
+  "pr_number": 140,
   "draft": true,
   "accepted_mainline_base": "33af4111e1595dac3ece0ac50002556d466f0138",
   "implementation_evidence_head": "33af4111e1595dac3ece0ac50002556d466f0138",
@@ -143,5 +143,5 @@
       "due_before": "any FL1 implementation or data execution"
     }
   ],
-  "updated_at": "2026-08-08T00:03:35+08:00"
+  "updated_at": "2026-08-08T00:08:00+08:00"
 }
