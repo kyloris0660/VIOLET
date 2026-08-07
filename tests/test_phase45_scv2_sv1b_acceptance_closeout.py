@@ -110,6 +110,24 @@ def test_write_is_exclusive_and_does_not_overwrite(tmp_path: Path) -> None:
     assert path.read_bytes() == before
 
 
+def test_git_diff_is_decoded_as_utf8(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    class Result:
+        stdout = "治理文档.md\n"
+
+    def fake_run(*args: object, **kwargs: object) -> Result:
+        captured.update(kwargs)
+        return Result()
+
+    monkeypatch.setattr(closeout.subprocess, "run", fake_run)
+
+    assert closeout._git(tmp_path, "diff", "--name-only") == "治理文档.md"
+    assert captured["encoding"] == "utf-8"
+
+
 def test_carry_forward_rejects_runtime_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     composite = tmp_path / closeout.COMPOSITE_NAME
     _write(composite, _composite_payload())

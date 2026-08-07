@@ -106,7 +106,12 @@ def _write_exclusive_atomic(path: Path, payload: Mapping[str, Any]) -> None:
 
 def _git(repo_root: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", *args], cwd=repo_root, check=True, capture_output=True, text=True
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
     return result.stdout.strip()
 
