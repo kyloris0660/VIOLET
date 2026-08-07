@@ -22,6 +22,12 @@ INCIDENT_PATH = (
     / "phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md"
 )
 ADR_PATH = ROOT / "docs" / "decisions" / "ADR-0001-stable-replay-evidence-v2.md"
+CLOSEOUT_SUMMARY_PATH = (
+    ROOT
+    / "docs"
+    / "reports"
+    / "phase-4.5-scv2-sv1b-owner-acceptance-closeout-summary.json"
+)
 
 
 def _state() -> dict[str, object]:
@@ -44,12 +50,11 @@ def test_current_phase_schema_and_status_fields_are_consistent() -> None:
     assert state["pr_number"] == 139
     assert state["draft"] is True
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is False
-    assert state["route_approved"] is False
-    assert state["manual_acceptance_status"] in {
-        "not_started_replay_recovery",
-        "pending_user",
-    }
+    assert state["safe_to_merge"] is True
+    assert state["route_approved"] is True
+    assert state["manual_acceptance_status"] == (
+        "accepted_with_known_nonblocking_limitations"
+    )
     assert state["next_phase_started"] is False
     assert state["active_blocker"]["code"]
     assert state["active_blocker"]["scope"]
@@ -68,13 +73,12 @@ def test_current_phase_schema_and_status_fields_are_consistent() -> None:
     assert protected["canonical_phase_acquired_unsupported_count"] == 0
     assert protected["superseded_candidate_provenance_membership_count"] == 7257
     assert protected["production_library_consumed_or_modified"] is False
-    assert any(
-        "final binding v5-r3" in operation
-        for operation in state["authorized_operations"]
-    )
-    assert not any(
-        "binding v3" in operation
-        for operation in state["authorized_operations"]
+    assert state["manual_acceptance_summary"]["pass_count"] == 37
+    assert state["manual_acceptance_summary"][
+        "owner_waived_nonblocking_known_limitation_count"
+    ] == 3
+    assert state["route_authorization"]["scope"] == (
+        "SCV2-FL1_planning_only_no_execution"
     )
 
 
@@ -92,7 +96,7 @@ def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
         for operation in state["authorized_operations"]
     )
     assert "binding v2" not in rendered
-    assert "final binding v5-r3" in rendered
+    assert "squash merge" in rendered
 
 
 def test_handoff_writer_atomically_renders_current_state(
@@ -135,6 +139,19 @@ def test_current_phase_links_report_adr_and_contract_are_consistent() -> None:
         "AUTHORITATIVE_MANUAL_ACCEPTANCE_STATUS: "
         f"{state['manual_acceptance_status']}" in top
     )
+
+
+def test_public_owner_closeout_summary_preserves_waiver_overlay() -> None:
+    payload = json.loads(CLOSEOUT_SUMMARY_PATH.read_text(encoding="utf-8"))
+
+    assert payload["contract_id"] == "sv1b_owner_acceptance_closeout_contract_v1"
+    assert payload["pass_count"] == 37
+    assert payload["owner_waived_nonblocking_known_limitation_count"] == 3
+    assert payload["pending_count"] == 0
+    assert payload["unwaived_fail_count"] == 0
+    assert payload["owner_waived_case_ids"] == ["B01", "B04", "B08"]
+    assert payload["underlying_mismatch_preserved"] is True
+    assert payload["route_scope"] == "SCV2-FL1_planning_only_no_execution"
 
 
 def test_each_active_roadmap_declares_exactly_one_current_phase() -> None:
@@ -218,6 +235,24 @@ def test_pending_user_five_field_combinations_fail_closed(
     error: str,
 ) -> None:
     state = copy.deepcopy(_state())
+    state.update(
+        {
+            "current_status": documentation_state.PENDING_USER_STATUS,
+            "target_met": False,
+            "safe_to_merge": False,
+            "route_approved": False,
+            "manual_acceptance_status": "pending_user",
+            "next_phase_started": False,
+            "active_blocker": {
+                "code": documentation_state.PENDING_USER_BLOCKER,
+                "scope": "owner manual acceptance",
+                "resolution": "Wait for the owner's exact bound decision.",
+            },
+            "authorized_operations": [
+                "exactly one final binding v5-r3"
+            ],
+        }
+    )
     state[field] = value
 
     with pytest.raises(documentation_state.DocumentationStateError, match=error):
@@ -236,6 +271,20 @@ def test_pending_user_cannot_authorize_completed_database_operations(
     authorization: str,
 ) -> None:
     state = copy.deepcopy(_state())
+    state.update(
+        {
+            "current_status": documentation_state.PENDING_USER_STATUS,
+            "safe_to_merge": False,
+            "route_approved": False,
+            "manual_acceptance_status": "pending_user",
+            "active_blocker": {
+                "code": documentation_state.PENDING_USER_BLOCKER,
+                "scope": "owner manual acceptance",
+                "resolution": "Wait for the owner's exact bound decision.",
+            },
+            "authorized_operations": ["exactly one final binding v5-r3"],
+        }
+    )
     state["authorized_operations"].append(authorization)
 
     with pytest.raises(
@@ -247,6 +296,20 @@ def test_pending_user_cannot_authorize_completed_database_operations(
 
 def test_completed_future_command_in_blocker_resolution_fails_closed() -> None:
     state = copy.deepcopy(_state())
+    state.update(
+        {
+            "current_status": documentation_state.PENDING_USER_STATUS,
+            "safe_to_merge": False,
+            "route_approved": False,
+            "manual_acceptance_status": "pending_user",
+            "active_blocker": {
+                "code": documentation_state.PENDING_USER_BLOCKER,
+                "scope": "owner manual acceptance",
+                "resolution": "Wait for the owner's exact bound decision.",
+            },
+            "authorized_operations": ["exactly one final binding v5-r3"],
+        }
+    )
     state["active_blocker"]["resolution"] = (
         "Commit this final public state before owner acceptance."
     )
@@ -260,8 +323,22 @@ def test_completed_future_command_in_blocker_resolution_fails_closed() -> None:
 
 def test_pending_user_requires_single_versioned_active_binding_authorization() -> None:
     state = copy.deepcopy(_state())
-    state["authorized_operations"][-1] = (
-        "exactly one versioned non-overwriting audit-closeout final binding v3"
+    state.update(
+        {
+            "current_status": documentation_state.PENDING_USER_STATUS,
+            "safe_to_merge": False,
+            "route_approved": False,
+            "manual_acceptance_status": "pending_user",
+            "active_blocker": {
+                "code": documentation_state.PENDING_USER_BLOCKER,
+                "scope": "owner manual acceptance",
+                "resolution": "Wait for the owner's exact bound decision.",
+            },
+            "authorized_operations": [
+                "exactly one final binding v5-r3",
+                "exactly one final binding v3",
+            ],
+        }
     )
 
     with pytest.raises(
@@ -295,6 +372,42 @@ def test_sv1b_canonical_membership_public_state_fails_closed(
         documentation_state.validate_state(state)
 
 
+@pytest.mark.parametrize(
+    ("path", "value", "error"),
+    [
+        ("safe_to_merge", False, "accepted_closeout_status_fields_conflict"),
+        ("route_approved", False, "accepted_closeout_status_fields_conflict"),
+        (
+            "manual_acceptance_summary.pass_count",
+            40,
+            "accepted_closeout_summary_invalid",
+        ),
+        (
+            "manual_acceptance_summary.owner_waived_case_ids",
+            [],
+            "accepted_closeout_summary_invalid",
+        ),
+        (
+            "route_authorization.scope",
+            "SCV2-FL1_execution",
+            "accepted_closeout_route_invalid",
+        ),
+    ],
+)
+def test_accepted_closeout_state_fails_closed(
+    path: str, value: object, error: str
+) -> None:
+    state = copy.deepcopy(_state())
+    cursor = state
+    parts = path.split(".")
+    for part in parts[:-1]:
+        cursor = cursor[part]
+    cursor[parts[-1]] = value
+
+    with pytest.raises(documentation_state.DocumentationStateError, match=error):
+        documentation_state.validate_state(state)
+
+
 def test_linked_incident_must_declare_authoritative_current_state_at_top(
     tmp_path: Path,
 ) -> None:
@@ -308,7 +421,7 @@ def test_linked_incident_must_declare_authoritative_current_state_at_top(
     incident.write_text(
         incident.read_text(encoding="utf-8").replace(
             "AUTHORITATIVE_CURRENT_STATUS: "
-            "automated_sv1b_candidate_ready_manual_acceptance_pending",
+            "sv1b_accepted_with_known_nonblocking_limitations",
             "AUTHORITATIVE_CURRENT_STATUS: historical_blocker",
         ),
         encoding="utf-8",

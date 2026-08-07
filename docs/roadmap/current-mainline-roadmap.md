@@ -176,28 +176,28 @@ public summary for exact aggregate evidence.
 <!-- CURRENT_PHASE: SCV2-SV1B -->
 
 `SCV2-SV1B: Controlled Pixiv Metadata, Localization, and Source-Graph Closure`
-is current. Acquisition, localization accounting, R2R exact remap, fresh Replay
-v2, graph/search validation, and the 40-case browser prevalidation are complete.
-The failed retry2 Replay remains an immutable forensic checkpoint. The current
-authorization is restricted to read-only audit verification, strict dashboard
-startup, owner result export, and the one versioned non-overwriting
-manual-acceptance remediation binding v5. The submitted v4 result remains
-immutable historical evidence. Its authoritative phase membership is the canonical
-accepted-vs-pre-provider stable-fingerprint difference: `7,271 / 7,271`,
-missing `0`, unsupported `0`, fingerprint
-`47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`.
-The former `7,257` candidate/provenance-derived set is historical and
-superseded. Database create/import/derive and all external routes
-are no longer authorized.
+has completed owner acceptance. Acquisition, localization accounting, R2R exact
+remap, fresh Replay v2, graph/search validation, and the immutable 40-case review
+evidence remain accepted. The failed retry2 Replay remains an immutable forensic
+checkpoint. Authoritative phase membership remains `7,271 / 7,271`, missing `0`,
+unsupported `0`, fingerprint
+`47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`;
+the former `7,257` candidate/provenance set is historical and superseded.
 
-SV1B must still stop at the exact user manual-acceptance checkpoint with
-`manual_acceptance_status=pending_user`, `target_met=false`,
-`safe_to_merge=false`, and `route_approved=false`. Do not start FL1,
-Provider-2, production, full-library execution, Entity bridge, confirmed
-assignment, truth promotion, or source/iCloud mutation. The machine-readable
-current state is `docs/state/current-phase.json`.
+The final acceptance accounting is `37 PASS`, `3 owner-waived nonblocking known
+limitations`, `0 PENDING`, and `0 unwaived FAIL`. B01, B04, and B08 remain
+underlying mismatches rather than PASS. Waiver
+`owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807`
+is limited to SCV2-SV1B placeholder/default creator signals and must be reopened
+if the pattern affects real creators, reliable provider identities, normal
+search results, or truth paths.
 
-The automated SV1B candidate has now reached its owner stop:
-`manual_acceptance_status=pending_user`. The 40-case localhost harness passed
-agent browser prevalidation, but only the owner may export the acceptance
-result; FL1 remains unstarted.
+`sv1b_owner_acceptance_closeout_contract_v1` derives
+`target_met=false`, `safe_to_merge=true`, `route_approved=true`, and
+`manual_acceptance_status=accepted_with_known_nonblocking_limitations`. Route
+approval authorizes only squash-merging PR #139 after all gates pass and then
+starting isolated SCV2-FL1 planning. It authorizes no FL1 data execution,
+production, Provider-2, database, provider, LLM, media, Entity/truth, or
+provider-derived media_tags operation. `DOC-GOV-02` remains due before FL1
+planning proceeds. The machine-readable fact source is
+`docs/state/current-phase.json`.

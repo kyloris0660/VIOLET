@@ -8131,3 +8131,101 @@ def test_sv1b_contract_never_allows_manual_acceptance_or_merge_claim_in_automati
     )
     assert result.passed is False
     assert "sv1b_pending_claim_incomplete" in _error_codes(result)
+
+
+def _sv1b_owner_closeout_summary() -> dict[str, object]:
+    return {
+        "pipeline_contract": {
+            "contract_id": "sv1b_owner_acceptance_closeout_contract_v1",
+            "status": "sv1b_accepted_with_known_nonblocking_limitations",
+            "target_met": False,
+            "safe_to_merge": True,
+            "route_approved": True,
+            "manual_acceptance_required": True,
+            "manual_acceptance_status": "accepted_with_known_nonblocking_limitations",
+            "active_blockers": [],
+        },
+        "composite_acceptance": {
+            "passed": True,
+            "manual_acceptance_status": "accepted_with_known_nonblocking_limitations",
+            "case_count": 40,
+            "pass_count": 37,
+            "owner_waived_nonblocking_known_limitation_count": 3,
+            "pending_count": 0,
+            "unwaived_fail_count": 0,
+            "owner_waived_case_ids": ["B01", "B04", "B08"],
+            "owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
+            "underlying_mismatch_preserved": True,
+            "waiver_scope": "SCV2-SV1B_only",
+            "file_sha256": "composite-file-sha",
+            "composite_fingerprint": "composite-fingerprint",
+            "binding_fingerprint": "4992ed754539ef1f14500825d0fd78fc448e26846780cd4c64bacc5c2c6c3f81",
+            "case_manifest_sha256": "b37eb60dc90418959a6b3a7be188dedc29eb29ebf8c85c5303dd8665bdfdad5c",
+            "delta_audit_sha256": "fe3455b9b9fd2cfcb13d242f01208a378ef69342896905044c789523aaaadbb1",
+            "old_result_sha256": "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9",
+        },
+        "behavior_neutral_carry_forward": {
+            "passed": True,
+            "accepted_implementation_head": "e7ada8e83593cbb639f0c1fd4442f76e47537e8d",
+            "closeout_head": "f" * 40,
+            "file_sha256": "carry-file-sha",
+            "proof_fingerprint": "carry-fingerprint",
+            "runtime_data_search_graph_localization_semantics_changed": False,
+            "changed_files": ["docs/state/current-phase.json"],
+        },
+        "operation_counts": {
+            "database_access": 0,
+            "database_write": 0,
+            "provider_request": 0,
+            "llm_request": 0,
+            "media_download": 0,
+            "production_access": 0,
+            "entity_truth_write": 0,
+            "provider_derived_media_tags_write": 0,
+        },
+        "route_decision": {
+            "route_approved": True,
+            "route_scope": "SCV2-FL1_planning_only_no_execution",
+            "fl1_data_execution_authorized": False,
+            "production_authorized": False,
+            "next_phase_started": False,
+        },
+    }
+
+
+def test_sv1b_owner_closeout_contract_accepts_scoped_owner_waivers() -> None:
+    result = check_phase_contract(
+        "sv1b_owner_acceptance_closeout_contract_v1",
+        _sv1b_owner_closeout_summary(),
+    )
+
+    assert result.passed is True
+    assert result.target_met_claimed is False
+    assert result.safe_to_merge_claimed is True
+    assert result.route_approved is True
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "code"),
+    [
+        ("composite_acceptance.pass_count", 40, "sv1b_closeout_composite_invalid"),
+        ("composite_acceptance.owner_waived_case_ids", [], "sv1b_closeout_composite_invalid"),
+        ("composite_acceptance.waiver_scope", "SCV2-FL1", "sv1b_closeout_composite_invalid"),
+        ("behavior_neutral_carry_forward.runtime_data_search_graph_localization_semantics_changed", True, "sv1b_closeout_carry_forward_invalid"),
+        ("operation_counts.database_access", 1, "sv1b_closeout_forbidden_activity"),
+        ("route_decision.fl1_data_execution_authorized", True, "sv1b_closeout_route_scope_invalid"),
+        ("route_decision.route_scope", "production", "sv1b_closeout_route_scope_invalid"),
+    ],
+)
+def test_sv1b_owner_closeout_contract_fails_closed(
+    path: str, value: object, code: str
+) -> None:
+    summary = _sv1b_owner_closeout_summary()
+    _set_nested(summary, path, value)
+
+    result = check_phase_contract(
+        "sv1b_owner_acceptance_closeout_contract_v1", summary
+    )
+
+    assert result.passed is False
+    assert code in _error_codes(result)

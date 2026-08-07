@@ -195,6 +195,11 @@ SV1B_CONTROLLED_PIXIV_METADATA_LOCALIZATION_SOURCE_GRAPH_CLOSURE_STATUSES: tuple
     "automated_sv1b_candidate_ready_manual_acceptance_pending",
 )
 
+SV1B_OWNER_ACCEPTANCE_CLOSEOUT_STATUSES: tuple[str, ...] = (
+    "blocked_sv1b_owner_acceptance_closeout",
+    "sv1b_accepted_with_known_nonblocking_limitations",
+)
+
 REQUIRED_CONTRACT_IDS: tuple[str, ...] = (
     "python_env_contract_v1",
     "postgres_db_contract_v1",
@@ -210,6 +215,7 @@ REQUIRED_CONTRACT_IDS: tuple[str, ...] = (
     "ml2_multilingual_identity_candidate_closure_contract_v1",
     "sv1_controlled_scale_promotion_readiness_contract_v1",
     "sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1",
+    "sv1b_owner_acceptance_closeout_contract_v1",
     "review_pack_contract_v1",
     "route_audit_contract_v1",
     "public_redaction_contract_v1",
@@ -2715,6 +2721,52 @@ CONTRACTS: dict[str, PhaseContract] = {
         failure_behavior="fail_closed_on_sync_isolation_immutability_provider_auth_manifest_acquisition_localization_accounting_or_more_than_eight_manual_localization_items_r2r_graph_search_replay_validation_or_harness_gap",
         custom_checks=("sv1b_controlled_pixiv_metadata_localization_source_graph_closure",),
         description="SCV2-SV1B automated-candidate contract that requires exact metadata/localization/graph/search closure and then stops for bound user manual acceptance.",
+    ),
+    "sv1b_owner_acceptance_closeout_contract_v1": PhaseContract(
+        contract_id="sv1b_owner_acceptance_closeout_contract_v1",
+        contract_version="1",
+        phase_kind="scv2_sv1b_owner_acceptance_closeout",
+        required_inputs=(
+            "accepted implementation HEAD e7ada8e83593cbb639f0c1fd4442f76e47537e8d",
+            "immutable v4 owner result",
+            "immutable v4-to-v5-r3 per-case delta audit",
+            "immutable v5-r3 case manifest and binding",
+            "owner final case decisions and phase-scoped limitation waiver dated 2026-08-07",
+        ),
+        required_stages=(
+            "composite_owner_acceptance",
+            "behavior_neutral_closeout_carry_forward",
+            "closeout_validation",
+            "scoped_route_decision",
+        ),
+        forbidden_stages=(
+            "database_access",
+            "database_write",
+            "provider_request",
+            "llm_request",
+            "media_download",
+            "production_access",
+            "entity_truth_write",
+            "provider_derived_media_tags_write",
+            "fl1_data_execution",
+        ),
+        required_summary_fields=(
+            "pipeline_contract",
+            "composite_acceptance",
+            "behavior_neutral_carry_forward",
+            "operation_counts",
+            "route_decision",
+        ),
+        db_write_policy="all database access and writes forbidden during owner-acceptance closeout",
+        provider_policy="all provider, Pixiv, gallery-dl, media, and thumbnail requests forbidden",
+        llm_policy="all LLM calls forbidden",
+        mutation_policy="tracked changes limited to governance, contract, documentation, and tests; accepted runtime/data/search/graph/localization semantics immutable",
+        redaction_policy="public documents contain safe aggregate counts and non-content fingerprints only; composite per-case evidence stays private and ignored",
+        artifact_lifecycle_policy="closeout runner is phase-scoped; composite and carry-forward proofs are immutable ignored artifacts; contract is reusable safety tooling",
+        route_decision_policy="may approve only SCV2-FL1 planning after 37 PASS plus three distinct owner-waived SV1B limitations; no FL1 data execution or production",
+        failure_behavior="fail_closed_on_acceptance_membership_waiver_scope_carry_forward_external_activity_or_route_expansion_gap",
+        custom_checks=("sv1b_owner_acceptance_closeout",),
+        description="SCV2-SV1B final owner-acceptance contract preserving three known mismatches as scoped nonblocking waiver overlays while authorizing only merge and FL1 planning.",
     ),
     "review_pack_contract_v1": PhaseContract(
         contract_id="review_pack_contract_v1",

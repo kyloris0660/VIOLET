@@ -35,24 +35,26 @@ Localization, and Source-Graph Closure` is now the separately governed current
 phase. The canonical current sequence lives in
 `docs/roadmap/current-mainline-roadmap.md`.
 
-The current PR #139 execution has closed acquisition/localization accounting,
-completed exact R2R remap, built and verified the single authorized fresh
-Replay v2, and passed graph/search plus the 40-case browser prevalidation. The
-failed retry2 Replay remains immutable. The current stop is
-`pending_user_manual_acceptance`; authorization is restricted to read-only
-audit verification, strict dashboard startup, owner result export, and the one
-versioned non-overwriting manual-acceptance remediation binding v5. The v4
-result is preserved as immutable historical evidence. Canonical phase membership
-is `7,271 / 7,271` with missing `0`, unsupported `0`, and fingerprint
+PR #139 has completed owner acceptance after closing acquisition/localization
+accounting, exact R2R remap, the single authorized fresh Replay v2, graph/search,
+and the bound 40-case review. Final accounting is `37 PASS`, three separately
+recorded owner-waived nonblocking known limitations, zero pending, and zero
+unwaived failure. B01, B04, and B08 remain underlying mismatches and are not
+PASS. Their waiver applies only to SCV2-SV1B placeholder/default creator
+signals. Canonical phase membership remains `7,271 / 7,271` with missing `0`,
+unsupported `0`, and fingerprint
 `47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`;
-the former `7,257` candidate/provenance set is historical and superseded. No database
-create/import/derive, provider, Pixiv, gallery-dl, LLM, media, thumbnail, FL1,
+the former `7,257` candidate/provenance set is historical and superseded.
+
+The closeout contract derives `target_met=false`, `safe_to_merge=true`, and a
+route limited to SCV2-FL1 planning after PR #139 is squash-merged. No FL1 data
+execution, database, provider, Pixiv, gallery-dl, LLM, media, thumbnail,
 production, Provider-2, Entity, or truth-path work is authorized.
 
 `DOC-GOV-02` remains bounded debt owned by FL1 planning: archive the historical
 project-roadmap body, extract the detailed AGENTS runbook, and remove stale
 historical text that still calls R1R the current next phase. It is due before
-FL1 planning and does not block the authorized fresh Replay recovery.
+FL1 planning proceeds and does not block the accepted SV1B closeout.
 
 The former SR1 interpretation is superseded: identity union and search-result
 union are different. `cannot_link` blocks identity union, but a bare name returns

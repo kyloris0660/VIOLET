@@ -19,6 +19,7 @@ from .contract_registry import (
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
     SV1_CONTROLLED_SCALE_PROMOTION_READINESS_STATUSES,
     SV1B_CONTROLLED_PIXIV_METADATA_LOCALIZATION_SOURCE_GRAPH_CLOSURE_STATUSES,
+    SV1B_OWNER_ACCEPTANCE_CLOSEOUT_STATUSES,
     get_contract,
 )
 from .contract_types import ContractCheckResult, PhaseContract
@@ -12905,6 +12906,141 @@ def _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure(
         result.fail("sv1b_pending_claim_incomplete", "Blocker-free SV1B automation must stop at the exact pending-user claim.", path="pipeline_contract")
 
 
+def _check_sv1b_owner_acceptance_closeout(
+    contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    del contract
+    pipeline = _get(summary, "pipeline_contract", {})
+    status = str(_get(summary, "pipeline_contract.status", ""))
+    if status not in SV1B_OWNER_ACCEPTANCE_CLOSEOUT_STATUSES:
+        result.fail(
+            "sv1b_closeout_status_invalid",
+            "SV1B owner closeout status is not recognized.",
+            path="pipeline_contract.status",
+            expected=SV1B_OWNER_ACCEPTANCE_CLOSEOUT_STATUSES,
+            actual=status,
+        )
+
+    composite = _get(summary, "composite_acceptance", {})
+    exact_composite = (
+        isinstance(composite, Mapping)
+        and composite.get("passed") is True
+        and composite.get("manual_acceptance_status")
+        == "accepted_with_known_nonblocking_limitations"
+        and _as_int(composite.get("case_count"), -1) == 40
+        and _as_int(composite.get("pass_count"), -1) == 37
+        and _as_int(
+            composite.get("owner_waived_nonblocking_known_limitation_count"), -1
+        )
+        == 3
+        and _as_int(composite.get("pending_count"), -1) == 0
+        and _as_int(composite.get("unwaived_fail_count"), -1) == 0
+        and sorted(composite.get("owner_waived_case_ids") or ())
+        == ["B01", "B04", "B08"]
+        and composite.get("owner_waiver_identity")
+        == "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
+        and composite.get("underlying_mismatch_preserved") is True
+        and composite.get("waiver_scope") == "SCV2-SV1B_only"
+        and bool(composite.get("file_sha256"))
+        and bool(composite.get("composite_fingerprint"))
+        and composite.get("binding_fingerprint")
+        == "4992ed754539ef1f14500825d0fd78fc448e26846780cd4c64bacc5c2c6c3f81"
+        and composite.get("case_manifest_sha256")
+        == "b37eb60dc90418959a6b3a7be188dedc29eb29ebf8c85c5303dd8665bdfdad5c"
+        and composite.get("delta_audit_sha256")
+        == "fe3455b9b9fd2cfcb13d242f01208a378ef69342896905044c789523aaaadbb1"
+        and composite.get("old_result_sha256")
+        == "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9"
+    )
+    if not exact_composite:
+        result.fail(
+            "sv1b_closeout_composite_invalid",
+            "Composite acceptance must preserve exact 37 PASS / 3 owner-waived / 0 pending / 0 unwaived-fail accounting and immutable evidence bindings.",
+            path="composite_acceptance",
+        )
+
+    carry = _get(summary, "behavior_neutral_carry_forward", {})
+    exact_carry = (
+        isinstance(carry, Mapping)
+        and carry.get("passed") is True
+        and carry.get("accepted_implementation_head")
+        == "e7ada8e83593cbb639f0c1fd4442f76e47537e8d"
+        and isinstance(carry.get("closeout_head"), str)
+        and len(str(carry.get("closeout_head"))) == 40
+        and carry.get("closeout_head") != carry.get("accepted_implementation_head")
+        and bool(carry.get("file_sha256"))
+        and bool(carry.get("proof_fingerprint"))
+        and carry.get("runtime_data_search_graph_localization_semantics_changed")
+        is False
+        and isinstance(carry.get("changed_files"), list)
+        and bool(carry.get("changed_files"))
+    )
+    if not exact_carry:
+        result.fail(
+            "sv1b_closeout_carry_forward_invalid",
+            "Closeout must bind the accepted implementation to a later behavior-neutral governance-only HEAD.",
+            path="behavior_neutral_carry_forward",
+        )
+
+    operations = _get(summary, "operation_counts", {})
+    forbidden_operation_keys = (
+        "database_access",
+        "database_write",
+        "provider_request",
+        "llm_request",
+        "media_download",
+        "production_access",
+        "entity_truth_write",
+        "provider_derived_media_tags_write",
+    )
+    if not isinstance(operations, Mapping) or any(
+        _as_int(operations.get(key), -1) != 0 for key in forbidden_operation_keys
+    ):
+        result.fail(
+            "sv1b_closeout_forbidden_activity",
+            "Owner closeout may not enter database, provider, LLM, media, production, Entity/truth, or provider-derived media_tags routes.",
+            path="operation_counts",
+        )
+
+    route = _get(summary, "route_decision", {})
+    exact_route = (
+        isinstance(route, Mapping)
+        and route.get("route_approved") is True
+        and route.get("route_scope") == "SCV2-FL1_planning_only_no_execution"
+        and route.get("fl1_data_execution_authorized") is False
+        and route.get("production_authorized") is False
+        and route.get("next_phase_started") is False
+    )
+    if not exact_route:
+        result.fail(
+            "sv1b_closeout_route_scope_invalid",
+            "Route authorization is limited to FL1 planning with no data execution or production.",
+            path="route_decision",
+        )
+
+    exact_claim = (
+        isinstance(pipeline, Mapping)
+        and pipeline.get("contract_id")
+        == "sv1b_owner_acceptance_closeout_contract_v1"
+        and status == "sv1b_accepted_with_known_nonblocking_limitations"
+        and pipeline.get("target_met") is False
+        and pipeline.get("safe_to_merge") is True
+        and pipeline.get("route_approved") is True
+        and pipeline.get("manual_acceptance_required") is True
+        and pipeline.get("manual_acceptance_status")
+        == "accepted_with_known_nonblocking_limitations"
+        and list(pipeline.get("active_blockers") or ()) == []
+    )
+    if not exact_claim:
+        result.fail(
+            "sv1b_closeout_claim_invalid",
+            "SV1B closeout claim must be derived as safe_to_merge with target_met false and a planning-only route.",
+            path="pipeline_contract",
+        )
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -12921,6 +13057,7 @@ CUSTOM_CHECKS = {
     "ml2_multilingual_identity_candidate_closure": _check_ml2_multilingual_identity_candidate_closure,
     "sv1_controlled_scale_promotion_readiness": _check_sv1_controlled_scale_promotion_readiness,
     "sv1b_controlled_pixiv_metadata_localization_source_graph_closure": _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure,
+    "sv1b_owner_acceptance_closeout": _check_sv1b_owner_acceptance_closeout,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,

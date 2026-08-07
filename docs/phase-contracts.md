@@ -53,22 +53,26 @@ closure, the full library, and production remain incomplete.
 SCV2-SV1B is the current separately governed phase. Its finite provider and
 localization execution are accepted immutable inputs; the single authorized
 fresh Replay v2 and graph/search derivations are complete. The current stop
-permits only read-only audit verification, strict dashboard startup, owner
-result export, and one versioned non-overwriting manual-acceptance remediation
-binding v5. The submitted v4 result remains immutable historical evidence.
+records completed owner acceptance. The submitted v4 result and all v4/v5/v5-r2/
+v5-r3 bindings remain immutable historical evidence.
 The phase-acquired identity membership is derived only from canonical stable
 key/fingerprint differences between the immutable accepted and pre-provider
 packages: `7,271 / 7,271`, missing `0`, unsupported `0`, fingerprint
 `47390e3cc2dd43af484d6d6c92ef8cbb86c3cf8984304b64c86f9d97eb641bd1`.
 The historical `7,257` candidate/provenance set is superseded and is not an
 acceptance denominator.
-It permits no database create/import/derive or provider, Pixiv, gallery-dl,
-LLM, media, or thumbnail request. The phase must continue to pass
-`sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
-and stop at `automated_sv1b_candidate_ready_manual_acceptance_pending` with the
-manual-acceptance fields pending and all completion/route booleans false. This
-does not authorize FL1, full-library, production, Entity, confirmed assignment,
-truth-route work, media download, or source/iCloud mutation.
+The final composite records `37 PASS`, `3 owner-waived nonblocking known
+limitations`, `0 PENDING`, and `0 unwaived FAIL`. B01, B04, and B08 retain their
+underlying mismatches and are not PASS. The phase-scoped waiver must not be
+applied to real creator identities, reliable provider accounts, normal search
+results, truth paths, FL1, production, Provider-2, or another PR.
+
+The new `sv1b_owner_acceptance_closeout_contract_v1` derives
+`status=sv1b_accepted_with_known_nonblocking_limitations`, `target_met=false`,
+`safe_to_merge=true`, and `route_approved=true`. The route scope is exactly
+`SCV2-FL1_planning_only_no_execution`; all database access/write, provider,
+Pixiv, gallery-dl, LLM, media, production, Entity/truth, provider-derived
+media_tags, and FL1 data execution remain forbidden.
 
 SV1B graph derivation requires a versioned schema-aware stable replay package,
 exact Primary/fresh-Replay package round-trip equality, graph-effective trusted
@@ -92,13 +96,10 @@ logical comparison pass with identical workload/result fingerprints, zero
 missing or unsupported results, zero AND leakage, zero lifecycle violation,
 and zero protected-table mutation. Physical history totals remain diagnostics,
 and both failed search proofs remain preserved. The 40-case phase-delta
-selection also passes and includes `enpera`; its pre-final proof remains
-preserved. Real localhost browser prevalidation passed with 40/40 cases and
-media images loaded, exact category counts `12/8/6/8/6`, no browser console
-warning/error, and no result export. The current gate is
-`pending_user_manual_acceptance`: the active versioned binding must match the
-current Git and protected evidence before strict dashboard use, and automation
-must stop without submitting the owner's result.
+selection and immutable evidence binding are preserved. The current gate is
+`none_sv1b_owner_acceptance_complete`; PR #139 may transition to Ready and
+squash merge only after the owner-closeout contract and final local validation
+pass.
 
 ## Registered GOV3 Contracts
 
@@ -117,6 +118,7 @@ must stop without submitting the owner's result.
 - `ml2_multilingual_identity_candidate_closure_contract_v1`
 - `sv1_controlled_scale_promotion_readiness_contract_v1`
 - `sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
+- `sv1b_owner_acceptance_closeout_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`

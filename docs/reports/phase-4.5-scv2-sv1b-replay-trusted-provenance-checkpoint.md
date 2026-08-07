@@ -1,7 +1,22 @@
 # SCV2-SV1B Replay Trusted-Provenance Checkpoint
 
-<!-- AUTHORITATIVE_CURRENT_STATUS: automated_sv1b_candidate_ready_manual_acceptance_pending -->
-<!-- AUTHORITATIVE_MANUAL_ACCEPTANCE_STATUS: pending_user -->
+<!-- AUTHORITATIVE_CURRENT_STATUS: sv1b_accepted_with_known_nonblocking_limitations -->
+<!-- AUTHORITATIVE_MANUAL_ACCEPTANCE_STATUS: accepted_with_known_nonblocking_limitations -->
+
+## Authoritative current status
+
+The owner completed the bound manual review. The executable closeout records
+`37 PASS`, `3 owner-waived nonblocking known limitations`, `0 PENDING`, and
+`0 unwaived FAIL`. B01, B04, and B08 remain underlying mismatches and are not
+PASS; waiver
+`owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807`
+applies only to SCV2-SV1B. The current gate is
+`none_sv1b_owner_acceptance_complete`; merge remains conditional on the final
+contract and local validation gates.
+
+<!-- HISTORICAL_STATUSES_BELOW: historical_superseded -->
+
+## Historical pending-user and incident states (superseded)
 
 ## 权威当前状态
 
@@ -10,8 +25,6 @@
 `pending_user_manual_acceptance`，且 `manual_acceptance_status=pending_user`。
 Fresh Replay v2、graph/search、40-case harness 与自动浏览器预验证均已完成；
 负责人手工验收尚未发生，自动化不得代替负责人导出验收结果。
-
-<!-- HISTORICAL_STATUSES_BELOW: historical_superseded -->
 
 ## 事故初始结论（historical / superseded；不是当前阶段状态）
 

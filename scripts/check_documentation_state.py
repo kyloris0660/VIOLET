@@ -39,6 +39,8 @@ REQUIRED_FIELDS = {
     "implementation_evidence_head",
     "current_status",
     *STATUS_FIELDS,
+    "manual_acceptance_summary",
+    "route_authorization",
     "completed_checkpoints",
     "active_blocker",
     "owner_decisions",
@@ -56,6 +58,7 @@ MANUAL_STATUSES = {
     "not_started_replay_recovery",
     "pending_user",
     "accepted_user",
+    "accepted_with_known_nonblocking_limitations",
 }
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -67,6 +70,11 @@ PUBLIC_FORBIDDEN = (
 )
 PENDING_USER_STATUS = "automated_sv1b_candidate_ready_manual_acceptance_pending"
 PENDING_USER_BLOCKER = "pending_user_manual_acceptance"
+CLOSEOUT_STATUS = "sv1b_accepted_with_known_nonblocking_limitations"
+CLOSEOUT_BLOCKER = "none_sv1b_owner_acceptance_complete"
+CLOSEOUT_WAIVER = (
+    "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
+)
 PENDING_USER_FORBIDDEN_AUTHORIZATION_TERMS = (
     "create",
     "creation",
@@ -139,6 +147,17 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
             or state["next_phase_started"]
         ):
             raise DocumentationStateError("pending_user_status_fields_conflict")
+    if state["manual_acceptance_status"] == (
+        "accepted_with_known_nonblocking_limitations"
+    ):
+        if (
+            state["current_status"] != CLOSEOUT_STATUS
+            or state["target_met"]
+            or state["safe_to_merge"] is not True
+            or state["route_approved"] is not True
+            or state["next_phase_started"]
+        ):
+            raise DocumentationStateError("accepted_closeout_status_fields_conflict")
     blocker = state["active_blocker"]
     if not isinstance(blocker, dict) or not blocker.get("code") or not blocker.get("resolution"):
         raise DocumentationStateError("active_blocker_invalid")
@@ -194,9 +213,45 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
                 "blocker_resolution_contains_completed_future_command:"
                 + ",".join(stale_commands)
             )
-    for required in ("provider", "LLM", "failed retry2 Replay", "merge"):
+    if state["manual_acceptance_status"] == (
+        "accepted_with_known_nonblocking_limitations"
+    ):
+        if blocker.get("code") != CLOSEOUT_BLOCKER:
+            raise DocumentationStateError("accepted_closeout_blocker_conflict")
+        acceptance = state["manual_acceptance_summary"]
+        if not isinstance(acceptance, dict) or (
+            acceptance.get("case_count") != 40
+            or acceptance.get("pass_count") != 37
+            or acceptance.get("owner_waived_nonblocking_known_limitation_count")
+            != 3
+            or acceptance.get("pending_count") != 0
+            or acceptance.get("unwaived_fail_count") != 0
+            or sorted(acceptance.get("owner_waived_case_ids") or ())
+            != ["B01", "B04", "B08"]
+            or acceptance.get("owner_waiver_identity") != CLOSEOUT_WAIVER
+            or acceptance.get("underlying_mismatch_preserved") is not True
+        ):
+            raise DocumentationStateError("accepted_closeout_summary_invalid")
+        route = state["route_authorization"]
+        if not isinstance(route, dict) or (
+            route.get("approved") is not True
+            or route.get("scope") != "SCV2-FL1_planning_only_no_execution"
+            or route.get("fl1_data_execution_authorized") is not False
+            or route.get("production_authorized") is not False
+        ):
+            raise DocumentationStateError("accepted_closeout_route_invalid")
+        if "squash merge" not in joined_authorized.casefold():
+            raise DocumentationStateError(
+                "accepted_closeout_merge_authorization_missing"
+            )
+    for required in ("provider", "LLM", "failed retry2 Replay"):
         if required.lower() not in joined_forbidden.lower():
             raise DocumentationStateError(f"forbidden_operation_missing:{required}")
+    if state["manual_acceptance_status"] == "pending_user":
+        if "merge" not in joined_forbidden.casefold():
+            raise DocumentationStateError("forbidden_operation_missing:merge")
+    elif "direct main push" not in joined_forbidden.casefold():
+        raise DocumentationStateError("forbidden_operation_missing:direct main push")
     strategy = state["current_replay_strategy"]
     if strategy.get("package_schema_version") != "sv1b.stable-replay-evidence.v2":
         raise DocumentationStateError("replay_package_version_invalid")
@@ -362,7 +417,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         "## Current Facts",
         "",
         f"- Phase: `{state['phase_id']}` — {state['phase_title']}.",
-        f"- Repository / PR: `{state['repository']}` / Draft PR #{state['pr_number']}.",
+        f"- Repository / PR: `{state['repository']}` / {'Draft ' if state['draft'] else ''}PR #{state['pr_number']}.",
         f"- Branch: `{state['branch']}`.",
         f"- Accepted mainline base: `{state['accepted_mainline_base']}`.",
         f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}`.",
@@ -379,13 +434,12 @@ def render_handoff(state: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Current Blocker And Owner Decision",
+            "## Current Gate And Owner Decision",
             "",
-            f"- Blocker: `{blocker['code']}` ({blocker['scope']}).",
+            f"- Gate: `{blocker['code']}` ({blocker['scope']}).",
             f"- Resolution: {blocker['resolution']}",
             f"- Failed retry2 Replay: `{strategy['failed_replay_disposition']}`; no in-place repair.",
-            f"- Package strategy: `{strategy['package_schema_version']}` with stable source keys/fingerprints only; public state boundary: `{state['public_state_boundary']}`.",
-            f"- Fresh Replay creation limit: `{strategy['fresh_replay_database_creation_limit']}`; external-call budget: `{strategy['external_call_budget']}`.",
+            f"- Package strategy: `{strategy['package_schema_version']}` with stable source keys/fingerprints only; external-call budget: `{strategy['external_call_budget']}`; public state boundary: `{state['public_state_boundary']}`.",
             "",
             "## Allowed / Forbidden",
             "",
@@ -395,8 +449,9 @@ def render_handoff(state: dict[str, Any]) -> str:
                 for operation in state["authorized_operations"]
             )
             + ".",
-            "- Forbidden: mutation of failed retry2 Replay; provider/Pixiv/gallery-dl/LLM/media calls; Primary/acquisition/localization replay.",
-            "- Forbidden: production, FL1, Provider-2, Entity/truth/media_tags promotion, merge, Ready transition, reviewer trigger, main push, or force-push.",
+            "- Forbidden: "
+            + "; ".join(str(operation) for operation in state["forbidden_operations"])
+            + ".",
             "",
             "## Next Action",
             "",

@@ -7,13 +7,33 @@
   "pr_number": 139,
   "draft": true,
   "accepted_mainline_base": "46861489fa0b3b05ae917a99a3932897efd70365",
-  "implementation_evidence_head": "b42ffafbd4cb6174440ea01135a4b4aad066c064",
-  "current_status": "automated_sv1b_candidate_ready_manual_acceptance_pending",
+  "implementation_evidence_head": "e7ada8e83593cbb639f0c1fd4442f76e47537e8d",
+  "current_status": "sv1b_accepted_with_known_nonblocking_limitations",
   "target_met": false,
-  "safe_to_merge": false,
-  "route_approved": false,
-  "manual_acceptance_status": "pending_user",
+  "safe_to_merge": true,
+  "route_approved": true,
+  "manual_acceptance_status": "accepted_with_known_nonblocking_limitations",
   "next_phase_started": false,
+  "manual_acceptance_summary": {
+    "case_count": 40,
+    "pass_count": 37,
+    "owner_waived_nonblocking_known_limitation_count": 3,
+    "pending_count": 0,
+    "unwaived_fail_count": 0,
+    "owner_waived_case_ids": [
+      "B01",
+      "B04",
+      "B08"
+    ],
+    "owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
+    "underlying_mismatch_preserved": true
+  },
+  "route_authorization": {
+    "approved": true,
+    "scope": "SCV2-FL1_planning_only_no_execution",
+    "fl1_data_execution_authorized": false,
+    "production_authorized": false
+  },
   "completed_checkpoints": [
     {
       "id": "checkpoint_a_accepted_baseline",
@@ -79,16 +99,17 @@
       "id": "owner_manual_acceptance_v4_result",
       "result": "submitted_33_pass_6_fail_1_pending_bounded_remediation_required",
       "fingerprint": "6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9"
+    },
+    {
+      "id": "owner_manual_acceptance_final_composite",
+      "result": "accepted_37_pass_3_owner_waived_nonblocking_0_pending_0_unwaived_fail",
+      "fingerprint": "091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca"
     }
   ],
   "active_blocker": {
-    "code": "pending_user_manual_acceptance",
-    "scope": "owner manual acceptance of the exact Git-bound 40-case static localhost review packet",
-    "nonblocking_localization_items": [
-      "enpera",
-      "two owner-rejected opaque symbol translations using canonical fallback"
-    ],
-    "resolution": "The v4 owner result and v5-r2 semantic evidence are preserved as historical evidence. The unusable dynamic presentation is superseded only after one non-overwriting static v5-r3 packet is bound to the resulting Git HEAD; owner manual acceptance remains unresolved and automated prevalidation cannot substitute for the owner's decision."
+    "code": "none_sv1b_owner_acceptance_complete",
+    "scope": "SCV2-SV1B owner acceptance is complete with three explicitly scoped nonblocking placeholder-creator identity limitations",
+    "resolution": "The executable owner-closeout contract derives 37 PASS, three owner-waived nonblocking known limitations, zero pending, and zero unwaived failure. The underlying B01/B04/B08 mismatches remain recorded and the waiver does not extend beyond SCV2-SV1B."
   },
   "owner_decisions": [
     {
@@ -118,20 +139,28 @@
     {
       "id": "owner_authorized_sv1b_static_manual_acceptance_packet_v5_r3_20260805",
       "decision": "Preserve v4, v5, and v5-r2 evidence; replace only the unusable dynamic presentation with exactly one non-overwriting Git-bound v5-r3 static review packet assembled from verified v5-r2 cases and already-local media, with no database, provider, LLM, download, or production access."
+    },
+    {
+      "id": "owner_final_sv1b_acceptance_decision_v1_20260807",
+      "decision": "Accept the final composite as 37 PASS and three distinct owner-waived nonblocking placeholder-creator identity limitations with zero pending and zero unwaived failure; authorize PR #139 Ready and squash merge only after executable gates pass, followed by SCV2-FL1 planning only."
+    },
+    {
+      "id": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
+      "decision": "Accept B01, B04, and B08 only as SCV2-SV1B nonblocking known limitations without converting their underlying mismatches to PASS; reopen if the pattern affects real creators, reliable provider accounts, normal search results, or truth paths."
     }
   ],
   "authorized_operations": [
-    "read-only file and checksum verification of protected v5-r2 case, binding, audit, and already-local presentation-media evidence",
-    "exactly one versioned non-overwriting final binding v5-r3 for a Git-bound static review packet generated without database or external-route access",
-    "strict localhost static packet startup and owner acceptance result export to the new private governed result path"
+    "read-only verification of protected SV1B evidence and the immutable final composite owner-acceptance package",
+    "Ready transition and squash merge of PR #139 only after the owner-closeout phase contract and all local validation gates pass",
+    "after accepted main synchronization, create a separate SCV2-FL1 planning-only branch and Draft PR with DOC-GOV-02 closure"
   ],
   "forbidden_operations": [
     "mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay",
     "database access or mutation, replay import or derivation, graph/search execution, or production access",
-    "Pixiv, gallery-dl, provider, LLM, external media, or thumbnail request",
+    "provider/Pixiv/gallery-dl/LLM/media calls or external thumbnail request",
     "Primary recreation or acquisition/localization replay; owner decisions or prior v4/v5/v5-r2 evidence overwrite",
-    "production, FL1, Provider-2, Entity, EntityAlias, confirmed assignment, truth promotion, or provider-derived media_tags write",
-    "merge, Ready transition, reviewer trigger, main push, or force-push"
+    "FL1 data execution, production, Provider-2, Entity/truth/media_tags promotion, EntityAlias, confirmed assignment, or provider-derived media_tags write",
+    "reviewer trigger, direct main push, force-push, or merge bypass"
   ],
   "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
   "protected_evidence": {
@@ -172,7 +201,10 @@
     "production_library_consumed_or_modified": false,
     "pre_final_binding_manual_checkpoint_fingerprint": "70d1d06fec7a77f10c4b225bd83b40f797f8a9ea15377fbd94658b8ddd6f8db1",
     "browser_prevalidation_proof_fingerprint": "4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef",
-    "final_public_redaction_proof_fingerprint": "99b76bfd51502ab65f357e34cdc9f950981e94a6a30a710f6873a1a6719da445"
+    "final_public_redaction_proof_fingerprint": "99b76bfd51502ab65f357e34cdc9f950981e94a6a30a710f6873a1a6719da445",
+    "final_composite_acceptance_fingerprint": "091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca",
+    "final_composite_acceptance_file_sha256": "47f2b4a5f35462a0fe0969e030a8282c216f4a1213f36a032bffa5cfa1683eef",
+    "final_owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
   },
   "current_replay_strategy": {
     "package_schema_version": "sv1b.stable-replay-evidence.v2",
@@ -182,7 +214,7 @@
     "external_call_budget": 0,
     "identity_rule": "schema-aware stable source keys and fingerprints only; development numeric row IDs are forbidden"
   },
-  "next_required_checkpoint": "owner_manual_acceptance_of_git_bound_40_case_static_review_packet",
+  "next_required_checkpoint": "squash_merge_pr139_then_begin_scoped_scV2_fl1_planning",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -199,6 +231,10 @@
     {
       "label": "Stable replay evidence v2 ADR",
       "path": "docs/decisions/ADR-0001-stable-replay-evidence-v2.md"
+    },
+    {
+      "label": "SV1B owner acceptance closeout",
+      "path": "docs/reports/phase-4.5-scv2-sv1b-owner-acceptance-closeout.md"
     }
   ],
   "deferred_debt": [
@@ -209,5 +245,5 @@
       "due_before": "FL1 planning"
     }
   ],
-  "updated_at": "2026-08-05T18:00:00+08:00"
+  "updated_at": "2026-08-07T18:30:00+08:00"
 }

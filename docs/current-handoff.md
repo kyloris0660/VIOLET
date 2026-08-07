@@ -8,10 +8,10 @@
 - Repository / PR: `kyloris0660/VIOLET` / Draft PR #139.
 - Branch: `codex/scv2-sv1b-pixiv-metadata-localization-source-graph-closure`.
 - Accepted mainline base: `46861489fa0b3b05ae917a99a3932897efd70365`.
-- Implementation evidence HEAD: `b42ffafbd4cb6174440ea01135a4b4aad066c064`.
-- Status: `automated_sv1b_candidate_ready_manual_acceptance_pending`.
-- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- `manual_acceptance_status=pending_user`; `next_phase_started=false`.
+- Implementation evidence HEAD: `e7ada8e83593cbb639f0c1fd4442f76e47537e8d`.
+- Status: `sv1b_accepted_with_known_nonblocking_limitations`.
+- `target_met=false`; `safe_to_merge=true`; `route_approved=true`.
+- `manual_acceptance_status=accepted_with_known_nonblocking_limitations`; `next_phase_started=false`.
 
 ## Completed Checkpoints
 
@@ -28,24 +28,23 @@
 - `fresh_replay_v2_search_lifecycle_and_and_validation`: `passed_with_physical_history_counts_diagnostic_only` — `8b46dcfce4835c2367311cbc1cd346a36c9cb9796d43c6b3f57c34f26bcbec2a`.
 - `phase_delta_40_case_harness_and_browser_prevalidation`: `passed_pending_owner_manual_acceptance` — `4c7ff0caa698aa5b082e14df0fa79da444bf05d393cdcd3908160abec16724ef`.
 - `owner_manual_acceptance_v4_result`: `submitted_33_pass_6_fail_1_pending_bounded_remediation_required` — `6ad0d4d78815de0984a4e563490be91e985e9f109facb462c8528896867ae2b9`.
+- `owner_manual_acceptance_final_composite`: `accepted_37_pass_3_owner_waived_nonblocking_0_pending_0_unwaived_fail` — `091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca`.
 
-## Current Blocker And Owner Decision
+## Current Gate And Owner Decision
 
-- Blocker: `pending_user_manual_acceptance` (owner manual acceptance of the exact Git-bound 40-case static localhost review packet).
-- Resolution: The v4 owner result and v5-r2 semantic evidence are preserved as historical evidence. The unusable dynamic presentation is superseded only after one non-overwriting static v5-r3 packet is bound to the resulting Git HEAD; owner manual acceptance remains unresolved and automated prevalidation cannot substitute for the owner's decision.
+- Gate: `none_sv1b_owner_acceptance_complete` (SCV2-SV1B owner acceptance is complete with three explicitly scoped nonblocking placeholder-creator identity limitations).
+- Resolution: The executable owner-closeout contract derives 37 PASS, three owner-waived nonblocking known limitations, zero pending, and zero unwaived failure. The underlying B01/B04/B08 mismatches remain recorded and the waiver does not extend beyond SCV2-SV1B.
 - Failed retry2 Replay: `immutable_forensic_checkpoint`; no in-place repair.
-- Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only; public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`.
-- Fresh Replay creation limit: `1`; external-call budget: `0`.
+- Package strategy: `sv1b.stable-replay-evidence.v2` with stable source keys/fingerprints only; external-call budget: `0`; public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`.
 
 ## Allowed / Forbidden
 
-- Allowed: read-only file and checksum verification of protected v5-r2 case, binding, audit, and already-local presentation-media evidence; exactly one versioned non-overwriting final binding v5-r3 for a Git-bound static review packet generated without database or external-route access; strict localhost static packet startup and owner acceptance result export to the new private governed result path.
-- Forbidden: mutation of failed retry2 Replay; provider/Pixiv/gallery-dl/LLM/media calls; Primary/acquisition/localization replay.
-- Forbidden: production, FL1, Provider-2, Entity/truth/media_tags promotion, merge, Ready transition, reviewer trigger, main push, or force-push.
+- Allowed: read-only verification of protected SV1B evidence and the immutable final composite owner-acceptance package; Ready transition and squash merge of PR #139 only after the owner-closeout phase contract and all local validation gates pass; after accepted main synchronization, create a separate SCV2-FL1 planning-only branch and Draft PR with DOC-GOV-02 closure.
+- Forbidden: mutation, cleanup, reset, truncate, drop, or repair of the failed retry2 Replay; database access or mutation, replay import or derivation, graph/search execution, or production access; provider/Pixiv/gallery-dl/LLM/media calls or external thumbnail request; Primary recreation or acquisition/localization replay; owner decisions or prior v4/v5/v5-r2 evidence overwrite; FL1 data execution, production, Provider-2, Entity/truth/media_tags promotion, EntityAlias, confirmed assignment, or provider-derived media_tags write; reviewer trigger, direct main push, force-push, or merge bypass.
 
 ## Next Action
 
-- Required checkpoint: `owner_manual_acceptance_of_git_bound_40_case_static_review_packet`.
+- Required checkpoint: `squash_merge_pr139_then_begin_scoped_scV2_fl1_planning`.
 
 ## Durable Links
 
@@ -53,8 +52,9 @@
 - [Phase contracts](phase-contracts.md)
 - [Replay provenance incident](reports/phase-4.5-scv2-sv1b-replay-trusted-provenance-checkpoint.md)
 - [Stable replay evidence v2 ADR](decisions/ADR-0001-stable-replay-evidence-v2.md)
+- [SV1B owner acceptance closeout](reports/phase-4.5-scv2-sv1b-owner-acceptance-closeout.md)
 
 ## Deferred Debt
 
 - `DOC-GOV-02` — owner: FL1 planning owner; due before: `FL1 planning`; Separate project-roadmap history into an archive, extract the detailed AGENTS runbook, and remove stale text that still names R1R as the current next phase.
-Updated: `2026-08-05T18:00:00+08:00`.
+Updated: `2026-08-07T18:30:00+08:00`.
