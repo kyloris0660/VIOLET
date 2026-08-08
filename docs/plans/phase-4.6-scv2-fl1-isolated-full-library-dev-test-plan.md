@@ -13,8 +13,10 @@ Canonical phase:
 
 - ID: `SCV2-FL1`
 - Title: `Isolated Full-Library Dev/Test Planning`
-- Current status: `fl1_plan_approved_for_implementation_only`
-- Current stop: squash merge PR #140, then create a separate FL1-P1 Draft PR
+- Current status: `implementation_ready_for_owner_audit`
+- Current implementation: Draft PR #141, evidence HEAD
+  `9e2d25d0f6710110acc72f73d7d3a62eda11e7ae`
+- Current stop: `pending_owner_audit`; do not enter inventory or data execution
 
 The older `Phase 4.6-FULLLIB-P0 Production Full-Library Import and AI Tagging
 Plan` is a historical design input only. Its production route and `FULLLIB-E1`
@@ -356,6 +358,10 @@ equivalent. No implementation PR may silently include execution authority.
 
 Owner approval recorded: the plan and proposed FL1-P1 PR/contract structure
 only, bound to planning HEAD `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
+
+FL1-P1 now implements only the approved isolation, default-deny mutation,
+contract, stable item identity, and restartable synthetic ledger foundations.
+It remains Draft and is not safe to merge until owner audit.
 
 Not approved: permission to connect to an existing database, inspect production, read a
 real source root, create storage, run inventory, import, classify, tag, call a

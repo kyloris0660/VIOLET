@@ -2,8 +2,8 @@
 
 ## Accepted Mainline
 
-`origin/main` contains SCV2-SV1B through squash merge
-`33af4111e1595dac3ece0ac50002556d466f0138` from PR #139.
+`origin/main` contains the approved SCV2-FL1 plan through squash merge
+`9ce1128be643c0eaa998ccdff8890d76196ce7db` from PR #140.
 
 1. R1R merged in PR #132.
 2. SCV2-A1R merged in PR #133.
@@ -13,6 +13,7 @@
 6. SCV2-ML2 merged in PR #137.
 7. SCV2-SV1-A merged in PR #138.
 8. SCV2-SV1B merged in PR #139.
+9. SCV2-FL1 planning merged in PR #140.
 
 SV1B completed controlled Pixiv metadata acquisition, localization closure,
 stable Replay v2, source-graph/search validation, and owner acceptance. Its
@@ -22,35 +23,34 @@ does not become a creator-identity or scale-up policy.
 
 ## Current Phase And Stop Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-P1 -->
 
-`SCV2-FL1: Isolated Full-Library Dev/Test Plan Approval` is now active. Its fact
-source is `docs/state/current-phase.json` and its plan is
+`SCV2-FL1-P1: Dev/Test Isolation, Contract, And Ledger Foundations` is active on
+Draft PR #141. Its fact source is `docs/state/current-phase.json` and its plan is
 `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
 Current executable state:
 
-- `status=fl1_plan_approved_for_implementation_only`
-- `target_met=true`
-- `safe_to_merge=true`
-- `route_approved=true`
+- `status=implementation_ready_for_owner_audit`
+- `target_met=false`
+- `safe_to_merge=false`
+- `route_approved=false`
 - `route_scope=FL1-P1 isolation/safety/contract/ledger implementation only`
-- `manual_acceptance_status=owner_plan_approved_for_implementation_only`
-- `next_phase_started=false`
-- blocker state: `none_fl1_plan_approved_for_implementation_only`
+- `manual_acceptance_status=pending_owner_audit`
+- `next_phase_started=true`
+- blocker: `pending_owner_audit`
 
-No FL1 implementation or data execution has started. The approved route is
-limited to a separate FL1-P1 safety/ledger implementation after PR #140 merges;
-it does not authorize production, real source-root access or inventory, existing
-database access, import, classification, AI tagging, provider, Pixiv,
-gallery-dl, LLM, media, thumbnail, Stable Replay, localization, graph/search,
-Entity/truth, or provider-derived `media_tags` activity.
+P1 has implemented the synthetic-only safety, contract, and ledger foundation;
+no data execution has started. It does not authorize production, real
+source-root access or inventory, existing database access, import,
+classification, AI tagging, provider, Pixiv, gallery-dl, LLM, media, thumbnail,
+Stable Replay, localization, graph/search, Entity/truth, or provider-derived
+`media_tags` activity.
 
 ## Proposed Delivery Sequence
 
-1. Squash merge approved planning PR #140 after all live gates pass.
-2. A separate FL1-P1 Draft PR adds the reusable safety runner, contracts,
-   ledgers, and tests without executing full-library data work.
+1. Owner audits Draft PR #141; it remains not safe to merge.
+2. Any review-driven correction stays inside P1 safety/ledger scope.
 3. A read-only inventory dry run requires a separate exact authorization and
    ends at an owner checkpoint.
 4. Bounded Dev/Test import and local classification/AI tagging may occur only

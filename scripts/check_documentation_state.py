@@ -63,11 +63,14 @@ PUBLIC_FORBIDDEN = (
     re.compile(r"(?i)\b(?:api[_-]?key|refresh[_-]?token|bearer)\s*[:=]\s*\S+"),
     re.compile(r"(?i)\.local_manifests"),
 )
-FL1_STATUS = "fl1_plan_approved_for_implementation_only"
-FL1_BLOCKER = "none_fl1_plan_approved_for_implementation_only"
-FL1_MANUAL_STATUS = "owner_plan_approved_for_implementation_only"
+FL1_STATUS = "implementation_ready_for_owner_audit"
+FL1_BLOCKER = "pending_owner_audit"
+FL1_MANUAL_STATUS = "pending_owner_audit"
 FL1_APPROVED_PLANNING_HEAD = "db90457d51a39b5dc930afc2a92a6ef3139a2760"
 FL1_ROUTE_SCOPE = "FL1-P1 isolation/safety/contract/ledger implementation only"
+FL1_PLAN_MERGE_COMMIT = "9ce1128be643c0eaa998ccdff8890d76196ce7db"
+FL1_P1_IMPLEMENTATION_HEAD = "9e2d25d0f6710110acc72f73d7d3a62eda11e7ae"
+SV1B_MERGE_COMMIT = "33af4111e1595dac3ece0ac50002556d466f0138"
 SV1B_WAIVER = "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
 
 
@@ -98,25 +101,27 @@ def _require_list(
 def _validate_fl1_state(state: dict[str, Any]) -> None:
     if (
         state["current_status"] != FL1_STATUS
-        or state["target_met"] is not True
-        or state["safe_to_merge"] is not True
-        or state["route_approved"] is not True
+        or state["target_met"] is not False
+        or state["safe_to_merge"] is not False
+        or state["route_approved"] is not False
         or state["route_scope"] != FL1_ROUTE_SCOPE
         or state["planning_approved"] is not True
         or state["approved_planning_head"] != FL1_APPROVED_PLANNING_HEAD
         or state["manual_acceptance_status"] != FL1_MANUAL_STATUS
-        or state["next_phase_started"] is not False
+        or state["next_phase_started"] is not True
     ):
-        raise DocumentationStateError("fl1_plan_approval_status_fields_conflict")
+        raise DocumentationStateError("fl1_p1_status_fields_conflict")
     blocker = state["active_blocker"]
     if blocker.get("code") != FL1_BLOCKER:
-        raise DocumentationStateError("fl1_plan_approval_blocker_conflict")
+        raise DocumentationStateError("fl1_p1_blocker_conflict")
 
     boundary = state["planning_boundary"]
     expected_boundary = {
         "planning_only": False,
         "implementation_authorized": True,
         "implementation_scope": FL1_ROUTE_SCOPE,
+        "implementation_completed": True,
+        "owner_audit_pending": True,
         "data_execution_authorized": False,
         "production_authorized": False,
         "database_access_authorized": False,
@@ -136,13 +141,13 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
     if not isinstance(boundary, dict) or any(
         boundary.get(key) != value for key, value in expected_boundary.items()
     ):
-        raise DocumentationStateError("fl1_plan_approval_boundary_invalid")
+        raise DocumentationStateError("fl1_p1_boundary_invalid")
 
     prior = state["prior_phase_acceptance"]
     if not isinstance(prior, dict) or any(
         (
             prior.get("phase_id") != "SCV2-SV1B",
-            prior.get("merge_commit") != state["accepted_mainline_base"],
+            prior.get("merge_commit") != SV1B_MERGE_COMMIT,
             prior.get("pass_count") != 37,
             prior.get("owner_waived_nonblocking_known_limitation_count") != 3,
             prior.get("pending_count") != 0,
@@ -170,10 +175,21 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         )
     ):
         raise DocumentationStateError("fl1_operation_counts_nonzero")
-    if protected.get("production_consumed_or_modified_during_fl1_planning") is not False:
+    if protected.get("production_consumed_or_modified_during_fl1_p1") is not False:
         raise DocumentationStateError("fl1_production_boundary_invalid")
     if protected.get("approved_planning_head") != FL1_APPROVED_PLANNING_HEAD:
         raise DocumentationStateError("fl1_approved_planning_head_evidence_invalid")
+    if (
+        state["accepted_mainline_base"] != FL1_PLAN_MERGE_COMMIT
+        or protected.get("fl1_plan_merge_commit") != FL1_PLAN_MERGE_COMMIT
+    ):
+        raise DocumentationStateError("fl1_plan_merge_commit_invalid")
+    if (
+        state["implementation_evidence_head"] != FL1_P1_IMPLEMENTATION_HEAD
+        or protected.get("fl1_p1_implementation_evidence_head")
+        != FL1_P1_IMPLEMENTATION_HEAD
+    ):
+        raise DocumentationStateError("fl1_p1_implementation_head_invalid")
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -195,7 +211,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     ):
         raise DocumentationStateError("pr_number_invalid")
     if state["draft"] is not True:
-        raise DocumentationStateError("closeout_pr_must_still_be_draft_in_tracked_state")
+        raise DocumentationStateError("fl1_p1_pr_must_remain_draft")
     for key in ("target_met", "safe_to_merge", "route_approved", "next_phase_started"):
         if not isinstance(state[key], bool):
             raise DocumentationStateError(f"{key}_must_be_boolean")
@@ -220,7 +236,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     ):
         raise DocumentationStateError("public_state_boundary_invalid")
 
-    if state["phase_id"] == "SCV2-FL1":
+    if state["phase_id"] == "SCV2-FL1-P1":
         _validate_fl1_state(state)
     else:
         raise DocumentationStateError("unsupported_active_phase")
@@ -241,7 +257,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "ai tagging execution",
     )
     if any(term in joined_authorized for term in authorization_deny_terms):
-        raise DocumentationStateError("fl1_plan_approval_authorizes_data_execution")
+        raise DocumentationStateError("fl1_p1_authorizes_data_execution")
     for required in (
         "database",
         "production",
@@ -253,6 +269,8 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "truth",
         "direct main push",
         "force-push",
+        "ready transition",
+        "merge",
     ):
         if required not in joined_forbidden:
             raise DocumentationStateError(f"forbidden_operation_missing:{required}")
@@ -361,7 +379,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}`.",
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
-        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (P1 starts only after merge).",
+        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (P1 implemented; owner audit pending).",
         f"- Approved planning HEAD: `{state['approved_planning_head']}`; route scope: `{state['route_scope']}`.",
         "",
         "## Completed Checkpoints",
