@@ -60,7 +60,8 @@ authorize FL1 behavior, scale, production, or truth promotion.
 PR #140 merged the approved plan into `origin/main` at
 `9ce1128be643c0eaa998ccdff8890d76196ce7db`. PR #141 then physically merged at
 `36100bfa0317387e064cd87b2e753eca3a201b5e`, but eight valid findings arrived
-after merge. `SCV2-FL1-P1-R1` is the current bounded remediation phase. Its
+after merge. `SCV2-FL1-P1-R1` on Draft PR #143 is the current bounded
+remediation phase. Its
 immutable implementation evidence is
 `ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25`, and its current state is:
 

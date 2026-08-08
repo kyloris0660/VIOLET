@@ -13,7 +13,8 @@ Canonical phase:
 
 - ID: `SCV2-FL1`
 - Title: `Isolated Full-Library Dev/Test Planning`
-- Current status: planning input only; `SCV2-FL1-P1-R1` is pending owner audit
+- Current status: planning input only; `SCV2-FL1-P1-R1` Draft PR #143 is
+  pending owner audit
 - Current implementation evidence:
   `ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25`
 - Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or

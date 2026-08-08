@@ -14,7 +14,7 @@ evidence without treating weak AI or provider signals as user truth.
 The authoritative current state is `docs/state/current-phase.json`.
 
 `SCV2-FL1-P1-R1: Late Review Safety Remediation And Authority Correction` is
-the current phase on a separate Draft PR.
+the current phase on Draft PR #143.
 PR #139 / SCV2-SV1B merged into `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner acceptance remains
 `37 PASS`, `3 owner-waived nonblocking known limitations`, `0 PENDING`, and
@@ -65,7 +65,7 @@ roadmap intentionally does not duplicate their execution accounting.
 
 ## Proposed FL1 Route
 
-1. Complete the P1-R1 Draft PR and stop at independent owner audit.
+1. Complete P1-R1 Draft PR #143 and stop at independent owner audit.
 2. Obtain separate owner acceptance and merge authorization if the owner judges
    the remediation sufficient.
 3. Make a separate FL1-I1 scope decision; no I1 implementation has started.

@@ -4,7 +4,7 @@
   "phase_title": "Late Review Safety Remediation And Authority Correction",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-fl1-p1-r1-late-review-remediation",
-  "pr_number": null,
+  "pr_number": 143,
   "draft": true,
   "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
   "implementation_evidence_head": "ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25",
@@ -252,5 +252,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-08T20:30:00+08:00"
+  "updated_at": "2026-08-08T15:52:03+08:00"
 }

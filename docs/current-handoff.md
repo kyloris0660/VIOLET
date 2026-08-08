@@ -5,7 +5,7 @@
 ## Current Facts
 
 - Phase: `SCV2-FL1-P1-R1` — Late Review Safety Remediation And Authority Correction.
-- Repository / PR: `kyloris0660/VIOLET` / Draft PR pending creation.
+- Repository / PR: `kyloris0660/VIOLET` / Draft PR #143.
 - Branch: `codex/scv2-fl1-p1-r1-late-review-remediation`.
 - Accepted mainline base: `36100bfa0317387e064cd87b2e753eca3a201b5e`.
 - Implementation evidence HEAD: `ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25`.
@@ -57,4 +57,4 @@
 - `PROVIDER_GATE` — owner: future provider-route owner; due before: `any future provider request`; Deferred use-before gate; it is not a PR #140 blocker and grants no current remediation or provider authority. Requirements: inherit cumulative attempt budgets across restarts and passes; use one truthful real-request counting semantic; never allow partial JSON to mask non-zero exit, authentication, or transport failure; recompute an old ledger read-only if required.
 - `STABLE_REPLAY_GATE` — owner: future Stable Replay owner; due before: `any Stable Replay evidence import, replay, or authoritative reuse`; Deferred use-before gate; it is not a PR #140 blocker and grants no current replay or database authority. Requirements: scan accepted packages for observation_key duplicates across parent records; use parent-qualified stable observation identity; stop and report any actual collision without replaying a database.
 - `ACCEPTANCE_TOOLING_GATE` — owner: future acceptance-tooling owner; due before: `reuse of acceptance, composite, carry-forward, or export tooling as automated merge authority`; Deferred use-before gate; it does not provide acceptance or merge authority for P1-R1. Requirements: harden or retire the one-off tools according to the actual reuse need; preserve the historical SV1B decision of 37 PASS and 3 owner-waived cases without extending it to FL1.
-Updated: `2026-08-08T20:30:00+08:00`.
+Updated: `2026-08-08T15:52:03+08:00`.

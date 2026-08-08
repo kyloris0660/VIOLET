@@ -31,7 +31,7 @@ does not become a creator-identity or scale-up policy.
 <!-- CURRENT_PHASE: SCV2-FL1-P1-R1 -->
 
 `SCV2-FL1-P1-R1: Late Review Safety Remediation And Authority Correction` is
-active on a separate Draft PR. Its fact source is
+active on Draft PR #143. Its fact source is
 `docs/state/current-phase.json` and its planning input is
 `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
@@ -57,7 +57,7 @@ Stable Replay, localization, graph/search, Entity/truth, or provider-derived
 
 ## Proposed Delivery Sequence
 
-1. Complete the new P1-R1 Draft PR and stop at independent owner audit.
+1. Complete P1-R1 Draft PR #143 and stop at independent owner audit.
 2. The owner separately decides acceptance and merge authorization; neither is
    implied by tests or automated review.
 3. FL1-I1 remains only a future candidate and requires a separate owner scope
