@@ -299,13 +299,13 @@ def test_fl1_authorized_operations_cannot_grant_execution() -> None:
         "user_data_cleanup_delete_operation_count",
     ],
 )
-def test_fl1_operation_counts_must_stay_zero(field: str) -> None:
+def test_fl1_legacy_editable_operation_counts_are_forbidden(field: str) -> None:
     state = copy.deepcopy(_state())
     state["protected_evidence"][field] = 1
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_activity_event_evidence_invalid",
+        match="editable_phase_event_ledger_forbidden",
     ):
         documentation_state.validate_state(state)
 
@@ -321,13 +321,28 @@ def test_sv1b_waiver_cannot_be_inherited_by_fl1() -> None:
         documentation_state.validate_state(state)
 
 
-@pytest.mark.parametrize("field", ["accepted_mainline_base", "implementation_evidence_head"])
-def test_current_phase_git_heads_must_be_ancestors(field: str) -> None:
+@pytest.mark.parametrize(
+    ("field", "expected_error"),
+    [
+        (
+            "accepted_mainline_base",
+            "accepted_mainline_base_not_ancestor_of_head",
+        ),
+        (
+            "implementation_evidence_head",
+            "implementation_evidence_not_pr_or_squash_carry_forward",
+        ),
+    ],
+)
+def test_current_phase_git_evidence_must_match_pr_or_squash_topology(
+    field: str,
+    expected_error: str,
+) -> None:
     state = copy.deepcopy(_state())
     state[field] = "f" * 40
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match=f"{field}_not_ancestor_of_head",
+        match=expected_error,
     ):
         documentation_state.validate_git_ancestry(state)
