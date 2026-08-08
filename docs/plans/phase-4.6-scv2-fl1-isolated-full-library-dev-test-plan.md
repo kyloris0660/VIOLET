@@ -15,7 +15,7 @@ Canonical phase:
 - Title: `Isolated Full-Library Dev/Test Planning`
 - Current status: planning input only; `SCV2-FL1-P1-R1` is pending owner audit
 - Current implementation evidence:
-  `0762bc0ad13ba8759c82926c58fe396ccb906120`
+  `ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25`
 - Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or
   started; do not implement its scanner/contract/tests or read a real source
   root without a separate later owner decision

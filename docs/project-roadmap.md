@@ -34,7 +34,7 @@ PR #141 physically merged at
 `36100bfa0317387e064cd87b2e753eca3a201b5e`, but eight valid review findings
 arrived after merge and remain unresolved on that historical PR. P1-R1 is the
 only authorized remediation route. Its implementation evidence is
-`0762bc0ad13ba8759c82926c58fe396ccb906120`, pending independent owner audit.
+`ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25`, pending independent owner audit.
 Consequently `target_met=false`, `safe_to_merge=false`,
 `route_approved=false`, and `next_phase_started=false`.
 

@@ -7,7 +7,7 @@
   "pr_number": null,
   "draft": true,
   "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
-  "implementation_evidence_head": "0762bc0ad13ba8759c82926c58fe396ccb906120",
+  "implementation_evidence_head": "ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25",
   "current_status": "fl1_p1_r1_implementation_ready_for_owner_audit",
   "target_met": false,
   "safe_to_merge": false,
@@ -113,7 +113,7 @@
     {
       "id": "fl1_p1_r1_late_review_remediation_implementation",
       "result": "implementation_complete_pending_owner_audit",
-      "fingerprint": "0762bc0ad13ba8759c82926c58fe396ccb906120"
+      "fingerprint": "ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25"
     }
   ],
   "active_blocker": {
@@ -165,7 +165,7 @@
     "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
     "fl1_plan_merge_commit": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
     "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
-    "fl1_p1_r1_implementation_evidence_head": "0762bc0ad13ba8759c82926c58fe396ccb906120",
+    "fl1_p1_r1_implementation_evidence_head": "ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25",
     "activity_event_evidence": {
       "schema_version": "violet.scv2-fl1-p1-r1-activity-events.v1",
       "events": [],

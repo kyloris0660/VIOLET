@@ -15,7 +15,8 @@ merge; their remediation is the current P1-R1 route.
 6. SCV2-ML2 merged in PR #137.
 7. SCV2-SV1-A merged in PR #138.
 8. SCV2-SV1B merged in PR #139.
-9. SCV2-FL1 planning merged in PR #140.
+9. SCV2-FL1 planning merged in PR #140 at
+   `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
 10. SCV2-FL1-P1 physically merged in PR #141; late-review remediation remains
     required.
 
