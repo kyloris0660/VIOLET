@@ -13138,6 +13138,7 @@ def _check_scv2_fl1_p1_foundation(
     if not isinstance(mutation, Mapping) or not (
         mutation.get("default_deny") is True
         and mutation.get("allowlist_explicit") is True
+        and mutation.get("ledger_read_contained") is True
         and mutation.get("production_mutation_allowed") is False
         and mutation.get("source_mutation_allowed") is False
         and mutation.get("unexpected_mutation_allowed") is False
@@ -13153,16 +13154,27 @@ def _check_scv2_fl1_p1_foundation(
         isinstance(ledger, Mapping)
         and ledger.get("schema_version") == "violet.scv2-fl1-p1-ledger.v1"
         and ledger.get("stable_item_identity") == "violet.scv2-fl1-item.v1"
+        and ledger.get("logical_target_identity")
+        == "violet.scv2-fl1-logical-target.v1"
         and _as_int(ledger.get("manifest_entry_count"), -1) >= 1
+        and _as_int(ledger.get("source_item_count"), -1) >= 1
         and _as_int(ledger.get("unique_item_count"), -1) >= 1
         and _as_int(ledger.get("duplicate_entry_count"), -1) >= 0
         and _as_int(ledger.get("manifest_entry_count"), -1)
         == _as_int(ledger.get("unique_item_count"), -2)
         + _as_int(ledger.get("duplicate_entry_count"), -2)
+        and _as_int(ledger.get("source_item_count"), -1)
+        == _as_int(ledger.get("unique_item_count"), -2)
+        + _as_int(ledger.get("content_duplicate_item_count"), -2)
+        and _as_int(ledger.get("manifest_entry_count"), -1)
+        == _as_int(ledger.get("source_item_count"), -2)
+        + _as_int(ledger.get("repeated_manifest_entry_count"), -2)
         and _as_int(ledger.get("duplicate_second_mutation_count"), -1) == 0
         and ledger.get("attempt_budget_persisted") is True
         and ledger.get("checkpoint_persisted") is True
         and ledger.get("manual_stop_persisted") is True
+        and ledger.get("interrupted_mutation_reconciliation_required") is True
+        and ledger.get("generation_conflict_rejected") is True
     )
     if not ledger_valid:
         result.fail(
@@ -13180,8 +13192,12 @@ def _check_scv2_fl1_p1_foundation(
         "containment_rejection_passed",
         "mutation_default_deny_passed",
         "duplicate_idempotency_passed",
+        "content_fingerprint_deduplication_passed",
         "restart_recovery_passed",
+        "interrupted_mutation_reconciliation_passed",
         "failure_budget_stop_passed",
+        "per_item_and_global_budget_separation_passed",
+        "concurrent_generation_guard_passed",
         "manual_stop_passed",
         "synthetic_isolation_passed",
     )

@@ -22,6 +22,7 @@ from typing import Any, Callable, Mapping, Sequence
 CONTRACT_ID = "scv2_fl1_isolated_full_library_dev_test_contract_v1"
 LEDGER_SCHEMA_VERSION = "violet.scv2-fl1-p1-ledger.v1"
 ITEM_IDENTITY_VERSION = "violet.scv2-fl1-item.v1"
+LOGICAL_TARGET_IDENTITY_VERSION = "violet.scv2-fl1-logical-target.v1"
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 SAFE_IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -56,6 +57,15 @@ class ItemState(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED_RETRYABLE = "failed_retryable"
     FAILED_EXHAUSTED = "failed_exhausted"
+    DUPLICATE = "duplicate"
+
+
+class InterruptedMutationOutcome(str, Enum):
+    """Caller-derived reconciliation result for an interrupted mutation."""
+
+    COMMITTED = "committed"
+    NOT_COMMITTED = "not_committed"
+    UNKNOWN = "unknown"
 
 
 def _strict_int(value: Any, error_code: str) -> int:
@@ -136,7 +146,10 @@ def _paths_overlap(left: Path, right: Path) -> bool:
 
 
 def _normalize_executable(path: Path) -> str:
-    return os.path.normcase(os.path.realpath(path))
+    # Do not collapse a venv launcher symlink to its base interpreter.  On
+    # POSIX, realpath(.venv/bin/python) commonly equals the system Python and
+    # would let a non-venv process satisfy an exact interpreter check.
+    return os.path.normcase(os.path.abspath(os.fspath(path)))
 
 
 def _environment(value: EnvironmentIdentity | str) -> EnvironmentIdentity:
@@ -241,6 +254,18 @@ class MutationPolicy:
     forbidden_roots: tuple[Path, ...]
     allowed_operations: frozenset[str] = frozenset()
 
+    def assert_target_contained(self, target: Path) -> None:
+        """Reject reads or writes outside the explicitly isolated storage root."""
+
+        allowed_root = _resolved(self.allowed_root, must_exist=True)
+        target_path = _resolved(Path(target), must_exist=False)
+        if not _is_within(target_path, allowed_root):
+            raise MutationDenied("mutation_target_outside_allowed_root")
+        for forbidden in self.forbidden_roots:
+            forbidden_root = _resolved(forbidden, must_exist=True)
+            if _paths_overlap(target_path, forbidden_root):
+                raise MutationDenied("mutation_target_overlaps_forbidden_root")
+
     def assert_allowed(self, operation: str, target: Path) -> None:
         """Deny by default and reject dangerous surfaces even if mis-allowlisted."""
 
@@ -254,19 +279,13 @@ class MutationPolicy:
         if normalized_operation not in self.allowed_operations:
             raise MutationDenied("mutation_not_allowlisted")
 
-        allowed_root = _resolved(self.allowed_root, must_exist=True)
-        target_path = _resolved(Path(target), must_exist=False)
-        if not _is_within(target_path, allowed_root):
-            raise MutationDenied("mutation_target_outside_allowed_root")
-        for forbidden in self.forbidden_roots:
-            forbidden_root = _resolved(forbidden, must_exist=True)
-            if _paths_overlap(target_path, forbidden_root):
-                raise MutationDenied("mutation_target_overlaps_forbidden_root")
+        self.assert_target_contained(target)
 
 
 @dataclass(frozen=True)
 class StableInventoryItem:
     item_id: str
+    logical_target_id: str
     parent_identity: str
     content_fingerprint: str
 
@@ -281,36 +300,58 @@ class StableInventoryItem:
         digest = hashlib.sha256(
             f"{ITEM_IDENTITY_VERSION}\0{parent}\0{fingerprint}".encode("utf-8")
         ).hexdigest()
+        logical_target_id = hashlib.sha256(
+            f"{LOGICAL_TARGET_IDENTITY_VERSION}\0{fingerprint}".encode("utf-8")
+        ).hexdigest()
         return cls(
             item_id=digest,
+            logical_target_id=logical_target_id,
             parent_identity=parent,
             content_fingerprint=fingerprint,
         )
+
+    def validate(self) -> None:
+        expected = self.create(
+            parent_identity=self.parent_identity,
+            content_fingerprint=self.content_fingerprint,
+        )
+        if self.item_id != expected.item_id:
+            raise LedgerError("item_identity_mismatch")
+        if self.logical_target_id != expected.logical_target_id:
+            raise LedgerError("logical_target_identity_mismatch")
 
 
 @dataclass
 class ItemLedgerRecord:
     item_id: str
+    logical_target_id: str
+    content_fingerprint: str
     state: ItemState = ItemState.PENDING
     attempt_count: int = 0
     failure_count: int = 0
     mutation_count: int = 0
     last_error_code: str | None = None
+    duplicate_of_item_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "item_id": self.item_id,
+            "logical_target_id": self.logical_target_id,
+            "content_fingerprint": self.content_fingerprint,
             "state": self.state.value,
             "attempt_count": self.attempt_count,
             "failure_count": self.failure_count,
             "mutation_count": self.mutation_count,
             "last_error_code": self.last_error_code,
+            "duplicate_of_item_id": self.duplicate_of_item_id,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ItemLedgerRecord":
         try:
             item_id = str(payload["item_id"])
+            logical_target_id = str(payload["logical_target_id"])
+            content_fingerprint = str(payload["content_fingerprint"])
             state = ItemState(str(payload["state"]))
             attempt_count = _strict_int(
                 payload["attempt_count"], "item_ledger_record_invalid"
@@ -322,21 +363,33 @@ class ItemLedgerRecord:
                 payload["mutation_count"], "item_ledger_record_invalid"
             )
             last_error = payload.get("last_error_code")
+            duplicate_of = payload.get("duplicate_of_item_id")
         except (KeyError, TypeError, ValueError) as exc:
             raise LedgerError("item_ledger_record_invalid") from exc
-        if not HEX64_RE.fullmatch(item_id) or min(
-            attempt_count, failure_count, mutation_count
-        ) < 0:
+        if (
+            not HEX64_RE.fullmatch(item_id)
+            or not HEX64_RE.fullmatch(logical_target_id)
+            or not HEX64_RE.fullmatch(content_fingerprint)
+        ):
+            raise LedgerError("item_ledger_record_invalid")
+        if min(attempt_count, failure_count, mutation_count) < 0:
             raise LedgerError("item_ledger_record_invalid")
         if last_error is not None and not isinstance(last_error, str):
             raise LedgerError("item_ledger_error_code_invalid")
+        if duplicate_of is not None and (
+            not isinstance(duplicate_of, str) or not HEX64_RE.fullmatch(duplicate_of)
+        ):
+            raise LedgerError("item_ledger_duplicate_reference_invalid")
         return cls(
             item_id=item_id,
+            logical_target_id=logical_target_id,
+            content_fingerprint=content_fingerprint,
             state=state,
             attempt_count=attempt_count,
             failure_count=failure_count,
             mutation_count=mutation_count,
             last_error_code=last_error,
+            duplicate_of_item_id=duplicate_of,
         )
 
 
@@ -358,12 +411,24 @@ class RunLedger:
     items: dict[str, ItemLedgerRecord] = field(default_factory=dict)
 
     @property
-    def unique_item_count(self) -> int:
+    def source_item_count(self) -> int:
         return len(self.items)
+
+    @property
+    def unique_item_count(self) -> int:
+        return len({record.logical_target_id for record in self.items.values()})
 
     @property
     def duplicate_entry_count(self) -> int:
         return len(self.manifest_entry_ids) - self.unique_item_count
+
+    @property
+    def content_duplicate_item_count(self) -> int:
+        return self.source_item_count - self.unique_item_count
+
+    @property
+    def repeated_manifest_entry_count(self) -> int:
+        return len(self.manifest_entry_ids) - self.source_item_count
 
     @property
     def completed(self) -> bool:
@@ -391,8 +456,11 @@ class RunLedger:
             },
             "denominator": {
                 "manifest_entry_count": len(self.manifest_entry_ids),
+                "source_item_count": self.source_item_count,
                 "unique_item_count": self.unique_item_count,
                 "duplicate_entry_count": self.duplicate_entry_count,
+                "content_duplicate_item_count": self.content_duplicate_item_count,
+                "repeated_manifest_entry_count": self.repeated_manifest_entry_count,
             },
             "items": {
                 item_id: record.to_dict() for item_id, record in sorted(self.items.items())
@@ -480,14 +548,116 @@ class RunLedger:
             self.generation,
         ) < 0:
             raise LedgerError("checkpoint_counter_invalid")
+        if self.failure_budget_exhausted != (
+            self.total_failure_attempts >= self.max_failure_attempts
+        ):
+            raise LedgerError("failure_budget_state_invalid")
+        if self.total_failure_attempts != sum(
+            record.failure_count for record in self.items.values()
+        ):
+            raise LedgerError("failure_attempt_accounting_invalid")
+        if not 0 <= self.duplicate_skip_count <= self.duplicate_entry_count:
+            raise LedgerError("duplicate_skip_accounting_invalid")
+
+        terminal_states = {
+            ItemState.SUCCEEDED,
+            ItemState.FAILED_EXHAUSTED,
+            ItemState.DUPLICATE,
+        }
+        for entry_id in self.manifest_entry_ids[: self.next_index]:
+            if self.items[entry_id].state not in terminal_states:
+                raise LedgerError("checkpoint_skips_nonterminal_item")
+
+        in_progress_ids: list[str] = []
+        for item_id, record in self.items.items():
+            expected_logical_target_id = hashlib.sha256(
+                (
+                    f"{LOGICAL_TARGET_IDENTITY_VERSION}\0"
+                    f"{record.content_fingerprint}"
+                ).encode("utf-8")
+            ).hexdigest()
+            if record.logical_target_id != expected_logical_target_id:
+                raise LedgerError("logical_target_fingerprint_mismatch")
+            if record.failure_count > record.attempt_count or record.mutation_count > 1:
+                raise LedgerError("item_attempt_accounting_invalid")
+            if record.state is ItemState.PENDING:
+                valid = (
+                    record.attempt_count == 0
+                    and record.failure_count == 0
+                    and record.mutation_count == 0
+                    and record.last_error_code is None
+                    and record.duplicate_of_item_id is None
+                )
+            elif record.state is ItemState.IN_PROGRESS:
+                in_progress_ids.append(item_id)
+                valid = (
+                    record.attempt_count >= 1
+                    and record.mutation_count == 0
+                    and record.duplicate_of_item_id is None
+                )
+            elif record.state is ItemState.SUCCEEDED:
+                valid = (
+                    record.attempt_count >= 1
+                    and record.mutation_count == 1
+                    and record.last_error_code is None
+                    and record.duplicate_of_item_id is None
+                )
+            elif record.state is ItemState.FAILED_RETRYABLE:
+                valid = (
+                    record.attempt_count >= 1
+                    and record.failure_count >= 1
+                    and record.attempt_count < self.max_attempts_per_item
+                    and record.mutation_count == 0
+                    and record.last_error_code is not None
+                    and record.duplicate_of_item_id is None
+                )
+            elif record.state is ItemState.FAILED_EXHAUSTED:
+                valid = (
+                    record.attempt_count >= 1
+                    and record.failure_count >= 1
+                    and record.mutation_count == 0
+                    and record.last_error_code is not None
+                    and record.duplicate_of_item_id is None
+                )
+            elif record.state is ItemState.DUPLICATE:
+                duplicate_of = record.duplicate_of_item_id
+                primary = self.items.get(duplicate_of or "")
+                valid = (
+                    record.attempt_count == 0
+                    and record.failure_count == 0
+                    and record.mutation_count == 0
+                    and record.last_error_code is None
+                    and duplicate_of is not None
+                    and duplicate_of != item_id
+                    and primary is not None
+                    and primary.logical_target_id == record.logical_target_id
+                    and primary.state
+                    in {ItemState.SUCCEEDED, ItemState.FAILED_EXHAUSTED}
+                )
+            else:  # pragma: no cover - exhaustive guard for future enum additions
+                valid = False
+            if not valid:
+                raise LedgerError("item_state_accounting_invalid")
+
+        if len(in_progress_ids) > 1:
+            raise LedgerError("multiple_in_progress_items")
+        if in_progress_ids:
+            if self.next_index >= len(self.manifest_entry_ids):
+                raise LedgerError("in_progress_item_after_completion")
+            if self.manifest_entry_ids[self.next_index] != in_progress_ids[0]:
+                raise LedgerError("in_progress_item_checkpoint_mismatch")
 
 
 def manifest_fingerprint(items: Sequence[StableInventoryItem]) -> str:
     if not items:
         raise LedgerError("manifest_must_not_be_empty")
+    for item in items:
+        item.validate()
     payload = {
         "identity_version": ITEM_IDENTITY_VERSION,
+        "logical_target_identity_version": LOGICAL_TARGET_IDENTITY_VERSION,
         "entry_ids": [item.item_id for item in items],
+        "logical_target_ids": [item.logical_target_id for item in items],
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -503,7 +673,12 @@ def create_run_ledger(
     batch_size: int,
 ) -> RunLedger:
     records = {
-        item.item_id: ItemLedgerRecord(item_id=item.item_id) for item in items
+        item.item_id: ItemLedgerRecord(
+            item_id=item.item_id,
+            logical_target_id=item.logical_target_id,
+            content_fingerprint=item.content_fingerprint,
+        )
+        for item in items
     }
     ledger = RunLedger(
         run_id=run_id,
@@ -524,11 +699,14 @@ class JsonLedgerStore:
     def __init__(self, path: Path, mutation_policy: MutationPolicy):
         self.path = Path(path)
         self.mutation_policy = mutation_policy
+        self.mutation_policy.assert_target_contained(self.path)
 
     def exists(self) -> bool:
+        self.mutation_policy.assert_target_contained(self.path)
         return self.path.is_file()
 
     def load(self) -> RunLedger:
+        self.mutation_policy.assert_target_contained(self.path)
         if not self.path.is_file():
             raise LedgerError("ledger_missing")
         try:
@@ -547,21 +725,41 @@ class JsonLedgerStore:
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         if temporary.exists():
             raise LedgerError("stale_ledger_temporary_file")
-        ledger.generation += 1
-        serialized = json.dumps(
-            ledger.to_dict(), ensure_ascii=True, indent=2, sort_keys=True
-        ) + "\n"
+        expected_generation = ledger.generation
+        temporary_owned = False
         try:
-            with temporary.open("x", encoding="utf-8", newline="\n") as handle:
+            handle = temporary.open("x", encoding="utf-8", newline="\n")
+            temporary_owned = True
+            with handle:
+                if self.path.exists():
+                    current = self.load()
+                    if current.generation != expected_generation:
+                        raise LedgerError("ledger_generation_conflict")
+                elif expected_generation != 0:
+                    raise LedgerError("ledger_generation_conflict")
+                ledger.generation = expected_generation + 1
+                serialized = json.dumps(
+                    ledger.to_dict(), ensure_ascii=True, indent=2, sort_keys=True
+                ) + "\n"
                 handle.write(serialized)
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, self.path)
+        except LedgerError:
+            ledger.generation = expected_generation
+            if temporary_owned:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
         except OSError as exc:
-            try:
-                temporary.unlink(missing_ok=True)
-            except OSError:
-                pass
+            ledger.generation = expected_generation
+            if temporary_owned:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
             raise LedgerError("ledger_atomic_write_failed") from exc
 
 
@@ -600,6 +798,14 @@ class FL1LedgerRunner:
         self.max_attempts_per_item = max_attempts_per_item
         self.max_failure_attempts = max_failure_attempts
         self.batch_size = batch_size
+        manifest_fingerprint(self.items)
+        self._items_by_id: dict[str, StableInventoryItem] = {}
+        self._primary_by_logical_target: dict[str, StableInventoryItem] = {}
+        for item in self.items:
+            existing = self._items_by_id.setdefault(item.item_id, item)
+            if existing != item:
+                raise LedgerError("duplicate_item_id_payload_mismatch")
+            self._primary_by_logical_target.setdefault(item.logical_target_id, item)
 
     def _load_or_create(self) -> RunLedger:
         expected_fingerprint = manifest_fingerprint(self.items)
@@ -611,13 +817,19 @@ class FL1LedgerRunner:
                 raise LedgerError("manifest_restart_mismatch")
             if ledger.manifest_entry_ids != [item.item_id for item in self.items]:
                 raise LedgerError("manifest_membership_restart_mismatch")
+            if any(
+                ledger.items[item.item_id].logical_target_id != item.logical_target_id
+                or ledger.items[item.item_id].content_fingerprint
+                != item.content_fingerprint
+                for item in self.items
+            ):
+                raise LedgerError("manifest_item_identity_restart_mismatch")
             if (
                 ledger.max_attempts_per_item != self.max_attempts_per_item
                 or ledger.max_failure_attempts != self.max_failure_attempts
                 or ledger.batch_size != self.batch_size
             ):
                 raise LedgerError("ledger_limits_restart_mismatch")
-            self._recover_interrupted(ledger)
             return ledger
         ledger = create_run_ledger(
             run_id=self.run_id,
@@ -629,25 +841,62 @@ class FL1LedgerRunner:
         self.store.save(ledger)
         return ledger
 
-    def _recover_interrupted(self, ledger: RunLedger) -> None:
-        recovered = False
+    def _recover_interrupted(
+        self,
+        ledger: RunLedger,
+        reconcile_interrupted: Callable[
+            [StableInventoryItem], InterruptedMutationOutcome | str
+        ]
+        | None,
+    ) -> None:
+        interrupted = [
+            record
+            for record in ledger.items.values()
+            if record.state is ItemState.IN_PROGRESS
+        ]
+        if not interrupted:
+            return
+        if reconcile_interrupted is None:
+            raise LedgerError("interrupted_mutation_reconciliation_required")
+
         for record in ledger.items.values():
             if record.state is not ItemState.IN_PROGRESS:
                 continue
-            record.failure_count += 1
-            ledger.total_failure_attempts += 1
-            record.last_error_code = "interrupted_before_terminal_checkpoint"
-            if record.attempt_count >= ledger.max_attempts_per_item:
-                record.state = ItemState.FAILED_EXHAUSTED
-                ledger.failure_budget_exhausted = True
+            item = self._items_by_id.get(record.item_id)
+            if item is None:
+                raise LedgerError("interrupted_item_missing_from_manifest")
+            try:
+                outcome = InterruptedMutationOutcome(reconcile_interrupted(item))
+            except (TypeError, ValueError) as exc:
+                raise LedgerError(
+                    "interrupted_mutation_reconciliation_invalid"
+                ) from exc
+            except Exception as exc:
+                raise LedgerError("interrupted_mutation_reconciliation_failed") from exc
+            if outcome is InterruptedMutationOutcome.UNKNOWN:
+                raise LedgerError("interrupted_mutation_outcome_unknown")
+            if outcome is InterruptedMutationOutcome.COMMITTED:
+                record.state = ItemState.SUCCEEDED
+                record.mutation_count = 1
+                record.last_error_code = None
+                if (
+                    ledger.next_index >= len(ledger.manifest_entry_ids)
+                    or ledger.manifest_entry_ids[ledger.next_index] != record.item_id
+                ):
+                    raise LedgerError("interrupted_item_checkpoint_mismatch")
+                ledger.next_index += 1
             else:
-                record.state = ItemState.FAILED_RETRYABLE
+                record.failure_count += 1
+                ledger.total_failure_attempts += 1
+                record.last_error_code = "interrupted_before_terminal_checkpoint"
+                if record.attempt_count >= ledger.max_attempts_per_item:
+                    record.state = ItemState.FAILED_EXHAUSTED
+                else:
+                    record.state = ItemState.FAILED_RETRYABLE
             ledger.recovery_count += 1
-            recovered = True
         if ledger.total_failure_attempts >= ledger.max_failure_attempts:
             ledger.failure_budget_exhausted = True
-        if recovered:
-            self.store.save(ledger)
+        self.store.save(ledger)
 
     def request_manual_stop(self) -> RunLedger:
         ledger = self._load_or_create()
@@ -660,8 +909,13 @@ class FL1LedgerRunner:
         mutate: Callable[[StableInventoryItem], None],
         *,
         stop_requested: Callable[[], bool] | None = None,
+        reconcile_interrupted: Callable[
+            [StableInventoryItem], InterruptedMutationOutcome | str
+        ]
+        | None = None,
     ) -> BatchResult:
         ledger = self._load_or_create()
+        self._recover_interrupted(ledger, reconcile_interrupted)
         attempted = 0
         succeeded = 0
         duplicate_skipped = 0
@@ -678,21 +932,45 @@ class FL1LedgerRunner:
                 break
             item = self.items[ledger.next_index]
             record = ledger.items[item.item_id]
-            if record.state is ItemState.SUCCEEDED:
+            primary_item = self._primary_by_logical_target[item.logical_target_id]
+            if item.item_id != primary_item.item_id:
+                primary_record = ledger.items[primary_item.item_id]
+                if primary_record.state not in {
+                    ItemState.SUCCEEDED,
+                    ItemState.FAILED_EXHAUSTED,
+                }:
+                    raise LedgerError("content_duplicate_primary_not_terminal")
+                if record.state is ItemState.PENDING:
+                    record.state = ItemState.DUPLICATE
+                    record.duplicate_of_item_id = primary_item.item_id
+                elif record.state is not ItemState.DUPLICATE:
+                    raise LedgerError("content_duplicate_state_invalid")
+                ledger.duplicate_skip_count += 1
+                duplicate_skipped += 1
+                ledger.next_index += 1
+                self.store.save(ledger)
+                continue
+            if record.state in {ItemState.SUCCEEDED, ItemState.DUPLICATE}:
                 ledger.duplicate_skip_count += 1
                 duplicate_skipped += 1
                 ledger.next_index += 1
                 self.store.save(ledger)
                 continue
             if record.state is ItemState.FAILED_EXHAUSTED:
-                ledger.failure_budget_exhausted = True
+                if item.item_id in ledger.manifest_entry_ids[: ledger.next_index]:
+                    ledger.duplicate_skip_count += 1
+                    duplicate_skipped += 1
+                ledger.next_index += 1
                 self.store.save(ledger)
-                break
+                continue
             if record.attempt_count >= ledger.max_attempts_per_item:
                 record.state = ItemState.FAILED_EXHAUSTED
-                ledger.failure_budget_exhausted = True
+                record.last_error_code = (
+                    record.last_error_code or "attempt_budget_exhausted"
+                )
+                ledger.next_index += 1
                 self.store.save(ledger)
-                break
+                continue
             if ledger.total_failure_attempts >= ledger.max_failure_attempts:
                 ledger.failure_budget_exhausted = True
                 self.store.save(ledger)
@@ -718,9 +996,11 @@ class FL1LedgerRunner:
                     or ledger.total_failure_attempts >= ledger.max_failure_attempts
                 ):
                     record.state = ItemState.FAILED_EXHAUSTED
-                    ledger.failure_budget_exhausted = True
+                    ledger.next_index += 1
                 else:
                     record.state = ItemState.FAILED_RETRYABLE
+                if ledger.total_failure_attempts >= ledger.max_failure_attempts:
+                    ledger.failure_budget_exhausted = True
                 self.store.save(ledger)
                 break
 
@@ -796,6 +1076,7 @@ def build_contract_summary(
         "mutation_policy": {
             "default_deny": True,
             "allowlist_explicit": True,
+            "ledger_read_contained": True,
             "production_mutation_allowed": False,
             "source_mutation_allowed": False,
             "unexpected_mutation_allowed": False,
@@ -803,9 +1084,13 @@ def build_contract_summary(
         "ledger": {
             "schema_version": LEDGER_SCHEMA_VERSION,
             "stable_item_identity": ITEM_IDENTITY_VERSION,
+            "logical_target_identity": LOGICAL_TARGET_IDENTITY_VERSION,
             "manifest_entry_count": len(ledger.manifest_entry_ids),
+            "source_item_count": ledger.source_item_count,
             "unique_item_count": ledger.unique_item_count,
             "duplicate_entry_count": ledger.duplicate_entry_count,
+            "content_duplicate_item_count": ledger.content_duplicate_item_count,
+            "repeated_manifest_entry_count": ledger.repeated_manifest_entry_count,
             "restart_recovery_count": ledger.recovery_count,
             "duplicate_second_mutation_count": sum(
                 max(0, record.mutation_count - 1) for record in ledger.items.values()
@@ -813,6 +1098,8 @@ def build_contract_summary(
             "attempt_budget_persisted": True,
             "checkpoint_persisted": True,
             "manual_stop_persisted": True,
+            "interrupted_mutation_reconciliation_required": True,
+            "generation_conflict_rejected": True,
         },
         "validation": {
             "focused_tests_passed": focused_tests_passed,
@@ -822,8 +1109,12 @@ def build_contract_summary(
             "containment_rejection_passed": True,
             "mutation_default_deny_passed": True,
             "duplicate_idempotency_passed": True,
+            "content_fingerprint_deduplication_passed": True,
             "restart_recovery_passed": True,
+            "interrupted_mutation_reconciliation_passed": True,
             "failure_budget_stop_passed": True,
+            "per_item_and_global_budget_separation_passed": True,
+            "concurrent_generation_guard_passed": True,
             "manual_stop_passed": True,
             "synthetic_isolation_passed": True,
             "browser_validation": "not_applicable_no_ui_or_runtime_server_change",

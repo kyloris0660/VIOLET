@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -12,6 +13,7 @@ import pytest
 from scripts.fl1_p1_foundation import (
     EnvironmentIdentity,
     FL1LedgerRunner,
+    InterruptedMutationOutcome,
     IsolationConfig,
     IsolationError,
     ItemState,
@@ -126,6 +128,25 @@ def test_explicit_test_identity_and_synthetic_paths_pass(tmp_path: Path) -> None
     assert proof.existing_database_accessed is False
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX venv launchers use symlinks"
+)
+def test_python_identity_does_not_collapse_a_venv_symlink_to_base_python(
+    tmp_path: Path,
+) -> None:
+    launcher = tmp_path / "venv-python"
+    launcher.symlink_to(Path(sys.executable))
+
+    with pytest.raises(IsolationError, match="python_identity_mismatch"):
+        validate_isolation(
+            _config(
+                tmp_path,
+                python_executable=Path(sys.executable),
+                expected_python=launcher,
+            )
+        )
+
+
 @pytest.mark.parametrize(
     ("identity", "error"),
     [
@@ -212,6 +233,16 @@ def test_mutation_target_must_stay_inside_allowlisted_storage(tmp_path: Path) ->
         policy.assert_allowed("synthetic.item.process", paths["sandbox"] / "escape")
 
 
+def test_ledger_store_cannot_read_from_outside_allowlisted_storage(
+    tmp_path: Path,
+) -> None:
+    paths = _layout(tmp_path)
+    policy = _policy(paths["storage"], paths["forbidden"])
+
+    with pytest.raises(MutationDenied, match="mutation_target_outside_allowed_root"):
+        JsonLedgerStore(tmp_path / "outside" / "ledger.json", policy)
+
+
 def test_duplicate_item_does_not_trigger_second_mutation(tmp_path: Path) -> None:
     item = _item(1)
     runner, store = _runner(tmp_path, [item, item])
@@ -225,6 +256,28 @@ def test_duplicate_item_does_not_trigger_second_mutation(tmp_path: Path) -> None
     assert result.duplicate_skipped == 1
     assert ledger.duplicate_entry_count == 1
     assert ledger.items[item.item_id].mutation_count == 1
+
+
+def test_same_content_under_different_parents_uses_one_logical_mutation(
+    tmp_path: Path,
+) -> None:
+    first = _item(101, parent="parent-a")
+    duplicate = _item(101, parent="parent-b")
+    runner, store = _runner(tmp_path, [first, duplicate])
+    calls: list[str] = []
+
+    result = runner.run_next_batch(lambda current: calls.append(current.item_id))
+    ledger = store.load()
+
+    assert calls == [first.item_id]
+    assert result.completed is True
+    assert result.duplicate_skipped == 1
+    assert ledger.source_item_count == 2
+    assert ledger.unique_item_count == 1
+    assert ledger.duplicate_entry_count == 1
+    assert ledger.content_duplicate_item_count == 1
+    assert ledger.items[duplicate.item_id].state is ItemState.DUPLICATE
+    assert ledger.items[duplicate.item_id].duplicate_of_item_id == first.item_id
 
 
 def test_restart_recovers_interrupted_item_without_resetting_attempts(
@@ -246,13 +299,53 @@ def test_restart_recovers_interrupted_item_without_resetting_attempts(
     assert interrupted.items[item.item_id].attempt_count == 1
 
     restarted_runner, _ = _runner(tmp_path, [item])
-    result = restarted_runner.run_next_batch(lambda _current: None)
+    result = restarted_runner.run_next_batch(
+        lambda _current: None,
+        reconcile_interrupted=lambda _current: (
+            InterruptedMutationOutcome.NOT_COMMITTED
+        ),
+    )
     recovered = store.load()
 
     assert result.completed is True
     assert recovered.recovery_count == 1
     assert recovered.items[item.item_id].attempt_count == 2
     assert recovered.items[item.item_id].failure_count == 1
+    assert recovered.items[item.item_id].mutation_count == 1
+
+
+def test_interrupted_post_effect_mutation_requires_reconciliation_and_is_not_replayed(
+    tmp_path: Path,
+) -> None:
+    item = _item(102)
+    first_runner, store = _runner(tmp_path, [item])
+    effects: list[str] = []
+
+    class AbruptInterruption(BaseException):
+        pass
+
+    def mutate_then_interrupt(current: StableInventoryItem) -> None:
+        effects.append(current.item_id)
+        raise AbruptInterruption()
+
+    with pytest.raises(AbruptInterruption):
+        first_runner.run_next_batch(mutate_then_interrupt)
+
+    restarted, _ = _runner(tmp_path, [item])
+    with pytest.raises(LedgerError, match="interrupted_mutation_reconciliation_required"):
+        restarted.run_next_batch(lambda current: effects.append(current.item_id))
+    assert effects == [item.item_id]
+
+    result = restarted.run_next_batch(
+        lambda current: effects.append(current.item_id),
+        reconcile_interrupted=lambda _current: InterruptedMutationOutcome.COMMITTED,
+    )
+    recovered = store.load()
+
+    assert result.completed is True
+    assert effects == [item.item_id]
+    assert recovered.items[item.item_id].state is ItemState.SUCCEEDED
+    assert recovered.items[item.item_id].attempt_count == 1
     assert recovered.items[item.item_id].mutation_count == 1
 
 
@@ -283,6 +376,78 @@ def test_attempt_and_failure_budget_stop_future_mutations(tmp_path: Path) -> Non
     assert ledger.total_failure_attempts == 2
     assert ledger.items[item.item_id].attempt_count == 2
     assert ledger.items[item.item_id].state is ItemState.FAILED_EXHAUSTED
+
+
+def test_per_item_exhaustion_does_not_consume_the_global_run_budget(
+    tmp_path: Path,
+) -> None:
+    failed_item = _item(103)
+    later_item = _item(104)
+    runner, store = _runner(
+        tmp_path,
+        [failed_item, later_item],
+        max_attempts_per_item=1,
+        max_failure_attempts=10,
+    )
+
+    first = runner.run_next_batch(
+        lambda _current: (_ for _ in ()).throw(RuntimeError("synthetic_failure"))
+    )
+    calls: list[str] = []
+    second = runner.run_next_batch(lambda current: calls.append(current.item_id))
+    ledger = store.load()
+
+    assert first.stopped_for_failure_budget is False
+    assert second.completed is True
+    assert calls == [later_item.item_id]
+    assert ledger.failure_budget_exhausted is False
+    assert ledger.items[failed_item.item_id].state is ItemState.FAILED_EXHAUSTED
+    assert ledger.items[later_item.item_id].state is ItemState.SUCCEEDED
+
+
+def test_stale_writer_cannot_overwrite_a_newer_ledger_generation(
+    tmp_path: Path,
+) -> None:
+    item = _item(105)
+    runner, store = _runner(tmp_path, [item])
+    runner.run_next_batch(lambda _current: None)
+    first = store.load()
+    stale = store.load()
+
+    first.manual_stop_requested = True
+    store.save(first)
+    stale.manual_stop_requested = True
+
+    with pytest.raises(LedgerError, match="ledger_generation_conflict"):
+        store.save(stale)
+
+
+def test_valid_json_with_inconsistent_failure_accounting_fails_closed(
+    tmp_path: Path,
+) -> None:
+    item = _item(106)
+    runner, store = _runner(tmp_path, [item])
+    runner.run_next_batch(lambda _current: None)
+    payload = json.loads(store.path.read_text(encoding="utf-8"))
+    payload["checkpoint"]["total_failure_attempts"] = 1
+    store.path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(LedgerError, match="failure_attempt_accounting_invalid"):
+        store.load()
+
+
+def test_valid_json_with_mismatched_logical_target_fails_closed(
+    tmp_path: Path,
+) -> None:
+    item = _item(107)
+    runner, store = _runner(tmp_path, [item])
+    runner.run_next_batch(lambda _current: None)
+    payload = json.loads(store.path.read_text(encoding="utf-8"))
+    payload["items"][item.item_id]["logical_target_id"] = "f" * 64
+    store.path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(LedgerError, match="logical_target_fingerprint_mismatch"):
+        store.load()
 
 
 def test_manual_stop_is_persisted_and_prevents_next_batch(tmp_path: Path) -> None:

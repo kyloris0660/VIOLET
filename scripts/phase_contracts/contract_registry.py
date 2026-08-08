@@ -283,6 +283,7 @@ CONTRACTS: dict[str, PhaseContract] = {
             "mutation_default_deny",
             "stable_inventory_identity",
             "restartable_item_ledger",
+            "interrupted_mutation_reconciliation",
             "failure_budget_and_manual_stop",
         ),
         forbidden_stages=(
@@ -326,7 +327,7 @@ CONTRACTS: dict[str, PhaseContract] = {
         route_decision_policy="pending_owner_audit_no_downstream_route",
         failure_behavior="fail_closed_before_mutation_on_any_unknown_identity_containment_or_ledger_state",
         custom_checks=("scv2_fl1_p1_foundation",),
-        description="Registers the synthetic-only FL1-P1 isolation, default-deny mutation, stable identity, and restartable ledger foundation without data execution.",
+        description="Registers the synthetic-only FL1-P1 isolation, default-deny mutation, content-deduplicated stable identity, fail-closed interrupted-mutation reconciliation, and restartable ledger foundation without data execution.",
     ),
     "postgres_db_contract_v1": PhaseContract(
         contract_id="postgres_db_contract_v1",

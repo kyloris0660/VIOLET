@@ -74,9 +74,12 @@ Git, Python, synthetic database-path, source-fixture, storage, sandbox, and
 forbidden-root identities; denies production and unknown identities; and
 rejects containment ambiguity before mutation. Mutation defaults to deny and
 permits only explicit synthetic operations under the approved storage root.
-The atomic JSON ledger binds stable parent-qualified content identity,
-denominator accounting, checkpoints, persistent attempt/failure budgets,
-interruption recovery, duplicate idempotency, and manual stop state.
+The atomic JSON ledger keeps parent-qualified source membership distinct from
+content-fingerprint logical targets, binds denominator accounting and
+checkpoints, separates per-item from global failure budgets, rejects stale
+writers, and requires explicit reconciliation before retrying an interrupted
+mutation. Duplicate content receives one logical mutation and manual stop state
+remains persistent.
 
 P1 tests use only in-memory callbacks and newly created temporary files. No
 production or production comparison, real source-root read or inventory,
