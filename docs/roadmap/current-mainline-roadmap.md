@@ -46,7 +46,11 @@ Current fail-closed state:
 - blocker: `pending_owner_audit`
 
 P1-R1 remediates only the eight late PR #141 findings and resets the false
-acceptance/route state. PR #142 is a non-authoritative candidate that mixed
+acceptance/route state. Its bounded PR #143 review-fix round additionally
+requires repository-verified PR/squash evidence, a five-scenario budget/stop
+matrix, per-item invocation attribution, and a strict separation between
+instrumented runtime evidence and phase non-action attestation. PR #142 is a
+non-authoritative candidate that mixed
 unapproved I1 work with P1 remediation; it is not an implementation source of
 truth and must not be merged. No data execution has started. This route does
 not authorize FL1-I1, production, real

@@ -7,7 +7,7 @@
   "pr_number": 143,
   "draft": true,
   "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
-  "implementation_evidence_head": "ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25",
+  "implementation_evidence_head": "bcabaa1cb635ea312dc49c9d3358f11e87c7afbf",
   "current_status": "fl1_p1_r1_implementation_ready_for_owner_audit",
   "target_met": false,
   "safe_to_merge": false,
@@ -112,13 +112,13 @@
     },
     {
       "id": "fl1_p1_r1_late_review_remediation_implementation",
-      "result": "implementation_complete_pending_owner_audit",
-      "fingerprint": "ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25"
+      "result": "review_fix_implementation_complete_pending_owner_audit",
+      "fingerprint": "bcabaa1cb635ea312dc49c9d3358f11e87c7afbf"
     }
   ],
   "active_blocker": {
     "code": "pending_owner_audit",
-    "scope": "SCV2-FL1-P1-R1 Draft PR after remediation of eight late PR #141 review findings",
+    "scope": "SCV2-FL1-P1-R1 Draft PR #143 after the bounded five-finding review-fix round",
     "resolution": "The project owner must independently audit the immutable implementation evidence and final Draft PR. Test success does not constitute owner acceptance, merge authorization, or FL1-I1 route authorization."
   },
   "owner_decisions": [
@@ -137,12 +137,15 @@
     {
       "id": "owner_authorized_scv2_fl1_p1_r1_late_review_remediation_20260808",
       "decision": "Authorize only SCV2-FL1-P1-R1 implementation, tests, governance correction, a new Draft PR, superseding PR #142 after the new Draft is validated, and one final-head Codex review request. Owner acceptance, merge, Ready transition, FL1-I1 implementation, and real inventory remain unauthorized."
+    },
+    {
+      "id": "owner_authorized_scv2_fl1_p1_r1_pr143_review_fix_round_20260808",
+      "decision": "Authorize only the five exact unresolved PR #143 review findings on the existing Draft branch, a new immutable implementation evidence boundary, validation, push to the same Draft PR, and one final-head Codex review request. New PR creation, PR #142 mutation, owner acceptance, merge, Ready transition, FL1-I1, and real data operations remain unauthorized."
     }
   ],
   "authorized_operations": [
-    "implement and validate only the eight SCV2-FL1-P1-R1 late-review safety remediations",
-    "correct current governance state, create a new Draft PR, and request one final-head Codex review",
-    "after the new Draft PR is fully established and validated, mark PR #142 superseded and close it without deleting its branch or commits",
+    "implement and validate only the five exact unresolved review findings on existing Draft PR #143 while preserving the prior eight remediations",
+    "update only the existing SCV2-FL1-P1-R1 Draft branch and request one review on its stable final HEAD",
     "local focused and full non-E2E validation using only synthetic, in-memory, or newly created temporary fixtures"
   ],
   "forbidden_operations": [
@@ -154,33 +157,41 @@
     "Entity, EntityAlias, confirmed assignment, user truth, source truth, or provider-derived media_tags write",
     "Stable Replay or authoritative evidence import, replay, or reuse",
     "FL1-I1 scanner, implementation, contract, tests, or runtime execution",
-    "real source inventory execution, owner acceptance, Ready transition, merge, direct main push, force-push, or any later FL1 stage"
+    "real source inventory execution, owner acceptance, Ready transition, merge, direct main push, force-push, or any later FL1 stage",
+    "new PR creation or any modification, reopening, merge, branch deletion, or commit deletion for PR #142"
   ],
   "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
   "protected_evidence": {
     "accepted_mainline_merge_commit": "33af4111e1595dac3ece0ac50002556d466f0138",
     "sv1b_final_composite_acceptance_fingerprint": "091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca",
     "sv1b_owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
-    "production_consumed_or_modified_during_fl1_p1": false,
     "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
     "fl1_plan_merge_commit": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
     "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
-    "fl1_p1_r1_implementation_evidence_head": "ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25",
-    "activity_event_evidence": {
-      "schema_version": "violet.scv2-fl1-p1-r1-activity-events.v1",
-      "events": [],
-      "event_count": 0,
-      "fingerprint": "afde7fad725431ea3ddfa6a1ab0257c9765ea39bb159540696f1e17d0e24ec3d"
-    },
-    "production_operation_count": 0,
-    "existing_database_read_operation_count": 0,
-    "existing_database_write_operation_count": 0,
-    "real_source_inventory_operation_count": 0,
-    "provider_operation_count": 0,
-    "llm_operation_count": 0,
-    "media_or_thumbnail_operation_count": 0,
-    "stable_replay_operation_count": 0,
-    "user_data_cleanup_delete_operation_count": 0
+    "fl1_p1_r1_implementation_evidence_head": "bcabaa1cb635ea312dc49c9d3358f11e87c7afbf",
+    "phase_non_action_attestation": {
+      "schema_version": "violet.scv2-fl1-p1-r1-phase-non-action-attestation.v1",
+      "attestation_kind": "phase_operator_non_action_attestation",
+      "phase_id": "SCV2-FL1-P1-R1",
+      "pr_number": 143,
+      "implementation_evidence_head": "bcabaa1cb635ea312dc49c9d3358f11e87c7afbf",
+      "asserted_non_actions": [
+        "production_activity",
+        "real_source_inventory_activity",
+        "existing_database_read_activity",
+        "existing_database_write_activity",
+        "provider_activity",
+        "llm_activity",
+        "media_activity",
+        "stable_replay_activity",
+        "user_data_cleanup_delete_activity"
+      ],
+      "runtime_operation_evidence_source": "instrumented_run_ledger_only",
+      "executable_runtime_evidence": false,
+      "grants_owner_acceptance": false,
+      "grants_safe_to_merge": false,
+      "grants_route_authorization": false
+    }
   },
   "next_required_checkpoint": "project_owner_read_only_audit_of_new_p1_r1_draft_pr",
   "durable_links": [
@@ -252,5 +263,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-08T15:52:03+08:00"
+  "updated_at": "2026-08-08T21:01:44+08:00"
 }

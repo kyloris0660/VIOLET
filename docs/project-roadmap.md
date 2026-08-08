@@ -34,7 +34,7 @@ PR #141 physically merged at
 `36100bfa0317387e064cd87b2e753eca3a201b5e`, but eight valid review findings
 arrived after merge and remain unresolved on that historical PR. P1-R1 is the
 only authorized remediation route. Its implementation evidence is
-`ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25`, pending independent owner audit.
+`bcabaa1cb635ea312dc49c9d3358f11e87c7afbf`, pending independent owner audit.
 Consequently `target_met=false`, `safe_to_merge=false`,
 `route_approved=false`, and `next_phase_started=false`.
 
@@ -42,6 +42,13 @@ PR #142 is a non-authoritative candidate because it mixed P1 remediation with
 unapproved FL1-I1 work. It does not establish acceptance, merge authority, or
 an I1 route. FL1-I1 remains a future planning candidate that requires both the
 P1-R1 owner audit and a separate owner scope decision.
+
+The current bounded PR #143 review-fix round keeps the same P1-R1 scope. It
+hardens repository evidence for both PR audit and squash carry-forward,
+requires an independent five-scenario failure-budget/manual-stop matrix,
+reconciles synthetic invocations per item, and treats phase-level zero-activity
+statements only as non-action attestations. Executable operation evidence still
+comes exclusively from the instrumented private `RunLedger`.
 
 ## Accepted Mainline Sequence
 

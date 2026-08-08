@@ -10,6 +10,7 @@ the only guard for pipeline-critical work.
 & "$PY" scripts/check_phase_contract.py --list-contracts
 & "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json>
 & "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json> --explain
+& "$PY" scripts/check_phase_contract.py --contract scv2_fl1_isolated_full_library_dev_test_contract_v1 --summary <summary.json> --repo-root <trusted-repo> --runtime-ledger <private-ledger.json>
 ```
 
 The checker prints JSON to stdout and exits nonzero on failure.
@@ -46,6 +47,16 @@ allowlist enforced by the executable contract may follow that boundary.
 Implementation authorization, owner audit, owner acceptance, merge
 authorization, and next-phase route authorization are separate evidence gates.
 
+The FL1-P1 evidence checker has two strict Git modes. In `pr_audit`, the
+reviewed final commit must be the repository's current HEAD, the implementation
+commit must be its ancestor, and Git-derived post-implementation paths must all
+be on the governance allowlist. In `squash_carry_forward`, the current squash
+commit must have exactly the approved base as its parent and its tree must equal
+the owner-reviewed final PR tree; branch-commit ancestry is intentionally not
+required after squash. Owner-accepted, merge-safe, or route-approved claims
+fail closed without trusted repository context and the private runtime ledger
+that produced the public operation-attribution proof.
+
 ## Current Phase Boundary
 
 <!-- CURRENT_PHASE: SCV2-FL1-P1-R1 -->
@@ -63,7 +74,7 @@ PR #140 merged the approved plan into `origin/main` at
 after merge. `SCV2-FL1-P1-R1` on Draft PR #143 is the current bounded
 remediation phase. Its
 immutable implementation evidence is
-`ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25`, and its current state is:
+`bcabaa1cb635ea312dc49c9d3358f11e87c7afbf`, and its current state is:
 
 - `status=fl1_p1_r1_implementation_ready_for_owner_audit`
 - `target_met=false`
@@ -75,9 +86,13 @@ immutable implementation evidence is
 
 The documentation-state checker binds the accepted mainline baseline,
 implementation evidence, PR #141 physical/late-review state, generated
-handoff, category-only activity event evidence, and the exact zero-data/external
-authorization boundary. It rejects legacy I1 authorization tokens, unbound
-acceptance claims, merge-gate claims, and any current route/start claim for I1.
+handoff, and the exact zero-data/external authorization boundary. Its phase
+non-action record is explicitly an operator attestation, not an executable
+event ledger and not a source of merge authorization. Runtime operation
+evidence comes only from the instrumented private `RunLedger`, whose write-ahead
+events are consumed by the executable contract. The checker rejects legacy I1
+authorization tokens, unbound acceptance claims, merge-gate claims, and any
+current route/start claim for I1.
 
 `scv2_fl1_isolated_full_library_dev_test_contract_v1` is registered for this P1
 slice. Its standard-library implementation now requires evidence-bound
@@ -93,7 +108,14 @@ checkpoints, separates per-item from global failure budgets, rejects stale
 writers, derives forbidden-operation counts from persisted events, and requires
 explicit reconciliation before retrying an interrupted or unknown-outcome
 mutation. Duplicate content receives one logical mutation and manual stop state
-remains persistent across restart.
+remains persistent across restart. Every synthetic invocation is attributed to
+one existing item and must exactly match that item's attempt count. The public
+summary uses irreversible item tokens plus a proof bound to the validated
+private ledger rather than trusting aggregate counts. The required
+`failure_budget_and_manual_stop` stage is completed only by an independently
+fingerprinted five-scenario matrix covering normal success, manual stop across
+restart, per-item exhaustion without global poisoning, true global exhaustion,
+and restart counter/reason consistency.
 
 P1 tests use only in-memory callbacks and newly created temporary files. No
 production or production comparison, real source-root read or inventory,

@@ -16,7 +16,7 @@ Canonical phase:
 - Current status: planning input only; `SCV2-FL1-P1-R1` Draft PR #143 is
   pending owner audit
 - Current implementation evidence:
-  `ffa2d78ba61fcfd162ac20435c60d7aaf5e32e25`
+  `bcabaa1cb635ea312dc49c9d3358f11e87c7afbf`
 - Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or
   started; do not implement its scanner/contract/tests or read a real source
   root without a separate later owner decision
@@ -311,6 +311,17 @@ derive, rather than accept manually supplied, at least:
 - public redaction and private-artifact separation;
 - manual-acceptance requirement/status;
 - `target_met`, `safe_to_merge`, and route scope.
+
+The contract verifies Git objects in a trusted repository. PR audit evidence
+requires the actual current PR HEAD and implementation ancestry; squash
+carry-forward evidence instead requires the approved base as the squash
+commit's sole parent and exact equality with the owner-reviewed final tree.
+Synthetic invocations reconcile per item against private `RunLedger` attempt
+counts. Failure-budget/manual-stop completion is a five-scenario synthetic
+matrix with independent run identities and fingerprints, not a property of one
+ordinary success run. Phase-level non-action declarations are attestations
+only; they cannot replace write-ahead runtime gateway evidence or grant owner
+acceptance, merge safety, or route approval.
 
 Required test groups for the implementation PR:
 
