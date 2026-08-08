@@ -38,9 +38,17 @@ When acceptance is required and pending, the executable contract must enforce
 `manual_acceptance_required=true`, `manual_acceptance_status=pending_user`,
 `target_met=false`, `safe_to_merge=false`, and `route_approved=false`.
 
+For SCV2-FL1-P1-R1, acceptance is additionally invalid unless it binds the
+immutable implementation commit/tree/digest and the final reviewed
+commit/tree. Any executable code, test, or contract drift after the
+implementation boundary invalidates it. Only the exact governance-path
+allowlist enforced by the executable contract may follow that boundary.
+Implementation authorization, owner audit, owner acceptance, merge
+authorization, and next-phase route authorization are separate evidence gates.
+
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1-P1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-P1-R1 -->
 
 PR #139 / SCV2-SV1B is merged and accepted in `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner-closeout contract
@@ -50,37 +58,41 @@ their waiver is limited to SV1B placeholder/default creator signals and does not
 authorize FL1 behavior, scale, production, or truth promotion.
 
 PR #140 merged the approved plan into `origin/main` at
-`9ce1128be643c0eaa998ccdff8890d76196ce7db`. `SCV2-FL1-P1: Dev/Test Isolation,
-Contract, And Ledger Foundations` is now the current implementation phase on
-PR #141. Its owner-accepted implementation evidence is
-`3a7b20608724e5f469548183df0830b09d5ea7be`, and its closeout state is:
+`9ce1128be643c0eaa998ccdff8890d76196ce7db`. PR #141 then physically merged at
+`36100bfa0317387e064cd87b2e753eca3a201b5e`, but eight valid findings arrived
+after merge. `SCV2-FL1-P1-R1` is the current bounded remediation phase. Its
+immutable implementation evidence is
+`0762bc0ad13ba8759c82926c58fe396ccb906120`, and its current state is:
 
-- `status=fl1_p1_owner_accepted_for_merge`
-- `target_met=true`
-- `safe_to_merge=true`
-- `route_approved=true`
-- `route_scope=FL1-I1 read-only inventory planning and synthetic implementation only`
-- `manual_acceptance_status=owner_accepted_fl1_p1_foundation`
-- `next_phase_started=true`
-- blocker: `none_fl1_p1_owner_accepted_for_merge`
+- `status=fl1_p1_r1_implementation_ready_for_owner_audit`
+- `target_met=false`
+- `safe_to_merge=false`
+- `route_approved=false`
+- `manual_acceptance_status=pending_owner_audit`
+- `next_phase_started=false`
+- blocker: `pending_owner_audit`
 
-The documentation-state checker binds the accepted plan merge, owner-accepted P1
-implementation evidence, generated handoff, public-safe durable links, and the
-exact zero-data/external authorization boundary. Ready and squash merge are
-allowed only after live review gates pass.
+The documentation-state checker binds the accepted mainline baseline,
+implementation evidence, PR #141 physical/late-review state, generated
+handoff, category-only activity event evidence, and the exact zero-data/external
+authorization boundary. It rejects legacy I1 authorization tokens, unbound
+acceptance claims, merge-gate claims, and any current route/start claim for I1.
 
 `scv2_fl1_isolated_full_library_dev_test_contract_v1` is registered for this P1
-slice. Its standard-library implementation requires explicit test/development,
+slice. Its standard-library implementation now requires evidence-bound
+acceptance/authorization, all registered required stages, explicit
+test/development,
 Git, Python, synthetic database-path, source-fixture, storage, sandbox, and
 forbidden-root identities; denies production and unknown identities; and
-rejects containment ambiguity before mutation. Mutation defaults to deny and
+rejects canonical path overlap before mutation. Mutation defaults to deny and
 permits only explicit synthetic operations under the approved storage root.
 The atomic JSON ledger keeps parent-qualified source membership distinct from
 content-fingerprint logical targets, binds denominator accounting and
 checkpoints, separates per-item from global failure budgets, rejects stale
-writers, and requires explicit reconciliation before retrying an interrupted
+writers, derives forbidden-operation counts from persisted events, and requires
+explicit reconciliation before retrying an interrupted or unknown-outcome
 mutation. Duplicate content receives one logical mutation and manual stop state
-remains persistent.
+remains persistent across restart.
 
 P1 tests use only in-memory callbacks and newly created temporary files. No
 production or production comparison, real source-root read or inventory,
@@ -88,9 +100,10 @@ existing database access, import, classification or AI tagging,
 provider/Pixiv/gallery-dl/LLM/media/thumbnail request, Stable Replay/evidence
 reuse, localization or graph/search derivation, or
 Entity/truth/provider-derived `media_tags` write is authorized or performed.
-After P1 merges, only a separate FL1-I1 planning and synthetic implementation
-PR may start. Real source-root access or inventory still requires a later exact
-source-scope authorization.
+PR #142 is non-authoritative and must not be merged. FL1-I1 has not started and
+has no current route authorization. It remains only a future candidate after
+P1-R1 owner audit and a separate owner scope decision. Real source-root access
+or inventory requires another exact authorization after that.
 
 Three deferred use-before gates do not block P1 owner audit and do not authorize
 current remediation: `PROVIDER_GATE` before any provider request,
@@ -291,9 +304,9 @@ raw history, no unsupported page link or conflict winner, and explicit
 resume cannot reopen it. The final PR #136 contract may therefore prove the
 exhaustive equation `candidate = complete + terminal + deferred`, zero open or
 blocking-conflict works, status
-`partial_ml1_pixiv_metadata_foundation_complete`, `target_met=false`,
-`safe_to_merge=true`, `route_approved=true`, and no active blockers. Its route
-approval is limited to separately governed SCV2-ML2 work and does not authorize
+`partial_ml1_pixiv_metadata_foundation_complete`, with its historical target,
+merge-safety, route, and blocker checks satisfied. That historical route
+approval was limited to separately governed SCV2-ML2 work and did not authorize
 production, scale, another provider, Entity/truth writes, or acquisition replay.
 
 The final gate additionally requires page-local disposition and trusted creator
