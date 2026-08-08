@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import subprocess
@@ -77,18 +76,20 @@ FL1_ACCEPTED_MAIN = "36100bfa0317387e064cd87b2e753eca3a201b5e"
 FL1_PR141_HEAD = "495a6506b25bb27747ebc27e341a06de4860aaa4"
 SV1B_MERGE_COMMIT = "33af4111e1595dac3ece0ac50002556d466f0138"
 SV1B_WAIVER = "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
-ACTIVITY_EVENT_SCHEMA = "violet.scv2-fl1-p1-r1-activity-events.v1"
-ACTIVITY_COUNT_FIELDS = {
-    "production_activity": "production_operation_count",
-    "real_source_inventory_activity": "real_source_inventory_operation_count",
-    "existing_database_read_activity": "existing_database_read_operation_count",
-    "existing_database_write_activity": "existing_database_write_operation_count",
-    "provider_activity": "provider_operation_count",
-    "llm_activity": "llm_operation_count",
-    "media_activity": "media_or_thumbnail_operation_count",
-    "stable_replay_activity": "stable_replay_operation_count",
-    "user_data_cleanup_delete_activity": "user_data_cleanup_delete_operation_count",
-}
+NON_ACTION_ATTESTATION_SCHEMA = (
+    "violet.scv2-fl1-p1-r1-phase-non-action-attestation.v1"
+)
+ATTESTED_NON_ACTIONS = (
+    "production_activity",
+    "real_source_inventory_activity",
+    "existing_database_read_activity",
+    "existing_database_write_activity",
+    "provider_activity",
+    "llm_activity",
+    "media_activity",
+    "stable_replay_activity",
+    "user_data_cleanup_delete_activity",
+)
 
 
 class DocumentationStateError(ValueError):
@@ -220,53 +221,46 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         raise DocumentationStateError("fl1_prior_phase_acceptance_invalid")
 
     protected = state["protected_evidence"]
-    event_evidence = (
-        protected.get("activity_event_evidence")
+    attestation = (
+        protected.get("phase_non_action_attestation")
         if isinstance(protected, dict)
         else None
     )
-    raw_events = (
-        event_evidence.get("events")
-        if isinstance(event_evidence, dict)
-        else None
-    )
-    events_valid = (
-        isinstance(raw_events, list)
-        and all(isinstance(event, dict) for event in raw_events)
-        and [event.get("sequence") for event in raw_events]
-        == list(range(1, len(raw_events) + 1))
-        and all(event.get("kind") in ACTIVITY_COUNT_FIELDS for event in raw_events)
-    )
-    evidence_payload = {
-        "schema_version": ACTIVITY_EVENT_SCHEMA,
-        "events": raw_events if events_valid else [],
-    }
-    expected_fingerprint = hashlib.sha256(
-        json.dumps(
-            evidence_payload, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-    ).hexdigest()
-    derived_counts = (
-        {
-            protected_field: sum(event.get("kind") == event_kind for event in raw_events)
-            for event_kind, protected_field in ACTIVITY_COUNT_FIELDS.items()
-        }
-        if events_valid
-        else {}
-    )
     if not (
         isinstance(protected, dict)
-        and isinstance(event_evidence, dict)
-        and event_evidence.get("schema_version") == ACTIVITY_EVENT_SCHEMA
-        and events_valid
-        and event_evidence.get("event_count") == len(raw_events)
-        and event_evidence.get("fingerprint") == expected_fingerprint
-        and all(protected.get(key) == value for key, value in derived_counts.items())
-        and all(value == 0 for value in derived_counts.values())
+        and isinstance(attestation, dict)
+        and attestation.get("schema_version") == NON_ACTION_ATTESTATION_SCHEMA
+        and attestation.get("attestation_kind")
+        == "phase_operator_non_action_attestation"
+        and attestation.get("phase_id") == "SCV2-FL1-P1-R1"
+        and attestation.get("pr_number") == 143
+        and attestation.get("implementation_evidence_head")
+        == state["implementation_evidence_head"]
+        and attestation.get("asserted_non_actions")
+        == list(ATTESTED_NON_ACTIONS)
+        and attestation.get("runtime_operation_evidence_source")
+        == "instrumented_run_ledger_only"
+        and attestation.get("executable_runtime_evidence") is False
+        and attestation.get("grants_owner_acceptance") is False
+        and attestation.get("grants_safe_to_merge") is False
+        and attestation.get("grants_route_authorization") is False
     ):
-        raise DocumentationStateError("fl1_activity_event_evidence_invalid")
-    if protected.get("production_consumed_or_modified_during_fl1_p1") is not False:
-        raise DocumentationStateError("fl1_production_boundary_invalid")
+        raise DocumentationStateError("fl1_phase_non_action_attestation_invalid")
+    legacy_event_fields = {
+        "activity_event_evidence",
+        "production_consumed_or_modified_during_fl1_p1",
+        "production_operation_count",
+        "existing_database_read_operation_count",
+        "existing_database_write_operation_count",
+        "real_source_inventory_operation_count",
+        "provider_operation_count",
+        "llm_operation_count",
+        "media_or_thumbnail_operation_count",
+        "stable_replay_operation_count",
+        "user_data_cleanup_delete_operation_count",
+    }
+    if any(field in protected for field in legacy_event_fields):
+        raise DocumentationStateError("editable_phase_event_ledger_forbidden")
     if protected.get("approved_planning_head") != FL1_APPROVED_PLANNING_HEAD:
         raise DocumentationStateError("fl1_approved_planning_head_evidence_invalid")
     if (
@@ -414,17 +408,47 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
 
 
 def validate_git_ancestry(state: dict[str, Any], *, root: Path = ROOT) -> None:
-    for field in ("accepted_mainline_base", "implementation_evidence_head"):
-        completed = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", str(state[field]), "HEAD"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
+    base = str(state["accepted_mainline_base"])
+    implementation = str(state["implementation_evidence_head"])
+    base_check = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", base, "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if base_check.returncode != 0:
+        raise DocumentationStateError("accepted_mainline_base_not_ancestor_of_head")
+
+    implementation_check = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", implementation, "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if implementation_check.returncode == 0:
+        return
+
+    # A normal squash commit cannot retain branch-commit ancestry.  The
+    # repository-bound phase contract separately verifies that the squash tree
+    # equals the reviewed final tree; this documentation check verifies only
+    # the unambiguous one-parent carry-forward topology.
+    parent_row = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    parts = parent_row.stdout.strip().split()
+    if parent_row.returncode != 0 or len(parts) != 2 or parts[1] != base:
+        raise DocumentationStateError(
+            "implementation_evidence_not_pr_or_squash_carry_forward"
         )
-        if completed.returncode != 0:
-            raise DocumentationStateError(f"{field}_not_ancestor_of_head")
 
 
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -514,7 +538,7 @@ def render_handoff(state: dict[str, Any]) -> str:
             f"- Resolution: {blocker['resolution']}",
             f"- Planning only: `{str(boundary['planning_only']).lower()}`; implementation/data/production authorization: `{str(boundary['implementation_authorized']).lower()}/{str(boundary['data_execution_authorized']).lower()}/{str(boundary['production_authorized']).lower()}`.",
             f"- Existing database/real inventory/provider-or-LLM/media authorization: `{str(boundary['database_access_authorized']).lower()}/{str(boundary['real_source_inventory_authorized']).lower()}/{str(boundary['provider_or_llm_authorized']).lower()}/{str(boundary['media_authorized']).lower()}`; projected external cost: `${boundary['projected_external_cost_usd']}`.",
-            f"- Public state boundary: `{state['public_state_boundary']}`.",
+            f"- Public state boundary: `{state['public_state_boundary']}`. Phase-level zero-activity is an operator attestation only; executable runtime operation evidence comes only from the instrumented `RunLedger`, and the attestation grants no acceptance, merge safety, or route authorization.",
             "",
             "## Allowed / Forbidden",
             "",

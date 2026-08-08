@@ -191,12 +191,52 @@ def test_unapproved_acceptance_merge_or_i1_claim_fails_closed(
         validate_state(state)
 
 
-def test_activity_counts_must_match_event_evidence() -> None:
+def test_phase_non_action_attestation_is_not_executable_runtime_evidence() -> None:
+    state = load_state()
+    attestation = state["protected_evidence"]["phase_non_action_attestation"]
+
+    assert attestation["runtime_operation_evidence_source"] == (
+        "instrumented_run_ledger_only"
+    )
+    assert attestation["executable_runtime_evidence"] is False
+    assert attestation["grants_owner_acceptance"] is False
+    assert attestation["grants_safe_to_merge"] is False
+    assert attestation["grants_route_authorization"] is False
+
+
+def test_editable_empty_phase_event_list_is_rejected() -> None:
     state = copy.deepcopy(load_state())
-    state["protected_evidence"]["provider_operation_count"] = 1
+    state["protected_evidence"]["activity_event_evidence"] = {
+        "schema_version": "violet.scv2-fl1-p1-r1-activity-events.v1",
+        "events": [],
+        "event_count": 0,
+        "fingerprint": "0" * 64,
+    }
 
     with pytest.raises(
-        DocumentationStateError, match="fl1_activity_event_evidence_invalid"
+        DocumentationStateError, match="editable_phase_event_ledger_forbidden"
+    ):
+        validate_state(state)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("executable_runtime_evidence", True),
+        ("grants_owner_acceptance", True),
+        ("grants_safe_to_merge", True),
+        ("grants_route_authorization", True),
+        ("runtime_operation_evidence_source", "editable_current_phase_json"),
+    ],
+)
+def test_non_action_attestation_cannot_be_promoted_to_a_merge_gate(
+    field: str, value: object
+) -> None:
+    state = copy.deepcopy(load_state())
+    state["protected_evidence"]["phase_non_action_attestation"][field] = value
+
+    with pytest.raises(
+        DocumentationStateError, match="fl1_phase_non_action_attestation_invalid"
     ):
         validate_state(state)
 

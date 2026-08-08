@@ -26,7 +26,11 @@ ITEM_IDENTITY_VERSION = "violet.scv2-fl1-item.v1"
 LOGICAL_TARGET_IDENTITY_VERSION = "violet.scv2-fl1-logical-target.v1"
 OPERATION_EVIDENCE_SCHEMA_VERSION = "violet.scv2-fl1-p1-operation-evidence.v2"
 IMPLEMENTATION_EVIDENCE_SCHEMA_VERSION = (
-    "violet.scv2-fl1-p1-implementation-evidence.v1"
+    "violet.scv2-fl1-p1-implementation-evidence.v2"
+)
+SCENARIO_MATRIX_SCHEMA_VERSION = "violet.scv2-fl1-p1-scenario-matrix.v1"
+MUTATION_ATTRIBUTION_SCHEMA_VERSION = (
+    "violet.scv2-fl1-p1-mutation-attribution.v1"
 )
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -42,6 +46,14 @@ REQUIRED_EXECUTED_STAGES: tuple[str, ...] = (
     "interrupted_mutation_reconciliation",
     "failure_budget_and_manual_stop",
     "forbidden_operation_evidence",
+)
+
+REQUIRED_FAILURE_BUDGET_SCENARIOS: tuple[str, ...] = (
+    "normal_success",
+    "manual_stop_restart",
+    "per_item_exhaustion",
+    "global_budget_exhaustion",
+    "restart_counter_reason_consistency",
 )
 
 # Executable code, tests, and executable contracts may not drift after the
@@ -151,6 +163,11 @@ class AuthorizationKind(str, Enum):
     NEXT_PHASE_ROUTE = "next_phase_route"
 
 
+class ImplementationEvidenceMode(str, Enum):
+    PR_AUDIT = "pr_audit"
+    SQUASH_CARRY_FORWARD = "squash_carry_forward"
+
+
 def _strict_int(value: Any, error_code: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise LedgerError(error_code)
@@ -184,6 +201,11 @@ class OperationEvent:
             raise LedgerError("operation_event_kind_invalid")
         if self.item_id is not None and not HEX64_RE.fullmatch(self.item_id):
             raise LedgerError("operation_event_item_id_invalid")
+        if (
+            self.kind is OperationKind.SYNTHETIC_MUTATION_INVOCATION
+            and self.item_id is None
+        ):
+            raise LedgerError("synthetic_mutation_invocation_item_id_required")
 
     def to_dict(self) -> dict[str, Any]:
         self.validate()
@@ -217,10 +239,14 @@ class OperationEvent:
 class ImplementationEvidence:
     """Immutable Git evidence boundary plus exact governance-only carry-forward."""
 
+    mode: ImplementationEvidenceMode
+    approved_base_commit: str
     implementation_commit: str
     implementation_tree: str
     final_commit: str
     final_tree: str
+    carry_forward_commit: str | None
+    carry_forward_tree: str | None
     post_implementation_changed_paths: tuple[str, ...]
     evidence_digest: str
 
@@ -228,26 +254,38 @@ class ImplementationEvidence:
     def create(
         cls,
         *,
+        mode: ImplementationEvidenceMode = ImplementationEvidenceMode.PR_AUDIT,
+        approved_base_commit: str,
         implementation_commit: str,
         implementation_tree: str,
         final_commit: str,
         final_tree: str,
+        carry_forward_commit: str | None = None,
+        carry_forward_tree: str | None = None,
         post_implementation_changed_paths: Sequence[str],
     ) -> "ImplementationEvidence":
         changed_paths = tuple(sorted(set(post_implementation_changed_paths)))
         payload = {
             "schema_version": IMPLEMENTATION_EVIDENCE_SCHEMA_VERSION,
+            "mode": mode.value,
+            "approved_base_commit": approved_base_commit,
             "implementation_commit": implementation_commit,
             "implementation_tree": implementation_tree,
             "final_commit": final_commit,
             "final_tree": final_tree,
+            "carry_forward_commit": carry_forward_commit,
+            "carry_forward_tree": carry_forward_tree,
             "post_implementation_changed_paths": list(changed_paths),
         }
         evidence = cls(
+            mode=mode,
+            approved_base_commit=approved_base_commit,
             implementation_commit=implementation_commit,
             implementation_tree=implementation_tree,
             final_commit=final_commit,
             final_tree=final_tree,
+            carry_forward_commit=carry_forward_commit,
+            carry_forward_tree=carry_forward_tree,
             post_implementation_changed_paths=changed_paths,
             evidence_digest=_canonical_digest(payload),
         )
@@ -257,17 +295,24 @@ class ImplementationEvidence:
     def _payload(self) -> dict[str, Any]:
         return {
             "schema_version": IMPLEMENTATION_EVIDENCE_SCHEMA_VERSION,
+            "mode": self.mode.value,
+            "approved_base_commit": self.approved_base_commit,
             "implementation_commit": self.implementation_commit,
             "implementation_tree": self.implementation_tree,
             "final_commit": self.final_commit,
             "final_tree": self.final_tree,
+            "carry_forward_commit": self.carry_forward_commit,
+            "carry_forward_tree": self.carry_forward_tree,
             "post_implementation_changed_paths": list(
                 self.post_implementation_changed_paths
             ),
         }
 
     def validate(self) -> None:
+        if not isinstance(self.mode, ImplementationEvidenceMode):
+            raise LedgerError("implementation_evidence_mode_invalid")
         for value in (
+            self.approved_base_commit,
             self.implementation_commit,
             self.implementation_tree,
             self.final_commit,
@@ -275,6 +320,17 @@ class ImplementationEvidence:
         ):
             if not HEX40_RE.fullmatch(value):
                 raise LedgerError("implementation_evidence_git_identity_invalid")
+        if self.mode is ImplementationEvidenceMode.PR_AUDIT:
+            if self.carry_forward_commit is not None or self.carry_forward_tree is not None:
+                raise LedgerError("implementation_evidence_pr_carry_forward_forbidden")
+        elif not (
+            isinstance(self.carry_forward_commit, str)
+            and HEX40_RE.fullmatch(self.carry_forward_commit)
+            and isinstance(self.carry_forward_tree, str)
+            and HEX40_RE.fullmatch(self.carry_forward_tree)
+            and self.carry_forward_tree == self.final_tree
+        ):
+            raise LedgerError("implementation_evidence_squash_binding_invalid")
         paths = self.post_implementation_changed_paths
         if paths != tuple(sorted(set(paths))) or any(
             not SAFE_REPO_PATH_RE.fullmatch(path) for path in paths
@@ -301,6 +357,37 @@ class ImplementationEvidence:
     def to_public_dict(self) -> dict[str, Any]:
         self.validate()
         return {**self._payload(), "evidence_digest": self.evidence_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationEvidence":
+        try:
+            evidence = cls(
+                mode=ImplementationEvidenceMode(str(payload["mode"])),
+                approved_base_commit=str(payload["approved_base_commit"]),
+                implementation_commit=str(payload["implementation_commit"]),
+                implementation_tree=str(payload["implementation_tree"]),
+                final_commit=str(payload["final_commit"]),
+                final_tree=str(payload["final_tree"]),
+                carry_forward_commit=(
+                    str(payload["carry_forward_commit"])
+                    if payload.get("carry_forward_commit") is not None
+                    else None
+                ),
+                carry_forward_tree=(
+                    str(payload["carry_forward_tree"])
+                    if payload.get("carry_forward_tree") is not None
+                    else None
+                ),
+                post_implementation_changed_paths=tuple(
+                    str(path)
+                    for path in payload["post_implementation_changed_paths"]
+                ),
+                evidence_digest=str(payload["evidence_digest"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise LedgerError("implementation_evidence_invalid") from exc
+        evidence.validate()
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -413,9 +500,15 @@ def _git(
 
 
 def collect_implementation_evidence(
-    *, repo_root: Path, implementation_commit: str, final_commit: str = "HEAD"
+    *,
+    repo_root: Path,
+    approved_base_commit: str,
+    implementation_commit: str,
+    final_commit: str = "HEAD",
+    mode: ImplementationEvidenceMode = ImplementationEvidenceMode.PR_AUDIT,
+    carry_forward_commit: str = "HEAD",
 ) -> ImplementationEvidence:
-    """Collect evidence from Git itself; caller-supplied changed paths are refused."""
+    """Collect topology-bound evidence from Git; caller-supplied paths are refused."""
 
     root = Path(repo_root).resolve(strict=True)
     top_level = _git(root, "rev-parse", "--show-toplevel").stdout.decode(
@@ -424,12 +517,27 @@ def collect_implementation_evidence(
     if Path(top_level).resolve(strict=True) != root:
         raise LedgerError("implementation_evidence_repo_root_mismatch")
 
-    implementation = _git(root, "rev-parse", f"{implementation_commit}^{{commit}}").stdout.decode(
+    head = _git(root, "rev-parse", "HEAD^{commit}").stdout.decode(
         "ascii", errors="strict"
     ).strip()
-    final = _git(root, "rev-parse", f"{final_commit}^{{commit}}").stdout.decode(
-        "ascii", errors="strict"
-    ).strip()
+    base = _git(
+        root, "rev-parse", f"{approved_base_commit}^{{commit}}"
+    ).stdout.decode("ascii", errors="strict").strip()
+    implementation = _git(
+        root, "rev-parse", f"{implementation_commit}^{{commit}}"
+    ).stdout.decode("ascii", errors="strict").strip()
+    final = _git(
+        root, "rev-parse", f"{final_commit}^{{commit}}"
+    ).stdout.decode("ascii", errors="strict").strip()
+    if _git(
+        root,
+        "merge-base",
+        "--is-ancestor",
+        base,
+        implementation,
+        allow_failure=True,
+    ).returncode != 0:
+        raise LedgerError("implementation_evidence_base_not_ancestor")
     if _git(
         root,
         "merge-base",
@@ -439,12 +547,36 @@ def collect_implementation_evidence(
         allow_failure=True,
     ).returncode != 0:
         raise LedgerError("implementation_evidence_not_ancestor_of_final")
+
+    carry: str | None = None
+    carry_tree: str | None = None
+    if mode is ImplementationEvidenceMode.PR_AUDIT:
+        if final != head:
+            raise LedgerError("implementation_evidence_final_not_current_head")
+    elif mode is ImplementationEvidenceMode.SQUASH_CARRY_FORWARD:
+        carry = _git(
+            root, "rev-parse", f"{carry_forward_commit}^{{commit}}"
+        ).stdout.decode("ascii", errors="strict").strip()
+        if carry != head:
+            raise LedgerError("implementation_evidence_carry_forward_not_current_head")
+        parent_row = _git(root, "rev-list", "--parents", "-n", "1", carry).stdout.decode(
+            "ascii", errors="strict"
+        ).strip().split()
+        if len(parent_row) != 2 or parent_row[1] != base:
+            raise LedgerError("implementation_evidence_squash_parent_invalid")
+        carry_tree = _git(root, "rev-parse", f"{carry}^{{tree}}").stdout.decode(
+            "ascii", errors="strict"
+        ).strip()
+    else:  # pragma: no cover - Enum guard for future modes
+        raise LedgerError("implementation_evidence_mode_invalid")
     implementation_tree = _git(
         root, "rev-parse", f"{implementation}^{{tree}}"
     ).stdout.decode("ascii", errors="strict").strip()
     final_tree = _git(root, "rev-parse", f"{final}^{{tree}}").stdout.decode(
         "ascii", errors="strict"
     ).strip()
+    if carry_tree is not None and carry_tree != final_tree:
+        raise LedgerError("implementation_evidence_squash_tree_mismatch")
     raw_paths = _git(
         root,
         "diff",
@@ -459,12 +591,34 @@ def collect_implementation_evidence(
         if path
     )
     return ImplementationEvidence.create(
+        mode=mode,
+        approved_base_commit=base,
         implementation_commit=implementation,
         implementation_tree=implementation_tree,
         final_commit=final,
         final_tree=final_tree,
+        carry_forward_commit=carry,
+        carry_forward_tree=carry_tree,
         post_implementation_changed_paths=changed_paths,
     )
+
+
+def verify_implementation_evidence_repository(
+    *, repo_root: Path, evidence: ImplementationEvidence
+) -> None:
+    """Recollect an evidence claim from the repository and require exact equality."""
+
+    evidence.validate()
+    recollected = collect_implementation_evidence(
+        repo_root=repo_root,
+        approved_base_commit=evidence.approved_base_commit,
+        implementation_commit=evidence.implementation_commit,
+        final_commit=evidence.final_commit,
+        mode=evidence.mode,
+        carry_forward_commit=evidence.carry_forward_commit or "HEAD",
+    )
+    if recollected != evidence:
+        raise LedgerError("implementation_evidence_repository_mismatch")
 
 
 @dataclass(frozen=True)
@@ -898,6 +1052,97 @@ class RunLedger:
         )
 
     @property
+    def private_execution_fingerprint(self) -> str:
+        """Bind public proofs to the complete validated private ledger state."""
+
+        return _canonical_digest(
+            {
+                "schema_version": LEDGER_SCHEMA_VERSION,
+                "run_id": self.run_id,
+                "manifest_fingerprint": self.manifest_fingerprint,
+                "manifest_entry_ids": list(self.manifest_entry_ids),
+                "limits": {
+                    "max_attempts_per_item": self.max_attempts_per_item,
+                    "max_failure_attempts": self.max_failure_attempts,
+                    "batch_size": self.batch_size,
+                },
+                "checkpoint": {
+                    "next_index": self.next_index,
+                    "manual_stop_requested": self.manual_stop_requested,
+                    "failure_budget_exhausted": self.failure_budget_exhausted,
+                    "global_stop_reason": (
+                        self.global_stop_reason.value
+                        if self.global_stop_reason is not None
+                        else None
+                    ),
+                    "total_failure_attempts": self.total_failure_attempts,
+                    "duplicate_skip_count": self.duplicate_skip_count,
+                    "recovery_count": self.recovery_count,
+                    "generation": self.generation,
+                },
+                "items": {
+                    item_id: record.to_dict()
+                    for item_id, record in sorted(self.items.items())
+                },
+                "operation_events": [
+                    event.to_dict() for event in self.operation_events
+                ],
+            }
+        )
+
+    def _public_item_token(self, item_id: str) -> str:
+        return hashlib.sha256(
+            (
+                f"{MUTATION_ATTRIBUTION_SCHEMA_VERSION}\0"
+                f"{self.run_id}\0{item_id}"
+            ).encode("utf-8")
+        ).hexdigest()
+
+    @property
+    def public_operation_events(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "sequence": event.sequence,
+                "kind": event.kind.value,
+                "item_token": (
+                    self._public_item_token(event.item_id)
+                    if event.item_id is not None
+                    else None
+                ),
+            }
+            for event in self.operation_events
+        ]
+
+    @property
+    def mutation_attribution_proof(self) -> dict[str, Any]:
+        invocations_by_item = {item_id: 0 for item_id in self.items}
+        for event in self.operation_events:
+            if event.kind is OperationKind.SYNTHETIC_MUTATION_INVOCATION:
+                assert event.item_id is not None
+                invocations_by_item[event.item_id] += 1
+        rows = [
+            {
+                "item_token": self._public_item_token(item_id),
+                "attempt_count": self.items[item_id].attempt_count,
+                "invocation_count": invocations_by_item[item_id],
+            }
+            for item_id in sorted(self.items)
+        ]
+        payload = {
+            "schema_version": MUTATION_ATTRIBUTION_SCHEMA_VERSION,
+            "private_execution_fingerprint": self.private_execution_fingerprint,
+            "rows": rows,
+        }
+        return {
+            **payload,
+            "item_count": len(rows),
+            "invocation_count": sum(
+                row["invocation_count"] for row in rows
+            ),
+            "fingerprint": _canonical_digest(payload),
+        }
+
+    @property
     def reconciliation_required_count(self) -> int:
         return sum(
             record.reconciliation_status is ReconciliationStatus.REQUIRED
@@ -1103,14 +1348,19 @@ class RunLedger:
             event.validate()
             if event.item_id is not None and event.item_id not in self.items:
                 raise LedgerError("operation_event_item_missing")
-        mutation_invocation_count = sum(
-            event.kind is OperationKind.SYNTHETIC_MUTATION_INVOCATION
-            for event in self.operation_events
-        )
-        if mutation_invocation_count != sum(
-            record.attempt_count for record in self.items.values()
+        invocations_by_item = {item_id: 0 for item_id in self.items}
+        for event in self.operation_events:
+            if event.kind is OperationKind.SYNTHETIC_MUTATION_INVOCATION:
+                if event.item_id is None:
+                    raise LedgerError(
+                        "synthetic_mutation_invocation_item_id_required"
+                    )
+                invocations_by_item[event.item_id] += 1
+        if any(
+            invocations_by_item[item_id] != record.attempt_count
+            for item_id, record in self.items.items()
         ):
-            raise LedgerError("mutation_invocation_evidence_mismatch")
+            raise LedgerError("mutation_invocation_item_attribution_mismatch")
         if self.duplicate_second_mutation_count:
             raise LedgerError("logical_target_multiple_mutations")
 
@@ -1687,11 +1937,242 @@ class FL1LedgerRunner:
         )
 
 
+@dataclass(frozen=True)
+class SyntheticScenarioObservation:
+    """Private before/after ledger snapshots for one restart-bound scenario."""
+
+    before_restart: RunLedger
+    after_restart: RunLedger
+
+
+def _scenario_assertions(
+    scenario: str, before: RunLedger, after: RunLedger
+) -> dict[str, bool]:
+    before.validate()
+    after.validate()
+    shared = {
+        "same_run_identity": before.run_id == after.run_id,
+        "same_manifest_identity": (
+            before.manifest_fingerprint == after.manifest_fingerprint
+        ),
+    }
+    if scenario == "normal_success":
+        return {
+            **shared,
+            "completed": after.completed,
+            "all_items_terminal_success_or_duplicate": all(
+                record.state in {ItemState.SUCCEEDED, ItemState.DUPLICATE}
+                for record in after.items.values()
+            ),
+            "manual_stop_not_requested": not after.manual_stop_requested,
+            "global_budget_not_exhausted": not after.failure_budget_exhausted,
+        }
+    if scenario == "manual_stop_restart":
+        return {
+            **shared,
+            "manual_stop_persisted": (
+                before.manual_stop_requested and after.manual_stop_requested
+            ),
+            "restart_blocked_next_mutation": (
+                before.operation_evidence_fingerprint
+                == after.operation_evidence_fingerprint
+                and before.next_index == after.next_index
+            ),
+            "pending_item_preserved": any(
+                record.state is ItemState.PENDING
+                for record in after.items.values()
+            ),
+        }
+    if scenario == "per_item_exhaustion":
+        exhausted_indexes = [
+            index
+            for index, item_id in enumerate(after.manifest_entry_ids)
+            if after.items[item_id].terminal_reason
+            is ItemTerminalReason.ITEM_ATTEMPT_BUDGET_EXHAUSTED
+        ]
+        later_succeeded = any(
+            after.items[item_id].state is ItemState.SUCCEEDED
+            for index, item_id in enumerate(after.manifest_entry_ids)
+            if exhausted_indexes and index > min(exhausted_indexes)
+        )
+        return {
+            **shared,
+            "single_item_exhausted": bool(exhausted_indexes),
+            "global_budget_not_poisoned": (
+                not after.failure_budget_exhausted
+                and after.global_stop_reason is None
+            ),
+            "later_item_processed": later_succeeded,
+            "terminal_reason_persisted": all(
+                before.items[item_id].terminal_reason
+                == after.items[item_id].terminal_reason
+                for item_id in before.items
+            ),
+        }
+    if scenario == "global_budget_exhaustion":
+        return {
+            **shared,
+            "global_budget_exhausted": after.failure_budget_exhausted,
+            "global_reason_exact": (
+                after.global_stop_reason
+                is GlobalStopReason.FAILURE_BUDGET_EXHAUSTED
+            ),
+            "later_item_not_executed": any(
+                record.state is ItemState.PENDING
+                for record in after.items.values()
+            ),
+            "restart_blocked_next_mutation": (
+                before.operation_evidence_fingerprint
+                == after.operation_evidence_fingerprint
+            ),
+        }
+    if scenario == "restart_counter_reason_consistency":
+        return {
+            **shared,
+            "global_counters_persisted": (
+                before.total_failure_attempts
+                == after.total_failure_attempts
+                and before.failure_budget_exhausted
+                == after.failure_budget_exhausted
+                and before.global_stop_reason == after.global_stop_reason
+            ),
+            "item_counters_and_reasons_persisted": all(
+                (
+                    before.items[item_id].attempt_count,
+                    before.items[item_id].failure_count,
+                    before.items[item_id].terminal_reason,
+                )
+                == (
+                    after.items[item_id].attempt_count,
+                    after.items[item_id].failure_count,
+                    after.items[item_id].terminal_reason,
+                )
+                for item_id in before.items
+            ),
+            "operation_attribution_persisted": (
+                before.operation_evidence_fingerprint
+                == after.operation_evidence_fingerprint
+            ),
+        }
+    raise LedgerError("failure_budget_scenario_name_invalid")
+
+
+def build_failure_budget_scenario_matrix(
+    observations: Mapping[str, SyntheticScenarioObservation],
+) -> dict[str, Any]:
+    """Derive the required scenario matrix from independent private ledgers."""
+
+    if set(observations) != set(REQUIRED_FAILURE_BUDGET_SCENARIOS):
+        raise LedgerError("failure_budget_scenario_membership_invalid")
+    rows: list[dict[str, Any]] = []
+    run_ids: list[str] = []
+    for scenario in REQUIRED_FAILURE_BUDGET_SCENARIOS:
+        observation = observations[scenario]
+        if not isinstance(observation, SyntheticScenarioObservation):
+            raise LedgerError("failure_budget_scenario_observation_invalid")
+        before = observation.before_restart
+        after = observation.after_restart
+        assertions = _scenario_assertions(scenario, before, after)
+        if not all(assertions.values()):
+            raise LedgerError(f"failure_budget_scenario_failed:{scenario}")
+        run_ids.append(after.run_id)
+        row_payload = {
+            "scenario": scenario,
+            "run_id": after.run_id,
+            "ledger_fingerprint": after.private_execution_fingerprint,
+            "restart_evidence_fingerprint": _canonical_digest(
+                {
+                    "before": before.private_execution_fingerprint,
+                    "after": after.private_execution_fingerprint,
+                }
+            ),
+            "assertions": assertions,
+        }
+        rows.append(
+            {
+                **row_payload,
+                "status": "completed",
+                "evidence_digest": _canonical_digest(row_payload),
+            }
+        )
+    if len(set(run_ids)) != len(run_ids):
+        raise LedgerError("failure_budget_scenario_run_identity_reused")
+    if len({row["ledger_fingerprint"] for row in rows}) != len(rows):
+        raise LedgerError("failure_budget_scenario_ledger_fingerprint_reused")
+    payload = {
+        "schema_version": SCENARIO_MATRIX_SCHEMA_VERSION,
+        "scenarios": rows,
+    }
+    return {
+        **payload,
+        "scenario_count": len(rows),
+        "fingerprint": _canonical_digest(payload),
+    }
+
+
+def validate_failure_budget_scenario_matrix(
+    matrix: Mapping[str, Any],
+) -> None:
+    """Validate the public matrix shape and every independently bound assertion."""
+
+    rows = matrix.get("scenarios") if isinstance(matrix, Mapping) else None
+    if not (
+        matrix.get("schema_version") == SCENARIO_MATRIX_SCHEMA_VERSION
+        and isinstance(rows, list)
+        and [row.get("scenario") for row in rows]
+        == list(REQUIRED_FAILURE_BUDGET_SCENARIOS)
+        and matrix.get("scenario_count") == len(REQUIRED_FAILURE_BUDGET_SCENARIOS)
+    ):
+        raise LedgerError("failure_budget_scenario_matrix_invalid")
+    run_ids: list[str] = []
+    ledger_fingerprints: list[str] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise LedgerError("failure_budget_scenario_matrix_invalid")
+        assertions = row.get("assertions")
+        row_payload = {
+            "scenario": row.get("scenario"),
+            "run_id": row.get("run_id"),
+            "ledger_fingerprint": row.get("ledger_fingerprint"),
+            "restart_evidence_fingerprint": row.get(
+                "restart_evidence_fingerprint"
+            ),
+            "assertions": assertions,
+        }
+        if not (
+            row.get("status") == "completed"
+            and isinstance(row.get("run_id"), str)
+            and SAFE_IDENTITY_RE.fullmatch(str(row.get("run_id")))
+            and isinstance(row.get("ledger_fingerprint"), str)
+            and HEX64_RE.fullmatch(str(row.get("ledger_fingerprint")))
+            and isinstance(row.get("restart_evidence_fingerprint"), str)
+            and HEX64_RE.fullmatch(str(row.get("restart_evidence_fingerprint")))
+            and isinstance(assertions, Mapping)
+            and bool(assertions)
+            and all(value is True for value in assertions.values())
+            and row.get("evidence_digest") == _canonical_digest(row_payload)
+        ):
+            raise LedgerError("failure_budget_scenario_matrix_invalid")
+        run_ids.append(str(row["run_id"]))
+        ledger_fingerprints.append(str(row["ledger_fingerprint"]))
+    payload = {
+        "schema_version": SCENARIO_MATRIX_SCHEMA_VERSION,
+        "scenarios": rows,
+    }
+    if (
+        len(set(run_ids)) != len(run_ids)
+        or len(set(ledger_fingerprints)) != len(ledger_fingerprints)
+        or matrix.get("fingerprint") != _canonical_digest(payload)
+    ):
+        raise LedgerError("failure_budget_scenario_matrix_invalid")
+
+
 def build_contract_summary(
     *,
     isolation: IsolationProof,
     ledger: RunLedger,
     implementation_evidence: ImplementationEvidence,
+    failure_budget_scenario_matrix: Mapping[str, Any],
     focused_tests_passed: bool,
     full_non_e2e_passed: bool,
     owner_acceptance: OwnerAcceptanceEvidence | None = None,
@@ -1702,6 +2183,17 @@ def build_contract_summary(
 
     ledger.validate()
     implementation_evidence.validate()
+    validate_failure_budget_scenario_matrix(failure_budget_scenario_matrix)
+    scenario_rows = failure_budget_scenario_matrix["scenarios"]
+    failure_scenario_matrix_completed = (
+        failure_budget_scenario_matrix["scenario_count"]
+        == len(REQUIRED_FAILURE_BUDGET_SCENARIOS)
+        and all(
+            row["status"] == "completed"
+            and all(assertion is True for assertion in row["assertions"].values())
+            for row in scenario_rows
+        )
+    )
     if not isinstance(focused_tests_passed, bool) or not isinstance(
         full_non_e2e_passed, bool
     ):
@@ -1751,9 +2243,16 @@ def build_contract_summary(
 
     operation_evidence = {
         "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
-        "events": [event.to_dict() for event in ledger.operation_events],
+        "events": ledger.public_operation_events,
         "event_count": len(ledger.operation_events),
-        "fingerprint": ledger.operation_evidence_fingerprint,
+        "fingerprint": _canonical_digest(
+            {
+                "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
+                "events": ledger.public_operation_events,
+            }
+        ),
+        "private_execution_fingerprint": ledger.private_execution_fingerprint,
+        "mutation_attribution": ledger.mutation_attribution_proof,
         "ledger_generation": ledger.generation,
         "run_id": ledger.run_id,
     }
@@ -1819,22 +2318,8 @@ def build_contract_summary(
             },
         ),
         "failure_budget_and_manual_stop": (
-            ledger.global_stop_reason
-            is (
-                GlobalStopReason.FAILURE_BUDGET_EXHAUSTED
-                if ledger.failure_budget_exhausted
-                else None
-            ),
-            {
-                "per_item_exhausted_count": ledger.per_item_exhausted_count,
-                "global_failure_count": ledger.total_failure_attempts,
-                "global_stop_reason": (
-                    ledger.global_stop_reason.value
-                    if ledger.global_stop_reason is not None
-                    else None
-                ),
-                "manual_stop_requested": ledger.manual_stop_requested,
-            },
+            failure_scenario_matrix_completed,
+            dict(failure_budget_scenario_matrix),
         ),
         "forbidden_operation_evidence": (
             all(count == 0 for count in operation_counts.values()),
@@ -1927,7 +2412,11 @@ def build_contract_summary(
                 ledger.duplicate_second_mutation_count
             ),
             "operation_evidence_fingerprint": (
-                ledger.operation_evidence_fingerprint
+                operation_evidence["fingerprint"]
+            ),
+            "private_execution_fingerprint": ledger.private_execution_fingerprint,
+            "mutation_attribution_fingerprint": (
+                ledger.mutation_attribution_proof["fingerprint"]
             ),
             "operation_event_count": len(ledger.operation_events),
             "reconciliation_required_count": (

@@ -12,7 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.phase_contracts import check_phase_contract, get_contract, list_contracts, load_summary_file  # noqa: E402
+from scripts.phase_contracts import (  # noqa: E402
+    ContractRepositoryContext,
+    check_phase_contract,
+    get_contract,
+    list_contracts,
+    load_summary_file,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,6 +26,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--contract", help="Contract id to validate, for example source_concept_full_chain_contract_v1.")
     parser.add_argument("--summary", help="Path to summary JSON.")
     parser.add_argument("--phase-kind", help="Optional expected phase kind.")
+    parser.add_argument(
+        "--repo-root",
+        help="Trusted Git repository root for repository-bound contract evidence.",
+    )
+    parser.add_argument(
+        "--runtime-ledger",
+        help="Private RunLedger JSON used to verify public operation attribution.",
+    )
     parser.add_argument("--list-contracts", action="store_true", help="List registered contracts as JSON and exit.")
     parser.add_argument("--explain", action="store_true", help="Include contract metadata in output.")
     return parser
@@ -84,7 +98,39 @@ def main(argv: list[str] | None = None) -> int:
         if markdown_path.exists():
             summary = {**summary, "public_markdown_text": markdown_path.read_text(encoding="utf-8")}
 
-    result = check_phase_contract(args.contract, summary)
+    repository_context = None
+    if args.repo_root or args.runtime_ledger:
+        if not args.repo_root:
+            parser.error("--runtime-ledger requires --repo-root")
+        runtime_ledger = None
+        if args.runtime_ledger:
+            try:
+                runtime_ledger = json.loads(
+                    Path(args.runtime_ledger).read_text(encoding="utf-8")
+                )
+            except Exception as exc:
+                print(
+                    json.dumps(
+                        {
+                            "contract_id": args.contract,
+                            "passed": False,
+                            "error": f"runtime_ledger_unreadable:{exc}",
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+                return 2
+        repository_context = ContractRepositoryContext(
+            repo_root=Path(args.repo_root).resolve(),
+            runtime_ledger=runtime_ledger,
+        )
+
+    result = check_phase_contract(
+        args.contract,
+        summary,
+        repository_context=repository_context,
+    )
     payload = result.to_dict()
     if args.explain:
         payload["contract_explain"] = contract.explain()

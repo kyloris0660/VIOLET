@@ -18,6 +18,7 @@ from scripts.fl1_p1_foundation import (
     FL1LedgerRunner,
     GlobalStopReason,
     ImplementationEvidence,
+    ImplementationEvidenceMode,
     InterruptedMutationOutcome,
     IsolationConfig,
     IsolationError,
@@ -32,20 +33,52 @@ from scripts.fl1_p1_foundation import (
     OwnerAcceptanceEvidence,
     ReconciliationStatus,
     REQUIRED_EXECUTED_STAGES,
+    REQUIRED_FAILURE_BUDGET_SCENARIOS,
     StableInventoryItem,
+    SyntheticScenarioObservation,
     build_contract_summary,
+    build_failure_budget_scenario_matrix,
     collect_implementation_evidence,
     validate_isolation,
+    verify_implementation_evidence_repository,
 )
-from scripts.phase_contracts import check_phase_contract, get_contract
+from scripts.check_documentation_state import validate_git_ancestry
+from scripts.phase_contracts import (
+    ContractRepositoryContext,
+    check_phase_contract,
+    get_contract,
+)
 
 
+ROOT = Path(__file__).resolve().parents[1]
 SYNTHETIC_HEAD = "a" * 40
 SYNTHETIC_TREE = "b" * 40
+SYNTHETIC_BASE = "c" * 40
+
+
+def _digest(payload: object) -> str:
+    import hashlib
+
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def _refresh_implementation_digest(payload: dict[str, object]) -> None:
+    payload["evidence_digest"] = _digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "evidence_digest"
+        }
+    )
 
 
 def _implementation_evidence() -> ImplementationEvidence:
     return ImplementationEvidence.create(
+        approved_base_commit=SYNTHETIC_BASE,
         implementation_commit=SYNTHETIC_HEAD,
         implementation_tree=SYNTHETIC_TREE,
         final_commit=SYNTHETIC_HEAD,
@@ -151,6 +184,172 @@ def _runner(
         batch_size=batch_size,
     )
     return runner, store
+
+
+def _failure_scenario_matrix(tmp_path: Path) -> dict[str, object]:
+    root = tmp_path / "failure-scenario-matrix"
+    observations: dict[str, SyntheticScenarioObservation] = {}
+
+    normal_items = [_item(201), _item(202)]
+    normal, normal_store = _runner(
+        root / "normal", normal_items, run_id="scenario-normal-success"
+    )
+    normal.run_next_batch(lambda _current: None)
+    normal_before = normal_store.load()
+    normal_restart, _ = _runner(
+        root / "normal", normal_items, run_id="scenario-normal-success"
+    )
+    normal_restart.run_next_batch(lambda _current: None)
+    observations["normal_success"] = SyntheticScenarioObservation(
+        normal_before, normal_store.load()
+    )
+
+    manual_items = [_item(203), _item(204)]
+    manual, manual_store = _runner(
+        root / "manual", manual_items, run_id="scenario-manual-stop"
+    )
+    manual_calls: list[str] = []
+    manual.run_next_batch(
+        lambda current: manual_calls.append(current.item_id),
+        stop_requested=lambda: len(manual_calls) >= 1,
+    )
+    manual_before = manual_store.load()
+    manual_restart, _ = _runner(
+        root / "manual", manual_items, run_id="scenario-manual-stop"
+    )
+    manual_restart.run_next_batch(lambda _current: None)
+    observations["manual_stop_restart"] = SyntheticScenarioObservation(
+        manual_before, manual_store.load()
+    )
+
+    per_item_items = [_item(205), _item(206)]
+    per_item, per_item_store = _runner(
+        root / "per-item",
+        per_item_items,
+        run_id="scenario-per-item-exhaustion",
+        max_attempts_per_item=1,
+        max_failure_attempts=10,
+    )
+    per_item.run_next_batch(
+        lambda _current: (_ for _ in ()).throw(
+            MutationNotCommittedError("scenario_item_failure")
+        )
+    )
+    per_item.run_next_batch(lambda _current: None)
+    per_item_before = per_item_store.load()
+    per_item_restart, _ = _runner(
+        root / "per-item",
+        per_item_items,
+        run_id="scenario-per-item-exhaustion",
+        max_attempts_per_item=1,
+        max_failure_attempts=10,
+    )
+    per_item_restart.run_next_batch(lambda _current: None)
+    observations["per_item_exhaustion"] = SyntheticScenarioObservation(
+        per_item_before, per_item_store.load()
+    )
+
+    global_items = [_item(207), _item(208), _item(209)]
+    global_runner, global_store = _runner(
+        root / "global",
+        global_items,
+        run_id="scenario-global-exhaustion",
+        max_attempts_per_item=1,
+        max_failure_attempts=2,
+    )
+    fail = lambda _current: (_ for _ in ()).throw(  # noqa: E731
+        MutationNotCommittedError("scenario_global_failure")
+    )
+    global_runner.run_next_batch(fail)
+    global_runner.run_next_batch(fail)
+    global_before = global_store.load()
+    global_restart, _ = _runner(
+        root / "global",
+        global_items,
+        run_id="scenario-global-exhaustion",
+        max_attempts_per_item=1,
+        max_failure_attempts=2,
+    )
+    global_restart.run_next_batch(lambda _current: None)
+    observations["global_budget_exhaustion"] = SyntheticScenarioObservation(
+        global_before, global_store.load()
+    )
+
+    restart_items = [_item(210), _item(211)]
+    restart_runner, restart_store = _runner(
+        root / "restart",
+        restart_items,
+        run_id="scenario-restart-consistency",
+        max_attempts_per_item=1,
+        max_failure_attempts=10,
+    )
+    restart_runner.run_next_batch(
+        lambda _current: (_ for _ in ()).throw(
+            MutationNotCommittedError("scenario_restart_failure")
+        )
+    )
+    restart_runner.run_next_batch(lambda _current: None)
+    restart_before = restart_store.load()
+    restarted, _ = _runner(
+        root / "restart",
+        restart_items,
+        run_id="scenario-restart-consistency",
+        max_attempts_per_item=1,
+        max_failure_attempts=10,
+    )
+    restarted.run_next_batch(lambda _current: None)
+    observations["restart_counter_reason_consistency"] = (
+        SyntheticScenarioObservation(restart_before, restart_store.load())
+    )
+
+    matrix = build_failure_budget_scenario_matrix(observations)
+    assert [row["scenario"] for row in matrix["scenarios"]] == list(
+        REQUIRED_FAILURE_BUDGET_SCENARIOS
+    )
+    return matrix
+
+
+def _git_repository_evidence(
+    tmp_path: Path,
+) -> tuple[Path, str, str, str, ImplementationEvidence]:
+    repo = tmp_path / "evidence-repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout.strip()
+
+    git("init")
+    git("config", "user.email", "synthetic@example.invalid")
+    git("config", "user.name", "Synthetic Test")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "runtime.py").write_text("VALUE = 1\n", encoding="utf-8")
+    git("add", "scripts/runtime.py")
+    git("commit", "-m", "implementation")
+    implementation = git("rev-parse", "HEAD")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "current-handoff.md").write_text(
+        "pending audit\n", encoding="utf-8"
+    )
+    git("add", "docs/current-handoff.md")
+    git("commit", "-m", "governance")
+    final = git("rev-parse", "HEAD")
+    evidence = collect_implementation_evidence(
+        repo_root=repo,
+        approved_base_commit=base,
+        implementation_commit=implementation,
+    )
+    return repo, base, implementation, final, evidence
 
 
 def test_explicit_test_identity_and_synthetic_paths_pass(tmp_path: Path) -> None:
@@ -830,6 +1029,70 @@ def test_valid_json_with_mismatched_logical_target_fails_closed(
         store.load()
 
 
+@pytest.mark.parametrize("mode", ["missing", "other_item", "exchanged"])
+def test_private_invocations_must_reconcile_to_each_item_after_fingerprint_refresh(
+    tmp_path: Path, mode: str
+) -> None:
+    items = [_item(212), _item(213)]
+    runner, store = _runner(
+        tmp_path,
+        items,
+        max_attempts_per_item=3,
+        max_failure_attempts=10,
+    )
+    runner.run_next_batch(
+        lambda _current: (_ for _ in ()).throw(
+            MutationNotCommittedError("first_attempt_not_committed")
+        )
+    )
+    runner.run_next_batch(lambda _current: None)
+    payload = json.loads(store.path.read_text(encoding="utf-8"))
+    events = payload["operation_evidence"]["events"]
+    assert [event["item_id"] for event in events] == [
+        items[0].item_id,
+        items[0].item_id,
+        items[1].item_id,
+    ]
+    if mode == "missing":
+        events[0]["item_id"] = None
+        expected_error = "synthetic_mutation_invocation_item_id_required"
+    elif mode == "other_item":
+        events[0]["item_id"] = items[1].item_id
+        expected_error = "mutation_invocation_item_attribution_mismatch"
+    else:
+        events[0]["item_id"] = items[1].item_id
+        events[1]["item_id"] = items[1].item_id
+        events[2]["item_id"] = items[0].item_id
+        expected_error = "mutation_invocation_item_attribution_mismatch"
+    payload["operation_evidence"]["fingerprint"] = _digest(
+        {
+            "schema_version": payload["operation_evidence"]["schema_version"],
+            "events": events,
+        }
+    )
+    store.path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(LedgerError, match=expected_error):
+        store.load()
+
+
+def test_item_attribution_proof_survives_restart(tmp_path: Path) -> None:
+    items = [_item(214), _item(215)]
+    runner, store = _runner(tmp_path, items)
+    runner.run_next_batch(lambda _current: None)
+    before = store.load().mutation_attribution_proof
+    restarted, _ = _runner(tmp_path, items)
+    restarted.run_next_batch(lambda _current: None)
+    after = store.load().mutation_attribution_proof
+
+    assert before == after
+    assert before["invocation_count"] == 2
+    assert all(
+        row["attempt_count"] == row["invocation_count"]
+        for row in before["rows"]
+    )
+
+
 def test_manual_stop_is_persisted_and_prevents_next_batch(tmp_path: Path) -> None:
     items = [_item(4), _item(5)]
     runner, store = _runner(tmp_path, items, batch_size=2)
@@ -870,6 +1133,7 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
         isolation=proof,
         ledger=store.load(),
         implementation_evidence=_implementation_evidence(),
+        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
     )
@@ -901,19 +1165,34 @@ def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
     proof = validate_isolation(_config(tmp_path))
     runner, store = _runner(tmp_path, [_item(120)])
     runner.run_next_batch(lambda _current: None)
-    evidence = _implementation_evidence()
+    repo, _base, _implementation, _final, evidence = _git_repository_evidence(
+        tmp_path
+    )
     acceptance = _owner_acceptance(evidence)
 
     accepted = build_contract_summary(
         isolation=proof,
         ledger=store.load(),
         implementation_evidence=evidence,
+        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
         owner_acceptance=acceptance,
     )
-    accepted_result = check_phase_contract(
+    missing_context = check_phase_contract(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1", accepted
+    )
+    assert missing_context.passed is False
+    assert "fl1_p1_repository_context_required" in {
+        finding.code for finding in missing_context.errors
+    }
+    accepted_result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        accepted,
+        repository_context=ContractRepositoryContext(
+            repo_root=repo,
+            runtime_ledger=store.load(),
+        ),
     )
     assert accepted_result.passed is True
     pipeline = accepted["pipeline_contract"]
@@ -934,6 +1213,7 @@ def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
         isolation=proof,
         ledger=store.load(),
         implementation_evidence=evidence,
+        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
         owner_acceptance=acceptance,
@@ -941,6 +1221,50 @@ def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
     )
     assert merge_ready["pipeline_contract"]["safe_to_merge"] is True
     assert merge_ready["pipeline_contract"]["route_approved"] is False
+
+
+def test_contract_cli_uses_repository_and_private_ledger_context(
+    tmp_path: Path,
+) -> None:
+    proof = validate_isolation(_config(tmp_path))
+    runner, store = _runner(tmp_path, [_item(219)])
+    runner.run_next_batch(lambda _current: None)
+    repo, _base, _implementation, _final, evidence = _git_repository_evidence(
+        tmp_path
+    )
+    summary = build_contract_summary(
+        isolation=proof,
+        ledger=store.load(),
+        implementation_evidence=evidence,
+        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        focused_tests_passed=True,
+        full_non_e2e_passed=True,
+        owner_acceptance=_owner_acceptance(evidence),
+    )
+    summary_path = tmp_path / "contract-summary.json"
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "check_phase_contract.py"),
+            "--contract",
+            "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+            "--summary",
+            str(summary_path),
+            "--repo-root",
+            str(repo),
+            "--runtime-ledger",
+            str(store.path),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert json.loads(completed.stdout)["passed"] is True
 
 
 @pytest.mark.parametrize(
@@ -963,6 +1287,7 @@ def test_unbound_or_boolean_acceptance_fails_closed(
         isolation=proof,
         ledger=store.load(),
         implementation_evidence=_implementation_evidence(),
+        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
     )
@@ -990,6 +1315,7 @@ def test_wrong_or_stale_owner_acceptance_binding_is_rejected(
             isolation=proof,
             ledger=store.load(),
             implementation_evidence=evidence,
+            failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
             focused_tests_passed=True,
             full_non_e2e_passed=True,
             owner_acceptance=wrong,
@@ -999,6 +1325,7 @@ def test_wrong_or_stale_owner_acceptance_binding_is_rejected(
         isolation=proof,
         ledger=store.load(),
         implementation_evidence=evidence,
+        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
         owner_acceptance=_owner_acceptance(evidence),
@@ -1017,6 +1344,7 @@ def test_wrong_or_stale_owner_acceptance_binding_is_rejected(
 def test_implementation_evidence_rejects_executable_drift() -> None:
     with pytest.raises(LedgerError, match="implementation_evidence_executable_drift"):
         ImplementationEvidence.create(
+            approved_base_commit="e" * 40,
             implementation_commit="a" * 40,
             implementation_tree="b" * 40,
             final_commit="c" * 40,
@@ -1044,6 +1372,10 @@ def test_git_collected_evidence_allows_only_exact_governance_paths(
     git("init")
     git("config", "user.email", "synthetic@example.invalid")
     git("config", "user.name", "Synthetic Test")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    base_commit = git("rev-parse", "HEAD")
     (repo / "scripts").mkdir()
     (repo / "scripts" / "runtime.py").write_text("VALUE = 1\n", encoding="utf-8")
     git("add", "scripts/runtime.py")
@@ -1056,6 +1388,7 @@ def test_git_collected_evidence_allows_only_exact_governance_paths(
     git("commit", "-m", "governance")
     governance = collect_implementation_evidence(
         repo_root=repo,
+        approved_base_commit=base_commit,
         implementation_commit=implementation_commit,
     )
     assert governance.post_implementation_changed_paths == (
@@ -1068,8 +1401,225 @@ def test_git_collected_evidence_allows_only_exact_governance_paths(
     with pytest.raises(LedgerError, match="implementation_evidence_executable_drift"):
         collect_implementation_evidence(
             repo_root=repo,
+            approved_base_commit=base_commit,
             implementation_commit=implementation_commit,
         )
+
+
+def test_squash_carry_forward_uses_parent_and_reviewed_tree_not_branch_ancestry(
+    tmp_path: Path,
+) -> None:
+    repo, base, implementation, final, _pr_evidence = _git_repository_evidence(
+        tmp_path
+    )
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout.strip()
+
+    git("branch", "reviewed-feature", final)
+    git("checkout", "-b", "squash-main", base)
+    git("merge", "--squash", "reviewed-feature")
+    git("commit", "-m", "squash carry-forward")
+    squash = git("rev-parse", "HEAD")
+
+    evidence = collect_implementation_evidence(
+        repo_root=repo,
+        approved_base_commit=base,
+        implementation_commit=implementation,
+        final_commit=final,
+        mode=ImplementationEvidenceMode.SQUASH_CARRY_FORWARD,
+    )
+    verify_implementation_evidence_repository(repo_root=repo, evidence=evidence)
+
+    assert evidence.carry_forward_commit == squash
+    assert evidence.carry_forward_tree == evidence.final_tree
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", implementation, squash],
+        cwd=repo,
+        check=False,
+    ).returncode != 0
+    validate_git_ancestry(
+        {
+            "accepted_mainline_base": base,
+            "implementation_evidence_head": implementation,
+        },
+        root=repo,
+    )
+
+
+def test_squash_carry_forward_rejects_wrong_tree_base_old_final_and_drift(
+    tmp_path: Path,
+) -> None:
+    repo, base, implementation, final, _pr_evidence = _git_repository_evidence(
+        tmp_path
+    )
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout.strip()
+
+    git("branch", "reviewed-feature", final)
+    git("checkout", "-b", "squash-main", base)
+    git("merge", "--squash", "reviewed-feature")
+    git("commit", "-m", "correct squash")
+
+    with pytest.raises(LedgerError, match="squash_parent_invalid"):
+        collect_implementation_evidence(
+            repo_root=repo,
+            approved_base_commit=implementation,
+            implementation_commit=implementation,
+            final_commit=final,
+            mode=ImplementationEvidenceMode.SQUASH_CARRY_FORWARD,
+        )
+    with pytest.raises(LedgerError, match="squash_tree_mismatch"):
+        collect_implementation_evidence(
+            repo_root=repo,
+            approved_base_commit=base,
+            implementation_commit=implementation,
+            final_commit=implementation,
+            mode=ImplementationEvidenceMode.SQUASH_CARRY_FORWARD,
+        )
+
+    git("checkout", "-B", "wrong-tree", base)
+    git("merge", "--squash", "reviewed-feature")
+    (repo / "README.md").write_text("wrong tree\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "wrong squash tree")
+    with pytest.raises(LedgerError, match="squash_tree_mismatch"):
+        collect_implementation_evidence(
+            repo_root=repo,
+            approved_base_commit=base,
+            implementation_commit=implementation,
+            final_commit=final,
+            mode=ImplementationEvidenceMode.SQUASH_CARRY_FORWARD,
+        )
+
+    git("checkout", "reviewed-feature")
+    (repo / "scripts" / "runtime.py").write_text("VALUE = 2\n", encoding="utf-8")
+    git("add", "scripts/runtime.py")
+    git("commit", "-m", "executable drift")
+    drifted_final = git("rev-parse", "HEAD")
+    git("checkout", "-B", "drift-squash", base)
+    git("merge", "--squash", "reviewed-feature")
+    git("commit", "-m", "drifted squash")
+    with pytest.raises(LedgerError, match="implementation_evidence_executable_drift"):
+        collect_implementation_evidence(
+            repo_root=repo,
+            approved_base_commit=base,
+            implementation_commit=implementation,
+            final_commit=drifted_final,
+            mode=ImplementationEvidenceMode.SQUASH_CARRY_FORWARD,
+        )
+
+
+def test_contract_checker_verifies_real_repository_objects_and_current_head(
+    tmp_path: Path,
+) -> None:
+    repo, _base, implementation, _final, evidence = _git_repository_evidence(
+        tmp_path
+    )
+    summary, _store = _passing_summary(tmp_path / "summary")
+    summary["implementation_evidence"] = evidence.to_public_dict()
+    context = ContractRepositoryContext(repo_root=repo)
+
+    assert check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    ).passed is True
+
+    forged_cases: list[dict[str, object]] = []
+    nonexistent = copy.deepcopy(summary["implementation_evidence"])
+    nonexistent["implementation_commit"] = "d" * 40
+    _refresh_implementation_digest(nonexistent)
+    forged_cases.append(nonexistent)
+
+    wrong_tree = copy.deepcopy(summary["implementation_evidence"])
+    wrong_tree["final_tree"] = "e" * 40
+    _refresh_implementation_digest(wrong_tree)
+    forged_cases.append(wrong_tree)
+
+    stale = copy.deepcopy(summary["implementation_evidence"])
+    implementation_tree = subprocess.run(
+        ["git", "rev-parse", f"{implementation}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    stale.update(
+        {
+            "final_commit": implementation,
+            "final_tree": implementation_tree,
+            "post_implementation_changed_paths": [],
+        }
+    )
+    _refresh_implementation_digest(stale)
+    forged_cases.append(stale)
+
+    for forged in forged_cases:
+        candidate = copy.deepcopy(summary)
+        candidate["implementation_evidence"] = forged
+        result = check_phase_contract(
+            "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+            candidate,
+            repository_context=context,
+        )
+        assert result.passed is False
+        assert "fl1_p1_repository_evidence_invalid" in {
+            finding.code for finding in result.errors
+        }
+
+
+def test_contract_checker_accepts_repository_verified_squash_carry_forward(
+    tmp_path: Path,
+) -> None:
+    repo, base, implementation, final, _evidence = _git_repository_evidence(
+        tmp_path
+    )
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("branch", "reviewed-feature", final)
+    git("checkout", "-b", "squash-main", base)
+    git("merge", "--squash", "reviewed-feature")
+    git("commit", "-m", "squash")
+    evidence = collect_implementation_evidence(
+        repo_root=repo,
+        approved_base_commit=base,
+        implementation_commit=implementation,
+        final_commit=final,
+        mode=ImplementationEvidenceMode.SQUASH_CARRY_FORWARD,
+    )
+    summary, _store = _passing_summary(tmp_path / "summary")
+    summary["implementation_evidence"] = evidence.to_public_dict()
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=ContractRepositoryContext(repo_root=repo),
+    )
+    assert result.passed is True
 
 
 def _passing_summary(tmp_path: Path, item_index: int = 123) -> tuple[dict, JsonLedgerStore]:
@@ -1081,6 +1631,7 @@ def _passing_summary(tmp_path: Path, item_index: int = 123) -> tuple[dict, JsonL
             isolation=proof,
             ledger=store.load(),
             implementation_evidence=_implementation_evidence(),
+            failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
             focused_tests_passed=True,
             full_non_e2e_passed=True,
         ),
@@ -1102,6 +1653,7 @@ def test_forbidden_operation_counts_are_derived_from_persisted_events(
         isolation=validate_isolation(_config(tmp_path)),
         ledger=restarted,
         implementation_evidence=_implementation_evidence(),
+        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
     )
@@ -1128,6 +1680,100 @@ def test_operation_summary_cannot_disagree_with_event_ledger(tmp_path: Path) -> 
 
     assert result.passed is False
     assert "fl1_p1_operation_evidence_invalid" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_public_attribution_rejects_equal_total_swapped_between_items(
+    tmp_path: Path,
+) -> None:
+    items = [_item(216), _item(217)]
+    proof = validate_isolation(_config(tmp_path))
+    runner, store = _runner(
+        tmp_path,
+        items,
+        max_attempts_per_item=3,
+        max_failure_attempts=10,
+    )
+    runner.run_next_batch(
+        lambda _current: (_ for _ in ()).throw(
+            MutationNotCommittedError("first_attempt_not_committed")
+        )
+    )
+    runner.run_next_batch(lambda _current: None)
+    summary = build_contract_summary(
+        isolation=proof,
+        ledger=store.load(),
+        implementation_evidence=_implementation_evidence(),
+        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        focused_tests_passed=True,
+        full_non_e2e_passed=True,
+    )
+    attribution = summary["operation_evidence"]["mutation_attribution"]
+    rows = attribution["rows"]
+    assert sorted(row["invocation_count"] for row in rows) == [1, 2]
+    rows[0]["attempt_count"], rows[1]["attempt_count"] = (
+        rows[1]["attempt_count"],
+        rows[0]["attempt_count"],
+    )
+    rows[0]["invocation_count"], rows[1]["invocation_count"] = (
+        rows[1]["invocation_count"],
+        rows[0]["invocation_count"],
+    )
+    attribution_payload = {
+        "schema_version": attribution["schema_version"],
+        "private_execution_fingerprint": attribution[
+            "private_execution_fingerprint"
+        ],
+        "rows": rows,
+    }
+    attribution["fingerprint"] = _digest(attribution_payload)
+    summary["ledger"]["mutation_attribution_fingerprint"] = attribution[
+        "fingerprint"
+    ]
+    assert attribution["invocation_count"] == 3
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1", summary
+    )
+    assert result.passed is False
+    assert "fl1_p1_operation_evidence_invalid" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_trusted_private_ledger_rejects_recomputed_public_attribution_forgery(
+    tmp_path: Path,
+) -> None:
+    repo, _base, _implementation, _final, evidence = _git_repository_evidence(
+        tmp_path
+    )
+    summary, store = _passing_summary(tmp_path / "summary")
+    summary["implementation_evidence"] = evidence.to_public_dict()
+    attribution = summary["operation_evidence"]["mutation_attribution"]
+    attribution["rows"][0]["item_token"] = "f" * 64
+    attribution_payload = {
+        "schema_version": attribution["schema_version"],
+        "private_execution_fingerprint": attribution[
+            "private_execution_fingerprint"
+        ],
+        "rows": attribution["rows"],
+    }
+    attribution["fingerprint"] = _digest(attribution_payload)
+    summary["ledger"]["mutation_attribution_fingerprint"] = attribution[
+        "fingerprint"
+    ]
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=ContractRepositoryContext(
+            repo_root=repo,
+            runtime_ledger=store.load(),
+        ),
+    )
+    assert result.passed is False
+    assert "fl1_p1_runtime_ledger_evidence_mismatch" in {
         finding.code for finding in result.errors
     }
 
@@ -1172,6 +1818,64 @@ def test_required_stage_evidence_is_enforced(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1", summary
     )
 
+    assert result.passed is False
+    assert "fl1_p1_required_stage_evidence_invalid" in {
+        finding.code for finding in result.errors
+    }
+
+
+@pytest.mark.parametrize(
+    "mode", ["missing_scenario", "failed_assertion", "reused_run", "failed_status"]
+)
+def test_failure_budget_stage_requires_complete_independent_scenario_matrix(
+    tmp_path: Path, mode: str
+) -> None:
+    summary, _ = _passing_summary(tmp_path, 218)
+    stage = next(
+        row
+        for row in summary["stage_evidence"]
+        if row["stage"] == "failure_budget_and_manual_stop"
+    )
+    matrix = stage["evidence"]
+    if mode == "missing_scenario":
+        matrix["scenarios"].pop()
+        matrix["scenario_count"] = len(matrix["scenarios"])
+    elif mode == "failed_assertion":
+        row = matrix["scenarios"][1]
+        assertion = next(iter(row["assertions"]))
+        row["assertions"][assertion] = False
+        row["evidence_digest"] = _digest(
+            {
+                key: value
+                for key, value in row.items()
+                if key not in {"status", "evidence_digest"}
+            }
+        )
+    elif mode == "reused_run":
+        row = matrix["scenarios"][1]
+        row["run_id"] = matrix["scenarios"][0]["run_id"]
+        row["evidence_digest"] = _digest(
+            {
+                key: value
+                for key, value in row.items()
+                if key not in {"status", "evidence_digest"}
+            }
+        )
+    else:
+        matrix["scenarios"][1]["status"] = "failed"
+    matrix["fingerprint"] = _digest(
+        {
+            "schema_version": matrix["schema_version"],
+            "scenarios": matrix["scenarios"],
+        }
+    )
+    stage["evidence_digest"] = _digest(
+        {"stage": stage["stage"], "evidence": stage["evidence"]}
+    )
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1", summary
+    )
     assert result.passed is False
     assert "fl1_p1_required_stage_evidence_invalid" in {
         finding.code for finding in result.errors
