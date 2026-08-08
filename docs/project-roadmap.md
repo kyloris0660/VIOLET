@@ -32,10 +32,13 @@ derivation, or Entity/truth promotion.
 
 P1 was owner-audited, observed for delayed review, and squash-merged into
 `origin/main` at `36100bfa0317387e064cd87b2e753eca3a201b5e`; its accepted
-tree exactly matches final PR HEAD. I1 implementation evidence
-`102be797f845d518817d7d01d17d65b65a4fc243` adds only a bounded synthetic
-read-only scanner and executable denominator contract. Real source identity,
-scope, and scanning remain unauthorized.
+tree exactly matches final PR HEAD. One Codex review with eight actionable
+threads arrived only after the merge; every finding is carried forward on Draft
+PR #142 without replying to or resolving the historical threads. I1
+implementation evidence `935ac5a29d90610ed042f42a6786b3b7fe33236a`
+adds the bounded remediation plus a synthetic read-only scanner and executable
+denominator contract. Real source identity, scope, and scanning remain
+unauthorized.
 
 ## Accepted Mainline Sequence
 

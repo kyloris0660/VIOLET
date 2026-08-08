@@ -79,10 +79,27 @@ def test_prior_fl1_p1_acceptance_is_bound_to_exact_merge_and_tree() -> None:
     assert prior["merge_commit"] == documentation_state.FL1_P1_MERGE_COMMIT
     assert prior["accepted_tree"] == documentation_state.FL1_P1_ACCEPTED_TREE
     assert prior["final_pr_head"] == documentation_state.FL1_P1_FINAL_HEAD
+    assert prior["implementation_evidence_head"] == documentation_state.FL1_P1_FINAL_HEAD
+    assert prior["reviewed_and_validated_head"] == documentation_state.FL1_P1_FINAL_HEAD
+    assert prior["reviewed_and_validated_tree"] == documentation_state.FL1_P1_ACCEPTED_TREE
+    assert prior["merge_tree_matches_final_pr_tree"] is True
     assert prior["review_observation_seconds_at_least"] >= 300
-    assert prior["review_count"] == 0
-    assert prior["unresolved_thread_count"] == 0
-    assert prior["failing_or_pending_check_count"] == 0
+    assert prior["premerge_review_count"] == 0
+    assert prior["premerge_unresolved_thread_count"] == 0
+    assert prior["premerge_failing_or_pending_check_count"] == 0
+    assert prior["terminal_review_count"] == 1
+    assert prior["terminal_unresolved_thread_count"] == 8
+    assert prior["terminal_failing_or_pending_check_count"] == 0
+    assert (
+        prior["late_review_submitted_at"]
+        == documentation_state.FL1_P1_LATE_REVIEW_SUBMITTED_AT
+    )
+    assert prior["late_review_arrived_after_merge"] is True
+    assert (
+        prior["late_review_carry_forward_head"]
+        == documentation_state.FL1_I1_IMPLEMENTATION_HEAD
+    )
+    assert prior["late_review_threads_replied_or_resolved"] is False
 
 
 def test_handoff_is_exact_generated_projection_and_stays_small() -> None:

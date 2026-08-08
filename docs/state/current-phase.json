@@ -7,7 +7,7 @@
   "pr_number": 142,
   "draft": true,
   "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
-  "implementation_evidence_head": "102be797f845d518817d7d01d17d65b65a4fc243",
+  "implementation_evidence_head": "935ac5a29d90610ed042f42a6786b3b7fe33236a",
   "current_status": "fl1_i1_synthetic_implementation_ready_for_owner_audit",
   "target_met": false,
   "safe_to_merge": false,
@@ -22,12 +22,23 @@
     "merge_commit": "36100bfa0317387e064cd87b2e753eca3a201b5e",
     "accepted_tree": "05ad4b4829cd2b556a3644ceaf4620b98200f042",
     "final_pr_head": "495a6506b25bb27747ebc27e341a06de4860aaa4",
-    "implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
+    "implementation_evidence_head": "495a6506b25bb27747ebc27e341a06de4860aaa4",
+    "reviewed_and_validated_head": "495a6506b25bb27747ebc27e341a06de4860aaa4",
+    "reviewed_and_validated_tree": "05ad4b4829cd2b556a3644ceaf4620b98200f042",
+    "merge_tree_matches_final_pr_tree": true,
     "status": "fl1_p1_owner_accepted_and_squash_merged",
+    "merged_at": "2026-08-08T05:06:52Z",
     "review_observation_seconds_at_least": 300,
-    "review_count": 0,
-    "unresolved_thread_count": 0,
-    "failing_or_pending_check_count": 0,
+    "premerge_review_count": 0,
+    "premerge_unresolved_thread_count": 0,
+    "premerge_failing_or_pending_check_count": 0,
+    "terminal_review_count": 1,
+    "terminal_unresolved_thread_count": 8,
+    "terminal_failing_or_pending_check_count": 0,
+    "late_review_submitted_at": "2026-08-08T05:09:50Z",
+    "late_review_arrived_after_merge": true,
+    "late_review_carry_forward_head": "935ac5a29d90610ed042f42a6786b3b7fe33236a",
+    "late_review_threads_replied_or_resolved": false,
     "real_source_inventory_operation_count": 0,
     "database_operation_count": 0,
     "external_operation_count": 0
@@ -70,12 +81,17 @@
       "id": "fl1_i1_synthetic_read_only_inventory_foundation",
       "result": "implementation_ready_for_owner_audit",
       "fingerprint": "102be797f845d518817d7d01d17d65b65a4fc243"
+    },
+    {
+      "id": "fl1_p1_late_review_carry_forward_remediation",
+      "result": "eight_actionable_threads_remediated_on_draft_pr_142_without_thread_resolution",
+      "fingerprint": "935ac5a29d90610ed042f42a6786b3b7fe33236a"
     }
   ],
   "active_blocker": {
     "code": "pending_owner_audit_and_real_source_scope_authorization",
     "scope": "SCV2-FL1-I1 synthetic read-only inventory foundation on Draft PR #142",
-    "resolution": "The owner must audit the synthetic-only scanner, executable contract, immutable source-snapshot proof, denominator equations, duplicate policy, and public redaction boundary. This Draft PR must not become Ready or merge, and no real source root may be read, listed, hashed, or inventoried until a later authorization names the exact source identity and scope."
+    "resolution": "The owner must audit the synthetic-only scanner, executable contract, immutable source-snapshot proof, denominator equations, duplicate policy, public redaction boundary, and the bounded carry-forward remediation for all eight late PR #141 review threads. This Draft PR must not become Ready or merge, and no real source root may be read, listed, hashed, or inventoried until a later authorization names the exact source identity and scope."
   },
   "owner_decisions": [
     {
@@ -110,7 +126,11 @@
     "fl1_p1_final_pr_head": "495a6506b25bb27747ebc27e341a06de4860aaa4",
     "fl1_p1_accepted_tree": "05ad4b4829cd2b556a3644ceaf4620b98200f042",
     "fl1_i1_foundation_head": "b0d0d205431eae5d7de6a5b7fc84e104b46f8a72",
-    "fl1_i1_implementation_evidence_head": "102be797f845d518817d7d01d17d65b65a4fc243",
+    "fl1_i1_implementation_evidence_head": "935ac5a29d90610ed042f42a6786b3b7fe33236a",
+    "fl1_p1_late_review_carry_forward_head": "935ac5a29d90610ed042f42a6786b3b7fe33236a",
+    "fl1_p1_terminal_review_count": 1,
+    "fl1_p1_terminal_unresolved_thread_count": 8,
+    "fl1_p1_late_review_threads_replied_or_resolved": false,
     "production_consumed_or_modified_during_fl1_i1": false,
     "synthetic_source_fixture_activity_performed": true,
     "database_operation_count": 0,
@@ -193,5 +213,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-08T12:22:32+07:00"
+  "updated_at": "2026-08-08T12:34:11+07:00"
 }

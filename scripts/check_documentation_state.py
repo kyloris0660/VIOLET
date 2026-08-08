@@ -74,7 +74,8 @@ FL1_P1_MERGE_COMMIT = "36100bfa0317387e064cd87b2e753eca3a201b5e"
 FL1_P1_FINAL_HEAD = "495a6506b25bb27747ebc27e341a06de4860aaa4"
 FL1_P1_ACCEPTED_TREE = "05ad4b4829cd2b556a3644ceaf4620b98200f042"
 FL1_I1_FOUNDATION_HEAD = "b0d0d205431eae5d7de6a5b7fc84e104b46f8a72"
-FL1_I1_IMPLEMENTATION_HEAD = "102be797f845d518817d7d01d17d65b65a4fc243"
+FL1_I1_IMPLEMENTATION_HEAD = "935ac5a29d90610ed042f42a6786b3b7fe33236a"
+FL1_P1_LATE_REVIEW_SUBMITTED_AT = "2026-08-08T05:09:50Z"
 
 
 class DocumentationStateError(ValueError):
@@ -156,11 +157,24 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
             prior.get("merge_commit") != FL1_P1_MERGE_COMMIT,
             prior.get("accepted_tree") != FL1_P1_ACCEPTED_TREE,
             prior.get("final_pr_head") != FL1_P1_FINAL_HEAD,
+            prior.get("implementation_evidence_head") != FL1_P1_FINAL_HEAD,
+            prior.get("reviewed_and_validated_head") != FL1_P1_FINAL_HEAD,
+            prior.get("reviewed_and_validated_tree") != FL1_P1_ACCEPTED_TREE,
+            prior.get("merge_tree_matches_final_pr_tree") is not True,
             prior.get("status") != "fl1_p1_owner_accepted_and_squash_merged",
             prior.get("review_observation_seconds_at_least", 0) < 300,
-            prior.get("review_count") != 0,
-            prior.get("unresolved_thread_count") != 0,
-            prior.get("failing_or_pending_check_count") != 0,
+            prior.get("premerge_review_count") != 0,
+            prior.get("premerge_unresolved_thread_count") != 0,
+            prior.get("premerge_failing_or_pending_check_count") != 0,
+            prior.get("terminal_review_count") != 1,
+            prior.get("terminal_unresolved_thread_count") != 8,
+            prior.get("terminal_failing_or_pending_check_count") != 0,
+            prior.get("late_review_submitted_at")
+            != FL1_P1_LATE_REVIEW_SUBMITTED_AT,
+            prior.get("late_review_arrived_after_merge") is not True,
+            prior.get("late_review_carry_forward_head")
+            != FL1_I1_IMPLEMENTATION_HEAD,
+            prior.get("late_review_threads_replied_or_resolved") is not False,
             prior.get("real_source_inventory_operation_count") != 0,
             prior.get("database_operation_count") != 0,
             prior.get("external_operation_count") != 0,
@@ -188,6 +202,14 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         raise DocumentationStateError("fl1_production_boundary_invalid")
     if protected.get("synthetic_source_fixture_activity_performed") is not True:
         raise DocumentationStateError("fl1_i1_synthetic_fixture_evidence_invalid")
+    if (
+        protected.get("fl1_p1_late_review_carry_forward_head")
+        != FL1_I1_IMPLEMENTATION_HEAD
+        or protected.get("fl1_p1_terminal_review_count") != 1
+        or protected.get("fl1_p1_terminal_unresolved_thread_count") != 8
+        or protected.get("fl1_p1_late_review_threads_replied_or_resolved") is not False
+    ):
+        raise DocumentationStateError("fl1_p1_late_review_evidence_invalid")
     if protected.get("approved_planning_head") != FL1_APPROVED_PLANNING_HEAD:
         raise DocumentationStateError("fl1_approved_planning_head_evidence_invalid")
     if (
@@ -205,6 +227,24 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         or protected.get("fl1_i1_foundation_head") != FL1_I1_FOUNDATION_HEAD
     ):
         raise DocumentationStateError("fl1_i1_implementation_head_invalid")
+
+    checkpoints = {
+        checkpoint.get("id"): checkpoint
+        for checkpoint in state["completed_checkpoints"]
+        if isinstance(checkpoint, dict)
+    }
+    late_review_checkpoint = checkpoints.get(
+        "fl1_p1_late_review_carry_forward_remediation"
+    )
+    if not isinstance(late_review_checkpoint, dict) or any(
+        (
+            late_review_checkpoint.get("result")
+            != "eight_actionable_threads_remediated_on_draft_pr_142_without_thread_resolution",
+            late_review_checkpoint.get("fingerprint")
+            != FL1_I1_IMPLEMENTATION_HEAD,
+        )
+    ):
+        raise DocumentationStateError("fl1_p1_late_review_checkpoint_invalid")
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:

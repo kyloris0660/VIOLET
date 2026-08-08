@@ -15,7 +15,7 @@ Canonical phase:
 - Title: `Isolated Full-Library Dev/Test Planning`
 - Current status: `fl1_i1_synthetic_implementation_ready_for_owner_audit`
 - Current implementation: Draft PR #142, evidence HEAD
-  `102be797f845d518817d7d01d17d65b65a4fc243`
+  `935ac5a29d90610ed042f42a6786b3b7fe33236a`
 - Current stop: owner-audit the planning and synthetic read-only scanner; do not
   read, list, hash, or inventory a real source root without an exact later
   source-identity and scope authorization
@@ -365,6 +365,11 @@ FL1-P1 implemented the approved isolation, default-deny mutation, contract,
 source-membership/content-target identity split, and restartable synthetic
 ledger foundations. The owner accepted it after bounded ledger remediation and
 PR #141 squash-merged at `36100bfa0317387e064cd87b2e753eca3a201b5e`.
+One Codex review with eight actionable threads arrived after that merge. Draft
+PR #142 carries all eight bounded remediations at
+`935ac5a29d90610ed042f42a6786b3b7fe33236a`, including exact final-tree
+acceptance binding and event-derived forbidden-operation accounting; the
+historical threads were not replied to or resolved.
 
 FL1-I1 now implements planning plus a synthetic-only read-only scanner and
 contract. It proves bounded source observation, immutable pre/post snapshots,

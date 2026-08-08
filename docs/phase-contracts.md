@@ -51,9 +51,13 @@ authorize FL1 behavior, scale, production, or truth promotion.
 
 PR #141 / FL1-P1 was owner-audited and squash-merged into `origin/main` at
 `36100bfa0317387e064cd87b2e753eca3a201b5e`; its merge tree exactly matches
-final PR HEAD. `SCV2-FL1-I1: Read-Only Inventory Planning And Synthetic
+final PR HEAD. A terminal check then found one Codex review submitted after the
+merge, with eight unresolved actionable threads and zero checks. Draft PR #142
+carries all eight bounded remediations at
+`935ac5a29d90610ed042f42a6786b3b7fe33236a`; no PR #141 thread was replied to
+or resolved. `SCV2-FL1-I1: Read-Only Inventory Planning And Synthetic
 Foundation` is now active on Draft PR #142. Its implementation evidence is
-`102be797f845d518817d7d01d17d65b65a4fc243`, and its stop state is:
+that same carry-forward HEAD, and its stop state is:
 
 - `status=fl1_i1_synthetic_implementation_ready_for_owner_audit`
 - `target_met=false`
@@ -65,9 +69,10 @@ Foundation` is now active on Draft PR #142. Its implementation evidence is
 - blocker: `pending_owner_audit_and_real_source_scope_authorization`
 
 The documentation-state checker binds the accepted P1 mainline commit, exact I1
-implementation evidence, generated handoff, public-safe durable links, and a
-zero-real-source/data/external authorization boundary. Draft PR #142 must not
-become Ready or merge before a separate owner decision.
+implementation evidence, final reviewed/validated P1 tree, late-review terminal
+counts, generated handoff, public-safe durable links, and a zero-real-source,
+zero-data, and zero-external-operation authorization boundary. Draft PR #142
+must not become Ready or merge before a separate owner decision.
 
 `scv2_fl1_i1_read_only_inventory_contract_v1` registers the I1 synthetic
 foundation. Its standard-library scanner accepts only an explicit synthetic

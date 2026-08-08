@@ -50,6 +50,14 @@ source-root access or inventory, any database/app-storage write, import,
 classification, AI tagging, production, external calls, Stable Replay,
 localization, graph/search, Entity/truth, or provider-derived `media_tags` activity.
 
+The exact I1 evidence HEAD is
+`935ac5a29d90610ed042f42a6786b3b7fe33236a`. It also carries bounded fixes for
+all eight actionable Codex threads that arrived after PR #141 had merged:
+environment and DB-path isolation, logical-target idempotency, mutation-outcome
+reconciliation, budget semantics, event-derived operation counts, exact stage
+evidence, and final-tree-bound acceptance evidence. The historical threads
+remain unreplied and unresolved.
+
 ## Proposed Delivery Sequence
 
 1. Owner-audit Draft PR #142 and any bounded synthetic-only corrections.
