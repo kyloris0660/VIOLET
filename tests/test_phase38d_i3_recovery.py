@@ -141,7 +141,11 @@ def _execute_cleanup(
 
 def test_final_delivery_report_standard_docs_presence():
     repo = Path(__file__).resolve().parent.parent
-    for rel in ["AGENTS.md", "CLAUDE.md", "docs/test-workflow.md"]:
+    for rel in [
+        "docs/development/agent-runbook.md",
+        "CLAUDE.md",
+        "docs/test-workflow.md",
+    ]:
         text = (repo / rel).read_text(encoding="utf-8")
         assert "Final Delivery Report Standard" in text
         assert "PR URL, branch, head SHA" in text
