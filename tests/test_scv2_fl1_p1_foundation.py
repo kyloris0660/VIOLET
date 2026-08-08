@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import subprocess
+import uuid
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -34,11 +35,16 @@ from scripts.fl1_p1_foundation import (
     ReconciliationStatus,
     REQUIRED_EXECUTED_STAGES,
     REQUIRED_FAILURE_BUDGET_SCENARIOS,
+    REQUIRED_RECONCILIATION_SCENARIOS,
+    ReconciliationScenarioObservation,
     StableInventoryItem,
     SyntheticScenarioObservation,
     build_contract_summary,
     build_failure_budget_scenario_matrix,
+    build_reconciliation_scenario_matrix,
     collect_implementation_evidence,
+    failure_budget_scenario_bundle_to_dict,
+    reconciliation_scenario_bundle_to_dict,
     validate_isolation,
     verify_implementation_evidence_repository,
 )
@@ -48,6 +54,7 @@ from scripts.phase_contracts import (
     check_phase_contract,
     get_contract,
 )
+from scripts.phase_contracts.contract_checks import scan_public_payload
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,6 +80,31 @@ def _refresh_implementation_digest(payload: dict[str, object]) -> None:
             for key, value in payload.items()
             if key != "evidence_digest"
         }
+    )
+
+
+def _refresh_stage_matrix_digests(stage: dict[str, object]) -> None:
+    matrix = stage["evidence"]
+    assert isinstance(matrix, dict)
+    rows = matrix["scenarios"]
+    assert isinstance(rows, list)
+    for row in rows:
+        assert isinstance(row, dict)
+        row["evidence_digest"] = _digest(
+            {
+                key: value
+                for key, value in row.items()
+                if key not in {"status", "evidence_digest"}
+            }
+        )
+    matrix["fingerprint"] = _digest(
+        {
+            "schema_version": matrix["schema_version"],
+            "scenarios": rows,
+        }
+    )
+    stage["evidence_digest"] = _digest(
+        {"stage": stage["stage"], "evidence": matrix}
     )
 
 
@@ -186,7 +218,9 @@ def _runner(
     return runner, store
 
 
-def _failure_scenario_matrix(tmp_path: Path) -> dict[str, object]:
+def _failure_scenario_evidence(
+    tmp_path: Path,
+) -> tuple[dict[str, object], dict[str, object]]:
     root = tmp_path / "failure-scenario-matrix"
     observations: dict[str, SyntheticScenarioObservation] = {}
 
@@ -306,14 +340,150 @@ def _failure_scenario_matrix(tmp_path: Path) -> dict[str, object]:
     assert [row["scenario"] for row in matrix["scenarios"]] == list(
         REQUIRED_FAILURE_BUDGET_SCENARIOS
     )
-    return matrix
+    return matrix, failure_budget_scenario_bundle_to_dict(observations)
+
+
+def _failure_scenario_matrix(tmp_path: Path) -> dict[str, object]:
+    return _failure_scenario_evidence(tmp_path)[0]
+
+
+def _reconciliation_scenario_evidence(
+    tmp_path: Path,
+) -> tuple[dict[str, object], dict[str, object]]:
+    observations: dict[str, ReconciliationScenarioObservation] = {}
+    bundle_id = uuid.uuid4().hex
+    outcomes = {
+        "committed": InterruptedMutationOutcome.COMMITTED,
+        "unknown": InterruptedMutationOutcome.UNKNOWN,
+        "not_committed": InterruptedMutationOutcome.NOT_COMMITTED,
+    }
+    for offset, scenario in enumerate(REQUIRED_RECONCILIATION_SCENARIOS):
+        root = tmp_path / f"reconciliation-{bundle_id}-{scenario}"
+        item = _item(300 + offset)
+        run_id = f"scenario-reconciliation-{bundle_id}-{scenario}"
+        runner, store = _runner(
+            root,
+            [item],
+            run_id=run_id,
+            max_attempts_per_item=3,
+            max_failure_attempts=5,
+        )
+        with pytest.raises(
+            LedgerError, match="mutation_outcome_reconciliation_required"
+        ):
+            runner.run_next_batch(
+                lambda _current: (_ for _ in ()).throw(
+                    RuntimeError("synthetic_post_invocation_interruption")
+                )
+            )
+        interrupted = store.load()
+
+        blocked_runner, _ = _runner(
+            root,
+            [item],
+            run_id=run_id,
+            max_attempts_per_item=3,
+            max_failure_attempts=5,
+        )
+        with pytest.raises(
+            LedgerError, match="interrupted_mutation_reconciliation_required"
+        ):
+            blocked_runner.run_next_batch(lambda _current: None)
+        blocked_restart = store.load()
+
+        reconciliation_runner, _ = _runner(
+            root,
+            [item],
+            run_id=run_id,
+            max_attempts_per_item=3,
+            max_failure_attempts=5,
+        )
+        private_ledger = reconciliation_runner._load_or_create()
+        if scenario == "unknown":
+            with pytest.raises(
+                LedgerError, match="interrupted_mutation_outcome_unknown"
+            ):
+                reconciliation_runner._recover_interrupted(
+                    private_ledger,
+                    lambda _current: outcomes[scenario],
+                )
+        else:
+            reconciliation_runner._recover_interrupted(
+                private_ledger,
+                lambda _current: outcomes[scenario],
+            )
+        reconciliation_result = store.load()
+
+        post_runner, _ = _runner(
+            root,
+            [item],
+            run_id=run_id,
+            max_attempts_per_item=3,
+            max_failure_attempts=5,
+        )
+        if scenario == "unknown":
+            with pytest.raises(
+                LedgerError, match="interrupted_mutation_reconciliation_required"
+            ):
+                post_runner.run_next_batch(lambda _current: None)
+        else:
+            post_runner.run_next_batch(lambda _current: None)
+        post_reconciliation = store.load()
+
+        final_runner, _ = _runner(
+            root,
+            [item],
+            run_id=run_id,
+            max_attempts_per_item=3,
+            max_failure_attempts=5,
+        )
+        if scenario == "unknown":
+            with pytest.raises(
+                LedgerError, match="interrupted_mutation_reconciliation_required"
+            ):
+                final_runner.run_next_batch(lambda _current: None)
+        else:
+            final_runner.run_next_batch(lambda _current: None)
+        final_restart = store.load()
+
+        observations[scenario] = ReconciliationScenarioObservation(
+            interrupted=interrupted,
+            blocked_restart=blocked_restart,
+            reconciliation_result=reconciliation_result,
+            post_reconciliation=post_reconciliation,
+            final_restart=final_restart,
+        )
+
+    matrix = build_reconciliation_scenario_matrix(observations)
+    return matrix, reconciliation_scenario_bundle_to_dict(observations)
+
+
+def _reconciliation_scenario_matrix(tmp_path: Path) -> dict[str, object]:
+    return _reconciliation_scenario_evidence(tmp_path)[0]
+
+
+def _trusted_scenario_evidence(
+    tmp_path: Path,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, object]]:
+    failure_matrix, failure_bundle = _failure_scenario_evidence(
+        tmp_path / "failure-budget-proof"
+    )
+    reconciliation_matrix, reconciliation_bundle = (
+        _reconciliation_scenario_evidence(tmp_path / "reconciliation-proof")
+    )
+    return (
+        failure_matrix,
+        failure_bundle,
+        reconciliation_matrix,
+        reconciliation_bundle,
+    )
 
 
 def _git_repository_evidence(
     tmp_path: Path,
 ) -> tuple[Path, str, str, str, ImplementationEvidence]:
     repo = tmp_path / "evidence-repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
 
     def git(*args: str) -> str:
         completed = subprocess.run(
@@ -1128,12 +1298,19 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
     item = _item(8)
     runner, store = _runner(tmp_path, [item])
     runner.run_next_batch(lambda _current: None)
+    repo, _base, _implementation, _final, evidence = _git_repository_evidence(
+        tmp_path
+    )
+    failure_matrix, failure_bundle, reconciliation_matrix, reconciliation_bundle = (
+        _trusted_scenario_evidence(tmp_path / "trusted-scenarios")
+    )
 
     summary = build_contract_summary(
         isolation=proof,
         ledger=store.load(),
-        implementation_evidence=_implementation_evidence(),
-        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        implementation_evidence=evidence,
+        failure_budget_scenario_matrix=failure_matrix,
+        reconciliation_scenario_matrix=reconciliation_matrix,
         focused_tests_passed=True,
         full_non_e2e_passed=True,
     )
@@ -1150,13 +1327,36 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
     assert "source_root" not in summary["environment_isolation"]
     assert summary["executed_stages"] == list(REQUIRED_EXECUTED_STAGES)
     assert summary["missing_required_stages"] == []
+    assert summary["public_redaction"] == {
+        "passed": True,
+        "private_paths_emitted": False,
+        "finding_count": 0,
+    }
+    assert scan_public_payload(summary) == []
 
     contract = get_contract(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1"
     )
-    result = check_phase_contract(contract.contract_id, summary)
+    missing_context = check_phase_contract(contract.contract_id, summary)
     assert contract.phase_kind == "scv2_fl1_p1_isolation_safety_ledger_foundation"
-    assert result.passed is True
+    assert missing_context.passed is False
+    assert {
+        "fl1_p1_repository_context_required",
+        "fl1_p1_runtime_ledger_context_required",
+        "fl1_p1_failure_budget_scenario_context_required",
+        "fl1_p1_reconciliation_scenario_context_required",
+    }.issubset({finding.code for finding in missing_context.errors})
+    complete = check_phase_contract(
+        contract.contract_id,
+        summary,
+        repository_context=ContractRepositoryContext(
+            repo_root=repo,
+            runtime_ledger=store.load(),
+            failure_budget_scenario_bundle=failure_bundle,
+            reconciliation_scenario_bundle=reconciliation_bundle,
+        ),
+    )
+    assert complete.passed is True
 
 
 def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
@@ -1169,12 +1369,16 @@ def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
         tmp_path
     )
     acceptance = _owner_acceptance(evidence)
+    failure_matrix, failure_bundle, reconciliation_matrix, reconciliation_bundle = (
+        _trusted_scenario_evidence(tmp_path / "trusted-scenarios")
+    )
 
     accepted = build_contract_summary(
         isolation=proof,
         ledger=store.load(),
         implementation_evidence=evidence,
-        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        failure_budget_scenario_matrix=failure_matrix,
+        reconciliation_scenario_matrix=reconciliation_matrix,
         focused_tests_passed=True,
         full_non_e2e_passed=True,
         owner_acceptance=acceptance,
@@ -1192,6 +1396,8 @@ def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
         repository_context=ContractRepositoryContext(
             repo_root=repo,
             runtime_ledger=store.load(),
+            failure_budget_scenario_bundle=failure_bundle,
+            reconciliation_scenario_bundle=reconciliation_bundle,
         ),
     )
     assert accepted_result.passed is True
@@ -1213,7 +1419,8 @@ def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
         isolation=proof,
         ledger=store.load(),
         implementation_evidence=evidence,
-        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        failure_budget_scenario_matrix=failure_matrix,
+        reconciliation_scenario_matrix=reconciliation_matrix,
         focused_tests_passed=True,
         full_non_e2e_passed=True,
         owner_acceptance=acceptance,
@@ -1232,30 +1439,69 @@ def test_contract_cli_uses_repository_and_private_ledger_context(
     repo, _base, _implementation, _final, evidence = _git_repository_evidence(
         tmp_path
     )
+    failure_matrix, failure_bundle, reconciliation_matrix, reconciliation_bundle = (
+        _trusted_scenario_evidence(tmp_path / "trusted-scenarios")
+    )
     summary = build_contract_summary(
         isolation=proof,
         ledger=store.load(),
         implementation_evidence=evidence,
-        failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        failure_budget_scenario_matrix=failure_matrix,
+        reconciliation_scenario_matrix=reconciliation_matrix,
         focused_tests_passed=True,
         full_non_e2e_passed=True,
         owner_acceptance=_owner_acceptance(evidence),
     )
     summary_path = tmp_path / "contract-summary.json"
     summary_path.write_text(json.dumps(summary), encoding="utf-8")
+    failure_bundle_path = tmp_path / "failure-budget-private.json"
+    failure_bundle_path.write_text(json.dumps(failure_bundle), encoding="utf-8")
+    reconciliation_bundle_path = tmp_path / "reconciliation-private.json"
+    reconciliation_bundle_path.write_text(
+        json.dumps(reconciliation_bundle), encoding="utf-8"
+    )
 
-    completed = subprocess.run(
+    base_args = [
+        sys.executable,
+        str(ROOT / "scripts" / "check_phase_contract.py"),
+        "--contract",
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        "--summary",
+        str(summary_path),
+    ]
+    incomplete_args = (
+        [],
+        ["--repo-root", str(repo)],
         [
-            sys.executable,
-            str(ROOT / "scripts" / "check_phase_contract.py"),
-            "--contract",
-            "scv2_fl1_isolated_full_library_dev_test_contract_v1",
-            "--summary",
-            str(summary_path),
             "--repo-root",
             str(repo),
             "--runtime-ledger",
             str(store.path),
+        ],
+    )
+    for extra_args in incomplete_args:
+        incomplete = subprocess.run(
+            [*base_args, *extra_args],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        assert incomplete.returncode == 1
+        assert json.loads(incomplete.stdout)["passed"] is False
+
+    completed = subprocess.run(
+        [
+            *base_args,
+            "--repo-root",
+            str(repo),
+            "--runtime-ledger",
+            str(store.path),
+            "--failure-budget-scenarios",
+            str(failure_bundle_path),
+            "--reconciliation-scenarios",
+            str(reconciliation_bundle_path),
         ],
         cwd=ROOT,
         capture_output=True,
@@ -1288,6 +1534,7 @@ def test_unbound_or_boolean_acceptance_fails_closed(
         ledger=store.load(),
         implementation_evidence=_implementation_evidence(),
         failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        reconciliation_scenario_matrix=_reconciliation_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
     )
@@ -1316,6 +1563,7 @@ def test_wrong_or_stale_owner_acceptance_binding_is_rejected(
             ledger=store.load(),
             implementation_evidence=evidence,
             failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+            reconciliation_scenario_matrix=_reconciliation_scenario_matrix(tmp_path),
             focused_tests_passed=True,
             full_non_e2e_passed=True,
             owner_acceptance=wrong,
@@ -1326,6 +1574,7 @@ def test_wrong_or_stale_owner_acceptance_binding_is_rejected(
         ledger=store.load(),
         implementation_evidence=evidence,
         failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        reconciliation_scenario_matrix=_reconciliation_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
         owner_acceptance=_owner_acceptance(evidence),
@@ -1531,9 +1780,16 @@ def test_contract_checker_verifies_real_repository_objects_and_current_head(
     repo, _base, implementation, _final, evidence = _git_repository_evidence(
         tmp_path
     )
-    summary, _store = _passing_summary(tmp_path / "summary")
+    summary, store, failure_bundle, reconciliation_bundle = (
+        _passing_summary_with_bundles(tmp_path / "summary")
+    )
     summary["implementation_evidence"] = evidence.to_public_dict()
-    context = ContractRepositoryContext(repo_root=repo)
+    context = ContractRepositoryContext(
+        repo_root=repo,
+        runtime_ledger=store.load(),
+        failure_budget_scenario_bundle=failure_bundle,
+        reconciliation_scenario_bundle=reconciliation_bundle,
+    )
 
     assert check_phase_contract(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1",
@@ -1611,32 +1867,88 @@ def test_contract_checker_accepts_repository_verified_squash_carry_forward(
         final_commit=final,
         mode=ImplementationEvidenceMode.SQUASH_CARRY_FORWARD,
     )
-    summary, _store = _passing_summary(tmp_path / "summary")
+    summary, store, failure_bundle, reconciliation_bundle = (
+        _passing_summary_with_bundles(tmp_path / "summary")
+    )
     summary["implementation_evidence"] = evidence.to_public_dict()
 
     result = check_phase_contract(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1",
         summary,
-        repository_context=ContractRepositoryContext(repo_root=repo),
+        repository_context=ContractRepositoryContext(
+            repo_root=repo,
+            runtime_ledger=store.load(),
+            failure_budget_scenario_bundle=failure_bundle,
+            reconciliation_scenario_bundle=reconciliation_bundle,
+        ),
     )
     assert result.passed is True
 
 
-def _passing_summary(tmp_path: Path, item_index: int = 123) -> tuple[dict, JsonLedgerStore]:
+def _passing_summary_with_bundles(
+    tmp_path: Path,
+    item_index: int = 123,
+) -> tuple[dict, JsonLedgerStore, dict[str, object], dict[str, object]]:
     proof = validate_isolation(_config(tmp_path))
     runner, store = _runner(tmp_path, [_item(item_index)])
     runner.run_next_batch(lambda _current: None)
+    failure_matrix, failure_bundle, reconciliation_matrix, reconciliation_bundle = (
+        _trusted_scenario_evidence(tmp_path / "trusted-scenarios")
+    )
     return (
         build_contract_summary(
             isolation=proof,
             ledger=store.load(),
             implementation_evidence=_implementation_evidence(),
-            failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+            failure_budget_scenario_matrix=failure_matrix,
+            reconciliation_scenario_matrix=reconciliation_matrix,
             focused_tests_passed=True,
             full_non_e2e_passed=True,
         ),
         store,
+        failure_bundle,
+        reconciliation_bundle,
     )
+
+
+def _passing_summary(
+    tmp_path: Path, item_index: int = 123
+) -> tuple[dict, JsonLedgerStore]:
+    summary, store, _failure_bundle, _reconciliation_bundle = (
+        _passing_summary_with_bundles(tmp_path, item_index)
+    )
+    return summary, store
+
+
+def _trusted_audit_ready_case(
+    tmp_path: Path,
+) -> tuple[dict, ContractRepositoryContext, JsonLedgerStore]:
+    runtime_root = tmp_path / "main-runtime"
+    proof = validate_isolation(_config(runtime_root))
+    runner, store = _runner(runtime_root, [_item(400)])
+    runner.run_next_batch(lambda _current: None)
+    repo, _base, _implementation, _final, evidence = _git_repository_evidence(
+        tmp_path / "repository"
+    )
+    failure_matrix, failure_bundle, reconciliation_matrix, reconciliation_bundle = (
+        _trusted_scenario_evidence(tmp_path / "trusted-scenarios")
+    )
+    summary = build_contract_summary(
+        isolation=proof,
+        ledger=store.load(),
+        implementation_evidence=evidence,
+        failure_budget_scenario_matrix=failure_matrix,
+        reconciliation_scenario_matrix=reconciliation_matrix,
+        focused_tests_passed=True,
+        full_non_e2e_passed=True,
+    )
+    context = ContractRepositoryContext(
+        repo_root=repo,
+        runtime_ledger=store.load(),
+        failure_budget_scenario_bundle=failure_bundle,
+        reconciliation_scenario_bundle=reconciliation_bundle,
+    )
+    return summary, context, store
 
 
 def test_forbidden_operation_counts_are_derived_from_persisted_events(
@@ -1654,6 +1966,7 @@ def test_forbidden_operation_counts_are_derived_from_persisted_events(
         ledger=restarted,
         implementation_evidence=_implementation_evidence(),
         failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        reconciliation_scenario_matrix=_reconciliation_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
     )
@@ -1706,6 +2019,7 @@ def test_public_attribution_rejects_equal_total_swapped_between_items(
         ledger=store.load(),
         implementation_evidence=_implementation_evidence(),
         failure_budget_scenario_matrix=_failure_scenario_matrix(tmp_path),
+        reconciliation_scenario_matrix=_reconciliation_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
     )
@@ -1748,10 +2062,12 @@ def test_trusted_private_ledger_rejects_recomputed_public_attribution_forgery(
     repo, _base, _implementation, _final, evidence = _git_repository_evidence(
         tmp_path
     )
-    summary, store = _passing_summary(tmp_path / "summary")
+    summary, store, failure_bundle, reconciliation_bundle = (
+        _passing_summary_with_bundles(tmp_path / "summary")
+    )
     summary["implementation_evidence"] = evidence.to_public_dict()
     attribution = summary["operation_evidence"]["mutation_attribution"]
-    attribution["rows"][0]["item_token"] = "f" * 64
+    attribution["rows"][0]["item_identity_digest"] = "f" * 64
     attribution_payload = {
         "schema_version": attribution["schema_version"],
         "private_execution_fingerprint": attribution[
@@ -1770,6 +2086,8 @@ def test_trusted_private_ledger_rejects_recomputed_public_attribution_forgery(
         repository_context=ContractRepositoryContext(
             repo_root=repo,
             runtime_ledger=store.load(),
+            failure_budget_scenario_bundle=failure_bundle,
+            reconciliation_scenario_bundle=reconciliation_bundle,
         ),
     )
     assert result.passed is False
@@ -1880,6 +2198,269 @@ def test_failure_budget_stage_requires_complete_independent_scenario_matrix(
     assert "fl1_p1_required_stage_evidence_invalid" in {
         finding.code for finding in result.errors
     }
+
+
+def test_failure_budget_public_true_assertion_cannot_replace_private_evidence(
+    tmp_path: Path,
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    stage = next(
+        row
+        for row in summary["stage_evidence"]
+        if row["stage"] == "failure_budget_and_manual_stop"
+    )
+    stage["evidence"]["scenarios"][0]["assertions"] = {"passed": True}
+    _refresh_stage_matrix_digests(stage)
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    assert {
+        "fl1_p1_failure_budget_scenario_context_required",
+        "fl1_p1_required_stage_evidence_invalid",
+    }.issubset({finding.code for finding in result.errors})
+
+
+def test_audit_ready_requires_all_protected_contexts(tmp_path: Path) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    cases = (
+        ContractRepositoryContext(repo_root=context.repo_root),
+        ContractRepositoryContext(
+            repo_root=context.repo_root,
+            runtime_ledger=context.runtime_ledger,
+        ),
+        replace(context, failure_budget_scenario_bundle=None),
+        replace(context, reconciliation_scenario_bundle=None),
+    )
+    expected_codes = (
+        {
+            "fl1_p1_runtime_ledger_context_required",
+            "fl1_p1_failure_budget_scenario_context_required",
+            "fl1_p1_reconciliation_scenario_context_required",
+        },
+        {
+            "fl1_p1_failure_budget_scenario_context_required",
+            "fl1_p1_reconciliation_scenario_context_required",
+        },
+        {"fl1_p1_failure_budget_scenario_context_required"},
+        {"fl1_p1_reconciliation_scenario_context_required"},
+    )
+    for candidate, expected in zip(cases, expected_codes, strict=True):
+        result = check_phase_contract(
+            "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+            summary,
+            repository_context=candidate,
+        )
+        assert result.passed is False
+        assert expected.issubset({finding.code for finding in result.errors})
+
+
+def test_blocked_diagnostic_without_protected_stage_claim_needs_no_repo_context(
+    tmp_path: Path,
+) -> None:
+    summary, _context, _store = _trusted_audit_ready_case(tmp_path)
+    summary["pipeline_contract"]["status"] = "blocked_fl1_p1_foundation"
+    summary["pipeline_contract"]["active_blockers"] = ["focused_tests_failed"]
+    summary["validation"]["focused_tests_passed"] = False
+
+    protected = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1", summary
+    )
+    assert "fl1_p1_repository_context_required" in {
+        finding.code for finding in protected.errors
+    }
+
+    summary["executed_stages"] = []
+    summary["missing_required_stages"] = list(REQUIRED_EXECUTED_STAGES)
+    summary["stage_evidence"] = []
+    diagnostic = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1", summary
+    )
+    assert diagnostic.passed is False
+    assert "fl1_p1_required_stage_evidence_invalid" in {
+        finding.code for finding in diagnostic.errors
+    }
+    assert "fl1_p1_repository_context_required" not in {
+        finding.code for finding in diagnostic.errors
+    }
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["swapped_scenarios", "swapped_before_after", "reused_run", "private_drift"],
+)
+def test_failure_budget_private_bundle_tampering_fails_closed(
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    bundle = copy.deepcopy(context.failure_budget_scenario_bundle)
+    assert isinstance(bundle, dict)
+    scenarios = bundle["scenarios"]
+    assert isinstance(scenarios, dict)
+    first, second = REQUIRED_FAILURE_BUDGET_SCENARIOS[:2]
+    if damage == "swapped_scenarios":
+        scenarios[first], scenarios[second] = scenarios[second], scenarios[first]
+    elif damage == "swapped_before_after":
+        row = scenarios[first]
+        row["before_restart"], row["after_restart"] = (
+            row["after_restart"],
+            row["before_restart"],
+        )
+    elif damage == "reused_run":
+        reused_run = scenarios[first]["after_restart"]["ledger"]["run_id"]
+        scenarios[second]["before_restart"]["ledger"]["run_id"] = reused_run
+        scenarios[second]["after_restart"]["ledger"]["run_id"] = reused_run
+    else:
+        scenarios[first]["after_restart"]["ledger"]["checkpoint"][
+            "generation"
+        ] += 1
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=replace(
+            context,
+            failure_budget_scenario_bundle=bundle,
+        ),
+    )
+    assert result.passed is False
+    assert "fl1_p1_failure_budget_scenario_context_required" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_plain_success_counts_cannot_complete_reconciliation_stage(
+    tmp_path: Path,
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    stage = next(
+        row
+        for row in summary["stage_evidence"]
+        if row["stage"] == "interrupted_mutation_reconciliation"
+    )
+    stage["evidence"] = {
+        "reconciliation_required_count": 0,
+        "recovery_count": 0,
+    }
+    stage["status"] = "completed"
+    stage["evidence_digest"] = _digest(
+        {"stage": stage["stage"], "evidence": stage["evidence"]}
+    )
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    assert {
+        "fl1_p1_reconciliation_scenario_context_required",
+        "fl1_p1_required_stage_evidence_invalid",
+    }.issubset({finding.code for finding in result.errors})
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["missing_restart", "second_invocation", "unknown_marked_succeeded"],
+)
+def test_reconciliation_private_bundle_tampering_fails_closed(
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    bundle = copy.deepcopy(context.reconciliation_scenario_bundle)
+    assert isinstance(bundle, dict)
+    scenarios = bundle["scenarios"]
+    assert isinstance(scenarios, dict)
+    if damage == "missing_restart":
+        scenarios["committed"].pop("blocked_restart")
+    elif damage == "second_invocation":
+        scenarios["not_committed"]["blocked_restart"] = copy.deepcopy(
+            scenarios["not_committed"]["post_reconciliation"]
+        )
+    else:
+        unknown_run_id = scenarios["unknown"]["interrupted"]["run_id"]
+        scenarios["unknown"] = copy.deepcopy(scenarios["committed"])
+        for snapshot in scenarios["unknown"].values():
+            snapshot["run_id"] = unknown_run_id
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=replace(
+            context,
+            reconciliation_scenario_bundle=bundle,
+        ),
+    )
+    assert result.passed is False
+    assert "fl1_p1_reconciliation_scenario_context_required" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_reconciliation_matrix_proves_all_three_outcomes(tmp_path: Path) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    stage = next(
+        row
+        for row in summary["stage_evidence"]
+        if row["stage"] == "interrupted_mutation_reconciliation"
+    )
+    assert [row["scenario"] for row in stage["evidence"]["scenarios"]] == list(
+        REQUIRED_RECONCILIATION_SCENARIOS
+    )
+    assert check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    ).passed is True
+
+
+@pytest.mark.parametrize(
+    ("field", "leaked_value"),
+    [
+        ("api_key", "private-api-credential"),
+        ("database_url", "postgresql://user:secret@localhost/private"),
+        ("windows_path", r"C:\\Users\\private-user\\source.txt"),
+        ("posix_path", "/home/private-user/source.txt"),
+        ("raw_filename", "PRIVATE_SOURCE_001.JPG"),
+        ("source_content_fingerprint", "f" * 64),
+        ("access_token", "ghp_privateToken1234567890"),
+    ],
+)
+def test_fl1_contract_recursively_scans_unknown_public_fields_without_echo(
+    tmp_path: Path,
+    field: str,
+    leaked_value: str,
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    summary["debug"] = {field: leaked_value}
+    summary["public_redaction"] = {
+        "passed": True,
+        "private_paths_emitted": False,
+        "finding_count": 0,
+    }
+    _refresh_implementation_digest(summary["implementation_evidence"])
+    for stage in summary["stage_evidence"]:
+        if isinstance(stage.get("evidence"), dict) and isinstance(
+            stage["evidence"].get("scenarios"), list
+        ):
+            _refresh_stage_matrix_digests(stage)
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    codes = {finding.code for finding in result.errors}
+    assert "fl1_p1_public_redaction_invalid" in codes
+    assert any(code.startswith("fl1_p1_public_redaction_") for code in codes)
+    serialized = json.dumps(result.to_dict(), sort_keys=True)
+    assert leaked_value not in serialized
 
 
 def test_other_contract_invariants_remain_fail_closed(tmp_path: Path) -> None:

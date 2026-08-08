@@ -24,13 +24,28 @@ CONTRACT_ID = "scv2_fl1_isolated_full_library_dev_test_contract_v1"
 LEDGER_SCHEMA_VERSION = "violet.scv2-fl1-p1-ledger.v2"
 ITEM_IDENTITY_VERSION = "violet.scv2-fl1-item.v1"
 LOGICAL_TARGET_IDENTITY_VERSION = "violet.scv2-fl1-logical-target.v1"
-OPERATION_EVIDENCE_SCHEMA_VERSION = "violet.scv2-fl1-p1-operation-evidence.v2"
+OPERATION_EVIDENCE_SCHEMA_VERSION = "violet.scv2-fl1-p1-operation-evidence.v3"
 IMPLEMENTATION_EVIDENCE_SCHEMA_VERSION = (
     "violet.scv2-fl1-p1-implementation-evidence.v2"
 )
-SCENARIO_MATRIX_SCHEMA_VERSION = "violet.scv2-fl1-p1-scenario-matrix.v1"
+SCENARIO_MATRIX_SCHEMA_VERSION = "violet.scv2-fl1-p1-scenario-matrix.v2"
+FAILURE_BUDGET_ASSERTION_SCHEMA_VERSION = (
+    "violet.scv2-fl1-p1-failure-budget-assertions.v1"
+)
+FAILURE_BUDGET_PRIVATE_BUNDLE_SCHEMA_VERSION = (
+    "violet.scv2-fl1-p1-failure-budget-private-bundle.v2"
+)
+RECONCILIATION_SCENARIO_MATRIX_SCHEMA_VERSION = (
+    "violet.scv2-fl1-p1-reconciliation-scenario-matrix.v1"
+)
+RECONCILIATION_ASSERTION_SCHEMA_VERSION = (
+    "violet.scv2-fl1-p1-reconciliation-assertions.v1"
+)
+RECONCILIATION_PRIVATE_BUNDLE_SCHEMA_VERSION = (
+    "violet.scv2-fl1-p1-reconciliation-private-bundle.v1"
+)
 MUTATION_ATTRIBUTION_SCHEMA_VERSION = (
-    "violet.scv2-fl1-p1-mutation-attribution.v1"
+    "violet.scv2-fl1-p1-mutation-attribution.v2"
 )
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -55,6 +70,86 @@ REQUIRED_FAILURE_BUDGET_SCENARIOS: tuple[str, ...] = (
     "global_budget_exhaustion",
     "restart_counter_reason_consistency",
 )
+
+FAILURE_BUDGET_ASSERTION_SCHEMAS: Mapping[str, tuple[str, ...]] = {
+    "normal_success": (
+        "same_run_identity",
+        "same_manifest_identity",
+        "completed",
+        "all_items_terminal_success_or_duplicate",
+        "manual_stop_not_requested",
+        "global_budget_not_exhausted",
+    ),
+    "manual_stop_restart": (
+        "same_run_identity",
+        "same_manifest_identity",
+        "manual_stop_persisted",
+        "restart_blocked_next_mutation",
+        "pending_item_preserved",
+    ),
+    "per_item_exhaustion": (
+        "same_run_identity",
+        "same_manifest_identity",
+        "single_item_exhausted",
+        "global_budget_not_poisoned",
+        "later_item_processed",
+        "terminal_reason_persisted",
+    ),
+    "global_budget_exhaustion": (
+        "same_run_identity",
+        "same_manifest_identity",
+        "global_budget_exhausted",
+        "global_reason_exact",
+        "later_item_not_executed",
+        "restart_blocked_next_mutation",
+    ),
+    "restart_counter_reason_consistency": (
+        "same_run_identity",
+        "same_manifest_identity",
+        "global_counters_persisted",
+        "item_counters_and_reasons_persisted",
+        "operation_attribution_persisted",
+    ),
+}
+
+REQUIRED_RECONCILIATION_SCENARIOS: tuple[str, ...] = (
+    "committed",
+    "unknown",
+    "not_committed",
+)
+
+RECONCILIATION_ASSERTION_SCHEMAS: Mapping[str, tuple[str, ...]] = {
+    "committed": (
+        "same_run_identity",
+        "same_manifest_identity",
+        "generation_monotonic",
+        "interruption_checkpoint_persisted",
+        "blocked_restart_kept_single_invocation",
+        "committed_terminal_without_replay",
+        "recovery_accounting_exact",
+        "final_restart_stable",
+    ),
+    "unknown": (
+        "same_run_identity",
+        "same_manifest_identity",
+        "generation_monotonic",
+        "interruption_checkpoint_persisted",
+        "blocked_restart_kept_single_invocation",
+        "unknown_remains_fail_closed",
+        "unknown_recovery_not_counted",
+        "final_restart_stable",
+    ),
+    "not_committed": (
+        "same_run_identity",
+        "same_manifest_identity",
+        "generation_monotonic",
+        "interruption_checkpoint_persisted",
+        "blocked_restart_kept_single_invocation",
+        "not_committed_evidence_persisted",
+        "single_budgeted_retry_succeeded",
+        "final_restart_stable",
+    ),
+}
 
 # Executable code, tests, and executable contracts may not drift after the
 # implementation evidence boundary.  Only these exact governance projections
@@ -660,7 +755,9 @@ class IsolationProof:
             "python_identity_match": self.python_identity_match,
             "database_identity_explicit": self.database_identity_explicit,
             "database_path_new_and_contained": self.database_path_new_and_contained,
-            "source_root_explicit_and_contained": self.source_root_explicit_and_contained,
+            "synthetic_source_scope_explicit_and_contained": (
+                self.source_root_explicit_and_contained
+            ),
             "storage_root_explicit_and_contained": self.storage_root_explicit_and_contained,
             "source_storage_non_overlapping": self.source_storage_non_overlapping,
             "database_source_storage_pairwise_disjoint": (
@@ -1090,7 +1187,7 @@ class RunLedger:
             }
         )
 
-    def _public_item_token(self, item_id: str) -> str:
+    def _public_item_identity_digest(self, item_id: str) -> str:
         return hashlib.sha256(
             (
                 f"{MUTATION_ATTRIBUTION_SCHEMA_VERSION}\0"
@@ -1104,8 +1201,8 @@ class RunLedger:
             {
                 "sequence": event.sequence,
                 "kind": event.kind.value,
-                "item_token": (
-                    self._public_item_token(event.item_id)
+                "item_identity_digest": (
+                    self._public_item_identity_digest(event.item_id)
                     if event.item_id is not None
                     else None
                 ),
@@ -1122,7 +1219,7 @@ class RunLedger:
                 invocations_by_item[event.item_id] += 1
         rows = [
             {
-                "item_token": self._public_item_token(item_id),
+                "item_identity_digest": self._public_item_identity_digest(item_id),
                 "attempt_count": self.items[item_id].attempt_count,
                 "invocation_count": invocations_by_item[item_id],
             }
@@ -2073,11 +2170,15 @@ def build_failure_budget_scenario_matrix(
         before = observation.before_restart
         after = observation.after_restart
         assertions = _scenario_assertions(scenario, before, after)
-        if not all(assertions.values()):
+        if (
+            tuple(assertions) != FAILURE_BUDGET_ASSERTION_SCHEMAS[scenario]
+            or not all(assertions.values())
+        ):
             raise LedgerError(f"failure_budget_scenario_failed:{scenario}")
         run_ids.append(after.run_id)
         row_payload = {
             "scenario": scenario,
+            "assertion_schema_version": FAILURE_BUDGET_ASSERTION_SCHEMA_VERSION,
             "run_id": after.run_id,
             "ledger_fingerprint": after.private_execution_fingerprint,
             "restart_evidence_fingerprint": _canonical_digest(
@@ -2099,6 +2200,8 @@ def build_failure_budget_scenario_matrix(
         raise LedgerError("failure_budget_scenario_run_identity_reused")
     if len({row["ledger_fingerprint"] for row in rows}) != len(rows):
         raise LedgerError("failure_budget_scenario_ledger_fingerprint_reused")
+    if len({row["restart_evidence_fingerprint"] for row in rows}) != len(rows):
+        raise LedgerError("failure_budget_scenario_restart_evidence_reused")
     payload = {
         "schema_version": SCENARIO_MATRIX_SCHEMA_VERSION,
         "scenarios": rows,
@@ -2132,6 +2235,7 @@ def validate_failure_budget_scenario_matrix(
         assertions = row.get("assertions")
         row_payload = {
             "scenario": row.get("scenario"),
+            "assertion_schema_version": row.get("assertion_schema_version"),
             "run_id": row.get("run_id"),
             "ledger_fingerprint": row.get("ledger_fingerprint"),
             "restart_evidence_fingerprint": row.get(
@@ -2141,6 +2245,8 @@ def validate_failure_budget_scenario_matrix(
         }
         if not (
             row.get("status") == "completed"
+            and row.get("assertion_schema_version")
+            == FAILURE_BUDGET_ASSERTION_SCHEMA_VERSION
             and isinstance(row.get("run_id"), str)
             and SAFE_IDENTITY_RE.fullmatch(str(row.get("run_id")))
             and isinstance(row.get("ledger_fingerprint"), str)
@@ -2148,7 +2254,8 @@ def validate_failure_budget_scenario_matrix(
             and isinstance(row.get("restart_evidence_fingerprint"), str)
             and HEX64_RE.fullmatch(str(row.get("restart_evidence_fingerprint")))
             and isinstance(assertions, Mapping)
-            and bool(assertions)
+            and tuple(assertions)
+            == FAILURE_BUDGET_ASSERTION_SCHEMAS[str(row.get("scenario"))]
             and all(value is True for value in assertions.values())
             and row.get("evidence_digest") == _canonical_digest(row_payload)
         ):
@@ -2162,9 +2269,455 @@ def validate_failure_budget_scenario_matrix(
     if (
         len(set(run_ids)) != len(run_ids)
         or len(set(ledger_fingerprints)) != len(ledger_fingerprints)
+        or len(
+            {
+                str(row.get("restart_evidence_fingerprint"))
+                for row in rows
+            }
+        )
+        != len(rows)
         or matrix.get("fingerprint") != _canonical_digest(payload)
     ):
         raise LedgerError("failure_budget_scenario_matrix_invalid")
+
+
+def failure_budget_scenario_bundle_to_dict(
+    observations: Mapping[str, SyntheticScenarioObservation],
+) -> dict[str, Any]:
+    """Serialize protected scenario ledgers for trusted local contract input."""
+
+    build_failure_budget_scenario_matrix(observations)
+    return {
+        "schema_version": FAILURE_BUDGET_PRIVATE_BUNDLE_SCHEMA_VERSION,
+        "scenarios": {
+            scenario: {
+                "before_restart": {
+                    "snapshot_role": "before_restart",
+                    "ledger": observations[scenario].before_restart.to_dict(),
+                },
+                "after_restart": {
+                    "snapshot_role": "after_restart",
+                    "ledger": observations[scenario].after_restart.to_dict(),
+                },
+            }
+            for scenario in REQUIRED_FAILURE_BUDGET_SCENARIOS
+        },
+    }
+
+
+def load_failure_budget_scenario_bundle(
+    payload: Mapping[str, Any],
+) -> dict[str, SyntheticScenarioObservation]:
+    """Load every private ledger through RunLedger.from_dict and revalidate it."""
+
+    if not (
+        isinstance(payload, Mapping)
+        and set(payload) == {"schema_version", "scenarios"}
+        and payload.get("schema_version")
+        == FAILURE_BUDGET_PRIVATE_BUNDLE_SCHEMA_VERSION
+        and isinstance(payload.get("scenarios"), Mapping)
+        and set(payload["scenarios"]) == set(REQUIRED_FAILURE_BUDGET_SCENARIOS)
+    ):
+        raise LedgerError("failure_budget_private_bundle_invalid")
+    observations: dict[str, SyntheticScenarioObservation] = {}
+    for scenario in REQUIRED_FAILURE_BUDGET_SCENARIOS:
+        row = payload["scenarios"][scenario]
+        if not (
+            isinstance(row, Mapping)
+            and set(row) == {"before_restart", "after_restart"}
+            and isinstance(row.get("before_restart"), Mapping)
+            and isinstance(row.get("after_restart"), Mapping)
+            and set(row["before_restart"]) == {"snapshot_role", "ledger"}
+            and set(row["after_restart"]) == {"snapshot_role", "ledger"}
+            and row["before_restart"].get("snapshot_role") == "before_restart"
+            and row["after_restart"].get("snapshot_role") == "after_restart"
+            and isinstance(row["before_restart"].get("ledger"), Mapping)
+            and isinstance(row["after_restart"].get("ledger"), Mapping)
+        ):
+            raise LedgerError("failure_budget_private_bundle_invalid")
+        observations[scenario] = SyntheticScenarioObservation(
+            before_restart=RunLedger.from_dict(row["before_restart"]["ledger"]),
+            after_restart=RunLedger.from_dict(row["after_restart"]["ledger"]),
+        )
+    build_failure_budget_scenario_matrix(observations)
+    return observations
+
+
+@dataclass(frozen=True)
+class ReconciliationScenarioObservation:
+    """Protected ledgers proving one interrupted-mutation recovery outcome."""
+
+    interrupted: RunLedger
+    blocked_restart: RunLedger
+    reconciliation_result: RunLedger
+    post_reconciliation: RunLedger
+    final_restart: RunLedger
+
+
+def _synthetic_invocation_count(ledger: RunLedger) -> int:
+    return sum(
+        event.kind is OperationKind.SYNTHETIC_MUTATION_INVOCATION
+        for event in ledger.operation_events
+    )
+
+
+def _reconciliation_assertions(
+    scenario: str,
+    observation: ReconciliationScenarioObservation,
+) -> dict[str, bool]:
+    snapshots = (
+        observation.interrupted,
+        observation.blocked_restart,
+        observation.reconciliation_result,
+        observation.post_reconciliation,
+        observation.final_restart,
+    )
+    for ledger in snapshots:
+        ledger.validate()
+    run_ids = {ledger.run_id for ledger in snapshots}
+    manifests = {ledger.manifest_fingerprint for ledger in snapshots}
+    item_memberships = {tuple(ledger.manifest_entry_ids) for ledger in snapshots}
+    interrupted_candidates = [
+        item_id
+        for item_id, record in observation.interrupted.items.items()
+        if record.state in {ItemState.IN_PROGRESS, ItemState.OUTCOME_UNKNOWN}
+        and record.reconciliation_status is ReconciliationStatus.REQUIRED
+    ]
+    item_id = interrupted_candidates[0] if len(interrupted_candidates) == 1 else None
+    records = (
+        tuple(ledger.items.get(item_id) for ledger in snapshots)
+        if item_id is not None
+        else (None,) * len(snapshots)
+    )
+    interrupted_record, blocked_record, result_record, post_record, final_record = records
+    shared = {
+        "same_run_identity": len(run_ids) == 1,
+        "same_manifest_identity": len(manifests) == 1 and len(item_memberships) == 1,
+        "generation_monotonic": (
+            observation.interrupted.generation
+            < observation.blocked_restart.generation
+            < observation.reconciliation_result.generation
+            <= observation.post_reconciliation.generation
+            <= observation.final_restart.generation
+        ),
+        "interruption_checkpoint_persisted": (
+            interrupted_record is not None
+            and interrupted_record.state
+            in {ItemState.IN_PROGRESS, ItemState.OUTCOME_UNKNOWN}
+            and interrupted_record.reconciliation_status
+            is ReconciliationStatus.REQUIRED
+            and interrupted_record.attempt_count == 1
+            and interrupted_record.mutation_count == 0
+            and interrupted_record.reconciliation_count == 0
+            and _synthetic_invocation_count(observation.interrupted) == 1
+        ),
+        "blocked_restart_kept_single_invocation": (
+            blocked_record is not None
+            and blocked_record.state is ItemState.OUTCOME_UNKNOWN
+            and blocked_record.reconciliation_status is ReconciliationStatus.REQUIRED
+            and blocked_record.attempt_count == 1
+            and blocked_record.mutation_count == 0
+            and blocked_record.reconciliation_count == 0
+            and _synthetic_invocation_count(observation.blocked_restart) == 1
+            and observation.blocked_restart.operation_evidence_fingerprint
+            == observation.interrupted.operation_evidence_fingerprint
+        ),
+    }
+    final_restart_stable = (
+        post_record is not None
+        and final_record is not None
+        and (
+            post_record.state,
+            post_record.attempt_count,
+            post_record.mutation_count,
+            post_record.reconciliation_status,
+            post_record.reconciliation_count,
+        )
+        == (
+            final_record.state,
+            final_record.attempt_count,
+            final_record.mutation_count,
+            final_record.reconciliation_status,
+            final_record.reconciliation_count,
+        )
+        and observation.post_reconciliation.operation_evidence_fingerprint
+        == observation.final_restart.operation_evidence_fingerprint
+        and observation.post_reconciliation.recovery_count
+        == observation.final_restart.recovery_count
+    )
+    if scenario == "committed":
+        return {
+            **shared,
+            "committed_terminal_without_replay": (
+                result_record is not None
+                and result_record.state is ItemState.SUCCEEDED
+                and result_record.reconciliation_status
+                is ReconciliationStatus.COMMITTED
+                and result_record.attempt_count == 1
+                and result_record.mutation_count == 1
+                and result_record.reconciliation_count == 1
+                and _synthetic_invocation_count(observation.reconciliation_result)
+                == 1
+            ),
+            "recovery_accounting_exact": (
+                observation.reconciliation_result.recovery_count == 1
+                and observation.post_reconciliation.recovery_count == 1
+            ),
+            "final_restart_stable": final_restart_stable,
+        }
+    if scenario == "unknown":
+        return {
+            **shared,
+            "unknown_remains_fail_closed": (
+                result_record is not None
+                and post_record is not None
+                and final_record is not None
+                and all(
+                    record.state is ItemState.OUTCOME_UNKNOWN
+                    and record.reconciliation_status is ReconciliationStatus.REQUIRED
+                    and record.attempt_count == 1
+                    and record.mutation_count == 0
+                    and record.reconciliation_count == 0
+                    for record in (result_record, post_record, final_record)
+                )
+                and all(
+                    _synthetic_invocation_count(ledger) == 1
+                    for ledger in snapshots[2:]
+                )
+            ),
+            "unknown_recovery_not_counted": all(
+                ledger.recovery_count == 0 for ledger in snapshots
+            ),
+            "final_restart_stable": final_restart_stable,
+        }
+    if scenario == "not_committed":
+        return {
+            **shared,
+            "not_committed_evidence_persisted": (
+                result_record is not None
+                and result_record.state is ItemState.FAILED_RETRYABLE
+                and result_record.reconciliation_status
+                is ReconciliationStatus.NOT_COMMITTED
+                and result_record.attempt_count == 1
+                and result_record.mutation_count == 0
+                and result_record.reconciliation_count == 1
+                and observation.reconciliation_result.recovery_count == 1
+                and _synthetic_invocation_count(observation.reconciliation_result)
+                == 1
+            ),
+            "single_budgeted_retry_succeeded": (
+                post_record is not None
+                and post_record.state is ItemState.SUCCEEDED
+                and post_record.attempt_count == 2
+                and post_record.mutation_count == 1
+                and post_record.reconciliation_count == 1
+                and _synthetic_invocation_count(observation.post_reconciliation)
+                == 2
+                and not observation.post_reconciliation.failure_budget_exhausted
+            ),
+            "final_restart_stable": final_restart_stable,
+        }
+    raise LedgerError("reconciliation_scenario_name_invalid")
+
+
+def build_reconciliation_scenario_matrix(
+    observations: Mapping[str, ReconciliationScenarioObservation],
+) -> dict[str, Any]:
+    if set(observations) != set(REQUIRED_RECONCILIATION_SCENARIOS):
+        raise LedgerError("reconciliation_scenario_membership_invalid")
+    rows: list[dict[str, Any]] = []
+    for scenario in REQUIRED_RECONCILIATION_SCENARIOS:
+        observation = observations[scenario]
+        if not isinstance(observation, ReconciliationScenarioObservation):
+            raise LedgerError("reconciliation_scenario_observation_invalid")
+        assertions = _reconciliation_assertions(scenario, observation)
+        if (
+            tuple(assertions) != RECONCILIATION_ASSERTION_SCHEMAS[scenario]
+            or not all(assertions.values())
+        ):
+            raise LedgerError(f"reconciliation_scenario_failed:{scenario}")
+        fingerprints = {
+            "interrupted": observation.interrupted.private_execution_fingerprint,
+            "blocked_restart": (
+                observation.blocked_restart.private_execution_fingerprint
+            ),
+            "reconciliation_result": (
+                observation.reconciliation_result.private_execution_fingerprint
+            ),
+            "post_reconciliation": (
+                observation.post_reconciliation.private_execution_fingerprint
+            ),
+            "final_restart": observation.final_restart.private_execution_fingerprint,
+        }
+        row_payload = {
+            "scenario": scenario,
+            "assertion_schema_version": RECONCILIATION_ASSERTION_SCHEMA_VERSION,
+            "run_id": observation.final_restart.run_id,
+            "ledger_fingerprints": fingerprints,
+            "restart_evidence_fingerprint": _canonical_digest(fingerprints),
+            "assertions": assertions,
+        }
+        rows.append(
+            {
+                **row_payload,
+                "status": "completed",
+                "evidence_digest": _canonical_digest(row_payload),
+            }
+        )
+    if len({row["run_id"] for row in rows}) != len(rows):
+        raise LedgerError("reconciliation_scenario_run_identity_reused")
+    if len(
+        {row["ledger_fingerprints"]["final_restart"] for row in rows}
+    ) != len(rows):
+        raise LedgerError("reconciliation_scenario_ledger_fingerprint_reused")
+    if len({row["restart_evidence_fingerprint"] for row in rows}) != len(rows):
+        raise LedgerError("reconciliation_scenario_restart_evidence_reused")
+    payload = {
+        "schema_version": RECONCILIATION_SCENARIO_MATRIX_SCHEMA_VERSION,
+        "scenarios": rows,
+    }
+    return {
+        **payload,
+        "scenario_count": len(rows),
+        "fingerprint": _canonical_digest(payload),
+    }
+
+
+def validate_reconciliation_scenario_matrix(matrix: Mapping[str, Any]) -> None:
+    rows = matrix.get("scenarios") if isinstance(matrix, Mapping) else None
+    if not (
+        matrix.get("schema_version")
+        == RECONCILIATION_SCENARIO_MATRIX_SCHEMA_VERSION
+        and isinstance(rows, list)
+        and [row.get("scenario") for row in rows]
+        == list(REQUIRED_RECONCILIATION_SCENARIOS)
+        and matrix.get("scenario_count") == len(REQUIRED_RECONCILIATION_SCENARIOS)
+    ):
+        raise LedgerError("reconciliation_scenario_matrix_invalid")
+    run_ids: list[str] = []
+    final_fingerprints: list[str] = []
+    restart_fingerprints: list[str] = []
+    fingerprint_keys = {
+        "interrupted",
+        "blocked_restart",
+        "reconciliation_result",
+        "post_reconciliation",
+        "final_restart",
+    }
+    for row in rows:
+        scenario = str(row.get("scenario"))
+        assertions = row.get("assertions")
+        fingerprints = row.get("ledger_fingerprints")
+        row_payload = {
+            "scenario": row.get("scenario"),
+            "assertion_schema_version": row.get("assertion_schema_version"),
+            "run_id": row.get("run_id"),
+            "ledger_fingerprints": fingerprints,
+            "restart_evidence_fingerprint": row.get(
+                "restart_evidence_fingerprint"
+            ),
+            "assertions": assertions,
+        }
+        if not (
+            row.get("status") == "completed"
+            and row.get("assertion_schema_version")
+            == RECONCILIATION_ASSERTION_SCHEMA_VERSION
+            and isinstance(row.get("run_id"), str)
+            and SAFE_IDENTITY_RE.fullmatch(str(row.get("run_id")))
+            and isinstance(fingerprints, Mapping)
+            and set(fingerprints) == fingerprint_keys
+            and all(
+                isinstance(value, str) and HEX64_RE.fullmatch(value)
+                for value in fingerprints.values()
+            )
+            and isinstance(row.get("restart_evidence_fingerprint"), str)
+            and HEX64_RE.fullmatch(str(row.get("restart_evidence_fingerprint")))
+            and row.get("restart_evidence_fingerprint")
+            == _canonical_digest(fingerprints)
+            and isinstance(assertions, Mapping)
+            and tuple(assertions) == RECONCILIATION_ASSERTION_SCHEMAS[scenario]
+            and all(value is True for value in assertions.values())
+            and row.get("evidence_digest") == _canonical_digest(row_payload)
+        ):
+            raise LedgerError("reconciliation_scenario_matrix_invalid")
+        run_ids.append(str(row["run_id"]))
+        final_fingerprints.append(str(fingerprints["final_restart"]))
+        restart_fingerprints.append(str(row["restart_evidence_fingerprint"]))
+    payload = {
+        "schema_version": RECONCILIATION_SCENARIO_MATRIX_SCHEMA_VERSION,
+        "scenarios": rows,
+    }
+    if (
+        len(set(run_ids)) != len(run_ids)
+        or len(set(final_fingerprints)) != len(final_fingerprints)
+        or len(set(restart_fingerprints)) != len(restart_fingerprints)
+        or matrix.get("fingerprint") != _canonical_digest(payload)
+    ):
+        raise LedgerError("reconciliation_scenario_matrix_invalid")
+
+
+def reconciliation_scenario_bundle_to_dict(
+    observations: Mapping[str, ReconciliationScenarioObservation],
+) -> dict[str, Any]:
+    build_reconciliation_scenario_matrix(observations)
+    return {
+        "schema_version": RECONCILIATION_PRIVATE_BUNDLE_SCHEMA_VERSION,
+        "scenarios": {
+            scenario: {
+                "interrupted": observations[scenario].interrupted.to_dict(),
+                "blocked_restart": observations[scenario].blocked_restart.to_dict(),
+                "reconciliation_result": (
+                    observations[scenario].reconciliation_result.to_dict()
+                ),
+                "post_reconciliation": (
+                    observations[scenario].post_reconciliation.to_dict()
+                ),
+                "final_restart": observations[scenario].final_restart.to_dict(),
+            }
+            for scenario in REQUIRED_RECONCILIATION_SCENARIOS
+        },
+    }
+
+
+def load_reconciliation_scenario_bundle(
+    payload: Mapping[str, Any],
+) -> dict[str, ReconciliationScenarioObservation]:
+    snapshot_keys = {
+        "interrupted",
+        "blocked_restart",
+        "reconciliation_result",
+        "post_reconciliation",
+        "final_restart",
+    }
+    if not (
+        isinstance(payload, Mapping)
+        and set(payload) == {"schema_version", "scenarios"}
+        and payload.get("schema_version")
+        == RECONCILIATION_PRIVATE_BUNDLE_SCHEMA_VERSION
+        and isinstance(payload.get("scenarios"), Mapping)
+        and set(payload["scenarios"]) == set(REQUIRED_RECONCILIATION_SCENARIOS)
+    ):
+        raise LedgerError("reconciliation_private_bundle_invalid")
+    observations: dict[str, ReconciliationScenarioObservation] = {}
+    for scenario in REQUIRED_RECONCILIATION_SCENARIOS:
+        row = payload["scenarios"][scenario]
+        if not (
+            isinstance(row, Mapping)
+            and set(row) == snapshot_keys
+            and all(isinstance(row.get(key), Mapping) for key in snapshot_keys)
+        ):
+            raise LedgerError("reconciliation_private_bundle_invalid")
+        observations[scenario] = ReconciliationScenarioObservation(
+            interrupted=RunLedger.from_dict(row["interrupted"]),
+            blocked_restart=RunLedger.from_dict(row["blocked_restart"]),
+            reconciliation_result=RunLedger.from_dict(
+                row["reconciliation_result"]
+            ),
+            post_reconciliation=RunLedger.from_dict(row["post_reconciliation"]),
+            final_restart=RunLedger.from_dict(row["final_restart"]),
+        )
+    build_reconciliation_scenario_matrix(observations)
+    return observations
 
 
 def build_contract_summary(
@@ -2173,6 +2726,7 @@ def build_contract_summary(
     ledger: RunLedger,
     implementation_evidence: ImplementationEvidence,
     failure_budget_scenario_matrix: Mapping[str, Any],
+    reconciliation_scenario_matrix: Mapping[str, Any],
     focused_tests_passed: bool,
     full_non_e2e_passed: bool,
     owner_acceptance: OwnerAcceptanceEvidence | None = None,
@@ -2184,6 +2738,7 @@ def build_contract_summary(
     ledger.validate()
     implementation_evidence.validate()
     validate_failure_budget_scenario_matrix(failure_budget_scenario_matrix)
+    validate_reconciliation_scenario_matrix(reconciliation_scenario_matrix)
     scenario_rows = failure_budget_scenario_matrix["scenarios"]
     failure_scenario_matrix_completed = (
         failure_budget_scenario_matrix["scenario_count"]
@@ -2192,6 +2747,16 @@ def build_contract_summary(
             row["status"] == "completed"
             and all(assertion is True for assertion in row["assertions"].values())
             for row in scenario_rows
+        )
+    )
+    reconciliation_rows = reconciliation_scenario_matrix["scenarios"]
+    reconciliation_scenario_matrix_completed = (
+        reconciliation_scenario_matrix["scenario_count"]
+        == len(REQUIRED_RECONCILIATION_SCENARIOS)
+        and all(
+            row["status"] == "completed"
+            and all(assertion is True for assertion in row["assertions"].values())
+            for row in reconciliation_rows
         )
     )
     if not isinstance(focused_tests_passed, bool) or not isinstance(
@@ -2267,7 +2832,7 @@ def build_contract_summary(
                     "python_identity_match",
                     "database_identity_explicit",
                     "database_path_new_and_contained",
-                    "source_root_explicit_and_contained",
+                    "synthetic_source_scope_explicit_and_contained",
                     "storage_root_explicit_and_contained",
                     "source_storage_non_overlapping",
                     "database_source_storage_pairwise_disjoint",
@@ -2309,13 +2874,8 @@ def build_contract_summary(
             },
         ),
         "interrupted_mutation_reconciliation": (
-            ledger.reconciliation_required_count == 0,
-            {
-                "reconciliation_required_count": (
-                    ledger.reconciliation_required_count
-                ),
-                "recovery_count": ledger.recovery_count,
-            },
+            reconciliation_scenario_matrix_completed,
+            dict(reconciliation_scenario_matrix),
         ),
         "failure_budget_and_manual_stop": (
             failure_scenario_matrix_completed,
@@ -2346,7 +2906,7 @@ def build_contract_summary(
         stage for stage in REQUIRED_EXECUTED_STAGES if stage not in executed_stages
     ]
 
-    return {
+    summary = {
         "phase": "SCV2-FL1-P1",
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
@@ -2442,5 +3002,27 @@ def build_contract_summary(
         },
         "operation_evidence": operation_evidence,
         "operation_counts": operation_counts,
-        "public_redaction": {"passed": True, "private_paths_emitted": False},
+        "public_redaction": {
+            "passed": False,
+            "private_paths_emitted": False,
+            "finding_count": 0,
+        },
     }
+    from scripts.phase_contracts.contract_checks import scan_public_payload
+
+    redaction_findings = scan_public_payload(summary)
+    summary["public_redaction"] = {
+        "passed": not redaction_findings,
+        "private_paths_emitted": any(
+            finding.get("code")
+            in {
+                "windows_local_path",
+                "unc_local_path",
+                "file_uri",
+                "posix_private_path",
+            }
+            for finding in redaction_findings
+        ),
+        "finding_count": len(redaction_findings),
+    }
+    return summary

@@ -322,7 +322,7 @@ CONTRACTS: dict[str, PhaseContract] = {
         ),
         required_validation_commands=(
             "python -m pytest tests/test_scv2_fl1_p1_foundation.py tests/test_phase_contracts.py",
-            "python scripts/check_phase_contract.py --contract scv2_fl1_isolated_full_library_dev_test_contract_v1 --summary <synthetic-summary>",
+            "python scripts/check_phase_contract.py --contract scv2_fl1_isolated_full_library_dev_test_contract_v1 --summary <public-summary> --repo-root <trusted-repo> --runtime-ledger <private-main-ledger> --failure-budget-scenarios <private-failure-budget-bundle> --reconciliation-scenarios <private-reconciliation-bundle>",
             "python -m pytest tests/",
         ),
         db_write_policy="no_existing_database_connection_or_write_synthetic_path_identity_only",

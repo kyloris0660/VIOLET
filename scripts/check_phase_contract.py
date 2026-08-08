@@ -34,6 +34,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--runtime-ledger",
         help="Private RunLedger JSON used to verify public operation attribution.",
     )
+    parser.add_argument(
+        "--failure-budget-scenarios",
+        help="Private failure-budget before/after RunLedger bundle.",
+    )
+    parser.add_argument(
+        "--reconciliation-scenarios",
+        help="Private interrupted/restart/reconciliation RunLedger bundle.",
+    )
     parser.add_argument("--list-contracts", action="store_true", help="List registered contracts as JSON and exit.")
     parser.add_argument("--explain", action="store_true", help="Include contract metadata in output.")
     return parser
@@ -99,31 +107,48 @@ def main(argv: list[str] | None = None) -> int:
             summary = {**summary, "public_markdown_text": markdown_path.read_text(encoding="utf-8")}
 
     repository_context = None
-    if args.repo_root or args.runtime_ledger:
+    if (
+        args.repo_root
+        or args.runtime_ledger
+        or args.failure_budget_scenarios
+        or args.reconciliation_scenarios
+    ):
         if not args.repo_root:
-            parser.error("--runtime-ledger requires --repo-root")
-        runtime_ledger = None
-        if args.runtime_ledger:
+            parser.error("private evidence options require --repo-root")
+
+        def load_private_json(path: str | None, label: str) -> object | None:
+            if not path:
+                return None
             try:
-                runtime_ledger = json.loads(
-                    Path(args.runtime_ledger).read_text(encoding="utf-8")
-                )
+                return json.loads(Path(path).read_text(encoding="utf-8"))
             except Exception as exc:
                 print(
                     json.dumps(
                         {
                             "contract_id": args.contract,
                             "passed": False,
-                            "error": f"runtime_ledger_unreadable:{exc}",
+                            "error": f"{label}_unreadable:{type(exc).__name__}",
                         },
                         indent=2,
                         sort_keys=True,
                     )
                 )
-                return 2
+                raise SystemExit(2) from exc
+
+        runtime_ledger = load_private_json(args.runtime_ledger, "runtime_ledger")
+        failure_budget_scenarios = load_private_json(
+            args.failure_budget_scenarios,
+            "failure_budget_scenarios",
+        )
+        reconciliation_scenarios = load_private_json(
+            args.reconciliation_scenarios,
+            "reconciliation_scenarios",
+        )
         repository_context = ContractRepositoryContext(
             repo_root=Path(args.repo_root).resolve(),
             runtime_ledger=runtime_ledger,
+            failure_budget_scenario_bundle=failure_budget_scenarios,
+            reconciliation_scenario_bundle=reconciliation_scenarios,
         )
 
     result = check_phase_contract(
