@@ -7,15 +7,15 @@
   "pr_number": 141,
   "draft": true,
   "accepted_mainline_base": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
-  "implementation_evidence_head": "9e2d25d0f6710110acc72f73d7d3a62eda11e7ae",
-  "current_status": "implementation_ready_for_owner_audit",
-  "target_met": false,
-  "safe_to_merge": false,
-  "route_approved": false,
-  "route_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
+  "implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
+  "current_status": "fl1_p1_owner_accepted_for_merge",
+  "target_met": true,
+  "safe_to_merge": true,
+  "route_approved": true,
+  "route_scope": "FL1-I1 read-only inventory planning and synthetic implementation only",
   "planning_approved": true,
   "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
-  "manual_acceptance_status": "pending_owner_audit",
+  "manual_acceptance_status": "owner_accepted_fl1_p1_foundation",
   "next_phase_started": true,
   "prior_phase_acceptance": {
     "phase_id": "SCV2-SV1B",
@@ -37,8 +37,9 @@
     "planning_only": false,
     "implementation_authorized": true,
     "implementation_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
+    "completed_implementation_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
     "implementation_completed": true,
-    "owner_audit_pending": true,
+    "owner_audit_pending": false,
     "data_execution_authorized": false,
     "production_authorized": false,
     "database_access_authorized": false,
@@ -81,14 +82,14 @@
     },
     {
       "id": "fl1_p1_isolation_safety_contract_ledger_implementation",
-      "result": "implementation_ready_for_owner_audit",
-      "fingerprint": "9e2d25d0f6710110acc72f73d7d3a62eda11e7ae"
+      "result": "owner_accepted_for_merge_after_bounded_ledger_remediation",
+      "fingerprint": "3a7b20608724e5f469548183df0830b09d5ea7be"
     }
   ],
   "active_blocker": {
-    "code": "pending_owner_audit",
-    "scope": "SCV2-FL1-P1 implementation on Draft PR #141",
-    "resolution": "The owner must audit the isolation, default-deny mutation, executable contract, and restartable ledger implementation. The Draft PR must not become Ready or merge, and no inventory, existing-database, source-root, production, provider, LLM, media, classification/tagging, Stable Replay, graph/search, localization, or truth operation may start."
+    "code": "none_fl1_p1_owner_accepted_for_merge",
+    "scope": "SCV2-FL1-P1 closeout on PR #141 and the separate FL1-I1 implementation route",
+    "resolution": "The owner audit accepted the P1 safety foundation after bounded remediation of content-level deduplication, per-item versus global failure budgets, and interrupted-mutation reconciliation. PR #141 may become Ready and squash-merge after live review gates pass. After merge, only a separate FL1-I1 planning and synthetic implementation PR may start; real source inventory and all data or external execution remain unauthorized."
   },
   "owner_decisions": [
     {
@@ -102,12 +103,16 @@
     {
       "id": "owner_approved_fl1_plan_for_p1_implementation_only_20260808",
       "decision": "Approve the SCV2-FL1 plan at db90457d51a39b5dc930afc2a92a6ef3139a2760, authorize minimal PR #140 closeout and squash merge, then authorize only a separate FL1-P1 isolation/safety/contract/ledger implementation PR. Preserve the SV1B 37 PASS and B01/B04/B08 owner-waived decisions without extending the waiver to FL1."
+    },
+    {
+      "id": "owner_accepted_fl1_p1_after_bounded_audit_remediation_20260808",
+      "decision": "Audit and accept the FL1-P1 foundation at 3a7b20608724e5f469548183df0830b09d5ea7be after the three ledger-semantic blockers were corrected; authorize PR #141 Ready transition and squash merge after live gates pass, then authorize only a separate FL1-I1 read-only inventory planning and synthetic implementation PR. Real source scanning still requires an exact later source-scope authorization."
     }
   ],
   "authorized_operations": [
-    "owner audit and code review of Draft PR #141 and its public-safe contract evidence",
-    "local focused and full non-E2E validation using only synthetic, in-memory, or newly created temporary fixtures",
-    "bounded review-driven corrections on this Draft PR after explicit owner direction without data or external execution"
+    "tracked owner-acceptance closeout, Ready transition, and squash merge of PR #141 after all live review and merge gates pass",
+    "after the confirmed PR #141 merge, create a separate FL1-I1 Draft PR for read-only inventory planning and synthetic implementation only",
+    "local focused and full non-E2E validation using only synthetic, in-memory, or newly created temporary fixtures"
   ],
   "forbidden_operations": [
     "existing database creation, connection, comparison, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair",
@@ -117,7 +122,7 @@
     "full-library import, classification, AI tagging, localization, graph/search execution, or background worker start",
     "Entity, EntityAlias, confirmed assignment, user truth, source truth, or provider-derived media_tags write",
     "Stable Replay or authoritative evidence import, replay, or reuse",
-    "Ready transition, merge, direct main push, force-push, or any FL1 stage beyond owner audit of the FL1-P1 implementation"
+    "real source inventory execution, direct main push, force-push, or any FL1 stage beyond a separate FL1-I1 planning and synthetic implementation PR"
   ],
   "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
   "protected_evidence": {
@@ -127,7 +132,8 @@
     "production_consumed_or_modified_during_fl1_p1": false,
     "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
     "fl1_plan_merge_commit": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
-    "fl1_p1_implementation_evidence_head": "9e2d25d0f6710110acc72f73d7d3a62eda11e7ae",
+    "fl1_p1_implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
+    "fl1_p1_owner_acceptance_identity": "owner_accepted_fl1_p1_after_bounded_audit_remediation_20260808",
     "database_operation_count": 0,
     "existing_database_read_operation_count": 0,
     "existing_database_write_operation_count": 0,
@@ -137,7 +143,7 @@
     "media_or_thumbnail_operation_count": 0,
     "stable_replay_operation_count": 0
   },
-  "next_required_checkpoint": "owner_audit_of_draft_pr_141_fl1_p1_implementation",
+  "next_required_checkpoint": "squash_merge_pr_141_then_create_separate_fl1_i1_planning_and_synthetic_implementation_branch",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -207,5 +213,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-08T12:02:32+08:00"
+  "updated_at": "2026-08-08T11:56:44+07:00"
 }

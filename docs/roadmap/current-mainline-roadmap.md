@@ -29,16 +29,16 @@ does not become a creator-identity or scale-up policy.
 Draft PR #141. Its fact source is `docs/state/current-phase.json` and its plan is
 `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
-Current executable state:
+Current owner-accepted closeout state:
 
-- `status=implementation_ready_for_owner_audit`
-- `target_met=false`
-- `safe_to_merge=false`
-- `route_approved=false`
-- `route_scope=FL1-P1 isolation/safety/contract/ledger implementation only`
-- `manual_acceptance_status=pending_owner_audit`
+- `status=fl1_p1_owner_accepted_for_merge`
+- `target_met=true`
+- `safe_to_merge=true`
+- `route_approved=true`
+- `route_scope=FL1-I1 read-only inventory planning and synthetic implementation only`
+- `manual_acceptance_status=owner_accepted_fl1_p1_foundation`
 - `next_phase_started=true`
-- blocker: `pending_owner_audit`
+- blocker: `none_fl1_p1_owner_accepted_for_merge`
 
 P1 has implemented the synthetic-only safety, contract, and ledger foundation;
 no data execution has started. It does not authorize production, real
@@ -49,10 +49,10 @@ Stable Replay, localization, graph/search, Entity/truth, or provider-derived
 
 ## Proposed Delivery Sequence
 
-1. Owner audits Draft PR #141; it remains not safe to merge.
-2. Any review-driven correction stays inside P1 safety/ledger scope.
-3. A read-only inventory dry run requires a separate exact authorization and
-   ends at an owner checkpoint.
+1. Pass live review gates and squash-merge owner-accepted PR #141.
+2. Start a separate FL1-I1 planning and synthetic implementation Draft PR.
+3. A real read-only inventory dry run requires separate exact source-scope
+   authorization and ends at an owner checkpoint.
 4. Bounded Dev/Test import and local classification/AI tagging may occur only
    after inventory evidence and an executable contract pass.
 5. A representative manual-acceptance sample precedes any scale expansion.

@@ -52,21 +52,22 @@ authorize FL1 behavior, scale, production, or truth promotion.
 PR #140 merged the approved plan into `origin/main` at
 `9ce1128be643c0eaa998ccdff8890d76196ce7db`. `SCV2-FL1-P1: Dev/Test Isolation,
 Contract, And Ledger Foundations` is now the current implementation phase on
-Draft PR #141. Its implementation evidence is
-`9e2d25d0f6710110acc72f73d7d3a62eda11e7ae`, and its stop state is:
+Draft PR #141. Its owner-accepted implementation evidence is
+`3a7b20608724e5f469548183df0830b09d5ea7be`, and its closeout state is:
 
-- `status=implementation_ready_for_owner_audit`
-- `target_met=false`
-- `safe_to_merge=false`
-- `route_approved=false`
-- `route_scope=FL1-P1 isolation/safety/contract/ledger implementation only`
-- `manual_acceptance_status=pending_owner_audit`
+- `status=fl1_p1_owner_accepted_for_merge`
+- `target_met=true`
+- `safe_to_merge=true`
+- `route_approved=true`
+- `route_scope=FL1-I1 read-only inventory planning and synthetic implementation only`
+- `manual_acceptance_status=owner_accepted_fl1_p1_foundation`
 - `next_phase_started=true`
-- blocker: `pending_owner_audit`
+- blocker: `none_fl1_p1_owner_accepted_for_merge`
 
-The documentation-state checker binds the accepted plan merge, P1 implementation
-evidence, generated handoff, Draft PR, public-safe durable links, and the exact
-zero-data/external authorization boundary.
+The documentation-state checker binds the accepted plan merge, owner-accepted P1
+implementation evidence, generated handoff, public-safe durable links, and the
+exact zero-data/external authorization boundary. Ready and squash merge are
+allowed only after live review gates pass.
 
 `scv2_fl1_isolated_full_library_dev_test_contract_v1` is registered for this P1
 slice. Its standard-library implementation requires explicit test/development,
@@ -87,6 +88,9 @@ existing database access, import, classification or AI tagging,
 provider/Pixiv/gallery-dl/LLM/media/thumbnail request, Stable Replay/evidence
 reuse, localization or graph/search derivation, or
 Entity/truth/provider-derived `media_tags` write is authorized or performed.
+After P1 merges, only a separate FL1-I1 planning and synthetic implementation
+PR may start. Real source-root access or inventory still requires a later exact
+source-scope authorization.
 
 Three deferred use-before gates do not block P1 owner audit and do not authorize
 current remediation: `PROVIDER_GATE` before any provider request,

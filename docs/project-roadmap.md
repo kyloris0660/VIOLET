@@ -30,8 +30,10 @@ source-root access or inventory, import, classification, AI tagging,
 provider/LLM/media request, Stable Replay, localization, graph/search
 derivation, or Entity/truth promotion.
 
-The current blocker is `pending_owner_audit`; PR #141 must remain Draft and is
-not safe to merge.
+The P1 owner audit is complete at
+`3a7b20608724e5f469548183df0830b09d5ea7be`; PR #141 may become Ready and
+squash-merge after live review gates pass. This authorizes only a later,
+separate FL1-I1 planning and synthetic implementation PR, not real inventory.
 
 ## Accepted Mainline Sequence
 
@@ -52,10 +54,10 @@ roadmap intentionally does not duplicate their execution accounting.
 
 ## Proposed FL1 Route
 
-1. Owner audits Draft PR #141 and decides whether its P1 implementation may be
-   revised or later prepared for merge.
-2. Keep inventory and every data/external operation blocked during P1 audit.
-3. Stop at a read-only inventory checkpoint for a distinct owner authorization.
+1. Pass the live review gates and squash-merge owner-accepted PR #141.
+2. Start a separate FL1-I1 planning and synthetic implementation Draft PR while
+   keeping every real data/external operation blocked.
+3. Stop before any real source scan for exact source-scope authorization.
 4. If separately approved, execute only bounded Dev/Test import and local
    classification/AI-tagging stages under exact mutation allowlists and failure
    budgets.

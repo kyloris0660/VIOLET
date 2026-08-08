@@ -500,6 +500,7 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
         "safe_to_merge": False,
         "route_approved": False,
         "active_blockers": ["pending_owner_audit"],
+        "owner_acceptance_identity": None,
     }
     assert all(value == 0 for value in summary["operation_counts"].values())
     assert summary["environment_isolation"]["synthetic_only"] is True
@@ -511,6 +512,25 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
     result = check_phase_contract(contract.contract_id, summary)
     assert contract.phase_kind == "scv2_fl1_p1_isolation_safety_ledger_foundation"
     assert result.passed is True
+
+    accepted = build_contract_summary(
+        isolation=proof,
+        ledger=store.load(),
+        focused_tests_passed=True,
+        full_non_e2e_passed=True,
+        owner_acceptance_identity="owner_accepted_fl1_p1_20260808",
+    )
+    accepted_result = check_phase_contract(contract.contract_id, accepted)
+    assert accepted_result.passed is True
+    assert accepted["pipeline_contract"] == {
+        "contract_id": "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        "status": "owner_accepted_for_merge",
+        "target_met": True,
+        "safe_to_merge": True,
+        "route_approved": True,
+        "active_blockers": [],
+        "owner_acceptance_identity": "owner_accepted_fl1_p1_20260808",
+    }
 
     invalid_authorization = copy.deepcopy(summary)
     invalid_authorization["authorization"]["production_authorized"] = True

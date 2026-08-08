@@ -37,9 +37,9 @@ def test_current_phase_schema_and_fl1_p1_boundary_are_consistent() -> None:
     assert state["draft"] is True
     assert state["pr_number"] is None or state["pr_number"] > 0
     assert state["current_status"] == documentation_state.FL1_STATUS
-    assert state["target_met"] is False
-    assert state["safe_to_merge"] is False
-    assert state["route_approved"] is False
+    assert state["target_met"] is True
+    assert state["safe_to_merge"] is True
+    assert state["route_approved"] is True
     assert state["route_scope"] == documentation_state.FL1_ROUTE_SCOPE
     assert state["planning_approved"] is True
     assert state["approved_planning_head"] == documentation_state.FL1_APPROVED_PLANNING_HEAD
@@ -49,9 +49,10 @@ def test_current_phase_schema_and_fl1_p1_boundary_are_consistent() -> None:
     assert state["planning_boundary"] == {
         "planning_only": False,
         "implementation_authorized": True,
-        "implementation_scope": documentation_state.FL1_ROUTE_SCOPE,
+        "implementation_scope": documentation_state.FL1_COMPLETED_SCOPE,
+        "completed_implementation_scope": documentation_state.FL1_COMPLETED_SCOPE,
         "implementation_completed": True,
-        "owner_audit_pending": True,
+        "owner_audit_pending": False,
         "data_execution_authorized": False,
         "production_authorized": False,
         "database_access_authorized": False,
@@ -216,11 +217,11 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("current_status", "fl1_plan_approved_for_implementation_only"),
-        ("target_met", True),
-        ("safe_to_merge", True),
-        ("route_approved", True),
-        ("manual_acceptance_status", "owner_plan_approved_for_implementation_only"),
+        ("current_status", "implementation_ready_for_owner_audit"),
+        ("target_met", False),
+        ("safe_to_merge", False),
+        ("route_approved", False),
+        ("manual_acceptance_status", "pending_owner_audit"),
         ("next_phase_started", False),
     ],
 )
@@ -240,6 +241,8 @@ def test_fl1_p1_status_conflicts_fail_closed(field: str, value: object) -> None:
     [
         ("planning_only", True),
         ("implementation_authorized", False),
+        ("completed_implementation_scope", "unknown"),
+        ("owner_audit_pending", True),
         ("data_execution_authorized", True),
         ("production_authorized", True),
         ("database_access_authorized", True),

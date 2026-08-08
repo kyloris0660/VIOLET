@@ -1043,18 +1043,30 @@ def build_contract_summary(
     ledger: RunLedger,
     focused_tests_passed: bool,
     full_non_e2e_passed: bool,
+    owner_acceptance_identity: str | None = None,
 ) -> dict[str, Any]:
     """Build a public-safe P1 audit summary from actual foundation evidence."""
+
+    if owner_acceptance_identity is not None and not SAFE_IDENTITY_RE.fullmatch(
+        owner_acceptance_identity
+    ):
+        raise LedgerError("owner_acceptance_identity_invalid")
+    owner_accepted = owner_acceptance_identity is not None
 
     return {
         "phase": "SCV2-FL1-P1",
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
-            "status": "implementation_ready_for_owner_audit",
-            "target_met": False,
-            "safe_to_merge": False,
-            "route_approved": False,
-            "active_blockers": ["pending_owner_audit"],
+            "status": (
+                "owner_accepted_for_merge"
+                if owner_accepted
+                else "implementation_ready_for_owner_audit"
+            ),
+            "target_met": owner_accepted,
+            "safe_to_merge": owner_accepted,
+            "route_approved": owner_accepted,
+            "active_blockers": [] if owner_accepted else ["pending_owner_audit"],
+            "owner_acceptance_identity": owner_acceptance_identity,
         },
         "authorization": {
             "production_authorized": False,

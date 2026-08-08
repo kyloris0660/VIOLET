@@ -203,6 +203,7 @@ SV1B_OWNER_ACCEPTANCE_CLOSEOUT_STATUSES: tuple[str, ...] = (
 SCV2_FL1_P1_FOUNDATION_STATUSES: tuple[str, ...] = (
     "blocked_fl1_p1_foundation",
     "implementation_ready_for_owner_audit",
+    "owner_accepted_for_merge",
 )
 
 REQUIRED_CONTRACT_IDS: tuple[str, ...] = (
@@ -324,7 +325,7 @@ CONTRACTS: dict[str, PhaseContract] = {
         redaction_policy="public_safe_booleans_counts_and_safe_identities_only",
         review_pack_policy="not_required_for_p1_owner_code_audit",
         artifact_lifecycle_policy="synthetic_temp_or_repo_local_ignored_only",
-        route_decision_policy="pending_owner_audit_no_downstream_route",
+        route_decision_policy="owner_accepted_merge_then_separate_fl1_i1_planning_and_synthetic_implementation_only",
         failure_behavior="fail_closed_before_mutation_on_any_unknown_identity_containment_or_ledger_state",
         custom_checks=("scv2_fl1_p1_foundation",),
         description="Registers the synthetic-only FL1-P1 isolation, default-deny mutation, content-deduplicated stable identity, fail-closed interrupted-mutation reconciliation, and restartable ledger foundation without data execution.",

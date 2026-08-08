@@ -13059,17 +13059,34 @@ def _check_scv2_fl1_p1_foundation(
         )
 
     blockers = list(_get(summary, "pipeline_contract.active_blockers", []) or [])
-    if (
-        not isinstance(pipeline, Mapping)
-        or pipeline.get("contract_id") != contract.contract_id
-        or pipeline.get("target_met") is not False
-        or pipeline.get("safe_to_merge") is not False
-        or pipeline.get("route_approved") is not False
-        or not blockers
-    ):
+    owner_accepted = status == "owner_accepted_for_merge"
+    common_claim_valid = (
+        isinstance(pipeline, Mapping)
+        and pipeline.get("contract_id") == contract.contract_id
+    )
+    if owner_accepted:
+        claim_valid = (
+            common_claim_valid
+            and pipeline.get("target_met") is True
+            and pipeline.get("safe_to_merge") is True
+            and pipeline.get("route_approved") is True
+            and blockers == []
+            and isinstance(pipeline.get("owner_acceptance_identity"), str)
+            and bool(str(pipeline.get("owner_acceptance_identity")).strip())
+        )
+    else:
+        claim_valid = (
+            common_claim_valid
+            and pipeline.get("target_met") is False
+            and pipeline.get("safe_to_merge") is False
+            and pipeline.get("route_approved") is False
+            and bool(blockers)
+            and pipeline.get("owner_acceptance_identity") is None
+        )
+    if not claim_valid:
         result.fail(
             "fl1_p1_claim_invalid",
-            "FL1-P1 must remain target_met=false, safe_to_merge=false, route_approved=false, and blocked at an explicit owner or safety checkpoint.",
+            "FL1-P1 must either remain fail-closed at an explicit checkpoint or carry an exact owner-accepted merge claim with no blockers.",
             path="pipeline_contract",
         )
     if status == "implementation_ready_for_owner_audit" and blockers != [
