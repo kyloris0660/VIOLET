@@ -23,6 +23,7 @@ CONTRACT_ID = "scv2_fl1_isolated_full_library_dev_test_contract_v1"
 LEDGER_SCHEMA_VERSION = "violet.scv2-fl1-p1-ledger.v1"
 ITEM_IDENTITY_VERSION = "violet.scv2-fl1-item.v1"
 LOGICAL_TARGET_IDENTITY_VERSION = "violet.scv2-fl1-logical-target.v1"
+OPERATION_EVIDENCE_SCHEMA_VERSION = "violet.scv2-fl1-p1-operation-evidence.v1"
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 SAFE_IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -43,6 +44,16 @@ class MutationDenied(FL1FoundationError):
 
 class LedgerError(FL1FoundationError):
     """Raised when ledger identity, schema, or restart state is invalid."""
+
+
+class MutationNotCommittedError(FL1FoundationError):
+    """Explicit caller evidence that a failed attempt made no durable mutation."""
+
+    def __init__(self, error_code: str = "mutation_not_committed"):
+        if not SAFE_IDENTITY_RE.fullmatch(error_code):
+            raise ValueError("mutation_not_committed_error_code_invalid")
+        super().__init__(error_code)
+        self.error_code = error_code
 
 
 class EnvironmentIdentity(str, Enum):
@@ -66,6 +77,107 @@ class InterruptedMutationOutcome(str, Enum):
     COMMITTED = "committed"
     NOT_COMMITTED = "not_committed"
     UNKNOWN = "unknown"
+
+
+class OperationKind(str, Enum):
+    PRODUCTION_ACTIVITY = "production_activity"
+    REAL_SOURCE_INVENTORY_ACTIVITY = "real_source_inventory_activity"
+    EXISTING_DATABASE_READ_ACTIVITY = "existing_database_read_activity"
+    EXISTING_DATABASE_WRITE_ACTIVITY = "existing_database_write_activity"
+    PROVIDER_ACTIVITY = "provider_activity"
+    LLM_ACTIVITY = "llm_activity"
+    MEDIA_ACTIVITY = "media_activity"
+    STABLE_REPLAY_ACTIVITY = "stable_replay_activity"
+    USER_DATA_CLEANUP_DELETE_ACTIVITY = "user_data_cleanup_delete_activity"
+
+
+REQUIRED_EXECUTED_STAGES: tuple[str, ...] = (
+    "environment_isolation_preflight",
+    "mutation_default_deny",
+    "stable_inventory_identity",
+    "restartable_item_ledger",
+    "interrupted_mutation_reconciliation",
+    "failure_budget_and_manual_stop",
+)
+
+
+@dataclass(frozen=True)
+class OperationEvidence:
+    """Category-only event ledger used to derive forbidden-operation counts."""
+
+    events: tuple[OperationKind, ...]
+
+    @classmethod
+    def from_events(cls, events: Sequence[OperationKind | str]) -> "OperationEvidence":
+        try:
+            normalized = tuple(OperationKind(event) for event in events)
+        except (TypeError, ValueError) as exc:
+            raise LedgerError("operation_evidence_event_invalid") from exc
+        evidence = cls(events=normalized)
+        evidence.validate()
+        return evidence
+
+    def validate(self) -> None:
+        if any(not isinstance(event, OperationKind) for event in self.events):
+            raise LedgerError("operation_evidence_event_invalid")
+
+    @property
+    def counts(self) -> dict[str, int]:
+        self.validate()
+        return {
+            kind.value: sum(event is kind for event in self.events)
+            for kind in OperationKind
+        }
+
+    @property
+    def fingerprint(self) -> str:
+        payload = {
+            "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
+            "events": [event.value for event in self.events],
+        }
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+
+    def to_public_dict(self) -> dict[str, Any]:
+        self.validate()
+        return {
+            "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
+            "events": [event.value for event in self.events],
+            "event_count": len(self.events),
+            "fingerprint": self.fingerprint,
+        }
+
+
+@dataclass(frozen=True)
+class OwnerAcceptanceEvidence:
+    """Owner decision bound to the exact reviewed and validated Git tree."""
+
+    identity: str
+    reviewed_commit: str
+    reviewed_tree: str
+    validated_tree: str
+
+    def validate(self) -> None:
+        if not SAFE_IDENTITY_RE.fullmatch(self.identity):
+            raise LedgerError("owner_acceptance_identity_invalid")
+        if not HEX40_RE.fullmatch(self.reviewed_commit):
+            raise LedgerError("owner_acceptance_reviewed_commit_invalid")
+        if not HEX40_RE.fullmatch(self.reviewed_tree) or not HEX40_RE.fullmatch(
+            self.validated_tree
+        ):
+            raise LedgerError("owner_acceptance_tree_identity_invalid")
+        if self.reviewed_tree != self.validated_tree:
+            raise LedgerError("owner_acceptance_tree_mismatch")
+
+    def to_public_dict(self) -> dict[str, str]:
+        self.validate()
+        return {
+            "identity": self.identity,
+            "reviewed_commit": self.reviewed_commit,
+            "reviewed_tree": self.reviewed_tree,
+            "validated_tree": self.validated_tree,
+        }
 
 
 def _strict_int(value: Any, error_code: str) -> int:
@@ -220,6 +332,8 @@ def validate_isolation(config: IsolationConfig) -> IsolationProof:
         raise IsolationError("database_path_identity_mismatch")
     if any(_paths_overlap(database_path, forbidden) for forbidden in forbidden_roots):
         raise IsolationError("database_path_overlaps_forbidden_root")
+    if any(_paths_overlap(database_path, root) for root in (source_root, storage_root)):
+        raise IsolationError("database_path_overlaps_source_or_storage_root")
 
     return IsolationProof(
         environment=environment.value,
@@ -249,7 +363,7 @@ ALWAYS_FORBIDDEN_OPERATION_PREFIXES = (
 
 @dataclass(frozen=True)
 class MutationPolicy:
-    environment: EnvironmentIdentity
+    environment: EnvironmentIdentity | str
     allowed_root: Path
     forbidden_roots: tuple[Path, ...]
     allowed_operations: frozenset[str] = frozenset()
@@ -269,7 +383,11 @@ class MutationPolicy:
     def assert_allowed(self, operation: str, target: Path) -> None:
         """Deny by default and reject dangerous surfaces even if mis-allowlisted."""
 
-        if self.environment is EnvironmentIdentity.PRODUCTION:
+        try:
+            environment = EnvironmentIdentity(self.environment)
+        except (TypeError, ValueError) as exc:
+            raise MutationDenied("unknown_environment_identity") from exc
+        if environment is EnvironmentIdentity.PRODUCTION:
             raise MutationDenied("production_mutation_rejected")
         normalized_operation = operation.strip().casefold()
         if not normalized_operation or normalized_operation.startswith(
@@ -429,6 +547,19 @@ class RunLedger:
     @property
     def repeated_manifest_entry_count(self) -> int:
         return len(self.manifest_entry_ids) - self.source_item_count
+
+    @property
+    def duplicate_second_mutation_count(self) -> int:
+        mutations_by_logical_target: dict[str, int] = {}
+        for record in self.items.values():
+            mutations_by_logical_target[record.logical_target_id] = (
+                mutations_by_logical_target.get(record.logical_target_id, 0)
+                + record.mutation_count
+            )
+        return sum(
+            max(0, mutation_count - 1)
+            for mutation_count in mutations_by_logical_target.values()
+        )
 
     @property
     def completed(self) -> bool:
@@ -614,6 +745,7 @@ class RunLedger:
             elif record.state is ItemState.FAILED_EXHAUSTED:
                 valid = (
                     record.attempt_count >= 1
+                    and record.attempt_count >= self.max_attempts_per_item
                     and record.failure_count >= 1
                     and record.mutation_count == 0
                     and record.last_error_code is not None
@@ -638,6 +770,9 @@ class RunLedger:
                 valid = False
             if not valid:
                 raise LedgerError("item_state_accounting_invalid")
+
+        if self.duplicate_second_mutation_count:
+            raise LedgerError("logical_target_multiple_mutations")
 
         if len(in_progress_ids) > 1:
             raise LedgerError("multiple_in_progress_items")
@@ -987,14 +1122,11 @@ class FL1LedgerRunner:
 
             try:
                 mutate(item)
-            except Exception as exc:
+            except MutationNotCommittedError as exc:
                 record.failure_count += 1
                 ledger.total_failure_attempts += 1
-                record.last_error_code = type(exc).__name__
-                if (
-                    record.attempt_count >= ledger.max_attempts_per_item
-                    or ledger.total_failure_attempts >= ledger.max_failure_attempts
-                ):
+                record.last_error_code = exc.error_code
+                if record.attempt_count >= ledger.max_attempts_per_item:
                     record.state = ItemState.FAILED_EXHAUSTED
                     ledger.next_index += 1
                 else:
@@ -1003,6 +1135,15 @@ class FL1LedgerRunner:
                     ledger.failure_budget_exhausted = True
                 self.store.save(ledger)
                 break
+            except Exception as exc:
+                # An ordinary exception does not prove whether the side effect
+                # committed.  Persist IN_PROGRESS and require explicit caller
+                # reconciliation before any replay can occur.
+                record.last_error_code = "mutation_outcome_unknown_after_exception"
+                self.store.save(ledger)
+                raise LedgerError(
+                    "mutation_outcome_reconciliation_required"
+                ) from exc
 
             record.state = ItemState.SUCCEEDED
             record.mutation_count += 1
@@ -1043,15 +1184,16 @@ def build_contract_summary(
     ledger: RunLedger,
     focused_tests_passed: bool,
     full_non_e2e_passed: bool,
-    owner_acceptance_identity: str | None = None,
+    operation_evidence: OperationEvidence,
+    owner_acceptance: OwnerAcceptanceEvidence | None = None,
 ) -> dict[str, Any]:
     """Build a public-safe P1 audit summary from actual foundation evidence."""
 
-    if owner_acceptance_identity is not None and not SAFE_IDENTITY_RE.fullmatch(
-        owner_acceptance_identity
-    ):
-        raise LedgerError("owner_acceptance_identity_invalid")
-    owner_accepted = owner_acceptance_identity is not None
+    ledger.validate()
+    operation_evidence.validate()
+    if owner_acceptance is not None:
+        owner_acceptance.validate()
+    owner_accepted = owner_acceptance is not None
 
     return {
         "phase": "SCV2-FL1-P1",
@@ -1066,8 +1208,13 @@ def build_contract_summary(
             "safe_to_merge": owner_accepted,
             "route_approved": owner_accepted,
             "active_blockers": [] if owner_accepted else ["pending_owner_audit"],
-            "owner_acceptance_identity": owner_acceptance_identity,
+            "owner_acceptance_evidence": (
+                owner_acceptance.to_public_dict()
+                if owner_acceptance is not None
+                else None
+            ),
         },
+        "executed_stages": list(REQUIRED_EXECUTED_STAGES),
         "authorization": {
             "production_authorized": False,
             "real_inventory_authorized": False,
@@ -1104,9 +1251,7 @@ def build_contract_summary(
             "content_duplicate_item_count": ledger.content_duplicate_item_count,
             "repeated_manifest_entry_count": ledger.repeated_manifest_entry_count,
             "restart_recovery_count": ledger.recovery_count,
-            "duplicate_second_mutation_count": sum(
-                max(0, record.mutation_count - 1) for record in ledger.items.values()
-            ),
+            "duplicate_second_mutation_count": ledger.duplicate_second_mutation_count,
             "attempt_budget_persisted": True,
             "checkpoint_persisted": True,
             "manual_stop_persisted": True,
@@ -1131,16 +1276,7 @@ def build_contract_summary(
             "synthetic_isolation_passed": True,
             "browser_validation": "not_applicable_no_ui_or_runtime_server_change",
         },
-        "operation_counts": {
-            "production_activity": 0,
-            "real_source_inventory_activity": 0,
-            "existing_database_read_activity": 0,
-            "existing_database_write_activity": 0,
-            "provider_activity": 0,
-            "llm_activity": 0,
-            "media_activity": 0,
-            "stable_replay_activity": 0,
-            "user_data_cleanup_delete_activity": 0,
-        },
+        "operation_evidence": operation_evidence.to_public_dict(),
+        "operation_counts": operation_evidence.counts,
         "public_redaction": {"passed": True, "private_paths_emitted": False},
     }

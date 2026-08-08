@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -13061,6 +13062,29 @@ def _check_scv2_fl1_p1_foundation(
 
     blockers = list(_get(summary, "pipeline_contract.active_blockers", []) or [])
     owner_accepted = status == "owner_accepted_for_merge"
+    owner_evidence = pipeline.get("owner_acceptance_evidence") if isinstance(
+        pipeline, Mapping
+    ) else None
+    owner_evidence_valid = (
+        isinstance(owner_evidence, Mapping)
+        and isinstance(owner_evidence.get("identity"), str)
+        and re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
+            str(owner_evidence.get("identity")),
+        )
+        is not None
+        and isinstance(owner_evidence.get("reviewed_commit"), str)
+        and re.fullmatch(r"[0-9a-f]{40}", str(owner_evidence.get("reviewed_commit")))
+        is not None
+        and isinstance(owner_evidence.get("reviewed_tree"), str)
+        and re.fullmatch(r"[0-9a-f]{40}", str(owner_evidence.get("reviewed_tree")))
+        is not None
+        and isinstance(owner_evidence.get("validated_tree"), str)
+        and re.fullmatch(r"[0-9a-f]{40}", str(owner_evidence.get("validated_tree")))
+        is not None
+        and owner_evidence.get("reviewed_tree")
+        == owner_evidence.get("validated_tree")
+    )
     common_claim_valid = (
         isinstance(pipeline, Mapping)
         and pipeline.get("contract_id") == contract.contract_id
@@ -13072,8 +13096,7 @@ def _check_scv2_fl1_p1_foundation(
             and pipeline.get("safe_to_merge") is True
             and pipeline.get("route_approved") is True
             and blockers == []
-            and isinstance(pipeline.get("owner_acceptance_identity"), str)
-            and bool(str(pipeline.get("owner_acceptance_identity")).strip())
+            and owner_evidence_valid
         )
     else:
         claim_valid = (
@@ -13082,7 +13105,7 @@ def _check_scv2_fl1_p1_foundation(
             and pipeline.get("safe_to_merge") is False
             and pipeline.get("route_approved") is False
             and bool(blockers)
-            and pipeline.get("owner_acceptance_identity") is None
+            and owner_evidence is None
         )
     if not claim_valid:
         result.fail(
@@ -13099,6 +13122,18 @@ def _check_scv2_fl1_p1_foundation(
             path="pipeline_contract.active_blockers",
             expected=["pending_owner_audit"],
             actual=blockers,
+        )
+
+    executed_stages = _get(summary, "executed_stages", [])
+    if not isinstance(executed_stages, list) or executed_stages != list(
+        contract.required_stages
+    ):
+        result.fail(
+            "fl1_p1_executed_stages_invalid",
+            "FL1-P1 evidence must enumerate the exact registered stages executed by the foundation validation.",
+            path="executed_stages",
+            expected=list(contract.required_stages),
+            actual=executed_stages,
         )
 
     authorization = _get(summary, "authorization", {})
@@ -13228,7 +13263,6 @@ def _check_scv2_fl1_p1_foundation(
             path="validation",
         )
 
-    operations = _get(summary, "operation_counts", {})
     required_zero_operations = (
         "production_activity",
         "real_source_inventory_activity",
@@ -13240,8 +13274,55 @@ def _check_scv2_fl1_p1_foundation(
         "stable_replay_activity",
         "user_data_cleanup_delete_activity",
     )
-    if not isinstance(operations, Mapping) or any(
-        _as_int(operations.get(key), -1) != 0 for key in required_zero_operations
+    operation_evidence = _get(summary, "operation_evidence", {})
+    operations = _get(summary, "operation_counts", {})
+    raw_events = (
+        operation_evidence.get("events")
+        if isinstance(operation_evidence, Mapping)
+        else None
+    )
+    events_valid = isinstance(raw_events, list) and all(
+        isinstance(event, str) and event in required_zero_operations
+        for event in raw_events
+    )
+    derived_counts = (
+        {key: raw_events.count(key) for key in required_zero_operations}
+        if events_valid
+        else {}
+    )
+    evidence_payload = {
+        "schema_version": "violet.scv2-fl1-p1-operation-evidence.v1",
+        "events": raw_events if events_valid else [],
+    }
+    expected_fingerprint = hashlib.sha256(
+        json.dumps(
+            evidence_payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    operation_evidence_valid = (
+        isinstance(operation_evidence, Mapping)
+        and operation_evidence.get("schema_version")
+        == "violet.scv2-fl1-p1-operation-evidence.v1"
+        and events_valid
+        and operation_evidence.get("event_count") == len(raw_events or [])
+        and operation_evidence.get("fingerprint") == expected_fingerprint
+        and isinstance(operations, Mapping)
+        and set(operations) == set(required_zero_operations)
+        and all(
+            isinstance(operations.get(key), int)
+            and not isinstance(operations.get(key), bool)
+            and operations.get(key) == derived_counts[key]
+            for key in required_zero_operations
+        )
+    )
+    if not operation_evidence_valid:
+        result.fail(
+            "fl1_p1_operation_evidence_invalid",
+            "FL1-P1 operation counts must be derived exactly from a category-only, fingerprinted event ledger.",
+            path="operation_evidence",
+        )
+    if not operation_evidence_valid or any(
+        derived_counts.get(key, -1) != 0 for key in required_zero_operations
     ):
         result.fail(
             "fl1_p1_forbidden_activity",

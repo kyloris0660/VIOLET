@@ -20,7 +20,11 @@ from scripts.fl1_p1_foundation import (
     JsonLedgerStore,
     LedgerError,
     MutationDenied,
+    MutationNotCommittedError,
     MutationPolicy,
+    OperationEvidence,
+    OperationKind,
+    OwnerAcceptanceEvidence,
     StableInventoryItem,
     build_contract_summary,
     validate_isolation,
@@ -193,6 +197,19 @@ def test_production_or_existing_database_path_is_rejected(tmp_path: Path) -> Non
         validate_isolation(config)
 
 
+@pytest.mark.parametrize("root_key", ["source", "storage"])
+def test_database_path_cannot_overlap_source_or_storage_root(
+    tmp_path: Path, root_key: str
+) -> None:
+    paths = _layout(tmp_path)
+    database_path = paths[root_key] / "violet_fl1_test_synthetic.db"
+
+    with pytest.raises(
+        IsolationError, match="database_path_overlaps_source_or_storage_root"
+    ):
+        validate_isolation(_config(tmp_path, database_path=database_path))
+
+
 def test_explicit_config_does_not_fall_back_to_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -231,6 +248,25 @@ def test_mutation_target_must_stay_inside_allowlisted_storage(tmp_path: Path) ->
 
     with pytest.raises(MutationDenied, match="mutation_target_outside_allowed_root"):
         policy.assert_allowed("synthetic.item.process", paths["sandbox"] / "escape")
+
+
+@pytest.mark.parametrize(
+    ("environment", "error"),
+    [
+        ("production", "production_mutation_rejected"),
+        ("unknown", "unknown_environment_identity"),
+    ],
+)
+def test_mutation_policy_normalizes_string_environment_fail_closed(
+    tmp_path: Path, environment: str, error: str
+) -> None:
+    paths = _layout(tmp_path)
+    policy = replace(_policy(paths["storage"], paths["forbidden"]), environment=environment)
+
+    with pytest.raises(MutationDenied, match=error):
+        policy.assert_allowed(
+            "synthetic.item.process", paths["storage"] / "synthetic-output"
+        )
 
 
 def test_ledger_store_cannot_read_from_outside_allowlisted_storage(
@@ -349,6 +385,37 @@ def test_interrupted_post_effect_mutation_requires_reconciliation_and_is_not_rep
     assert recovered.items[item.item_id].mutation_count == 1
 
 
+def test_ordinary_exception_requires_reconciliation_before_replay(
+    tmp_path: Path,
+) -> None:
+    item = _item(108)
+    runner, store = _runner(tmp_path, [item])
+    effects: list[str] = []
+
+    def mutate_then_raise(current: StableInventoryItem) -> None:
+        effects.append(current.item_id)
+        raise RuntimeError("commit_outcome_unknown")
+
+    with pytest.raises(LedgerError, match="mutation_outcome_reconciliation_required"):
+        runner.run_next_batch(mutate_then_raise)
+
+    interrupted = store.load()
+    assert interrupted.items[item.item_id].state is ItemState.IN_PROGRESS
+    assert interrupted.items[item.item_id].failure_count == 0
+    assert interrupted.next_index == 0
+
+    with pytest.raises(LedgerError, match="interrupted_mutation_reconciliation_required"):
+        runner.run_next_batch(lambda current: effects.append(current.item_id))
+    assert effects == [item.item_id]
+
+    result = runner.run_next_batch(
+        lambda current: effects.append(current.item_id),
+        reconcile_interrupted=lambda _current: InterruptedMutationOutcome.COMMITTED,
+    )
+    assert result.completed is True
+    assert effects == [item.item_id]
+
+
 def test_attempt_and_failure_budget_stop_future_mutations(tmp_path: Path) -> None:
     item = _item(3)
     runner, store = _runner(
@@ -362,7 +429,7 @@ def test_attempt_and_failure_budget_stop_future_mutations(tmp_path: Path) -> Non
     def fail(_current: StableInventoryItem) -> None:
         nonlocal calls
         calls += 1
-        raise RuntimeError("synthetic_failure")
+        raise MutationNotCommittedError("synthetic_failure")
 
     first = runner.run_next_batch(fail)
     second = runner.run_next_batch(fail)
@@ -391,7 +458,9 @@ def test_per_item_exhaustion_does_not_consume_the_global_run_budget(
     )
 
     first = runner.run_next_batch(
-        lambda _current: (_ for _ in ()).throw(RuntimeError("synthetic_failure"))
+        lambda _current: (_ for _ in ()).throw(
+            MutationNotCommittedError("synthetic_failure")
+        )
     )
     calls: list[str] = []
     second = runner.run_next_batch(lambda current: calls.append(current.item_id))
@@ -403,6 +472,30 @@ def test_per_item_exhaustion_does_not_consume_the_global_run_budget(
     assert ledger.failure_budget_exhausted is False
     assert ledger.items[failed_item.item_id].state is ItemState.FAILED_EXHAUSTED
     assert ledger.items[later_item.item_id].state is ItemState.SUCCEEDED
+
+
+def test_global_failure_budget_stops_without_exhausting_current_item(
+    tmp_path: Path,
+) -> None:
+    item = _item(109)
+    runner, store = _runner(
+        tmp_path,
+        [item],
+        max_attempts_per_item=5,
+        max_failure_attempts=1,
+    )
+
+    result = runner.run_next_batch(
+        lambda _current: (_ for _ in ()).throw(
+            MutationNotCommittedError("synthetic_failure")
+        )
+    )
+    ledger = store.load()
+
+    assert result.stopped_for_failure_budget is True
+    assert ledger.items[item.item_id].state is ItemState.FAILED_RETRYABLE
+    assert ledger.items[item.item_id].attempt_count == 1
+    assert ledger.next_index == 0
 
 
 def test_stale_writer_cannot_overwrite_a_newer_ledger_generation(
@@ -450,6 +543,27 @@ def test_valid_json_with_mismatched_logical_target_fails_closed(
         store.load()
 
 
+def test_two_successes_for_one_logical_target_fail_closed(tmp_path: Path) -> None:
+    primary = _item(110, parent="parent-a")
+    duplicate = _item(110, parent="parent-b")
+    runner, store = _runner(tmp_path, [primary, duplicate])
+    runner.run_next_batch(lambda _current: None)
+    payload = json.loads(store.path.read_text(encoding="utf-8"))
+    duplicate_record = payload["items"][duplicate.item_id]
+    duplicate_record.update(
+        {
+            "state": "succeeded",
+            "attempt_count": 1,
+            "mutation_count": 1,
+            "duplicate_of_item_id": None,
+        }
+    )
+    store.path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(LedgerError, match="logical_target_multiple_mutations"):
+        store.load()
+
+
 def test_manual_stop_is_persisted_and_prevents_next_batch(tmp_path: Path) -> None:
     items = [_item(4), _item(5)]
     runner, store = _runner(tmp_path, items, batch_size=2)
@@ -491,6 +605,7 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
         ledger=store.load(),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
+        operation_evidence=OperationEvidence.from_events(()),
     )
 
     assert summary["pipeline_contract"] == {
@@ -500,7 +615,7 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
         "safe_to_merge": False,
         "route_approved": False,
         "active_blockers": ["pending_owner_audit"],
-        "owner_acceptance_identity": None,
+        "owner_acceptance_evidence": None,
     }
     assert all(value == 0 for value in summary["operation_counts"].values())
     assert summary["environment_isolation"]["synthetic_only"] is True
@@ -518,7 +633,13 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
         ledger=store.load(),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
-        owner_acceptance_identity="owner_accepted_fl1_p1_20260808",
+        operation_evidence=OperationEvidence.from_events(()),
+        owner_acceptance=OwnerAcceptanceEvidence(
+            identity="owner_accepted_fl1_p1_20260808",
+            reviewed_commit="a" * 40,
+            reviewed_tree="b" * 40,
+            validated_tree="b" * 40,
+        ),
     )
     accepted_result = check_phase_contract(contract.contract_id, accepted)
     assert accepted_result.passed is True
@@ -529,7 +650,12 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
         "safe_to_merge": True,
         "route_approved": True,
         "active_blockers": [],
-        "owner_acceptance_identity": "owner_accepted_fl1_p1_20260808",
+        "owner_acceptance_evidence": {
+            "identity": "owner_accepted_fl1_p1_20260808",
+            "reviewed_commit": "a" * 40,
+            "reviewed_tree": "b" * 40,
+            "validated_tree": "b" * 40,
+        },
     }
 
     invalid_authorization = copy.deepcopy(summary)
@@ -553,3 +679,50 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
     assert "fl1_p1_forbidden_activity" in {
         finding.code for finding in failed.errors
     }
+
+    missing_stage = copy.deepcopy(summary)
+    missing_stage["executed_stages"].pop()
+    failed = check_phase_contract(contract.contract_id, missing_stage)
+    assert failed.passed is False
+    assert "fl1_p1_executed_stages_invalid" in {
+        finding.code for finding in failed.errors
+    }
+
+    recorded_forbidden_event = build_contract_summary(
+        isolation=proof,
+        ledger=store.load(),
+        focused_tests_passed=True,
+        full_non_e2e_passed=True,
+        operation_evidence=OperationEvidence.from_events(
+            (OperationKind.PROVIDER_ACTIVITY,)
+        ),
+    )
+    failed = check_phase_contract(contract.contract_id, recorded_forbidden_event)
+    assert failed.passed is False
+    assert "fl1_p1_forbidden_activity" in {
+        finding.code for finding in failed.errors
+    }
+
+
+def test_owner_acceptance_must_bind_the_reviewed_validated_tree(
+    tmp_path: Path,
+) -> None:
+    proof = validate_isolation(_config(tmp_path))
+    item = _item(111)
+    runner, store = _runner(tmp_path, [item])
+    runner.run_next_batch(lambda _current: None)
+
+    with pytest.raises(LedgerError, match="owner_acceptance_tree_mismatch"):
+        build_contract_summary(
+            isolation=proof,
+            ledger=store.load(),
+            focused_tests_passed=True,
+            full_non_e2e_passed=True,
+            operation_evidence=OperationEvidence.from_events(()),
+            owner_acceptance=OwnerAcceptanceEvidence(
+                identity="owner_accepted_fl1_p1_20260808",
+                reviewed_commit="a" * 40,
+                reviewed_tree="b" * 40,
+                validated_tree="c" * 40,
+            ),
+        )
