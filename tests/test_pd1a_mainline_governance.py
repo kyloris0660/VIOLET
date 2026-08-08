@@ -45,10 +45,13 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
             "7. SCV2-SV1-A merged in PR #138",
             "8. SCV2-SV1B merged in PR #139",
             "9. SCV2-FL1 planning merged in PR #140",
+            "10. SCV2-FL1-P1 physically merged in PR #141",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "SCV2-FL1-P1: Dev/Test Isolation, Contract, And Ledger Foundations" in text
+    assert "SCV2-FL1-P1-R1: Late Review Safety Remediation And Authority Correction" in text
+    assert "pending_owner_audit" in text
+    assert "route_approved=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
 
