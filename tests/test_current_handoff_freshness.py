@@ -27,7 +27,7 @@ def _copy_docs_root(tmp_path: Path) -> Path:
     return copied_root
 
 
-def test_current_phase_schema_and_fl1_planning_boundary_are_consistent() -> None:
+def test_current_phase_schema_and_fl1_plan_approval_boundary_are_consistent() -> None:
     state = _state()
 
     documentation_state.validate_state(state)
@@ -37,21 +37,33 @@ def test_current_phase_schema_and_fl1_planning_boundary_are_consistent() -> None
     assert state["draft"] is True
     assert state["pr_number"] is None or state["pr_number"] > 0
     assert state["current_status"] == documentation_state.FL1_STATUS
-    assert state["target_met"] is False
-    assert state["safe_to_merge"] is False
-    assert state["route_approved"] is False
+    assert state["target_met"] is True
+    assert state["safe_to_merge"] is True
+    assert state["route_approved"] is True
+    assert state["route_scope"] == documentation_state.FL1_ROUTE_SCOPE
+    assert state["planning_approved"] is True
+    assert state["approved_planning_head"] == documentation_state.FL1_APPROVED_PLANNING_HEAD
     assert state["manual_acceptance_status"] == documentation_state.FL1_MANUAL_STATUS
-    assert state["next_phase_started"] is True
+    assert state["next_phase_started"] is False
     assert state["active_blocker"]["code"] == documentation_state.FL1_BLOCKER
     assert state["planning_boundary"] == {
-        "planning_only": True,
-        "implementation_authorized": False,
+        "planning_only": False,
+        "implementation_authorized": True,
+        "implementation_scope": documentation_state.FL1_ROUTE_SCOPE,
         "data_execution_authorized": False,
         "production_authorized": False,
         "database_access_authorized": False,
+        "database_data_execution_authorized": False,
         "source_root_access_authorized": False,
+        "real_source_inventory_authorized": False,
         "provider_or_llm_authorized": False,
+        "provider_authorized": False,
+        "llm_authorized": False,
         "media_or_thumbnail_download_authorized": False,
+        "media_authorized": False,
+        "classification_or_tagging_execution_authorized": False,
+        "stable_replay_authorized": False,
+        "synthetic_ephemeral_test_fixture_authorized": True,
         "projected_external_cost_usd": 0,
     }
 
@@ -78,7 +90,7 @@ def test_handoff_is_exact_generated_projection_and_stays_small() -> None:
     assert "SCV2-FL1" in rendered
     assert state["current_status"] in rendered
     assert state["next_required_checkpoint"] in rendered
-    assert "implementation/data/production authorization: `false/false/false`" in rendered
+    assert "implementation/data/production authorization: `true/false/false`" in rendered
     assert all(operation in rendered for operation in state["authorized_operations"])
 
 
@@ -202,21 +214,21 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("current_status", "fl1_execution_running"),
-        ("target_met", True),
-        ("safe_to_merge", True),
-        ("route_approved", True),
-        ("manual_acceptance_status", "accepted_user"),
-        ("next_phase_started", False),
+        ("current_status", "fl1_planning_ready_owner_approval_pending"),
+        ("target_met", False),
+        ("safe_to_merge", False),
+        ("route_approved", False),
+        ("manual_acceptance_status", "not_applicable_planning_only"),
+        ("next_phase_started", True),
     ],
 )
-def test_fl1_planning_status_conflicts_fail_closed(field: str, value: object) -> None:
+def test_fl1_plan_approval_status_conflicts_fail_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
     state[field] = value
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_planning_status_fields_conflict",
+        match="fl1_plan_approval_status_fields_conflict",
     ):
         documentation_state.validate_state(state)
 
@@ -224,8 +236,8 @@ def test_fl1_planning_status_conflicts_fail_closed(field: str, value: object) ->
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("planning_only", False),
-        ("implementation_authorized", True),
+        ("planning_only", True),
+        ("implementation_authorized", False),
         ("data_execution_authorized", True),
         ("production_authorized", True),
         ("database_access_authorized", True),
@@ -241,7 +253,7 @@ def test_fl1_execution_boundary_fails_closed(field: str, value: object) -> None:
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_planning_boundary_invalid",
+        match="fl1_plan_approval_boundary_invalid",
     ):
         documentation_state.validate_state(state)
 
@@ -252,7 +264,7 @@ def test_fl1_authorized_operations_cannot_grant_execution() -> None:
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_planning_authorizes_execution",
+        match="fl1_plan_approval_authorizes_data_execution",
     ):
         documentation_state.validate_state(state)
 
@@ -261,9 +273,13 @@ def test_fl1_authorized_operations_cannot_grant_execution() -> None:
     "field",
     [
         "database_operation_count",
+        "existing_database_read_operation_count",
+        "existing_database_write_operation_count",
+        "real_source_inventory_operation_count",
         "provider_operation_count",
         "llm_operation_count",
         "media_or_thumbnail_operation_count",
+        "stable_replay_operation_count",
     ],
 )
 def test_fl1_operation_counts_must_stay_zero(field: str) -> None:
@@ -272,7 +288,7 @@ def test_fl1_operation_counts_must_stay_zero(field: str) -> None:
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_planning_operation_counts_nonzero",
+        match="fl1_operation_counts_nonzero",
     ):
         documentation_state.validate_state(state)
 

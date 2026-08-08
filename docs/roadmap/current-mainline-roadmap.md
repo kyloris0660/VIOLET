@@ -24,30 +24,32 @@ does not become a creator-identity or scale-up policy.
 
 <!-- CURRENT_PHASE: SCV2-FL1 -->
 
-`SCV2-FL1: Isolated Full-Library Dev/Test Planning` is now active as a
-planning-only phase. Its fact source is `docs/state/current-phase.json` and its
-plan is `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
+`SCV2-FL1: Isolated Full-Library Dev/Test Plan Approval` is now active. Its fact
+source is `docs/state/current-phase.json` and its plan is
+`docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
 Current executable state:
 
-- `status=fl1_planning_ready_owner_approval_pending`
-- `target_met=false`
-- `safe_to_merge=false`
-- `route_approved=false`
-- `manual_acceptance_status=not_applicable_planning_only`
-- `next_phase_started=true` (planning only)
-- gate: `pending_owner_fl1_implementation_plan_approval`
+- `status=fl1_plan_approved_for_implementation_only`
+- `target_met=true`
+- `safe_to_merge=true`
+- `route_approved=true`
+- `route_scope=FL1-P1 isolation/safety/contract/ledger implementation only`
+- `manual_acceptance_status=owner_plan_approved_for_implementation_only`
+- `next_phase_started=false`
+- blocker state: `none_fl1_plan_approved_for_implementation_only`
 
-No FL1 implementation or data execution has started. Planning does not
-authorize production, source-root access, database creation/write, inventory,
-import, classification, AI tagging, provider, Pixiv, gallery-dl, LLM, media,
-thumbnail, localization, graph/search, Entity/truth, or provider-derived
-`media_tags` activity.
+No FL1 implementation or data execution has started. The approved route is
+limited to a separate FL1-P1 safety/ledger implementation after PR #140 merges;
+it does not authorize production, real source-root access or inventory, existing
+database access, import, classification, AI tagging, provider, Pixiv,
+gallery-dl, LLM, media, thumbnail, Stable Replay, localization, graph/search,
+Entity/truth, or provider-derived `media_tags` activity.
 
 ## Proposed Delivery Sequence
 
-1. Owner reviews and approves or revises the FL1 plan.
-2. A separate implementation PR adds the reusable safety runner, contracts,
+1. Squash merge approved planning PR #140 after all live gates pass.
+2. A separate FL1-P1 Draft PR adds the reusable safety runner, contracts,
    ledgers, and tests without executing full-library data work.
 3. A read-only inventory dry run requires a separate exact authorization and
    ends at an owner checkpoint.

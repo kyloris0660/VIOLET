@@ -1,19 +1,20 @@
 # SCV2-FL1 Isolated Full-Library Dev/Test Plan
 
-## 1. Decision Requested
+## 1. Owner Decision
 
-Approve, revise, or reject a planning-only route for an isolated full-library
-Dev/Test rehearsal. Approval of this document would authorize a separate
-implementation PR for guards, ledgers, contracts, and bounded checkpoints; it
-would not authorize database creation, source inventory, import, classification,
-AI tagging, provider/LLM/media calls, production, or any data execution.
+The owner approved this planning direction at
+`db90457d51a39b5dc930afc2a92a6ef3139a2760`. Approval authorizes only a separate
+FL1-P1 implementation PR for guards, ledgers, contracts, and synthetic bounded
+checkpoints; it does not authorize existing database access, source inventory,
+import, classification, AI tagging, provider/LLM/media calls, production, or any
+data execution.
 
 Canonical phase:
 
 - ID: `SCV2-FL1`
 - Title: `Isolated Full-Library Dev/Test Planning`
-- Current status: `fl1_planning_ready_owner_approval_pending`
-- Current stop: `pending_owner_fl1_implementation_plan_approval`
+- Current status: `fl1_plan_approved_for_implementation_only`
+- Current stop: squash merge PR #140, then create a separate FL1-P1 Draft PR
 
 The older `Phase 4.6-FULLLIB-P0 Production Full-Library Import and AI Tagging
 Plan` is a historical design input only. Its production route and `FULLLIB-E1`
@@ -353,8 +354,9 @@ equivalent. No implementation PR may silently include execution authority.
 
 ## 18. Approval Boundary
 
-Owner approval requested: the plan and proposed PR/contract structure only.
+Owner approval recorded: the plan and proposed FL1-P1 PR/contract structure
+only, bound to planning HEAD `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
 
-Not requested: permission to connect to a database, inspect production, read a
+Not approved: permission to connect to an existing database, inspect production, read a
 real source root, create storage, run inventory, import, classify, tag, call a
 provider/LLM, download media/models, derive graph/search, or begin production.

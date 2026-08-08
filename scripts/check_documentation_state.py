@@ -38,6 +38,9 @@ REQUIRED_FIELDS = {
     "accepted_mainline_base",
     "implementation_evidence_head",
     "current_status",
+    "route_scope",
+    "planning_approved",
+    "approved_planning_head",
     *STATUS_FIELDS,
     "prior_phase_acceptance",
     "planning_boundary",
@@ -60,9 +63,11 @@ PUBLIC_FORBIDDEN = (
     re.compile(r"(?i)\b(?:api[_-]?key|refresh[_-]?token|bearer)\s*[:=]\s*\S+"),
     re.compile(r"(?i)\.local_manifests"),
 )
-FL1_STATUS = "fl1_planning_ready_owner_approval_pending"
-FL1_BLOCKER = "pending_owner_fl1_implementation_plan_approval"
-FL1_MANUAL_STATUS = "not_applicable_planning_only"
+FL1_STATUS = "fl1_plan_approved_for_implementation_only"
+FL1_BLOCKER = "none_fl1_plan_approved_for_implementation_only"
+FL1_MANUAL_STATUS = "owner_plan_approved_for_implementation_only"
+FL1_APPROVED_PLANNING_HEAD = "db90457d51a39b5dc930afc2a92a6ef3139a2760"
+FL1_ROUTE_SCOPE = "FL1-P1 isolation/safety/contract/ledger implementation only"
 SV1B_WAIVER = "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
 
 
@@ -93,33 +98,45 @@ def _require_list(
 def _validate_fl1_state(state: dict[str, Any]) -> None:
     if (
         state["current_status"] != FL1_STATUS
-        or state["target_met"] is not False
-        or state["safe_to_merge"] is not False
-        or state["route_approved"] is not False
+        or state["target_met"] is not True
+        or state["safe_to_merge"] is not True
+        or state["route_approved"] is not True
+        or state["route_scope"] != FL1_ROUTE_SCOPE
+        or state["planning_approved"] is not True
+        or state["approved_planning_head"] != FL1_APPROVED_PLANNING_HEAD
         or state["manual_acceptance_status"] != FL1_MANUAL_STATUS
-        or state["next_phase_started"] is not True
+        or state["next_phase_started"] is not False
     ):
-        raise DocumentationStateError("fl1_planning_status_fields_conflict")
+        raise DocumentationStateError("fl1_plan_approval_status_fields_conflict")
     blocker = state["active_blocker"]
     if blocker.get("code") != FL1_BLOCKER:
-        raise DocumentationStateError("fl1_planning_blocker_conflict")
+        raise DocumentationStateError("fl1_plan_approval_blocker_conflict")
 
     boundary = state["planning_boundary"]
     expected_boundary = {
-        "planning_only": True,
-        "implementation_authorized": False,
+        "planning_only": False,
+        "implementation_authorized": True,
+        "implementation_scope": FL1_ROUTE_SCOPE,
         "data_execution_authorized": False,
         "production_authorized": False,
         "database_access_authorized": False,
+        "database_data_execution_authorized": False,
         "source_root_access_authorized": False,
+        "real_source_inventory_authorized": False,
         "provider_or_llm_authorized": False,
+        "provider_authorized": False,
+        "llm_authorized": False,
         "media_or_thumbnail_download_authorized": False,
+        "media_authorized": False,
+        "classification_or_tagging_execution_authorized": False,
+        "stable_replay_authorized": False,
+        "synthetic_ephemeral_test_fixture_authorized": True,
         "projected_external_cost_usd": 0,
     }
     if not isinstance(boundary, dict) or any(
         boundary.get(key) != value for key, value in expected_boundary.items()
     ):
-        raise DocumentationStateError("fl1_planning_boundary_invalid")
+        raise DocumentationStateError("fl1_plan_approval_boundary_invalid")
 
     prior = state["prior_phase_acceptance"]
     if not isinstance(prior, dict) or any(
@@ -143,14 +160,20 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         protected.get(key) != 0
         for key in (
             "database_operation_count",
+            "existing_database_read_operation_count",
+            "existing_database_write_operation_count",
+            "real_source_inventory_operation_count",
             "provider_operation_count",
             "llm_operation_count",
             "media_or_thumbnail_operation_count",
+            "stable_replay_operation_count",
         )
     ):
-        raise DocumentationStateError("fl1_planning_operation_counts_nonzero")
+        raise DocumentationStateError("fl1_operation_counts_nonzero")
     if protected.get("production_consumed_or_modified_during_fl1_planning") is not False:
-        raise DocumentationStateError("fl1_planning_production_boundary_invalid")
+        raise DocumentationStateError("fl1_production_boundary_invalid")
+    if protected.get("approved_planning_head") != FL1_APPROVED_PLANNING_HEAD:
+        raise DocumentationStateError("fl1_approved_planning_head_evidence_invalid")
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -172,7 +195,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     ):
         raise DocumentationStateError("pr_number_invalid")
     if state["draft"] is not True:
-        raise DocumentationStateError("planning_pr_must_be_draft")
+        raise DocumentationStateError("closeout_pr_must_still_be_draft_in_tracked_state")
     for key in ("target_met", "safe_to_merge", "route_approved", "next_phase_started"):
         if not isinstance(state[key], bool):
             raise DocumentationStateError(f"{key}_must_be_boolean")
@@ -218,7 +241,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "ai tagging execution",
     )
     if any(term in joined_authorized for term in authorization_deny_terms):
-        raise DocumentationStateError("fl1_planning_authorizes_execution")
+        raise DocumentationStateError("fl1_plan_approval_authorizes_data_execution")
     for required in (
         "database",
         "production",
@@ -229,7 +252,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "entity",
         "truth",
         "direct main push",
-        "merge",
+        "force-push",
     ):
         if required not in joined_forbidden:
             raise DocumentationStateError(f"forbidden_operation_missing:{required}")
@@ -245,6 +268,11 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
             debt.get(key) for key in ("id", "owner", "reason", "due_before")
         ):
             raise DocumentationStateError("deferred_debt_invalid")
+        requirements = debt.get("requirements")
+        if not isinstance(requirements, list) or not requirements or not all(
+            isinstance(requirement, str) and requirement for requirement in requirements
+        ):
+            raise DocumentationStateError("deferred_debt_requirements_invalid")
     for link in _require_list(state, "durable_links"):
         if not isinstance(link, dict) or not link.get("label") or not link.get("path"):
             raise DocumentationStateError("durable_link_invalid")
@@ -333,7 +361,8 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}`.",
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
-        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (planning only).",
+        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (P1 starts only after merge).",
+        f"- Approved planning HEAD: `{state['approved_planning_head']}`; route scope: `{state['route_scope']}`.",
         "",
         "## Completed Checkpoints",
         "",
@@ -348,8 +377,8 @@ def render_handoff(state: dict[str, Any]) -> str:
             "",
             f"- Gate: `{blocker['code']}` ({blocker['scope']}).",
             f"- Resolution: {blocker['resolution']}",
-            f"- Planning only: `{str(boundary['planning_only']).lower()}`; implementation/data/production authorization: `false/false/false`.",
-            f"- Database/source/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `${boundary['projected_external_cost_usd']}`.",
+            f"- Planning only: `{str(boundary['planning_only']).lower()}`; implementation/data/production authorization: `{str(boundary['implementation_authorized']).lower()}/{str(boundary['data_execution_authorized']).lower()}/{str(boundary['production_authorized']).lower()}`.",
+            f"- Existing database/real inventory/provider-or-LLM/media authorization: `{str(boundary['database_access_authorized']).lower()}/{str(boundary['real_source_inventory_authorized']).lower()}/{str(boundary['provider_or_llm_authorized']).lower()}/{str(boundary['media_authorized']).lower()}`; projected external cost: `${boundary['projected_external_cost_usd']}`.",
             f"- Public state boundary: `{state['public_state_boundary']}`.",
             "",
             "## Allowed / Forbidden",
@@ -369,8 +398,9 @@ def render_handoff(state: dict[str, Any]) -> str:
     lines.extend(["", "## Deferred Debt", ""])
     if state["deferred_debt"]:
         for debt in state["deferred_debt"]:
+            requirements = "; ".join(debt["requirements"])
             lines.append(
-                f"- `{debt['id']}` — owner: {debt['owner']}; due before: `{debt['due_before']}`; {debt['reason']}"
+                f"- `{debt['id']}` — owner: {debt['owner']}; due before: `{debt['due_before']}`; {debt['reason']} Requirements: {requirements}."
             )
     else:
         lines.append("- None.")

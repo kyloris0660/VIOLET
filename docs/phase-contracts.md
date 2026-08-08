@@ -49,38 +49,46 @@ and `0 unwaived FAIL`. The B01/B04/B08 mismatches remain historical evidence;
 their waiver is limited to SV1B placeholder/default creator signals and does not
 authorize FL1 behavior, scale, production, or truth promotion.
 
-`SCV2-FL1: Isolated Full-Library Dev/Test Planning` is the current phase. The
-current gate is `pending_owner_fl1_implementation_plan_approval`. Planning has
-started, but implementation and data execution have not. The state must remain:
+`SCV2-FL1: Isolated Full-Library Dev/Test Plan Approval` is the current phase.
+The owner approved planning HEAD
+`db90457d51a39b5dc930afc2a92a6ef3139a2760` for the separate FL1-P1
+isolation/safety/contract/ledger implementation route only. The closeout state
+is:
 
-- `status=fl1_planning_ready_owner_approval_pending`
-- `target_met=false`
-- `safe_to_merge=false`
-- `route_approved=false`
-- `manual_acceptance_status=not_applicable_planning_only`
-- `next_phase_started=true`
+- `status=fl1_plan_approved_for_implementation_only`
+- `target_met=true`
+- `safe_to_merge=true`
+- `route_approved=true`
+- `route_scope=FL1-P1 isolation/safety/contract/ledger implementation only`
+- `manual_acceptance_status=owner_plan_approved_for_implementation_only`
+- `next_phase_started=false`
+- blocker state: `none_fl1_plan_approved_for_implementation_only`
 
 The current documentation-state checker is the executable planning governance
 gate. It requires a single active phase marker, a generated handoff, exact
-accepted-mainline ancestry, a Draft planning PR, public-safe durable links, and
-an explicit zero-execution boundary.
+accepted-mainline ancestry, the approved planning fingerprint, public-safe
+durable links, and an explicit implementation-only/zero-data-execution boundary.
 
-No FL1 implementation contract is registered yet. Before any database,
-filesystem, inventory, import, classification, AI-tagging, localization,
-graph/search, or external operation, a separate implementation PR must register
-and test `scv2_fl1_isolated_full_library_dev_test_contract_v1` (or an equivalent
-owner-approved identifier). That future contract must derive exact Git/Python/
-DB/storage/source identities, manifest and denominator accounting, item/batch
-restart state, mutation allowlist/denylist, failure budgets, accepted-evidence
-reuse/loss, external-call/cost counts, redaction, and manual-acceptance gates.
+No FL1 implementation contract is registered on PR #140. After the confirmed
+squash merge, the separate FL1-P1 implementation PR is authorized to register
+and test `scv2_fl1_isolated_full_library_dev_test_contract_v1` using only
+synthetic/ephemeral fixtures. It must fail closed on Git/Python/DB/storage/source
+identity, containment, mutation policy, ledger restart/idempotency, failure
+budgets, operation counts, redaction, and downstream authorization.
 
-Current planning authorizes no production or production comparison, no source
-root read, no database creation/connection/write, no test storage creation, no
-inventory run, no import, no classification or AI tagging, no provider/Pixiv/
-gallery-dl/LLM/media/thumbnail request, no localization or graph/search
-derivation, and no Entity/truth/provider-derived `media_tags` write. Owner
-approval of the plan may authorize a later implementation PR, but never data
-execution by implication.
+The approved route authorizes only the separate FL1-P1 safety/ledger
+implementation. It authorizes no production or production comparison, real
+source-root read or inventory, existing database access, import, classification
+or AI tagging, provider/Pixiv/gallery-dl/LLM/media/thumbnail request, Stable
+Replay/evidence reuse, localization or graph/search derivation, or
+Entity/truth/provider-derived `media_tags` write.
+
+Three deferred use-before gates do not block PR #140 and do not authorize
+current remediation: `PROVIDER_GATE` before any provider request,
+`STABLE_REPLAY_GATE` before authoritative replay/evidence reuse, and
+`ACCEPTANCE_TOOLING_GATE` before one-off acceptance tooling is reused as
+automated merge authority. Their exact requirements live in
+`docs/state/current-phase.json`.
 
 ## Registered GOV3 Contracts
 

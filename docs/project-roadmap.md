@@ -13,20 +13,23 @@ evidence without treating weak AI or provider signals as user truth.
 
 The authoritative current state is `docs/state/current-phase.json`.
 
-`SCV2-FL1: Isolated Full-Library Dev/Test Planning` is a planning-only phase.
+`SCV2-FL1: Isolated Full-Library Dev/Test Plan Approval` is the current phase.
 PR #139 / SCV2-SV1B merged into `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner acceptance remains
 `37 PASS`, `3 owner-waived nonblocking known limitations`, `0 PENDING`, and
 `0 unwaived FAIL`; the B01/B04/B08 waiver is historical SV1B evidence and is
 not an FL1 scale-up waiver.
 
-FL1 planning defines an isolated Dev/Test full-library route. It authorizes no
-production access, database creation or write, source-root access, inventory
-run, import, classification, AI tagging, provider/LLM/media request,
-localization, graph/search derivation, or Entity/truth promotion. Implementation
-must wait for a separate owner decision and a future executable phase contract.
+The owner approved the FL1 plan at
+`db90457d51a39b5dc930afc2a92a6ef3139a2760` for a separate FL1-P1
+isolation/safety/contract/ledger implementation PR only. This route authorizes
+no production access, existing database access, real source-root access or
+inventory, import, classification, AI tagging, provider/LLM/media request,
+Stable Replay, localization, graph/search derivation, or Entity/truth promotion.
 
-The current gate is `pending_owner_fl1_implementation_plan_approval`.
+The current blocker state is
+`none_fl1_plan_approved_for_implementation_only`; PR #140 must merge before the
+separate FL1-P1 Draft PR starts.
 
 ## Accepted Mainline Sequence
 
@@ -45,8 +48,8 @@ roadmap intentionally does not duplicate their execution accounting.
 
 ## Proposed FL1 Route
 
-1. Approve or revise the isolated Dev/Test FL1 implementation plan.
-2. On a new implementation PR, add fail-closed DB/storage/source identity
+1. Squash merge the approved planning PR #140 after its live merge gates pass.
+2. On a new FL1-P1 implementation PR, add fail-closed DB/storage/source identity
    guards, inventory and item-state ledgers, bounded batch/restart logic, and
    the FL1 executable contract before any data operation.
 3. Stop at a read-only inventory checkpoint for a distinct owner authorization.
@@ -61,7 +64,7 @@ design input only and is not current authorization.
 
 ## Durable Boundaries
 
-- Source/iCloud roots remain read-only and out of scope during planning.
+- Source/iCloud roots remain inaccessible and out of scope during FL1-P1.
 - Dev/Test databases and storage must be isolated from production and from
   accepted SV1 evidence databases.
 - AI proper-noun signals remain weak evidence, never automatic Entity truth.

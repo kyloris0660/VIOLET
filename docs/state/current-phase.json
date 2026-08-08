@@ -1,19 +1,22 @@
 {
   "schema_version": "violet.current-phase.v2",
   "phase_id": "SCV2-FL1",
-  "phase_title": "Isolated Full-Library Dev/Test Planning",
+  "phase_title": "Isolated Full-Library Dev/Test Plan Approval",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-fl1-isolated-full-library-dev-test-planning",
   "pr_number": 140,
   "draft": true,
   "accepted_mainline_base": "33af4111e1595dac3ece0ac50002556d466f0138",
   "implementation_evidence_head": "33af4111e1595dac3ece0ac50002556d466f0138",
-  "current_status": "fl1_planning_ready_owner_approval_pending",
-  "target_met": false,
-  "safe_to_merge": false,
-  "route_approved": false,
-  "manual_acceptance_status": "not_applicable_planning_only",
-  "next_phase_started": true,
+  "current_status": "fl1_plan_approved_for_implementation_only",
+  "target_met": true,
+  "safe_to_merge": true,
+  "route_approved": true,
+  "route_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
+  "planning_approved": true,
+  "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
+  "manual_acceptance_status": "owner_plan_approved_for_implementation_only",
+  "next_phase_started": false,
   "prior_phase_acceptance": {
     "phase_id": "SCV2-SV1B",
     "merge_commit": "33af4111e1595dac3ece0ac50002556d466f0138",
@@ -31,14 +34,23 @@
     "waiver_inherited_by_fl1": false
   },
   "planning_boundary": {
-    "planning_only": true,
-    "implementation_authorized": false,
+    "planning_only": false,
+    "implementation_authorized": true,
+    "implementation_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
     "data_execution_authorized": false,
     "production_authorized": false,
     "database_access_authorized": false,
+    "database_data_execution_authorized": false,
     "source_root_access_authorized": false,
+    "real_source_inventory_authorized": false,
     "provider_or_llm_authorized": false,
+    "provider_authorized": false,
+    "llm_authorized": false,
     "media_or_thumbnail_download_authorized": false,
+    "media_authorized": false,
+    "classification_or_tagging_execution_authorized": false,
+    "stable_replay_authorized": false,
+    "synthetic_ephemeral_test_fixture_authorized": true,
     "projected_external_cost_usd": 0
   },
   "completed_checkpoints": [
@@ -53,7 +65,8 @@
     },
     {
       "id": "fl1_isolated_dev_test_plan",
-      "result": "drafted_pending_owner_approval"
+      "result": "owner_approved_for_fl1_p1_implementation_only",
+      "fingerprint": "db90457d51a39b5dc930afc2a92a6ef3139a2760"
     },
     {
       "id": "fl1_external_and_data_operation_preflight",
@@ -61,9 +74,9 @@
     }
   ],
   "active_blocker": {
-    "code": "pending_owner_fl1_implementation_plan_approval",
-    "scope": "SCV2-FL1 implementation and every data or external operation",
-    "resolution": "The owner must approve or revise the isolated Dev/Test plan before a separate implementation PR may add execution tooling. Plan approval alone will not authorize inventory, database, source-root, production, provider, LLM, media, import, classification, AI-tagging, graph/search, localization, or truth operations."
+    "code": "none_fl1_plan_approved_for_implementation_only",
+    "scope": "PR #140 planning closeout and the isolated FL1-P1 implementation route",
+    "resolution": "No planning merge blocker remains. After PR #140 is squash-merged, only a separate FL1-P1 isolation/safety/contract/ledger implementation PR may start; inventory, database data execution, source-root, production, provider, LLM, media, classification/tagging, Stable Replay, graph/search, localization, and truth operations remain unauthorized."
   },
   "owner_decisions": [
     {
@@ -73,21 +86,26 @@
     {
       "id": "owner_authorized_doc_gov_02_and_fl1_planning_20260807",
       "decision": "After PR #139 merges, complete DOC-GOV-02 and prepare an isolated full-library Dev/Test plan on a separate Draft PR without production, database, provider, LLM, media, or data execution."
+    },
+    {
+      "id": "owner_approved_fl1_plan_for_p1_implementation_only_20260808",
+      "decision": "Approve the SCV2-FL1 plan at db90457d51a39b5dc930afc2a92a6ef3139a2760, authorize minimal PR #140 closeout and squash merge, then authorize only a separate FL1-P1 isolation/safety/contract/ledger implementation PR. Preserve the SV1B 37 PASS and B01/B04/B08 owner-waived decisions without extending the waiver to FL1."
     }
   ],
   "authorized_operations": [
-    "read-only review of the SCV2-FL1 plan and its linked public governance documents",
-    "bounded planning-document revisions on this Draft PR after explicit owner direction",
-    "local documentation, JSON, contract-boundary, and redaction validation with zero data or external execution"
+    "minimal tracked closeout of PR #140, PR body correction, Ready transition, and squash merge after all live merge gates pass",
+    "after the confirmed PR #140 merge, create a separate FL1-P1 branch and Draft PR for isolation/safety/contract/ledger implementation only",
+    "local synthetic or ephemeral fixture implementation and validation with zero existing-database, real-source, production, provider, LLM, media, classification/tagging, or Stable Replay activity"
   ],
   "forbidden_operations": [
-    "database creation, connection, comparison, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair",
+    "existing database creation, connection, comparison, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair",
     "production database, production storage, production source root, or production library access",
     "source or iCloud root inventory, read, hydration, copy, move, rename, deletion, or mutation",
     "provider, Pixiv, gallery-dl, Provider-2, LLM, model download, media, or thumbnail request",
     "full-library import, classification, AI tagging, localization, graph/search execution, or background worker start",
     "Entity, EntityAlias, confirmed assignment, user truth, source truth, or provider-derived media_tags write",
-    "reviewer trigger, Ready transition, merge, direct main push, force-push, FL1 implementation, or next-stage execution"
+    "Stable Replay or authoritative evidence import, replay, or reuse",
+    "direct main push, force-push, or any FL1 stage beyond the separate FL1-P1 implementation scope"
   ],
   "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
   "protected_evidence": {
@@ -95,12 +113,17 @@
     "sv1b_final_composite_acceptance_fingerprint": "091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca",
     "sv1b_owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
     "production_consumed_or_modified_during_fl1_planning": false,
+    "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
     "database_operation_count": 0,
+    "existing_database_read_operation_count": 0,
+    "existing_database_write_operation_count": 0,
+    "real_source_inventory_operation_count": 0,
     "provider_operation_count": 0,
     "llm_operation_count": 0,
-    "media_or_thumbnail_operation_count": 0
+    "media_or_thumbnail_operation_count": 0,
+    "stable_replay_operation_count": 0
   },
-  "next_required_checkpoint": "owner_approval_or_revision_of_scV2_fl1_isolated_dev_test_implementation_plan",
+  "next_required_checkpoint": "squash_merge_pr_140_then_create_separate_fl1_p1_implementation_branch",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -137,11 +160,38 @@
   ],
   "deferred_debt": [
     {
-      "id": "FL1-PRE-01",
-      "owner": "future FL1 implementation owner",
-      "reason": "Exact strict-test database identities, local test storage, source manifest, capacity, runtime bounds, failure budget, and manual sample size require explicit implementation and inventory approvals.",
-      "due_before": "any FL1 implementation or data execution"
+      "id": "PROVIDER_GATE",
+      "owner": "future provider-route owner",
+      "reason": "Deferred use-before gate; it is not a PR #140 blocker and grants no current remediation or provider authority.",
+      "due_before": "any future provider request",
+      "requirements": [
+        "inherit cumulative attempt budgets across restarts and passes",
+        "use one truthful real-request counting semantic",
+        "never allow partial JSON to mask non-zero exit, authentication, or transport failure",
+        "recompute an old ledger read-only if required"
+      ]
+    },
+    {
+      "id": "STABLE_REPLAY_GATE",
+      "owner": "future Stable Replay owner",
+      "reason": "Deferred use-before gate; it is not a PR #140 blocker and grants no current replay or database authority.",
+      "due_before": "any Stable Replay evidence import, replay, or authoritative reuse",
+      "requirements": [
+        "scan accepted packages for observation_key duplicates across parent records",
+        "use parent-qualified stable observation identity",
+        "stop and report any actual collision without replaying a database"
+      ]
+    },
+    {
+      "id": "ACCEPTANCE_TOOLING_GATE",
+      "owner": "future acceptance-tooling owner",
+      "reason": "Deferred use-before gate; it is not a PR #140 blocker and does not invalidate the current owner decision.",
+      "due_before": "reuse of acceptance, composite, carry-forward, or export tooling as automated merge authority",
+      "requirements": [
+        "harden or retire the one-off tools according to the actual reuse need",
+        "preserve the current owner decision of 37 PASS and 3 owner-waived cases"
+      ]
     }
   ],
-  "updated_at": "2026-08-08T00:08:00+08:00"
+  "updated_at": "2026-08-08T11:45:37+08:00"
 }
