@@ -15,6 +15,7 @@ from .contract_registry import (
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
     R2R_AUTONOMOUS_RECALL_SEARCH_CLOSURE_STATUSES,
     R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES,
+    SCV2_FL1_P1_FOUNDATION_STATUSES,
     SOURCE_CONCEPT_ALLOWED_STATUSES,
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
     SV1_CONTROLLED_SCALE_PROMOTION_READINESS_STATUSES,
@@ -13041,6 +13042,224 @@ def _check_sv1b_owner_acceptance_closeout(
         )
 
 
+def _check_scv2_fl1_p1_foundation(
+    contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    pipeline = _get(summary, "pipeline_contract", {})
+    status = str(_get(summary, "pipeline_contract.status", ""))
+    if status not in SCV2_FL1_P1_FOUNDATION_STATUSES:
+        result.fail(
+            "fl1_p1_status_invalid",
+            "FL1-P1 foundation status is not registered.",
+            path="pipeline_contract.status",
+            expected=SCV2_FL1_P1_FOUNDATION_STATUSES,
+            actual=status,
+        )
+
+    blockers = list(_get(summary, "pipeline_contract.active_blockers", []) or [])
+    owner_accepted = status == "owner_accepted_for_merge"
+    common_claim_valid = (
+        isinstance(pipeline, Mapping)
+        and pipeline.get("contract_id") == contract.contract_id
+    )
+    if owner_accepted:
+        claim_valid = (
+            common_claim_valid
+            and pipeline.get("target_met") is True
+            and pipeline.get("safe_to_merge") is True
+            and pipeline.get("route_approved") is True
+            and blockers == []
+            and isinstance(pipeline.get("owner_acceptance_identity"), str)
+            and bool(str(pipeline.get("owner_acceptance_identity")).strip())
+        )
+    else:
+        claim_valid = (
+            common_claim_valid
+            and pipeline.get("target_met") is False
+            and pipeline.get("safe_to_merge") is False
+            and pipeline.get("route_approved") is False
+            and bool(blockers)
+            and pipeline.get("owner_acceptance_identity") is None
+        )
+    if not claim_valid:
+        result.fail(
+            "fl1_p1_claim_invalid",
+            "FL1-P1 must either remain fail-closed at an explicit checkpoint or carry an exact owner-accepted merge claim with no blockers.",
+            path="pipeline_contract",
+        )
+    if status == "implementation_ready_for_owner_audit" and blockers != [
+        "pending_owner_audit"
+    ]:
+        result.fail(
+            "fl1_p1_owner_audit_blocker_invalid",
+            "Audit-ready FL1-P1 evidence must stop only at pending_owner_audit.",
+            path="pipeline_contract.active_blockers",
+            expected=["pending_owner_audit"],
+            actual=blockers,
+        )
+
+    authorization = _get(summary, "authorization", {})
+    forbidden_authorizations = (
+        "production_authorized",
+        "real_inventory_authorized",
+        "existing_database_access_authorized",
+        "data_execution_authorized",
+        "provider_authorized",
+        "llm_authorized",
+        "media_authorized",
+        "stable_replay_authorized",
+    )
+    if not isinstance(authorization, Mapping) or any(
+        authorization.get(key) is not False for key in forbidden_authorizations
+    ):
+        result.fail(
+            "fl1_p1_authorization_boundary_invalid",
+            "FL1-P1 may not authorize production, real inventory, existing databases, data execution, provider, LLM, media, or Stable Replay.",
+            path="authorization",
+        )
+
+    isolation = _get(summary, "environment_isolation", {})
+    isolation_true_fields = (
+        "passed",
+        "git_head_match",
+        "python_identity_match",
+        "database_identity_explicit",
+        "database_path_new_and_contained",
+        "source_root_explicit_and_contained",
+        "storage_root_explicit_and_contained",
+        "source_storage_non_overlapping",
+        "unknown_identity_rejected",
+        "production_identity_rejected",
+        "synthetic_only",
+    )
+    isolation_valid = (
+        isinstance(isolation, Mapping)
+        and isolation.get("environment") in {"test", "development"}
+        and isinstance(isolation.get("database_identity"), str)
+        and str(isolation.get("database_identity")).startswith("violet_fl1_")
+        and all(isolation.get(key) is True for key in isolation_true_fields)
+        and _as_int(isolation.get("forbidden_root_overlap_count"), -1) == 0
+        and isolation.get("production_fallback_used") is False
+        and isolation.get("existing_database_accessed") is False
+    )
+    if not isolation_valid:
+        result.fail(
+            "fl1_p1_environment_isolation_invalid",
+            "FL1-P1 requires explicit, contained, synthetic Dev/Test identities with no fallback or existing database access.",
+            path="environment_isolation",
+        )
+
+    mutation = _get(summary, "mutation_policy", {})
+    if not isinstance(mutation, Mapping) or not (
+        mutation.get("default_deny") is True
+        and mutation.get("allowlist_explicit") is True
+        and mutation.get("ledger_read_contained") is True
+        and mutation.get("production_mutation_allowed") is False
+        and mutation.get("source_mutation_allowed") is False
+        and mutation.get("unexpected_mutation_allowed") is False
+    ):
+        result.fail(
+            "fl1_p1_mutation_policy_invalid",
+            "FL1-P1 mutation policy must default deny and prohibit production, source, and unexpected mutations.",
+            path="mutation_policy",
+        )
+
+    ledger = _get(summary, "ledger", {})
+    ledger_valid = (
+        isinstance(ledger, Mapping)
+        and ledger.get("schema_version") == "violet.scv2-fl1-p1-ledger.v1"
+        and ledger.get("stable_item_identity") == "violet.scv2-fl1-item.v1"
+        and ledger.get("logical_target_identity")
+        == "violet.scv2-fl1-logical-target.v1"
+        and _as_int(ledger.get("manifest_entry_count"), -1) >= 1
+        and _as_int(ledger.get("source_item_count"), -1) >= 1
+        and _as_int(ledger.get("unique_item_count"), -1) >= 1
+        and _as_int(ledger.get("duplicate_entry_count"), -1) >= 0
+        and _as_int(ledger.get("manifest_entry_count"), -1)
+        == _as_int(ledger.get("unique_item_count"), -2)
+        + _as_int(ledger.get("duplicate_entry_count"), -2)
+        and _as_int(ledger.get("source_item_count"), -1)
+        == _as_int(ledger.get("unique_item_count"), -2)
+        + _as_int(ledger.get("content_duplicate_item_count"), -2)
+        and _as_int(ledger.get("manifest_entry_count"), -1)
+        == _as_int(ledger.get("source_item_count"), -2)
+        + _as_int(ledger.get("repeated_manifest_entry_count"), -2)
+        and _as_int(ledger.get("duplicate_second_mutation_count"), -1) == 0
+        and ledger.get("attempt_budget_persisted") is True
+        and ledger.get("checkpoint_persisted") is True
+        and ledger.get("manual_stop_persisted") is True
+        and ledger.get("interrupted_mutation_reconciliation_required") is True
+        and ledger.get("generation_conflict_rejected") is True
+    )
+    if not ledger_valid:
+        result.fail(
+            "fl1_p1_ledger_invalid",
+            "FL1-P1 ledger evidence must prove stable identity, denominator accounting, checkpoints, budgets, stops, and zero duplicate mutation.",
+            path="ledger",
+        )
+
+    validation = _get(summary, "validation", {})
+    validation_fields = (
+        "focused_tests_passed",
+        "full_non_e2e_passed",
+        "production_identity_rejection_passed",
+        "unknown_identity_rejection_passed",
+        "containment_rejection_passed",
+        "mutation_default_deny_passed",
+        "duplicate_idempotency_passed",
+        "content_fingerprint_deduplication_passed",
+        "restart_recovery_passed",
+        "interrupted_mutation_reconciliation_passed",
+        "failure_budget_stop_passed",
+        "per_item_and_global_budget_separation_passed",
+        "concurrent_generation_guard_passed",
+        "manual_stop_passed",
+        "synthetic_isolation_passed",
+    )
+    if not isinstance(validation, Mapping) or any(
+        validation.get(key) is not True for key in validation_fields
+    ):
+        result.fail(
+            "fl1_p1_validation_incomplete",
+            "FL1-P1 requires focused and full non-E2E validation of every named safety behavior.",
+            path="validation",
+        )
+
+    operations = _get(summary, "operation_counts", {})
+    required_zero_operations = (
+        "production_activity",
+        "real_source_inventory_activity",
+        "existing_database_read_activity",
+        "existing_database_write_activity",
+        "provider_activity",
+        "llm_activity",
+        "media_activity",
+        "stable_replay_activity",
+        "user_data_cleanup_delete_activity",
+    )
+    if not isinstance(operations, Mapping) or any(
+        _as_int(operations.get(key), -1) != 0 for key in required_zero_operations
+    ):
+        result.fail(
+            "fl1_p1_forbidden_activity",
+            "All production, real inventory, existing database, external, media, replay, and cleanup counts must remain zero.",
+            path="operation_counts",
+        )
+
+    redaction = _get(summary, "public_redaction", {})
+    if not isinstance(redaction, Mapping) or not (
+        redaction.get("passed") is True
+        and redaction.get("private_paths_emitted") is False
+    ):
+        result.fail(
+            "fl1_p1_public_redaction_invalid",
+            "FL1-P1 public evidence must pass redaction and emit no private path values.",
+            path="public_redaction",
+        )
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -13058,6 +13277,7 @@ CUSTOM_CHECKS = {
     "sv1_controlled_scale_promotion_readiness": _check_sv1_controlled_scale_promotion_readiness,
     "sv1b_controlled_pixiv_metadata_localization_source_graph_closure": _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure,
     "sv1b_owner_acceptance_closeout": _check_sv1b_owner_acceptance_closeout,
+    "scv2_fl1_p1_foundation": _check_scv2_fl1_p1_foundation,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,

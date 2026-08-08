@@ -27,14 +27,14 @@ def _copy_docs_root(tmp_path: Path) -> Path:
     return copied_root
 
 
-def test_current_phase_schema_and_fl1_plan_approval_boundary_are_consistent() -> None:
+def test_current_phase_schema_and_fl1_p1_boundary_are_consistent() -> None:
     state = _state()
 
     documentation_state.validate_state(state)
     assert state["schema_version"] == "violet.current-phase.v2"
-    assert state["phase_id"] == "SCV2-FL1"
+    assert state["phase_id"] == "SCV2-FL1-P1"
     assert state["repository"] == "kyloris0660/VIOLET"
-    assert state["draft"] is True
+    assert state["draft"] is False
     assert state["pr_number"] is None or state["pr_number"] > 0
     assert state["current_status"] == documentation_state.FL1_STATUS
     assert state["target_met"] is True
@@ -44,12 +44,15 @@ def test_current_phase_schema_and_fl1_plan_approval_boundary_are_consistent() ->
     assert state["planning_approved"] is True
     assert state["approved_planning_head"] == documentation_state.FL1_APPROVED_PLANNING_HEAD
     assert state["manual_acceptance_status"] == documentation_state.FL1_MANUAL_STATUS
-    assert state["next_phase_started"] is False
+    assert state["next_phase_started"] is True
     assert state["active_blocker"]["code"] == documentation_state.FL1_BLOCKER
     assert state["planning_boundary"] == {
         "planning_only": False,
         "implementation_authorized": True,
-        "implementation_scope": documentation_state.FL1_ROUTE_SCOPE,
+        "implementation_scope": documentation_state.FL1_COMPLETED_SCOPE,
+        "completed_implementation_scope": documentation_state.FL1_COMPLETED_SCOPE,
+        "implementation_completed": True,
+        "owner_audit_pending": False,
         "data_execution_authorized": False,
         "production_authorized": False,
         "database_access_authorized": False,
@@ -143,7 +146,7 @@ def test_doc_gov_02_separates_active_entrypoints_from_history() -> None:
     assert len(agents.splitlines()) < 150
     assert len(archive.splitlines()) > 1000
     assert len(runbook.splitlines()) > 500
-    assert "CURRENT_PHASE: SCV2-FL1" in project
+    assert "CURRENT_PHASE: SCV2-FL1-P1" in project
     assert "CURRENT_PHASE: SCV2-SV1B" in archive
     assert "current next technical phase" not in project.casefold()
     assert "docs/development/agent-runbook.md" in agents
@@ -201,8 +204,8 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
     roadmap = copied_root / "docs" / "project-roadmap.md"
     roadmap.write_text(
         roadmap.read_text(encoding="utf-8").replace(
+            "<!-- CURRENT_PHASE: SCV2-FL1-P1 -->",
             "<!-- CURRENT_PHASE: SCV2-FL1 -->",
-            "<!-- CURRENT_PHASE: SCV2-SV1B -->",
         ),
         encoding="utf-8",
     )
@@ -214,21 +217,22 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("current_status", "fl1_planning_ready_owner_approval_pending"),
+        ("draft", True),
+        ("current_status", "implementation_ready_for_owner_audit"),
         ("target_met", False),
         ("safe_to_merge", False),
         ("route_approved", False),
-        ("manual_acceptance_status", "not_applicable_planning_only"),
-        ("next_phase_started", True),
+        ("manual_acceptance_status", "pending_owner_audit"),
+        ("next_phase_started", False),
     ],
 )
-def test_fl1_plan_approval_status_conflicts_fail_closed(field: str, value: object) -> None:
+def test_fl1_p1_status_conflicts_fail_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
     state[field] = value
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_plan_approval_status_fields_conflict",
+        match="fl1_p1_status_fields_conflict",
     ):
         documentation_state.validate_state(state)
 
@@ -238,6 +242,8 @@ def test_fl1_plan_approval_status_conflicts_fail_closed(field: str, value: objec
     [
         ("planning_only", True),
         ("implementation_authorized", False),
+        ("completed_implementation_scope", "unknown"),
+        ("owner_audit_pending", True),
         ("data_execution_authorized", True),
         ("production_authorized", True),
         ("database_access_authorized", True),
@@ -253,7 +259,7 @@ def test_fl1_execution_boundary_fails_closed(field: str, value: object) -> None:
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_plan_approval_boundary_invalid",
+        match="fl1_p1_boundary_invalid",
     ):
         documentation_state.validate_state(state)
 
@@ -264,7 +270,7 @@ def test_fl1_authorized_operations_cannot_grant_execution() -> None:
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_plan_approval_authorizes_data_execution",
+        match="fl1_p1_authorizes_data_execution",
     ):
         documentation_state.validate_state(state)
 

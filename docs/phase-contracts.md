@@ -40,7 +40,7 @@ When acceptance is required and pending, the executable contract must enforce
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-P1 -->
 
 PR #139 / SCV2-SV1B is merged and accepted in `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner-closeout contract
@@ -49,41 +49,50 @@ and `0 unwaived FAIL`. The B01/B04/B08 mismatches remain historical evidence;
 their waiver is limited to SV1B placeholder/default creator signals and does not
 authorize FL1 behavior, scale, production, or truth promotion.
 
-`SCV2-FL1: Isolated Full-Library Dev/Test Plan Approval` is the current phase.
-The owner approved planning HEAD
-`db90457d51a39b5dc930afc2a92a6ef3139a2760` for the separate FL1-P1
-isolation/safety/contract/ledger implementation route only. The closeout state
-is:
+PR #140 merged the approved plan into `origin/main` at
+`9ce1128be643c0eaa998ccdff8890d76196ce7db`. `SCV2-FL1-P1: Dev/Test Isolation,
+Contract, And Ledger Foundations` is now the current implementation phase on
+PR #141. Its owner-accepted implementation evidence is
+`3a7b20608724e5f469548183df0830b09d5ea7be`, and its closeout state is:
 
-- `status=fl1_plan_approved_for_implementation_only`
+- `status=fl1_p1_owner_accepted_for_merge`
 - `target_met=true`
 - `safe_to_merge=true`
 - `route_approved=true`
-- `route_scope=FL1-P1 isolation/safety/contract/ledger implementation only`
-- `manual_acceptance_status=owner_plan_approved_for_implementation_only`
-- `next_phase_started=false`
-- blocker state: `none_fl1_plan_approved_for_implementation_only`
+- `route_scope=FL1-I1 read-only inventory planning and synthetic implementation only`
+- `manual_acceptance_status=owner_accepted_fl1_p1_foundation`
+- `next_phase_started=true`
+- blocker: `none_fl1_p1_owner_accepted_for_merge`
 
-The current documentation-state checker is the executable planning governance
-gate. It requires a single active phase marker, a generated handoff, exact
-accepted-mainline ancestry, the approved planning fingerprint, public-safe
-durable links, and an explicit implementation-only/zero-data-execution boundary.
+The documentation-state checker binds the accepted plan merge, owner-accepted P1
+implementation evidence, generated handoff, public-safe durable links, and the
+exact zero-data/external authorization boundary. Ready and squash merge are
+allowed only after live review gates pass.
 
-No FL1 implementation contract is registered on PR #140. After the confirmed
-squash merge, the separate FL1-P1 implementation PR is authorized to register
-and test `scv2_fl1_isolated_full_library_dev_test_contract_v1` using only
-synthetic/ephemeral fixtures. It must fail closed on Git/Python/DB/storage/source
-identity, containment, mutation policy, ledger restart/idempotency, failure
-budgets, operation counts, redaction, and downstream authorization.
+`scv2_fl1_isolated_full_library_dev_test_contract_v1` is registered for this P1
+slice. Its standard-library implementation requires explicit test/development,
+Git, Python, synthetic database-path, source-fixture, storage, sandbox, and
+forbidden-root identities; denies production and unknown identities; and
+rejects containment ambiguity before mutation. Mutation defaults to deny and
+permits only explicit synthetic operations under the approved storage root.
+The atomic JSON ledger keeps parent-qualified source membership distinct from
+content-fingerprint logical targets, binds denominator accounting and
+checkpoints, separates per-item from global failure budgets, rejects stale
+writers, and requires explicit reconciliation before retrying an interrupted
+mutation. Duplicate content receives one logical mutation and manual stop state
+remains persistent.
 
-The approved route authorizes only the separate FL1-P1 safety/ledger
-implementation. It authorizes no production or production comparison, real
-source-root read or inventory, existing database access, import, classification
-or AI tagging, provider/Pixiv/gallery-dl/LLM/media/thumbnail request, Stable
-Replay/evidence reuse, localization or graph/search derivation, or
-Entity/truth/provider-derived `media_tags` write.
+P1 tests use only in-memory callbacks and newly created temporary files. No
+production or production comparison, real source-root read or inventory,
+existing database access, import, classification or AI tagging,
+provider/Pixiv/gallery-dl/LLM/media/thumbnail request, Stable Replay/evidence
+reuse, localization or graph/search derivation, or
+Entity/truth/provider-derived `media_tags` write is authorized or performed.
+After P1 merges, only a separate FL1-I1 planning and synthetic implementation
+PR may start. Real source-root access or inventory still requires a later exact
+source-scope authorization.
 
-Three deferred use-before gates do not block PR #140 and do not authorize
+Three deferred use-before gates do not block P1 owner audit and do not authorize
 current remediation: `PROVIDER_GATE` before any provider request,
 `STABLE_REPLAY_GATE` before authoritative replay/evidence reuse, and
 `ACCEPTANCE_TOOLING_GATE` before one-off acceptance tooling is reused as
@@ -108,6 +117,7 @@ automated merge authority. Their exact requirements live in
 - `sv1_controlled_scale_promotion_readiness_contract_v1`
 - `sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
 - `sv1b_owner_acceptance_closeout_contract_v1`
+- `scv2_fl1_isolated_full_library_dev_test_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`

@@ -446,6 +446,9 @@ def test_public_dirty_worktree_status_is_redacted() -> None:
 
 def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
+    current_state = json.loads(
+        (ROOT / "docs" / "state" / "current-phase.json").read_text(encoding="utf-8")
+    )
     roadmap = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
     archived_roadmap = (
         ROOT / "docs" / "roadmap" / "archive" / "project-roadmap-through-scv2-sv1b.md"
@@ -453,8 +456,10 @@ def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     workflow = (ROOT / "docs" / "test-workflow.md").read_text(encoding="utf-8")
 
     assert "SCV2-FL1" in handoff
-    assert "Draft PR" in handoff
-    assert "target_met=false" in handoff
+    assert f"PR #{current_state['pr_number']}" in handoff
+    assert f"target_met={str(current_state['target_met']).lower()}" in handoff
+    assert f"safe_to_merge={str(current_state['safe_to_merge']).lower()}" in handoff
+    assert current_state["active_blocker"]["code"] in handoff
     assert "Phase 4.5-SCV2-A1" in archived_roadmap
     assert "ChatGPT review pack" in workflow
     assert "Entity, EntityAlias, confirmed assignment, user truth" in handoff

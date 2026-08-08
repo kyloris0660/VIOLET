@@ -32,7 +32,7 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
 
     assert "PR #135" in text
     assert "PR #133" in text
-    assert "33af4111e1595dac3ece0ac50002556d466f0138" in text
+    assert "9ce1128be643c0eaa998ccdff8890d76196ce7db" in text
     _assert_in_order(
         text,
         [
@@ -44,10 +44,11 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
             "6. SCV2-ML2 merged in PR #137",
             "7. SCV2-SV1-A merged in PR #138",
             "8. SCV2-SV1B merged in PR #139",
+            "9. SCV2-FL1 planning merged in PR #140",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "SCV2-FL1: Isolated Full-Library Dev/Test Planning" in text
+    assert "SCV2-FL1-P1: Dev/Test Isolation, Contract, And Ledger Foundations" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
 
