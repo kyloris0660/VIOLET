@@ -74,7 +74,7 @@ PR #140 merged the approved plan into `origin/main` at
 after merge. `SCV2-FL1-P1-R1` on Draft PR #143 is the current bounded
 remediation phase. Its
 immutable implementation evidence is
-`8b58a2b107a6667abb9cd7fd022fff84489c8310`, and its current state is:
+`8fc1df2484f2a3de12639cf43e0e2c38131239b5`, and its current state is:
 
 - `status=fl1_p1_r1_implementation_ready_for_owner_audit`
 - `target_met=false`
@@ -110,12 +110,26 @@ explicit reconciliation before retrying an interrupted or unknown-outcome
 mutation. Duplicate content receives one logical mutation and manual stop state
 remains persistent across restart. Every synthetic invocation is attributed to
 one existing item and must exactly match that item's attempt count. The public
-summary uses irreversible item tokens plus a proof bound to the validated
+summary uses irreversible item identity digests plus a proof bound to the validated
 private ledger rather than trusting aggregate counts. The required
 `failure_budget_and_manual_stop` stage is completed only by an independently
 fingerprinted five-scenario matrix covering normal success, manual stop across
 restart, per-item exhaustion without global poisoning, true global exhaustion,
 and restart counter/reason consistency.
+
+For audit-ready, owner-accepted, merge-safe, or route-approved claims, the
+checker requires a trusted repository plus the private main runtime ledger,
+failure-budget scenario bundle, and interrupted-reconciliation bundle. Each
+failure-budget scenario has a fixed versioned assertion schema, role-bound
+before/after ledgers, distinct run identity, and a canonical public matrix
+rebuilt from `RunLedger.from_dict()` evidence. The reconciliation stage is
+rebuilt from independent COMMITTED, UNKNOWN, and NOT_COMMITTED interruption and
+restart scenarios; an ordinary success ledger or a self-reported zero recovery
+count cannot complete it. The checker recursively runs the shared public
+payload scanner over the complete FL1 summary, including unknown fields, and
+compares the declared redaction status to the derived safe finding count.
+These requirements close the four findings in review `4888894624`, including
+the redaction P1 recorded in its review body rather than an inline thread.
 
 P1 tests use only in-memory callbacks and newly created temporary files. No
 production or production comparison, real source-root read or inventory,

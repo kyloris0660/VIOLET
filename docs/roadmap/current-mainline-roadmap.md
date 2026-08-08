@@ -59,6 +59,15 @@ classification, AI tagging, provider, Pixiv, gallery-dl, LLM, media, thumbnail,
 Stable Replay, localization, graph/search, Entity/truth, or provider-derived
 `media_tags` activity.
 
+The second PR #143 review-fix round is limited to four findings from review
+`4888894624` at reviewed HEAD
+`389ba79cdf9cdd06f81fba07889f21245fd44072`, including one P1 reported only in
+the review body. Its implementation evidence is
+`8fc1df2484f2a3de12639cf43e0e2c38131239b5`. Audit-ready PASS now depends on
+trusted repository and private runtime/scenario ledgers, interruption recovery
+is proved by independent COMMITTED/UNKNOWN/NOT_COMMITTED restart scenarios,
+and the complete public summary is recursively scanned for redaction findings.
+
 ## Proposed Delivery Sequence
 
 1. Complete P1-R1 Draft PR #143 and stop at independent owner audit.

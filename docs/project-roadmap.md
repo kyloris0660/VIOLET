@@ -34,7 +34,7 @@ PR #141 physically merged at
 `36100bfa0317387e064cd87b2e753eca3a201b5e`, but eight valid review findings
 arrived after merge and remain unresolved on that historical PR. P1-R1 is the
 only authorized remediation route. Its implementation evidence is
-`8b58a2b107a6667abb9cd7fd022fff84489c8310`, pending independent owner audit.
+`8fc1df2484f2a3de12639cf43e0e2c38131239b5`, pending independent owner audit.
 Consequently `target_met=false`, `safe_to_merge=false`,
 `route_approved=false`, and `next_phase_started=false`.
 
@@ -49,6 +49,15 @@ requires an independent five-scenario failure-budget/manual-stop matrix,
 reconciles synthetic invocations per item, and treats phase-level zero-activity
 statements only as non-action attestations. Executable operation evidence still
 comes exclusively from the instrumented private `RunLedger`.
+
+The second bounded review-fix round addresses four findings from review
+`4888894624` on reviewed HEAD
+`389ba79cdf9cdd06f81fba07889f21245fd44072`; three are inline and the fourth
+public-summary redaction P1 is in the review submission body. Audit-ready stage
+claims now require trusted repository, main runtime ledger, private
+failure-budget scenario, and private interrupted-reconciliation evidence. The
+complete public summary is recursively redaction-scanned; editable booleans or
+digests cannot substitute for that scan.
 
 ## Accepted Mainline Sequence
 

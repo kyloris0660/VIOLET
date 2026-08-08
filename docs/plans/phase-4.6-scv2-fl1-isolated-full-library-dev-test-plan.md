@@ -16,7 +16,7 @@ Canonical phase:
 - Current status: planning input only; `SCV2-FL1-P1-R1` Draft PR #143 is
   pending owner audit
 - Current implementation evidence:
-  `8b58a2b107a6667abb9cd7fd022fff84489c8310`
+  `8fc1df2484f2a3de12639cf43e0e2c38131239b5`
 - Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or
   started; do not implement its scanner/contract/tests or read a real source
   root without a separate later owner decision
@@ -323,6 +323,14 @@ ordinary success run. Phase-level non-action declarations are attestations
 only; they cannot replace write-ahead runtime gateway evidence or grant owner
 acceptance, merge safety, or route approval.
 
+The second bounded PR #143 review-fix additionally binds audit-ready status to
+the trusted repository, main runtime ledger, fixed-schema private
+failure-budget scenarios, and private interrupted-reconciliation scenarios.
+The reconciliation stage requires independently reconstructed COMMITTED,
+UNKNOWN, and NOT_COMMITTED restart behavior. The complete public summary,
+including unknown fields, must pass the shared recursive redaction scanner;
+caller-supplied booleans or recomputed editable digests are not evidence.
+
 Required test groups for the implementation PR:
 
 - strict DB/storage/source identity and production denylist;
@@ -377,7 +385,9 @@ only, bound to planning HEAD `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
 FL1-P1-R1 implements only the approved late-review remediation for isolation,
 default-deny mutation, contract evidence, source-membership/content-target
 identity, restartable synthetic ledger, reconciliation, and budget semantics.
-Its implementation evidence is pending independent owner audit. Tests and an
+Its implementation evidence
+`8fc1df2484f2a3de12639cf43e0e2c38131239b5` is pending independent owner
+audit. Tests and an
 automated review do not create owner acceptance or merge authorization.
 
 Not approved: permission to connect to an existing database, inspect production, read a
