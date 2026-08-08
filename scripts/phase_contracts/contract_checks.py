@@ -15,6 +15,7 @@ from .contract_registry import (
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
     R2R_AUTONOMOUS_RECALL_SEARCH_CLOSURE_STATUSES,
     R2_SOURCE_CONCEPT_GRAPH_REMEDIATION_STATUSES,
+    SCV2_FL1_I1_INVENTORY_STATUSES,
     SCV2_FL1_P1_FOUNDATION_STATUSES,
     SOURCE_CONCEPT_ALLOWED_STATUSES,
     SOURCE_CONCEPT_FULL_CHAIN_STAGES,
@@ -13260,6 +13261,254 @@ def _check_scv2_fl1_p1_foundation(
         )
 
 
+def _check_scv2_fl1_i1_inventory(
+    contract: PhaseContract,
+    summary: Mapping[str, Any],
+    result: ContractCheckResult,
+) -> None:
+    pipeline = _get(summary, "pipeline_contract", {})
+    status = str(_get(summary, "pipeline_contract.status", ""))
+    blockers = list(_get(summary, "pipeline_contract.active_blockers", []) or [])
+    if status not in SCV2_FL1_I1_INVENTORY_STATUSES:
+        result.fail(
+            "fl1_i1_status_invalid",
+            "FL1-I1 inventory status is not registered.",
+            path="pipeline_contract.status",
+            expected=SCV2_FL1_I1_INVENTORY_STATUSES,
+            actual=status,
+        )
+    pipeline_valid = (
+        isinstance(pipeline, Mapping)
+        and pipeline.get("contract_id") == contract.contract_id
+        and pipeline.get("target_met") is False
+        and pipeline.get("safe_to_merge") is False
+        and pipeline.get("route_approved") is False
+        and bool(blockers)
+    )
+    if status == "synthetic_implementation_ready_for_owner_audit":
+        pipeline_valid = pipeline_valid and blockers == [
+            "pending_owner_audit",
+            "real_source_scope_not_authorized",
+        ]
+    if not pipeline_valid:
+        result.fail(
+            "fl1_i1_claim_invalid",
+            "FL1-I1 synthetic evidence must remain fail-closed at owner audit and exact real-source authorization.",
+            path="pipeline_contract",
+        )
+
+    authorization = _get(summary, "authorization", {})
+    authorization_valid = (
+        isinstance(authorization, Mapping)
+        and authorization.get("synthetic_fixture_inventory_authorized") is True
+        and all(
+            authorization.get(key) is False
+            for key in (
+                "real_source_inventory_authorized",
+                "database_access_authorized",
+                "app_storage_write_authorized",
+                "data_execution_authorized",
+                "provider_authorized",
+                "llm_authorized",
+                "media_authorized",
+                "stable_replay_authorized",
+                "network_authorized",
+            )
+        )
+    )
+    if not authorization_valid:
+        result.fail(
+            "fl1_i1_authorization_boundary_invalid",
+            "FL1-I1 foundation may authorize only synthetic fixture inventory, never real source, DB, storage, data, external, or network activity.",
+            path="authorization",
+        )
+
+    preflight = _get(summary, "preflight", {})
+    preflight_valid = (
+        isinstance(preflight, Mapping)
+        and preflight.get("source_kind") == "synthetic_fixture"
+        and isinstance(preflight.get("source_scope_id"), str)
+        and bool(
+            re.fullmatch(
+                r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
+                str(preflight.get("source_scope_id")),
+            )
+        )
+        and all(
+            preflight.get(key) is True
+            for key in (
+                "git_head_match",
+                "python_identity_match",
+                "source_root_explicit_and_contained",
+                "synthetic_only",
+                "bounded_item_count",
+                "bounded_source_bytes",
+            )
+        )
+        and preflight.get("symlink_following_allowed") is False
+        and _as_int(preflight.get("forbidden_root_overlap_count"), -1) == 0
+    )
+    if not preflight_valid:
+        result.fail(
+            "fl1_i1_preflight_invalid",
+            "FL1-I1 requires an exact, contained, bounded synthetic source with symlink following disabled.",
+            path="preflight",
+        )
+
+    proof = _get(summary, "read_only_proof", {})
+    before = str(_get(summary, "read_only_proof.source_snapshot_before", ""))
+    after = str(_get(summary, "read_only_proof.source_snapshot_after", ""))
+    proof_valid = (
+        isinstance(proof, Mapping)
+        and bool(re.fullmatch(r"[0-9a-f]{64}", before))
+        and before == after
+        and proof.get("source_tree_unchanged") is True
+        and proof.get("expected_snapshot_matched") is True
+        and all(
+            _as_int(proof.get(key), -1) == 0
+            for key in (
+                "source_mutation_count",
+                "database_connection_count",
+                "database_write_count",
+                "app_storage_write_count",
+                "external_request_count",
+            )
+        )
+    )
+    if not proof_valid:
+        result.fail(
+            "fl1_i1_read_only_proof_invalid",
+            "FL1-I1 must prove an unchanged source snapshot and zero source, database, app-storage, or external mutation.",
+            path="read_only_proof",
+        )
+
+    inventory = _get(summary, "inventory", {})
+    count_keys = (
+        "discovered",
+        "supported",
+        "unsupported",
+        "duplicate",
+        "cloud_recall_deferred",
+        "unreadable_or_missing",
+        "eligible_candidate",
+        "imported",
+        "import_deferred",
+        "import_failed",
+        "unresolved",
+    )
+    counts = {key: _as_int(inventory.get(key), -1) for key in count_keys} if isinstance(inventory, Mapping) else {}
+    inventory_valid = (
+        isinstance(inventory, Mapping)
+        and inventory.get("schema_version")
+        == "violet.scv2-fl1-i1-inventory-manifest.v1"
+        and inventory.get("membership_identity_version")
+        == "violet.scv2-fl1-i1-membership.v1"
+        and bool(
+            re.fullmatch(
+                r"[0-9a-f]{64}", str(inventory.get("manifest_fingerprint", ""))
+            )
+        )
+        and counts.get("discovered", -1) >= 1
+        and all(value >= 0 for value in counts.values())
+        and counts["discovered"] == counts["supported"] + counts["unsupported"]
+        and counts["supported"]
+        == counts["duplicate"]
+        + counts["cloud_recall_deferred"]
+        + counts["unreadable_or_missing"]
+        + counts["eligible_candidate"]
+        and counts["eligible_candidate"]
+        == counts["imported"] + counts["import_deferred"] + counts["import_failed"]
+        and counts["imported"] == 0
+        and counts["import_failed"] == 0
+        and counts["unresolved"] == 0
+        and all(
+            inventory.get(key) is True
+            for key in (
+                "discovered_equation_balanced",
+                "supported_equation_balanced",
+                "eligible_equation_balanced",
+                "one_terminal_disposition_per_item",
+                "content_fingerprint_deduplication",
+            )
+        )
+        and inventory.get("filename_or_row_order_identity_used") is False
+    )
+    if not inventory_valid:
+        result.fail(
+            "fl1_i1_inventory_denominator_invalid",
+            "FL1-I1 inventory must balance every denominator equation with zero unresolved or import execution.",
+            path="inventory",
+        )
+
+    operations = _get(summary, "operation_counts", {})
+    operation_valid = (
+        isinstance(operations, Mapping)
+        and _as_int(operations.get("synthetic_source_file_read_attempts"), -1) >= 0
+        and _as_int(operations.get("synthetic_source_file_read_successes"), -1) >= 0
+        and _as_int(operations.get("synthetic_source_file_read_successes"), -1)
+        <= _as_int(operations.get("synthetic_source_file_read_attempts"), -2)
+        and _as_int(operations.get("synthetic_source_bytes_read"), -1) >= 0
+        and all(
+            _as_int(operations.get(key), -1) == 0
+            for key in (
+                "production_activity",
+                "real_source_inventory_activity",
+                "existing_database_read_activity",
+                "existing_database_write_activity",
+                "app_storage_write_activity",
+                "provider_activity",
+                "llm_activity",
+                "media_activity",
+                "stable_replay_activity",
+                "user_data_cleanup_delete_activity",
+            )
+        )
+    )
+    if not operation_valid:
+        result.fail(
+            "fl1_i1_forbidden_activity",
+            "FL1-I1 permits bounded synthetic reads only; every real, DB, storage, external, replay, or cleanup count must remain zero.",
+            path="operation_counts",
+        )
+
+    validation = _get(summary, "validation", {})
+    validation_fields = (
+        "focused_tests_passed",
+        "full_non_e2e_passed",
+        "synthetic_source_containment_passed",
+        "real_source_rejection_passed",
+        "read_only_snapshot_passed",
+        "symlink_rejection_passed",
+        "finite_budget_passed",
+        "denominator_equations_passed",
+        "duplicate_accounting_passed",
+        "cloud_and_unreadable_terminal_state_passed",
+        "import_deferred_boundary_passed",
+        "public_redaction_passed",
+    )
+    if not isinstance(validation, Mapping) or any(
+        validation.get(key) is not True for key in validation_fields
+    ):
+        result.fail(
+            "fl1_i1_validation_incomplete",
+            "FL1-I1 requires focused and full validation of every synthetic read-only inventory safety behavior.",
+            path="validation",
+        )
+
+    redaction = _get(summary, "public_redaction", {})
+    if not isinstance(redaction, Mapping) or not (
+        redaction.get("passed") is True
+        and redaction.get("private_paths_emitted") is False
+        and redaction.get("content_fingerprints_emitted") is False
+        and redaction.get("per_item_private_records_emitted") is False
+    ):
+        result.fail(
+            "fl1_i1_public_redaction_invalid",
+            "FL1-I1 public evidence must contain aggregates only, with no paths, per-item records, or content fingerprints.",
+            path="public_redaction",
+        )
+
+
 CUSTOM_CHECKS = {
     "python_env": _check_python_env,
     "postgres_db": _check_postgres_db,
@@ -13278,6 +13527,7 @@ CUSTOM_CHECKS = {
     "sv1b_controlled_pixiv_metadata_localization_source_graph_closure": _check_sv1b_controlled_pixiv_metadata_localization_source_graph_closure,
     "sv1b_owner_acceptance_closeout": _check_sv1b_owner_acceptance_closeout,
     "scv2_fl1_p1_foundation": _check_scv2_fl1_p1_foundation,
+    "scv2_fl1_i1_inventory": _check_scv2_fl1_i1_inventory,
     "review_pack": _check_review_pack,
     "route_audit": _check_route_audit,
     "public_redaction": _check_public_redaction,
