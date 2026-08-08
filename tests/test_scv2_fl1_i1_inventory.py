@@ -277,6 +277,11 @@ def test_override_paths_and_dispositions_are_bounded(tmp_path: Path) -> None:
                 replace(config, synthetic_disposition_overrides=overrides)
             )
 
+    with pytest.raises(I1InventoryError, match="synthetic_overrides_invalid"):
+        validate_i1_preflight(
+            replace(config, synthetic_disposition_overrides=None)  # type: ignore[arg-type]
+        )
+
     (source / "unsupported.txt").write_text("unsupported", encoding="utf-8")
     with pytest.raises(
         I1InventoryError, match="synthetic_override_requires_supported_extension"
@@ -330,6 +335,23 @@ def test_source_change_during_read_fails_closed(
         scan_synthetic_inventory(config)
 
 
+def test_empty_directory_change_during_read_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, source, _ = _config(tmp_path)
+    (source / "one.jpg").write_bytes(b"one")
+    original_hash = inventory._hash_file
+
+    def add_directory_after_hash(entry: object, chunk_bytes: int) -> tuple[str, int]:
+        result = original_hash(entry, chunk_bytes)
+        (source / "new-empty-directory").mkdir()
+        return result
+
+    monkeypatch.setattr(inventory, "_hash_file", add_directory_after_hash)
+    with pytest.raises(I1InventoryError, match="source_changed_during_inventory"):
+        scan_synthetic_inventory(config)
+
+
 def test_scanner_opens_files_read_only_and_writes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -375,6 +397,13 @@ def test_manifest_validation_rejects_private_accounting_tamper(tmp_path: Path) -
         ).validate()
     with pytest.raises(I1InventoryError, match="inventory_manifest_fingerprint_mismatch"):
         replace(manifest, manifest_fingerprint="0" * 64).validate()
+    with pytest.raises(
+        I1InventoryError, match="inventory_public_label_identity_mismatch"
+    ):
+        replace(
+            manifest,
+            records=(replace(record, public_label="item_0000000000000000"),),
+        ).validate()
 
 
 def test_public_contract_summary_contains_only_safe_aggregate_evidence(tmp_path: Path) -> None:

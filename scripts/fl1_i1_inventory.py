@@ -227,6 +227,8 @@ class InventoryManifest:
                 raise I1InventoryError("inventory_item_identity_invalid")
             if not re.fullmatch(r"item_[0-9a-f]{16}", record.public_label):
                 raise I1InventoryError("inventory_public_label_invalid")
+            if record.public_label != _public_label(record.item_id):
+                raise I1InventoryError("inventory_public_label_identity_mismatch")
             if record.public_label in labels:
                 raise I1InventoryError("inventory_public_label_collision")
             labels.add(record.public_label)
@@ -404,6 +406,8 @@ def validate_i1_preflight(config: I1InventoryConfig) -> InventoryPreflight:
     if expected_snapshot is not None and not HEX64_RE.fullmatch(expected_snapshot):
         raise I1InventoryError("expected_source_snapshot_fingerprint_invalid")
 
+    if not isinstance(config.synthetic_disposition_overrides, Mapping):
+        raise I1InventoryError("synthetic_overrides_invalid")
     overrides: dict[str, InventoryDisposition] = {}
     for raw_path, raw_disposition in config.synthetic_disposition_overrides.items():
         path = _normalize_override_path(raw_path)
