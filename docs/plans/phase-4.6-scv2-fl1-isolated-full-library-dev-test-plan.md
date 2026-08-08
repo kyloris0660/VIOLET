@@ -13,12 +13,12 @@ Canonical phase:
 
 - ID: `SCV2-FL1`
 - Title: `Isolated Full-Library Dev/Test Planning`
-- Current status: `fl1_p1_owner_accepted_for_merge`
-- Current implementation: PR #141, owner-accepted evidence HEAD
-  `3a7b20608724e5f469548183df0830b09d5ea7be`
-- Current stop: pass live review gates, squash-merge PR #141, then start only a
-  separate FL1-I1 planning and synthetic implementation PR; do not read a real
-  source root or execute inventory without exact later authorization
+- Current status: `fl1_i1_synthetic_implementation_ready_for_owner_audit`
+- Current implementation: Draft PR #142, evidence HEAD
+  `102be797f845d518817d7d01d17d65b65a4fc243`
+- Current stop: owner-audit the planning and synthetic read-only scanner; do not
+  read, list, hash, or inventory a real source root without an exact later
+  source-identity and scope authorization
 
 The older `Phase 4.6-FULLLIB-P0 Production Full-Library Import and AI Tagging
 Plan` is a historical design input only. Its production route and `FULLLIB-E1`
@@ -361,11 +361,17 @@ equivalent. No implementation PR may silently include execution authority.
 Owner approval recorded: the plan and proposed FL1-P1 PR/contract structure
 only, bound to planning HEAD `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
 
-FL1-P1 implements only the approved isolation, default-deny mutation, contract,
+FL1-P1 implemented the approved isolation, default-deny mutation, contract,
 source-membership/content-target identity split, and restartable synthetic
-ledger foundations. The owner accepted it after bounded ledger remediation; it
-may merge after live review gates pass.
+ledger foundations. The owner accepted it after bounded ledger remediation and
+PR #141 squash-merged at `36100bfa0317387e064cd87b2e753eca3a201b5e`.
+
+FL1-I1 now implements planning plus a synthetic-only read-only scanner and
+contract. It proves bounded source observation, immutable pre/post snapshots,
+stable private membership, content deduplication, complete inventory equations,
+and aggregate-only public evidence. This is not the separately authorized real
+source manifest scan described in the delivery sequence.
 
 Not approved: permission to connect to an existing database, inspect production, read a
-real source root, create storage, run inventory, import, classify, tag, call a
+real source root, create app storage, run real inventory, import, classify, tag, call a
 provider/LLM, download media/models, derive graph/search, or begin production.

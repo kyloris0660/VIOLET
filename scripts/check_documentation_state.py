@@ -63,16 +63,18 @@ PUBLIC_FORBIDDEN = (
     re.compile(r"(?i)\b(?:api[_-]?key|refresh[_-]?token|bearer)\s*[:=]\s*\S+"),
     re.compile(r"(?i)\.local_manifests"),
 )
-FL1_STATUS = "fl1_p1_owner_accepted_for_merge"
-FL1_BLOCKER = "none_fl1_p1_owner_accepted_for_merge"
-FL1_MANUAL_STATUS = "owner_accepted_fl1_p1_foundation"
+FL1_STATUS = "fl1_i1_synthetic_implementation_ready_for_owner_audit"
+FL1_BLOCKER = "pending_owner_audit_and_real_source_scope_authorization"
+FL1_MANUAL_STATUS = "pending_owner_audit"
 FL1_APPROVED_PLANNING_HEAD = "db90457d51a39b5dc930afc2a92a6ef3139a2760"
-FL1_ROUTE_SCOPE = "FL1-I1 read-only inventory planning and synthetic implementation only"
+FL1_ROUTE_SCOPE = "FL1-I1 planning and synthetic read-only inventory implementation only"
 FL1_COMPLETED_SCOPE = "FL1-P1 isolation/safety/contract/ledger implementation only"
 FL1_PLAN_MERGE_COMMIT = "9ce1128be643c0eaa998ccdff8890d76196ce7db"
-FL1_P1_IMPLEMENTATION_HEAD = "3a7b20608724e5f469548183df0830b09d5ea7be"
-SV1B_MERGE_COMMIT = "33af4111e1595dac3ece0ac50002556d466f0138"
-SV1B_WAIVER = "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
+FL1_P1_MERGE_COMMIT = "36100bfa0317387e064cd87b2e753eca3a201b5e"
+FL1_P1_FINAL_HEAD = "495a6506b25bb27747ebc27e341a06de4860aaa4"
+FL1_P1_ACCEPTED_TREE = "05ad4b4829cd2b556a3644ceaf4620b98200f042"
+FL1_I1_FOUNDATION_HEAD = "b0d0d205431eae5d7de6a5b7fc84e104b46f8a72"
+FL1_I1_IMPLEMENTATION_HEAD = "102be797f845d518817d7d01d17d65b65a4fc243"
 
 
 class DocumentationStateError(ValueError):
@@ -101,35 +103,36 @@ def _require_list(
 
 def _validate_fl1_state(state: dict[str, Any]) -> None:
     if (
-        state["draft"] is not False
+        state["draft"] is not True
         or state["current_status"] != FL1_STATUS
-        or state["target_met"] is not True
-        or state["safe_to_merge"] is not True
-        or state["route_approved"] is not True
+        or state["target_met"] is not False
+        or state["safe_to_merge"] is not False
+        or state["route_approved"] is not False
         or state["route_scope"] != FL1_ROUTE_SCOPE
         or state["planning_approved"] is not True
         or state["approved_planning_head"] != FL1_APPROVED_PLANNING_HEAD
         or state["manual_acceptance_status"] != FL1_MANUAL_STATUS
         or state["next_phase_started"] is not True
     ):
-        raise DocumentationStateError("fl1_p1_status_fields_conflict")
+        raise DocumentationStateError("fl1_i1_status_fields_conflict")
     blocker = state["active_blocker"]
     if blocker.get("code") != FL1_BLOCKER:
-        raise DocumentationStateError("fl1_p1_blocker_conflict")
+        raise DocumentationStateError("fl1_i1_blocker_conflict")
 
     boundary = state["planning_boundary"]
     expected_boundary = {
         "planning_only": False,
         "implementation_authorized": True,
-        "implementation_scope": FL1_COMPLETED_SCOPE,
+        "implementation_scope": FL1_ROUTE_SCOPE,
         "completed_implementation_scope": FL1_COMPLETED_SCOPE,
         "implementation_completed": True,
-        "owner_audit_pending": False,
+        "owner_audit_pending": True,
         "data_execution_authorized": False,
         "production_authorized": False,
         "database_access_authorized": False,
         "database_data_execution_authorized": False,
         "source_root_access_authorized": False,
+        "synthetic_source_fixture_access_authorized": True,
         "real_source_inventory_authorized": False,
         "provider_or_llm_authorized": False,
         "provider_authorized": False,
@@ -144,21 +147,23 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
     if not isinstance(boundary, dict) or any(
         boundary.get(key) != value for key, value in expected_boundary.items()
     ):
-        raise DocumentationStateError("fl1_p1_boundary_invalid")
+        raise DocumentationStateError("fl1_i1_boundary_invalid")
 
     prior = state["prior_phase_acceptance"]
     if not isinstance(prior, dict) or any(
         (
-            prior.get("phase_id") != "SCV2-SV1B",
-            prior.get("merge_commit") != SV1B_MERGE_COMMIT,
-            prior.get("pass_count") != 37,
-            prior.get("owner_waived_nonblocking_known_limitation_count") != 3,
-            prior.get("pending_count") != 0,
-            prior.get("unwaived_fail_count") != 0,
-            sorted(prior.get("owner_waived_case_ids") or ())
-            != ["B01", "B04", "B08"],
-            prior.get("owner_waiver_identity") != SV1B_WAIVER,
-            prior.get("waiver_inherited_by_fl1") is not False,
+            prior.get("phase_id") != "SCV2-FL1-P1",
+            prior.get("merge_commit") != FL1_P1_MERGE_COMMIT,
+            prior.get("accepted_tree") != FL1_P1_ACCEPTED_TREE,
+            prior.get("final_pr_head") != FL1_P1_FINAL_HEAD,
+            prior.get("status") != "fl1_p1_owner_accepted_and_squash_merged",
+            prior.get("review_observation_seconds_at_least", 0) < 300,
+            prior.get("review_count") != 0,
+            prior.get("unresolved_thread_count") != 0,
+            prior.get("failing_or_pending_check_count") != 0,
+            prior.get("real_source_inventory_operation_count") != 0,
+            prior.get("database_operation_count") != 0,
+            prior.get("external_operation_count") != 0,
         )
     ):
         raise DocumentationStateError("fl1_prior_phase_acceptance_invalid")
@@ -170,6 +175,7 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
             "database_operation_count",
             "existing_database_read_operation_count",
             "existing_database_write_operation_count",
+            "app_storage_write_operation_count",
             "real_source_inventory_operation_count",
             "provider_operation_count",
             "llm_operation_count",
@@ -178,21 +184,27 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         )
     ):
         raise DocumentationStateError("fl1_operation_counts_nonzero")
-    if protected.get("production_consumed_or_modified_during_fl1_p1") is not False:
+    if protected.get("production_consumed_or_modified_during_fl1_i1") is not False:
         raise DocumentationStateError("fl1_production_boundary_invalid")
+    if protected.get("synthetic_source_fixture_activity_performed") is not True:
+        raise DocumentationStateError("fl1_i1_synthetic_fixture_evidence_invalid")
     if protected.get("approved_planning_head") != FL1_APPROVED_PLANNING_HEAD:
         raise DocumentationStateError("fl1_approved_planning_head_evidence_invalid")
     if (
-        state["accepted_mainline_base"] != FL1_PLAN_MERGE_COMMIT
+        state["accepted_mainline_base"] != FL1_P1_MERGE_COMMIT
         or protected.get("fl1_plan_merge_commit") != FL1_PLAN_MERGE_COMMIT
+        or protected.get("fl1_p1_merge_commit") != FL1_P1_MERGE_COMMIT
+        or protected.get("fl1_p1_final_pr_head") != FL1_P1_FINAL_HEAD
+        or protected.get("fl1_p1_accepted_tree") != FL1_P1_ACCEPTED_TREE
     ):
-        raise DocumentationStateError("fl1_plan_merge_commit_invalid")
+        raise DocumentationStateError("fl1_i1_mainline_base_invalid")
     if (
-        state["implementation_evidence_head"] != FL1_P1_IMPLEMENTATION_HEAD
-        or protected.get("fl1_p1_implementation_evidence_head")
-        != FL1_P1_IMPLEMENTATION_HEAD
+        state["implementation_evidence_head"] != FL1_I1_IMPLEMENTATION_HEAD
+        or protected.get("fl1_i1_implementation_evidence_head")
+        != FL1_I1_IMPLEMENTATION_HEAD
+        or protected.get("fl1_i1_foundation_head") != FL1_I1_FOUNDATION_HEAD
     ):
-        raise DocumentationStateError("fl1_p1_implementation_head_invalid")
+        raise DocumentationStateError("fl1_i1_implementation_head_invalid")
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -239,7 +251,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     ):
         raise DocumentationStateError("public_state_boundary_invalid")
 
-    if state["phase_id"] == "SCV2-FL1-P1":
+    if state["phase_id"] == "SCV2-FL1-I1":
         _validate_fl1_state(state)
     else:
         raise DocumentationStateError("unsupported_active_phase")
@@ -260,7 +272,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "ai tagging execution",
     )
     if any(term in joined_authorized for term in authorization_deny_terms):
-        raise DocumentationStateError("fl1_p1_authorizes_data_execution")
+        raise DocumentationStateError("fl1_i1_authorizes_data_execution")
     for required in (
         "database",
         "production",
@@ -381,7 +393,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}`.",
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
-        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (P1 owner-accepted; FL1-I1 starts only after merge).",
+        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (I1 synthetic foundation implemented; owner audit and exact real-source scope remain pending).",
         f"- Approved planning HEAD: `{state['approved_planning_head']}`; route scope: `{state['route_scope']}`.",
         "",
         "## Completed Checkpoints",

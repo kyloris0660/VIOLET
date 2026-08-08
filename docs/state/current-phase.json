@@ -1,50 +1,50 @@
 {
   "schema_version": "violet.current-phase.v2",
-  "phase_id": "SCV2-FL1-P1",
-  "phase_title": "Dev/Test Isolation, Contract, And Ledger Foundations",
+  "phase_id": "SCV2-FL1-I1",
+  "phase_title": "Read-Only Inventory Planning And Synthetic Foundation",
   "repository": "kyloris0660/VIOLET",
-  "branch": "codex/scv2-fl1-p1-isolation-safety-ledger",
-  "pr_number": 141,
-  "draft": false,
-  "accepted_mainline_base": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
-  "implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
-  "current_status": "fl1_p1_owner_accepted_for_merge",
-  "target_met": true,
-  "safe_to_merge": true,
-  "route_approved": true,
-  "route_scope": "FL1-I1 read-only inventory planning and synthetic implementation only",
+  "branch": "codex/scv2-fl1-i1-read-only-inventory-foundation",
+  "pr_number": 142,
+  "draft": true,
+  "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
+  "implementation_evidence_head": "102be797f845d518817d7d01d17d65b65a4fc243",
+  "current_status": "fl1_i1_synthetic_implementation_ready_for_owner_audit",
+  "target_met": false,
+  "safe_to_merge": false,
+  "route_approved": false,
+  "route_scope": "FL1-I1 planning and synthetic read-only inventory implementation only",
   "planning_approved": true,
   "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
-  "manual_acceptance_status": "owner_accepted_fl1_p1_foundation",
+  "manual_acceptance_status": "pending_owner_audit",
   "next_phase_started": true,
   "prior_phase_acceptance": {
-    "phase_id": "SCV2-SV1B",
-    "merge_commit": "33af4111e1595dac3ece0ac50002556d466f0138",
-    "status": "sv1b_accepted_with_known_nonblocking_limitations",
-    "pass_count": 37,
-    "owner_waived_nonblocking_known_limitation_count": 3,
-    "pending_count": 0,
-    "unwaived_fail_count": 0,
-    "owner_waived_case_ids": [
-      "B01",
-      "B04",
-      "B08"
-    ],
-    "owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
-    "waiver_inherited_by_fl1": false
+    "phase_id": "SCV2-FL1-P1",
+    "merge_commit": "36100bfa0317387e064cd87b2e753eca3a201b5e",
+    "accepted_tree": "05ad4b4829cd2b556a3644ceaf4620b98200f042",
+    "final_pr_head": "495a6506b25bb27747ebc27e341a06de4860aaa4",
+    "implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
+    "status": "fl1_p1_owner_accepted_and_squash_merged",
+    "review_observation_seconds_at_least": 300,
+    "review_count": 0,
+    "unresolved_thread_count": 0,
+    "failing_or_pending_check_count": 0,
+    "real_source_inventory_operation_count": 0,
+    "database_operation_count": 0,
+    "external_operation_count": 0
   },
   "planning_boundary": {
     "planning_only": false,
     "implementation_authorized": true,
-    "implementation_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
+    "implementation_scope": "FL1-I1 planning and synthetic read-only inventory implementation only",
     "completed_implementation_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
     "implementation_completed": true,
-    "owner_audit_pending": false,
+    "owner_audit_pending": true,
     "data_execution_authorized": false,
     "production_authorized": false,
     "database_access_authorized": false,
     "database_data_execution_authorized": false,
     "source_root_access_authorized": false,
+    "synthetic_source_fixture_access_authorized": true,
     "real_source_inventory_authorized": false,
     "provider_or_llm_authorized": false,
     "provider_authorized": false,
@@ -58,92 +58,72 @@
   },
   "completed_checkpoints": [
     {
-      "id": "sv1b_owner_acceptance_and_squash_merge",
-      "result": "accepted_mainline_input",
-      "fingerprint": "33af4111e1595dac3ece0ac50002556d466f0138"
+      "id": "fl1_p1_owner_acceptance_and_squash_merge",
+      "result": "accepted_mainline_input_for_fl1_i1",
+      "fingerprint": "36100bfa0317387e064cd87b2e753eca3a201b5e"
     },
     {
-      "id": "fl1_plan_owner_approval_and_squash_merge",
-      "result": "accepted_mainline_input_for_fl1_p1",
-      "fingerprint": "9ce1128be643c0eaa998ccdff8890d76196ce7db"
+      "id": "fl1_i1_external_and_data_operation_preflight",
+      "result": "zero_real_source_database_storage_or_external_operations"
     },
     {
-      "id": "doc_gov_02",
-      "result": "completed_active_route_and_runbook_split"
-    },
-    {
-      "id": "fl1_isolated_dev_test_plan",
-      "result": "owner_approved_for_fl1_p1_implementation_only",
-      "fingerprint": "db90457d51a39b5dc930afc2a92a6ef3139a2760"
-    },
-    {
-      "id": "fl1_external_and_data_operation_preflight",
-      "result": "zero_forbidden_operations_fl1_p1_synthetic_only"
-    },
-    {
-      "id": "fl1_p1_isolation_safety_contract_ledger_implementation",
-      "result": "owner_accepted_for_merge_after_bounded_ledger_remediation",
-      "fingerprint": "3a7b20608724e5f469548183df0830b09d5ea7be"
+      "id": "fl1_i1_synthetic_read_only_inventory_foundation",
+      "result": "implementation_ready_for_owner_audit",
+      "fingerprint": "102be797f845d518817d7d01d17d65b65a4fc243"
     }
   ],
   "active_blocker": {
-    "code": "none_fl1_p1_owner_accepted_for_merge",
-    "scope": "SCV2-FL1-P1 closeout on PR #141 and the separate FL1-I1 implementation route",
-    "resolution": "The owner audit accepted the P1 safety foundation after bounded remediation of content-level deduplication, per-item versus global failure budgets, and interrupted-mutation reconciliation. PR #141 may become Ready and squash-merge after live review gates pass. After merge, only a separate FL1-I1 planning and synthetic implementation PR may start; real source inventory and all data or external execution remain unauthorized."
+    "code": "pending_owner_audit_and_real_source_scope_authorization",
+    "scope": "SCV2-FL1-I1 synthetic read-only inventory foundation on Draft PR #142",
+    "resolution": "The owner must audit the synthetic-only scanner, executable contract, immutable source-snapshot proof, denominator equations, duplicate policy, and public redaction boundary. This Draft PR must not become Ready or merge, and no real source root may be read, listed, hashed, or inventoried until a later authorization names the exact source identity and scope."
   },
   "owner_decisions": [
     {
-      "id": "owner_final_sv1b_acceptance_decision_v1_20260807",
-      "decision": "Accept SCV2-SV1B with 37 PASS and three separately recorded nonblocking placeholder-creator limitations, authorize gated PR #139 squash merge, and authorize SCV2-FL1 planning only."
-    },
-    {
-      "id": "owner_authorized_doc_gov_02_and_fl1_planning_20260807",
-      "decision": "After PR #139 merges, complete DOC-GOV-02 and prepare an isolated full-library Dev/Test plan on a separate Draft PR without production, database, provider, LLM, media, or data execution."
-    },
-    {
-      "id": "owner_approved_fl1_plan_for_p1_implementation_only_20260808",
-      "decision": "Approve the SCV2-FL1 plan at db90457d51a39b5dc930afc2a92a6ef3139a2760, authorize minimal PR #140 closeout and squash merge, then authorize only a separate FL1-P1 isolation/safety/contract/ledger implementation PR. Preserve the SV1B 37 PASS and B01/B04/B08 owner-waived decisions without extending the waiver to FL1."
-    },
-    {
       "id": "owner_accepted_fl1_p1_after_bounded_audit_remediation_20260808",
-      "decision": "Audit and accept the FL1-P1 foundation at 3a7b20608724e5f469548183df0830b09d5ea7be after the three ledger-semantic blockers were corrected; authorize PR #141 Ready transition and squash merge after live gates pass, then authorize only a separate FL1-I1 read-only inventory planning and synthetic implementation PR. Real source scanning still requires an exact later source-scope authorization."
+      "decision": "Accept and squash-merge FL1-P1 after bounded audit remediation and clean live gates; then start only a separate FL1-I1 planning and synthetic implementation PR."
+    },
+    {
+      "id": "owner_authorized_fl1_i1_planning_and_synthetic_implementation_20260808",
+      "decision": "Begin the next phase after the accepted FL1-P1 merge, limited to FL1-I1 planning and synthetic read-only inventory implementation. Do not infer authority to inspect a real source root; exact real source identity and scan scope require a later owner decision."
     }
   ],
   "authorized_operations": [
-    "tracked owner-acceptance closeout, Ready transition, and squash merge of PR #141 after all live review and merge gates pass",
-    "after the confirmed PR #141 merge, create a separate FL1-I1 Draft PR for read-only inventory planning and synthetic implementation only",
-    "local focused and full non-E2E validation using only synthetic, in-memory, or newly created temporary fixtures"
+    "owner audit and code review of Draft PR #142 and its public-safe synthetic inventory contract evidence",
+    "local bounded scanning of newly created synthetic fixtures inside temporary sandboxes with in-memory manifest output only",
+    "focused and full non-E2E validation plus bounded review-driven corrections inside the FL1-I1 synthetic foundation scope"
   ],
   "forbidden_operations": [
-    "existing database creation, connection, comparison, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair",
-    "production database, production storage, production source root, or production library access",
-    "source or iCloud root inventory, read, hydration, copy, move, rename, deletion, or mutation",
-    "provider, Pixiv, gallery-dl, Provider-2, LLM, model download, media, or thumbnail request",
-    "full-library import, classification, AI tagging, localization, graph/search execution, or background worker start",
+    "existing database creation, connection, read, comparison, write, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair",
+    "production database, production storage, production source root, production library, or any other production access",
+    "real source or iCloud root listing, inventory execution, read, hashing, hydration, copy, move, rename, deletion, or mutation",
+    "app storage creation or write, import execution, classification execution, AI tagging execution, localization, graph/search execution, or background worker start",
+    "provider execution, Pixiv, gallery-dl, Provider-2, LLM execution, model download, media download, thumbnail request, or network access",
     "Entity, EntityAlias, confirmed assignment, user truth, source truth, or provider-derived media_tags write",
     "Stable Replay or authoritative evidence import, replay, or reuse",
-    "real source inventory execution, direct main push, force-push, or any FL1 stage beyond a separate FL1-I1 planning and synthetic implementation PR"
+    "Ready transition, merge, direct main push, force-push, or any FL1 stage beyond owner audit of the FL1-I1 synthetic foundation"
   ],
   "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
   "protected_evidence": {
-    "accepted_mainline_merge_commit": "33af4111e1595dac3ece0ac50002556d466f0138",
-    "sv1b_final_composite_acceptance_fingerprint": "091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca",
-    "sv1b_owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
-    "production_consumed_or_modified_during_fl1_p1": false,
     "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
     "fl1_plan_merge_commit": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
-    "fl1_p1_implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
-    "fl1_p1_owner_acceptance_identity": "owner_accepted_fl1_p1_after_bounded_audit_remediation_20260808",
+    "fl1_p1_merge_commit": "36100bfa0317387e064cd87b2e753eca3a201b5e",
+    "fl1_p1_final_pr_head": "495a6506b25bb27747ebc27e341a06de4860aaa4",
+    "fl1_p1_accepted_tree": "05ad4b4829cd2b556a3644ceaf4620b98200f042",
+    "fl1_i1_foundation_head": "b0d0d205431eae5d7de6a5b7fc84e104b46f8a72",
+    "fl1_i1_implementation_evidence_head": "102be797f845d518817d7d01d17d65b65a4fc243",
+    "production_consumed_or_modified_during_fl1_i1": false,
+    "synthetic_source_fixture_activity_performed": true,
     "database_operation_count": 0,
     "existing_database_read_operation_count": 0,
     "existing_database_write_operation_count": 0,
+    "app_storage_write_operation_count": 0,
     "real_source_inventory_operation_count": 0,
     "provider_operation_count": 0,
     "llm_operation_count": 0,
     "media_or_thumbnail_operation_count": 0,
     "stable_replay_operation_count": 0
   },
-  "next_required_checkpoint": "squash_merge_pr_141_then_create_separate_fl1_i1_planning_and_synthetic_implementation_branch",
+  "next_required_checkpoint": "owner_audit_of_draft_pr_142_then_separate_exact_real_source_scope_decision_before_any_scan",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -182,7 +162,7 @@
     {
       "id": "PROVIDER_GATE",
       "owner": "future provider-route owner",
-      "reason": "Deferred use-before gate; it is not a PR #140 blocker and grants no current remediation or provider authority.",
+      "reason": "Deferred use-before gate; it does not block the current synthetic inventory foundation and grants no provider authority.",
       "due_before": "any future provider request",
       "requirements": [
         "inherit cumulative attempt budgets across restarts and passes",
@@ -194,7 +174,7 @@
     {
       "id": "STABLE_REPLAY_GATE",
       "owner": "future Stable Replay owner",
-      "reason": "Deferred use-before gate; it is not a PR #140 blocker and grants no current replay or database authority.",
+      "reason": "Deferred use-before gate; it does not block the current synthetic inventory foundation and grants no replay or database authority.",
       "due_before": "any Stable Replay evidence import, replay, or authoritative reuse",
       "requirements": [
         "scan accepted packages for observation_key duplicates across parent records",
@@ -205,13 +185,13 @@
     {
       "id": "ACCEPTANCE_TOOLING_GATE",
       "owner": "future acceptance-tooling owner",
-      "reason": "Deferred use-before gate; it is not a PR #140 blocker and does not invalidate the current owner decision.",
+      "reason": "Deferred use-before gate; it does not invalidate the current synthetic-only route decision.",
       "due_before": "reuse of acceptance, composite, carry-forward, or export tooling as automated merge authority",
       "requirements": [
         "harden or retire the one-off tools according to the actual reuse need",
-        "preserve the current owner decision of 37 PASS and 3 owner-waived cases"
+        "preserve the accepted historical owner decisions without extending their waivers"
       ]
     }
   ],
-  "updated_at": "2026-08-08T12:01:34+07:00"
+  "updated_at": "2026-08-08T12:22:32+07:00"
 }

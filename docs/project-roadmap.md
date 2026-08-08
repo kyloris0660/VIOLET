@@ -9,12 +9,12 @@ evidence without treating weak AI or provider signals as user truth.
 
 ## Current Active Roadmap
 
-<!-- CURRENT_PHASE: SCV2-FL1-P1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-I1 -->
 
 The authoritative current state is `docs/state/current-phase.json`.
 
-`SCV2-FL1-P1: Dev/Test Isolation, Contract, And Ledger Foundations` is the
-current phase on PR #141.
+`SCV2-FL1-I1: Read-Only Inventory Planning And Synthetic Foundation` is the
+current phase on Draft PR #142.
 PR #139 / SCV2-SV1B merged into `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner acceptance remains
 `37 PASS`, `3 owner-waived nonblocking known limitations`, `0 PENDING`, and
@@ -30,10 +30,12 @@ source-root access or inventory, import, classification, AI tagging,
 provider/LLM/media request, Stable Replay, localization, graph/search
 derivation, or Entity/truth promotion.
 
-The P1 owner audit is complete at
-`3a7b20608724e5f469548183df0830b09d5ea7be`; PR #141 may become Ready and
-squash-merge after live review gates pass. This authorizes only a later,
-separate FL1-I1 planning and synthetic implementation PR, not real inventory.
+P1 was owner-audited, observed for delayed review, and squash-merged into
+`origin/main` at `36100bfa0317387e064cd87b2e753eca3a201b5e`; its accepted
+tree exactly matches final PR HEAD. I1 implementation evidence
+`102be797f845d518817d7d01d17d65b65a4fc243` adds only a bounded synthetic
+read-only scanner and executable denominator contract. Real source identity,
+scope, and scanning remain unauthorized.
 
 ## Accepted Mainline Sequence
 
@@ -48,16 +50,18 @@ separate FL1-I1 planning and synthetic implementation PR, not real inventory.
    `33af4111e1595dac3ece0ac50002556d466f0138`.
 9. SCV2-FL1 planning / PR #140, squash-merged at
    `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
+10. SCV2-FL1-P1 / PR #141, squash-merged at
+    `36100bfa0317387e064cd87b2e753eca3a201b5e`.
 
 Exact phase evidence and limitations remain in the accepted reports. This
 roadmap intentionally does not duplicate their execution accounting.
 
 ## Proposed FL1 Route
 
-1. Pass the live review gates and squash-merge owner-accepted PR #141.
-2. Start a separate FL1-I1 planning and synthetic implementation Draft PR while
-   keeping every real data/external operation blocked.
-3. Stop before any real source scan for exact source-scope authorization.
+1. Owner-audit Draft PR #142 and its synthetic-only scanner/contract evidence.
+2. Keep the PR Draft and every real data/external operation blocked.
+3. Stop before any real source scan for an exact source-identity and scope
+   authorization.
 4. If separately approved, execute only bounded Dev/Test import and local
    classification/AI-tagging stages under exact mutation allowlists and failure
    budgets.
@@ -69,7 +73,8 @@ design input only and is not current authorization.
 
 ## Durable Boundaries
 
-- Source/iCloud roots remain inaccessible and out of scope during FL1-P1.
+- Source/iCloud roots remain inaccessible during the FL1-I1 synthetic
+  foundation; temporary synthetic fixtures are the only readable source input.
 - Dev/Test databases and storage must be isolated from production and from
   accepted SV1 evidence databases.
 - AI proper-noun signals remain weak evidence, never automatic Entity truth.

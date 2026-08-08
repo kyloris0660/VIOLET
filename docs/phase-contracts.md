@@ -40,7 +40,7 @@ When acceptance is required and pending, the executable contract must enforce
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1-P1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-I1 -->
 
 PR #139 / SCV2-SV1B is merged and accepted in `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner-closeout contract
@@ -49,51 +49,51 @@ and `0 unwaived FAIL`. The B01/B04/B08 mismatches remain historical evidence;
 their waiver is limited to SV1B placeholder/default creator signals and does not
 authorize FL1 behavior, scale, production, or truth promotion.
 
-PR #140 merged the approved plan into `origin/main` at
-`9ce1128be643c0eaa998ccdff8890d76196ce7db`. `SCV2-FL1-P1: Dev/Test Isolation,
-Contract, And Ledger Foundations` is now the current implementation phase on
-PR #141. Its owner-accepted implementation evidence is
-`3a7b20608724e5f469548183df0830b09d5ea7be`, and its closeout state is:
+PR #141 / FL1-P1 was owner-audited and squash-merged into `origin/main` at
+`36100bfa0317387e064cd87b2e753eca3a201b5e`; its merge tree exactly matches
+final PR HEAD. `SCV2-FL1-I1: Read-Only Inventory Planning And Synthetic
+Foundation` is now active on Draft PR #142. Its implementation evidence is
+`102be797f845d518817d7d01d17d65b65a4fc243`, and its stop state is:
 
-- `status=fl1_p1_owner_accepted_for_merge`
-- `target_met=true`
-- `safe_to_merge=true`
-- `route_approved=true`
-- `route_scope=FL1-I1 read-only inventory planning and synthetic implementation only`
-- `manual_acceptance_status=owner_accepted_fl1_p1_foundation`
+- `status=fl1_i1_synthetic_implementation_ready_for_owner_audit`
+- `target_met=false`
+- `safe_to_merge=false`
+- `route_approved=false`
+- `route_scope=FL1-I1 planning and synthetic read-only inventory implementation only`
+- `manual_acceptance_status=pending_owner_audit`
 - `next_phase_started=true`
-- blocker: `none_fl1_p1_owner_accepted_for_merge`
+- blocker: `pending_owner_audit_and_real_source_scope_authorization`
 
-The documentation-state checker binds the accepted plan merge, owner-accepted P1
-implementation evidence, generated handoff, public-safe durable links, and the
-exact zero-data/external authorization boundary. Ready and squash merge are
-allowed only after live review gates pass.
+The documentation-state checker binds the accepted P1 mainline commit, exact I1
+implementation evidence, generated handoff, public-safe durable links, and a
+zero-real-source/data/external authorization boundary. Draft PR #142 must not
+become Ready or merge before a separate owner decision.
 
-`scv2_fl1_isolated_full_library_dev_test_contract_v1` is registered for this P1
-slice. Its standard-library implementation requires explicit test/development,
-Git, Python, synthetic database-path, source-fixture, storage, sandbox, and
-forbidden-root identities; denies production and unknown identities; and
-rejects containment ambiguity before mutation. Mutation defaults to deny and
-permits only explicit synthetic operations under the approved storage root.
-The atomic JSON ledger keeps parent-qualified source membership distinct from
-content-fingerprint logical targets, binds denominator accounting and
-checkpoints, separates per-item from global failure budgets, rejects stale
-writers, and requires explicit reconciliation before retrying an interrupted
-mutation. Duplicate content receives one logical mutation and manual stop state
-remains persistent.
+`scv2_fl1_i1_read_only_inventory_contract_v1` registers the I1 synthetic
+foundation. Its standard-library scanner accepts only an explicit synthetic
+fixture contained by an explicit sandbox, enforces finite item and byte bounds,
+opens supported files read-only without following symlinks, detects source
+races, and proves identical pre/post tree fingerprints. It derives stable
+private membership and public-safe labels, uses content fingerprints for
+duplicates, assigns exactly one terminal disposition per file, and balances:
 
-P1 tests use only in-memory callbacks and newly created temporary files. No
-production or production comparison, real source-root read or inventory,
-existing database access, import, classification or AI tagging,
-provider/Pixiv/gallery-dl/LLM/media/thumbnail request, Stable Replay/evidence
-reuse, localization or graph/search derivation, or
-Entity/truth/provider-derived `media_tags` write is authorized or performed.
-After P1 merges, only a separate FL1-I1 planning and synthetic implementation
-PR may start. Real source-root access or inventory still requires a later exact
-source-scope authorization.
+- `discovered = supported + unsupported`
+- `supported = duplicate + cloud_recall_deferred + unreadable_or_missing + eligible_candidate`
+- `eligible_candidate = imported + import_deferred + import_failed`
 
-Three deferred use-before gates do not block P1 owner audit and do not authorize
-current remediation: `PROVIDER_GATE` before any provider request,
+For this foundation `imported=0`, `import_failed=0`, every eligible item is
+`import_deferred`, and `unresolved=0`. Public contract evidence contains counts,
+safe identities, and aggregate fingerprints only; it contains no path,
+filename, per-item record, or content fingerprint.
+
+No real source-root listing/read/hash/inventory, database connection, app-storage
+write, import, classification or AI tagging, production, provider/LLM/network,
+media/thumbnail, Stable Replay, localization, graph/search, or
+Entity/truth/provider-derived `media_tags` operation is authorized or performed.
+An exact real source identity and scope require a later owner authorization.
+
+Three deferred use-before gates do not block the I1 synthetic owner audit and do
+not authorize current remediation: `PROVIDER_GATE` before any provider request,
 `STABLE_REPLAY_GATE` before authoritative replay/evidence reuse, and
 `ACCEPTANCE_TOOLING_GATE` before one-off acceptance tooling is reused as
 automated merge authority. Their exact requirements live in
@@ -118,6 +118,7 @@ automated merge authority. Their exact requirements live in
 - `sv1b_controlled_pixiv_metadata_localization_source_graph_closure_contract_v1`
 - `sv1b_owner_acceptance_closeout_contract_v1`
 - `scv2_fl1_isolated_full_library_dev_test_contract_v1`
+- `scv2_fl1_i1_read_only_inventory_contract_v1`
 - `review_pack_contract_v1`
 - `route_audit_contract_v1`
 - `public_redaction_contract_v1`

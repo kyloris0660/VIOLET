@@ -2,8 +2,8 @@
 
 ## Accepted Mainline
 
-`origin/main` contains the approved SCV2-FL1 plan through squash merge
-`9ce1128be643c0eaa998ccdff8890d76196ce7db` from PR #140.
+`origin/main` contains the owner-audited FL1-P1 foundation through squash merge
+`36100bfa0317387e064cd87b2e753eca3a201b5e` from PR #141.
 
 1. R1R merged in PR #132.
 2. SCV2-A1R merged in PR #133.
@@ -13,7 +13,9 @@
 6. SCV2-ML2 merged in PR #137.
 7. SCV2-SV1-A merged in PR #138.
 8. SCV2-SV1B merged in PR #139.
-9. SCV2-FL1 planning merged in PR #140.
+9. SCV2-FL1 planning merged in PR #140 at
+   `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
+10. SCV2-FL1-P1 merged in PR #141.
 
 SV1B completed controlled Pixiv metadata acquisition, localization closure,
 stable Replay v2, source-graph/search validation, and owner acceptance. Its
@@ -23,34 +25,36 @@ does not become a creator-identity or scale-up policy.
 
 ## Current Phase And Stop Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1-P1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-I1 -->
 
-`SCV2-FL1-P1: Dev/Test Isolation, Contract, And Ledger Foundations` is active on
-PR #141. Its fact source is `docs/state/current-phase.json` and its plan is
+`SCV2-FL1-I1: Read-Only Inventory Planning And Synthetic Foundation` is active
+on Draft PR #142. Its fact source is `docs/state/current-phase.json` and its plan is
 `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
-Current owner-accepted closeout state:
+Current owner-audit stop state:
 
-- `status=fl1_p1_owner_accepted_for_merge`
-- `target_met=true`
-- `safe_to_merge=true`
-- `route_approved=true`
-- `route_scope=FL1-I1 read-only inventory planning and synthetic implementation only`
-- `manual_acceptance_status=owner_accepted_fl1_p1_foundation`
+- `status=fl1_i1_synthetic_implementation_ready_for_owner_audit`
+- `target_met=false`
+- `safe_to_merge=false`
+- `route_approved=false`
+- `route_scope=FL1-I1 planning and synthetic read-only inventory implementation only`
+- `manual_acceptance_status=pending_owner_audit`
 - `next_phase_started=true`
-- blocker: `none_fl1_p1_owner_accepted_for_merge`
+- blocker: `pending_owner_audit_and_real_source_scope_authorization`
 
-P1 has implemented the synthetic-only safety, contract, and ledger foundation;
-no data execution has started. It does not authorize production, real
-source-root access or inventory, existing database access, import,
-classification, AI tagging, provider, Pixiv, gallery-dl, LLM, media, thumbnail,
-Stable Replay, localization, graph/search, Entity/truth, or provider-derived
-`media_tags` activity.
+I1 has implemented a synthetic-only, bounded read-only scanner with immutable
+pre/post source fingerprints, symlink/race rejection, stable private membership,
+content duplicate accounting, terminal dispositions, complete denominator
+equations, and aggregate-only public evidence. It does not authorize real
+source-root access or inventory, any database/app-storage write, import,
+classification, AI tagging, production, external calls, Stable Replay,
+localization, graph/search, Entity/truth, or provider-derived `media_tags` activity.
 
 ## Proposed Delivery Sequence
 
-1. Pass live review gates and squash-merge owner-accepted PR #141.
-2. Start a separate FL1-I1 planning and synthetic implementation Draft PR.
+1. Owner-audit Draft PR #142 and any bounded synthetic-only corrections.
+2. Keep `safe_to_merge=false` and do not transition the PR to Ready without a
+   later decision.
 3. A real read-only inventory dry run requires separate exact source-scope
    authorization and ends at an owner checkpoint.
 4. Bounded Dev/Test import and local classification/AI tagging may occur only
