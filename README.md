@@ -31,14 +31,16 @@ The historical local folder name may still be `AnimeLocalBooru`.
 ## Current Status
 
 V.I.O.L.E.T. is a personal/local development project, not a production SaaS.
-The current active work is source-backed evidence quality: SourceConcepts group
-source-layer names, aliases, assertions, tags, AI/model signals, and provider
-metadata into unconfirmed evidence that can power search and validation.
+The single current-route authority is `docs/state/current-phase.json`; the
+generated `docs/current-handoff.md` provides the short human-readable view.
+Current work is the planning-only `SCV2-FL1` isolated full-library Dev/Test
+route. No implementation, database, source-root, production, provider, LLM,
+media, classification, AI-tagging, graph/search, localization, or truth
+operation is authorized by that planning status.
 
-SourceConcepts are deliberately not Entity truth. They are not `EntityAlias`
-truth, confirmed assignments, or `media_tags` truth, and they do not approve
-automatic entity promotion. The next development route is expanded
-SourceConcept validation and coverage auditing before any Entity bridge.
+Accepted SourceConcept evidence remains deliberately not Entity truth. It is
+not `EntityAlias` truth, confirmed assignment, or `media_tags` truth, and it
+does not approve automatic entity promotion.
 
 ## Architecture Overview
 

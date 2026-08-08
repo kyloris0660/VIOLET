@@ -27,12 +27,12 @@ def _assert_split_s2g_not_active(text: str) -> None:
     assert "Recommended immediate next phase after PD1-A: `S2G-1`" not in text
 
 
-def test_current_mainline_roadmap_persists_post_pr135_ml1_sequence() -> None:
+def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() -> None:
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
     assert "PR #135" in text
     assert "PR #133" in text
-    assert "5bbbb8ff13b140ea77a839757603714bfdd87181" in text
+    assert "33af4111e1595dac3ece0ac50002556d466f0138" in text
     _assert_in_order(
         text,
         [
@@ -40,11 +40,15 @@ def test_current_mainline_roadmap_persists_post_pr135_ml1_sequence() -> None:
             "2. SCV2-A1R merged in PR #133",
             "3. SCV2-R2 merged in PR #134",
             "4. SCV2-R2R merged in PR #135",
+            "5. SCV2-ML1 merged in PR #136",
+            "6. SCV2-ML2 merged in PR #137",
+            "7. SCV2-SV1-A merged in PR #138",
+            "8. SCV2-SV1B merged in PR #139",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "SCV2-ML1: Multilingual Alias and Source-Metadata Closure" in text
-    assert "search-result union" in text.casefold()
+    assert "SCV2-FL1: Isolated Full-Library Dev/Test Planning" in text
+    assert "production" in text.casefold()
     assert "Stop Boundary" in text
 
 
@@ -78,8 +82,8 @@ def test_handoff_points_to_current_mainline_roadmap() -> None:
     text = _read("docs/current-handoff.md")
 
     assert "roadmap/current-mainline-roadmap.md" in text
-    assert "SCV2-SV1B" in text
-    assert "Draft PR #139" in text
-    assert "provider/Pixiv/gallery-dl/LLM/media calls" in text
+    assert "SCV2-FL1" in text
+    assert "Draft PR" in text
+    assert "provider, Pixiv, gallery-dl, Provider-2, LLM" in text
     assert "Current phase | `S3A-M2-R" not in text
     _assert_split_s2g_not_active(text)

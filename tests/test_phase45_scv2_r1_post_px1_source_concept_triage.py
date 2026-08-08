@@ -448,7 +448,10 @@ def test_handoff_and_roadmap_follow_current_phase_state_not_r1_history() -> None
         )
     )
 
-    assert f"Draft PR #{state['pr_number']}" in handoff
+    if state["pr_number"] is None:
+        assert "Draft PR pending creation" in handoff
+    else:
+        assert f"Draft PR #{state['pr_number']}" in handoff
     assert state["phase_id"] in handoff
     assert state["current_status"] in handoff
     assert state["active_blocker"]["code"] in handoff

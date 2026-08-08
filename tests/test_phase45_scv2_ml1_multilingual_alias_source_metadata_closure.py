@@ -961,14 +961,17 @@ def test_durable_documents_encode_corrected_search_semantics() -> None:
     policy = (ROOT / "docs/source-concept-tag-search-semantics.md").read_text(encoding="utf-8")
     handoff = (ROOT / "docs/current-handoff.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs/roadmap/current-mainline-roadmap.md").read_text(encoding="utf-8")
+    archived_roadmap = (
+        ROOT / "docs/roadmap/archive/project-roadmap-through-scv2-sv1b.md"
+    ).read_text(encoding="utf-8")
     report = (ROOT / "docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure.md").read_text(encoding="utf-8")
     summary = json.loads((ROOT / "docs/reports/phase-4.5-scv2-r2r-autonomous-recall-search-closure-summary.json").read_text(encoding="utf-8"))
 
-    combined = "\n".join((policy, roadmap))
+    combined = "\n".join((policy, archived_roadmap))
     assert "Search-result union combines media sets" in combined
     assert "It is not identity union" in combined
     assert "media-level AND intersection" in combined
-    assert "SCV2-SV1B" in handoff and "SCV2-ML1" in roadmap
+    assert "SCV2-FL1" in handoff and "SCV2-ML1" in roadmap
     assert "Interpretation erratum" in report
     erratum = summary["search_semantics_interpretation_erratum"]
     assert erratum["old_interpretation_superseded"] is True

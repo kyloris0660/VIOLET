@@ -126,12 +126,13 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
 
     assert 40 <= line_count <= 60
     assert "docs/state/current-phase.json" in handoff
-    assert "SCV2-SV1B" in handoff
-    assert "Draft PR #139" in handoff
-    assert state["current_replay_strategy"]["package_schema_version"] in handoff
+    assert "SCV2-FL1" in handoff
+    assert "Draft PR" in handoff
+    assert state["planning_boundary"]["planning_only"] is False
+    assert state["planning_boundary"]["implementation_authorized"] is True
     assert state["active_blocker"]["code"] in handoff
-    assert "external-call budget: `0`" in handoff
-    assert "provider/Pixiv/gallery-dl/LLM/media calls" in handoff
+    assert "projected external cost: `$0`" in handoff
+    assert "provider, Pixiv, gallery-dl, Provider-2, LLM" in handoff
     assert "Phase 4.4-B0" not in handoff
     assert "Phase 4.4-D1G" not in handoff
 
