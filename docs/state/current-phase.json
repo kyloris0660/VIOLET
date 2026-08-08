@@ -7,7 +7,7 @@
   "pr_number": 143,
   "draft": true,
   "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
-  "implementation_evidence_head": "bcabaa1cb635ea312dc49c9d3358f11e87c7afbf",
+  "implementation_evidence_head": "8b58a2b107a6667abb9cd7fd022fff84489c8310",
   "current_status": "fl1_p1_r1_implementation_ready_for_owner_audit",
   "target_met": false,
   "safe_to_merge": false,
@@ -113,7 +113,7 @@
     {
       "id": "fl1_p1_r1_late_review_remediation_implementation",
       "result": "review_fix_implementation_complete_pending_owner_audit",
-      "fingerprint": "bcabaa1cb635ea312dc49c9d3358f11e87c7afbf"
+      "fingerprint": "8b58a2b107a6667abb9cd7fd022fff84489c8310"
     }
   ],
   "active_blocker": {
@@ -168,13 +168,13 @@
     "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
     "fl1_plan_merge_commit": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
     "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
-    "fl1_p1_r1_implementation_evidence_head": "bcabaa1cb635ea312dc49c9d3358f11e87c7afbf",
+    "fl1_p1_r1_implementation_evidence_head": "8b58a2b107a6667abb9cd7fd022fff84489c8310",
     "phase_non_action_attestation": {
       "schema_version": "violet.scv2-fl1-p1-r1-phase-non-action-attestation.v1",
       "attestation_kind": "phase_operator_non_action_attestation",
       "phase_id": "SCV2-FL1-P1-R1",
       "pr_number": 143,
-      "implementation_evidence_head": "bcabaa1cb635ea312dc49c9d3358f11e87c7afbf",
+      "implementation_evidence_head": "8b58a2b107a6667abb9cd7fd022fff84489c8310",
       "asserted_non_actions": [
         "production_activity",
         "real_source_inventory_activity",
@@ -263,5 +263,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-08T21:01:44+08:00"
+  "updated_at": "2026-08-08T21:14:36+08:00"
 }

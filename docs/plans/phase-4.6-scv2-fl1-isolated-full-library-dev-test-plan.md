@@ -16,7 +16,7 @@ Canonical phase:
 - Current status: planning input only; `SCV2-FL1-P1-R1` Draft PR #143 is
   pending owner audit
 - Current implementation evidence:
-  `bcabaa1cb635ea312dc49c9d3358f11e87c7afbf`
+  `8b58a2b107a6667abb9cd7fd022fff84489c8310`
 - Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or
   started; do not implement its scanner/contract/tests or read a real source
   root without a separate later owner decision
