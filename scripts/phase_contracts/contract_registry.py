@@ -203,6 +203,7 @@ SV1B_OWNER_ACCEPTANCE_CLOSEOUT_STATUSES: tuple[str, ...] = (
 SCV2_FL1_P1_FOUNDATION_STATUSES: tuple[str, ...] = (
     "blocked_fl1_p1_foundation",
     "implementation_ready_for_owner_audit",
+    "owner_accepted_pending_merge_authorization",
     "owner_accepted_for_merge",
 )
 
@@ -286,6 +287,7 @@ CONTRACTS: dict[str, PhaseContract] = {
             "restartable_item_ledger",
             "interrupted_mutation_reconciliation",
             "failure_budget_and_manual_stop",
+            "forbidden_operation_evidence",
         ),
         forbidden_stages=(
             "production",
@@ -304,12 +306,17 @@ CONTRACTS: dict[str, PhaseContract] = {
             "pipeline_contract.safe_to_merge",
             "pipeline_contract.route_approved",
             "pipeline_contract.active_blockers",
+            "implementation_evidence",
+            "executed_stages",
+            "missing_required_stages",
+            "stage_evidence",
             "authorization",
             "environment_isolation",
             "mutation_policy",
             "ledger",
             "validation.focused_tests_passed",
             "validation.full_non_e2e_passed",
+            "operation_evidence",
             "operation_counts",
             "public_redaction.passed",
         ),
@@ -325,7 +332,7 @@ CONTRACTS: dict[str, PhaseContract] = {
         redaction_policy="public_safe_booleans_counts_and_safe_identities_only",
         review_pack_policy="not_required_for_p1_owner_code_audit",
         artifact_lifecycle_policy="synthetic_temp_or_repo_local_ignored_only",
-        route_decision_policy="owner_accepted_merge_then_separate_fl1_i1_planning_and_synthetic_implementation_only",
+        route_decision_policy="implementation_authorization_owner_acceptance_merge_authorization_and_next_phase_route_authorization_are_distinct_fail_closed_gates",
         failure_behavior="fail_closed_before_mutation_on_any_unknown_identity_containment_or_ledger_state",
         custom_checks=("scv2_fl1_p1_foundation",),
         description="Registers the synthetic-only FL1-P1 isolation, default-deny mutation, content-deduplicated stable identity, fail-closed interrupted-mutation reconciliation, and restartable ledger foundation without data execution.",

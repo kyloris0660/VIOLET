@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -20,13 +21,43 @@ from typing import Any, Callable, Mapping, Sequence
 
 
 CONTRACT_ID = "scv2_fl1_isolated_full_library_dev_test_contract_v1"
-LEDGER_SCHEMA_VERSION = "violet.scv2-fl1-p1-ledger.v1"
+LEDGER_SCHEMA_VERSION = "violet.scv2-fl1-p1-ledger.v2"
 ITEM_IDENTITY_VERSION = "violet.scv2-fl1-item.v1"
 LOGICAL_TARGET_IDENTITY_VERSION = "violet.scv2-fl1-logical-target.v1"
+OPERATION_EVIDENCE_SCHEMA_VERSION = "violet.scv2-fl1-p1-operation-evidence.v2"
+IMPLEMENTATION_EVIDENCE_SCHEMA_VERSION = (
+    "violet.scv2-fl1-p1-implementation-evidence.v1"
+)
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 SAFE_IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 DATABASE_IDENTITY_RE = re.compile(r"^violet_fl1_(test|dev)_[a-z0-9][a-z0-9_-]{2,63}$")
+SAFE_REPO_PATH_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
+
+REQUIRED_EXECUTED_STAGES: tuple[str, ...] = (
+    "environment_isolation_preflight",
+    "mutation_default_deny",
+    "stable_inventory_identity",
+    "restartable_item_ledger",
+    "interrupted_mutation_reconciliation",
+    "failure_budget_and_manual_stop",
+    "forbidden_operation_evidence",
+)
+
+# Executable code, tests, and executable contracts may not drift after the
+# implementation evidence boundary.  Only these exact governance projections
+# may be committed between that boundary and the final reviewed head.
+POST_IMPLEMENTATION_GOVERNANCE_PATH_ALLOWLIST = frozenset(
+    {
+        "docs/current-handoff.md",
+        "docs/phase-contracts.md",
+        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md",
+        "docs/project-roadmap.md",
+        "docs/roadmap/current-mainline-roadmap.md",
+        "docs/state/current-phase.json",
+        "docs/test-workflow.md",
+    }
+)
 
 
 class FL1FoundationError(RuntimeError):
@@ -45,6 +76,16 @@ class LedgerError(FL1FoundationError):
     """Raised when ledger identity, schema, or restart state is invalid."""
 
 
+class MutationNotCommittedError(FL1FoundationError):
+    """Explicit mutator proof that an invoked attempt made no side effect."""
+
+    def __init__(self, error_code: str = "mutation_not_committed"):
+        if not SAFE_IDENTITY_RE.fullmatch(error_code):
+            raise ValueError("mutation_not_committed_error_code_invalid")
+        super().__init__(error_code)
+        self.error_code = error_code
+
+
 class EnvironmentIdentity(str, Enum):
     TEST = "test"
     DEVELOPMENT = "development"
@@ -54,6 +95,7 @@ class EnvironmentIdentity(str, Enum):
 class ItemState(str, Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    OUTCOME_UNKNOWN = "outcome_unknown"
     SUCCEEDED = "succeeded"
     FAILED_RETRYABLE = "failed_retryable"
     FAILED_EXHAUSTED = "failed_exhausted"
@@ -68,6 +110,47 @@ class InterruptedMutationOutcome(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ReconciliationStatus(str, Enum):
+    NOT_REQUIRED = "not_required"
+    REQUIRED = "required"
+    COMMITTED = "committed"
+    NOT_COMMITTED = "not_committed"
+
+
+class ItemTerminalReason(str, Enum):
+    ITEM_ATTEMPT_BUDGET_EXHAUSTED = "item_attempt_budget_exhausted"
+    DUPLICATE_LOGICAL_TARGET = "duplicate_logical_target"
+
+
+class GlobalStopReason(str, Enum):
+    FAILURE_BUDGET_EXHAUSTED = "global_failure_budget_exhausted"
+
+
+class OperationKind(str, Enum):
+    SYNTHETIC_MUTATION_INVOCATION = "synthetic_mutation_invocation"
+    PRODUCTION_ACTIVITY = "production_activity"
+    REAL_SOURCE_INVENTORY_ACTIVITY = "real_source_inventory_activity"
+    EXISTING_DATABASE_READ_ACTIVITY = "existing_database_read_activity"
+    EXISTING_DATABASE_WRITE_ACTIVITY = "existing_database_write_activity"
+    PROVIDER_ACTIVITY = "provider_activity"
+    LLM_ACTIVITY = "llm_activity"
+    MEDIA_ACTIVITY = "media_activity"
+    STABLE_REPLAY_ACTIVITY = "stable_replay_activity"
+    USER_DATA_CLEANUP_DELETE_ACTIVITY = "user_data_cleanup_delete_activity"
+
+
+FORBIDDEN_OPERATION_KINDS: tuple[OperationKind, ...] = tuple(
+    kind
+    for kind in OperationKind
+    if kind is not OperationKind.SYNTHETIC_MUTATION_INVOCATION
+)
+
+
+class AuthorizationKind(str, Enum):
+    MERGE = "merge"
+    NEXT_PHASE_ROUTE = "next_phase_route"
+
+
 def _strict_int(value: Any, error_code: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise LedgerError(error_code)
@@ -78,6 +161,310 @@ def _strict_bool(value: Any, error_code: str) -> bool:
     if not isinstance(value, bool):
         raise LedgerError(error_code)
     return value
+
+
+def _canonical_digest(payload: Mapping[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+@dataclass(frozen=True)
+class OperationEvent:
+    """Category-only persisted execution evidence; never carries local paths."""
+
+    sequence: int
+    kind: OperationKind
+    item_id: str | None = None
+
+    def validate(self) -> None:
+        if isinstance(self.sequence, bool) or self.sequence < 1:
+            raise LedgerError("operation_event_sequence_invalid")
+        if not isinstance(self.kind, OperationKind):
+            raise LedgerError("operation_event_kind_invalid")
+        if self.item_id is not None and not HEX64_RE.fullmatch(self.item_id):
+            raise LedgerError("operation_event_item_id_invalid")
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
+        return {
+            "sequence": self.sequence,
+            "kind": self.kind.value,
+            "item_id": self.item_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "OperationEvent":
+        try:
+            event = cls(
+                sequence=_strict_int(
+                    payload["sequence"], "operation_event_sequence_invalid"
+                ),
+                kind=OperationKind(str(payload["kind"])),
+                item_id=(
+                    str(payload["item_id"])
+                    if payload.get("item_id") is not None
+                    else None
+                ),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise LedgerError("operation_event_invalid") from exc
+        event.validate()
+        return event
+
+
+@dataclass(frozen=True)
+class ImplementationEvidence:
+    """Immutable Git evidence boundary plus exact governance-only carry-forward."""
+
+    implementation_commit: str
+    implementation_tree: str
+    final_commit: str
+    final_tree: str
+    post_implementation_changed_paths: tuple[str, ...]
+    evidence_digest: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        implementation_commit: str,
+        implementation_tree: str,
+        final_commit: str,
+        final_tree: str,
+        post_implementation_changed_paths: Sequence[str],
+    ) -> "ImplementationEvidence":
+        changed_paths = tuple(sorted(set(post_implementation_changed_paths)))
+        payload = {
+            "schema_version": IMPLEMENTATION_EVIDENCE_SCHEMA_VERSION,
+            "implementation_commit": implementation_commit,
+            "implementation_tree": implementation_tree,
+            "final_commit": final_commit,
+            "final_tree": final_tree,
+            "post_implementation_changed_paths": list(changed_paths),
+        }
+        evidence = cls(
+            implementation_commit=implementation_commit,
+            implementation_tree=implementation_tree,
+            final_commit=final_commit,
+            final_tree=final_tree,
+            post_implementation_changed_paths=changed_paths,
+            evidence_digest=_canonical_digest(payload),
+        )
+        evidence.validate()
+        return evidence
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": IMPLEMENTATION_EVIDENCE_SCHEMA_VERSION,
+            "implementation_commit": self.implementation_commit,
+            "implementation_tree": self.implementation_tree,
+            "final_commit": self.final_commit,
+            "final_tree": self.final_tree,
+            "post_implementation_changed_paths": list(
+                self.post_implementation_changed_paths
+            ),
+        }
+
+    def validate(self) -> None:
+        for value in (
+            self.implementation_commit,
+            self.implementation_tree,
+            self.final_commit,
+            self.final_tree,
+        ):
+            if not HEX40_RE.fullmatch(value):
+                raise LedgerError("implementation_evidence_git_identity_invalid")
+        paths = self.post_implementation_changed_paths
+        if paths != tuple(sorted(set(paths))) or any(
+            not SAFE_REPO_PATH_RE.fullmatch(path) for path in paths
+        ):
+            raise LedgerError("implementation_evidence_changed_paths_invalid")
+        if any(
+            path not in POST_IMPLEMENTATION_GOVERNANCE_PATH_ALLOWLIST
+            for path in paths
+        ):
+            raise LedgerError("implementation_evidence_executable_drift")
+        if self.final_commit == self.implementation_commit:
+            if paths or self.final_tree != self.implementation_tree:
+                raise LedgerError("implementation_evidence_same_commit_mismatch")
+        elif not paths:
+            # A different commit with an identical tree is acceptable, but it
+            # must bind the same immutable implementation tree.
+            if self.final_tree != self.implementation_tree:
+                raise LedgerError("implementation_evidence_unaccounted_tree_drift")
+        if not HEX64_RE.fullmatch(self.evidence_digest) or (
+            self.evidence_digest != _canonical_digest(self._payload())
+        ):
+            raise LedgerError("implementation_evidence_digest_mismatch")
+
+    def to_public_dict(self) -> dict[str, Any]:
+        self.validate()
+        return {**self._payload(), "evidence_digest": self.evidence_digest}
+
+
+@dataclass(frozen=True)
+class OwnerAcceptanceEvidence:
+    """Owner acceptance bound to the implementation and final reviewed Git state."""
+
+    identity: str
+    implementation_commit: str
+    implementation_tree: str
+    implementation_digest: str
+    reviewed_final_commit: str
+    reviewed_final_tree: str
+
+    def validate_against(self, evidence: ImplementationEvidence) -> None:
+        evidence.validate()
+        if not SAFE_IDENTITY_RE.fullmatch(self.identity):
+            raise LedgerError("owner_acceptance_identity_invalid")
+        if any(
+            not HEX40_RE.fullmatch(value)
+            for value in (
+                self.implementation_commit,
+                self.implementation_tree,
+                self.reviewed_final_commit,
+                self.reviewed_final_tree,
+            )
+        ) or not HEX64_RE.fullmatch(self.implementation_digest):
+            raise LedgerError("owner_acceptance_git_binding_invalid")
+        if (
+            self.implementation_commit != evidence.implementation_commit
+            or self.implementation_tree != evidence.implementation_tree
+            or self.implementation_digest != evidence.evidence_digest
+            or self.reviewed_final_commit != evidence.final_commit
+            or self.reviewed_final_tree != evidence.final_tree
+        ):
+            raise LedgerError("owner_acceptance_evidence_mismatch")
+
+    def to_public_dict(self, evidence: ImplementationEvidence) -> dict[str, str]:
+        self.validate_against(evidence)
+        return {
+            "identity": self.identity,
+            "implementation_commit": self.implementation_commit,
+            "implementation_tree": self.implementation_tree,
+            "implementation_digest": self.implementation_digest,
+            "reviewed_final_commit": self.reviewed_final_commit,
+            "reviewed_final_tree": self.reviewed_final_tree,
+        }
+
+
+@dataclass(frozen=True)
+class BoundAuthorizationEvidence:
+    """Merge and next-route authorization are distinct from acceptance."""
+
+    kind: AuthorizationKind
+    identity: str
+    owner_acceptance_identity: str
+    reviewed_final_commit: str
+    reviewed_final_tree: str
+    route_scope: str | None = None
+
+    def validate_against(
+        self,
+        implementation: ImplementationEvidence,
+        acceptance: OwnerAcceptanceEvidence,
+    ) -> None:
+        if not isinstance(self.kind, AuthorizationKind):
+            raise LedgerError("bound_authorization_kind_invalid")
+        if not SAFE_IDENTITY_RE.fullmatch(self.identity):
+            raise LedgerError("bound_authorization_identity_invalid")
+        acceptance.validate_against(implementation)
+        if (
+            self.owner_acceptance_identity != acceptance.identity
+            or self.reviewed_final_commit != implementation.final_commit
+            or self.reviewed_final_tree != implementation.final_tree
+        ):
+            raise LedgerError("bound_authorization_evidence_mismatch")
+        if self.kind is AuthorizationKind.MERGE and self.route_scope is not None:
+            raise LedgerError("merge_authorization_route_scope_forbidden")
+        if self.kind is AuthorizationKind.NEXT_PHASE_ROUTE:
+            if not self.route_scope or not SAFE_IDENTITY_RE.fullmatch(self.route_scope):
+                raise LedgerError("route_authorization_scope_invalid")
+
+    def to_public_dict(
+        self,
+        implementation: ImplementationEvidence,
+        acceptance: OwnerAcceptanceEvidence,
+    ) -> dict[str, Any]:
+        self.validate_against(implementation, acceptance)
+        return {
+            "kind": self.kind.value,
+            "identity": self.identity,
+            "owner_acceptance_identity": self.owner_acceptance_identity,
+            "reviewed_final_commit": self.reviewed_final_commit,
+            "reviewed_final_tree": self.reviewed_final_tree,
+            "route_scope": self.route_scope,
+        }
+
+
+def _git(
+    repo_root: Path, *arguments: str, allow_failure: bool = False
+) -> subprocess.CompletedProcess[bytes]:
+    completed = subprocess.run(
+        ["git", *arguments],
+        cwd=repo_root,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0 and not allow_failure:
+        raise LedgerError("implementation_evidence_git_command_failed")
+    return completed
+
+
+def collect_implementation_evidence(
+    *, repo_root: Path, implementation_commit: str, final_commit: str = "HEAD"
+) -> ImplementationEvidence:
+    """Collect evidence from Git itself; caller-supplied changed paths are refused."""
+
+    root = Path(repo_root).resolve(strict=True)
+    top_level = _git(root, "rev-parse", "--show-toplevel").stdout.decode(
+        "utf-8", errors="strict"
+    ).strip()
+    if Path(top_level).resolve(strict=True) != root:
+        raise LedgerError("implementation_evidence_repo_root_mismatch")
+
+    implementation = _git(root, "rev-parse", f"{implementation_commit}^{{commit}}").stdout.decode(
+        "ascii", errors="strict"
+    ).strip()
+    final = _git(root, "rev-parse", f"{final_commit}^{{commit}}").stdout.decode(
+        "ascii", errors="strict"
+    ).strip()
+    if _git(
+        root,
+        "merge-base",
+        "--is-ancestor",
+        implementation,
+        final,
+        allow_failure=True,
+    ).returncode != 0:
+        raise LedgerError("implementation_evidence_not_ancestor_of_final")
+    implementation_tree = _git(
+        root, "rev-parse", f"{implementation}^{{tree}}"
+    ).stdout.decode("ascii", errors="strict").strip()
+    final_tree = _git(root, "rev-parse", f"{final}^{{tree}}").stdout.decode(
+        "ascii", errors="strict"
+    ).strip()
+    raw_paths = _git(
+        root,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        f"{implementation}..{final}",
+    ).stdout
+    changed_paths = tuple(
+        path.decode("utf-8", errors="strict").replace("\\", "/")
+        for path in raw_paths.split(b"\0")
+        if path
+    )
+    return ImplementationEvidence.create(
+        implementation_commit=implementation,
+        implementation_tree=implementation_tree,
+        final_commit=final,
+        final_tree=final_tree,
+        post_implementation_changed_paths=changed_paths,
+    )
 
 
 @dataclass(frozen=True)
@@ -106,6 +493,7 @@ class IsolationProof:
     source_root_explicit_and_contained: bool
     storage_root_explicit_and_contained: bool
     source_storage_non_overlapping: bool
+    database_source_storage_pairwise_disjoint: bool
     forbidden_root_overlap_count: int
     production_fallback_used: bool = False
     existing_database_accessed: bool = False
@@ -121,6 +509,9 @@ class IsolationProof:
             "source_root_explicit_and_contained": self.source_root_explicit_and_contained,
             "storage_root_explicit_and_contained": self.storage_root_explicit_and_contained,
             "source_storage_non_overlapping": self.source_storage_non_overlapping,
+            "database_source_storage_pairwise_disjoint": (
+                self.database_source_storage_pairwise_disjoint
+            ),
             "forbidden_root_overlap_count": self.forbidden_root_overlap_count,
             "production_fallback_used": self.production_fallback_used,
             "existing_database_accessed": self.existing_database_accessed,
@@ -153,9 +544,12 @@ def _normalize_executable(path: Path) -> str:
 
 
 def _environment(value: EnvironmentIdentity | str) -> EnvironmentIdentity:
+    normalized = value
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
     try:
-        identity = value if isinstance(value, EnvironmentIdentity) else EnvironmentIdentity(value)
-    except ValueError as exc:
+        identity = EnvironmentIdentity(normalized)
+    except (TypeError, ValueError) as exc:
         raise IsolationError("unknown_environment_identity") from exc
     if identity is EnvironmentIdentity.PRODUCTION:
         raise IsolationError("production_environment_identity_rejected")
@@ -211,11 +605,21 @@ def validate_isolation(config: IsolationConfig) -> IsolationProof:
         raise IsolationError("sandbox_overlaps_forbidden_root")
 
     database_path = _resolved(config.database_path, must_exist=False)
-    if database_path.exists():
-        raise IsolationError("existing_database_path_rejected")
     database_parent = _resolved(database_path.parent, must_exist=True)
     if not _is_within(database_parent, sandbox_root):
         raise IsolationError("database_path_outside_sandbox")
+    if any(
+        _paths_overlap(left, right)
+        for left, right in (
+            (database_parent, source_root),
+            (database_parent, storage_root),
+            (database_path, source_root),
+            (database_path, storage_root),
+        )
+    ):
+        raise IsolationError("database_source_storage_overlap")
+    if database_path.exists():
+        raise IsolationError("existing_database_path_rejected")
     if database_path.stem.casefold() != database_identity:
         raise IsolationError("database_path_identity_mismatch")
     if any(_paths_overlap(database_path, forbidden) for forbidden in forbidden_roots):
@@ -231,6 +635,7 @@ def validate_isolation(config: IsolationConfig) -> IsolationProof:
         source_root_explicit_and_contained=True,
         storage_root_explicit_and_contained=True,
         source_storage_non_overlapping=True,
+        database_source_storage_pairwise_disjoint=True,
         forbidden_root_overlap_count=0,
     )
 
@@ -249,7 +654,7 @@ ALWAYS_FORBIDDEN_OPERATION_PREFIXES = (
 
 @dataclass(frozen=True)
 class MutationPolicy:
-    environment: EnvironmentIdentity
+    environment: EnvironmentIdentity | str
     allowed_root: Path
     forbidden_roots: tuple[Path, ...]
     allowed_operations: frozenset[str] = frozenset()
@@ -269,7 +674,13 @@ class MutationPolicy:
     def assert_allowed(self, operation: str, target: Path) -> None:
         """Deny by default and reject dangerous surfaces even if mis-allowlisted."""
 
-        if self.environment is EnvironmentIdentity.PRODUCTION:
+        try:
+            environment = _environment(self.environment)
+        except IsolationError as exc:
+            if str(exc) == "production_environment_identity_rejected":
+                raise MutationDenied("production_mutation_rejected") from exc
+            raise MutationDenied("unknown_environment_identity") from exc
+        if environment is EnvironmentIdentity.PRODUCTION:  # pragma: no cover
             raise MutationDenied("production_mutation_rejected")
         normalized_operation = operation.strip().casefold()
         if not normalized_operation or normalized_operation.startswith(
@@ -332,6 +743,9 @@ class ItemLedgerRecord:
     mutation_count: int = 0
     last_error_code: str | None = None
     duplicate_of_item_id: str | None = None
+    reconciliation_status: ReconciliationStatus = ReconciliationStatus.NOT_REQUIRED
+    reconciliation_count: int = 0
+    terminal_reason: ItemTerminalReason | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -344,6 +758,11 @@ class ItemLedgerRecord:
             "mutation_count": self.mutation_count,
             "last_error_code": self.last_error_code,
             "duplicate_of_item_id": self.duplicate_of_item_id,
+            "reconciliation_status": self.reconciliation_status.value,
+            "reconciliation_count": self.reconciliation_count,
+            "terminal_reason": (
+                self.terminal_reason.value if self.terminal_reason is not None else None
+            ),
         }
 
     @classmethod
@@ -362,6 +781,18 @@ class ItemLedgerRecord:
             mutation_count = _strict_int(
                 payload["mutation_count"], "item_ledger_record_invalid"
             )
+            reconciliation_status = ReconciliationStatus(
+                str(payload["reconciliation_status"])
+            )
+            reconciliation_count = _strict_int(
+                payload["reconciliation_count"], "item_ledger_record_invalid"
+            )
+            raw_terminal_reason = payload.get("terminal_reason")
+            terminal_reason = (
+                ItemTerminalReason(str(raw_terminal_reason))
+                if raw_terminal_reason is not None
+                else None
+            )
             last_error = payload.get("last_error_code")
             duplicate_of = payload.get("duplicate_of_item_id")
         except (KeyError, TypeError, ValueError) as exc:
@@ -372,7 +803,9 @@ class ItemLedgerRecord:
             or not HEX64_RE.fullmatch(content_fingerprint)
         ):
             raise LedgerError("item_ledger_record_invalid")
-        if min(attempt_count, failure_count, mutation_count) < 0:
+        if min(
+            attempt_count, failure_count, mutation_count, reconciliation_count
+        ) < 0:
             raise LedgerError("item_ledger_record_invalid")
         if last_error is not None and not isinstance(last_error, str):
             raise LedgerError("item_ledger_error_code_invalid")
@@ -390,6 +823,9 @@ class ItemLedgerRecord:
             mutation_count=mutation_count,
             last_error_code=last_error,
             duplicate_of_item_id=duplicate_of,
+            reconciliation_status=reconciliation_status,
+            reconciliation_count=reconciliation_count,
+            terminal_reason=terminal_reason,
         )
 
 
@@ -404,11 +840,13 @@ class RunLedger:
     next_index: int = 0
     manual_stop_requested: bool = False
     failure_budget_exhausted: bool = False
+    global_stop_reason: GlobalStopReason | None = None
     total_failure_attempts: int = 0
     duplicate_skip_count: int = 0
     recovery_count: int = 0
     generation: int = 0
     items: dict[str, ItemLedgerRecord] = field(default_factory=dict)
+    operation_events: list[OperationEvent] = field(default_factory=list)
 
     @property
     def source_item_count(self) -> int:
@@ -431,6 +869,61 @@ class RunLedger:
         return len(self.manifest_entry_ids) - self.source_item_count
 
     @property
+    def duplicate_second_mutation_count(self) -> int:
+        mutations_by_logical_target: dict[str, int] = {}
+        for record in self.items.values():
+            mutations_by_logical_target[record.logical_target_id] = (
+                mutations_by_logical_target.get(record.logical_target_id, 0)
+                + record.mutation_count
+            )
+        return sum(
+            max(0, mutation_count - 1)
+            for mutation_count in mutations_by_logical_target.values()
+        )
+
+    @property
+    def operation_counts(self) -> dict[str, int]:
+        return {
+            kind.value: sum(event.kind is kind for event in self.operation_events)
+            for kind in FORBIDDEN_OPERATION_KINDS
+        }
+
+    @property
+    def operation_evidence_fingerprint(self) -> str:
+        return _canonical_digest(
+            {
+                "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
+                "events": [event.to_dict() for event in self.operation_events],
+            }
+        )
+
+    @property
+    def reconciliation_required_count(self) -> int:
+        return sum(
+            record.reconciliation_status is ReconciliationStatus.REQUIRED
+            for record in self.items.values()
+        )
+
+    @property
+    def per_item_exhausted_count(self) -> int:
+        return sum(
+            record.terminal_reason
+            is ItemTerminalReason.ITEM_ATTEMPT_BUDGET_EXHAUSTED
+            for record in self.items.values()
+        )
+
+    def record_operation(
+        self, kind: OperationKind, *, item_id: str | None = None
+    ) -> None:
+        event = OperationEvent(
+            sequence=len(self.operation_events) + 1,
+            kind=kind,
+            item_id=item_id,
+        )
+        event.validate()
+        self.operation_events.append(event)
+
+    @property
     def completed(self) -> bool:
         return self.next_index >= len(self.manifest_entry_ids)
 
@@ -449,6 +942,11 @@ class RunLedger:
                 "next_index": self.next_index,
                 "manual_stop_requested": self.manual_stop_requested,
                 "failure_budget_exhausted": self.failure_budget_exhausted,
+                "global_stop_reason": (
+                    self.global_stop_reason.value
+                    if self.global_stop_reason is not None
+                    else None
+                ),
                 "total_failure_attempts": self.total_failure_attempts,
                 "duplicate_skip_count": self.duplicate_skip_count,
                 "recovery_count": self.recovery_count,
@@ -465,6 +963,12 @@ class RunLedger:
             "items": {
                 item_id: record.to_dict() for item_id, record in sorted(self.items.items())
             },
+            "operation_evidence": {
+                "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
+                "events": [event.to_dict() for event in self.operation_events],
+                "event_count": len(self.operation_events),
+                "fingerprint": self.operation_evidence_fingerprint,
+            },
         }
 
     @classmethod
@@ -476,13 +980,26 @@ class RunLedger:
             checkpoint = payload["checkpoint"]
             raw_entries = payload["manifest_entry_ids"]
             raw_items = payload["items"]
-            if not isinstance(raw_entries, list) or not isinstance(raw_items, Mapping):
+            raw_operation_evidence = payload["operation_evidence"]
+            if (
+                not isinstance(raw_entries, list)
+                or not isinstance(raw_items, Mapping)
+                or not isinstance(raw_operation_evidence, Mapping)
+                or raw_operation_evidence.get("schema_version")
+                != OPERATION_EVIDENCE_SCHEMA_VERSION
+                or not isinstance(raw_operation_evidence.get("events"), list)
+            ):
                 raise LedgerError("run_ledger_invalid")
             entries = [str(value) for value in raw_entries]
             records = {
                 str(item_id): ItemLedgerRecord.from_dict(record)
                 for item_id, record in raw_items.items()
             }
+            operation_events = [
+                OperationEvent.from_dict(event)
+                for event in raw_operation_evidence["events"]
+            ]
+            raw_global_stop_reason = checkpoint.get("global_stop_reason")
             ledger = cls(
                 run_id=str(payload["run_id"]),
                 manifest_fingerprint=str(payload["manifest_fingerprint"]),
@@ -503,6 +1020,11 @@ class RunLedger:
                 failure_budget_exhausted=_strict_bool(
                     checkpoint["failure_budget_exhausted"], "run_ledger_invalid"
                 ),
+                global_stop_reason=(
+                    GlobalStopReason(str(raw_global_stop_reason))
+                    if raw_global_stop_reason is not None
+                    else None
+                ),
                 total_failure_attempts=_strict_int(
                     checkpoint["total_failure_attempts"], "run_ledger_invalid"
                 ),
@@ -514,10 +1036,18 @@ class RunLedger:
                 ),
                 generation=_strict_int(checkpoint["generation"], "run_ledger_invalid"),
                 items=records,
+                operation_events=operation_events,
             )
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise LedgerError("run_ledger_invalid") from exc
         ledger.validate()
+        operation_evidence = payload["operation_evidence"]
+        if (
+            operation_evidence.get("event_count") != len(ledger.operation_events)
+            or operation_evidence.get("fingerprint")
+            != ledger.operation_evidence_fingerprint
+        ):
+            raise LedgerError("operation_evidence_integrity_invalid")
         return ledger
 
     def validate(self) -> None:
@@ -552,12 +1082,37 @@ class RunLedger:
             self.total_failure_attempts >= self.max_failure_attempts
         ):
             raise LedgerError("failure_budget_state_invalid")
+        expected_global_reason = (
+            GlobalStopReason.FAILURE_BUDGET_EXHAUSTED
+            if self.failure_budget_exhausted
+            else None
+        )
+        if self.global_stop_reason is not expected_global_reason:
+            raise LedgerError("global_stop_reason_invalid")
         if self.total_failure_attempts != sum(
             record.failure_count for record in self.items.values()
         ):
             raise LedgerError("failure_attempt_accounting_invalid")
         if not 0 <= self.duplicate_skip_count <= self.duplicate_entry_count:
             raise LedgerError("duplicate_skip_accounting_invalid")
+        if [event.sequence for event in self.operation_events] != list(
+            range(1, len(self.operation_events) + 1)
+        ):
+            raise LedgerError("operation_event_sequence_invalid")
+        for event in self.operation_events:
+            event.validate()
+            if event.item_id is not None and event.item_id not in self.items:
+                raise LedgerError("operation_event_item_missing")
+        mutation_invocation_count = sum(
+            event.kind is OperationKind.SYNTHETIC_MUTATION_INVOCATION
+            for event in self.operation_events
+        )
+        if mutation_invocation_count != sum(
+            record.attempt_count for record in self.items.values()
+        ):
+            raise LedgerError("mutation_invocation_evidence_mismatch")
+        if self.duplicate_second_mutation_count:
+            raise LedgerError("logical_target_multiple_mutations")
 
         terminal_states = {
             ItemState.SUCCEEDED,
@@ -580,6 +1135,8 @@ class RunLedger:
                 raise LedgerError("logical_target_fingerprint_mismatch")
             if record.failure_count > record.attempt_count or record.mutation_count > 1:
                 raise LedgerError("item_attempt_accounting_invalid")
+            if record.reconciliation_count > record.attempt_count:
+                raise LedgerError("item_reconciliation_accounting_invalid")
             if record.state is ItemState.PENDING:
                 valid = (
                     record.attempt_count == 0
@@ -587,6 +1144,10 @@ class RunLedger:
                     and record.mutation_count == 0
                     and record.last_error_code is None
                     and record.duplicate_of_item_id is None
+                    and record.reconciliation_status
+                    is ReconciliationStatus.NOT_REQUIRED
+                    and record.reconciliation_count == 0
+                    and record.terminal_reason is None
                 )
             elif record.state is ItemState.IN_PROGRESS:
                 in_progress_ids.append(item_id)
@@ -594,6 +1155,20 @@ class RunLedger:
                     record.attempt_count >= 1
                     and record.mutation_count == 0
                     and record.duplicate_of_item_id is None
+                    and record.reconciliation_status
+                    is ReconciliationStatus.REQUIRED
+                    and record.terminal_reason is None
+                )
+            elif record.state is ItemState.OUTCOME_UNKNOWN:
+                in_progress_ids.append(item_id)
+                valid = (
+                    record.attempt_count >= 1
+                    and record.mutation_count == 0
+                    and record.duplicate_of_item_id is None
+                    and record.reconciliation_status
+                    is ReconciliationStatus.REQUIRED
+                    and record.last_error_code is not None
+                    and record.terminal_reason is None
                 )
             elif record.state is ItemState.SUCCEEDED:
                 valid = (
@@ -601,6 +1176,9 @@ class RunLedger:
                     and record.mutation_count == 1
                     and record.last_error_code is None
                     and record.duplicate_of_item_id is None
+                    and record.reconciliation_status
+                    is ReconciliationStatus.COMMITTED
+                    and record.terminal_reason is None
                 )
             elif record.state is ItemState.FAILED_RETRYABLE:
                 valid = (
@@ -610,6 +1188,9 @@ class RunLedger:
                     and record.mutation_count == 0
                     and record.last_error_code is not None
                     and record.duplicate_of_item_id is None
+                    and record.reconciliation_status
+                    is ReconciliationStatus.NOT_COMMITTED
+                    and record.terminal_reason is None
                 )
             elif record.state is ItemState.FAILED_EXHAUSTED:
                 valid = (
@@ -618,6 +1199,10 @@ class RunLedger:
                     and record.mutation_count == 0
                     and record.last_error_code is not None
                     and record.duplicate_of_item_id is None
+                    and record.reconciliation_status
+                    is ReconciliationStatus.NOT_COMMITTED
+                    and record.terminal_reason
+                    is ItemTerminalReason.ITEM_ATTEMPT_BUDGET_EXHAUSTED
                 )
             elif record.state is ItemState.DUPLICATE:
                 duplicate_of = record.duplicate_of_item_id
@@ -633,6 +1218,11 @@ class RunLedger:
                     and primary.logical_target_id == record.logical_target_id
                     and primary.state
                     in {ItemState.SUCCEEDED, ItemState.FAILED_EXHAUSTED}
+                    and record.reconciliation_status
+                    is ReconciliationStatus.NOT_REQUIRED
+                    and record.reconciliation_count == 0
+                    and record.terminal_reason
+                    is ItemTerminalReason.DUPLICATE_LOGICAL_TARGET
                 )
             else:  # pragma: no cover - exhaustive guard for future enum additions
                 valid = False
@@ -852,15 +1442,23 @@ class FL1LedgerRunner:
         interrupted = [
             record
             for record in ledger.items.values()
-            if record.state is ItemState.IN_PROGRESS
+            if record.state in {ItemState.IN_PROGRESS, ItemState.OUTCOME_UNKNOWN}
         ]
         if not interrupted:
             return
         if reconcile_interrupted is None:
+            for record in interrupted:
+                record.state = ItemState.OUTCOME_UNKNOWN
+                record.reconciliation_status = ReconciliationStatus.REQUIRED
+                record.last_error_code = (
+                    record.last_error_code
+                    or "interrupted_mutation_outcome_unknown"
+                )
+            self.store.save(ledger)
             raise LedgerError("interrupted_mutation_reconciliation_required")
 
         for record in ledger.items.values():
-            if record.state is not ItemState.IN_PROGRESS:
+            if record.state not in {ItemState.IN_PROGRESS, ItemState.OUTCOME_UNKNOWN}:
                 continue
             item = self._items_by_id.get(record.item_id)
             if item is None:
@@ -868,17 +1466,32 @@ class FL1LedgerRunner:
             try:
                 outcome = InterruptedMutationOutcome(reconcile_interrupted(item))
             except (TypeError, ValueError) as exc:
+                record.state = ItemState.OUTCOME_UNKNOWN
+                record.reconciliation_status = ReconciliationStatus.REQUIRED
+                record.last_error_code = "reconciliation_result_invalid"
+                self.store.save(ledger)
                 raise LedgerError(
                     "interrupted_mutation_reconciliation_invalid"
                 ) from exc
             except Exception as exc:
+                record.state = ItemState.OUTCOME_UNKNOWN
+                record.reconciliation_status = ReconciliationStatus.REQUIRED
+                record.last_error_code = "reconciliation_callback_failed"
+                self.store.save(ledger)
                 raise LedgerError("interrupted_mutation_reconciliation_failed") from exc
             if outcome is InterruptedMutationOutcome.UNKNOWN:
+                record.state = ItemState.OUTCOME_UNKNOWN
+                record.reconciliation_status = ReconciliationStatus.REQUIRED
+                record.last_error_code = "reconciliation_outcome_unknown"
+                self.store.save(ledger)
                 raise LedgerError("interrupted_mutation_outcome_unknown")
             if outcome is InterruptedMutationOutcome.COMMITTED:
                 record.state = ItemState.SUCCEEDED
                 record.mutation_count = 1
                 record.last_error_code = None
+                record.reconciliation_status = ReconciliationStatus.COMMITTED
+                record.reconciliation_count += 1
+                record.terminal_reason = None
                 if (
                     ledger.next_index >= len(ledger.manifest_entry_ids)
                     or ledger.manifest_entry_ids[ledger.next_index] != record.item_id
@@ -889,13 +1502,20 @@ class FL1LedgerRunner:
                 record.failure_count += 1
                 ledger.total_failure_attempts += 1
                 record.last_error_code = "interrupted_before_terminal_checkpoint"
+                record.reconciliation_status = ReconciliationStatus.NOT_COMMITTED
+                record.reconciliation_count += 1
                 if record.attempt_count >= ledger.max_attempts_per_item:
                     record.state = ItemState.FAILED_EXHAUSTED
+                    record.terminal_reason = (
+                        ItemTerminalReason.ITEM_ATTEMPT_BUDGET_EXHAUSTED
+                    )
                 else:
                     record.state = ItemState.FAILED_RETRYABLE
+                    record.terminal_reason = None
             ledger.recovery_count += 1
         if ledger.total_failure_attempts >= ledger.max_failure_attempts:
             ledger.failure_budget_exhausted = True
+            ledger.global_stop_reason = GlobalStopReason.FAILURE_BUDGET_EXHAUSTED
         self.store.save(ledger)
 
     def request_manual_stop(self) -> RunLedger:
@@ -943,6 +1563,9 @@ class FL1LedgerRunner:
                 if record.state is ItemState.PENDING:
                     record.state = ItemState.DUPLICATE
                     record.duplicate_of_item_id = primary_item.item_id
+                    record.terminal_reason = (
+                        ItemTerminalReason.DUPLICATE_LOGICAL_TARGET
+                    )
                 elif record.state is not ItemState.DUPLICATE:
                     raise LedgerError("content_duplicate_state_invalid")
                 ledger.duplicate_skip_count += 1
@@ -968,11 +1591,16 @@ class FL1LedgerRunner:
                 record.last_error_code = (
                     record.last_error_code or "attempt_budget_exhausted"
                 )
+                record.reconciliation_status = ReconciliationStatus.NOT_COMMITTED
+                record.terminal_reason = (
+                    ItemTerminalReason.ITEM_ATTEMPT_BUDGET_EXHAUSTED
+                )
                 ledger.next_index += 1
                 self.store.save(ledger)
                 continue
             if ledger.total_failure_attempts >= ledger.max_failure_attempts:
                 ledger.failure_budget_exhausted = True
+                ledger.global_stop_reason = GlobalStopReason.FAILURE_BUDGET_EXHAUSTED
                 self.store.save(ledger)
                 break
 
@@ -982,31 +1610,53 @@ class FL1LedgerRunner:
             record.state = ItemState.IN_PROGRESS
             record.attempt_count += 1
             record.last_error_code = None
+            record.reconciliation_status = ReconciliationStatus.REQUIRED
+            record.terminal_reason = None
+            ledger.record_operation(
+                OperationKind.SYNTHETIC_MUTATION_INVOCATION,
+                item_id=item.item_id,
+            )
             self.store.save(ledger)
             attempted += 1
 
             try:
                 mutate(item)
-            except Exception as exc:
+            except MutationNotCommittedError as exc:
                 record.failure_count += 1
                 ledger.total_failure_attempts += 1
-                record.last_error_code = type(exc).__name__
-                if (
-                    record.attempt_count >= ledger.max_attempts_per_item
-                    or ledger.total_failure_attempts >= ledger.max_failure_attempts
-                ):
+                record.last_error_code = exc.error_code
+                record.reconciliation_status = ReconciliationStatus.NOT_COMMITTED
+                if record.attempt_count >= ledger.max_attempts_per_item:
                     record.state = ItemState.FAILED_EXHAUSTED
+                    record.terminal_reason = (
+                        ItemTerminalReason.ITEM_ATTEMPT_BUDGET_EXHAUSTED
+                    )
                     ledger.next_index += 1
                 else:
                     record.state = ItemState.FAILED_RETRYABLE
+                    record.terminal_reason = None
                 if ledger.total_failure_attempts >= ledger.max_failure_attempts:
                     ledger.failure_budget_exhausted = True
+                    ledger.global_stop_reason = (
+                        GlobalStopReason.FAILURE_BUDGET_EXHAUSTED
+                    )
                 self.store.save(ledger)
                 break
+            except Exception as exc:
+                record.state = ItemState.OUTCOME_UNKNOWN
+                record.last_error_code = type(exc).__name__
+                record.reconciliation_status = ReconciliationStatus.REQUIRED
+                record.terminal_reason = None
+                self.store.save(ledger)
+                raise LedgerError(
+                    "mutation_outcome_reconciliation_required"
+                ) from exc
 
             record.state = ItemState.SUCCEEDED
             record.mutation_count += 1
             record.last_error_code = None
+            record.reconciliation_status = ReconciliationStatus.COMMITTED
+            record.terminal_reason = None
             ledger.next_index += 1
             succeeded += 1
             self.store.save(ledger)
@@ -1041,34 +1691,201 @@ def build_contract_summary(
     *,
     isolation: IsolationProof,
     ledger: RunLedger,
+    implementation_evidence: ImplementationEvidence,
     focused_tests_passed: bool,
     full_non_e2e_passed: bool,
-    owner_acceptance_identity: str | None = None,
+    owner_acceptance: OwnerAcceptanceEvidence | None = None,
+    merge_authorization: BoundAuthorizationEvidence | None = None,
+    next_phase_route_authorization: BoundAuthorizationEvidence | None = None,
 ) -> dict[str, Any]:
     """Build a public-safe P1 audit summary from actual foundation evidence."""
 
-    if owner_acceptance_identity is not None and not SAFE_IDENTITY_RE.fullmatch(
-        owner_acceptance_identity
+    ledger.validate()
+    implementation_evidence.validate()
+    if not isinstance(focused_tests_passed, bool) or not isinstance(
+        full_non_e2e_passed, bool
     ):
-        raise LedgerError("owner_acceptance_identity_invalid")
-    owner_accepted = owner_acceptance_identity is not None
+        raise LedgerError("validation_result_must_be_boolean")
+
+    owner_acceptance_payload: dict[str, Any] | None = None
+    if owner_acceptance is not None:
+        owner_acceptance_payload = owner_acceptance.to_public_dict(
+            implementation_evidence
+        )
+    if merge_authorization is not None:
+        if owner_acceptance is None:
+            raise LedgerError("merge_authorization_requires_owner_acceptance")
+        if merge_authorization.kind is not AuthorizationKind.MERGE:
+            raise LedgerError("merge_authorization_kind_invalid")
+        merge_authorization_payload = merge_authorization.to_public_dict(
+            implementation_evidence, owner_acceptance
+        )
+    else:
+        merge_authorization_payload = None
+    if next_phase_route_authorization is not None:
+        if owner_acceptance is None or merge_authorization is None:
+            raise LedgerError("route_authorization_requires_acceptance_and_merge")
+        if (
+            next_phase_route_authorization.kind
+            is not AuthorizationKind.NEXT_PHASE_ROUTE
+        ):
+            raise LedgerError("route_authorization_kind_invalid")
+        route_authorization_payload = next_phase_route_authorization.to_public_dict(
+            implementation_evidence, owner_acceptance
+        )
+    else:
+        route_authorization_payload = None
+
+    owner_accepted = owner_acceptance_payload is not None
+    merge_authorized = merge_authorization_payload is not None
+    route_authorized = route_authorization_payload is not None
+    if not owner_accepted:
+        status = "implementation_ready_for_owner_audit"
+        blockers = ["pending_owner_audit"]
+    elif not merge_authorized:
+        status = "owner_accepted_pending_merge_authorization"
+        blockers = ["pending_merge_authorization"]
+    else:
+        status = "owner_accepted_for_merge"
+        blockers = []
+
+    operation_evidence = {
+        "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
+        "events": [event.to_dict() for event in ledger.operation_events],
+        "event_count": len(ledger.operation_events),
+        "fingerprint": ledger.operation_evidence_fingerprint,
+        "ledger_generation": ledger.generation,
+        "run_id": ledger.run_id,
+    }
+    operation_counts = ledger.operation_counts
+    isolation_payload = isolation.to_public_dict()
+    stage_inputs: dict[str, tuple[bool, Mapping[str, Any]]] = {
+        "environment_isolation_preflight": (
+            all(
+                isolation_payload.get(key) is True
+                for key in (
+                    "git_head_match",
+                    "python_identity_match",
+                    "database_identity_explicit",
+                    "database_path_new_and_contained",
+                    "source_root_explicit_and_contained",
+                    "storage_root_explicit_and_contained",
+                    "source_storage_non_overlapping",
+                    "database_source_storage_pairwise_disjoint",
+                )
+            )
+            and isolation.environment in {"test", "development"}
+            and isolation.forbidden_root_overlap_count == 0
+            and isolation.production_fallback_used is False
+            and isolation.existing_database_accessed is False,
+            isolation_payload,
+        ),
+        "mutation_default_deny": (
+            all(count == 0 for count in operation_counts.values()),
+            {
+                "forbidden_operation_counts": operation_counts,
+                "synthetic_invocation_count": sum(
+                    event.kind is OperationKind.SYNTHETIC_MUTATION_INVOCATION
+                    for event in ledger.operation_events
+                ),
+            },
+        ),
+        "stable_inventory_identity": (
+            ledger.duplicate_second_mutation_count == 0,
+            {
+                "manifest_fingerprint": ledger.manifest_fingerprint,
+                "source_item_count": ledger.source_item_count,
+                "unique_item_count": ledger.unique_item_count,
+                "duplicate_second_mutation_count": (
+                    ledger.duplicate_second_mutation_count
+                ),
+            },
+        ),
+        "restartable_item_ledger": (
+            ledger.generation >= 1,
+            {
+                "schema_version": LEDGER_SCHEMA_VERSION,
+                "generation": ledger.generation,
+                "next_index": ledger.next_index,
+            },
+        ),
+        "interrupted_mutation_reconciliation": (
+            ledger.reconciliation_required_count == 0,
+            {
+                "reconciliation_required_count": (
+                    ledger.reconciliation_required_count
+                ),
+                "recovery_count": ledger.recovery_count,
+            },
+        ),
+        "failure_budget_and_manual_stop": (
+            ledger.global_stop_reason
+            is (
+                GlobalStopReason.FAILURE_BUDGET_EXHAUSTED
+                if ledger.failure_budget_exhausted
+                else None
+            ),
+            {
+                "per_item_exhausted_count": ledger.per_item_exhausted_count,
+                "global_failure_count": ledger.total_failure_attempts,
+                "global_stop_reason": (
+                    ledger.global_stop_reason.value
+                    if ledger.global_stop_reason is not None
+                    else None
+                ),
+                "manual_stop_requested": ledger.manual_stop_requested,
+            },
+        ),
+        "forbidden_operation_evidence": (
+            all(count == 0 for count in operation_counts.values()),
+            operation_evidence,
+        ),
+    }
+    stage_evidence = []
+    for stage_name in REQUIRED_EXECUTED_STAGES:
+        completed, payload = stage_inputs[stage_name]
+        stage_evidence.append(
+            {
+                "stage": stage_name,
+                "status": "completed" if completed else "failed",
+                "evidence": dict(payload),
+                "evidence_digest": _canonical_digest(
+                    {"stage": stage_name, "evidence": payload}
+                ),
+            }
+        )
+    executed_stages = [
+        row["stage"] for row in stage_evidence if row["status"] == "completed"
+    ]
+    missing_required_stages = [
+        stage for stage in REQUIRED_EXECUTED_STAGES if stage not in executed_stages
+    ]
 
     return {
         "phase": "SCV2-FL1-P1",
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
-            "status": (
-                "owner_accepted_for_merge"
-                if owner_accepted
-                else "implementation_ready_for_owner_audit"
-            ),
+            "status": status,
             "target_met": owner_accepted,
-            "safe_to_merge": owner_accepted,
-            "route_approved": owner_accepted,
-            "active_blockers": [] if owner_accepted else ["pending_owner_audit"],
-            "owner_acceptance_identity": owner_acceptance_identity,
+            "safe_to_merge": merge_authorized,
+            "route_approved": route_authorized,
+            "active_blockers": blockers,
+            "owner_acceptance_evidence": owner_acceptance_payload,
+            "merge_authorization_evidence": merge_authorization_payload,
+            "next_phase_route_authorization_evidence": (
+                route_authorization_payload
+            ),
         },
+        "implementation_evidence": implementation_evidence.to_public_dict(),
+        "executed_stages": executed_stages,
+        "missing_required_stages": missing_required_stages,
+        "stage_evidence": stage_evidence,
         "authorization": {
+            "p1_r1_implementation_authorized": True,
+            "owner_audit_completed": owner_accepted,
+            "owner_acceptance_valid": owner_accepted,
+            "merge_authorized": merge_authorized,
+            "next_phase_route_authorized": route_authorized,
             "production_authorized": False,
             "real_inventory_authorized": False,
             "existing_database_access_authorized": False,
@@ -1079,8 +1896,10 @@ def build_contract_summary(
             "stable_replay_authorized": False,
         },
         "environment_isolation": {
-            **isolation.to_public_dict(),
-            "passed": True,
+            **isolation_payload,
+            "passed": (
+                "environment_isolation_preflight" in executed_stages
+            ),
             "unknown_identity_rejected": True,
             "production_identity_rejected": True,
             "synthetic_only": True,
@@ -1104,8 +1923,22 @@ def build_contract_summary(
             "content_duplicate_item_count": ledger.content_duplicate_item_count,
             "repeated_manifest_entry_count": ledger.repeated_manifest_entry_count,
             "restart_recovery_count": ledger.recovery_count,
-            "duplicate_second_mutation_count": sum(
-                max(0, record.mutation_count - 1) for record in ledger.items.values()
+            "duplicate_second_mutation_count": (
+                ledger.duplicate_second_mutation_count
+            ),
+            "operation_evidence_fingerprint": (
+                ledger.operation_evidence_fingerprint
+            ),
+            "operation_event_count": len(ledger.operation_events),
+            "reconciliation_required_count": (
+                ledger.reconciliation_required_count
+            ),
+            "per_item_exhausted_count": ledger.per_item_exhausted_count,
+            "global_failure_attempt_count": ledger.total_failure_attempts,
+            "global_stop_reason": (
+                ledger.global_stop_reason.value
+                if ledger.global_stop_reason is not None
+                else None
             ),
             "attempt_budget_persisted": True,
             "checkpoint_persisted": True,
@@ -1116,31 +1949,9 @@ def build_contract_summary(
         "validation": {
             "focused_tests_passed": focused_tests_passed,
             "full_non_e2e_passed": full_non_e2e_passed,
-            "production_identity_rejection_passed": True,
-            "unknown_identity_rejection_passed": True,
-            "containment_rejection_passed": True,
-            "mutation_default_deny_passed": True,
-            "duplicate_idempotency_passed": True,
-            "content_fingerprint_deduplication_passed": True,
-            "restart_recovery_passed": True,
-            "interrupted_mutation_reconciliation_passed": True,
-            "failure_budget_stop_passed": True,
-            "per_item_and_global_budget_separation_passed": True,
-            "concurrent_generation_guard_passed": True,
-            "manual_stop_passed": True,
-            "synthetic_isolation_passed": True,
             "browser_validation": "not_applicable_no_ui_or_runtime_server_change",
         },
-        "operation_counts": {
-            "production_activity": 0,
-            "real_source_inventory_activity": 0,
-            "existing_database_read_activity": 0,
-            "existing_database_write_activity": 0,
-            "provider_activity": 0,
-            "llm_activity": 0,
-            "media_activity": 0,
-            "stable_replay_activity": 0,
-            "user_data_cleanup_delete_activity": 0,
-        },
+        "operation_evidence": operation_evidence,
+        "operation_counts": operation_counts,
         "public_redaction": {"passed": True, "private_paths_emitted": False},
     }

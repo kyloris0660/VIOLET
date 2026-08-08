@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
+
+import pytest
+
+from scripts.check_documentation_state import (
+    DocumentationStateError,
+    load_state,
+    validate_state,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -126,7 +135,7 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
 
     assert 40 <= line_count <= 60
     assert "docs/state/current-phase.json" in handoff
-    assert "SCV2-FL1-P1" in handoff
+    assert "SCV2-FL1-P1-R1" in handoff
     assert "Draft PR" in handoff
     assert state["planning_boundary"]["planning_only"] is False
     assert state["planning_boundary"]["implementation_authorized"] is True
@@ -135,6 +144,76 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
     assert "provider, Pixiv, gallery-dl, Provider-2, LLM" in handoff
     assert "Phase 4.4-B0" not in handoff
     assert "Phase 4.4-D1G" not in handoff
+
+
+def test_fl1_p1_r1_state_stops_at_pending_owner_audit() -> None:
+    state = load_state()
+
+    assert state["phase_id"] == "SCV2-FL1-P1-R1"
+    assert state["target_met"] is False
+    assert state["safe_to_merge"] is False
+    assert state["route_approved"] is False
+    assert state["manual_acceptance_status"] == "pending_owner_audit"
+    assert state["next_phase_started"] is False
+    assert state["active_blocker"]["code"] == "pending_owner_audit"
+    assert state["upstream_pr_state"]["physically_merged"] is True
+    assert state["upstream_pr_state"]["late_review_remediation_required"] is True
+    assert state["next_phase_authorization"] == {
+        "phase_id": "SCV2-FL1-I1",
+        "route_approved": False,
+        "next_phase_started": False,
+        "implementation_started": False,
+        "real_inventory_started": False,
+        "required_preconditions": [
+            "P1-R1 owner audit",
+            "separate owner FL1-I1 scope decision",
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("target_met", True),
+        ("safe_to_merge", True),
+        ("route_approved", True),
+        ("next_phase_started", True),
+        ("manual_acceptance_status", "owner_accepted_fl1_p1_foundation"),
+    ],
+)
+def test_unapproved_acceptance_merge_or_i1_claim_fails_closed(
+    field: str, value: object
+) -> None:
+    state = copy.deepcopy(load_state())
+    state[field] = value
+
+    with pytest.raises(DocumentationStateError):
+        validate_state(state)
+
+
+def test_activity_counts_must_match_event_evidence() -> None:
+    state = copy.deepcopy(load_state())
+    state["protected_evidence"]["provider_operation_count"] = 1
+
+    with pytest.raises(
+        DocumentationStateError, match="fl1_activity_event_evidence_invalid"
+    ):
+        validate_state(state)
+
+
+def test_legacy_i1_authorization_token_is_rejected() -> None:
+    state = copy.deepcopy(load_state())
+    state["owner_decisions"].append(
+        {
+            "id": "owner_authorized_fl1_i1_planning_and_synthetic_implementation_20260808",
+            "decision": "invalid legacy authorization",
+        }
+    )
+
+    with pytest.raises(
+        DocumentationStateError, match="unauthorized_fl1_authority_claim_present"
+    ):
+        validate_state(state)
 
 
 def test_doc1_summary_has_required_schema_and_guard_classifications() -> None:

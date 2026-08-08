@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -13059,20 +13060,179 @@ def _check_scv2_fl1_p1_foundation(
         )
 
     blockers = list(_get(summary, "pipeline_contract.active_blockers", []) or [])
-    owner_accepted = status == "owner_accepted_for_merge"
+    implementation = _get(summary, "implementation_evidence", {})
+    governance_allowlist = {
+        "docs/current-handoff.md",
+        "docs/phase-contracts.md",
+        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md",
+        "docs/project-roadmap.md",
+        "docs/roadmap/current-mainline-roadmap.md",
+        "docs/state/current-phase.json",
+        "docs/test-workflow.md",
+    }
+    post_paths = (
+        implementation.get("post_implementation_changed_paths")
+        if isinstance(implementation, Mapping)
+        else None
+    )
+    implementation_payload = {
+        "schema_version": "violet.scv2-fl1-p1-implementation-evidence.v1",
+        "implementation_commit": implementation.get("implementation_commit"),
+        "implementation_tree": implementation.get("implementation_tree"),
+        "final_commit": implementation.get("final_commit"),
+        "final_tree": implementation.get("final_tree"),
+        "post_implementation_changed_paths": post_paths,
+    } if isinstance(implementation, Mapping) else {}
+    expected_implementation_digest = hashlib.sha256(
+        json.dumps(
+            implementation_payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    git_fields = (
+        "implementation_commit",
+        "implementation_tree",
+        "final_commit",
+        "final_tree",
+    )
+    implementation_valid = (
+        isinstance(implementation, Mapping)
+        and implementation.get("schema_version")
+        == "violet.scv2-fl1-p1-implementation-evidence.v1"
+        and all(
+            isinstance(implementation.get(key), str)
+            and re.fullmatch(r"[0-9a-f]{40}", str(implementation.get(key)))
+            for key in git_fields
+        )
+        and isinstance(post_paths, list)
+        and post_paths == sorted(set(post_paths))
+        and all(isinstance(path, str) and path in governance_allowlist for path in post_paths)
+        and implementation.get("evidence_digest")
+        == expected_implementation_digest
+        and (
+            implementation.get("final_commit")
+            != implementation.get("implementation_commit")
+            or (
+                not post_paths
+                and implementation.get("final_tree")
+                == implementation.get("implementation_tree")
+            )
+        )
+        and (
+            bool(post_paths)
+            or implementation.get("final_tree")
+            == implementation.get("implementation_tree")
+        )
+    )
+    if not implementation_valid:
+        result.fail(
+            "fl1_p1_implementation_evidence_invalid",
+            "Implementation evidence must bind immutable Git commit/tree identities and permit only exact governance-only carry-forward paths.",
+            path="implementation_evidence",
+        )
+
+    owner_evidence = (
+        pipeline.get("owner_acceptance_evidence")
+        if isinstance(pipeline, Mapping)
+        else None
+    )
+    owner_evidence_valid = (
+        implementation_valid
+        and isinstance(owner_evidence, Mapping)
+        and isinstance(owner_evidence.get("identity"), str)
+        and re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
+            str(owner_evidence.get("identity")),
+        )
+        is not None
+        and owner_evidence.get("implementation_commit")
+        == implementation.get("implementation_commit")
+        and owner_evidence.get("implementation_tree")
+        == implementation.get("implementation_tree")
+        and owner_evidence.get("implementation_digest")
+        == implementation.get("evidence_digest")
+        and owner_evidence.get("reviewed_final_commit")
+        == implementation.get("final_commit")
+        and owner_evidence.get("reviewed_final_tree")
+        == implementation.get("final_tree")
+    )
+
+    def _authorization_valid(
+        evidence: object, *, kind: str, route_required: bool
+    ) -> bool:
+        return (
+            owner_evidence_valid
+            and isinstance(evidence, Mapping)
+            and evidence.get("kind") == kind
+            and isinstance(evidence.get("identity"), str)
+            and re.fullmatch(
+                r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
+                str(evidence.get("identity")),
+            )
+            is not None
+            and evidence.get("owner_acceptance_identity")
+            == owner_evidence.get("identity")
+            and evidence.get("reviewed_final_commit")
+            == implementation.get("final_commit")
+            and evidence.get("reviewed_final_tree")
+            == implementation.get("final_tree")
+            and (
+                (
+                    route_required
+                    and isinstance(evidence.get("route_scope"), str)
+                    and re.fullmatch(
+                        r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
+                        str(evidence.get("route_scope")),
+                    )
+                    is not None
+                )
+                or (not route_required and evidence.get("route_scope") is None)
+            )
+        )
+
+    merge_evidence = (
+        pipeline.get("merge_authorization_evidence")
+        if isinstance(pipeline, Mapping)
+        else None
+    )
+    route_evidence = (
+        pipeline.get("next_phase_route_authorization_evidence")
+        if isinstance(pipeline, Mapping)
+        else None
+    )
+    merge_evidence_valid = _authorization_valid(
+        merge_evidence, kind="merge", route_required=False
+    )
+    route_evidence_valid = _authorization_valid(
+        route_evidence, kind="next_phase_route", route_required=True
+    )
+
     common_claim_valid = (
         isinstance(pipeline, Mapping)
         and pipeline.get("contract_id") == contract.contract_id
+        and pipeline.get("owner_acceptance_identity") is None
+        and pipeline.get("accepted") is not True
     )
-    if owner_accepted:
+    if status == "owner_accepted_for_merge":
         claim_valid = (
             common_claim_valid
             and pipeline.get("target_met") is True
             and pipeline.get("safe_to_merge") is True
-            and pipeline.get("route_approved") is True
+            and pipeline.get("route_approved") is route_evidence_valid
             and blockers == []
-            and isinstance(pipeline.get("owner_acceptance_identity"), str)
-            and bool(str(pipeline.get("owner_acceptance_identity")).strip())
+            and owner_evidence_valid
+            and merge_evidence_valid
+            and (route_evidence is None or route_evidence_valid)
+        )
+    elif status == "owner_accepted_pending_merge_authorization":
+        claim_valid = (
+            common_claim_valid
+            and pipeline.get("target_met") is True
+            and pipeline.get("safe_to_merge") is False
+            and pipeline.get("route_approved") is False
+            and blockers == ["pending_merge_authorization"]
+            and owner_evidence_valid
+            and merge_evidence is None
+            and route_evidence is None
         )
     else:
         claim_valid = (
@@ -13081,7 +13241,9 @@ def _check_scv2_fl1_p1_foundation(
             and pipeline.get("safe_to_merge") is False
             and pipeline.get("route_approved") is False
             and bool(blockers)
-            and pipeline.get("owner_acceptance_identity") is None
+            and owner_evidence is None
+            and merge_evidence is None
+            and route_evidence is None
         )
     if not claim_valid:
         result.fail(
@@ -13100,6 +13262,52 @@ def _check_scv2_fl1_p1_foundation(
             actual=blockers,
         )
 
+    executed_stages = _get(summary, "executed_stages", [])
+    explicit_missing = _get(summary, "missing_required_stages", [])
+    stage_evidence = _get(summary, "stage_evidence", [])
+    stage_rows_valid = (
+        isinstance(stage_evidence, list)
+        and all(isinstance(row, Mapping) for row in stage_evidence)
+        and [row.get("stage") for row in stage_evidence]
+        == list(contract.required_stages)
+        and all(
+            row.get("status") in {"completed", "failed"}
+            and isinstance(row.get("evidence"), Mapping)
+            and isinstance(row.get("evidence_digest"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", str(row.get("evidence_digest")))
+            and row.get("evidence_digest")
+            == hashlib.sha256(
+                json.dumps(
+                    {"stage": row.get("stage"), "evidence": row.get("evidence")},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            for row in stage_evidence
+        )
+    )
+    derived_executed = (
+        [row["stage"] for row in stage_evidence if row.get("status") == "completed"]
+        if stage_rows_valid
+        else []
+    )
+    derived_missing = [
+        stage for stage in contract.required_stages if stage not in derived_executed
+    ]
+    if not (
+        stage_rows_valid
+        and executed_stages == derived_executed
+        and explicit_missing == derived_missing
+        and not _missing_required_stages(contract, summary)
+    ):
+        result.fail(
+            "fl1_p1_required_stage_evidence_invalid",
+            "Every registered FL1-P1 stage must have exact completed evidence; missing, failed, unknown, or spelling-drifted stages block the contract.",
+            path="stage_evidence",
+            expected=list(contract.required_stages),
+            actual=executed_stages,
+        )
+
     authorization = _get(summary, "authorization", {})
     forbidden_authorizations = (
         "production_authorized",
@@ -13113,6 +13321,13 @@ def _check_scv2_fl1_p1_foundation(
     )
     if not isinstance(authorization, Mapping) or any(
         authorization.get(key) is not False for key in forbidden_authorizations
+    ) or not (
+        authorization.get("p1_r1_implementation_authorized") is True
+        and authorization.get("owner_audit_completed") is owner_evidence_valid
+        and authorization.get("owner_acceptance_valid") is owner_evidence_valid
+        and authorization.get("merge_authorized") is merge_evidence_valid
+        and authorization.get("next_phase_route_authorized")
+        is route_evidence_valid
     ):
         result.fail(
             "fl1_p1_authorization_boundary_invalid",
@@ -13130,6 +13345,7 @@ def _check_scv2_fl1_p1_foundation(
         "source_root_explicit_and_contained",
         "storage_root_explicit_and_contained",
         "source_storage_non_overlapping",
+        "database_source_storage_pairwise_disjoint",
         "unknown_identity_rejected",
         "production_identity_rejected",
         "synthetic_only",
@@ -13169,7 +13385,7 @@ def _check_scv2_fl1_p1_foundation(
     ledger = _get(summary, "ledger", {})
     ledger_valid = (
         isinstance(ledger, Mapping)
-        and ledger.get("schema_version") == "violet.scv2-fl1-p1-ledger.v1"
+        and ledger.get("schema_version") == "violet.scv2-fl1-p1-ledger.v2"
         and ledger.get("stable_item_identity") == "violet.scv2-fl1-item.v1"
         and ledger.get("logical_target_identity")
         == "violet.scv2-fl1-logical-target.v1"
@@ -13187,6 +13403,17 @@ def _check_scv2_fl1_p1_foundation(
         == _as_int(ledger.get("source_item_count"), -2)
         + _as_int(ledger.get("repeated_manifest_entry_count"), -2)
         and _as_int(ledger.get("duplicate_second_mutation_count"), -1) == 0
+        and _as_int(ledger.get("operation_event_count"), -1) >= 1
+        and isinstance(ledger.get("operation_evidence_fingerprint"), str)
+        and re.fullmatch(
+            r"[0-9a-f]{64}", str(ledger.get("operation_evidence_fingerprint"))
+        )
+        is not None
+        and _as_int(ledger.get("reconciliation_required_count"), -1) == 0
+        and _as_int(ledger.get("per_item_exhausted_count"), -1) >= 0
+        and _as_int(ledger.get("global_failure_attempt_count"), -1) >= 0
+        and ledger.get("global_stop_reason")
+        in {None, "global_failure_budget_exhausted"}
         and ledger.get("attempt_budget_persisted") is True
         and ledger.get("checkpoint_persisted") is True
         and ledger.get("manual_stop_persisted") is True
@@ -13201,25 +13428,11 @@ def _check_scv2_fl1_p1_foundation(
         )
 
     validation = _get(summary, "validation", {})
-    validation_fields = (
-        "focused_tests_passed",
-        "full_non_e2e_passed",
-        "production_identity_rejection_passed",
-        "unknown_identity_rejection_passed",
-        "containment_rejection_passed",
-        "mutation_default_deny_passed",
-        "duplicate_idempotency_passed",
-        "content_fingerprint_deduplication_passed",
-        "restart_recovery_passed",
-        "interrupted_mutation_reconciliation_passed",
-        "failure_budget_stop_passed",
-        "per_item_and_global_budget_separation_passed",
-        "concurrent_generation_guard_passed",
-        "manual_stop_passed",
-        "synthetic_isolation_passed",
-    )
-    if not isinstance(validation, Mapping) or any(
-        validation.get(key) is not True for key in validation_fields
+    if not isinstance(validation, Mapping) or not (
+        validation.get("focused_tests_passed") is True
+        and validation.get("full_non_e2e_passed") is True
+        and validation.get("browser_validation")
+        == "not_applicable_no_ui_or_runtime_server_change"
     ):
         result.fail(
             "fl1_p1_validation_incomplete",
@@ -13227,7 +13440,6 @@ def _check_scv2_fl1_p1_foundation(
             path="validation",
         )
 
-    operations = _get(summary, "operation_counts", {})
     required_zero_operations = (
         "production_activity",
         "real_source_inventory_activity",
@@ -13239,8 +13451,85 @@ def _check_scv2_fl1_p1_foundation(
         "stable_replay_activity",
         "user_data_cleanup_delete_activity",
     )
-    if not isinstance(operations, Mapping) or any(
-        _as_int(operations.get(key), -1) != 0 for key in required_zero_operations
+    allowed_event_kinds = {"synthetic_mutation_invocation", *required_zero_operations}
+    operation_evidence = _get(summary, "operation_evidence", {})
+    operations = _get(summary, "operation_counts", {})
+    raw_events = (
+        operation_evidence.get("events")
+        if isinstance(operation_evidence, Mapping)
+        else None
+    )
+    events_valid = (
+        isinstance(raw_events, list)
+        and all(isinstance(event, Mapping) for event in raw_events)
+        and [event.get("sequence") for event in raw_events]
+        == list(range(1, len(raw_events) + 1))
+        and all(
+            event.get("kind") in allowed_event_kinds
+            and (
+                event.get("item_id") is None
+                or (
+                    isinstance(event.get("item_id"), str)
+                    and re.fullmatch(r"[0-9a-f]{64}", str(event.get("item_id")))
+                    is not None
+                )
+            )
+            for event in raw_events
+        )
+    )
+    derived_counts = (
+        {
+            key: sum(event.get("kind") == key for event in raw_events)
+            for key in required_zero_operations
+        }
+        if events_valid
+        else {}
+    )
+    evidence_payload = {
+        "schema_version": "violet.scv2-fl1-p1-operation-evidence.v2",
+        "events": raw_events if events_valid else [],
+    }
+    expected_operation_fingerprint = hashlib.sha256(
+        json.dumps(
+            evidence_payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    operation_evidence_valid = (
+        isinstance(operation_evidence, Mapping)
+        and operation_evidence.get("schema_version")
+        == "violet.scv2-fl1-p1-operation-evidence.v2"
+        and events_valid
+        and operation_evidence.get("event_count") == len(raw_events or [])
+        and operation_evidence.get("fingerprint")
+        == expected_operation_fingerprint
+        and isinstance(operation_evidence.get("run_id"), str)
+        and re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
+            str(operation_evidence.get("run_id")),
+        )
+        is not None
+        and _as_int(operation_evidence.get("ledger_generation"), -1) >= 1
+        and isinstance(operations, Mapping)
+        and set(operations) == set(required_zero_operations)
+        and all(
+            isinstance(operations.get(key), int)
+            and not isinstance(operations.get(key), bool)
+            and operations.get(key) == derived_counts[key]
+            for key in required_zero_operations
+        )
+        and isinstance(ledger, Mapping)
+        and ledger.get("operation_evidence_fingerprint")
+        == expected_operation_fingerprint
+        and ledger.get("operation_event_count") == len(raw_events or [])
+    )
+    if not operation_evidence_valid:
+        result.fail(
+            "fl1_p1_operation_evidence_invalid",
+            "Operation counts must be recomputed from the complete persisted event ledger; missing, damaged, or inconsistent evidence fails closed.",
+            path="operation_evidence",
+        )
+    if not operation_evidence_valid or any(
+        derived_counts.get(key, -1) != 0 for key in required_zero_operations
     ):
         result.fail(
             "fl1_p1_forbidden_activity",
