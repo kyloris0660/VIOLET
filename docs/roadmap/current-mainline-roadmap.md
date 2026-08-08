@@ -26,7 +26,7 @@ does not become a creator-identity or scale-up policy.
 <!-- CURRENT_PHASE: SCV2-FL1-P1 -->
 
 `SCV2-FL1-P1: Dev/Test Isolation, Contract, And Ledger Foundations` is active on
-Draft PR #141. Its fact source is `docs/state/current-phase.json` and its plan is
+PR #141. Its fact source is `docs/state/current-phase.json` and its plan is
 `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
 Current owner-accepted closeout state:

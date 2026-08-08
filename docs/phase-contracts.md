@@ -52,7 +52,7 @@ authorize FL1 behavior, scale, production, or truth promotion.
 PR #140 merged the approved plan into `origin/main` at
 `9ce1128be643c0eaa998ccdff8890d76196ce7db`. `SCV2-FL1-P1: Dev/Test Isolation,
 Contract, And Ledger Foundations` is now the current implementation phase on
-Draft PR #141. Its owner-accepted implementation evidence is
+PR #141. Its owner-accepted implementation evidence is
 `3a7b20608724e5f469548183df0830b09d5ea7be`, and its closeout state is:
 
 - `status=fl1_p1_owner_accepted_for_merge`

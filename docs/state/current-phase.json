@@ -5,7 +5,7 @@
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-fl1-p1-isolation-safety-ledger",
   "pr_number": 141,
-  "draft": true,
+  "draft": false,
   "accepted_mainline_base": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
   "implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
   "current_status": "fl1_p1_owner_accepted_for_merge",
@@ -213,5 +213,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-08T11:56:44+07:00"
+  "updated_at": "2026-08-08T12:01:34+07:00"
 }

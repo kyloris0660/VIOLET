@@ -34,7 +34,7 @@ def test_current_phase_schema_and_fl1_p1_boundary_are_consistent() -> None:
     assert state["schema_version"] == "violet.current-phase.v2"
     assert state["phase_id"] == "SCV2-FL1-P1"
     assert state["repository"] == "kyloris0660/VIOLET"
-    assert state["draft"] is True
+    assert state["draft"] is False
     assert state["pr_number"] is None or state["pr_number"] > 0
     assert state["current_status"] == documentation_state.FL1_STATUS
     assert state["target_met"] is True
@@ -217,6 +217,7 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
+        ("draft", True),
         ("current_status", "implementation_ready_for_owner_audit"),
         ("target_met", False),
         ("safe_to_merge", False),

@@ -5,7 +5,7 @@
 ## Current Facts
 
 - Phase: `SCV2-FL1-P1` — Dev/Test Isolation, Contract, And Ledger Foundations.
-- Repository / PR: `kyloris0660/VIOLET` / Draft PR #141.
+- Repository / PR: `kyloris0660/VIOLET` / PR #141.
 - Branch: `codex/scv2-fl1-p1-isolation-safety-ledger`.
 - Accepted mainline base: `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
 - Implementation evidence HEAD: `3a7b20608724e5f469548183df0830b09d5ea7be`.
@@ -56,4 +56,4 @@
 - `PROVIDER_GATE` — owner: future provider-route owner; due before: `any future provider request`; Deferred use-before gate; it is not a PR #140 blocker and grants no current remediation or provider authority. Requirements: inherit cumulative attempt budgets across restarts and passes; use one truthful real-request counting semantic; never allow partial JSON to mask non-zero exit, authentication, or transport failure; recompute an old ledger read-only if required.
 - `STABLE_REPLAY_GATE` — owner: future Stable Replay owner; due before: `any Stable Replay evidence import, replay, or authoritative reuse`; Deferred use-before gate; it is not a PR #140 blocker and grants no current replay or database authority. Requirements: scan accepted packages for observation_key duplicates across parent records; use parent-qualified stable observation identity; stop and report any actual collision without replaying a database.
 - `ACCEPTANCE_TOOLING_GATE` — owner: future acceptance-tooling owner; due before: `reuse of acceptance, composite, carry-forward, or export tooling as automated merge authority`; Deferred use-before gate; it is not a PR #140 blocker and does not invalidate the current owner decision. Requirements: harden or retire the one-off tools according to the actual reuse need; preserve the current owner decision of 37 PASS and 3 owner-waived cases.
-Updated: `2026-08-08T11:56:44+07:00`.
+Updated: `2026-08-08T12:01:34+07:00`.

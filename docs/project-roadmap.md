@@ -14,7 +14,7 @@ evidence without treating weak AI or provider signals as user truth.
 The authoritative current state is `docs/state/current-phase.json`.
 
 `SCV2-FL1-P1: Dev/Test Isolation, Contract, And Ledger Foundations` is the
-current phase on Draft PR #141.
+current phase on PR #141.
 PR #139 / SCV2-SV1B merged into `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner acceptance remains
 `37 PASS`, `3 owner-waived nonblocking known limitations`, `0 PENDING`, and

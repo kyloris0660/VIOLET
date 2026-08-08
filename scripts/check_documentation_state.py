@@ -101,7 +101,8 @@ def _require_list(
 
 def _validate_fl1_state(state: dict[str, Any]) -> None:
     if (
-        state["current_status"] != FL1_STATUS
+        state["draft"] is not False
+        or state["current_status"] != FL1_STATUS
         or state["target_met"] is not True
         or state["safe_to_merge"] is not True
         or state["route_approved"] is not True
@@ -212,8 +213,8 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         or state["pr_number"] <= 0
     ):
         raise DocumentationStateError("pr_number_invalid")
-    if state["draft"] is not True:
-        raise DocumentationStateError("fl1_p1_pr_must_remain_draft")
+    if not isinstance(state["draft"], bool):
+        raise DocumentationStateError("draft_must_be_boolean")
     for key in ("target_met", "safe_to_merge", "route_approved", "next_phase_started"):
         if not isinstance(state[key], bool):
             raise DocumentationStateError(f"{key}_must_be_boolean")
@@ -360,11 +361,12 @@ def _link_for_handoff(link: dict[str, str]) -> str:
 def render_handoff(state: dict[str, Any]) -> str:
     blocker = state["active_blocker"]
     boundary = state["planning_boundary"]
-    pr_label = (
-        f"Draft PR #{state['pr_number']}"
-        if state["pr_number"] is not None
-        else "Draft PR pending creation"
-    )
+    if state["pr_number"] is None:
+        pr_label = "PR pending creation"
+    elif state["draft"]:
+        pr_label = f"Draft PR #{state['pr_number']}"
+    else:
+        pr_label = f"PR #{state['pr_number']}"
     lines = [
         "# Current Handoff - V.I.O.L.E.T.",
         "",
