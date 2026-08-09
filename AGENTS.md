@@ -13,6 +13,19 @@ there. The detailed operating runbook lives at
 
 - `docs/state/current-phase.json` is the only machine-readable current-route
   truth. The handoff and active roadmaps are projections, not competing facts.
+- Apply `REMOTE_SYNC_PREFLIGHT_POLICY` before comparing a protected local base
+  with its trusted remote: fetch the verified remote first. If the worktree is
+  safe, the local base has no local-only commit, and it is only behind the
+  remote, fast-forward it with `--ff-only`, record the event as a preflight
+  self-heal, and continue the same task. Initial local/remote inequality is a
+  classification input, not an automatic blocker.
+- Fail closed when the base diverged, has unsafely preserved local-only commits,
+  fast-forward-only fails, tracked/staged/unstaged/deleted/renamed drift exists,
+  behavior-affecting untracked executable/package/module/config/symlink drift
+  exists, remote identity or authentication cannot be verified, or syncing
+  would require reset, rebase, force, overwrite, or deletion. Preserve unrelated
+  untracked and ignored non-executable user artifacts; never clean them merely
+  to make preflight pass.
 - After a durable checkpoint or state change, update current-phase immediately,
   regenerate `docs/current-handoff.md`, and run
   `scripts/check_documentation_state.py --check`.

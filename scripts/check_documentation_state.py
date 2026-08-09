@@ -74,6 +74,14 @@ FL1_COMPLETED_SCOPE = "SCV2-FL1-P1-R1 late-review safety remediation and regress
 FL1_PLAN_MERGE_COMMIT = "9ce1128be643c0eaa998ccdff8890d76196ce7db"
 FL1_ACCEPTED_MAIN = "36100bfa0317387e064cd87b2e753eca3a201b5e"
 FL1_PR141_HEAD = "495a6506b25bb27747ebc27e341a06de4860aaa4"
+FL1_I1_BRANCH = "codex/scv2-fl1-i1-read-only-inventory-v2"
+FL1_I1_ACCEPTED_MAIN = "a2f48bdba979f579b7cd1cdd9ef541137b2479c5"
+FL1_I1_PR143_HEAD = "228983f510c975399b53b39dcd7dd170e59b3245"
+FL1_I1_P1_R1_EVIDENCE = "a631160f58e8d5d61998863b5b4d60a549e88151"
+FL1_I1_ROUTE_SCOPE = (
+    "SCV2-FL1-I1 reusable read-only inventory safety tooling using only "
+    "synthetic and newly created temporary fixtures"
+)
 SV1B_MERGE_COMMIT = "33af4111e1595dac3ece0ac50002556d466f0138"
 SV1B_WAIVER = "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
 NON_ACTION_ATTESTATION_SCHEMA = (
@@ -117,6 +125,167 @@ def _require_list(
 
 
 def _validate_fl1_state(state: dict[str, Any]) -> None:
+    """Validate the active I1 implementation or frozen owner-audit projection."""
+
+    audit_ready = (
+        state["current_status"]
+        == "fl1_i1_synthetic_implementation_ready_for_owner_audit"
+    )
+    expected_status = (
+        "fl1_i1_synthetic_implementation_ready_for_owner_audit"
+        if audit_ready
+        else "fl1_i1_read_only_inventory_implementation_in_progress"
+    )
+    expected_manual = (
+        "pending_i1_synthetic_implementation_owner_audit"
+        if audit_ready
+        else "pending_i1_implementation_owner_audit"
+    )
+    expected_blocker = (
+        "pending_i1_synthetic_implementation_owner_audit_and_real_source_scope"
+        if audit_ready
+        else "fl1_i1_implementation_in_progress"
+    )
+    if (
+        state["phase_id"] != "SCV2-FL1-I1"
+        or state["branch"] != FL1_I1_BRANCH
+        or state["draft"] is not True
+        or state["current_status"] != expected_status
+        or state["target_met"] is not False
+        or state["safe_to_merge"] is not False
+        or state["route_approved"] is not False
+        or state["route_scope"] != FL1_I1_ROUTE_SCOPE
+        or state["planning_approved"] is not True
+        or state["approved_planning_head"] != FL1_APPROVED_PLANNING_HEAD
+        or state["manual_acceptance_status"] != expected_manual
+        or state["next_phase_started"] is not True
+        or state["accepted_mainline_base"] != FL1_I1_ACCEPTED_MAIN
+    ):
+        raise DocumentationStateError("fl1_i1_status_fields_conflict")
+    if state["active_blocker"].get("code") != expected_blocker:
+        raise DocumentationStateError("fl1_i1_blocker_conflict")
+
+    boundary = state["planning_boundary"]
+    expected_boundary = {
+        "planning_only": False,
+        "implementation_authorized": True,
+        "implementation_completed": audit_ready,
+        "owner_audit_pending": True,
+        "owner_acceptance_valid": False,
+        "merge_authorized": False,
+        "fl1_i1_route_authorized": True,
+        "fl1_i1_implementation_started": True,
+        "synthetic_ephemeral_test_fixture_authorized": True,
+        "authorized_read_only_source_code_path_implementation_authorized": True,
+        "real_inventory_started": False,
+        "real_source_inventory_authorized": False,
+        "source_root_access_authorized": False,
+        "data_execution_authorized": False,
+        "database_access_authorized": False,
+        "database_data_execution_authorized": False,
+        "app_storage_write_authorized": False,
+        "import_authorized": False,
+        "classification_or_tagging_execution_authorized": False,
+        "provider_or_llm_authorized": False,
+        "provider_authorized": False,
+        "llm_authorized": False,
+        "media_or_thumbnail_download_authorized": False,
+        "media_authorized": False,
+        "stable_replay_authorized": False,
+        "production_authorized": False,
+        "projected_external_cost_usd": 0,
+    }
+    if not isinstance(boundary, dict) or any(
+        boundary.get(key) != value for key, value in expected_boundary.items()
+    ):
+        raise DocumentationStateError("fl1_i1_boundary_invalid")
+
+    upstream = state["upstream_pr_state"]
+    expected_upstream = {
+        "pr_number": 143,
+        "state": "merged",
+        "draft": False,
+        "merge_commit": FL1_I1_ACCEPTED_MAIN,
+        "final_head": FL1_I1_PR143_HEAD,
+        "implementation_evidence_head": FL1_I1_P1_R1_EVIDENCE,
+        "final_review_id": 4890771735,
+        "final_review_submitted_at": "2026-08-09T07:24:25Z",
+        "owner_closeout_active_unresolved_thread_count": 10,
+        "owner_closeout_outdated_unresolved_thread_count": 7,
+        "owner_accepted": True,
+        "merge_topology": "merge_commit",
+    }
+    if not isinstance(upstream, dict) or any(
+        upstream.get(key) != value for key, value in expected_upstream.items()
+    ):
+        raise DocumentationStateError("fl1_i1_upstream_state_invalid")
+
+    next_phase = state["next_phase_authorization"]
+    if not isinstance(next_phase, dict) or any(
+        (
+            next_phase.get("phase_id") != "SCV2-FL1-I1",
+            next_phase.get("implementation_route_authorized") is not True,
+            next_phase.get("next_phase_started") is not True,
+            next_phase.get("implementation_started") is not True,
+            next_phase.get("synthetic_fixture_execution_authorized") is not True,
+            next_phase.get("temporary_fixture_execution_authorized") is not True,
+            next_phase.get("real_inventory_started") is not False,
+            next_phase.get("real_source_inventory_authorized") is not False,
+        )
+    ):
+        raise DocumentationStateError("fl1_i1_authorization_state_invalid")
+
+    prior = state["prior_phase_acceptance"]
+    if not isinstance(prior, dict) or any(
+        (
+            prior.get("phase_id") != "SCV2-FL1-P1-R1",
+            prior.get("status") != "owner_accepted_and_merge_commit_merged",
+            prior.get("merge_commit") != FL1_I1_ACCEPTED_MAIN,
+            prior.get("final_pr_head") != FL1_I1_PR143_HEAD,
+            prior.get("implementation_evidence_head") != FL1_I1_P1_R1_EVIDENCE,
+            prior.get("final_review_id") != 4890771735,
+            prior.get("owner_adjudication_count") != 5,
+            prior.get("automated_positive_authority") is not False,
+        )
+    ):
+        raise DocumentationStateError("fl1_i1_prior_phase_acceptance_invalid")
+
+    protected = state["protected_evidence"]
+    zero_fields = (
+        "real_source_inventory_operation_count",
+        "existing_database_read_operation_count",
+        "existing_database_write_operation_count",
+        "app_storage_write_operation_count",
+        "import_operation_count",
+        "provider_operation_count",
+        "llm_operation_count",
+        "media_or_thumbnail_operation_count",
+        "network_operation_count",
+        "stable_replay_operation_count",
+        "production_operation_count",
+    )
+    if not isinstance(protected, dict) or any(
+        (
+            protected.get("accepted_mainline_merge_commit") != FL1_I1_ACCEPTED_MAIN,
+            protected.get("fl1_p1_r1_final_head") != FL1_I1_PR143_HEAD,
+            protected.get("fl1_p1_r1_implementation_evidence_head")
+            != FL1_I1_P1_R1_EVIDENCE,
+            protected.get("fl1_p1_r1_final_review_id") != 4890771735,
+            protected.get("fl1_i1_implementation_evidence_frozen") is not audit_ready,
+            protected.get("preflight_remote_sync")
+            != "self_healed_by_fast_forward",
+            protected.get("preflight_remote_sync_is_contract_proof") is not False,
+            any(protected.get(key) != 0 for key in zero_fields),
+        )
+    ):
+        raise DocumentationStateError("fl1_i1_protected_evidence_invalid")
+    if audit_ready and state["implementation_evidence_head"] == FL1_I1_ACCEPTED_MAIN:
+        raise DocumentationStateError("fl1_i1_implementation_evidence_not_frozen")
+    if not audit_ready and state["implementation_evidence_head"] != FL1_I1_ACCEPTED_MAIN:
+        raise DocumentationStateError("fl1_i1_in_progress_evidence_must_equal_base")
+
+
+def _validate_historical_fl1_p1_r1_state(state: dict[str, Any]) -> None:
     if (
         state["phase_id"] != "SCV2-FL1-P1-R1"
         or state["branch"]
@@ -331,7 +500,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     ):
         raise DocumentationStateError("public_state_boundary_invalid")
 
-    if state["phase_id"] == "SCV2-FL1-P1-R1":
+    if state["phase_id"] == "SCV2-FL1-I1":
         _validate_fl1_state(state)
     else:
         raise DocumentationStateError("unsupported_active_phase")
@@ -352,7 +521,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "ai tagging execution",
     )
     if any(term in joined_authorized for term in authorization_deny_terms):
-        raise DocumentationStateError("fl1_p1_authorizes_data_execution")
+        raise DocumentationStateError("fl1_i1_authorizes_data_execution")
     for required in (
         "database",
         "production",
@@ -394,10 +563,13 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     serialized = json.dumps(state, ensure_ascii=False, sort_keys=True)
     serialized_folded = serialized.casefold()
     forbidden_authority_claims = (
-        "owner_authorized_fl1_i1_planning_and_synthetic_implementation_20260808",
-        "owner_accepted_fl1_p1_after_bounded_audit_remediation_20260808",
+        '"target_met": true',
+        '"safe_to_merge": true',
         '"route_approved": true',
-        '"next_phase_started": true',
+        '"real_source_inventory_authorized": true',
+        '"database_access_authorized": true',
+        '"app_storage_write_authorized": true',
+        '"production_authorized": true',
         '"manual_acceptance_status": "owner_accepted',
     )
     if any(claim in serialized_folded for claim in forbidden_authority_claims):
@@ -510,9 +682,8 @@ def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "start `r1r` only after",
         "full­lib-e1 as the next implementation",
         "status=fl1_p1_owner_accepted_for_merge",
-        "`route_approved=true`",
-        "`next_phase_started=true`",
-        "the p1 owner audit is complete",
+        "status=fl1_p1_r1_implementation_ready_for_owner_audit",
+        "manual_acceptance_status=pending_final_owner_audit",
         "pr #141 may become ready",
         "start a separate fl1-i1",
         "owner_authorized_fl1_i1_planning_and_synthetic_implementation_20260808",
@@ -548,10 +719,10 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Repository / PR: `{state['repository']}` / {pr_label}.",
         f"- Branch: `{state['branch']}`.",
         f"- Accepted mainline base: `{state['accepted_mainline_base']}`.",
-        f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}`.",
+        f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}` (frozen: `{str(state['protected_evidence']['fl1_i1_implementation_evidence_frozen']).lower()}`).",
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
-        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (P1-R1 awaits independent owner audit; FL1-I1 is not authorized or started).",
+        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (I1 synthetic implementation is authorized; real source inventory is not authorized or started).",
         f"- Approved planning HEAD: `{state['approved_planning_head']}`; route scope: `{state['route_scope']}`.",
         "",
         "## Completed Checkpoints",
@@ -569,7 +740,7 @@ def render_handoff(state: dict[str, Any]) -> str:
             f"- Resolution: {blocker['resolution']}",
             f"- Planning only: `{str(boundary['planning_only']).lower()}`; implementation/data/production authorization: `{str(boundary['implementation_authorized']).lower()}/{str(boundary['data_execution_authorized']).lower()}/{str(boundary['production_authorized']).lower()}`.",
             f"- Existing database/real inventory/provider-or-LLM/media authorization: `{str(boundary['database_access_authorized']).lower()}/{str(boundary['real_source_inventory_authorized']).lower()}/{str(boundary['provider_or_llm_authorized']).lower()}/{str(boundary['media_authorized']).lower()}`; projected external cost: `${boundary['projected_external_cost_usd']}`.",
-            f"- Public state boundary: `{state['public_state_boundary']}`. Phase-level zero-activity is an operator attestation only; executable runtime operation evidence comes only from the instrumented `RunLedger`, and the attestation grants no acceptance, merge safety, or route authorization.",
+            f"- Public state boundary: `{state['public_state_boundary']}`. Preflight sync and phase non-actions are operator classifications only; executable I1 claims must be rebuilt from trusted private artifacts and grant no owner, merge, route, or real-source authority.",
             "",
             "## Allowed / Forbidden",
             "",

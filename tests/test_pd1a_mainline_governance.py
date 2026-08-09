@@ -46,11 +46,12 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
             "8. SCV2-SV1B merged in PR #139",
             "9. SCV2-FL1 planning merged in PR #140",
             "10. SCV2-FL1-P1 physically merged in PR #141",
+            "11. SCV2-FL1-P1-R1 was owner-accepted",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "SCV2-FL1-P1-R1: Late Review Safety Remediation And Authority Correction" in text
-    assert "pending_final_owner_audit" in text
+    assert "SCV2-FL1-I1: Read-only Inventory" in text
+    assert "fl1_i1_read_only_inventory_implementation_in_progress" in text
     assert "route_approved=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
@@ -88,6 +89,7 @@ def test_handoff_points_to_current_mainline_roadmap() -> None:
     assert "roadmap/current-mainline-roadmap.md" in text
     assert "SCV2-FL1" in text
     assert "Draft PR" in text
-    assert "provider, Pixiv, gallery-dl, Provider-2, LLM" in text
+    for forbidden_term in ("provider", "Pixiv", "gallery-dl", "LLM"):
+        assert forbidden_term in text
     assert "Current phase | `S3A-M2-R" not in text
     _assert_split_s2g_not_active(text)

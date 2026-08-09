@@ -2,10 +2,11 @@
 
 ## Accepted Mainline
 
-`origin/main` is accepted at
-`36100bfa0317387e064cd87b2e753eca3a201b5e`, the physical merge of PR #141.
-That merge does not erase the eight valid review findings that arrived after
-merge; their remediation is the current P1-R1 route.
+`origin/main` is owner-accepted at
+`a2f48bdba979f579b7cd1cdd9ef541137b2479c5`, the merge-commit result of PR
+#143. Merge-commit topology preserves final PR HEAD
+`228983f510c975399b53b39dcd7dd170e59b3245` and implementation evidence
+`a631160f58e8d5d61998863b5b4d60a549e88151` as ancestors.
 
 1. R1R merged in PR #132.
 2. SCV2-A1R merged in PR #133.
@@ -17,105 +18,114 @@ merge; their remediation is the current P1-R1 route.
 8. SCV2-SV1B merged in PR #139.
 9. SCV2-FL1 planning merged in PR #140 at
    `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
-10. SCV2-FL1-P1 physically merged in PR #141; late-review remediation remains
-    required.
+10. SCV2-FL1-P1 physically merged in PR #141.
+11. SCV2-FL1-P1-R1 was owner-accepted and merge-commit merged in PR #143 at
+   `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
 
-SV1B completed controlled Pixiv metadata acquisition, localization closure,
-stable Replay v2, source-graph/search validation, and owner acceptance. Its
-final composite is `37 PASS`, `3 owner-waived nonblocking known limitations`,
-`0 PENDING`, and `0 unwaived FAIL`. The B01/B04/B08 waiver is phase-scoped and
-does not become a creator-identity or scale-up policy.
+PR #142 remains closed, unmerged, Draft, and non-authoritative. Its code and
+tests are read-only archaeology inputs only; no governance state, commit, or
+wholesale patch is inherited.
 
 ## Current Phase And Stop Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1-P1-R1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-I1 -->
 
-`SCV2-FL1-P1-R1: Late Review Safety Remediation And Authority Correction` is
-active on Draft PR #143. Its fact source is
+`SCV2-FL1-I1: Read-only Inventory` is active on branch
+`codex/scv2-fl1-i1-read-only-inventory-v2`. Its fact source is
 `docs/state/current-phase.json` and its planning input is
 `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
 Current fail-closed state:
 
-- `status=fl1_p1_r1_implementation_ready_for_owner_audit`
+- `status=fl1_i1_read_only_inventory_implementation_in_progress`
 - `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
-- `manual_acceptance_status=pending_final_owner_audit`
-- `next_phase_started=false`
-- blocker: `pending_final_owner_audit`
+- `manual_acceptance_status=pending_i1_implementation_owner_audit`
+- `next_phase_started=true`
+- `real_inventory_started=false`
+- blocker: `fl1_i1_implementation_in_progress`
 
-P1-R1 remediates only the eight late PR #141 findings and resets the false
-acceptance/route state. Its bounded PR #143 review-fix round additionally
-requires repository-verified PR/squash evidence, a five-scenario budget/stop
-matrix, per-item invocation attribution, and a strict separation between
-instrumented runtime evidence and phase non-action attestation. PR #142 is a
-non-authoritative candidate that mixed
-unapproved I1 work with P1 remediation; it is not an implementation source of
-truth and must not be merged. No data execution has started. This route does
-not authorize FL1-I1, production, real
-source-root access or inventory, existing database access, import,
-classification, AI tagging, provider, Pixiv, gallery-dl, LLM, media, thumbnail,
-Stable Replay, localization, graph/search, Entity/truth, or provider-derived
-`media_tags` activity.
+The current route authorizes reusable inventory safety tooling and validation
+only against synthetic or newly created temporary fixtures. It authorizes the
+two explicit code modes `synthetic_fixture` and `authorized_read_only_source`,
+but the latter may be exercised only against temporary roots under a trusted
+test registry. No real source/iCloud root may be listed, stated, observed,
+opened, read, or hashed.
 
-The second PR #143 review-fix round is limited to four findings from review
-`4888894624` at reviewed HEAD
-`389ba79cdf9cdd06f81fba07889f21245fd44072`, including one P1 reported only in
-the review body. Its implementation evidence is
-`a631160f58e8d5d61998863b5b4d60a549e88151`. Audit-ready PASS now depends on
-trusted repository and private runtime/scenario ledgers, interruption recovery
-is proved by independent COMMITTED/UNKNOWN/NOT_COMMITTED restart scenarios,
-and the complete public summary is recursively scanned for redaction findings.
+The route must deliver trusted runtime/repository identity, a complete
+protected-root role registry, layered write-ahead source-operation evidence,
+private atomic manifests and ledgers, denominator and exact-duplicate
+accounting, Cloud Files recall-risk deferral, bounded race-safe reading,
+cross-process restart provenance, a canonical protected public projection, and
+`scv2_fl1_i1_read_only_inventory_contract_v1`.
 
-The owner-authorized final bounded closure derives Python identity from the
-actual checking process, requires a clean relevant worktree for Git evidence,
-removes the documentation checker's topology-only squash fallback, and
-rebuilds the entire protected public ledger projection from the trusted private
-ledger. Generic callbacks remain synthetic fixtures only, and automated
-positive owner/merge/route authority is disabled. This is the last authorized
-PR #143 implementation repair round; final-review findings are inputs to owner
-adjudication and do not authorize another autonomous repair.
+Database/app-storage access, import, classification, AI tagging,
+provider/LLM/media/network activity, Stable Replay, graph/search, Entity/truth,
+UI/runtime servers, production, and later FL1 phases remain forbidden. The
+owner-audit checkpoint cannot claim `target_met`, `safe_to_merge`, or
+`route_approved`.
 
-## Proposed Delivery Sequence
+## PR #143 Final Owner Adjudication Carry-Forward
 
-1. Complete P1-R1 Draft PR #143 and stop at independent owner audit.
-2. The owner separately decides acceptance and merge authorization; neither is
-   implied by tests or automated review.
-3. FL1-I1 remains only a future candidate and requires a separate owner scope
-   decision after P1-R1 audit.
-4. A real read-only inventory dry run requires separate exact source-scope
-   authorization and ends at an owner checkpoint.
-5. Bounded Dev/Test import and local classification/AI tagging may occur only
-   after inventory evidence and an executable contract pass.
-6. A representative manual-acceptance sample precedes any scale expansion.
-7. Production planning is a later independent phase; it cannot inherit FL1
-   Dev/Test authorization.
+Final review `4890771735` at exact HEAD `228983f…` produced five durable
+owner-adjudicated boundaries:
+
+1. complete protected roots must come from trusted private runtime/repository
+   context before a real operation;
+2. PR #143 used merge-commit topology; a topology-only post-squash check is not
+   trusted evidence;
+3. restart claims require distinct process/invocation provenance;
+4. actual Git HEAD must be derived from the trusted repository and bind all
+   run artifacts;
+5. local validation may produce only a `local_operator_receipt` with
+   `machine_verifiable_ci=false`.
+
+`REAL_OPERATION_GATEWAY_GATE` and `VALIDATION_RECEIPT_GATE` carry these forward.
+`OWNER_AUTHORITY_GATE`, `POSIX_LEDGER_DURABILITY_GATE`, and
+`STABLE_REPLAY_GATE` remain in force.
+
+## Remote Sync Preflight Policy
+
+Fetch the verified remote before comparing protected base branches. A safe
+local base that has no local-only commit and is only behind its remote is
+fast-forwarded with `--ff-only`, classified as a preflight self-heal, and the
+same task continues. Local/remote inequality alone is not a blocker.
+
+Fail closed for divergence, local-only commits without safe preservation,
+tracked drift, behavior-affecting untracked executable/module/config/symlink
+drift, failed fast-forward-only, unverified remote identity/authentication, or
+any sync requiring reset, rebase, force, overwrite, or deletion. Unrelated
+untracked and ignored non-executable user artifacts are preserved and do not
+automatically block work.
+
+The entry sync for this phase was
+`preflight_remote_sync=self_healed_by_fast_forward`; this is operator
+classification only, not self-filled contract authority.
+
+## Delivery Sequence
+
+1. Persist the I1 owner decision and implementation-in-progress route.
+2. Complete the scanner/gateway/manifest/ledger/contract implementation and
+   synthetic or temporary-root validation.
+3. Freeze one immutable implementation evidence commit and tree.
+4. Add only governance projections after that boundary and create a Draft PR.
+5. Request one final-head Codex review and stop at owner audit.
+6. Any future real inventory requires a separate exact source-scope decision;
+   FL1-E1 does not start from this route.
 
 ## FL1 Planning Constraints
 
-- Use separately owned strict-test database identities and repo-independent
-  local test storage. Never consume production DB/storage/source roots.
-- Define the full-library denominator before execution: discovered, supported,
-  duplicate, cloud-recall, unreadable, ineligible, imported, classified,
-  locally tagged, deferred, failed, and unresolved must reconcile.
-- Persist run and item state for restart, idempotency, bounded retry, and
-  backfill. Per-item failures remain visible; structural identity/safety failures
-  stop the run.
-- Local classification and WD tagging are permitted only in a later approved
-  execution stage. AI proper-noun output remains weak evidence and cannot write
-  Entity truth or confirmed assignment.
-- Reuse accepted SV1-A/SV1B evidence only through stable-key, fingerprinted,
-  schema-compatible packages. Do not reuse database numeric IDs or phase-scoped
-  waivers.
-- Provider, external LLM, source discovery, media download, localization, and
-  graph expansion require separate privacy/budget/contract authorization.
-
-## DOC-GOV-02
-
-DOC-GOV-02 is complete. Historical project roadmap content is archived, the
-detailed AGENTS runbook is split from the root entrypoint, and stale R1R-as-next
-language is no longer active. See `docs/governance/doc-gov-02-closeout.md`.
+- Membership is manifest-bound; content fingerprints establish exact
+  duplicates; filenames, row order, and DB IDs do not establish identity.
+- Public output defaults to aggregates and never contains paths, filenames,
+  content fingerprints, keys, or per-item private records.
+- Every discovered item has exactly one terminal inventory disposition; an
+  owner-audit-ready manifest has `unresolved=0`, `imported=0`,
+  `import_failed=0`, and `import_deferred=eligible_candidate`.
+- Structural identity, containment, race, ledger, resume-parent, or policy drift
+  blocks the run. Bounded per-item failures remain private ledger evidence.
+- Browser validation is N/A because I1 changes no UI or runtime server.
 
 ## Durable Links
 
@@ -125,3 +135,5 @@ language is no longer active. See `docs/governance/doc-gov-02-closeout.md`.
 - `docs/phase-contracts.md`
 - `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`
 - `docs/roadmap/archive/project-roadmap-through-scv2-sv1b.md`
+- `docs/development/agent-runbook.md`
+- `docs/test-workflow.md`

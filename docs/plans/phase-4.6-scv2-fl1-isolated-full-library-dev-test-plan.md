@@ -2,24 +2,29 @@
 
 ## 1. Owner Decision
 
-The owner approved this planning direction at
-`db90457d51a39b5dc930afc2a92a6ef3139a2760`. Approval authorizes only a separate
-FL1-P1 implementation PR for guards, ledgers, contracts, and synthetic bounded
-checkpoints; it does not authorize existing database access, source inventory,
-import, classification, AI tagging, provider/LLM/media calls, production, or any
-data execution.
+The owner-approved planning input remains
+`db90457d51a39b5dc930afc2a92a6ef3139a2760`. PR #143 was subsequently
+owner-accepted and merge-commit merged at
+`a2f48bdba979f579b7cd1cdd9ef541137b2479c5`. The owner now authorizes the
+complete `SCV2-FL1-I1` reusable read-only inventory safety implementation and
+validation using only synthetic or newly created temporary fixtures.
 
-Canonical phase:
+Canonical active phase:
 
-- ID: `SCV2-FL1`
-- Title: `Isolated Full-Library Dev/Test Planning`
-- Current status: planning input only; `SCV2-FL1-P1-R1` Draft PR #143 is
-  pending final owner audit after its last authorized implementation repair
-- Current implementation evidence:
-  `a631160f58e8d5d61998863b5b4d60a549e88151`
-- Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or
-  started; do not implement its scanner/contract/tests or read a real source
-  root without a separate later owner decision
+- ID: `SCV2-FL1-I1`
+- Title: `Read-only Inventory`
+- Current status: `fl1_i1_read_only_inventory_implementation_in_progress`
+- Branch: `codex/scv2-fl1-i1-read-only-inventory-v2`
+- Accepted mainline base: `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`
+- Current stop: freeze synthetic implementation evidence, create a Draft PR,
+  request one final-head review, and stop at owner audit; no real source scope is
+  authorized
+
+Final PR #143 review `4890771735` carries forward five owner-adjudicated
+constraints: complete protected roots from trusted context, merge-topology-safe
+evidence, distinct restart provenance, trusted actual Git HEAD binding, and
+local validation receipts that cannot claim CI authority. Direct human owner
+acceptance remains outside executable contract authority.
 
 The older `Phase 4.6-FULLLIB-P0 Production Full-Library Import and AI Tagging
 Plan` is a historical design input only. Its production route and `FULLLIB-E1`
@@ -52,6 +57,40 @@ recommendation are superseded for current planning and provide no authorization.
 - No automatic creator union based on names, placeholders, single media,
   similarity, or model guesses.
 - No production readiness claim and no inheritance of B01/B04/B08 waivers.
+
+## 3A. I1 Implementation Contract
+
+I1 produces reusable validation/safety tooling, not a production ingestion
+runtime. The implementation is modular: trusted runtime context, complete
+protected-root role registry, layered source-operation gateway, scanner and
+private artifacts, cross-process resume provenance, and a dedicated I1 phase
+contract. The two explicit source modes are `synthetic_fixture` and
+`authorized_read_only_source`; during this phase both are validated only with
+new temporary roots.
+
+The owner-audit-ready synthetic state remains `target_met=false`,
+`safe_to_merge=false`, `route_approved=false`,
+`real_source_inventory_authorized=false`, and `real_inventory_started=false`.
+No caller boolean can create owner authorization or trusted test PASS.
+
+### PR #142 bounded carry-forward matrix
+
+| Candidate behavior | Decision | Reason | New regression |
+|---|---|---|---|
+| Deterministic tree traversal | Keep conceptually | Stable discovery and duplicate primary selection require deterministic ordering | row-order permutation and deterministic duplicate-primary tests |
+| Read-only/no-follow open plus pre/post snapshots | Redesign | POSIX `O_NOFOLLOW` and one tree snapshot do not cover Windows reparse/Cloud Files layers or per-operation evidence | Windows reparse, path escape, open/read signature-race, and source-mutation-zero tests |
+| Item/byte/chunk budgets | Redesign | I1 also needs directory-entry, per-file hash, total hash, timeout, failure, systemic, and manual-stop budgets persisted in run identity | every budget and stop reason tested independently |
+| Exact-content duplicate accounting and one terminal disposition | Keep conceptually | These are sound denominator primitives | duplicate-reference tamper and every denominator-equation tamper fail closed |
+| Public aggregates separated from private manifest | Redesign | Unkeyed per-item labels and editable redaction booleans remain enumerable or forgeable | aggregate-by-default projection plus unknown-field/path/content/key leakage rejection |
+| Real-source default deny with temporary fixtures | Keep conceptually | Current authorization is synthetic-first and real source remains external governance | real mode without exact trusted scope fails; temporary trusted scope passes |
+| Caller-supplied actual Git HEAD or Python executable | Reject | Actual identities must be derived from repository and current `sys.executable` | fake matching caller identity, old-HEAD artifact, and wrong interpreter tests |
+| Caller-supplied `forbidden_roots` completeness | Reject | One irrelevant path cannot prove all production/source/app/repo/evidence roles | missing/unknown/duplicate/alias/overlap/escape role tests |
+| Synthetic disposition override as Cloud Files proof | Reject | Synthetic observation is useful only as explicitly labeled fixture evidence | unsupported/unknown attribute never becomes available; recall-risk never opens content |
+| Copied before/after snapshot as restart proof | Reject | Restart requires independently observed process and invocation lineage | two-process harness plus same-invocation, copied snapshot, wrong-parent, wrong-HEAD/config negatives |
+| In-memory manifest and caller test booleans | Reject | Resumable evidence needs atomic private artifacts and local results need bound receipts | tampered manifest/operation ledger/receipt and `machine_verifiable_ci=true` rejection |
+
+No PR #142 commit, governance state, P1 remediation, or wholesale patch is
+cherry-picked. The matrix preserves only independently reimplemented concepts.
 
 ## 4. Isolation Design
 
@@ -296,21 +335,22 @@ the SV1B placeholder waiver.
 
 ## 15. Executable Contract And Tests
 
-The P1 safety slice registers
-`scv2_fl1_isolated_full_library_dev_test_contract_v1`. Its P1-R1 hardening must
-derive, rather than accept manually supplied, at least:
+The accepted P1 safety slice registers
+`scv2_fl1_isolated_full_library_dev_test_contract_v1`. I1 separately registers
+`scv2_fl1_i1_read_only_inventory_contract_v1` and derives, rather than accepts
+as caller claims, at least:
 
-- exact Git/branch/Python/DB/storage/source identities;
-- planning and owner-authorization checkpoints;
+- actual Git/Python safe identities and relevant-worktree cleanliness;
+- complete protected-root role registry and exact temporary source scope;
 - manifest and denominator equations;
-- operation counts and external cost;
-- item/batch attempt and failure-budget accounting;
-- allowed/forbidden table and filesystem mutation proofs;
-- classification and AI-tagging coverage/provenance;
-- accepted-evidence reuse/loss accounting;
+- write-ahead listing/metadata/attribute/read/hash operation evidence;
+- item/read/hash/time/failure/manual-stop budget accounting;
+- cross-process invocation and parent-checkpoint provenance;
+- source mutation and all forbidden-route zero counts;
 - public redaction and private-artifact separation;
 - manual-acceptance requirement/status;
-- `target_met`, `safe_to_merge`, and route scope.
+- validation receipt trust level and CI limitation;
+- false `target_met`, `safe_to_merge`, `route_approved`, and real-source authority.
 
 The contract verifies Git objects in a trusted repository. PR audit evidence
 requires the actual current PR HEAD and implementation ancestry; squash
@@ -340,31 +380,34 @@ checking process's `sys.executable`, and builder/checker share one complete,
 versioned canonical public ledger projection derived from the trusted private
 ledger. The generic callback is a synthetic fixture harness, not a DB, source,
 provider, LLM, or media gateway and not phase-wide zero-activity proof.
-Caller-supplied owner, merge, or route JSON cannot produce a positive contract
-decision until `OWNER_AUTHORITY_GATE` is implemented. Real gateway coverage is
-deferred to `REAL_OPERATION_GATEWAY_GATE`; POSIX host-power-loss durability is
-deferred to `POSIX_LEDGER_DURABILITY_GATE`. None grants current execution.
+Caller-supplied owner, merge, route, actual Git/Python/path/count, or test-result
+JSON cannot produce protected positive claims. I1 closes the reusable temporary
+source subset of `REAL_OPERATION_GATEWAY_GATE`; the gate remains due before real
+source operations because no complete private real-root registry or real scope
+is authorized. `VALIDATION_RECEIPT_GATE`, `OWNER_AUTHORITY_GATE`,
+`POSIX_LEDGER_DURABILITY_GATE`, and `STABLE_REPLAY_GATE` retain their due-before
+boundaries.
 
-Required test groups for the implementation PR:
+Required test groups for the I1 implementation PR:
 
-- strict DB/storage/source identity and production denylist;
-- stable membership, duplicates, denominator, and ledger schema;
-- batch/restart/idempotency/live-child reconciliation;
-- failure-budget and structural fail-closed behavior;
-- temp-copy/transaction consistency and mutation allowlist;
-- local classification/AI provenance and manual-truth protection;
-- stable evidence reuse/loss ledger and numeric-ID rejection;
-- no provider/LLM/download/background localization route;
-- contract, redaction, JSON, full non-E2E, and real browser sample.
+- actual repository/Python identity and complete protected-root registry;
+- Windows Cloud Files/reparse observation and recall-risk deferral;
+- layered operation intents/results, read-only open, containment, and races;
+- stable membership/content identity, duplicates, denominator, and private
+  manifest/ledger schemas;
+- independent item/byte/hash/time/failure/systemic/manual-stop budgets;
+- two-real-process stop/resume lineage and tamper rejection;
+- canonical projection, recursive redaction, local operator receipt, registry,
+  CLI, P1 no-regression, documentation, JSON, compilation, and full non-E2E;
+- browser N/A because no UI/runtime-server behavior changes.
 
 ## 16. Proposed PR Split
 
-1. **FL1-P1 — Safety/ledger implementation (no data execution):** strict
-   identities, source/storage containment, inventory schema, item/run ledgers,
-   contract, focused tests, dry-run fixtures.
-2. **FL1-I1 — Future read-only inventory candidate:** requires a separate owner
-   scope decision after P1-R1 audit; no scanner, contract, test, source identity,
-   or inventory execution is authorized now.
+1. **FL1-P1 — Safety/ledger implementation:** owner-accepted and merged through
+   P1-R1 / PR #143.
+2. **FL1-I1 — Read-only inventory:** currently authorized for reusable tooling
+   and synthetic/new temporary fixtures only; stop at Draft owner audit before
+   any real source operation.
 3. **FL1-E1 — Bounded Dev/Test import:** exact approved subset, isolated DB and
    storage, restart/mutation proofs, stop before classification if required.
 4. **FL1-E2 — Local classification and AI tagging:** offline models, reuse-first,
@@ -393,16 +436,11 @@ equivalent. No implementation PR may silently include execution authority.
 
 ## 18. Approval Boundary
 
-Owner approval recorded: the plan and proposed FL1-P1 PR/contract structure
-only, bound to planning HEAD `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
-
-FL1-P1-R1 implements only the approved late-review remediation for isolation,
-default-deny mutation, contract evidence, source-membership/content-target
-identity, restartable synthetic ledger, reconciliation, and budget semantics.
-Its implementation evidence
-`a631160f58e8d5d61998863b5b4d60a549e88151` is pending final independent owner
-audit. No further same-PR implementation repair is authorized. Tests and an
-automated review do not create owner acceptance or merge authorization.
+Owner approval recorded: PR #143 is accepted and merge-commit merged; the I1
+reusable scanner/gateway/manifest/ledger/contract/CLI implementation and
+synthetic/new temporary-fixture validation are authorized on a fresh branch
+from `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`. Tests and automated review do
+not create owner acceptance, merge authorization, or real-source authority.
 
 Not approved: permission to connect to an existing database, inspect production, read a
 real source root, create storage, run inventory, import, classify, tag, call a
