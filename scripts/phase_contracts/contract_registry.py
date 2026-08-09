@@ -203,8 +203,6 @@ SV1B_OWNER_ACCEPTANCE_CLOSEOUT_STATUSES: tuple[str, ...] = (
 SCV2_FL1_P1_FOUNDATION_STATUSES: tuple[str, ...] = (
     "blocked_fl1_p1_foundation",
     "implementation_ready_for_owner_audit",
-    "owner_accepted_pending_merge_authorization",
-    "owner_accepted_for_merge",
 )
 
 REQUIRED_CONTRACT_IDS: tuple[str, ...] = (
@@ -322,7 +320,7 @@ CONTRACTS: dict[str, PhaseContract] = {
         ),
         required_validation_commands=(
             "python -m pytest tests/test_scv2_fl1_p1_foundation.py tests/test_phase_contracts.py",
-            "python scripts/check_phase_contract.py --contract scv2_fl1_isolated_full_library_dev_test_contract_v1 --summary <public-summary> --repo-root <trusted-repo> --runtime-ledger <private-main-ledger> --failure-budget-scenarios <private-failure-budget-bundle> --reconciliation-scenarios <private-reconciliation-bundle>",
+            "python scripts/check_phase_contract.py --contract scv2_fl1_isolated_full_library_dev_test_contract_v1 --summary <public-summary> --repo-root <trusted-repo> --expected-python <approved-python> --runtime-ledger <private-main-ledger> --failure-budget-scenarios <private-failure-budget-bundle> --reconciliation-scenarios <private-reconciliation-bundle>",
             "python -m pytest tests/",
         ),
         db_write_policy="no_existing_database_connection_or_write_synthetic_path_identity_only",

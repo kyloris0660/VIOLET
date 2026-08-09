@@ -407,9 +407,30 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
             raise DocumentationStateError(f"public_state_redaction_failure:{pattern.pattern}")
 
 
-def validate_git_ancestry(state: dict[str, Any], *, root: Path = ROOT) -> None:
+def validate_git_ancestry(
+    state: dict[str, Any],
+    *,
+    root: Path = ROOT,
+    implementation_evidence: dict[str, Any] | None = None,
+) -> None:
     base = str(state["accepted_mainline_base"])
     implementation = str(state["implementation_evidence_head"])
+    base_object = subprocess.run(
+        ["git", "cat-file", "-e", f"{base}^{{commit}}"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    if base_object.returncode != 0:
+        raise DocumentationStateError("accepted_mainline_base_object_missing")
+    implementation_object = subprocess.run(
+        ["git", "cat-file", "-e", f"{implementation}^{{commit}}"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    if implementation_object.returncode != 0:
+        raise DocumentationStateError("implementation_evidence_object_missing")
     base_check = subprocess.run(
         ["git", "merge-base", "--is-ancestor", base, "HEAD"],
         cwd=root,
@@ -431,24 +452,34 @@ def validate_git_ancestry(state: dict[str, Any], *, root: Path = ROOT) -> None:
     )
     if implementation_check.returncode == 0:
         return
-
-    # A normal squash commit cannot retain branch-commit ancestry.  The
-    # repository-bound phase contract separately verifies that the squash tree
-    # equals the reviewed final tree; this documentation check verifies only
-    # the unambiguous one-parent carry-forward topology.
-    parent_row = subprocess.run(
-        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
-    )
-    parts = parent_row.stdout.strip().split()
-    if parent_row.returncode != 0 or len(parts) != 2 or parts[1] != base:
+    if implementation_evidence is None:
         raise DocumentationStateError(
-            "implementation_evidence_not_pr_or_squash_carry_forward"
+            "squash_trusted_reviewed_tree_context_required"
         )
+    try:
+        from scripts.fl1_p1_foundation import (
+            ImplementationEvidence,
+            ImplementationEvidenceMode,
+            verify_implementation_evidence_repository,
+        )
+
+        evidence = ImplementationEvidence.from_dict(implementation_evidence)
+        if (
+            evidence.mode is not ImplementationEvidenceMode.SQUASH_CARRY_FORWARD
+            or evidence.approved_base_commit != base
+            or evidence.implementation_commit != implementation
+        ):
+            raise DocumentationStateError("squash_trusted_context_binding_invalid")
+        verify_implementation_evidence_repository(
+            repo_root=root,
+            evidence=evidence,
+        )
+    except DocumentationStateError:
+        raise
+    except Exception as exc:
+        raise DocumentationStateError(
+            f"squash_trusted_repository_evidence_invalid:{type(exc).__name__}"
+        ) from exc
 
 
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -586,11 +617,19 @@ def write_handoff(state: dict[str, Any], *, path: Path = HANDOFF_PATH) -> None:
     temporary.replace(path)
 
 
-def check_documentation_state(*, root: Path = ROOT) -> dict[str, Any]:
+def check_documentation_state(
+    *,
+    root: Path = ROOT,
+    implementation_evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     state = load_state(root / "docs" / "state" / "current-phase.json")
     validate_state(state, root=root)
     if root.resolve() == ROOT.resolve():
-        validate_git_ancestry(state, root=root)
+        validate_git_ancestry(
+            state,
+            root=root,
+            implementation_evidence=implementation_evidence,
+        )
     validate_roadmaps(state, root=root)
     check_handoff(state, path=root / "docs" / "current-handoff.md")
     return {
@@ -610,8 +649,26 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--render", action="store_true")
     mode.add_argument("--write", action="store_true")
+    parser.add_argument(
+        "--implementation-evidence",
+        help="Trusted ImplementationEvidence JSON required for squash carry-forward checks.",
+    )
     args = parser.parse_args(argv)
     try:
+        implementation_evidence = None
+        if args.implementation_evidence:
+            try:
+                implementation_evidence = json.loads(
+                    Path(args.implementation_evidence).read_text(encoding="utf-8")
+                )
+            except Exception as exc:
+                raise DocumentationStateError(
+                    f"implementation_evidence_context_unreadable:{type(exc).__name__}"
+                ) from exc
+            if not isinstance(implementation_evidence, dict):
+                raise DocumentationStateError(
+                    "implementation_evidence_context_must_be_object"
+                )
         state = load_state()
         if args.render:
             validate_state(state)
@@ -621,7 +678,9 @@ def main(argv: list[str] | None = None) -> int:
             validate_state(state)
             validate_roadmaps(state)
             write_handoff(state)
-        result = check_documentation_state()
+        result = check_documentation_state(
+            implementation_evidence=implementation_evidence
+        )
     except DocumentationStateError as exc:
         print(json.dumps({"passed": False, "error": str(exc)}, ensure_ascii=False))
         return 1

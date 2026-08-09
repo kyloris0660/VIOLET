@@ -172,6 +172,7 @@ class ContractRepositoryContext:
     """Trusted local evidence used for Git and private-ledger verification."""
 
     repo_root: Path
+    expected_python: Path | None = None
     runtime_ledger: object | None = None
     failure_budget_scenario_bundle: object | None = None
     reconciliation_scenario_bundle: object | None = None
@@ -13212,60 +13213,16 @@ def _check_scv2_fl1_p1_foundation(
         if isinstance(pipeline, Mapping)
         else None
     )
-    owner_evidence_valid = (
-        implementation_valid
-        and repository_evidence_valid
-        and isinstance(owner_evidence, Mapping)
-        and isinstance(owner_evidence.get("identity"), str)
-        and re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
-            str(owner_evidence.get("identity")),
-        )
-        is not None
-        and owner_evidence.get("implementation_commit")
-        == implementation.get("implementation_commit")
-        and owner_evidence.get("implementation_tree")
-        == implementation.get("implementation_tree")
-        and owner_evidence.get("implementation_digest")
-        == implementation.get("evidence_digest")
-        and owner_evidence.get("reviewed_final_commit")
-        == implementation.get("final_commit")
-        and owner_evidence.get("reviewed_final_tree")
-        == implementation.get("final_tree")
-    )
+    # Positive owner, merge, and route authority is intentionally unavailable
+    # until a future out-of-band trusted authority mechanism exists.  JSON
+    # supplied alongside the public summary is never authority.
+    owner_evidence_valid = False
 
     def _authorization_valid(
         evidence: object, *, kind: str, route_required: bool
     ) -> bool:
-        return (
-            owner_evidence_valid
-            and isinstance(evidence, Mapping)
-            and evidence.get("kind") == kind
-            and isinstance(evidence.get("identity"), str)
-            and re.fullmatch(
-                r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
-                str(evidence.get("identity")),
-            )
-            is not None
-            and evidence.get("owner_acceptance_identity")
-            == owner_evidence.get("identity")
-            and evidence.get("reviewed_final_commit")
-            == implementation.get("final_commit")
-            and evidence.get("reviewed_final_tree")
-            == implementation.get("final_tree")
-            and (
-                (
-                    route_required
-                    and isinstance(evidence.get("route_scope"), str)
-                    and re.fullmatch(
-                        r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
-                        str(evidence.get("route_scope")),
-                    )
-                    is not None
-                )
-                or (not route_required and evidence.get("route_scope") is None)
-            )
-        )
+        del evidence, kind, route_required
+        return False
 
     merge_evidence = (
         pipeline.get("merge_authorization_evidence")
@@ -13283,6 +13240,26 @@ def _check_scv2_fl1_p1_foundation(
     route_evidence_valid = _authorization_valid(
         route_evidence, kind="next_phase_route", route_required=True
     )
+    if any(
+        evidence is not None
+        for evidence in (owner_evidence, merge_evidence, route_evidence)
+    ) or any(
+        _as_bool(_get(summary, path, False))
+        for path in (
+            "pipeline_contract.target_met",
+            "pipeline_contract.safe_to_merge",
+            "pipeline_contract.route_approved",
+            "authorization.owner_audit_completed",
+            "authorization.owner_acceptance_valid",
+            "authorization.merge_authorized",
+            "authorization.next_phase_route_authorized",
+        )
+    ):
+        result.fail(
+            "fl1_p1_automated_owner_authority_unavailable",
+            "Caller-supplied owner, merge, and route evidence cannot produce positive automated authority.",
+            path="pipeline_contract",
+        )
 
     claimed_executed_stages = _get(summary, "executed_stages", [])
     claimed_stage_evidence = _get(summary, "stage_evidence", [])
@@ -13321,39 +13298,17 @@ def _check_scv2_fl1_p1_foundation(
         and pipeline.get("owner_acceptance_identity") is None
         and pipeline.get("accepted") is not True
     )
-    if status == "owner_accepted_for_merge":
-        claim_valid = (
-            common_claim_valid
-            and pipeline.get("target_met") is True
-            and pipeline.get("safe_to_merge") is True
-            and pipeline.get("route_approved") is route_evidence_valid
-            and blockers == []
-            and owner_evidence_valid
-            and merge_evidence_valid
-            and (route_evidence is None or route_evidence_valid)
-        )
-    elif status == "owner_accepted_pending_merge_authorization":
-        claim_valid = (
-            common_claim_valid
-            and pipeline.get("target_met") is True
-            and pipeline.get("safe_to_merge") is False
-            and pipeline.get("route_approved") is False
-            and blockers == ["pending_merge_authorization"]
-            and owner_evidence_valid
-            and merge_evidence is None
-            and route_evidence is None
-        )
-    else:
-        claim_valid = (
-            common_claim_valid
-            and pipeline.get("target_met") is False
-            and pipeline.get("safe_to_merge") is False
-            and pipeline.get("route_approved") is False
-            and bool(blockers)
-            and owner_evidence is None
-            and merge_evidence is None
-            and route_evidence is None
-        )
+    claim_valid = (
+        common_claim_valid
+        and pipeline.get("target_met") is False
+        and pipeline.get("safe_to_merge") is False
+        and pipeline.get("route_approved") is False
+        and pipeline.get("automated_owner_authority_available") is False
+        and bool(blockers)
+        and owner_evidence is None
+        and merge_evidence is None
+        and route_evidence is None
+    )
     if not claim_valid:
         result.fail(
             "fl1_p1_claim_invalid",
@@ -13361,13 +13316,13 @@ def _check_scv2_fl1_p1_foundation(
             path="pipeline_contract",
         )
     if status == "implementation_ready_for_owner_audit" and blockers != [
-        "pending_owner_audit"
+        "pending_final_owner_audit"
     ]:
         result.fail(
             "fl1_p1_owner_audit_blocker_invalid",
-            "Audit-ready FL1-P1 evidence must stop only at pending_owner_audit.",
+            "Audit-ready FL1-P1 evidence must stop only at pending_final_owner_audit.",
             path="pipeline_contract.active_blockers",
-            expected=["pending_owner_audit"],
+            expected=["pending_final_owner_audit"],
             actual=blockers,
         )
 
@@ -13582,6 +13537,61 @@ def _check_scv2_fl1_p1_foundation(
             "FL1-P1 requires explicit, contained, synthetic Dev/Test identities with no fallback or existing database access.",
             path="environment_isolation",
         )
+    trusted_python_identity_valid = False
+    if repository_context is not None and repository_context.expected_python is not None:
+        try:
+            from scripts.fl1_p1_foundation import derive_python_identity
+
+            trusted_python = derive_python_identity(
+                repository_context.expected_python
+            )
+            trusted_python_identity_valid = (
+                trusted_python["match"] is True
+                and isolation.get("python_identity_match") is True
+                and isolation.get("python_executable_label")
+                == trusted_python["executable_label"]
+                and isolation.get("python_identity_fingerprint")
+                == trusted_python["identity_fingerprint"]
+            )
+        except Exception:
+            trusted_python_identity_valid = False
+    if repository_proof_required and not trusted_python_identity_valid:
+        result.fail(
+            "fl1_p1_python_identity_context_required",
+            "Audit-ready evidence requires an approved expected interpreter checked against the current process sys.executable.",
+            path="environment_isolation",
+        )
+
+    execution_scope = _get(summary, "execution_scope", {})
+    execution_scope_valid = (
+        isinstance(execution_scope, Mapping)
+        and set(execution_scope)
+        == {
+            "schema_version",
+            "scope",
+            "generic_mutate_callback",
+            "synthetic_invocation_proof_scope",
+            "real_gateway_instrumentation_complete",
+            "phase_wide_zero_activity_proven",
+            "comprehensive_runtime_coverage_claimed",
+        }
+        and execution_scope.get("schema_version")
+        == "violet.scv2-fl1-p1-execution-scope.v1"
+        and execution_scope.get("scope") == "synthetic_fixture_only"
+        and execution_scope.get("generic_mutate_callback")
+        == "synthetic_harness_only"
+        and execution_scope.get("synthetic_invocation_proof_scope")
+        == "item_attempt_attribution_only"
+        and execution_scope.get("real_gateway_instrumentation_complete") is False
+        and execution_scope.get("phase_wide_zero_activity_proven") is False
+        and execution_scope.get("comprehensive_runtime_coverage_claimed") is False
+    )
+    if not execution_scope_valid:
+        result.fail(
+            "fl1_p1_execution_scope_invalid",
+            "Generic callbacks prove only synthetic harness attribution, never phase-wide real-operation absence.",
+            path="execution_scope",
+        )
 
     mutation = _get(summary, "mutation_policy", {})
     if not isinstance(mutation, Mapping) or not (
@@ -13601,51 +13611,67 @@ def _check_scv2_fl1_p1_foundation(
     ledger = _get(summary, "ledger", {})
     ledger_valid = (
         isinstance(ledger, Mapping)
-        and ledger.get("schema_version") == "violet.scv2-fl1-p1-ledger.v2"
-        and ledger.get("stable_item_identity") == "violet.scv2-fl1-item.v1"
-        and ledger.get("logical_target_identity")
+        and set(ledger)
+        == {
+            "schema_version",
+            "ledger_schema_version",
+            "stable_item_identity_version",
+            "logical_target_identity_version",
+            "run_identity_digest",
+            "manifest_fingerprint",
+            "private_execution_fingerprint",
+            "checkpoint",
+            "limits",
+            "denominator",
+            "item_state_counts",
+            "terminal_reason_counts",
+            "reconciliation_status_counts",
+            "accounting",
+            "operation_counts",
+            "operation_evidence",
+        }
+        and ledger.get("schema_version")
+        == "violet.scv2-fl1-p1-public-ledger-projection.v1"
+        and ledger.get("ledger_schema_version")
+        == "violet.scv2-fl1-p1-ledger.v2"
+        and ledger.get("stable_item_identity_version")
+        == "violet.scv2-fl1-item.v1"
+        and ledger.get("logical_target_identity_version")
         == "violet.scv2-fl1-logical-target.v1"
-        and _as_int(ledger.get("manifest_entry_count"), -1) >= 1
-        and _as_int(ledger.get("source_item_count"), -1) >= 1
-        and _as_int(ledger.get("unique_item_count"), -1) >= 1
-        and _as_int(ledger.get("duplicate_entry_count"), -1) >= 0
-        and _as_int(ledger.get("manifest_entry_count"), -1)
-        == _as_int(ledger.get("unique_item_count"), -2)
-        + _as_int(ledger.get("duplicate_entry_count"), -2)
-        and _as_int(ledger.get("source_item_count"), -1)
-        == _as_int(ledger.get("unique_item_count"), -2)
-        + _as_int(ledger.get("content_duplicate_item_count"), -2)
-        and _as_int(ledger.get("manifest_entry_count"), -1)
-        == _as_int(ledger.get("source_item_count"), -2)
-        + _as_int(ledger.get("repeated_manifest_entry_count"), -2)
-        and _as_int(ledger.get("duplicate_second_mutation_count"), -1) == 0
-        and _as_int(ledger.get("operation_event_count"), -1) >= 1
-        and isinstance(ledger.get("operation_evidence_fingerprint"), str)
-        and re.fullmatch(
-            r"[0-9a-f]{64}", str(ledger.get("operation_evidence_fingerprint"))
-        )
+        and isinstance(ledger.get("run_identity_digest"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", str(ledger.get("run_identity_digest")))
+        is not None
+        and isinstance(ledger.get("manifest_fingerprint"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", str(ledger.get("manifest_fingerprint")))
         is not None
         and isinstance(ledger.get("private_execution_fingerprint"), str)
         and re.fullmatch(
             r"[0-9a-f]{64}", str(ledger.get("private_execution_fingerprint"))
         )
         is not None
-        and isinstance(ledger.get("mutation_attribution_fingerprint"), str)
-        and re.fullmatch(
-            r"[0-9a-f]{64}",
-            str(ledger.get("mutation_attribution_fingerprint")),
+        and isinstance(ledger.get("checkpoint"), Mapping)
+        and isinstance(ledger.get("limits"), Mapping)
+        and isinstance(ledger.get("denominator"), Mapping)
+        and isinstance(ledger.get("item_state_counts"), Mapping)
+        and isinstance(ledger.get("terminal_reason_counts"), Mapping)
+        and isinstance(ledger.get("reconciliation_status_counts"), Mapping)
+        and isinstance(ledger.get("accounting"), Mapping)
+        and _as_int(
+            ledger.get("accounting", {}).get(
+                "reconciliation_required_count"
+            ),
+            -1,
         )
-        is not None
-        and _as_int(ledger.get("reconciliation_required_count"), -1) == 0
-        and _as_int(ledger.get("per_item_exhausted_count"), -1) >= 0
-        and _as_int(ledger.get("global_failure_attempt_count"), -1) >= 0
-        and ledger.get("global_stop_reason")
-        in {None, "global_failure_budget_exhausted"}
-        and ledger.get("attempt_budget_persisted") is True
-        and ledger.get("checkpoint_persisted") is True
-        and ledger.get("manual_stop_persisted") is True
-        and ledger.get("interrupted_mutation_reconciliation_required") is True
-        and ledger.get("generation_conflict_rejected") is True
+        == 0
+        and _as_int(
+            ledger.get("accounting", {}).get(
+                "duplicate_second_mutation_count"
+            ),
+            -1,
+        )
+        == 0
+        and isinstance(ledger.get("operation_counts"), Mapping)
+        and isinstance(ledger.get("operation_evidence"), Mapping)
     )
     if not ledger_valid:
         result.fail(
@@ -13815,10 +13841,10 @@ def _check_scv2_fl1_p1_foundation(
         and attribution_valid
         and operation_evidence.get("private_execution_fingerprint")
         == attribution.get("private_execution_fingerprint")
-        and isinstance(operation_evidence.get("run_id"), str)
+        and isinstance(operation_evidence.get("run_identity_digest"), str)
         and re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
-            str(operation_evidence.get("run_id")),
+            r"[0-9a-f]{64}",
+            str(operation_evidence.get("run_identity_digest")),
         )
         is not None
         and _as_int(operation_evidence.get("ledger_generation"), -1) >= 1
@@ -13831,19 +13857,18 @@ def _check_scv2_fl1_p1_foundation(
             for key in required_zero_operations
         )
         and isinstance(ledger, Mapping)
-        and ledger.get("operation_evidence_fingerprint")
-        == expected_operation_fingerprint
-        and ledger.get("operation_event_count") == len(raw_events or [])
-        and ledger.get("private_execution_fingerprint")
-        == attribution.get("private_execution_fingerprint")
-        and ledger.get("mutation_attribution_fingerprint")
-        == attribution.get("fingerprint")
+        and ledger.get("operation_evidence") == operation_evidence
+        and ledger.get("operation_counts") == operations
     )
 
     trusted_runtime_ledger_valid = False
     if repository_context is not None and repository_context.runtime_ledger is not None:
         try:
-            from scripts.fl1_p1_foundation import RunLedger
+            from scripts.fl1_p1_foundation import (
+                RunLedger,
+                derive_public_ledger_projection,
+                derive_public_operation_evidence,
+            )
 
             raw_runtime_ledger = repository_context.runtime_ledger
             if isinstance(raw_runtime_ledger, RunLedger):
@@ -13853,32 +13878,16 @@ def _check_scv2_fl1_p1_foundation(
                 trusted_ledger = RunLedger.from_dict(raw_runtime_ledger)
             else:
                 raise TypeError("runtime ledger context must be RunLedger or mapping")
-            trusted_public_evidence = {
-                "schema_version": "violet.scv2-fl1-p1-operation-evidence.v3",
-                "events": trusted_ledger.public_operation_events,
-                "event_count": len(trusted_ledger.operation_events),
-                "fingerprint": hashlib.sha256(
-                    json.dumps(
-                        {
-                            "schema_version": (
-                                "violet.scv2-fl1-p1-operation-evidence.v3"
-                            ),
-                            "events": trusted_ledger.public_operation_events,
-                        },
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ).encode("utf-8")
-                ).hexdigest(),
-                "private_execution_fingerprint": (
-                    trusted_ledger.private_execution_fingerprint
-                ),
-                "mutation_attribution": trusted_ledger.mutation_attribution_proof,
-                "ledger_generation": trusted_ledger.generation,
-                "run_id": trusted_ledger.run_id,
-            }
+            trusted_public_evidence = derive_public_operation_evidence(
+                trusted_ledger
+            )
+            trusted_ledger_projection = derive_public_ledger_projection(
+                trusted_ledger
+            )
             trusted_runtime_ledger_valid = (
                 trusted_public_evidence == operation_evidence
                 and trusted_ledger.operation_counts == operations
+                and trusted_ledger_projection == ledger
             )
         except Exception:
             trusted_runtime_ledger_valid = False
@@ -13891,8 +13900,8 @@ def _check_scv2_fl1_p1_foundation(
     if repository_context is not None and repository_context.runtime_ledger is not None and not trusted_runtime_ledger_valid:
         result.fail(
             "fl1_p1_runtime_ledger_evidence_mismatch",
-            "Public operation and item-attribution evidence does not match the trusted private RunLedger.",
-            path="operation_evidence",
+            "The complete canonical public ledger projection does not match the trusted private RunLedger.",
+            path="ledger",
         )
     if not operation_evidence_valid:
         result.fail(

@@ -14,6 +14,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -47,6 +48,11 @@ RECONCILIATION_PRIVATE_BUNDLE_SCHEMA_VERSION = (
 MUTATION_ATTRIBUTION_SCHEMA_VERSION = (
     "violet.scv2-fl1-p1-mutation-attribution.v2"
 )
+PYTHON_IDENTITY_SCHEMA_VERSION = "violet.scv2-fl1-p1-python-identity.v1"
+PUBLIC_LEDGER_PROJECTION_SCHEMA_VERSION = (
+    "violet.scv2-fl1-p1-public-ledger-projection.v1"
+)
+EXECUTION_SCOPE_SCHEMA_VERSION = "violet.scv2-fl1-p1-execution-scope.v1"
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 SAFE_IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -594,6 +600,84 @@ def _git(
     return completed
 
 
+EVIDENCE_RELEVANT_UNTRACKED_ROOTS = frozenset(
+    {
+        ".github",
+        "backend",
+        "frontend",
+        "scripts",
+        "tests",
+    }
+)
+EVIDENCE_RELEVANT_UNTRACKED_SUFFIXES = frozenset(
+    {
+        ".bat",
+        ".cfg",
+        ".cmd",
+        ".env",
+        ".ini",
+        ".js",
+        ".json",
+        ".mjs",
+        ".ps1",
+        ".py",
+        ".pyi",
+        ".pyw",
+        ".sh",
+        ".sql",
+        ".toml",
+        ".ts",
+        ".tsx",
+        ".yaml",
+        ".yml",
+    }
+)
+
+
+def assert_evidence_worktree_clean(repo_root: Path) -> None:
+    """Reject drift that could change formal Git, import, test, or contract proof."""
+
+    root = Path(repo_root).resolve(strict=True)
+    raw = _git(
+        root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+    ).stdout
+    for entry in raw.split(b"\0"):
+        if not entry:
+            continue
+        try:
+            row = entry.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise LedgerError("evidence_worktree_status_unreadable") from exc
+        status = row[:2]
+        if status != "??":
+            raise LedgerError("evidence_worktree_tracked_drift")
+        relative = row[3:].replace("\\", "/")
+        candidate = root / relative
+        first_component = relative.split("/", 1)[0]
+        suffix = Path(relative).suffix.casefold()
+        if (
+            candidate.is_symlink()
+            or first_component in EVIDENCE_RELEVANT_UNTRACKED_ROOTS
+            or suffix in EVIDENCE_RELEVANT_UNTRACKED_SUFFIXES
+            or Path(relative).name.casefold()
+            in {
+                "conftest.py",
+                "dockerfile",
+                "makefile",
+                "pyproject.toml",
+                "pytest.ini",
+                "requirements.txt",
+                "setup.cfg",
+                "setup.py",
+            }
+        ):
+            raise LedgerError("evidence_worktree_untracked_execution_drift")
+
+
 def collect_implementation_evidence(
     *,
     repo_root: Path,
@@ -606,6 +690,7 @@ def collect_implementation_evidence(
     """Collect topology-bound evidence from Git; caller-supplied paths are refused."""
 
     root = Path(repo_root).resolve(strict=True)
+    assert_evidence_worktree_clean(root)
     top_level = _git(root, "rev-parse", "--show-toplevel").stdout.decode(
         "utf-8", errors="strict"
     ).strip()
@@ -703,6 +788,7 @@ def verify_implementation_evidence_repository(
 ) -> None:
     """Recollect an evidence claim from the repository and require exact equality."""
 
+    assert_evidence_worktree_clean(repo_root)
     evidence.validate()
     recollected = collect_implementation_evidence(
         repo_root=repo_root,
@@ -727,7 +813,6 @@ class IsolationConfig:
     forbidden_roots: tuple[Path, ...]
     actual_git_head: str
     expected_git_head: str
-    python_executable: Path
     expected_python: Path
 
 
@@ -737,6 +822,8 @@ class IsolationProof:
     database_identity: str
     git_head_match: bool
     python_identity_match: bool
+    python_executable_label: str
+    python_identity_fingerprint: str
     database_identity_explicit: bool
     database_path_new_and_contained: bool
     source_root_explicit_and_contained: bool
@@ -753,6 +840,8 @@ class IsolationProof:
             "database_identity": self.database_identity,
             "git_head_match": self.git_head_match,
             "python_identity_match": self.python_identity_match,
+            "python_executable_label": self.python_executable_label,
+            "python_identity_fingerprint": self.python_identity_fingerprint,
             "database_identity_explicit": self.database_identity_explicit,
             "database_path_new_and_contained": self.database_path_new_and_contained,
             "synthetic_source_scope_explicit_and_contained": (
@@ -794,6 +883,29 @@ def _normalize_executable(path: Path) -> str:
     return os.path.normcase(os.path.abspath(os.fspath(path)))
 
 
+def derive_python_identity(expected_python: Path) -> dict[str, Any]:
+    """Derive the protected Python identity from this process, never the caller."""
+
+    expected = Path(expected_python)
+    if not expected.is_absolute():
+        raise IsolationError("expected_python_must_be_absolute")
+    actual_normalized = _normalize_executable(Path(sys.executable))
+    expected_normalized = _normalize_executable(expected)
+    label = Path(sys.executable).name.casefold()
+    payload = {
+        "schema_version": PYTHON_IDENTITY_SCHEMA_VERSION,
+        "executable_label": label,
+        "identity_fingerprint": hashlib.sha256(
+            (
+                f"{PYTHON_IDENTITY_SCHEMA_VERSION}\0{actual_normalized}"
+            ).encode("utf-8")
+        ).hexdigest(),
+        "match": actual_normalized == expected_normalized,
+        "actual_source": "current_process_sys_executable",
+    }
+    return payload
+
+
 def _environment(value: EnvironmentIdentity | str) -> EnvironmentIdentity:
     normalized = value
     if isinstance(value, str):
@@ -818,9 +930,8 @@ def validate_isolation(config: IsolationConfig) -> IsolationProof:
     if config.actual_git_head != config.expected_git_head:
         raise IsolationError("git_head_identity_mismatch")
 
-    if _normalize_executable(config.python_executable) != _normalize_executable(
-        config.expected_python
-    ):
+    python_identity = derive_python_identity(config.expected_python)
+    if python_identity["match"] is not True:
         raise IsolationError("python_identity_mismatch")
 
     database_identity = config.database_identity.strip().casefold()
@@ -881,6 +992,10 @@ def validate_isolation(config: IsolationConfig) -> IsolationProof:
         database_identity=database_identity,
         git_head_match=True,
         python_identity_match=True,
+        python_executable_label=str(python_identity["executable_label"]),
+        python_identity_fingerprint=str(
+            python_identity["identity_fingerprint"]
+        ),
         database_identity_explicit=True,
         database_path_new_and_contained=True,
         source_root_explicit_and_contained=True,
@@ -1585,6 +1700,112 @@ class RunLedger:
                 raise LedgerError("in_progress_item_checkpoint_mismatch")
 
 
+def derive_public_operation_evidence(ledger: RunLedger) -> dict[str, Any]:
+    """Return the only public-safe operation attribution for a private ledger."""
+
+    ledger.validate()
+    events = ledger.public_operation_events
+    return {
+        "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
+        "events": events,
+        "event_count": len(events),
+        "fingerprint": _canonical_digest(
+            {
+                "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
+                "events": events,
+            }
+        ),
+        "private_execution_fingerprint": ledger.private_execution_fingerprint,
+        "mutation_attribution": ledger.mutation_attribution_proof,
+        "ledger_generation": ledger.generation,
+        "run_identity_digest": hashlib.sha256(
+            (
+                f"{PUBLIC_LEDGER_PROJECTION_SCHEMA_VERSION}\0{ledger.run_id}"
+            ).encode("utf-8")
+        ).hexdigest(),
+    }
+
+
+def derive_public_ledger_projection(ledger: RunLedger) -> dict[str, Any]:
+    """Rebuild the complete protected public ledger projection from private state."""
+
+    ledger.validate()
+    operation_evidence = derive_public_operation_evidence(ledger)
+    item_state_counts = {
+        state.value: sum(record.state is state for record in ledger.items.values())
+        for state in ItemState
+    }
+    reconciliation_counts = {
+        status.value: sum(
+            record.reconciliation_status is status
+            for record in ledger.items.values()
+        )
+        for status in ReconciliationStatus
+    }
+    terminal_reason_counts = {
+        reason.value: sum(
+            record.terminal_reason is reason for record in ledger.items.values()
+        )
+        for reason in ItemTerminalReason
+    }
+    return {
+        "schema_version": PUBLIC_LEDGER_PROJECTION_SCHEMA_VERSION,
+        "ledger_schema_version": LEDGER_SCHEMA_VERSION,
+        "stable_item_identity_version": ITEM_IDENTITY_VERSION,
+        "logical_target_identity_version": LOGICAL_TARGET_IDENTITY_VERSION,
+        "run_identity_digest": operation_evidence["run_identity_digest"],
+        "manifest_fingerprint": ledger.manifest_fingerprint,
+        "private_execution_fingerprint": ledger.private_execution_fingerprint,
+        "checkpoint": {
+            "generation": ledger.generation,
+            "next_index": ledger.next_index,
+            "manual_stop_requested": ledger.manual_stop_requested,
+            "failure_budget_exhausted": ledger.failure_budget_exhausted,
+            "global_stop_reason": (
+                ledger.global_stop_reason.value
+                if ledger.global_stop_reason is not None
+                else None
+            ),
+        },
+        "limits": {
+            "max_attempts_per_item": ledger.max_attempts_per_item,
+            "max_failure_attempts": ledger.max_failure_attempts,
+            "batch_size": ledger.batch_size,
+        },
+        "denominator": {
+            "manifest_entry_count": len(ledger.manifest_entry_ids),
+            "source_item_count": ledger.source_item_count,
+            "unique_item_count": ledger.unique_item_count,
+            "duplicate_entry_count": ledger.duplicate_entry_count,
+            "content_duplicate_item_count": ledger.content_duplicate_item_count,
+            "repeated_manifest_entry_count": ledger.repeated_manifest_entry_count,
+        },
+        "item_state_counts": item_state_counts,
+        "terminal_reason_counts": terminal_reason_counts,
+        "reconciliation_status_counts": reconciliation_counts,
+        "accounting": {
+            "attempt_count": sum(
+                record.attempt_count for record in ledger.items.values()
+            ),
+            "failure_count": ledger.total_failure_attempts,
+            "mutation_count": sum(
+                record.mutation_count for record in ledger.items.values()
+            ),
+            "duplicate_skip_count": ledger.duplicate_skip_count,
+            "duplicate_second_mutation_count": (
+                ledger.duplicate_second_mutation_count
+            ),
+            "recovery_count": ledger.recovery_count,
+            "reconciliation_required_count": (
+                ledger.reconciliation_required_count
+            ),
+            "per_item_exhausted_count": ledger.per_item_exhausted_count,
+        },
+        "operation_counts": ledger.operation_counts,
+        "operation_evidence": operation_evidence,
+    }
+
+
 def manifest_fingerprint(items: Sequence[StableInventoryItem]) -> str:
     if not items:
         raise LedgerError("manifest_must_not_be_empty")
@@ -1881,6 +2102,8 @@ class FL1LedgerRunner:
         ]
         | None = None,
     ) -> BatchResult:
+        """Run a synthetic fixture callback; this is not a real-operation gateway."""
+
         ledger = self._load_or_create()
         self._recover_interrupted(ledger, reconcile_interrupted)
         attempted = 0
@@ -2764,63 +2987,20 @@ def build_contract_summary(
     ):
         raise LedgerError("validation_result_must_be_boolean")
 
-    owner_acceptance_payload: dict[str, Any] | None = None
-    if owner_acceptance is not None:
-        owner_acceptance_payload = owner_acceptance.to_public_dict(
-            implementation_evidence
+    if any(
+        evidence is not None
+        for evidence in (
+            owner_acceptance,
+            merge_authorization,
+            next_phase_route_authorization,
         )
-    if merge_authorization is not None:
-        if owner_acceptance is None:
-            raise LedgerError("merge_authorization_requires_owner_acceptance")
-        if merge_authorization.kind is not AuthorizationKind.MERGE:
-            raise LedgerError("merge_authorization_kind_invalid")
-        merge_authorization_payload = merge_authorization.to_public_dict(
-            implementation_evidence, owner_acceptance
-        )
-    else:
-        merge_authorization_payload = None
-    if next_phase_route_authorization is not None:
-        if owner_acceptance is None or merge_authorization is None:
-            raise LedgerError("route_authorization_requires_acceptance_and_merge")
-        if (
-            next_phase_route_authorization.kind
-            is not AuthorizationKind.NEXT_PHASE_ROUTE
-        ):
-            raise LedgerError("route_authorization_kind_invalid")
-        route_authorization_payload = next_phase_route_authorization.to_public_dict(
-            implementation_evidence, owner_acceptance
-        )
-    else:
-        route_authorization_payload = None
+    ):
+        raise LedgerError("automated_owner_authority_unavailable")
 
-    owner_accepted = owner_acceptance_payload is not None
-    merge_authorized = merge_authorization_payload is not None
-    route_authorized = route_authorization_payload is not None
-    if not owner_accepted:
-        status = "implementation_ready_for_owner_audit"
-        blockers = ["pending_owner_audit"]
-    elif not merge_authorized:
-        status = "owner_accepted_pending_merge_authorization"
-        blockers = ["pending_merge_authorization"]
-    else:
-        status = "owner_accepted_for_merge"
-        blockers = []
-
-    operation_evidence = {
-        "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
-        "events": ledger.public_operation_events,
-        "event_count": len(ledger.operation_events),
-        "fingerprint": _canonical_digest(
-            {
-                "schema_version": OPERATION_EVIDENCE_SCHEMA_VERSION,
-                "events": ledger.public_operation_events,
-            }
-        ),
-        "private_execution_fingerprint": ledger.private_execution_fingerprint,
-        "mutation_attribution": ledger.mutation_attribution_proof,
-        "ledger_generation": ledger.generation,
-        "run_id": ledger.run_id,
-    }
+    status = "implementation_ready_for_owner_audit"
+    blockers = ["pending_final_owner_audit"]
+    operation_evidence = derive_public_operation_evidence(ledger)
+    ledger_projection = derive_public_ledger_projection(ledger)
     operation_counts = ledger.operation_counts
     isolation_payload = isolation.to_public_dict()
     stage_inputs: dict[str, tuple[bool, Mapping[str, Any]]] = {
@@ -2847,6 +3027,7 @@ def build_contract_summary(
         "mutation_default_deny": (
             all(count == 0 for count in operation_counts.values()),
             {
+                "execution_scope": "synthetic_fixture_only",
                 "forbidden_operation_counts": operation_counts,
                 "synthetic_invocation_count": sum(
                     event.kind is OperationKind.SYNTHETIC_MUTATION_INVOCATION
@@ -2883,7 +3064,12 @@ def build_contract_summary(
         ),
         "forbidden_operation_evidence": (
             all(count == 0 for count in operation_counts.values()),
-            operation_evidence,
+            {
+                **operation_evidence,
+                "proof_scope": "synthetic_harness_local_only",
+                "real_gateway_instrumentation_complete": False,
+                "phase_wide_zero_activity_proven": False,
+            },
         ),
     }
     stage_evidence = []
@@ -2911,15 +3097,14 @@ def build_contract_summary(
         "pipeline_contract": {
             "contract_id": CONTRACT_ID,
             "status": status,
-            "target_met": owner_accepted,
-            "safe_to_merge": merge_authorized,
-            "route_approved": route_authorized,
+            "target_met": False,
+            "safe_to_merge": False,
+            "route_approved": False,
             "active_blockers": blockers,
-            "owner_acceptance_evidence": owner_acceptance_payload,
-            "merge_authorization_evidence": merge_authorization_payload,
-            "next_phase_route_authorization_evidence": (
-                route_authorization_payload
-            ),
+            "owner_acceptance_evidence": None,
+            "merge_authorization_evidence": None,
+            "next_phase_route_authorization_evidence": None,
+            "automated_owner_authority_available": False,
         },
         "implementation_evidence": implementation_evidence.to_public_dict(),
         "executed_stages": executed_stages,
@@ -2927,10 +3112,10 @@ def build_contract_summary(
         "stage_evidence": stage_evidence,
         "authorization": {
             "p1_r1_implementation_authorized": True,
-            "owner_audit_completed": owner_accepted,
-            "owner_acceptance_valid": owner_accepted,
-            "merge_authorized": merge_authorized,
-            "next_phase_route_authorized": route_authorized,
+            "owner_audit_completed": False,
+            "owner_acceptance_valid": False,
+            "merge_authorized": False,
+            "next_phase_route_authorized": False,
             "production_authorized": False,
             "real_inventory_authorized": False,
             "existing_database_access_authorized": False,
@@ -2957,43 +3142,15 @@ def build_contract_summary(
             "source_mutation_allowed": False,
             "unexpected_mutation_allowed": False,
         },
-        "ledger": {
-            "schema_version": LEDGER_SCHEMA_VERSION,
-            "stable_item_identity": ITEM_IDENTITY_VERSION,
-            "logical_target_identity": LOGICAL_TARGET_IDENTITY_VERSION,
-            "manifest_entry_count": len(ledger.manifest_entry_ids),
-            "source_item_count": ledger.source_item_count,
-            "unique_item_count": ledger.unique_item_count,
-            "duplicate_entry_count": ledger.duplicate_entry_count,
-            "content_duplicate_item_count": ledger.content_duplicate_item_count,
-            "repeated_manifest_entry_count": ledger.repeated_manifest_entry_count,
-            "restart_recovery_count": ledger.recovery_count,
-            "duplicate_second_mutation_count": (
-                ledger.duplicate_second_mutation_count
-            ),
-            "operation_evidence_fingerprint": (
-                operation_evidence["fingerprint"]
-            ),
-            "private_execution_fingerprint": ledger.private_execution_fingerprint,
-            "mutation_attribution_fingerprint": (
-                ledger.mutation_attribution_proof["fingerprint"]
-            ),
-            "operation_event_count": len(ledger.operation_events),
-            "reconciliation_required_count": (
-                ledger.reconciliation_required_count
-            ),
-            "per_item_exhausted_count": ledger.per_item_exhausted_count,
-            "global_failure_attempt_count": ledger.total_failure_attempts,
-            "global_stop_reason": (
-                ledger.global_stop_reason.value
-                if ledger.global_stop_reason is not None
-                else None
-            ),
-            "attempt_budget_persisted": True,
-            "checkpoint_persisted": True,
-            "manual_stop_persisted": True,
-            "interrupted_mutation_reconciliation_required": True,
-            "generation_conflict_rejected": True,
+        "ledger": ledger_projection,
+        "execution_scope": {
+            "schema_version": EXECUTION_SCOPE_SCHEMA_VERSION,
+            "scope": "synthetic_fixture_only",
+            "generic_mutate_callback": "synthetic_harness_only",
+            "synthetic_invocation_proof_scope": "item_attempt_attribution_only",
+            "real_gateway_instrumentation_complete": False,
+            "phase_wide_zero_activity_proven": False,
+            "comprehensive_runtime_coverage_claimed": False,
         },
         "validation": {
             "focused_tests_passed": focused_tests_passed,

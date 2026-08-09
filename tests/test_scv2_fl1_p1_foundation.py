@@ -43,6 +43,8 @@ from scripts.fl1_p1_foundation import (
     build_failure_budget_scenario_matrix,
     build_reconciliation_scenario_matrix,
     collect_implementation_evidence,
+    derive_public_ledger_projection,
+    derive_python_identity,
     failure_budget_scenario_bundle_to_dict,
     reconciliation_scenario_bundle_to_dict,
     validate_isolation,
@@ -161,7 +163,6 @@ def _config(tmp_path: Path, **overrides: object) -> IsolationConfig:
         forbidden_roots=(paths["forbidden"],),
         actual_git_head=SYNTHETIC_HEAD,
         expected_git_head=SYNTHETIC_HEAD,
-        python_executable=Path(sys.executable),
         expected_python=Path(sys.executable),
     )
     return replace(config, **overrides)
@@ -533,6 +534,32 @@ def test_explicit_test_identity_and_synthetic_paths_pass(tmp_path: Path) -> None
     assert proof.existing_database_accessed is False
 
 
+def test_python_actual_identity_cannot_be_supplied_by_caller(tmp_path: Path) -> None:
+    with pytest.raises(TypeError):
+        replace(
+            _config(tmp_path),
+            python_executable=tmp_path / "caller-controlled-python",
+        )
+
+
+def test_python_identity_comes_from_current_process_not_matching_fake_inputs(
+    tmp_path: Path,
+) -> None:
+    fake = (tmp_path / "fake-venv" / "python.exe").absolute()
+    with pytest.raises(IsolationError, match="python_identity_mismatch"):
+        validate_isolation(_config(tmp_path, expected_python=fake))
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows path normalization")
+def test_windows_python_path_case_normalization_preserves_venv_launcher(
+    tmp_path: Path,
+) -> None:
+    expected = Path(str(Path(sys.executable).absolute()).swapcase())
+    proof = validate_isolation(_config(tmp_path, expected_python=expected))
+    assert proof.python_identity_match is True
+    assert proof.python_executable_label == Path(sys.executable).name.casefold()
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="POSIX venv launchers use symlinks"
 )
@@ -546,7 +573,6 @@ def test_python_identity_does_not_collapse_a_venv_symlink_to_base_python(
         validate_isolation(
             _config(
                 tmp_path,
-                python_executable=Path(sys.executable),
                 expected_python=launcher,
             )
         )
@@ -1320,7 +1346,7 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
     assert pipeline["target_met"] is False
     assert pipeline["safe_to_merge"] is False
     assert pipeline["route_approved"] is False
-    assert pipeline["active_blockers"] == ["pending_owner_audit"]
+    assert pipeline["active_blockers"] == ["pending_final_owner_audit"]
     assert pipeline["owner_acceptance_evidence"] is None
     assert all(value == 0 for value in summary["operation_counts"].values())
     assert summary["environment_isolation"]["synthetic_only"] is True
@@ -1351,6 +1377,7 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
         summary,
         repository_context=ContractRepositoryContext(
             repo_root=repo,
+            expected_python=Path(sys.executable),
             runtime_ledger=store.load(),
             failure_budget_scenario_bundle=failure_bundle,
             reconciliation_scenario_bundle=reconciliation_bundle,
@@ -1359,7 +1386,7 @@ def test_contract_summary_is_public_safe_and_owner_audit_blocked(tmp_path: Path)
     assert complete.passed is True
 
 
-def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
+def test_caller_supplied_owner_merge_and_route_authority_is_disabled(
     tmp_path: Path,
 ) -> None:
     proof = validate_isolation(_config(tmp_path))
@@ -1373,40 +1400,17 @@ def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
         _trusted_scenario_evidence(tmp_path / "trusted-scenarios")
     )
 
-    accepted = build_contract_summary(
-        isolation=proof,
-        ledger=store.load(),
-        implementation_evidence=evidence,
-        failure_budget_scenario_matrix=failure_matrix,
-        reconciliation_scenario_matrix=reconciliation_matrix,
-        focused_tests_passed=True,
-        full_non_e2e_passed=True,
-        owner_acceptance=acceptance,
-    )
-    missing_context = check_phase_contract(
-        "scv2_fl1_isolated_full_library_dev_test_contract_v1", accepted
-    )
-    assert missing_context.passed is False
-    assert "fl1_p1_repository_context_required" in {
-        finding.code for finding in missing_context.errors
-    }
-    accepted_result = check_phase_contract(
-        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
-        accepted,
-        repository_context=ContractRepositoryContext(
-            repo_root=repo,
-            runtime_ledger=store.load(),
-            failure_budget_scenario_bundle=failure_bundle,
-            reconciliation_scenario_bundle=reconciliation_bundle,
-        ),
-    )
-    assert accepted_result.passed is True
-    pipeline = accepted["pipeline_contract"]
-    assert pipeline["status"] == "owner_accepted_pending_merge_authorization"
-    assert pipeline["target_met"] is True
-    assert pipeline["safe_to_merge"] is False
-    assert pipeline["route_approved"] is False
-    assert pipeline["active_blockers"] == ["pending_merge_authorization"]
+    with pytest.raises(LedgerError, match="automated_owner_authority_unavailable"):
+        build_contract_summary(
+            isolation=proof,
+            ledger=store.load(),
+            implementation_evidence=evidence,
+            failure_budget_scenario_matrix=failure_matrix,
+            reconciliation_scenario_matrix=reconciliation_matrix,
+            focused_tests_passed=True,
+            full_non_e2e_passed=True,
+            owner_acceptance=acceptance,
+        )
 
     merge = BoundAuthorizationEvidence(
         kind=AuthorizationKind.MERGE,
@@ -1415,19 +1419,18 @@ def test_owner_acceptance_is_bound_but_does_not_authorize_merge_or_route(
         reviewed_final_commit=evidence.final_commit,
         reviewed_final_tree=evidence.final_tree,
     )
-    merge_ready = build_contract_summary(
-        isolation=proof,
-        ledger=store.load(),
-        implementation_evidence=evidence,
-        failure_budget_scenario_matrix=failure_matrix,
-        reconciliation_scenario_matrix=reconciliation_matrix,
-        focused_tests_passed=True,
-        full_non_e2e_passed=True,
-        owner_acceptance=acceptance,
-        merge_authorization=merge,
-    )
-    assert merge_ready["pipeline_contract"]["safe_to_merge"] is True
-    assert merge_ready["pipeline_contract"]["route_approved"] is False
+    with pytest.raises(LedgerError, match="automated_owner_authority_unavailable"):
+        build_contract_summary(
+            isolation=proof,
+            ledger=store.load(),
+            implementation_evidence=evidence,
+            failure_budget_scenario_matrix=failure_matrix,
+            reconciliation_scenario_matrix=reconciliation_matrix,
+            focused_tests_passed=True,
+            full_non_e2e_passed=True,
+            owner_acceptance=acceptance,
+            merge_authorization=merge,
+        )
 
 
 def test_contract_cli_uses_repository_and_private_ledger_context(
@@ -1450,7 +1453,6 @@ def test_contract_cli_uses_repository_and_private_ledger_context(
         reconciliation_scenario_matrix=reconciliation_matrix,
         focused_tests_passed=True,
         full_non_e2e_passed=True,
-        owner_acceptance=_owner_acceptance(evidence),
     )
     summary_path = tmp_path / "contract-summary.json"
     summary_path.write_text(json.dumps(summary), encoding="utf-8")
@@ -1471,10 +1473,12 @@ def test_contract_cli_uses_repository_and_private_ledger_context(
     ]
     incomplete_args = (
         [],
-        ["--repo-root", str(repo)],
+        ["--repo-root", str(repo), "--expected-python", sys.executable],
         [
             "--repo-root",
             str(repo),
+            "--expected-python",
+            sys.executable,
             "--runtime-ledger",
             str(store.path),
         ],
@@ -1496,6 +1500,8 @@ def test_contract_cli_uses_repository_and_private_ledger_context(
             *base_args,
             "--repo-root",
             str(repo),
+            "--expected-python",
+            sys.executable,
             "--runtime-ledger",
             str(store.path),
             "--failure-budget-scenarios",
@@ -1511,6 +1517,31 @@ def test_contract_cli_uses_repository_and_private_ledger_context(
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert json.loads(completed.stdout)["passed"] is True
+
+    wrong_python = subprocess.run(
+        [
+            *base_args,
+            "--repo-root",
+            str(repo),
+            "--expected-python",
+            str((tmp_path / "wrong-venv" / "python.exe").absolute()),
+            "--runtime-ledger",
+            str(store.path),
+            "--failure-budget-scenarios",
+            str(failure_bundle_path),
+            "--reconciliation-scenarios",
+            str(reconciliation_bundle_path),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert wrong_python.returncode == 1
+    assert "fl1_p1_python_identity_context_required" in {
+        error["code"] for error in json.loads(wrong_python.stdout)["errors"]
+    }
 
 
 @pytest.mark.parametrize(
@@ -1557,7 +1588,7 @@ def test_wrong_or_stale_owner_acceptance_binding_is_rejected(
     evidence = _implementation_evidence()
     wrong = replace(_owner_acceptance(evidence), implementation_commit="c" * 40)
 
-    with pytest.raises(LedgerError, match="owner_acceptance_evidence_mismatch"):
+    with pytest.raises(LedgerError, match="automated_owner_authority_unavailable"):
         build_contract_summary(
             isolation=proof,
             ledger=store.load(),
@@ -1577,15 +1608,17 @@ def test_wrong_or_stale_owner_acceptance_binding_is_rejected(
         reconciliation_scenario_matrix=_reconciliation_scenario_matrix(tmp_path),
         focused_tests_passed=True,
         full_non_e2e_passed=True,
-        owner_acceptance=_owner_acceptance(evidence),
     )
-    summary["implementation_evidence"]["evidence_digest"] = "0" * 64
+    summary["pipeline_contract"]["owner_acceptance_evidence"] = (
+        _owner_acceptance(evidence).to_public_dict(evidence)
+    )
+    summary["pipeline_contract"]["target_met"] = True
     result = check_phase_contract(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1", summary
     )
     assert result.passed is False
     assert {finding.code for finding in result.errors} >= {
-        "fl1_p1_implementation_evidence_invalid",
+        "fl1_p1_automated_owner_authority_unavailable",
         "fl1_p1_claim_invalid",
     }
 
@@ -1655,6 +1688,83 @@ def test_git_collected_evidence_allows_only_exact_governance_paths(
         )
 
 
+@pytest.mark.parametrize("drift", ["staged", "unstaged", "deleted", "renamed"])
+def test_formal_evidence_rejects_all_tracked_worktree_drift(
+    tmp_path: Path, drift: str
+) -> None:
+    repo, base, implementation, _final, evidence = _git_repository_evidence(
+        tmp_path
+    )
+    if drift == "staged":
+        (repo / "README.md").write_text("staged drift\n", encoding="utf-8")
+        subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    elif drift == "unstaged":
+        (repo / "README.md").write_text("unstaged drift\n", encoding="utf-8")
+    elif drift == "deleted":
+        (repo / "README.md").unlink()
+    else:
+        subprocess.run(
+            ["git", "mv", "README.md", "RENAMED.md"], cwd=repo, check=True
+        )
+
+    with pytest.raises(LedgerError, match="evidence_worktree_tracked_drift"):
+        collect_implementation_evidence(
+            repo_root=repo,
+            approved_base_commit=base,
+            implementation_commit=implementation,
+        )
+    with pytest.raises(LedgerError, match="evidence_worktree_tracked_drift"):
+        verify_implementation_evidence_repository(repo_root=repo, evidence=evidence)
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ["import_shadow.py", "scripts/untracked_helper.py", "tests/helper.json"],
+)
+def test_formal_evidence_rejects_untracked_execution_drift(
+    tmp_path: Path, relative: str
+) -> None:
+    repo, base, implementation, _final, _evidence = _git_repository_evidence(
+        tmp_path
+    )
+    target = repo / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("synthetic drift\n", encoding="utf-8")
+    with pytest.raises(
+        LedgerError, match="evidence_worktree_untracked_execution_drift"
+    ):
+        collect_implementation_evidence(
+            repo_root=repo,
+            approved_base_commit=base,
+            implementation_commit=implementation,
+        )
+
+
+def test_formal_evidence_allows_ignored_output_and_preserves_unrelated_artifact(
+    tmp_path: Path,
+) -> None:
+    repo, base, implementation, _final, evidence = _git_repository_evidence(
+        tmp_path
+    )
+    info_exclude = repo / ".git" / "info" / "exclude"
+    info_exclude.write_text("ignored-evidence/\n", encoding="utf-8")
+    ignored = repo / "ignored-evidence" / "private-ledger.json"
+    ignored.parent.mkdir()
+    ignored.write_text("{}\n", encoding="utf-8")
+    user_artifact = repo / "operator-note.txt"
+    user_artifact.write_text("preserve me\n", encoding="utf-8")
+
+    recollected = collect_implementation_evidence(
+        repo_root=repo,
+        approved_base_commit=base,
+        implementation_commit=implementation,
+    )
+    verify_implementation_evidence_repository(repo_root=repo, evidence=evidence)
+    assert recollected == evidence
+    assert ignored.read_text(encoding="utf-8") == "{}\n"
+    assert user_artifact.read_text(encoding="utf-8") == "preserve me\n"
+
+
 def test_squash_carry_forward_uses_parent_and_reviewed_tree_not_branch_ancestry(
     tmp_path: Path,
 ) -> None:
@@ -1694,13 +1804,37 @@ def test_squash_carry_forward_uses_parent_and_reviewed_tree_not_branch_ancestry(
         cwd=repo,
         check=False,
     ).returncode != 0
+    with pytest.raises(
+        Exception, match="squash_trusted_reviewed_tree_context_required"
+    ):
+        validate_git_ancestry(
+            {
+                "accepted_mainline_base": base,
+                "implementation_evidence_head": implementation,
+            },
+            root=repo,
+        )
     validate_git_ancestry(
         {
             "accepted_mainline_base": base,
             "implementation_evidence_head": implementation,
         },
         root=repo,
+        implementation_evidence=evidence.to_public_dict(),
     )
+    wrong_reviewed_tree = evidence.to_public_dict()
+    wrong_reviewed_tree["final_tree"] = "f" * 40
+    wrong_reviewed_tree["carry_forward_tree"] = "f" * 40
+    _refresh_implementation_digest(wrong_reviewed_tree)
+    with pytest.raises(Exception, match="squash_trusted_repository_evidence_invalid"):
+        validate_git_ancestry(
+            {
+                "accepted_mainline_base": base,
+                "implementation_evidence_head": implementation,
+            },
+            root=repo,
+            implementation_evidence=wrong_reviewed_tree,
+        )
 
 
 def test_squash_carry_forward_rejects_wrong_tree_base_old_final_and_drift(
@@ -1774,6 +1908,35 @@ def test_squash_carry_forward_rejects_wrong_tree_base_old_final_and_drift(
         )
 
 
+def test_squash_carry_forward_rejects_multiple_parent_head(tmp_path: Path) -> None:
+    repo, base, implementation, final, _evidence = _git_repository_evidence(tmp_path)
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("branch", "reviewed-feature", final)
+    git("checkout", "-b", "side", base)
+    (repo / "SIDE.md").write_text("side\n", encoding="utf-8")
+    git("add", "SIDE.md")
+    git("commit", "-m", "side")
+    git("checkout", "-b", "merge-head", base)
+    git("merge", "--no-ff", "side", "-m", "two-parent head")
+    with pytest.raises(LedgerError, match="squash_parent_invalid"):
+        collect_implementation_evidence(
+            repo_root=repo,
+            approved_base_commit=base,
+            implementation_commit=implementation,
+            final_commit=final,
+            mode=ImplementationEvidenceMode.SQUASH_CARRY_FORWARD,
+        )
+
+
 def test_contract_checker_verifies_real_repository_objects_and_current_head(
     tmp_path: Path,
 ) -> None:
@@ -1786,6 +1949,7 @@ def test_contract_checker_verifies_real_repository_objects_and_current_head(
     summary["implementation_evidence"] = evidence.to_public_dict()
     context = ContractRepositoryContext(
         repo_root=repo,
+        expected_python=Path(sys.executable),
         runtime_ledger=store.load(),
         failure_budget_scenario_bundle=failure_bundle,
         reconciliation_scenario_bundle=reconciliation_bundle,
@@ -1877,6 +2041,7 @@ def test_contract_checker_accepts_repository_verified_squash_carry_forward(
         summary,
         repository_context=ContractRepositoryContext(
             repo_root=repo,
+            expected_python=Path(sys.executable),
             runtime_ledger=store.load(),
             failure_budget_scenario_bundle=failure_bundle,
             reconciliation_scenario_bundle=reconciliation_bundle,
@@ -1944,11 +2109,248 @@ def _trusted_audit_ready_case(
     )
     context = ContractRepositoryContext(
         repo_root=repo,
+        expected_python=Path(sys.executable),
         runtime_ledger=store.load(),
         failure_budget_scenario_bundle=failure_bundle,
         reconciliation_scenario_bundle=reconciliation_bundle,
     )
     return summary, context, store
+
+
+def test_trusted_python_identity_rejects_public_boolean_or_fingerprint_forgery(
+    tmp_path: Path,
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    summary["environment_isolation"]["python_identity_match"] = True
+    summary["environment_isolation"]["python_identity_fingerprint"] = "f" * 64
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    assert "fl1_p1_python_identity_context_required" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_public_python_identity_contains_no_local_absolute_path(tmp_path: Path) -> None:
+    summary, _context, _store = _trusted_audit_ready_case(tmp_path)
+    serialized = json.dumps(summary["environment_isolation"], sort_keys=True)
+    assert str(Path(sys.executable).parent) not in serialized
+    assert derive_python_identity(Path(sys.executable))["match"] is True
+    assert scan_public_payload(summary) == []
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement"),
+    [
+        ("checkpoint", "generation", 999),
+        ("checkpoint", "next_index", 0),
+        ("checkpoint", "failure_budget_exhausted", True),
+        ("denominator", "source_item_count", 99),
+        ("accounting", "attempt_count", 99),
+        ("accounting", "failure_count", 99),
+        ("accounting", "mutation_count", 99),
+        ("accounting", "recovery_count", 99),
+        ("accounting", "reconciliation_required_count", 99),
+    ],
+)
+def test_complete_public_ledger_projection_rejects_counter_forgery(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    replacement: object,
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    summary["ledger"][section][field] = replacement
+
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    assert "fl1_p1_runtime_ledger_evidence_mismatch" in {
+        finding.code for finding in result.errors
+    }
+
+
+@pytest.mark.parametrize(
+    "field", ["run_identity_digest", "manifest_fingerprint"]
+)
+def test_complete_public_ledger_projection_rejects_identity_forgery(
+    tmp_path: Path, field: str
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    summary["ledger"][field] = "f" * 64
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    assert "fl1_p1_runtime_ledger_evidence_mismatch" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_outcome_unknown_private_ledger_cannot_be_published_as_zero(
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "unknown-runtime"
+    proof = validate_isolation(_config(runtime_root))
+    runner, store = _runner(runtime_root, [_item(451)])
+    with pytest.raises(LedgerError, match="mutation_outcome_reconciliation_required"):
+        runner.run_next_batch(
+            lambda _current: (_ for _ in ()).throw(
+                RuntimeError("synthetic_interruption")
+            )
+        )
+    repo, _base, _implementation, _final, evidence = _git_repository_evidence(
+        tmp_path / "repository"
+    )
+    failure_matrix, failure_bundle, reconciliation_matrix, reconciliation_bundle = (
+        _trusted_scenario_evidence(tmp_path / "trusted-scenarios")
+    )
+    summary = build_contract_summary(
+        isolation=proof,
+        ledger=store.load(),
+        implementation_evidence=evidence,
+        failure_budget_scenario_matrix=failure_matrix,
+        reconciliation_scenario_matrix=reconciliation_matrix,
+        focused_tests_passed=True,
+        full_non_e2e_passed=True,
+    )
+    context = ContractRepositoryContext(
+        repo_root=repo,
+        expected_python=Path(sys.executable),
+        runtime_ledger=store.load(),
+        failure_budget_scenario_bundle=failure_bundle,
+        reconciliation_scenario_bundle=reconciliation_bundle,
+    )
+    assert summary["ledger"]["accounting"][
+        "reconciliation_required_count"
+    ] == 1
+    honest = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert "fl1_p1_ledger_invalid" in {
+        finding.code for finding in honest.errors
+    }
+
+    summary["ledger"]["accounting"]["reconciliation_required_count"] = 0
+    forged = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert "fl1_p1_runtime_ledger_evidence_mismatch" in {
+        finding.code for finding in forged.errors
+    }
+
+
+def test_public_ledger_rejects_unknown_self_attested_field(tmp_path: Path) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    summary["ledger"]["caller_claimed_safe"] = True
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    assert "fl1_p1_ledger_invalid" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_canonical_public_ledger_projection_is_shared_and_private_safe(
+    tmp_path: Path,
+) -> None:
+    summary, context, store = _trusted_audit_ready_case(tmp_path)
+    trusted = store.load()
+    projection = derive_public_ledger_projection(trusted)
+    assert summary["ledger"] == projection
+    serialized = json.dumps(projection, sort_keys=True)
+    assert all(item_id not in serialized for item_id in trusted.items)
+    assert str(tmp_path) not in serialized
+    assert check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    ).passed is True
+
+
+def test_private_ledger_change_with_only_public_digest_recompute_fails(
+    tmp_path: Path,
+) -> None:
+    summary, context, store = _trusted_audit_ready_case(tmp_path)
+    private_payload = store.load().to_dict()
+    private_payload["checkpoint"]["generation"] += 1
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=replace(context, runtime_ledger=private_payload),
+    )
+    assert result.passed is False
+    assert "fl1_p1_runtime_ledger_evidence_mismatch" in {
+        finding.code for finding in result.errors
+    }
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "real_gateway_instrumentation_complete",
+        "phase_wide_zero_activity_proven",
+        "comprehensive_runtime_coverage_claimed",
+    ),
+)
+def test_synthetic_callback_cannot_claim_phase_wide_real_operation_proof(
+    tmp_path: Path, field: str
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    summary["execution_scope"][field] = True
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    assert "fl1_p1_execution_scope_invalid" in {
+        finding.code for finding in result.errors
+    }
+
+
+def test_fabricated_positive_authority_claim_fails_with_valid_repo_and_ledger(
+    tmp_path: Path,
+) -> None:
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
+    summary["pipeline_contract"].update(
+        {
+            "owner_acceptance_evidence": {
+                "identity": "fabricated-owner",
+                "implementation_commit": summary["implementation_evidence"][
+                    "implementation_commit"
+                ],
+            },
+            "target_met": True,
+            "safe_to_merge": True,
+            "route_approved": True,
+        }
+    )
+    result = check_phase_contract(
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        summary,
+        repository_context=context,
+    )
+    assert result.passed is False
+    assert "fl1_p1_automated_owner_authority_unavailable" in {
+        finding.code for finding in result.errors
+    }
 
 
 def test_forbidden_operation_counts_are_derived_from_persisted_events(
@@ -2042,9 +2444,9 @@ def test_public_attribution_rejects_equal_total_swapped_between_items(
         "rows": rows,
     }
     attribution["fingerprint"] = _digest(attribution_payload)
-    summary["ledger"]["mutation_attribution_fingerprint"] = attribution[
-        "fingerprint"
-    ]
+    summary["ledger"]["operation_evidence"] = copy.deepcopy(
+        summary["operation_evidence"]
+    )
     assert attribution["invocation_count"] == 3
 
     result = check_phase_contract(
@@ -2076,15 +2478,16 @@ def test_trusted_private_ledger_rejects_recomputed_public_attribution_forgery(
         "rows": attribution["rows"],
     }
     attribution["fingerprint"] = _digest(attribution_payload)
-    summary["ledger"]["mutation_attribution_fingerprint"] = attribution[
-        "fingerprint"
-    ]
+    summary["ledger"]["operation_evidence"] = copy.deepcopy(
+        summary["operation_evidence"]
+    )
 
     result = check_phase_contract(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1",
         summary,
         repository_context=ContractRepositoryContext(
             repo_root=repo,
+            expected_python=Path(sys.executable),
             runtime_ledger=store.load(),
             failure_budget_scenario_bundle=failure_bundle,
             reconciliation_scenario_bundle=reconciliation_bundle,
@@ -2227,9 +2630,13 @@ def test_failure_budget_public_true_assertion_cannot_replace_private_evidence(
 def test_audit_ready_requires_all_protected_contexts(tmp_path: Path) -> None:
     summary, context, _store = _trusted_audit_ready_case(tmp_path)
     cases = (
-        ContractRepositoryContext(repo_root=context.repo_root),
         ContractRepositoryContext(
             repo_root=context.repo_root,
+            expected_python=Path(sys.executable),
+        ),
+        ContractRepositoryContext(
+            repo_root=context.repo_root,
+            expected_python=Path(sys.executable),
             runtime_ledger=context.runtime_ledger,
         ),
         replace(context, failure_budget_scenario_bundle=None),
@@ -2464,13 +2871,14 @@ def test_fl1_contract_recursively_scans_unknown_public_fields_without_echo(
 
 
 def test_other_contract_invariants_remain_fail_closed(tmp_path: Path) -> None:
-    summary, _ = _passing_summary(tmp_path, 127)
+    summary, context, _store = _trusted_audit_ready_case(tmp_path)
 
     invalid_authorization = copy.deepcopy(summary)
     invalid_authorization["authorization"]["production_authorized"] = True
     failed = check_phase_contract(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1",
         invalid_authorization,
+        repository_context=context,
     )
     assert failed.passed is False
     assert "fl1_p1_authorization_boundary_invalid" in {
@@ -2478,18 +2886,25 @@ def test_other_contract_invariants_remain_fail_closed(tmp_path: Path) -> None:
     }
 
     invalid_ledger = copy.deepcopy(summary)
-    invalid_ledger["ledger"]["duplicate_second_mutation_count"] = 1
+    invalid_ledger["ledger"]["accounting"][
+        "duplicate_second_mutation_count"
+    ] = 1
     failed = check_phase_contract(
-        "scv2_fl1_isolated_full_library_dev_test_contract_v1", invalid_ledger
+        "scv2_fl1_isolated_full_library_dev_test_contract_v1",
+        invalid_ledger,
+        repository_context=context,
     )
     assert failed.passed is False
-    assert "fl1_p1_ledger_invalid" in {finding.code for finding in failed.errors}
+    assert "fl1_p1_runtime_ledger_evidence_mismatch" in {
+        finding.code for finding in failed.errors
+    }
 
     invalid_operation_count = copy.deepcopy(summary)
     invalid_operation_count["operation_counts"]["provider_activity"] = 1
     failed = check_phase_contract(
         "scv2_fl1_isolated_full_library_dev_test_contract_v1",
         invalid_operation_count,
+        repository_context=context,
     )
     assert failed.passed is False
     assert "fl1_p1_forbidden_activity" in {

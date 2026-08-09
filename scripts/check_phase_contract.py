@@ -31,6 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Trusted Git repository root for repository-bound contract evidence.",
     )
     parser.add_argument(
+        "--expected-python",
+        help="Approved interpreter path; actual identity is derived from sys.executable.",
+    )
+    parser.add_argument(
         "--runtime-ledger",
         help="Private RunLedger JSON used to verify public operation attribution.",
     )
@@ -109,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     repository_context = None
     if (
         args.repo_root
+        or args.expected_python
         or args.runtime_ledger
         or args.failure_budget_scenarios
         or args.reconciliation_scenarios
@@ -146,6 +151,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         repository_context = ContractRepositoryContext(
             repo_root=Path(args.repo_root).resolve(),
+            expected_python=(
+                Path(args.expected_python) if args.expected_python else None
+            ),
             runtime_ledger=runtime_ledger,
             failure_budget_scenario_bundle=failure_budget_scenarios,
             reconciliation_scenario_bundle=reconciliation_scenarios,
