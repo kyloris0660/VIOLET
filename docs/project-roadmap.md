@@ -34,7 +34,7 @@ PR #141 physically merged at
 `36100bfa0317387e064cd87b2e753eca3a201b5e`, but eight valid review findings
 arrived after merge and remain unresolved on that historical PR. P1-R1 is the
 only authorized remediation route. Its implementation evidence is
-`8fc1df2484f2a3de12639cf43e0e2c38131239b5`, pending independent owner audit.
+`a631160f58e8d5d61998863b5b4d60a549e88151`, pending final independent owner audit.
 Consequently `target_met=false`, `safe_to_merge=false`,
 `route_approved=false`, and `next_phase_started=false`.
 
@@ -58,6 +58,15 @@ claims now require trusted repository, main runtime ledger, private
 failure-budget scenario, and private interrupted-reconciliation evidence. The
 complete public summary is recursively redaction-scanned; editable booleans or
 digests cannot substitute for that scan.
+
+The final bounded PR #143 closure additionally derives interpreter identity
+from actual `sys.executable`, requires trusted reviewed-tree evidence for
+documentation squash carry-forward, rebuilds the complete protected public
+ledger projection from the private ledger, and rejects relevant dirty-worktree
+evidence. The callback remains synthetic-only and automated positive
+owner/merge/route claims remain disabled. No further same-PR implementation
+repair is authorized after this round; final-review debt goes to owner
+adjudication.
 
 ## Accepted Mainline Sequence
 

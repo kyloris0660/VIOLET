@@ -41,9 +41,9 @@ Current fail-closed state:
 - `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
-- `manual_acceptance_status=pending_owner_audit`
+- `manual_acceptance_status=pending_final_owner_audit`
 - `next_phase_started=false`
-- blocker: `pending_owner_audit`
+- blocker: `pending_final_owner_audit`
 
 P1-R1 remediates only the eight late PR #141 findings and resets the false
 acceptance/route state. Its bounded PR #143 review-fix round additionally
@@ -63,10 +63,19 @@ The second PR #143 review-fix round is limited to four findings from review
 `4888894624` at reviewed HEAD
 `389ba79cdf9cdd06f81fba07889f21245fd44072`, including one P1 reported only in
 the review body. Its implementation evidence is
-`8fc1df2484f2a3de12639cf43e0e2c38131239b5`. Audit-ready PASS now depends on
+`a631160f58e8d5d61998863b5b4d60a549e88151`. Audit-ready PASS now depends on
 trusted repository and private runtime/scenario ledgers, interruption recovery
 is proved by independent COMMITTED/UNKNOWN/NOT_COMMITTED restart scenarios,
 and the complete public summary is recursively scanned for redaction findings.
+
+The owner-authorized final bounded closure derives Python identity from the
+actual checking process, requires a clean relevant worktree for Git evidence,
+removes the documentation checker's topology-only squash fallback, and
+rebuilds the entire protected public ledger projection from the trusted private
+ledger. Generic callbacks remain synthetic fixtures only, and automated
+positive owner/merge/route authority is disabled. This is the last authorized
+PR #143 implementation repair round; final-review findings are inputs to owner
+adjudication and do not authorize another autonomous repair.
 
 ## Proposed Delivery Sequence
 

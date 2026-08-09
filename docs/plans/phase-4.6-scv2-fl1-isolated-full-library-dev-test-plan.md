@@ -14,9 +14,9 @@ Canonical phase:
 - ID: `SCV2-FL1`
 - Title: `Isolated Full-Library Dev/Test Planning`
 - Current status: planning input only; `SCV2-FL1-P1-R1` Draft PR #143 is
-  pending owner audit
+  pending final owner audit after its last authorized implementation repair
 - Current implementation evidence:
-  `8fc1df2484f2a3de12639cf43e0e2c38131239b5`
+  `a631160f58e8d5d61998863b5b4d60a549e88151`
 - Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or
   started; do not implement its scanner/contract/tests or read a real source
   root without a separate later owner decision
@@ -316,6 +316,10 @@ The contract verifies Git objects in a trusted repository. PR audit evidence
 requires the actual current PR HEAD and implementation ancestry; squash
 carry-forward evidence instead requires the approved base as the squash
 commit's sole parent and exact equality with the owner-reviewed final tree.
+The documentation checker consumes the same trusted `ImplementationEvidence`
+after squash and cannot pass on topology alone. Formal evidence collection and
+repository revalidation reject relevant staged, unstaged, deleted, renamed, or
+untracked execution drift.
 Synthetic invocations reconcile per item against private `RunLedger` attempt
 counts. Failure-budget/manual-stop completion is a five-scenario synthetic
 matrix with independent run identities and fingerprints, not a property of one
@@ -330,6 +334,16 @@ The reconciliation stage requires independently reconstructed COMMITTED,
 UNKNOWN, and NOT_COMMITTED restart behavior. The complete public summary,
 including unknown fields, must pass the shared recursive redaction scanner;
 caller-supplied booleans or recomputed editable digests are not evidence.
+
+The final bounded PR #143 closure derives actual Python identity only from the
+checking process's `sys.executable`, and builder/checker share one complete,
+versioned canonical public ledger projection derived from the trusted private
+ledger. The generic callback is a synthetic fixture harness, not a DB, source,
+provider, LLM, or media gateway and not phase-wide zero-activity proof.
+Caller-supplied owner, merge, or route JSON cannot produce a positive contract
+decision until `OWNER_AUTHORITY_GATE` is implemented. Real gateway coverage is
+deferred to `REAL_OPERATION_GATEWAY_GATE`; POSIX host-power-loss durability is
+deferred to `POSIX_LEDGER_DURABILITY_GATE`. None grants current execution.
 
 Required test groups for the implementation PR:
 
@@ -386,8 +400,8 @@ FL1-P1-R1 implements only the approved late-review remediation for isolation,
 default-deny mutation, contract evidence, source-membership/content-target
 identity, restartable synthetic ledger, reconciliation, and budget semantics.
 Its implementation evidence
-`8fc1df2484f2a3de12639cf43e0e2c38131239b5` is pending independent owner
-audit. Tests and an
+`a631160f58e8d5d61998863b5b4d60a549e88151` is pending final independent owner
+audit. No further same-PR implementation repair is authorized. Tests and an
 automated review do not create owner acceptance or merge authorization.
 
 Not approved: permission to connect to an existing database, inspect production, read a
