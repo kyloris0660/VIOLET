@@ -208,7 +208,6 @@ def test_fl1_i1_status_conflicts_fail_closed(field: str, value: object) -> None:
     ("field", "value"),
     [
         ("implementation_authorized", False),
-        ("implementation_completed", True),
         ("owner_acceptance_valid", True),
         ("merge_authorized", True),
         ("fl1_i1_route_authorized", False),
@@ -227,6 +226,17 @@ def test_fl1_i1_status_conflicts_fail_closed(field: str, value: object) -> None:
 def test_fl1_i1_execution_boundary_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
     state["planning_boundary"][field] = value
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i1_boundary_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_implementation_completed_must_track_current_status() -> None:
+    state = copy.deepcopy(_state())
+    current = state["planning_boundary"]["implementation_completed"]
+    state["planning_boundary"]["implementation_completed"] = not current
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="fl1_i1_boundary_invalid",
@@ -272,6 +282,11 @@ def test_remote_sync_classification_cannot_be_promoted_to_contract_proof() -> No
 
 def test_in_progress_evidence_is_not_falsely_frozen() -> None:
     state = copy.deepcopy(_state())
+    state["current_status"] = "fl1_i1_read_only_inventory_implementation_in_progress"
+    state["manual_acceptance_status"] = "pending_i1_implementation_owner_audit"
+    state["active_blocker"]["code"] = "fl1_i1_implementation_in_progress"
+    state["planning_boundary"]["implementation_completed"] = False
+    state["protected_evidence"]["fl1_i1_implementation_evidence_frozen"] = False
     state["implementation_evidence_head"] = "f" * 40
     with pytest.raises(
         documentation_state.DocumentationStateError,
@@ -291,6 +306,7 @@ def test_audit_ready_state_requires_distinct_frozen_evidence() -> None:
     )
     state["planning_boundary"]["implementation_completed"] = True
     state["protected_evidence"]["fl1_i1_implementation_evidence_frozen"] = True
+    state["implementation_evidence_head"] = documentation_state.FL1_I1_ACCEPTED_MAIN
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="fl1_i1_implementation_evidence_not_frozen",
