@@ -66,8 +66,8 @@ PUBLIC_FORBIDDEN = (
     re.compile(r"(?i)\.local_manifests"),
 )
 FL1_STATUS = "fl1_p1_r1_implementation_ready_for_owner_audit"
-FL1_BLOCKER = "pending_owner_audit"
-FL1_MANUAL_STATUS = "pending_owner_audit"
+FL1_BLOCKER = "pending_final_owner_audit"
+FL1_MANUAL_STATUS = "pending_final_owner_audit"
 FL1_APPROVED_PLANNING_HEAD = "db90457d51a39b5dc930afc2a92a6ef3139a2760"
 FL1_ROUTE_SCOPE = "SCV2-FL1-P1-R1 late-review remediation only; FL1-I1 remains an unapproved future candidate"
 FL1_COMPLETED_SCOPE = "SCV2-FL1-P1-R1 late-review safety remediation and regression tests only"

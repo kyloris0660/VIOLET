@@ -326,11 +326,11 @@ def test_sv1b_waiver_cannot_be_inherited_by_fl1() -> None:
     [
         (
             "accepted_mainline_base",
-            "accepted_mainline_base_not_ancestor_of_head",
+            "accepted_mainline_base_object_missing",
         ),
         (
             "implementation_evidence_head",
-            "implementation_evidence_not_pr_or_squash_carry_forward",
+            "implementation_evidence_object_missing",
         ),
     ],
 )

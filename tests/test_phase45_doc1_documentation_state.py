@@ -146,16 +146,16 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
     assert "Phase 4.4-D1G" not in handoff
 
 
-def test_fl1_p1_r1_state_stops_at_pending_owner_audit() -> None:
+def test_fl1_p1_r1_state_stops_at_pending_final_owner_audit() -> None:
     state = load_state()
 
     assert state["phase_id"] == "SCV2-FL1-P1-R1"
     assert state["target_met"] is False
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
-    assert state["manual_acceptance_status"] == "pending_owner_audit"
+    assert state["manual_acceptance_status"] == "pending_final_owner_audit"
     assert state["next_phase_started"] is False
-    assert state["active_blocker"]["code"] == "pending_owner_audit"
+    assert state["active_blocker"]["code"] == "pending_final_owner_audit"
     assert state["upstream_pr_state"]["physically_merged"] is True
     assert state["upstream_pr_state"]["late_review_remediation_required"] is True
     assert state["next_phase_authorization"] == {

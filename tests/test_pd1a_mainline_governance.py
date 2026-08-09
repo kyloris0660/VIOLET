@@ -50,7 +50,7 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
     )
     _assert_split_s2g_not_active(text)
     assert "SCV2-FL1-P1-R1: Late Review Safety Remediation And Authority Correction" in text
-    assert "pending_owner_audit" in text
+    assert "pending_final_owner_audit" in text
     assert "route_approved=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
