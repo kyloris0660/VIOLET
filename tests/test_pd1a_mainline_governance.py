@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -51,7 +52,8 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
     )
     _assert_split_s2g_not_active(text)
     assert "SCV2-FL1-I1: Read-only Inventory" in text
-    assert "fl1_i1_read_only_inventory_implementation_in_progress" in text
+    state = json.loads(_read("docs/state/current-phase.json"))
+    assert state["current_status"] in text
     assert "route_approved=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text

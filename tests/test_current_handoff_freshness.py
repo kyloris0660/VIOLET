@@ -38,9 +38,10 @@ def test_current_phase_schema_and_fl1_i1_boundary_are_consistent() -> None:
     assert state["phase_id"] == "SCV2-FL1-I1"
     assert state["branch"] == documentation_state.FL1_I1_BRANCH
     assert state["accepted_mainline_base"] == documentation_state.FL1_I1_ACCEPTED_MAIN
-    assert state["current_status"] == (
-        "fl1_i1_read_only_inventory_implementation_in_progress"
-    )
+    assert state["current_status"] in {
+        "fl1_i1_read_only_inventory_implementation_in_progress",
+        "fl1_i1_synthetic_implementation_ready_for_owner_audit",
+    }
     assert state["target_met"] is False
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
@@ -54,6 +55,14 @@ def test_current_phase_schema_and_fl1_i1_boundary_are_consistent() -> None:
     assert boundary["app_storage_write_authorized"] is False
     assert boundary["provider_or_llm_authorized"] is False
     assert boundary["production_authorized"] is False
+    audit_ready = (
+        state["current_status"]
+        == "fl1_i1_synthetic_implementation_ready_for_owner_audit"
+    )
+    assert boundary["implementation_completed"] is audit_ready
+    assert state["protected_evidence"][
+        "fl1_i1_implementation_evidence_frozen"
+    ] is audit_ready
 
 
 def test_prior_pr143_acceptance_and_five_adjudications_are_exact() -> None:

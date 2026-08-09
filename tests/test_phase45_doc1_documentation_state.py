@@ -41,9 +41,10 @@ def test_fl1_i1_state_stops_before_real_inventory() -> None:
     validate_state(state)
     validate_roadmaps(state)
     assert state["phase_id"] == "SCV2-FL1-I1"
-    assert state["current_status"] == (
-        "fl1_i1_read_only_inventory_implementation_in_progress"
-    )
+    assert state["current_status"] in {
+        "fl1_i1_read_only_inventory_implementation_in_progress",
+        "fl1_i1_synthetic_implementation_ready_for_owner_audit",
+    }
     assert state["target_met"] is False
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
