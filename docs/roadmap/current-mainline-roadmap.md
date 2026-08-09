@@ -35,16 +35,20 @@ wholesale patch is inherited.
 `docs/state/current-phase.json` and its planning input is
 `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
-Current fail-closed state:
+Draft PR #144 now carries the frozen synthetic implementation and remains at
+the owner-audit stop. Current fail-closed state:
 
-- `status=fl1_i1_read_only_inventory_implementation_in_progress`
+- `status=fl1_i1_synthetic_implementation_ready_for_owner_audit`
 - `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
-- `manual_acceptance_status=pending_i1_implementation_owner_audit`
+- `manual_acceptance_status=pending_i1_synthetic_implementation_owner_audit`
 - `next_phase_started=true`
 - `real_inventory_started=false`
-- blocker: `fl1_i1_implementation_in_progress`
+- implementation evidence: `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`
+  with tree `9b30ba024beb6fcd58709e707d7879887ad7c081`
+- blocker:
+  `pending_i1_synthetic_implementation_owner_audit_and_real_source_scope`
 
 The current route authorizes reusable inventory safety tooling and validation
 only against synthetic or newly created temporary fixtures. It authorizes the
@@ -105,12 +109,12 @@ classification only, not self-filled contract authority.
 
 ## Delivery Sequence
 
-1. Persist the I1 owner decision and implementation-in-progress route.
-2. Complete the scanner/gateway/manifest/ledger/contract implementation and
-   synthetic or temporary-root validation.
-3. Freeze one immutable implementation evidence commit and tree.
-4. Add only governance projections after that boundary and create a Draft PR.
-5. Request one final-head Codex review and stop at owner audit.
+1. The I1 owner decision and implementation route are persisted.
+2. Scanner/gateway/manifest/ledger/contract implementation and temporary-root
+   validation are complete at the frozen evidence boundary.
+3. Draft PR #144 contains only the owner-audit governance projection after
+   implementation evidence `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`.
+4. Request one final-head Codex review and stop at owner audit.
 6. Any future real inventory requires a separate exact source-scope decision;
    FL1-E1 does not start from this route.
 

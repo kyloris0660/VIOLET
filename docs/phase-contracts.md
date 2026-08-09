@@ -71,17 +71,21 @@ PR #143 was owner-accepted and merge-commit merged at exact main
 evidence is `a631160f58e8d5d61998863b5b4d60a549e88151`. The direct human decision
 does not create automated positive owner, merge, or route authority.
 
-`SCV2-FL1-I1: Read-only Inventory` is now authorized for complete reusable
-safety tooling and synthetic/new temporary-fixture validation. Current state:
+`SCV2-FL1-I1: Read-only Inventory` completed its reusable synthetic/new
+temporary-fixture implementation at evidence HEAD
+`5194a484d0d8fb8dd5e0697cd61054f596aee5ec` and tree
+`9b30ba024beb6fcd58709e707d7879887ad7c081`. Draft PR #144 is now at the
+owner-audit stop. Current state:
 
-- `status=fl1_i1_read_only_inventory_implementation_in_progress`
+- `status=fl1_i1_synthetic_implementation_ready_for_owner_audit`
 - `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
 - `next_phase_started=true`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `fl1_i1_implementation_in_progress`
+- blocker:
+  `pending_i1_synthetic_implementation_owner_audit_and_real_source_scope`
 
 The phase registers `scv2_fl1_i1_read_only_inventory_contract_v1`. Its dedicated
 module rebuilds a canonical protected projection only from validated trusted

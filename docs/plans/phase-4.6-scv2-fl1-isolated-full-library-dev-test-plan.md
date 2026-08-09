@@ -13,12 +13,14 @@ Canonical active phase:
 
 - ID: `SCV2-FL1-I1`
 - Title: `Read-only Inventory`
-- Current status: `fl1_i1_read_only_inventory_implementation_in_progress`
+- Current status: `fl1_i1_synthetic_implementation_ready_for_owner_audit`
 - Branch: `codex/scv2-fl1-i1-read-only-inventory-v2`
 - Accepted mainline base: `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`
-- Current stop: freeze synthetic implementation evidence, create a Draft PR,
-  request one final-head review, and stop at owner audit; no real source scope is
-  authorized
+- Frozen implementation/test evidence:
+  `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`, tree
+  `9b30ba024beb6fcd58709e707d7879887ad7c081`
+- Current stop: Draft PR #144 owner audit after one final-head review; no real
+  source scope is authorized
 
 Final PR #143 review `4890771735` carries forward five owner-adjudicated
 constraints: complete protected roots from trusted context, merge-topology-safe

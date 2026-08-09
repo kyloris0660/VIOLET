@@ -33,12 +33,18 @@ source-like operations must target only synthetic or newly created temporary
 fixtures. `authorized_read_only_source` is an implemented code mode, not
 permission to access a real source.
 
+The implementation and transition tests are frozen at
+`5194a484d0d8fb8dd5e0697cd61054f596aee5ec` (tree
+`9b30ba024beb6fcd58709e707d7879887ad7c081`) in Draft PR #144. The current
+checkpoint is synthetic implementation owner audit, not real inventory.
+
 Current state remains:
 
 ```text
 target_met=false
 safe_to_merge=false
 route_approved=false
+manual_acceptance_status=pending_i1_synthetic_implementation_owner_audit
 next_phase_started=true
 real_inventory_started=false
 real_source_inventory_authorized=false

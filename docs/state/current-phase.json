@@ -4,18 +4,18 @@
   "phase_title": "Read-only Inventory",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-fl1-i1-read-only-inventory-v2",
-  "pr_number": null,
+  "pr_number": 144,
   "draft": true,
   "accepted_mainline_base": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5",
-  "implementation_evidence_head": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5",
-  "current_status": "fl1_i1_read_only_inventory_implementation_in_progress",
+  "implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
+  "current_status": "fl1_i1_synthetic_implementation_ready_for_owner_audit",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
   "route_scope": "SCV2-FL1-I1 reusable read-only inventory safety tooling using only synthetic and newly created temporary fixtures",
   "planning_approved": true,
   "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
-  "manual_acceptance_status": "pending_i1_implementation_owner_audit",
+  "manual_acceptance_status": "pending_i1_synthetic_implementation_owner_audit",
   "next_phase_started": true,
   "upstream_pr_state": {
     "pr_number": 143,
@@ -64,7 +64,7 @@
     "planning_only": false,
     "implementation_authorized": true,
     "implementation_scope": "SCV2-FL1-I1 reusable scanner, manifest, ledger, gateway, contract, CLI, and synthetic or temporary-fixture validation",
-    "implementation_completed": false,
+    "implementation_completed": true,
     "owner_audit_pending": true,
     "owner_acceptance_valid": false,
     "merge_authorized": false,
@@ -109,12 +109,19 @@
     {
       "id": "fl1_i1_owner_authorized_implementation_entry",
       "result": "synthetic_and_temporary_fixture_implementation_in_progress"
+    },
+    {
+      "id": "fl1_i1_implementation_evidence_frozen",
+      "result": "scanner_gateway_manifest_ledger_contract_cli_transition_tests_and_synthetic_validation_frozen_in_draft_pr_144",
+      "fingerprint": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
+      "tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
+      "pr_number": 144
     }
   ],
   "active_blocker": {
-    "code": "fl1_i1_implementation_in_progress",
-    "scope": "SCV2-FL1-I1 synthetic and temporary-fixture implementation",
-    "resolution": "Complete the reusable I1 safety tooling and validation, freeze an immutable implementation evidence commit, bind the governance-only owner-audit checkpoint, create a Draft PR, request one final-head review, and stop before real source operations."
+    "code": "pending_i1_synthetic_implementation_owner_audit_and_real_source_scope",
+    "scope": "SCV2-FL1-I1 synthetic implementation owner audit; real source scope remains separately unauthorized",
+    "resolution": "Owner audits Draft PR #144 at the final reviewed HEAD. No merge, Ready transition, real source operation, or later FL1 phase may start without a new exact owner decision."
   },
   "owner_decisions": [
     {
@@ -144,7 +151,8 @@
     "listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root",
     "existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair",
     "app-managed storage or staging storage creation or write",
-    "import, classification, AI tagging, localization, Entity, EntityAlias, candidate, assignment, truth, graph, search, or provider-derived media_tags mutation",
+    "import, classification, AI tagging, localization, graph, search, or background worker execution",
+    "Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation",
     "provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or network request",
     "Stable Replay import, reuse, replay, or authoritative evidence consumption",
     "production, watcher, scheduler, background worker, UI runtime server, or later FL1 phase execution",
@@ -156,7 +164,17 @@
     "fl1_p1_r1_final_head": "228983f510c975399b53b39dcd7dd170e59b3245",
     "fl1_p1_r1_implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
     "fl1_p1_r1_final_review_id": 4890771735,
-    "fl1_i1_implementation_evidence_frozen": false,
+    "fl1_i1_implementation_evidence_frozen": true,
+    "fl1_i1_implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
+    "fl1_i1_implementation_evidence_tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
+    "i1_focused_validation_result": "36 passed, 2 skipped",
+    "i1_phase_contract_and_p1_regression_result": "586 passed, 4 skipped",
+    "raw_full_non_e2e_result_before_governance_projection": "3831 passed, 16 skipped, 2 failed, 15 warnings",
+    "accepted_main_exact_baseline_result": "one historical SV1 ignored-artifact failure; handoff factual node passed",
+    "validation_receipt_trust_level": "local_operator_receipt",
+    "machine_verifiable_ci": false,
+    "github_checks_observed": 0,
+    "browser_validation": "not_applicable_no_ui_or_runtime_change",
     "preflight_remote_sync": "self_healed_by_fast_forward",
     "preflight_remote_sync_is_contract_proof": false,
     "real_source_inventory_operation_count": 0,
@@ -171,7 +189,7 @@
     "stable_replay_operation_count": 0,
     "production_operation_count": 0
   },
-  "next_required_checkpoint": "freeze_fl1_i1_implementation_evidence_then_owner_audit",
+  "next_required_checkpoint": "owner_audit_only_no_real_source_inventory",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -266,5 +284,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-09T18:20:00+08:00"
+  "updated_at": "2026-08-09T22:41:23+08:00"
 }
