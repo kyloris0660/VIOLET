@@ -54,6 +54,8 @@ REQUIRED_FIELDS = {
     "next_required_checkpoint",
     "durable_links",
     "deferred_debt",
+    "upstream_pr_state",
+    "next_phase_authorization",
     "updated_at",
 }
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
@@ -63,16 +65,31 @@ PUBLIC_FORBIDDEN = (
     re.compile(r"(?i)\b(?:api[_-]?key|refresh[_-]?token|bearer)\s*[:=]\s*\S+"),
     re.compile(r"(?i)\.local_manifests"),
 )
-FL1_STATUS = "fl1_p1_owner_accepted_for_merge"
-FL1_BLOCKER = "none_fl1_p1_owner_accepted_for_merge"
-FL1_MANUAL_STATUS = "owner_accepted_fl1_p1_foundation"
+FL1_STATUS = "fl1_p1_r1_implementation_ready_for_owner_audit"
+FL1_BLOCKER = "pending_final_owner_audit"
+FL1_MANUAL_STATUS = "pending_final_owner_audit"
 FL1_APPROVED_PLANNING_HEAD = "db90457d51a39b5dc930afc2a92a6ef3139a2760"
-FL1_ROUTE_SCOPE = "FL1-I1 read-only inventory planning and synthetic implementation only"
-FL1_COMPLETED_SCOPE = "FL1-P1 isolation/safety/contract/ledger implementation only"
+FL1_ROUTE_SCOPE = "SCV2-FL1-P1-R1 late-review remediation only; FL1-I1 remains an unapproved future candidate"
+FL1_COMPLETED_SCOPE = "SCV2-FL1-P1-R1 late-review safety remediation and regression tests only"
 FL1_PLAN_MERGE_COMMIT = "9ce1128be643c0eaa998ccdff8890d76196ce7db"
-FL1_P1_IMPLEMENTATION_HEAD = "3a7b20608724e5f469548183df0830b09d5ea7be"
+FL1_ACCEPTED_MAIN = "36100bfa0317387e064cd87b2e753eca3a201b5e"
+FL1_PR141_HEAD = "495a6506b25bb27747ebc27e341a06de4860aaa4"
 SV1B_MERGE_COMMIT = "33af4111e1595dac3ece0ac50002556d466f0138"
 SV1B_WAIVER = "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
+NON_ACTION_ATTESTATION_SCHEMA = (
+    "violet.scv2-fl1-p1-r1-phase-non-action-attestation.v1"
+)
+ATTESTED_NON_ACTIONS = (
+    "production_activity",
+    "real_source_inventory_activity",
+    "existing_database_read_activity",
+    "existing_database_write_activity",
+    "provider_activity",
+    "llm_activity",
+    "media_activity",
+    "stable_replay_activity",
+    "user_data_cleanup_delete_activity",
+)
 
 
 class DocumentationStateError(ValueError):
@@ -101,21 +118,24 @@ def _require_list(
 
 def _validate_fl1_state(state: dict[str, Any]) -> None:
     if (
-        state["draft"] is not False
+        state["phase_id"] != "SCV2-FL1-P1-R1"
+        or state["branch"]
+        != "codex/scv2-fl1-p1-r1-late-review-remediation"
+        or state["draft"] is not True
         or state["current_status"] != FL1_STATUS
-        or state["target_met"] is not True
-        or state["safe_to_merge"] is not True
-        or state["route_approved"] is not True
+        or state["target_met"] is not False
+        or state["safe_to_merge"] is not False
+        or state["route_approved"] is not False
         or state["route_scope"] != FL1_ROUTE_SCOPE
         or state["planning_approved"] is not True
         or state["approved_planning_head"] != FL1_APPROVED_PLANNING_HEAD
         or state["manual_acceptance_status"] != FL1_MANUAL_STATUS
-        or state["next_phase_started"] is not True
+        or state["next_phase_started"] is not False
     ):
-        raise DocumentationStateError("fl1_p1_status_fields_conflict")
+        raise DocumentationStateError("fl1_p1_r1_status_fields_conflict")
     blocker = state["active_blocker"]
     if blocker.get("code") != FL1_BLOCKER:
-        raise DocumentationStateError("fl1_p1_blocker_conflict")
+        raise DocumentationStateError("fl1_p1_r1_blocker_conflict")
 
     boundary = state["planning_boundary"]
     expected_boundary = {
@@ -124,7 +144,12 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         "implementation_scope": FL1_COMPLETED_SCOPE,
         "completed_implementation_scope": FL1_COMPLETED_SCOPE,
         "implementation_completed": True,
-        "owner_audit_pending": False,
+        "owner_audit_pending": True,
+        "owner_acceptance_valid": False,
+        "merge_authorized": False,
+        "fl1_i1_route_authorized": False,
+        "fl1_i1_implementation_started": False,
+        "real_inventory_started": False,
         "data_execution_authorized": False,
         "production_authorized": False,
         "database_access_authorized": False,
@@ -144,7 +169,39 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
     if not isinstance(boundary, dict) or any(
         boundary.get(key) != value for key, value in expected_boundary.items()
     ):
-        raise DocumentationStateError("fl1_p1_boundary_invalid")
+        raise DocumentationStateError("fl1_p1_r1_boundary_invalid")
+
+    upstream = state["upstream_pr_state"]
+    expected_upstream = {
+        "pr_number": 141,
+        "physically_merged": True,
+        "merge_commit": FL1_ACCEPTED_MAIN,
+        "final_head": FL1_PR141_HEAD,
+        "late_review_remediation_required": True,
+        "late_review_thread_count": 8,
+        "late_review_threads_resolved": False,
+    }
+    if not isinstance(upstream, dict) or any(
+        upstream.get(key) != value for key, value in expected_upstream.items()
+    ):
+        raise DocumentationStateError("fl1_p1_r1_upstream_state_invalid")
+
+    next_phase = state["next_phase_authorization"]
+    expected_next_phase = {
+        "phase_id": "SCV2-FL1-I1",
+        "route_approved": False,
+        "next_phase_started": False,
+        "implementation_started": False,
+        "real_inventory_started": False,
+        "required_preconditions": [
+            "P1-R1 owner audit",
+            "separate owner FL1-I1 scope decision",
+        ],
+    }
+    if not isinstance(next_phase, dict) or any(
+        next_phase.get(key) != value for key, value in expected_next_phase.items()
+    ):
+        raise DocumentationStateError("fl1_i1_authorization_state_invalid")
 
     prior = state["prior_phase_acceptance"]
     if not isinstance(prior, dict) or any(
@@ -164,35 +221,70 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         raise DocumentationStateError("fl1_prior_phase_acceptance_invalid")
 
     protected = state["protected_evidence"]
-    if not isinstance(protected, dict) or any(
-        protected.get(key) != 0
-        for key in (
-            "database_operation_count",
-            "existing_database_read_operation_count",
-            "existing_database_write_operation_count",
-            "real_source_inventory_operation_count",
-            "provider_operation_count",
-            "llm_operation_count",
-            "media_or_thumbnail_operation_count",
-            "stable_replay_operation_count",
-        )
+    attestation = (
+        protected.get("phase_non_action_attestation")
+        if isinstance(protected, dict)
+        else None
+    )
+    if not (
+        isinstance(protected, dict)
+        and isinstance(attestation, dict)
+        and attestation.get("schema_version") == NON_ACTION_ATTESTATION_SCHEMA
+        and attestation.get("attestation_kind")
+        == "phase_operator_non_action_attestation"
+        and attestation.get("phase_id") == "SCV2-FL1-P1-R1"
+        and attestation.get("pr_number") == 143
+        and attestation.get("implementation_evidence_head")
+        == state["implementation_evidence_head"]
+        and attestation.get("asserted_non_actions")
+        == list(ATTESTED_NON_ACTIONS)
+        and attestation.get("runtime_operation_evidence_source")
+        == "instrumented_run_ledger_only"
+        and attestation.get("executable_runtime_evidence") is False
+        and attestation.get("grants_owner_acceptance") is False
+        and attestation.get("grants_safe_to_merge") is False
+        and attestation.get("grants_route_authorization") is False
     ):
-        raise DocumentationStateError("fl1_operation_counts_nonzero")
-    if protected.get("production_consumed_or_modified_during_fl1_p1") is not False:
-        raise DocumentationStateError("fl1_production_boundary_invalid")
+        raise DocumentationStateError("fl1_phase_non_action_attestation_invalid")
+    legacy_event_fields = {
+        "activity_event_evidence",
+        "production_consumed_or_modified_during_fl1_p1",
+        "production_operation_count",
+        "existing_database_read_operation_count",
+        "existing_database_write_operation_count",
+        "real_source_inventory_operation_count",
+        "provider_operation_count",
+        "llm_operation_count",
+        "media_or_thumbnail_operation_count",
+        "stable_replay_operation_count",
+        "user_data_cleanup_delete_operation_count",
+    }
+    if any(field in protected for field in legacy_event_fields):
+        raise DocumentationStateError("editable_phase_event_ledger_forbidden")
     if protected.get("approved_planning_head") != FL1_APPROVED_PLANNING_HEAD:
         raise DocumentationStateError("fl1_approved_planning_head_evidence_invalid")
     if (
-        state["accepted_mainline_base"] != FL1_PLAN_MERGE_COMMIT
+        state["accepted_mainline_base"] != FL1_ACCEPTED_MAIN
         or protected.get("fl1_plan_merge_commit") != FL1_PLAN_MERGE_COMMIT
+        or protected.get("accepted_mainline_base") != FL1_ACCEPTED_MAIN
     ):
-        raise DocumentationStateError("fl1_plan_merge_commit_invalid")
+        raise DocumentationStateError("fl1_accepted_mainline_invalid")
     if (
-        state["implementation_evidence_head"] != FL1_P1_IMPLEMENTATION_HEAD
-        or protected.get("fl1_p1_implementation_evidence_head")
-        != FL1_P1_IMPLEMENTATION_HEAD
+        protected.get("fl1_p1_r1_implementation_evidence_head")
+        != state["implementation_evidence_head"]
+        or state["implementation_evidence_head"] == FL1_ACCEPTED_MAIN
     ):
-        raise DocumentationStateError("fl1_p1_implementation_head_invalid")
+        raise DocumentationStateError("fl1_p1_r1_implementation_head_invalid")
+    if any(
+        key in protected
+        for key in (
+            "fl1_p1_owner_acceptance_identity",
+            "fl1_i1_owner_acceptance_identity",
+            "merge_authorization_identity",
+            "next_phase_route_authorization_identity",
+        )
+    ):
+        raise DocumentationStateError("unbound_acceptance_or_authorization_present")
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -239,7 +331,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     ):
         raise DocumentationStateError("public_state_boundary_invalid")
 
-    if state["phase_id"] == "SCV2-FL1-P1":
+    if state["phase_id"] == "SCV2-FL1-P1-R1":
         _validate_fl1_state(state)
     else:
         raise DocumentationStateError("unsupported_active_phase")
@@ -300,23 +392,94 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
             raise DocumentationStateError(f"durable_link_missing:{link.get('path')}")
 
     serialized = json.dumps(state, ensure_ascii=False, sort_keys=True)
+    serialized_folded = serialized.casefold()
+    forbidden_authority_claims = (
+        "owner_authorized_fl1_i1_planning_and_synthetic_implementation_20260808",
+        "owner_accepted_fl1_p1_after_bounded_audit_remediation_20260808",
+        '"route_approved": true',
+        '"next_phase_started": true',
+        '"manual_acceptance_status": "owner_accepted',
+    )
+    if any(claim in serialized_folded for claim in forbidden_authority_claims):
+        raise DocumentationStateError("unauthorized_fl1_authority_claim_present")
     for pattern in PUBLIC_FORBIDDEN:
         if pattern.search(serialized):
             raise DocumentationStateError(f"public_state_redaction_failure:{pattern.pattern}")
 
 
-def validate_git_ancestry(state: dict[str, Any], *, root: Path = ROOT) -> None:
-    for field in ("accepted_mainline_base", "implementation_evidence_head"):
-        completed = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", str(state[field]), "HEAD"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
+def validate_git_ancestry(
+    state: dict[str, Any],
+    *,
+    root: Path = ROOT,
+    implementation_evidence: dict[str, Any] | None = None,
+) -> None:
+    base = str(state["accepted_mainline_base"])
+    implementation = str(state["implementation_evidence_head"])
+    base_object = subprocess.run(
+        ["git", "cat-file", "-e", f"{base}^{{commit}}"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    if base_object.returncode != 0:
+        raise DocumentationStateError("accepted_mainline_base_object_missing")
+    implementation_object = subprocess.run(
+        ["git", "cat-file", "-e", f"{implementation}^{{commit}}"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    if implementation_object.returncode != 0:
+        raise DocumentationStateError("implementation_evidence_object_missing")
+    base_check = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", base, "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if base_check.returncode != 0:
+        raise DocumentationStateError("accepted_mainline_base_not_ancestor_of_head")
+
+    implementation_check = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", implementation, "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if implementation_check.returncode == 0:
+        return
+    if implementation_evidence is None:
+        raise DocumentationStateError(
+            "squash_trusted_reviewed_tree_context_required"
         )
-        if completed.returncode != 0:
-            raise DocumentationStateError(f"{field}_not_ancestor_of_head")
+    try:
+        from scripts.fl1_p1_foundation import (
+            ImplementationEvidence,
+            ImplementationEvidenceMode,
+            verify_implementation_evidence_repository,
+        )
+
+        evidence = ImplementationEvidence.from_dict(implementation_evidence)
+        if (
+            evidence.mode is not ImplementationEvidenceMode.SQUASH_CARRY_FORWARD
+            or evidence.approved_base_commit != base
+            or evidence.implementation_commit != implementation
+        ):
+            raise DocumentationStateError("squash_trusted_context_binding_invalid")
+        verify_implementation_evidence_repository(
+            repo_root=root,
+            evidence=evidence,
+        )
+    except DocumentationStateError:
+        raise
+    except Exception as exc:
+        raise DocumentationStateError(
+            f"squash_trusted_repository_evidence_invalid:{type(exc).__name__}"
+        ) from exc
 
 
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
@@ -346,6 +509,13 @@ def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "r1r remains the current next technical phase",
         "start `r1r` only after",
         "full­lib-e1 as the next implementation",
+        "status=fl1_p1_owner_accepted_for_merge",
+        "`route_approved=true`",
+        "`next_phase_started=true`",
+        "the p1 owner audit is complete",
+        "pr #141 may become ready",
+        "start a separate fl1-i1",
+        "owner_authorized_fl1_i1_planning_and_synthetic_implementation_20260808",
     )
     if any(claim in active_text for claim in stale_current_claims):
         raise DocumentationStateError("stale_active_route_claim")
@@ -362,7 +532,7 @@ def render_handoff(state: dict[str, Any]) -> str:
     blocker = state["active_blocker"]
     boundary = state["planning_boundary"]
     if state["pr_number"] is None:
-        pr_label = "PR pending creation"
+        pr_label = "Draft PR pending creation" if state["draft"] else "PR pending creation"
     elif state["draft"]:
         pr_label = f"Draft PR #{state['pr_number']}"
     else:
@@ -381,7 +551,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}`.",
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
-        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (P1 owner-accepted; FL1-I1 starts only after merge).",
+        f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (P1-R1 awaits independent owner audit; FL1-I1 is not authorized or started).",
         f"- Approved planning HEAD: `{state['approved_planning_head']}`; route scope: `{state['route_scope']}`.",
         "",
         "## Completed Checkpoints",
@@ -399,7 +569,7 @@ def render_handoff(state: dict[str, Any]) -> str:
             f"- Resolution: {blocker['resolution']}",
             f"- Planning only: `{str(boundary['planning_only']).lower()}`; implementation/data/production authorization: `{str(boundary['implementation_authorized']).lower()}/{str(boundary['data_execution_authorized']).lower()}/{str(boundary['production_authorized']).lower()}`.",
             f"- Existing database/real inventory/provider-or-LLM/media authorization: `{str(boundary['database_access_authorized']).lower()}/{str(boundary['real_source_inventory_authorized']).lower()}/{str(boundary['provider_or_llm_authorized']).lower()}/{str(boundary['media_authorized']).lower()}`; projected external cost: `${boundary['projected_external_cost_usd']}`.",
-            f"- Public state boundary: `{state['public_state_boundary']}`.",
+            f"- Public state boundary: `{state['public_state_boundary']}`. Phase-level zero-activity is an operator attestation only; executable runtime operation evidence comes only from the instrumented `RunLedger`, and the attestation grants no acceptance, merge safety, or route authorization.",
             "",
             "## Allowed / Forbidden",
             "",
@@ -447,11 +617,19 @@ def write_handoff(state: dict[str, Any], *, path: Path = HANDOFF_PATH) -> None:
     temporary.replace(path)
 
 
-def check_documentation_state(*, root: Path = ROOT) -> dict[str, Any]:
+def check_documentation_state(
+    *,
+    root: Path = ROOT,
+    implementation_evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     state = load_state(root / "docs" / "state" / "current-phase.json")
     validate_state(state, root=root)
     if root.resolve() == ROOT.resolve():
-        validate_git_ancestry(state, root=root)
+        validate_git_ancestry(
+            state,
+            root=root,
+            implementation_evidence=implementation_evidence,
+        )
     validate_roadmaps(state, root=root)
     check_handoff(state, path=root / "docs" / "current-handoff.md")
     return {
@@ -471,8 +649,26 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--render", action="store_true")
     mode.add_argument("--write", action="store_true")
+    parser.add_argument(
+        "--implementation-evidence",
+        help="Trusted ImplementationEvidence JSON required for squash carry-forward checks.",
+    )
     args = parser.parse_args(argv)
     try:
+        implementation_evidence = None
+        if args.implementation_evidence:
+            try:
+                implementation_evidence = json.loads(
+                    Path(args.implementation_evidence).read_text(encoding="utf-8")
+                )
+            except Exception as exc:
+                raise DocumentationStateError(
+                    f"implementation_evidence_context_unreadable:{type(exc).__name__}"
+                ) from exc
+            if not isinstance(implementation_evidence, dict):
+                raise DocumentationStateError(
+                    "implementation_evidence_context_must_be_object"
+                )
         state = load_state()
         if args.render:
             validate_state(state)
@@ -482,7 +678,9 @@ def main(argv: list[str] | None = None) -> int:
             validate_state(state)
             validate_roadmaps(state)
             write_handoff(state)
-        result = check_documentation_state()
+        result = check_documentation_state(
+            implementation_evidence=implementation_evidence
+        )
     except DocumentationStateError as exc:
         print(json.dumps({"passed": False, "error": str(exc)}, ensure_ascii=False))
         return 1

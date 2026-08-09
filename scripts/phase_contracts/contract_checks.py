@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -45,7 +47,7 @@ PRIVATE_PROVENANCE_KEY_RE = re.compile(
     r"(?i)(raw_filename|filename|file_name|source_url|source_urls|original_url|thumbnail_url|source_path|local_path|source_root|selected_root_label|source_root_label|root_label|original_path|provider_url|private_url|raw_label|private_label|provider_credential)"
 )
 PRIVATE_CONTENT_HASH_KEY_RE = re.compile(
-    r"(?i)(^|_)(content_hash|file_hash|sha256|sha_256|md5|phash|perceptual_hash)$"
+    r"(?i)(^|_)(content_hash|content_fingerprint|source_content_fingerprint|file_hash|file_fingerprint|sha256|sha_256|md5|phash|perceptual_hash)$"
 )
 FILENAME_VALUE_RE = re.compile(r"(?i)\b[A-Za-z0-9][A-Za-z0-9_. -]{0,120}\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov|zip|rar|7z)\b")
 
@@ -165,6 +167,17 @@ REDACTED_VALUES = {
 }
 
 
+@dataclass(frozen=True)
+class ContractRepositoryContext:
+    """Trusted local evidence used for Git and private-ledger verification."""
+
+    repo_root: Path
+    expected_python: Path | None = None
+    runtime_ledger: object | None = None
+    failure_budget_scenario_bundle: object | None = None
+    reconciliation_scenario_bundle: object | None = None
+
+
 def load_summary_file(path: str | Path) -> dict[str, Any]:
     summary_path = Path(path)
     with summary_path.open("r", encoding="utf-8") as handle:
@@ -174,7 +187,12 @@ def load_summary_file(path: str | Path) -> dict[str, Any]:
     return payload
 
 
-def check_phase_contract(contract_id: str, summary: Mapping[str, Any]) -> ContractCheckResult:
+def check_phase_contract(
+    contract_id: str,
+    summary: Mapping[str, Any],
+    *,
+    repository_context: ContractRepositoryContext | None = None,
+) -> ContractCheckResult:
     contract = get_contract(contract_id)
     result = ContractCheckResult(contract_id=contract.contract_id)
     result.status = _contract_status(summary)
@@ -192,7 +210,15 @@ def check_phase_contract(contract_id: str, summary: Mapping[str, Any]) -> Contra
         if checker is None:
             result.fail("unknown_custom_check", f"Contract references unknown custom check {check_name!r}.")
             continue
-        checker(contract, summary, result)
+        if check_name == "scv2_fl1_p1_foundation":
+            _check_scv2_fl1_p1_foundation(
+                contract,
+                summary,
+                result,
+                repository_context=repository_context,
+            )
+        else:
+            checker(contract, summary, result)
 
     result.details.setdefault("contract", contract.explain())
     return result
@@ -599,7 +625,11 @@ def _path_has_private_content_hash_context(path: str) -> bool:
 
 def _path_has_secret_context(path: str) -> bool:
     segments = [segment for segment in re.split(r"[.\[\]]+", path) if segment and segment != "$" and not segment.isdigit()]
-    return any(SECRET_CONTEXT_KEY_RE.search(segment) for segment in segments)
+    return any(
+        SECRET_CONTEXT_KEY_RE.search(segment)
+        for index, segment in enumerate(segments)
+        if not (index == 0 and segment == "authorization")
+    )
 
 
 def _redacted_match_payload(code: str, raw: str) -> dict[str, str | int]:
@@ -13046,6 +13076,8 @@ def _check_scv2_fl1_p1_foundation(
     contract: PhaseContract,
     summary: Mapping[str, Any],
     result: ContractCheckResult,
+    *,
+    repository_context: ContractRepositoryContext | None = None,
 ) -> None:
     pipeline = _get(summary, "pipeline_contract", {})
     status = str(_get(summary, "pipeline_contract.status", ""))
@@ -13059,30 +13091,224 @@ def _check_scv2_fl1_p1_foundation(
         )
 
     blockers = list(_get(summary, "pipeline_contract.active_blockers", []) or [])
-    owner_accepted = status == "owner_accepted_for_merge"
+    implementation = _get(summary, "implementation_evidence", {})
+    governance_allowlist = {
+        "docs/current-handoff.md",
+        "docs/phase-contracts.md",
+        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md",
+        "docs/project-roadmap.md",
+        "docs/roadmap/current-mainline-roadmap.md",
+        "docs/state/current-phase.json",
+        "docs/test-workflow.md",
+    }
+    post_paths = (
+        implementation.get("post_implementation_changed_paths")
+        if isinstance(implementation, Mapping)
+        else None
+    )
+    implementation_payload = {
+        "schema_version": "violet.scv2-fl1-p1-implementation-evidence.v2",
+        "mode": implementation.get("mode"),
+        "approved_base_commit": implementation.get("approved_base_commit"),
+        "implementation_commit": implementation.get("implementation_commit"),
+        "implementation_tree": implementation.get("implementation_tree"),
+        "final_commit": implementation.get("final_commit"),
+        "final_tree": implementation.get("final_tree"),
+        "carry_forward_commit": implementation.get("carry_forward_commit"),
+        "carry_forward_tree": implementation.get("carry_forward_tree"),
+        "post_implementation_changed_paths": post_paths,
+    } if isinstance(implementation, Mapping) else {}
+    expected_implementation_digest = hashlib.sha256(
+        json.dumps(
+            implementation_payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    git_fields = (
+        "approved_base_commit",
+        "implementation_commit",
+        "implementation_tree",
+        "final_commit",
+        "final_tree",
+    )
+    implementation_valid = (
+        isinstance(implementation, Mapping)
+        and implementation.get("schema_version")
+        == "violet.scv2-fl1-p1-implementation-evidence.v2"
+        and implementation.get("mode") in {"pr_audit", "squash_carry_forward"}
+        and all(
+            isinstance(implementation.get(key), str)
+            and re.fullmatch(r"[0-9a-f]{40}", str(implementation.get(key)))
+            for key in git_fields
+        )
+        and isinstance(post_paths, list)
+        and post_paths == sorted(set(post_paths))
+        and all(isinstance(path, str) and path in governance_allowlist for path in post_paths)
+        and implementation.get("evidence_digest")
+        == expected_implementation_digest
+        and (
+            (
+                implementation.get("mode") == "pr_audit"
+                and implementation.get("carry_forward_commit") is None
+                and implementation.get("carry_forward_tree") is None
+            )
+            or (
+                implementation.get("mode") == "squash_carry_forward"
+                and isinstance(implementation.get("carry_forward_commit"), str)
+                and re.fullmatch(
+                    r"[0-9a-f]{40}",
+                    str(implementation.get("carry_forward_commit")),
+                )
+                is not None
+                and isinstance(implementation.get("carry_forward_tree"), str)
+                and implementation.get("carry_forward_tree")
+                == implementation.get("final_tree")
+            )
+        )
+        and (
+            implementation.get("final_commit")
+            != implementation.get("implementation_commit")
+            or (
+                not post_paths
+                and implementation.get("final_tree")
+                == implementation.get("implementation_tree")
+            )
+        )
+        and (
+            bool(post_paths)
+            or implementation.get("final_tree")
+            == implementation.get("implementation_tree")
+        )
+    )
+    if not implementation_valid:
+        result.fail(
+            "fl1_p1_implementation_evidence_invalid",
+            "Implementation evidence must bind immutable Git commit/tree identities and permit only exact governance-only carry-forward paths.",
+            path="implementation_evidence",
+        )
+
+    repository_evidence_valid = False
+    if implementation_valid and repository_context is not None:
+        try:
+            from scripts.fl1_p1_foundation import (
+                ImplementationEvidence,
+                verify_implementation_evidence_repository,
+            )
+
+            parsed_implementation = ImplementationEvidence.from_dict(implementation)
+            verify_implementation_evidence_repository(
+                repo_root=repository_context.repo_root,
+                evidence=parsed_implementation,
+            )
+            repository_evidence_valid = True
+        except Exception as exc:
+            result.fail(
+                "fl1_p1_repository_evidence_invalid",
+                "Implementation commits, trees, ancestry, changed paths, and squash carry-forward must match the trusted repository.",
+                path="implementation_evidence",
+                actual=type(exc).__name__,
+            )
+
+    owner_evidence = (
+        pipeline.get("owner_acceptance_evidence")
+        if isinstance(pipeline, Mapping)
+        else None
+    )
+    # Positive owner, merge, and route authority is intentionally unavailable
+    # until a future out-of-band trusted authority mechanism exists.  JSON
+    # supplied alongside the public summary is never authority.
+    owner_evidence_valid = False
+
+    def _authorization_valid(
+        evidence: object, *, kind: str, route_required: bool
+    ) -> bool:
+        del evidence, kind, route_required
+        return False
+
+    merge_evidence = (
+        pipeline.get("merge_authorization_evidence")
+        if isinstance(pipeline, Mapping)
+        else None
+    )
+    route_evidence = (
+        pipeline.get("next_phase_route_authorization_evidence")
+        if isinstance(pipeline, Mapping)
+        else None
+    )
+    merge_evidence_valid = _authorization_valid(
+        merge_evidence, kind="merge", route_required=False
+    )
+    route_evidence_valid = _authorization_valid(
+        route_evidence, kind="next_phase_route", route_required=True
+    )
+    if any(
+        evidence is not None
+        for evidence in (owner_evidence, merge_evidence, route_evidence)
+    ) or any(
+        _as_bool(_get(summary, path, False))
+        for path in (
+            "pipeline_contract.target_met",
+            "pipeline_contract.safe_to_merge",
+            "pipeline_contract.route_approved",
+            "authorization.owner_audit_completed",
+            "authorization.owner_acceptance_valid",
+            "authorization.merge_authorized",
+            "authorization.next_phase_route_authorized",
+        )
+    ):
+        result.fail(
+            "fl1_p1_automated_owner_authority_unavailable",
+            "Caller-supplied owner, merge, and route evidence cannot produce positive automated authority.",
+            path="pipeline_contract",
+        )
+
+    claimed_executed_stages = _get(summary, "executed_stages", [])
+    claimed_stage_evidence = _get(summary, "stage_evidence", [])
+    protected_required_stages_completed = (
+        isinstance(claimed_executed_stages, list)
+        and set(contract.required_stages).issubset(set(claimed_executed_stages))
+    ) or (
+        isinstance(claimed_stage_evidence, list)
+        and {
+            row.get("stage")
+            for row in claimed_stage_evidence
+            if isinstance(row, Mapping) and row.get("status") == "completed"
+        }
+        == set(contract.required_stages)
+    )
+    repository_proof_required = (
+        status != "blocked_fl1_p1_foundation"
+        or protected_required_stages_completed
+        or _as_bool(_get(summary, "pipeline_contract.target_met", False))
+        or _as_bool(_get(summary, "pipeline_contract.safe_to_merge", False))
+        or _as_bool(_get(summary, "pipeline_contract.route_approved", False))
+        or owner_evidence is not None
+        or merge_evidence is not None
+        or route_evidence is not None
+    )
+    if repository_proof_required and repository_context is None:
+        result.fail(
+            "fl1_p1_repository_context_required",
+            "Audit-ready, owner-accepted, merge-safe, and route claims require trusted repository context.",
+            path="implementation_evidence",
+        )
+
     common_claim_valid = (
         isinstance(pipeline, Mapping)
         and pipeline.get("contract_id") == contract.contract_id
+        and pipeline.get("owner_acceptance_identity") is None
+        and pipeline.get("accepted") is not True
     )
-    if owner_accepted:
-        claim_valid = (
-            common_claim_valid
-            and pipeline.get("target_met") is True
-            and pipeline.get("safe_to_merge") is True
-            and pipeline.get("route_approved") is True
-            and blockers == []
-            and isinstance(pipeline.get("owner_acceptance_identity"), str)
-            and bool(str(pipeline.get("owner_acceptance_identity")).strip())
-        )
-    else:
-        claim_valid = (
-            common_claim_valid
-            and pipeline.get("target_met") is False
-            and pipeline.get("safe_to_merge") is False
-            and pipeline.get("route_approved") is False
-            and bool(blockers)
-            and pipeline.get("owner_acceptance_identity") is None
-        )
+    claim_valid = (
+        common_claim_valid
+        and pipeline.get("target_met") is False
+        and pipeline.get("safe_to_merge") is False
+        and pipeline.get("route_approved") is False
+        and pipeline.get("automated_owner_authority_available") is False
+        and bool(blockers)
+        and owner_evidence is None
+        and merge_evidence is None
+        and route_evidence is None
+    )
     if not claim_valid:
         result.fail(
             "fl1_p1_claim_invalid",
@@ -13090,14 +13316,167 @@ def _check_scv2_fl1_p1_foundation(
             path="pipeline_contract",
         )
     if status == "implementation_ready_for_owner_audit" and blockers != [
-        "pending_owner_audit"
+        "pending_final_owner_audit"
     ]:
         result.fail(
             "fl1_p1_owner_audit_blocker_invalid",
-            "Audit-ready FL1-P1 evidence must stop only at pending_owner_audit.",
+            "Audit-ready FL1-P1 evidence must stop only at pending_final_owner_audit.",
             path="pipeline_contract.active_blockers",
-            expected=["pending_owner_audit"],
+            expected=["pending_final_owner_audit"],
             actual=blockers,
+        )
+
+    executed_stages = claimed_executed_stages
+    explicit_missing = _get(summary, "missing_required_stages", [])
+    stage_evidence = claimed_stage_evidence
+    failure_scenario_matrix_valid = False
+    reconciliation_scenario_matrix_valid = False
+    trusted_failure_scenario_matrix_valid = False
+    trusted_reconciliation_scenario_matrix_valid = False
+    if isinstance(stage_evidence, list):
+        failure_rows = [
+            row
+            for row in stage_evidence
+            if isinstance(row, Mapping)
+            and row.get("stage") == "failure_budget_and_manual_stop"
+        ]
+        reconciliation_rows = [
+            row
+            for row in stage_evidence
+            if isinstance(row, Mapping)
+            and row.get("stage") == "interrupted_mutation_reconciliation"
+        ]
+        if len(failure_rows) == 1:
+            try:
+                from scripts.fl1_p1_foundation import (
+                    validate_failure_budget_scenario_matrix,
+                )
+
+                validate_failure_budget_scenario_matrix(
+                    failure_rows[0].get("evidence", {})
+                )
+                failure_scenario_matrix_valid = True
+            except Exception:
+                failure_scenario_matrix_valid = False
+        if len(reconciliation_rows) == 1:
+            try:
+                from scripts.fl1_p1_foundation import (
+                    validate_reconciliation_scenario_matrix,
+                )
+
+                validate_reconciliation_scenario_matrix(
+                    reconciliation_rows[0].get("evidence", {})
+                )
+                reconciliation_scenario_matrix_valid = True
+            except Exception:
+                reconciliation_scenario_matrix_valid = False
+        if repository_context is not None and len(failure_rows) == 1:
+            try:
+                from scripts.fl1_p1_foundation import (
+                    build_failure_budget_scenario_matrix,
+                    load_failure_budget_scenario_bundle,
+                )
+
+                private_failure_bundle = (
+                    repository_context.failure_budget_scenario_bundle
+                )
+                if not isinstance(private_failure_bundle, Mapping):
+                    raise TypeError("failure scenario bundle missing")
+                trusted_failure_matrix = build_failure_budget_scenario_matrix(
+                    load_failure_budget_scenario_bundle(private_failure_bundle)
+                )
+                trusted_failure_scenario_matrix_valid = (
+                    trusted_failure_matrix == failure_rows[0].get("evidence")
+                )
+            except Exception:
+                trusted_failure_scenario_matrix_valid = False
+        if repository_context is not None and len(reconciliation_rows) == 1:
+            try:
+                from scripts.fl1_p1_foundation import (
+                    build_reconciliation_scenario_matrix,
+                    load_reconciliation_scenario_bundle,
+                )
+
+                private_reconciliation_bundle = (
+                    repository_context.reconciliation_scenario_bundle
+                )
+                if not isinstance(private_reconciliation_bundle, Mapping):
+                    raise TypeError("reconciliation scenario bundle missing")
+                trusted_reconciliation_matrix = (
+                    build_reconciliation_scenario_matrix(
+                        load_reconciliation_scenario_bundle(
+                            private_reconciliation_bundle
+                        )
+                    )
+                )
+                trusted_reconciliation_scenario_matrix_valid = (
+                    trusted_reconciliation_matrix
+                    == reconciliation_rows[0].get("evidence")
+                )
+            except Exception:
+                trusted_reconciliation_scenario_matrix_valid = False
+    if repository_proof_required and not trusted_failure_scenario_matrix_valid:
+        result.fail(
+            "fl1_p1_failure_budget_scenario_context_required",
+            "Audit-ready FL1-P1 evidence requires the private before/after failure-budget scenario bundle that rebuilds the public matrix.",
+            path="stage_evidence.failure_budget_and_manual_stop",
+        )
+    if repository_proof_required and not trusted_reconciliation_scenario_matrix_valid:
+        result.fail(
+            "fl1_p1_reconciliation_scenario_context_required",
+            "Audit-ready FL1-P1 evidence requires the private interrupted/restart/reconciliation scenario bundle that rebuilds the public matrix.",
+            path="stage_evidence.interrupted_mutation_reconciliation",
+        )
+    stage_rows_valid = (
+        isinstance(stage_evidence, list)
+        and all(isinstance(row, Mapping) for row in stage_evidence)
+        and [row.get("stage") for row in stage_evidence]
+        == list(contract.required_stages)
+        and all(
+            row.get("status") in {"completed", "failed"}
+            and isinstance(row.get("evidence"), Mapping)
+            and isinstance(row.get("evidence_digest"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", str(row.get("evidence_digest")))
+            and row.get("evidence_digest")
+            == hashlib.sha256(
+                json.dumps(
+                    {"stage": row.get("stage"), "evidence": row.get("evidence")},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            for row in stage_evidence
+        )
+        and failure_scenario_matrix_valid
+        and reconciliation_scenario_matrix_valid
+        and (
+            not repository_proof_required
+            or (
+                trusted_failure_scenario_matrix_valid
+                and trusted_reconciliation_scenario_matrix_valid
+            )
+        )
+    )
+    derived_executed = (
+        [row["stage"] for row in stage_evidence if row.get("status") == "completed"]
+        if stage_rows_valid
+        else []
+    )
+    derived_missing = [
+        stage for stage in contract.required_stages if stage not in derived_executed
+    ]
+    if not (
+        stage_rows_valid
+        and executed_stages == derived_executed
+        and explicit_missing == derived_missing
+        and not _missing_required_stages(contract, summary)
+    ):
+        result.fail(
+            "fl1_p1_required_stage_evidence_invalid",
+            "Every registered FL1-P1 stage must have exact completed evidence; missing, failed, unknown, or spelling-drifted stages block the contract.",
+            path="stage_evidence",
+            expected=list(contract.required_stages),
+            actual=executed_stages,
         )
 
     authorization = _get(summary, "authorization", {})
@@ -13113,6 +13492,13 @@ def _check_scv2_fl1_p1_foundation(
     )
     if not isinstance(authorization, Mapping) or any(
         authorization.get(key) is not False for key in forbidden_authorizations
+    ) or not (
+        authorization.get("p1_r1_implementation_authorized") is True
+        and authorization.get("owner_audit_completed") is owner_evidence_valid
+        and authorization.get("owner_acceptance_valid") is owner_evidence_valid
+        and authorization.get("merge_authorized") is merge_evidence_valid
+        and authorization.get("next_phase_route_authorized")
+        is route_evidence_valid
     ):
         result.fail(
             "fl1_p1_authorization_boundary_invalid",
@@ -13127,9 +13513,10 @@ def _check_scv2_fl1_p1_foundation(
         "python_identity_match",
         "database_identity_explicit",
         "database_path_new_and_contained",
-        "source_root_explicit_and_contained",
+        "synthetic_source_scope_explicit_and_contained",
         "storage_root_explicit_and_contained",
         "source_storage_non_overlapping",
+        "database_source_storage_pairwise_disjoint",
         "unknown_identity_rejected",
         "production_identity_rejected",
         "synthetic_only",
@@ -13150,6 +13537,61 @@ def _check_scv2_fl1_p1_foundation(
             "FL1-P1 requires explicit, contained, synthetic Dev/Test identities with no fallback or existing database access.",
             path="environment_isolation",
         )
+    trusted_python_identity_valid = False
+    if repository_context is not None and repository_context.expected_python is not None:
+        try:
+            from scripts.fl1_p1_foundation import derive_python_identity
+
+            trusted_python = derive_python_identity(
+                repository_context.expected_python
+            )
+            trusted_python_identity_valid = (
+                trusted_python["match"] is True
+                and isolation.get("python_identity_match") is True
+                and isolation.get("python_executable_label")
+                == trusted_python["executable_label"]
+                and isolation.get("python_identity_fingerprint")
+                == trusted_python["identity_fingerprint"]
+            )
+        except Exception:
+            trusted_python_identity_valid = False
+    if repository_proof_required and not trusted_python_identity_valid:
+        result.fail(
+            "fl1_p1_python_identity_context_required",
+            "Audit-ready evidence requires an approved expected interpreter checked against the current process sys.executable.",
+            path="environment_isolation",
+        )
+
+    execution_scope = _get(summary, "execution_scope", {})
+    execution_scope_valid = (
+        isinstance(execution_scope, Mapping)
+        and set(execution_scope)
+        == {
+            "schema_version",
+            "scope",
+            "generic_mutate_callback",
+            "synthetic_invocation_proof_scope",
+            "real_gateway_instrumentation_complete",
+            "phase_wide_zero_activity_proven",
+            "comprehensive_runtime_coverage_claimed",
+        }
+        and execution_scope.get("schema_version")
+        == "violet.scv2-fl1-p1-execution-scope.v1"
+        and execution_scope.get("scope") == "synthetic_fixture_only"
+        and execution_scope.get("generic_mutate_callback")
+        == "synthetic_harness_only"
+        and execution_scope.get("synthetic_invocation_proof_scope")
+        == "item_attempt_attribution_only"
+        and execution_scope.get("real_gateway_instrumentation_complete") is False
+        and execution_scope.get("phase_wide_zero_activity_proven") is False
+        and execution_scope.get("comprehensive_runtime_coverage_claimed") is False
+    )
+    if not execution_scope_valid:
+        result.fail(
+            "fl1_p1_execution_scope_invalid",
+            "Generic callbacks prove only synthetic harness attribution, never phase-wide real-operation absence.",
+            path="execution_scope",
+        )
 
     mutation = _get(summary, "mutation_policy", {})
     if not isinstance(mutation, Mapping) or not (
@@ -13169,29 +13611,67 @@ def _check_scv2_fl1_p1_foundation(
     ledger = _get(summary, "ledger", {})
     ledger_valid = (
         isinstance(ledger, Mapping)
-        and ledger.get("schema_version") == "violet.scv2-fl1-p1-ledger.v1"
-        and ledger.get("stable_item_identity") == "violet.scv2-fl1-item.v1"
-        and ledger.get("logical_target_identity")
+        and set(ledger)
+        == {
+            "schema_version",
+            "ledger_schema_version",
+            "stable_item_identity_version",
+            "logical_target_identity_version",
+            "run_identity_digest",
+            "manifest_fingerprint",
+            "private_execution_fingerprint",
+            "checkpoint",
+            "limits",
+            "denominator",
+            "item_state_counts",
+            "terminal_reason_counts",
+            "reconciliation_status_counts",
+            "accounting",
+            "operation_counts",
+            "operation_evidence",
+        }
+        and ledger.get("schema_version")
+        == "violet.scv2-fl1-p1-public-ledger-projection.v1"
+        and ledger.get("ledger_schema_version")
+        == "violet.scv2-fl1-p1-ledger.v2"
+        and ledger.get("stable_item_identity_version")
+        == "violet.scv2-fl1-item.v1"
+        and ledger.get("logical_target_identity_version")
         == "violet.scv2-fl1-logical-target.v1"
-        and _as_int(ledger.get("manifest_entry_count"), -1) >= 1
-        and _as_int(ledger.get("source_item_count"), -1) >= 1
-        and _as_int(ledger.get("unique_item_count"), -1) >= 1
-        and _as_int(ledger.get("duplicate_entry_count"), -1) >= 0
-        and _as_int(ledger.get("manifest_entry_count"), -1)
-        == _as_int(ledger.get("unique_item_count"), -2)
-        + _as_int(ledger.get("duplicate_entry_count"), -2)
-        and _as_int(ledger.get("source_item_count"), -1)
-        == _as_int(ledger.get("unique_item_count"), -2)
-        + _as_int(ledger.get("content_duplicate_item_count"), -2)
-        and _as_int(ledger.get("manifest_entry_count"), -1)
-        == _as_int(ledger.get("source_item_count"), -2)
-        + _as_int(ledger.get("repeated_manifest_entry_count"), -2)
-        and _as_int(ledger.get("duplicate_second_mutation_count"), -1) == 0
-        and ledger.get("attempt_budget_persisted") is True
-        and ledger.get("checkpoint_persisted") is True
-        and ledger.get("manual_stop_persisted") is True
-        and ledger.get("interrupted_mutation_reconciliation_required") is True
-        and ledger.get("generation_conflict_rejected") is True
+        and isinstance(ledger.get("run_identity_digest"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", str(ledger.get("run_identity_digest")))
+        is not None
+        and isinstance(ledger.get("manifest_fingerprint"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", str(ledger.get("manifest_fingerprint")))
+        is not None
+        and isinstance(ledger.get("private_execution_fingerprint"), str)
+        and re.fullmatch(
+            r"[0-9a-f]{64}", str(ledger.get("private_execution_fingerprint"))
+        )
+        is not None
+        and isinstance(ledger.get("checkpoint"), Mapping)
+        and isinstance(ledger.get("limits"), Mapping)
+        and isinstance(ledger.get("denominator"), Mapping)
+        and isinstance(ledger.get("item_state_counts"), Mapping)
+        and isinstance(ledger.get("terminal_reason_counts"), Mapping)
+        and isinstance(ledger.get("reconciliation_status_counts"), Mapping)
+        and isinstance(ledger.get("accounting"), Mapping)
+        and _as_int(
+            ledger.get("accounting", {}).get(
+                "reconciliation_required_count"
+            ),
+            -1,
+        )
+        == 0
+        and _as_int(
+            ledger.get("accounting", {}).get(
+                "duplicate_second_mutation_count"
+            ),
+            -1,
+        )
+        == 0
+        and isinstance(ledger.get("operation_counts"), Mapping)
+        and isinstance(ledger.get("operation_evidence"), Mapping)
     )
     if not ledger_valid:
         result.fail(
@@ -13201,25 +13681,11 @@ def _check_scv2_fl1_p1_foundation(
         )
 
     validation = _get(summary, "validation", {})
-    validation_fields = (
-        "focused_tests_passed",
-        "full_non_e2e_passed",
-        "production_identity_rejection_passed",
-        "unknown_identity_rejection_passed",
-        "containment_rejection_passed",
-        "mutation_default_deny_passed",
-        "duplicate_idempotency_passed",
-        "content_fingerprint_deduplication_passed",
-        "restart_recovery_passed",
-        "interrupted_mutation_reconciliation_passed",
-        "failure_budget_stop_passed",
-        "per_item_and_global_budget_separation_passed",
-        "concurrent_generation_guard_passed",
-        "manual_stop_passed",
-        "synthetic_isolation_passed",
-    )
-    if not isinstance(validation, Mapping) or any(
-        validation.get(key) is not True for key in validation_fields
+    if not isinstance(validation, Mapping) or not (
+        validation.get("focused_tests_passed") is True
+        and validation.get("full_non_e2e_passed") is True
+        and validation.get("browser_validation")
+        == "not_applicable_no_ui_or_runtime_server_change"
     ):
         result.fail(
             "fl1_p1_validation_incomplete",
@@ -13227,7 +13693,6 @@ def _check_scv2_fl1_p1_foundation(
             path="validation",
         )
 
-    operations = _get(summary, "operation_counts", {})
     required_zero_operations = (
         "production_activity",
         "real_source_inventory_activity",
@@ -13239,8 +13704,213 @@ def _check_scv2_fl1_p1_foundation(
         "stable_replay_activity",
         "user_data_cleanup_delete_activity",
     )
-    if not isinstance(operations, Mapping) or any(
-        _as_int(operations.get(key), -1) != 0 for key in required_zero_operations
+    allowed_event_kinds = {"synthetic_mutation_invocation", *required_zero_operations}
+    operation_evidence = _get(summary, "operation_evidence", {})
+    operations = _get(summary, "operation_counts", {})
+    raw_events = (
+        operation_evidence.get("events")
+        if isinstance(operation_evidence, Mapping)
+        else None
+    )
+    events_valid = (
+        isinstance(raw_events, list)
+        and all(isinstance(event, Mapping) for event in raw_events)
+        and [event.get("sequence") for event in raw_events]
+        == list(range(1, len(raw_events) + 1))
+        and all(
+            event.get("kind") in allowed_event_kinds
+            and (
+                (
+                    event.get("kind") == "synthetic_mutation_invocation"
+                    and isinstance(event.get("item_identity_digest"), str)
+                    and re.fullmatch(
+                        r"[0-9a-f]{64}", str(event.get("item_identity_digest"))
+                    )
+                    is not None
+                )
+                or (
+                    event.get("kind") != "synthetic_mutation_invocation"
+                    and event.get("item_identity_digest") is None
+                )
+            )
+            for event in raw_events
+        )
+    )
+    derived_counts = (
+        {
+            key: sum(event.get("kind") == key for event in raw_events)
+            for key in required_zero_operations
+        }
+        if events_valid
+        else {}
+    )
+    evidence_payload = {
+        "schema_version": "violet.scv2-fl1-p1-operation-evidence.v3",
+        "events": raw_events if events_valid else [],
+    }
+    expected_operation_fingerprint = hashlib.sha256(
+        json.dumps(
+            evidence_payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    attribution = (
+        operation_evidence.get("mutation_attribution")
+        if isinstance(operation_evidence, Mapping)
+        else None
+    )
+    attribution_rows = (
+        attribution.get("rows") if isinstance(attribution, Mapping) else None
+    )
+    public_invocations_by_token: dict[str, int] = {}
+    if events_valid:
+        for event in raw_events:
+            if event.get("kind") == "synthetic_mutation_invocation":
+                token = str(event["item_identity_digest"])
+                public_invocations_by_token[token] = (
+                    public_invocations_by_token.get(token, 0) + 1
+                )
+    attribution_payload = {
+        "schema_version": "violet.scv2-fl1-p1-mutation-attribution.v2",
+        "private_execution_fingerprint": (
+            attribution.get("private_execution_fingerprint")
+            if isinstance(attribution, Mapping)
+            else None
+        ),
+        "rows": attribution_rows,
+    }
+    attribution_valid = (
+        isinstance(attribution, Mapping)
+        and attribution.get("schema_version")
+        == "violet.scv2-fl1-p1-mutation-attribution.v2"
+        and isinstance(attribution_rows, list)
+        and bool(attribution_rows)
+        and all(isinstance(row, Mapping) for row in attribution_rows)
+        and len(
+            {
+                row.get("item_identity_digest")
+                for row in attribution_rows
+                if isinstance(row, Mapping)
+            }
+        )
+        == len(attribution_rows)
+        and all(
+            isinstance(row.get("item_identity_digest"), str)
+            and re.fullmatch(
+                r"[0-9a-f]{64}", str(row.get("item_identity_digest"))
+            )
+            is not None
+            and isinstance(row.get("attempt_count"), int)
+            and not isinstance(row.get("attempt_count"), bool)
+            and isinstance(row.get("invocation_count"), int)
+            and not isinstance(row.get("invocation_count"), bool)
+            and row.get("attempt_count") >= 0
+            and row.get("attempt_count") == row.get("invocation_count")
+            and public_invocations_by_token.get(
+                str(row.get("item_identity_digest")), 0
+            )
+            == row.get("invocation_count")
+            for row in attribution_rows
+        )
+        and set(public_invocations_by_token).issubset(
+            {str(row.get("item_identity_digest")) for row in attribution_rows}
+        )
+        and attribution.get("item_count") == len(attribution_rows)
+        and attribution.get("invocation_count")
+        == sum(int(row.get("invocation_count")) for row in attribution_rows)
+        and isinstance(attribution.get("private_execution_fingerprint"), str)
+        and re.fullmatch(
+            r"[0-9a-f]{64}",
+            str(attribution.get("private_execution_fingerprint")),
+        )
+        is not None
+        and attribution.get("fingerprint")
+        == hashlib.sha256(
+            json.dumps(
+                attribution_payload, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    operation_evidence_valid = (
+        isinstance(operation_evidence, Mapping)
+        and operation_evidence.get("schema_version")
+        == "violet.scv2-fl1-p1-operation-evidence.v3"
+        and events_valid
+        and operation_evidence.get("event_count") == len(raw_events or [])
+        and operation_evidence.get("fingerprint")
+        == expected_operation_fingerprint
+        and attribution_valid
+        and operation_evidence.get("private_execution_fingerprint")
+        == attribution.get("private_execution_fingerprint")
+        and isinstance(operation_evidence.get("run_identity_digest"), str)
+        and re.fullmatch(
+            r"[0-9a-f]{64}",
+            str(operation_evidence.get("run_identity_digest")),
+        )
+        is not None
+        and _as_int(operation_evidence.get("ledger_generation"), -1) >= 1
+        and isinstance(operations, Mapping)
+        and set(operations) == set(required_zero_operations)
+        and all(
+            isinstance(operations.get(key), int)
+            and not isinstance(operations.get(key), bool)
+            and operations.get(key) == derived_counts[key]
+            for key in required_zero_operations
+        )
+        and isinstance(ledger, Mapping)
+        and ledger.get("operation_evidence") == operation_evidence
+        and ledger.get("operation_counts") == operations
+    )
+
+    trusted_runtime_ledger_valid = False
+    if repository_context is not None and repository_context.runtime_ledger is not None:
+        try:
+            from scripts.fl1_p1_foundation import (
+                RunLedger,
+                derive_public_ledger_projection,
+                derive_public_operation_evidence,
+            )
+
+            raw_runtime_ledger = repository_context.runtime_ledger
+            if isinstance(raw_runtime_ledger, RunLedger):
+                trusted_ledger = raw_runtime_ledger
+                trusted_ledger.validate()
+            elif isinstance(raw_runtime_ledger, Mapping):
+                trusted_ledger = RunLedger.from_dict(raw_runtime_ledger)
+            else:
+                raise TypeError("runtime ledger context must be RunLedger or mapping")
+            trusted_public_evidence = derive_public_operation_evidence(
+                trusted_ledger
+            )
+            trusted_ledger_projection = derive_public_ledger_projection(
+                trusted_ledger
+            )
+            trusted_runtime_ledger_valid = (
+                trusted_public_evidence == operation_evidence
+                and trusted_ledger.operation_counts == operations
+                and trusted_ledger_projection == ledger
+            )
+        except Exception:
+            trusted_runtime_ledger_valid = False
+    if repository_proof_required and not trusted_runtime_ledger_valid:
+        result.fail(
+            "fl1_p1_runtime_ledger_context_required",
+            "Audit-ready, owner-accepted, merge-safe, and route claims require the validated private RunLedger that produced the public attribution proof.",
+            path="operation_evidence",
+        )
+    if repository_context is not None and repository_context.runtime_ledger is not None and not trusted_runtime_ledger_valid:
+        result.fail(
+            "fl1_p1_runtime_ledger_evidence_mismatch",
+            "The complete canonical public ledger projection does not match the trusted private RunLedger.",
+            path="ledger",
+        )
+    if not operation_evidence_valid:
+        result.fail(
+            "fl1_p1_operation_evidence_invalid",
+            "Operation counts must be recomputed from the complete persisted event ledger; missing, damaged, or inconsistent evidence fails closed.",
+            path="operation_evidence",
+        )
+    if not operation_evidence_valid or any(
+        derived_counts.get(key, -1) != 0 for key in required_zero_operations
     ):
         result.fail(
             "fl1_p1_forbidden_activity",
@@ -13249,14 +13919,38 @@ def _check_scv2_fl1_p1_foundation(
         )
 
     redaction = _get(summary, "public_redaction", {})
-    if not isinstance(redaction, Mapping) or not (
-        redaction.get("passed") is True
-        and redaction.get("private_paths_emitted") is False
-    ):
+    redaction_findings = scan_public_payload(summary)
+    derived_private_path_finding = any(
+        finding.get("code")
+        in {
+            "windows_local_path",
+            "unc_local_path",
+            "file_uri",
+            "posix_private_path",
+        }
+        for finding in redaction_findings
+    )
+    result.details["fl1_p1_public_redaction_finding_count"] = len(
+        redaction_findings
+    )
+    declared_redaction_valid = (
+        isinstance(redaction, Mapping)
+        and redaction.get("passed") is (not redaction_findings)
+        and redaction.get("private_paths_emitted")
+        is derived_private_path_finding
+        and redaction.get("finding_count") == len(redaction_findings)
+    )
+    if not declared_redaction_valid:
         result.fail(
             "fl1_p1_public_redaction_invalid",
-            "FL1-P1 public evidence must pass redaction and emit no private path values.",
+            "FL1-P1 public redaction status must be derived from a recursive scan of the complete public summary.",
             path="public_redaction",
+        )
+    for finding in redaction_findings:
+        result.fail(
+            f"fl1_p1_public_redaction_{finding['code']}",
+            "FL1-P1 public summary failed recursive redaction scanning.",
+            path=str(finding["path"]),
         )
 
 

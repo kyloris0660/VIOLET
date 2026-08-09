@@ -1,22 +1,42 @@
 {
   "schema_version": "violet.current-phase.v2",
-  "phase_id": "SCV2-FL1-P1",
-  "phase_title": "Dev/Test Isolation, Contract, And Ledger Foundations",
+  "phase_id": "SCV2-FL1-P1-R1",
+  "phase_title": "Late Review Safety Remediation And Authority Correction",
   "repository": "kyloris0660/VIOLET",
-  "branch": "codex/scv2-fl1-p1-isolation-safety-ledger",
-  "pr_number": 141,
-  "draft": false,
-  "accepted_mainline_base": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
-  "implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
-  "current_status": "fl1_p1_owner_accepted_for_merge",
-  "target_met": true,
-  "safe_to_merge": true,
-  "route_approved": true,
-  "route_scope": "FL1-I1 read-only inventory planning and synthetic implementation only",
+  "branch": "codex/scv2-fl1-p1-r1-late-review-remediation",
+  "pr_number": 143,
+  "draft": true,
+  "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
+  "implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
+  "current_status": "fl1_p1_r1_implementation_ready_for_owner_audit",
+  "target_met": false,
+  "safe_to_merge": false,
+  "route_approved": false,
+  "route_scope": "SCV2-FL1-P1-R1 late-review remediation only; FL1-I1 remains an unapproved future candidate",
   "planning_approved": true,
   "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
-  "manual_acceptance_status": "owner_accepted_fl1_p1_foundation",
-  "next_phase_started": true,
+  "manual_acceptance_status": "pending_final_owner_audit",
+  "next_phase_started": false,
+  "upstream_pr_state": {
+    "pr_number": 141,
+    "physically_merged": true,
+    "merge_commit": "36100bfa0317387e064cd87b2e753eca3a201b5e",
+    "final_head": "495a6506b25bb27747ebc27e341a06de4860aaa4",
+    "late_review_remediation_required": true,
+    "late_review_thread_count": 8,
+    "late_review_threads_resolved": false
+  },
+  "next_phase_authorization": {
+    "phase_id": "SCV2-FL1-I1",
+    "route_approved": false,
+    "next_phase_started": false,
+    "implementation_started": false,
+    "real_inventory_started": false,
+    "required_preconditions": [
+      "P1-R1 owner audit",
+      "separate owner FL1-I1 scope decision"
+    ]
+  },
   "prior_phase_acceptance": {
     "phase_id": "SCV2-SV1B",
     "merge_commit": "33af4111e1595dac3ece0ac50002556d466f0138",
@@ -36,10 +56,15 @@
   "planning_boundary": {
     "planning_only": false,
     "implementation_authorized": true,
-    "implementation_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
-    "completed_implementation_scope": "FL1-P1 isolation/safety/contract/ledger implementation only",
+    "implementation_scope": "SCV2-FL1-P1-R1 late-review safety remediation and regression tests only",
+    "completed_implementation_scope": "SCV2-FL1-P1-R1 late-review safety remediation and regression tests only",
     "implementation_completed": true,
-    "owner_audit_pending": false,
+    "owner_audit_pending": true,
+    "owner_acceptance_valid": false,
+    "merge_authorized": false,
+    "fl1_i1_route_authorized": false,
+    "fl1_i1_implementation_started": false,
+    "real_inventory_started": false,
     "data_execution_authorized": false,
     "production_authorized": false,
     "database_access_authorized": false,
@@ -77,19 +102,20 @@
       "fingerprint": "db90457d51a39b5dc930afc2a92a6ef3139a2760"
     },
     {
-      "id": "fl1_external_and_data_operation_preflight",
-      "result": "zero_forbidden_operations_fl1_p1_synthetic_only"
+      "id": "fl1_p1_pr141_physical_merge",
+      "result": "merged_with_late_review_remediation_required",
+      "fingerprint": "36100bfa0317387e064cd87b2e753eca3a201b5e"
     },
     {
-      "id": "fl1_p1_isolation_safety_contract_ledger_implementation",
-      "result": "owner_accepted_for_merge_after_bounded_ledger_remediation",
-      "fingerprint": "3a7b20608724e5f469548183df0830b09d5ea7be"
+      "id": "fl1_p1_r1_late_review_remediation_implementation",
+      "result": "final_bounded_closure_implementation_complete_pending_final_owner_audit",
+      "fingerprint": "a631160f58e8d5d61998863b5b4d60a549e88151"
     }
   ],
   "active_blocker": {
-    "code": "none_fl1_p1_owner_accepted_for_merge",
-    "scope": "SCV2-FL1-P1 closeout on PR #141 and the separate FL1-I1 implementation route",
-    "resolution": "The owner audit accepted the P1 safety foundation after bounded remediation of content-level deduplication, per-item versus global failure budgets, and interrupted-mutation reconciliation. PR #141 may become Ready and squash-merge after live review gates pass. After merge, only a separate FL1-I1 planning and synthetic implementation PR may start; real source inventory and all data or external execution remain unauthorized."
+    "code": "pending_final_owner_audit",
+    "scope": "SCV2-FL1-P1-R1 Draft PR #143 after its final owner-authorized bounded implementation repair round",
+    "resolution": "Project owner performs a final read-only audit and adjudicates Ready, merge, and any future FL1-I1 route. No further same-PR implementation remediation is authorized; final-review findings are owner inputs only."
   },
   "owner_decisions": [
     {
@@ -105,13 +131,25 @@
       "decision": "Approve the SCV2-FL1 plan at db90457d51a39b5dc930afc2a92a6ef3139a2760, authorize minimal PR #140 closeout and squash merge, then authorize only a separate FL1-P1 isolation/safety/contract/ledger implementation PR. Preserve the SV1B 37 PASS and B01/B04/B08 owner-waived decisions without extending the waiver to FL1."
     },
     {
-      "id": "owner_accepted_fl1_p1_after_bounded_audit_remediation_20260808",
-      "decision": "Audit and accept the FL1-P1 foundation at 3a7b20608724e5f469548183df0830b09d5ea7be after the three ledger-semantic blockers were corrected; authorize PR #141 Ready transition and squash merge after live gates pass, then authorize only a separate FL1-I1 read-only inventory planning and synthetic implementation PR. Real source scanning still requires an exact later source-scope authorization."
+      "id": "owner_authorized_scv2_fl1_p1_r1_late_review_remediation_20260808",
+      "decision": "Authorize only SCV2-FL1-P1-R1 implementation, tests, governance correction, a new Draft PR, superseding PR #142 after the new Draft is validated, and one final-head Codex review request. Owner acceptance, merge, Ready transition, FL1-I1 implementation, and real inventory remain unauthorized."
+    },
+    {
+      "id": "owner_authorized_scv2_fl1_p1_r1_pr143_review_fix_round_20260808",
+      "decision": "Authorize only the five exact unresolved PR #143 review findings on the existing Draft branch, a new immutable implementation evidence boundary, validation, push to the same Draft PR, and one final-head Codex review request. New PR creation, PR #142 mutation, owner acceptance, merge, Ready transition, FL1-I1, and real data operations remain unauthorized."
+    },
+    {
+      "id": "owner_authorized_scv2_fl1_p1_r1_pr143_second_review_fix_round_20260808",
+      "decision": "Authorize only the four valid findings on PR #143 review 4888894624 at 389ba79cdf9cdd06f81fba07889f21245fd44072, including the public-summary redaction P1 in the review submission body, on the existing Draft branch with a new immutable implementation evidence boundary, validation, push, and one final-head Codex review request. New PR creation, PR #142 mutation, owner acceptance, merge, Ready transition, FL1-I1, and real data operations remain unauthorized."
+    },
+    {
+      "id": "owner_authorized_scv2_fl1_p1_r1_final_bounded_closure_20260809",
+      "decision": "Authorize the final bounded PR #143 implementation repair round for H1-H4 and the specified synthetic-callback and positive-authority tightening. After this round no further same-PR implementation remediation is authorized; any final-review finding requires owner adjudication, not autonomous repair. POSIX directory durability, real-operation gateway instrumentation, and automated owner authority remain deferred use-before gates."
     }
   ],
   "authorized_operations": [
-    "tracked owner-acceptance closeout, Ready transition, and squash merge of PR #141 after all live review and merge gates pass",
-    "after the confirmed PR #141 merge, create a separate FL1-I1 Draft PR for read-only inventory planning and synthetic implementation only",
+    "implement and validate only the final bounded H1-H4 evidence trust repairs plus synthetic-callback and positive-authority tightening on existing Draft PR #143 while preserving all prior remediations",
+    "update only the existing SCV2-FL1-P1-R1 Draft branch and request one review on its stable final HEAD",
     "local focused and full non-E2E validation using only synthetic, in-memory, or newly created temporary fixtures"
   ],
   "forbidden_operations": [
@@ -122,28 +160,44 @@
     "full-library import, classification, AI tagging, localization, graph/search execution, or background worker start",
     "Entity, EntityAlias, confirmed assignment, user truth, source truth, or provider-derived media_tags write",
     "Stable Replay or authoritative evidence import, replay, or reuse",
-    "real source inventory execution, direct main push, force-push, or any FL1 stage beyond a separate FL1-I1 planning and synthetic implementation PR"
+    "FL1-I1 scanner, implementation, contract, tests, or runtime execution",
+    "real source inventory execution, owner acceptance, Ready transition, merge, direct main push, force-push, or any later FL1 stage",
+    "new PR creation or any modification, reopening, merge, branch deletion, or commit deletion for PR #142"
   ],
   "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
   "protected_evidence": {
     "accepted_mainline_merge_commit": "33af4111e1595dac3ece0ac50002556d466f0138",
     "sv1b_final_composite_acceptance_fingerprint": "091759939ebba4c72dbb91809827904f1a736ce60dac2f1defecd4851c1e60ca",
     "sv1b_owner_waiver_identity": "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807",
-    "production_consumed_or_modified_during_fl1_p1": false,
     "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
     "fl1_plan_merge_commit": "9ce1128be643c0eaa998ccdff8890d76196ce7db",
-    "fl1_p1_implementation_evidence_head": "3a7b20608724e5f469548183df0830b09d5ea7be",
-    "fl1_p1_owner_acceptance_identity": "owner_accepted_fl1_p1_after_bounded_audit_remediation_20260808",
-    "database_operation_count": 0,
-    "existing_database_read_operation_count": 0,
-    "existing_database_write_operation_count": 0,
-    "real_source_inventory_operation_count": 0,
-    "provider_operation_count": 0,
-    "llm_operation_count": 0,
-    "media_or_thumbnail_operation_count": 0,
-    "stable_replay_operation_count": 0
+    "accepted_mainline_base": "36100bfa0317387e064cd87b2e753eca3a201b5e",
+    "fl1_p1_r1_implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
+    "phase_non_action_attestation": {
+      "schema_version": "violet.scv2-fl1-p1-r1-phase-non-action-attestation.v1",
+      "attestation_kind": "phase_operator_non_action_attestation",
+      "phase_id": "SCV2-FL1-P1-R1",
+      "pr_number": 143,
+      "implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
+      "asserted_non_actions": [
+        "production_activity",
+        "real_source_inventory_activity",
+        "existing_database_read_activity",
+        "existing_database_write_activity",
+        "provider_activity",
+        "llm_activity",
+        "media_activity",
+        "stable_replay_activity",
+        "user_data_cleanup_delete_activity"
+      ],
+      "runtime_operation_evidence_source": "instrumented_run_ledger_only",
+      "executable_runtime_evidence": false,
+      "grants_owner_acceptance": false,
+      "grants_safe_to_merge": false,
+      "grants_route_authorization": false
+    }
   },
-  "next_required_checkpoint": "squash_merge_pr_141_then_create_separate_fl1_i1_planning_and_synthetic_implementation_branch",
+  "next_required_checkpoint": "project_owner_final_read_only_audit_of_pr143",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -180,15 +234,14 @@
   ],
   "deferred_debt": [
     {
-      "id": "PROVIDER_GATE",
-      "owner": "future provider-route owner",
-      "reason": "Deferred use-before gate; it is not a PR #140 blocker and grants no current remediation or provider authority.",
-      "due_before": "any future provider request",
+      "id": "REAL_OPERATION_GATEWAY_GATE",
+      "owner": "future exact operation-stage owner",
+      "reason": "The current generic callback is a synthetic fixture harness only and cannot prove phase-wide absence of real operations.",
+      "due_before": "any real source listing/read/hash, database access, provider/LLM/media call, or use of RunLedger as comprehensive real-operation proof",
       "requirements": [
-        "inherit cumulative attempt budgets across restarts and passes",
-        "use one truthful real-request counting semantic",
-        "never allow partial JSON to mask non-zero exit, authentication, or transport failure",
-        "recompute an old ledger read-only if required"
+        "instrument every relevant real-operation gateway before side effects",
+        "persist write-ahead operation evidence bound to the exact run and HEAD",
+        "do not treat synthetic callback attribution as process-wide or phase-wide proof"
       ]
     },
     {
@@ -203,15 +256,27 @@
       ]
     },
     {
-      "id": "ACCEPTANCE_TOOLING_GATE",
-      "owner": "future acceptance-tooling owner",
-      "reason": "Deferred use-before gate; it is not a PR #140 blocker and does not invalidate the current owner decision.",
-      "due_before": "reuse of acceptance, composite, carry-forward, or export tooling as automated merge authority",
+      "id": "OWNER_AUTHORITY_GATE",
+      "owner": "future automated-acceptance owner",
+      "reason": "Current caller-supplied acceptance and authorization JSON is not trusted positive authority.",
+      "due_before": "any automated pipeline treats owner acceptance, merge authorization, or route approval as machine-verifiable positive authority",
       "requirements": [
-        "harden or retire the one-off tools according to the actual reuse need",
-        "preserve the current owner decision of 37 PASS and 3 owner-waived cases"
+        "establish a genuinely out-of-band trusted owner authority context",
+        "bind identity and decision scope to immutable reviewed Git evidence",
+        "keep direct human GitHub decisions distinct from automated contract claims"
+      ]
+    },
+    {
+      "id": "POSIX_LEDGER_DURABILITY_GATE",
+      "owner": "future non-synthetic POSIX execution owner",
+      "reason": "Current synthetic foundation proves process-level interruption behavior, not host power-loss durability on POSIX.",
+      "due_before": "any real POSIX mutation, power-loss durability claim, or crash-safe ledger use beyond process-level interruption",
+      "requirements": [
+        "fsync or FlushFileBuffers equivalent for replaced directory metadata where applicable",
+        "document platform behavior and add platform-specific durability tests",
+        "make no host power-loss survival claim before this gate closes"
       ]
     }
   ],
-  "updated_at": "2026-08-08T12:01:34+07:00"
+  "updated_at": "2026-08-09T14:49:23+08:00"
 }

@@ -13,12 +13,13 @@ Canonical phase:
 
 - ID: `SCV2-FL1`
 - Title: `Isolated Full-Library Dev/Test Planning`
-- Current status: `fl1_p1_owner_accepted_for_merge`
-- Current implementation: PR #141, owner-accepted evidence HEAD
-  `3a7b20608724e5f469548183df0830b09d5ea7be`
-- Current stop: pass live review gates, squash-merge PR #141, then start only a
-  separate FL1-I1 planning and synthetic implementation PR; do not read a real
-  source root or execute inventory without exact later authorization
+- Current status: planning input only; `SCV2-FL1-P1-R1` Draft PR #143 is
+  pending final owner audit after its last authorized implementation repair
+- Current implementation evidence:
+  `a631160f58e8d5d61998863b5b4d60a549e88151`
+- Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or
+  started; do not implement its scanner/contract/tests or read a real source
+  root without a separate later owner decision
 
 The older `Phase 4.6-FULLLIB-P0 Production Full-Library Import and AI Tagging
 Plan` is a historical design input only. Its production route and `FULLLIB-E1`
@@ -295,9 +296,9 @@ the SV1B placeholder waiver.
 
 ## 15. Executable Contract And Tests
 
-Before any implementation claims readiness, register a future contract such as
-`scv2_fl1_isolated_full_library_dev_test_contract_v1`. It must derive, not accept
-manually supplied, at least:
+The P1 safety slice registers
+`scv2_fl1_isolated_full_library_dev_test_contract_v1`. Its P1-R1 hardening must
+derive, rather than accept manually supplied, at least:
 
 - exact Git/branch/Python/DB/storage/source identities;
 - planning and owner-authorization checkpoints;
@@ -310,6 +311,39 @@ manually supplied, at least:
 - public redaction and private-artifact separation;
 - manual-acceptance requirement/status;
 - `target_met`, `safe_to_merge`, and route scope.
+
+The contract verifies Git objects in a trusted repository. PR audit evidence
+requires the actual current PR HEAD and implementation ancestry; squash
+carry-forward evidence instead requires the approved base as the squash
+commit's sole parent and exact equality with the owner-reviewed final tree.
+The documentation checker consumes the same trusted `ImplementationEvidence`
+after squash and cannot pass on topology alone. Formal evidence collection and
+repository revalidation reject relevant staged, unstaged, deleted, renamed, or
+untracked execution drift.
+Synthetic invocations reconcile per item against private `RunLedger` attempt
+counts. Failure-budget/manual-stop completion is a five-scenario synthetic
+matrix with independent run identities and fingerprints, not a property of one
+ordinary success run. Phase-level non-action declarations are attestations
+only; they cannot replace write-ahead runtime gateway evidence or grant owner
+acceptance, merge safety, or route approval.
+
+The second bounded PR #143 review-fix additionally binds audit-ready status to
+the trusted repository, main runtime ledger, fixed-schema private
+failure-budget scenarios, and private interrupted-reconciliation scenarios.
+The reconciliation stage requires independently reconstructed COMMITTED,
+UNKNOWN, and NOT_COMMITTED restart behavior. The complete public summary,
+including unknown fields, must pass the shared recursive redaction scanner;
+caller-supplied booleans or recomputed editable digests are not evidence.
+
+The final bounded PR #143 closure derives actual Python identity only from the
+checking process's `sys.executable`, and builder/checker share one complete,
+versioned canonical public ledger projection derived from the trusted private
+ledger. The generic callback is a synthetic fixture harness, not a DB, source,
+provider, LLM, or media gateway and not phase-wide zero-activity proof.
+Caller-supplied owner, merge, or route JSON cannot produce a positive contract
+decision until `OWNER_AUTHORITY_GATE` is implemented. Real gateway coverage is
+deferred to `REAL_OPERATION_GATEWAY_GATE`; POSIX host-power-loss durability is
+deferred to `POSIX_LEDGER_DURABILITY_GATE`. None grants current execution.
 
 Required test groups for the implementation PR:
 
@@ -328,8 +362,9 @@ Required test groups for the implementation PR:
 1. **FL1-P1 — Safety/ledger implementation (no data execution):** strict
    identities, source/storage containment, inventory schema, item/run ledgers,
    contract, focused tests, dry-run fixtures.
-2. **FL1-I1 — Read-only inventory checkpoint:** separately authorized real
-   source manifest scan with zero DB/app-storage write; owner reviews denominator.
+2. **FL1-I1 — Future read-only inventory candidate:** requires a separate owner
+   scope decision after P1-R1 audit; no scanner, contract, test, source identity,
+   or inventory execution is authorized now.
 3. **FL1-E1 — Bounded Dev/Test import:** exact approved subset, isolated DB and
    storage, restart/mutation proofs, stop before classification if required.
 4. **FL1-E2 — Local classification and AI tagging:** offline models, reuse-first,
@@ -361,10 +396,13 @@ equivalent. No implementation PR may silently include execution authority.
 Owner approval recorded: the plan and proposed FL1-P1 PR/contract structure
 only, bound to planning HEAD `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
 
-FL1-P1 implements only the approved isolation, default-deny mutation, contract,
-source-membership/content-target identity split, and restartable synthetic
-ledger foundations. The owner accepted it after bounded ledger remediation; it
-may merge after live review gates pass.
+FL1-P1-R1 implements only the approved late-review remediation for isolation,
+default-deny mutation, contract evidence, source-membership/content-target
+identity, restartable synthetic ledger, reconciliation, and budget semantics.
+Its implementation evidence
+`a631160f58e8d5d61998863b5b4d60a549e88151` is pending final independent owner
+audit. No further same-PR implementation repair is authorized. Tests and an
+automated review do not create owner acceptance or merge authorization.
 
 Not approved: permission to connect to an existing database, inspect production, read a
 real source root, create storage, run inventory, import, classify, tag, call a

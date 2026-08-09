@@ -32,19 +32,19 @@ def test_current_phase_schema_and_fl1_p1_boundary_are_consistent() -> None:
 
     documentation_state.validate_state(state)
     assert state["schema_version"] == "violet.current-phase.v2"
-    assert state["phase_id"] == "SCV2-FL1-P1"
+    assert state["phase_id"] == "SCV2-FL1-P1-R1"
     assert state["repository"] == "kyloris0660/VIOLET"
-    assert state["draft"] is False
+    assert state["draft"] is True
     assert state["pr_number"] is None or state["pr_number"] > 0
     assert state["current_status"] == documentation_state.FL1_STATUS
-    assert state["target_met"] is True
-    assert state["safe_to_merge"] is True
-    assert state["route_approved"] is True
+    assert state["target_met"] is False
+    assert state["safe_to_merge"] is False
+    assert state["route_approved"] is False
     assert state["route_scope"] == documentation_state.FL1_ROUTE_SCOPE
     assert state["planning_approved"] is True
     assert state["approved_planning_head"] == documentation_state.FL1_APPROVED_PLANNING_HEAD
     assert state["manual_acceptance_status"] == documentation_state.FL1_MANUAL_STATUS
-    assert state["next_phase_started"] is True
+    assert state["next_phase_started"] is False
     assert state["active_blocker"]["code"] == documentation_state.FL1_BLOCKER
     assert state["planning_boundary"] == {
         "planning_only": False,
@@ -52,7 +52,12 @@ def test_current_phase_schema_and_fl1_p1_boundary_are_consistent() -> None:
         "implementation_scope": documentation_state.FL1_COMPLETED_SCOPE,
         "completed_implementation_scope": documentation_state.FL1_COMPLETED_SCOPE,
         "implementation_completed": True,
-        "owner_audit_pending": False,
+        "owner_audit_pending": True,
+        "owner_acceptance_valid": False,
+        "merge_authorized": False,
+        "fl1_i1_route_authorized": False,
+        "fl1_i1_implementation_started": False,
+        "real_inventory_started": False,
         "data_execution_authorized": False,
         "production_authorized": False,
         "database_access_authorized": False,
@@ -146,7 +151,7 @@ def test_doc_gov_02_separates_active_entrypoints_from_history() -> None:
     assert len(agents.splitlines()) < 150
     assert len(archive.splitlines()) > 1000
     assert len(runbook.splitlines()) > 500
-    assert "CURRENT_PHASE: SCV2-FL1-P1" in project
+    assert "CURRENT_PHASE: SCV2-FL1-P1-R1" in project
     assert "CURRENT_PHASE: SCV2-SV1B" in archive
     assert "current next technical phase" not in project.casefold()
     assert "docs/development/agent-runbook.md" in agents
@@ -204,7 +209,7 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
     roadmap = copied_root / "docs" / "project-roadmap.md"
     roadmap.write_text(
         roadmap.read_text(encoding="utf-8").replace(
-            "<!-- CURRENT_PHASE: SCV2-FL1-P1 -->",
+            "<!-- CURRENT_PHASE: SCV2-FL1-P1-R1 -->",
             "<!-- CURRENT_PHASE: SCV2-FL1 -->",
         ),
         encoding="utf-8",
@@ -217,13 +222,13 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("draft", True),
+        ("draft", False),
         ("current_status", "implementation_ready_for_owner_audit"),
-        ("target_met", False),
-        ("safe_to_merge", False),
-        ("route_approved", False),
-        ("manual_acceptance_status", "pending_owner_audit"),
-        ("next_phase_started", False),
+        ("target_met", True),
+        ("safe_to_merge", True),
+        ("route_approved", True),
+        ("manual_acceptance_status", "owner_accepted_fl1_p1_foundation"),
+        ("next_phase_started", True),
     ],
 )
 def test_fl1_p1_status_conflicts_fail_closed(field: str, value: object) -> None:
@@ -232,7 +237,7 @@ def test_fl1_p1_status_conflicts_fail_closed(field: str, value: object) -> None:
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_p1_status_fields_conflict",
+        match="fl1_p1_r1_status_fields_conflict",
     ):
         documentation_state.validate_state(state)
 
@@ -243,7 +248,12 @@ def test_fl1_p1_status_conflicts_fail_closed(field: str, value: object) -> None:
         ("planning_only", True),
         ("implementation_authorized", False),
         ("completed_implementation_scope", "unknown"),
-        ("owner_audit_pending", True),
+        ("owner_audit_pending", False),
+        ("owner_acceptance_valid", True),
+        ("merge_authorized", True),
+        ("fl1_i1_route_authorized", True),
+        ("fl1_i1_implementation_started", True),
+        ("real_inventory_started", True),
         ("data_execution_authorized", True),
         ("production_authorized", True),
         ("database_access_authorized", True),
@@ -259,7 +269,7 @@ def test_fl1_execution_boundary_fails_closed(field: str, value: object) -> None:
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_p1_boundary_invalid",
+        match="fl1_p1_r1_boundary_invalid",
     ):
         documentation_state.validate_state(state)
 
@@ -278,7 +288,7 @@ def test_fl1_authorized_operations_cannot_grant_execution() -> None:
 @pytest.mark.parametrize(
     "field",
     [
-        "database_operation_count",
+        "production_operation_count",
         "existing_database_read_operation_count",
         "existing_database_write_operation_count",
         "real_source_inventory_operation_count",
@@ -286,15 +296,16 @@ def test_fl1_authorized_operations_cannot_grant_execution() -> None:
         "llm_operation_count",
         "media_or_thumbnail_operation_count",
         "stable_replay_operation_count",
+        "user_data_cleanup_delete_operation_count",
     ],
 )
-def test_fl1_operation_counts_must_stay_zero(field: str) -> None:
+def test_fl1_legacy_editable_operation_counts_are_forbidden(field: str) -> None:
     state = copy.deepcopy(_state())
     state["protected_evidence"][field] = 1
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_operation_counts_nonzero",
+        match="editable_phase_event_ledger_forbidden",
     ):
         documentation_state.validate_state(state)
 
@@ -310,13 +321,28 @@ def test_sv1b_waiver_cannot_be_inherited_by_fl1() -> None:
         documentation_state.validate_state(state)
 
 
-@pytest.mark.parametrize("field", ["accepted_mainline_base", "implementation_evidence_head"])
-def test_current_phase_git_heads_must_be_ancestors(field: str) -> None:
+@pytest.mark.parametrize(
+    ("field", "expected_error"),
+    [
+        (
+            "accepted_mainline_base",
+            "accepted_mainline_base_object_missing",
+        ),
+        (
+            "implementation_evidence_head",
+            "implementation_evidence_object_missing",
+        ),
+    ],
+)
+def test_current_phase_git_evidence_must_match_pr_or_squash_topology(
+    field: str,
+    expected_error: str,
+) -> None:
     state = copy.deepcopy(_state())
     state[field] = "f" * 40
 
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match=f"{field}_not_ancestor_of_head",
+        match=expected_error,
     ):
         documentation_state.validate_git_ancestry(state)

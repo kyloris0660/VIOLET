@@ -10,6 +10,9 @@ the only guard for pipeline-critical work.
 & "$PY" scripts/check_phase_contract.py --list-contracts
 & "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json>
 & "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json> --explain
+& "$PY" scripts/check_phase_contract.py --contract scv2_fl1_isolated_full_library_dev_test_contract_v1 --summary <summary.json> --repo-root <trusted-repo> --expected-python "$PY" --runtime-ledger <private-ledger.json> --failure-budget-scenarios <private-failure-bundle.json> --reconciliation-scenarios <private-reconciliation-bundle.json>
+& "$PY" scripts/check_documentation_state.py --check
+& "$PY" scripts/check_documentation_state.py --check --implementation-evidence <trusted-squash-implementation-evidence.json>  # required only after squash removes PR ancestry
 ```
 
 The checker prints JSON to stdout and exits nonzero on failure.
@@ -38,9 +41,29 @@ When acceptance is required and pending, the executable contract must enforce
 `manual_acceptance_required=true`, `manual_acceptance_status=pending_user`,
 `target_met=false`, `safe_to_merge=false`, and `route_approved=false`.
 
+For SCV2-FL1-P1-R1, acceptance is additionally invalid unless it binds the
+immutable implementation commit/tree/digest and the final reviewed
+commit/tree. Any executable code, test, or contract drift after the
+implementation boundary invalidates it. Only the exact governance-path
+allowlist enforced by the executable contract may follow that boundary.
+Implementation authorization, owner audit, owner acceptance, merge
+authorization, and next-phase route authorization are separate evidence gates.
+
+The FL1-P1 evidence checker has two strict Git modes. In `pr_audit`, the
+reviewed final commit must be the repository's current HEAD, the implementation
+commit must be its ancestor, and Git-derived post-implementation paths must all
+be on the governance allowlist. In `squash_carry_forward`, the current squash
+commit must have exactly the approved base as its parent and its tree must equal
+the owner-reviewed final PR tree; branch-commit ancestry is intentionally not
+required after squash. The documentation checker uses the same trusted
+`ImplementationEvidence` repository proof and has no topology-only fallback.
+The current contract has no automated positive owner/merge/route authority:
+caller-supplied JSON always fails closed, while a human GitHub decision remains
+outside the automated contract.
+
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1-P1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-P1-R1 -->
 
 PR #139 / SCV2-SV1B is merged and accepted in `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner-closeout contract
@@ -50,37 +73,80 @@ their waiver is limited to SV1B placeholder/default creator signals and does not
 authorize FL1 behavior, scale, production, or truth promotion.
 
 PR #140 merged the approved plan into `origin/main` at
-`9ce1128be643c0eaa998ccdff8890d76196ce7db`. `SCV2-FL1-P1: Dev/Test Isolation,
-Contract, And Ledger Foundations` is now the current implementation phase on
-PR #141. Its owner-accepted implementation evidence is
-`3a7b20608724e5f469548183df0830b09d5ea7be`, and its closeout state is:
+`9ce1128be643c0eaa998ccdff8890d76196ce7db`. PR #141 then physically merged at
+`36100bfa0317387e064cd87b2e753eca3a201b5e`, but eight valid findings arrived
+after merge. `SCV2-FL1-P1-R1` on Draft PR #143 is the current bounded
+remediation phase. Its
+immutable implementation evidence is
+`a631160f58e8d5d61998863b5b4d60a549e88151`, and its current state is:
 
-- `status=fl1_p1_owner_accepted_for_merge`
-- `target_met=true`
-- `safe_to_merge=true`
-- `route_approved=true`
-- `route_scope=FL1-I1 read-only inventory planning and synthetic implementation only`
-- `manual_acceptance_status=owner_accepted_fl1_p1_foundation`
-- `next_phase_started=true`
-- blocker: `none_fl1_p1_owner_accepted_for_merge`
+- `status=fl1_p1_r1_implementation_ready_for_owner_audit`
+- `target_met=false`
+- `safe_to_merge=false`
+- `route_approved=false`
+- `manual_acceptance_status=pending_final_owner_audit`
+- `next_phase_started=false`
+- blocker: `pending_final_owner_audit`
 
-The documentation-state checker binds the accepted plan merge, owner-accepted P1
-implementation evidence, generated handoff, public-safe durable links, and the
-exact zero-data/external authorization boundary. Ready and squash merge are
-allowed only after live review gates pass.
+The documentation-state checker binds the accepted mainline baseline,
+implementation evidence, PR #141 physical/late-review state, generated
+handoff, and the exact zero-data/external authorization boundary. Its phase
+non-action record is explicitly an operator attestation, not an executable
+event ledger and not a source of merge authorization. Runtime operation
+evidence comes only from the instrumented private `RunLedger`, whose write-ahead
+events are consumed by the executable contract. The checker rejects legacy I1
+authorization tokens, unbound acceptance claims, merge-gate claims, and any
+current route/start claim for I1.
 
 `scv2_fl1_isolated_full_library_dev_test_contract_v1` is registered for this P1
-slice. Its standard-library implementation requires explicit test/development,
+slice. Its standard-library implementation now disables automated positive
+acceptance/authorization until a trusted out-of-band authority exists, requires
+all registered required stages, and derives Python identity from the checking
+process's actual `sys.executable` against the approved expected interpreter. It
+also requires explicit
+test/development,
 Git, Python, synthetic database-path, source-fixture, storage, sandbox, and
 forbidden-root identities; denies production and unknown identities; and
-rejects containment ambiguity before mutation. Mutation defaults to deny and
+rejects canonical path overlap before mutation. Mutation defaults to deny and
 permits only explicit synthetic operations under the approved storage root.
 The atomic JSON ledger keeps parent-qualified source membership distinct from
 content-fingerprint logical targets, binds denominator accounting and
 checkpoints, separates per-item from global failure budgets, rejects stale
-writers, and requires explicit reconciliation before retrying an interrupted
+writers, derives forbidden-operation counts from persisted events, and requires
+explicit reconciliation before retrying an interrupted or unknown-outcome
 mutation. Duplicate content receives one logical mutation and manual stop state
-remains persistent.
+remains persistent across restart. Every synthetic invocation is attributed to
+one existing item and must exactly match that item's attempt count. The public
+summary uses irreversible item identity digests plus a proof bound to the validated
+private ledger rather than trusting aggregate counts. Builder and checker share
+one versioned canonical protected projection covering run/manifest identity,
+generation/index, denominator and state counts, attempts, failures, mutations,
+duplicates, recovery/reconciliation state, budgets, operation evidence, and
+per-item attribution digests; unknown caller fields or any mismatch fail. The required
+`failure_budget_and_manual_stop` stage is completed only by an independently
+fingerprinted five-scenario matrix covering normal success, manual stop across
+restart, per-item exhaustion without global poisoning, true global exhaustion,
+and restart counter/reason consistency.
+
+For audit-ready claims, the checker requires a clean trusted repository, the
+approved expected interpreter, plus the private main runtime ledger,
+failure-budget scenario bundle, and interrupted-reconciliation bundle. Each
+failure-budget scenario has a fixed versioned assertion schema, role-bound
+before/after ledgers, distinct run identity, and a canonical public matrix
+rebuilt from `RunLedger.from_dict()` evidence. The reconciliation stage is
+rebuilt from independent COMMITTED, UNKNOWN, and NOT_COMMITTED interruption and
+restart scenarios; an ordinary success ledger or a self-reported zero recovery
+count cannot complete it. The checker recursively runs the shared public
+payload scanner over the complete FL1 summary, including unknown fields, and
+compares the declared redaction status to the derived safe finding count.
+These requirements preserve the earlier four-finding closure and close the
+final bounded H1-H4 trust gaps reviewed at
+`5a3bee5e1c8174a283cf4ec99d1982548726436e`. Evidence collection and
+revalidation reject staged/unstaged tracked drift and untracked files capable
+of changing imports, tests, checkers, contracts, executable configuration, or
+schema behavior. The generic mutation callback remains explicitly
+`synthetic_fixture_only`; its events prove item/attempt attribution only, not
+phase-wide absence of real operations.
 
 P1 tests use only in-memory callbacks and newly created temporary files. No
 production or production comparison, real source-root read or inventory,
@@ -88,15 +154,17 @@ existing database access, import, classification or AI tagging,
 provider/Pixiv/gallery-dl/LLM/media/thumbnail request, Stable Replay/evidence
 reuse, localization or graph/search derivation, or
 Entity/truth/provider-derived `media_tags` write is authorized or performed.
-After P1 merges, only a separate FL1-I1 planning and synthetic implementation
-PR may start. Real source-root access or inventory still requires a later exact
-source-scope authorization.
+PR #142 is non-authoritative and must not be merged. FL1-I1 has not started and
+has no current route authorization. It remains only a future candidate after
+P1-R1 owner audit and a separate owner scope decision. Real source-root access
+or inventory requires another exact authorization after that.
 
-Three deferred use-before gates do not block P1 owner audit and do not authorize
-current remediation: `PROVIDER_GATE` before any provider request,
-`STABLE_REPLAY_GATE` before authoritative replay/evidence reuse, and
-`ACCEPTANCE_TOOLING_GATE` before one-off acceptance tooling is reused as
-automated merge authority. Their exact requirements live in
+Four deferred use-before gates do not block final P1 owner audit and do not
+authorize current remediation: `REAL_OPERATION_GATEWAY_GATE` before any real
+source/DB/provider/LLM/media operation or comprehensive runtime-proof claim,
+`OWNER_AUTHORITY_GATE` before automated positive authority,
+`POSIX_LEDGER_DURABILITY_GATE` before real POSIX mutation or power-loss claim,
+and `STABLE_REPLAY_GATE` before authoritative replay/evidence reuse. Their exact requirements live in
 `docs/state/current-phase.json`.
 
 ## Registered GOV3 Contracts
@@ -291,9 +359,9 @@ raw history, no unsupported page link or conflict winner, and explicit
 resume cannot reopen it. The final PR #136 contract may therefore prove the
 exhaustive equation `candidate = complete + terminal + deferred`, zero open or
 blocking-conflict works, status
-`partial_ml1_pixiv_metadata_foundation_complete`, `target_met=false`,
-`safe_to_merge=true`, `route_approved=true`, and no active blockers. Its route
-approval is limited to separately governed SCV2-ML2 work and does not authorize
+`partial_ml1_pixiv_metadata_foundation_complete`, with its historical target,
+merge-safety, route, and blocker checks satisfied. That historical route
+approval was limited to separately governed SCV2-ML2 work and did not authorize
 production, scale, another provider, Entity/truth writes, or acquisition replay.
 
 The final gate additionally requires page-local disposition and trusted creator

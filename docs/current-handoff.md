@@ -4,15 +4,15 @@
 
 ## Current Facts
 
-- Phase: `SCV2-FL1-P1` — Dev/Test Isolation, Contract, And Ledger Foundations.
-- Repository / PR: `kyloris0660/VIOLET` / PR #141.
-- Branch: `codex/scv2-fl1-p1-isolation-safety-ledger`.
-- Accepted mainline base: `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
-- Implementation evidence HEAD: `3a7b20608724e5f469548183df0830b09d5ea7be`.
-- Status: `fl1_p1_owner_accepted_for_merge`.
-- `target_met=true`; `safe_to_merge=true`; `route_approved=true`.
-- `manual_acceptance_status=owner_accepted_fl1_p1_foundation`; `next_phase_started=true` (P1 owner-accepted; FL1-I1 starts only after merge).
-- Approved planning HEAD: `db90457d51a39b5dc930afc2a92a6ef3139a2760`; route scope: `FL1-I1 read-only inventory planning and synthetic implementation only`.
+- Phase: `SCV2-FL1-P1-R1` — Late Review Safety Remediation And Authority Correction.
+- Repository / PR: `kyloris0660/VIOLET` / Draft PR #143.
+- Branch: `codex/scv2-fl1-p1-r1-late-review-remediation`.
+- Accepted mainline base: `36100bfa0317387e064cd87b2e753eca3a201b5e`.
+- Implementation evidence HEAD: `a631160f58e8d5d61998863b5b4d60a549e88151`.
+- Status: `fl1_p1_r1_implementation_ready_for_owner_audit`.
+- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
+- `manual_acceptance_status=pending_final_owner_audit`; `next_phase_started=false` (P1-R1 awaits independent owner audit; FL1-I1 is not authorized or started).
+- Approved planning HEAD: `db90457d51a39b5dc930afc2a92a6ef3139a2760`; route scope: `SCV2-FL1-P1-R1 late-review remediation only; FL1-I1 remains an unapproved future candidate`.
 
 ## Completed Checkpoints
 
@@ -20,25 +20,25 @@
 - `fl1_plan_owner_approval_and_squash_merge`: `accepted_mainline_input_for_fl1_p1` — `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
 - `doc_gov_02`: `completed_active_route_and_runbook_split`.
 - `fl1_isolated_dev_test_plan`: `owner_approved_for_fl1_p1_implementation_only` — `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
-- `fl1_external_and_data_operation_preflight`: `zero_forbidden_operations_fl1_p1_synthetic_only`.
-- `fl1_p1_isolation_safety_contract_ledger_implementation`: `owner_accepted_for_merge_after_bounded_ledger_remediation` — `3a7b20608724e5f469548183df0830b09d5ea7be`.
+- `fl1_p1_pr141_physical_merge`: `merged_with_late_review_remediation_required` — `36100bfa0317387e064cd87b2e753eca3a201b5e`.
+- `fl1_p1_r1_late_review_remediation_implementation`: `final_bounded_closure_implementation_complete_pending_final_owner_audit` — `a631160f58e8d5d61998863b5b4d60a549e88151`.
 
 ## Current Gate And Boundary
 
-- Gate: `none_fl1_p1_owner_accepted_for_merge` (SCV2-FL1-P1 closeout on PR #141 and the separate FL1-I1 implementation route).
-- Resolution: The owner audit accepted the P1 safety foundation after bounded remediation of content-level deduplication, per-item versus global failure budgets, and interrupted-mutation reconciliation. PR #141 may become Ready and squash-merge after live review gates pass. After merge, only a separate FL1-I1 planning and synthetic implementation PR may start; real source inventory and all data or external execution remain unauthorized.
+- Gate: `pending_final_owner_audit` (SCV2-FL1-P1-R1 Draft PR #143 after its final owner-authorized bounded implementation repair round).
+- Resolution: Project owner performs a final read-only audit and adjudicates Ready, merge, and any future FL1-I1 route. No further same-PR implementation remediation is authorized; final-review findings are owner inputs only.
 - Planning only: `false`; implementation/data/production authorization: `true/false/false`.
 - Existing database/real inventory/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `$0`.
-- Public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`.
+- Public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`. Phase-level zero-activity is an operator attestation only; executable runtime operation evidence comes only from the instrumented `RunLedger`, and the attestation grants no acceptance, merge safety, or route authorization.
 
 ## Allowed / Forbidden
 
-- Allowed: tracked owner-acceptance closeout, Ready transition, and squash merge of PR #141 after all live review and merge gates pass; after the confirmed PR #141 merge, create a separate FL1-I1 Draft PR for read-only inventory planning and synthetic implementation only; local focused and full non-E2E validation using only synthetic, in-memory, or newly created temporary fixtures.
-- Forbidden: existing database creation, connection, comparison, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; production database, production storage, production source root, or production library access; source or iCloud root inventory, read, hydration, copy, move, rename, deletion, or mutation; provider, Pixiv, gallery-dl, Provider-2, LLM, model download, media, or thumbnail request; full-library import, classification, AI tagging, localization, graph/search execution, or background worker start; Entity, EntityAlias, confirmed assignment, user truth, source truth, or provider-derived media_tags write; Stable Replay or authoritative evidence import, replay, or reuse; real source inventory execution, direct main push, force-push, or any FL1 stage beyond a separate FL1-I1 planning and synthetic implementation PR.
+- Allowed: implement and validate only the final bounded H1-H4 evidence trust repairs plus synthetic-callback and positive-authority tightening on existing Draft PR #143 while preserving all prior remediations; update only the existing SCV2-FL1-P1-R1 Draft branch and request one review on its stable final HEAD; local focused and full non-E2E validation using only synthetic, in-memory, or newly created temporary fixtures.
+- Forbidden: existing database creation, connection, comparison, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; production database, production storage, production source root, or production library access; source or iCloud root inventory, read, hydration, copy, move, rename, deletion, or mutation; provider, Pixiv, gallery-dl, Provider-2, LLM, model download, media, or thumbnail request; full-library import, classification, AI tagging, localization, graph/search execution, or background worker start; Entity, EntityAlias, confirmed assignment, user truth, source truth, or provider-derived media_tags write; Stable Replay or authoritative evidence import, replay, or reuse; FL1-I1 scanner, implementation, contract, tests, or runtime execution; real source inventory execution, owner acceptance, Ready transition, merge, direct main push, force-push, or any later FL1 stage; new PR creation or any modification, reopening, merge, branch deletion, or commit deletion for PR #142.
 
 ## Next Action
 
-- Required checkpoint: `squash_merge_pr_141_then_create_separate_fl1_i1_planning_and_synthetic_implementation_branch`.
+- Required checkpoint: `project_owner_final_read_only_audit_of_pr143`.
 
 ## Durable Links
 
@@ -53,7 +53,8 @@
 
 ## Deferred Debt
 
-- `PROVIDER_GATE` — owner: future provider-route owner; due before: `any future provider request`; Deferred use-before gate; it is not a PR #140 blocker and grants no current remediation or provider authority. Requirements: inherit cumulative attempt budgets across restarts and passes; use one truthful real-request counting semantic; never allow partial JSON to mask non-zero exit, authentication, or transport failure; recompute an old ledger read-only if required.
+- `REAL_OPERATION_GATEWAY_GATE` — owner: future exact operation-stage owner; due before: `any real source listing/read/hash, database access, provider/LLM/media call, or use of RunLedger as comprehensive real-operation proof`; The current generic callback is a synthetic fixture harness only and cannot prove phase-wide absence of real operations. Requirements: instrument every relevant real-operation gateway before side effects; persist write-ahead operation evidence bound to the exact run and HEAD; do not treat synthetic callback attribution as process-wide or phase-wide proof.
 - `STABLE_REPLAY_GATE` — owner: future Stable Replay owner; due before: `any Stable Replay evidence import, replay, or authoritative reuse`; Deferred use-before gate; it is not a PR #140 blocker and grants no current replay or database authority. Requirements: scan accepted packages for observation_key duplicates across parent records; use parent-qualified stable observation identity; stop and report any actual collision without replaying a database.
-- `ACCEPTANCE_TOOLING_GATE` — owner: future acceptance-tooling owner; due before: `reuse of acceptance, composite, carry-forward, or export tooling as automated merge authority`; Deferred use-before gate; it is not a PR #140 blocker and does not invalidate the current owner decision. Requirements: harden or retire the one-off tools according to the actual reuse need; preserve the current owner decision of 37 PASS and 3 owner-waived cases.
-Updated: `2026-08-08T12:01:34+07:00`.
+- `OWNER_AUTHORITY_GATE` — owner: future automated-acceptance owner; due before: `any automated pipeline treats owner acceptance, merge authorization, or route approval as machine-verifiable positive authority`; Current caller-supplied acceptance and authorization JSON is not trusted positive authority. Requirements: establish a genuinely out-of-band trusted owner authority context; bind identity and decision scope to immutable reviewed Git evidence; keep direct human GitHub decisions distinct from automated contract claims.
+- `POSIX_LEDGER_DURABILITY_GATE` — owner: future non-synthetic POSIX execution owner; due before: `any real POSIX mutation, power-loss durability claim, or crash-safe ledger use beyond process-level interruption`; Current synthetic foundation proves process-level interruption behavior, not host power-loss durability on POSIX. Requirements: fsync or FlushFileBuffers equivalent for replaced directory metadata where applicable; document platform behavior and add platform-specific durability tests; make no host power-loss survival claim before this gate closes.
+Updated: `2026-08-09T14:49:23+08:00`.

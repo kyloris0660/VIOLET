@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.phase_contracts import REQUIRED_CONTRACT_IDS, check_phase_contract, list_contracts, load_summary_file  # noqa: E402
+from scripts.phase_contracts import REQUIRED_CONTRACT_IDS, check_phase_contract, get_contract, list_contracts, load_summary_file  # noqa: E402
 from scripts.phase_contracts import contract_checks as contract_checks_module  # noqa: E402
 from scripts.phase_contracts.contract_registry import (  # noqa: E402
     R1R_FULL_SOURCE_CONCEPT_PIPELINE_STAGES,
@@ -23,6 +23,22 @@ from scripts.phase_contracts.contract_registry import (  # noqa: E402
 
 
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "phase_contracts"
+
+
+def test_fl1_p1_registry_requires_all_late_review_safety_stages() -> None:
+    contract = get_contract("scv2_fl1_isolated_full_library_dev_test_contract_v1")
+
+    assert contract.required_stages == (
+        "environment_isolation_preflight",
+        "mutation_default_deny",
+        "stable_inventory_identity",
+        "restartable_item_ledger",
+        "interrupted_mutation_reconciliation",
+        "failure_budget_and_manual_stop",
+        "forbidden_operation_evidence",
+    )
+    assert "stage_evidence" in contract.required_summary_fields
+    assert "implementation_evidence" in contract.required_summary_fields
 
 
 def test_public_payload_redaction_rejects_content_hash_keys() -> None:

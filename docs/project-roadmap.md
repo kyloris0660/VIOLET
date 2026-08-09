@@ -9,12 +9,12 @@ evidence without treating weak AI or provider signals as user truth.
 
 ## Current Active Roadmap
 
-<!-- CURRENT_PHASE: SCV2-FL1-P1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-P1-R1 -->
 
 The authoritative current state is `docs/state/current-phase.json`.
 
-`SCV2-FL1-P1: Dev/Test Isolation, Contract, And Ledger Foundations` is the
-current phase on PR #141.
+`SCV2-FL1-P1-R1: Late Review Safety Remediation And Authority Correction` is
+the current phase on Draft PR #143.
 PR #139 / SCV2-SV1B merged into `origin/main` at
 `33af4111e1595dac3ece0ac50002556d466f0138`. Its final owner acceptance remains
 `37 PASS`, `3 owner-waived nonblocking known limitations`, `0 PENDING`, and
@@ -30,10 +30,43 @@ source-root access or inventory, import, classification, AI tagging,
 provider/LLM/media request, Stable Replay, localization, graph/search
 derivation, or Entity/truth promotion.
 
-The P1 owner audit is complete at
-`3a7b20608724e5f469548183df0830b09d5ea7be`; PR #141 may become Ready and
-squash-merge after live review gates pass. This authorizes only a later,
-separate FL1-I1 planning and synthetic implementation PR, not real inventory.
+PR #141 physically merged at
+`36100bfa0317387e064cd87b2e753eca3a201b5e`, but eight valid review findings
+arrived after merge and remain unresolved on that historical PR. P1-R1 is the
+only authorized remediation route. Its implementation evidence is
+`a631160f58e8d5d61998863b5b4d60a549e88151`, pending final independent owner audit.
+Consequently `target_met=false`, `safe_to_merge=false`,
+`route_approved=false`, and `next_phase_started=false`.
+
+PR #142 is a non-authoritative candidate because it mixed P1 remediation with
+unapproved FL1-I1 work. It does not establish acceptance, merge authority, or
+an I1 route. FL1-I1 remains a future planning candidate that requires both the
+P1-R1 owner audit and a separate owner scope decision.
+
+The current bounded PR #143 review-fix round keeps the same P1-R1 scope. It
+hardens repository evidence for both PR audit and squash carry-forward,
+requires an independent five-scenario failure-budget/manual-stop matrix,
+reconciles synthetic invocations per item, and treats phase-level zero-activity
+statements only as non-action attestations. Executable operation evidence still
+comes exclusively from the instrumented private `RunLedger`.
+
+The second bounded review-fix round addresses four findings from review
+`4888894624` on reviewed HEAD
+`389ba79cdf9cdd06f81fba07889f21245fd44072`; three are inline and the fourth
+public-summary redaction P1 is in the review submission body. Audit-ready stage
+claims now require trusted repository, main runtime ledger, private
+failure-budget scenario, and private interrupted-reconciliation evidence. The
+complete public summary is recursively redaction-scanned; editable booleans or
+digests cannot substitute for that scan.
+
+The final bounded PR #143 closure additionally derives interpreter identity
+from actual `sys.executable`, requires trusted reviewed-tree evidence for
+documentation squash carry-forward, rebuilds the complete protected public
+ledger projection from the private ledger, and rejects relevant dirty-worktree
+evidence. The callback remains synthetic-only and automated positive
+owner/merge/route claims remain disabled. No further same-PR implementation
+repair is authorized after this round; final-review debt goes to owner
+adjudication.
 
 ## Accepted Mainline Sequence
 
@@ -48,20 +81,24 @@ separate FL1-I1 planning and synthetic implementation PR, not real inventory.
    `33af4111e1595dac3ece0ac50002556d466f0138`.
 9. SCV2-FL1 planning / PR #140, squash-merged at
    `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
+10. SCV2-FL1-P1 / PR #141, physically merged at
+    `36100bfa0317387e064cd87b2e753eca3a201b5e`; late-review remediation is not
+    yet owner-accepted.
 
 Exact phase evidence and limitations remain in the accepted reports. This
 roadmap intentionally does not duplicate their execution accounting.
 
 ## Proposed FL1 Route
 
-1. Pass the live review gates and squash-merge owner-accepted PR #141.
-2. Start a separate FL1-I1 planning and synthetic implementation Draft PR while
-   keeping every real data/external operation blocked.
-3. Stop before any real source scan for exact source-scope authorization.
-4. If separately approved, execute only bounded Dev/Test import and local
+1. Complete P1-R1 Draft PR #143 and stop at independent owner audit.
+2. Obtain separate owner acceptance and merge authorization if the owner judges
+   the remediation sufficient.
+3. Make a separate FL1-I1 scope decision; no I1 implementation has started.
+4. Stop before any real source scan for exact source-scope authorization.
+5. If separately approved, execute only bounded Dev/Test import and local
    classification/AI-tagging stages under exact mutation allowlists and failure
    budgets.
-5. Require a bound manual-acceptance sample before any production planning.
+6. Require a bound manual-acceptance sample before any production planning.
 
 Production remains a later, independent route. The historical
 `Phase 4.6-FULLLIB-P0 Production Full-Library Import and AI Tagging Plan` is a
