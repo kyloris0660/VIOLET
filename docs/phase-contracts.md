@@ -71,21 +71,38 @@ PR #143 was owner-accepted and merge-commit merged at exact main
 evidence is `a631160f58e8d5d61998863b5b4d60a549e88151`. The direct human decision
 does not create automated positive owner, merge, or route authority.
 
-`SCV2-FL1-I1: Read-only Inventory` completed its reusable synthetic/new
-temporary-fixture implementation at evidence HEAD
+`SCV2-FL1-I1: Read-only Inventory` reached historical implementation evidence
 `5194a484d0d8fb8dd5e0697cd61054f596aee5ec` and tree
-`9b30ba024beb6fcd58709e707d7879887ad7c081`. Draft PR #144 is now at the
-owner-audit stop. Current state:
+`9b30ba024beb6fcd58709e707d7879887ad7c081`. Draft PR #144 review
+`4891695875` at reviewed HEAD
+`b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3` then established 18 current-I1
+counterexamples (15 P1, 3 P2), superseding that evidence. The owner authorized
+the one and only bounded synthetic/temp-fixture remediation round. Current
+state:
 
-- `status=fl1_i1_synthetic_implementation_ready_for_owner_audit`
+- `status=fl1_i1_first_review_bounded_remediation_in_progress`
 - `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
+- `manual_acceptance_status=pending_i1_bounded_remediation_owner_audit`
+- `bounded_remediation_round=1_of_1`
 - `next_phase_started=true`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker:
-  `pending_i1_synthetic_implementation_owner_audit_and_real_source_scope`
+- blocker: `pr144_first_review_current_i1_trust_recovery_counterexamples`
+
+The bounded remediation contract must close all 18 adjudications: trusted
+absolute Git bootstrap; repository-venv Python derivation; authorization and
+lexical-sandbox rejection before root observation; Cloud attributes before
+final-component resolution; evidence-root-confined writers with secure private
+artifact creation; manifest identity re-derivation; adapter configuration
+binding; per-directory listing identity; disposition-specific per-item
+operation closure; lock-before-lineage mutation; stale/live-lock provenance;
+abandoned-intent interruption recovery; recoverable operation/item/counter
+checkpoints; parent-harness child receipts; bounded final snapshots and
+remaining-byte accounting; bounded media header validation; and
+command-executed validation receipts. The exact 18-row adjudication matrix and
+required regressions are canonical in the active FL1 plan.
 
 The phase registers `scv2_fl1_i1_read_only_inventory_contract_v1`. Its dedicated
 module rebuilds a canonical protected projection only from validated trusted
@@ -117,10 +134,12 @@ The scanner persists finite discovery, directory-entry, observed-byte,
 per-file-hash, total-hash, chunk, timeout/worker, failure/systemic, and
 manual-stop budgets into run identity.
 
-Restart proof requires two actual Python processes with different runtime
-invocation IDs, observed PIDs/process starts/timestamps, and a bound parent
-checkpoint. Attempts do not reset and terminal items are not re-read or
-re-hashed. This is executable cross-process provenance, not OS/TPM attestation.
+Restart proof requires a runner lock before artifact mutation, a parent harness
+that independently records child PID/process-start/argv/exit/checkpoints and
+artifact digests, terminal interruption reconciliation for abandoned intents,
+and recoverable counters from the operation/item journal. Attempts do not reset
+and terminal items are not re-read or re-hashed. This remains local executable
+provenance, not OS/TPM/CI attestation.
 
 PR #142 remains closed, unmerged, and non-authoritative. Its deterministic
 traversal, read-only observation, denominator, duplicate, and private/public

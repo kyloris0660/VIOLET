@@ -78,6 +78,10 @@ FL1_I1_BRANCH = "codex/scv2-fl1-i1-read-only-inventory-v2"
 FL1_I1_ACCEPTED_MAIN = "a2f48bdba979f579b7cd1cdd9ef541137b2479c5"
 FL1_I1_PR143_HEAD = "228983f510c975399b53b39dcd7dd170e59b3245"
 FL1_I1_P1_R1_EVIDENCE = "a631160f58e8d5d61998863b5b4d60a549e88151"
+FL1_I1_HISTORICAL_EVIDENCE = "5194a484d0d8fb8dd5e0697cd61054f596aee5ec"
+FL1_I1_HISTORICAL_EVIDENCE_TREE = "9b30ba024beb6fcd58709e707d7879887ad7c081"
+FL1_I1_FIRST_REVIEWED_HEAD = "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3"
+FL1_I1_FIRST_REVIEW_ID = 4891695875
 FL1_I1_ROUTE_SCOPE = (
     "SCV2-FL1-I1 reusable read-only inventory safety tooling using only "
     "synthetic and newly created temporary fixtures"
@@ -127,30 +131,44 @@ def _require_list(
 def _validate_fl1_state(state: dict[str, Any]) -> None:
     """Validate the active I1 implementation or frozen owner-audit projection."""
 
-    audit_ready = (
-        state["current_status"]
-        == "fl1_i1_synthetic_implementation_ready_for_owner_audit"
-    )
-    expected_status = (
-        "fl1_i1_synthetic_implementation_ready_for_owner_audit"
-        if audit_ready
-        else "fl1_i1_read_only_inventory_implementation_in_progress"
-    )
-    expected_manual = (
-        "pending_i1_synthetic_implementation_owner_audit"
-        if audit_ready
-        else "pending_i1_implementation_owner_audit"
-    )
-    expected_blocker = (
-        "pending_i1_synthetic_implementation_owner_audit_and_real_source_scope"
-        if audit_ready
-        else "fl1_i1_implementation_in_progress"
-    )
+    status = state["current_status"]
+    status_policy = {
+        "fl1_i1_read_only_inventory_implementation_in_progress": (
+            "pending_i1_implementation_owner_audit",
+            "fl1_i1_implementation_in_progress",
+            False,
+            False,
+        ),
+        "fl1_i1_synthetic_implementation_ready_for_owner_audit": (
+            "pending_i1_synthetic_implementation_owner_audit",
+            "pending_i1_synthetic_implementation_owner_audit_and_real_source_scope",
+            True,
+            False,
+        ),
+        "fl1_i1_first_review_bounded_remediation_in_progress": (
+            "pending_i1_bounded_remediation_owner_audit",
+            "pr144_first_review_current_i1_trust_recovery_counterexamples",
+            False,
+            True,
+        ),
+        "fl1_i1_bounded_remediation_ready_for_owner_audit": (
+            "pending_i1_bounded_remediation_owner_audit",
+            "pending_i1_bounded_remediation_owner_audit",
+            True,
+            True,
+        ),
+    }
+    try:
+        expected_manual, expected_blocker, audit_ready, remediation = status_policy[
+            status
+        ]
+    except KeyError as exc:
+        raise DocumentationStateError("fl1_i1_status_fields_conflict") from exc
     if (
         state["phase_id"] != "SCV2-FL1-I1"
         or state["branch"] != FL1_I1_BRANCH
         or state["draft"] is not True
-        or state["current_status"] != expected_status
+        or state["current_status"] != status
         or state["target_met"] is not False
         or state["safe_to_merge"] is not False
         or state["route_approved"] is not False
@@ -164,6 +182,17 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         raise DocumentationStateError("fl1_i1_status_fields_conflict")
     if state["active_blocker"].get("code") != expected_blocker:
         raise DocumentationStateError("fl1_i1_blocker_conflict")
+    if remediation and any(
+        (
+            state.get("bounded_remediation_round") != "1_of_1",
+            state.get("implementation_evidence_status")
+            not in {
+                "historical_superseded_pending_bounded_remediation_replacement",
+                "bounded_remediation_replacement_frozen",
+            },
+        )
+    ):
+        raise DocumentationStateError("fl1_i1_bounded_remediation_state_invalid")
 
     boundary = state["planning_boundary"]
     expected_boundary = {
@@ -199,6 +228,14 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         boundary.get(key) != value for key, value in expected_boundary.items()
     ):
         raise DocumentationStateError("fl1_i1_boundary_invalid")
+    if remediation and any(
+        (
+            boundary.get("bounded_remediation_authorized") is not True,
+            boundary.get("bounded_remediation_round") != "1_of_1",
+            boundary.get("reviewed_head") != FL1_I1_FIRST_REVIEWED_HEAD,
+        )
+    ):
+        raise DocumentationStateError("fl1_i1_bounded_remediation_boundary_invalid")
 
     upstream = state["upstream_pr_state"]
     expected_upstream = {
@@ -281,8 +318,57 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
         raise DocumentationStateError("fl1_i1_protected_evidence_invalid")
     if audit_ready and state["implementation_evidence_head"] == FL1_I1_ACCEPTED_MAIN:
         raise DocumentationStateError("fl1_i1_implementation_evidence_not_frozen")
-    if not audit_ready and state["implementation_evidence_head"] != FL1_I1_ACCEPTED_MAIN:
+    if (
+        not audit_ready
+        and not remediation
+        and state["implementation_evidence_head"] != FL1_I1_ACCEPTED_MAIN
+    ):
         raise DocumentationStateError("fl1_i1_in_progress_evidence_must_equal_base")
+    if remediation:
+        remediation_expected = {
+            "fl1_i1_historical_superseded_implementation_evidence_head": FL1_I1_HISTORICAL_EVIDENCE,
+            "fl1_i1_historical_superseded_implementation_evidence_tree": FL1_I1_HISTORICAL_EVIDENCE_TREE,
+            "fl1_i1_historical_superseded_evidence_status": "superseded_by_pr144_review_4891695875_pending_replacement",
+            "pr144_first_review_id": FL1_I1_FIRST_REVIEW_ID,
+            "pr144_first_reviewed_head": FL1_I1_FIRST_REVIEWED_HEAD,
+            "pr144_first_review_finding_count": 18,
+            "pr144_first_review_p1_count": 15,
+            "pr144_first_review_p2_count": 3,
+            "bounded_remediation_round": "1_of_1",
+        }
+        if any(
+            protected.get(key) != value
+            for key, value in remediation_expected.items()
+        ):
+            raise DocumentationStateError(
+                "fl1_i1_bounded_remediation_protected_evidence_invalid"
+            )
+        if not audit_ready and any(
+            (
+                state["implementation_evidence_head"]
+                != FL1_I1_HISTORICAL_EVIDENCE,
+                protected.get("fl1_i1_current_implementation_evidence_pending")
+                is not True,
+                protected.get("fl1_i1_implementation_evidence_frozen") is not False,
+            )
+        ):
+            raise DocumentationStateError(
+                "fl1_i1_bounded_remediation_evidence_transition_invalid"
+            )
+        if audit_ready and any(
+            (
+                state["implementation_evidence_head"]
+                in {FL1_I1_ACCEPTED_MAIN, FL1_I1_HISTORICAL_EVIDENCE},
+                protected.get("fl1_i1_current_implementation_evidence_pending")
+                is not False,
+                protected.get("fl1_i1_implementation_evidence_frozen") is not True,
+                protected.get("fl1_i1_implementation_evidence_head")
+                != state["implementation_evidence_head"],
+            )
+        ):
+            raise DocumentationStateError(
+                "fl1_i1_bounded_remediation_evidence_transition_invalid"
+            )
 
 
 def _validate_historical_fl1_p1_r1_state(state: dict[str, Any]) -> None:
@@ -719,7 +805,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Repository / PR: `{state['repository']}` / {pr_label}.",
         f"- Branch: `{state['branch']}`.",
         f"- Accepted mainline base: `{state['accepted_mainline_base']}`.",
-        f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}` (frozen: `{str(state['protected_evidence']['fl1_i1_implementation_evidence_frozen']).lower()}`).",
+        f"- Implementation evidence HEAD: `{state['implementation_evidence_head']}` (status: `{state.get('implementation_evidence_status', 'current')}`; frozen: `{str(state['protected_evidence']['fl1_i1_implementation_evidence_frozen']).lower()}`).",
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
         f"- `manual_acceptance_status={state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}` (I1 synthetic implementation is authorized; real source inventory is not authorized or started).",
@@ -775,7 +861,7 @@ def check_handoff(state: dict[str, Any], *, path: Path = HANDOFF_PATH) -> None:
     if actual != expected:
         raise DocumentationStateError("generated_handoff_drift")
     line_count = len(actual.splitlines())
-    if not 40 <= line_count <= 60:
+    if not 40 <= line_count <= 65:
         raise DocumentationStateError(f"handoff_line_count_out_of_range:{line_count}")
 
 

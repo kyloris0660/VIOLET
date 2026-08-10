@@ -33,10 +33,13 @@ source-like operations must target only synthetic or newly created temporary
 fixtures. `authorized_read_only_source` is an implemented code mode, not
 permission to access a real source.
 
-The implementation and transition tests are frozen at
+Draft PR #144 review `4891695875` at exact HEAD
+`b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3` produced 18 current-I1 findings
+(15 P1, 3 P2). The former evidence
 `5194a484d0d8fb8dd5e0697cd61054f596aee5ec` (tree
-`9b30ba024beb6fcd58709e707d7879887ad7c081`) in Draft PR #144. The current
-checkpoint is synthetic implementation owner audit, not real inventory.
+`9b30ba024beb6fcd58709e707d7879887ad7c081`) is preserved as historical and
+superseded. The owner authorized one and only one bounded synthetic/temp-fixture
+remediation round; real inventory remains unauthorized.
 
 Current state remains:
 
@@ -44,7 +47,9 @@ Current state remains:
 target_met=false
 safe_to_merge=false
 route_approved=false
-manual_acceptance_status=pending_i1_synthetic_implementation_owner_audit
+current_status=fl1_i1_first_review_bounded_remediation_in_progress
+manual_acceptance_status=pending_i1_bounded_remediation_owner_audit
+bounded_remediation_round=1_of_1
 next_phase_started=true
 real_inventory_started=false
 real_source_inventory_authorized=false
@@ -75,10 +80,12 @@ remediation, commit, or wholesale code patch is reused.
 
 ## Current FL1 Route
 
-1. Implement and validate I1 safety tooling with synthetic/new temporary roots.
-2. Freeze implementation evidence, add governance-only owner-audit projection,
-   and create one Draft PR.
-3. Request one final-head review and stop for owner audit.
+1. Complete only the owner-adjudicated 18-finding trust recovery with
+   synthetic/new temporary roots.
+2. Freeze replacement implementation evidence while retaining `5194a484...` as
+   historical superseded evidence.
+3. Request the one authorized terminal post-remediation review and stop for
+   owner audit without another fix loop.
 4. A later owner decision must name exact source identity, scope, protected
    roots, budgets, Cloud policy, and stop conditions before any real inventory.
 5. Import, local classification/AI tagging, database/app-storage use, and FL1-E1

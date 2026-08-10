@@ -35,20 +35,23 @@ wholesale patch is inherited.
 `docs/state/current-phase.json` and its planning input is
 `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
 
-Draft PR #144 now carries the frozen synthetic implementation and remains at
-the owner-audit stop. Current fail-closed state:
+Draft PR #144 review `4891695875` produced 18 current-HEAD findings at reviewed
+HEAD `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3` (15 P1, 3 P2). The owner
+authorized exactly one bounded synthetic/temp-fixture remediation round. Current
+fail-closed state:
 
-- `status=fl1_i1_synthetic_implementation_ready_for_owner_audit`
+- `status=fl1_i1_first_review_bounded_remediation_in_progress`
 - `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
-- `manual_acceptance_status=pending_i1_synthetic_implementation_owner_audit`
+- `manual_acceptance_status=pending_i1_bounded_remediation_owner_audit`
+- `bounded_remediation_round=1_of_1`
 - `next_phase_started=true`
 - `real_inventory_started=false`
-- implementation evidence: `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`
-  with tree `9b30ba024beb6fcd58709e707d7879887ad7c081`
-- blocker:
-  `pending_i1_synthetic_implementation_owner_audit_and_real_source_scope`
+- historical superseded implementation evidence:
+  `5194a484d0d8fb8dd5e0697cd61054f596aee5ec` with tree
+  `9b30ba024beb6fcd58709e707d7879887ad7c081`
+- blocker: `pr144_first_review_current_i1_trust_recovery_counterexamples`
 
 The current route authorizes reusable inventory safety tooling and validation
 only against synthetic or newly created temporary fixtures. It authorizes the
@@ -57,7 +60,11 @@ but the latter may be exercised only against temporary roots under a trusted
 test registry. No real source/iCloud root may be listed, stated, observed,
 opened, read, or hashed.
 
-The route must deliver trusted runtime/repository identity, a complete
+The remediation must recover trusted runtime/repository bootstrap, artifact
+confinement, Cloud-attribute-before-open ordering, manifest identity
+re-derivation, per-directory/per-item operation closure, lock/crash/checkpoint
+recovery, adapter/budget binding, bounded media-header exclusion, and
+command-executed local validation receipts. The route must still deliver a complete
 protected-root role registry, layered write-ahead source-operation evidence,
 private atomic manifests and ledgers, denominator and exact-duplicate
 accounting, Cloud Files recall-risk deferral, bounded race-safe reading,
@@ -111,10 +118,12 @@ classification only, not self-filled contract authority.
 
 1. The I1 owner decision and implementation route are persisted.
 2. Scanner/gateway/manifest/ledger/contract implementation and temporary-root
-   validation are complete at the frozen evidence boundary.
-3. Draft PR #144 contains only the owner-audit governance projection after
-   implementation evidence `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`.
-4. Request one final-head Codex review and stop at owner audit.
+   validation reached historical evidence `5194a484...`, now superseded by
+   review `4891695875`.
+3. Complete the single `1_of_1` bounded remediation and freeze replacement
+   implementation/test evidence.
+4. Request the one authorized terminal post-remediation Codex review and stop
+   at owner audit without replying, resolving, or modifying again.
 6. Any future real inventory requires a separate exact source-scope decision;
    FL1-E1 does not start from this route.
 

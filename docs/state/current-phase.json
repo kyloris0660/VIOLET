@@ -8,14 +8,16 @@
   "draft": true,
   "accepted_mainline_base": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5",
   "implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
-  "current_status": "fl1_i1_synthetic_implementation_ready_for_owner_audit",
+  "implementation_evidence_status": "historical_superseded_pending_bounded_remediation_replacement",
+  "current_status": "fl1_i1_first_review_bounded_remediation_in_progress",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
   "route_scope": "SCV2-FL1-I1 reusable read-only inventory safety tooling using only synthetic and newly created temporary fixtures",
   "planning_approved": true,
   "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
-  "manual_acceptance_status": "pending_i1_synthetic_implementation_owner_audit",
+  "manual_acceptance_status": "pending_i1_bounded_remediation_owner_audit",
+  "bounded_remediation_round": "1_of_1",
   "next_phase_started": true,
   "upstream_pr_state": {
     "pr_number": 143,
@@ -64,7 +66,10 @@
     "planning_only": false,
     "implementation_authorized": true,
     "implementation_scope": "SCV2-FL1-I1 reusable scanner, manifest, ledger, gateway, contract, CLI, and synthetic or temporary-fixture validation",
-    "implementation_completed": true,
+    "implementation_completed": false,
+    "bounded_remediation_authorized": true,
+    "bounded_remediation_round": "1_of_1",
+    "reviewed_head": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
     "owner_audit_pending": true,
     "owner_acceptance_valid": false,
     "merge_authorized": false,
@@ -112,16 +117,23 @@
     },
     {
       "id": "fl1_i1_implementation_evidence_frozen",
-      "result": "scanner_gateway_manifest_ledger_contract_cli_transition_tests_and_synthetic_validation_frozen_in_draft_pr_144",
+      "result": "historical_superseded_scanner_gateway_manifest_ledger_contract_cli_transition_tests_and_synthetic_validation",
       "fingerprint": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
       "tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
       "pr_number": 144
+    },
+    {
+      "id": "fl1_i1_pr144_first_review_bounded_remediation_authorized",
+      "result": "owner_authorized_one_of_one_synthetic_trust_recovery_for_18_current_head_findings",
+      "fingerprint": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
+      "review_id": 4891695875,
+      "finding_count": 18
     }
   ],
   "active_blocker": {
-    "code": "pending_i1_synthetic_implementation_owner_audit_and_real_source_scope",
-    "scope": "SCV2-FL1-I1 synthetic implementation owner audit; real source scope remains separately unauthorized",
-    "resolution": "Owner audits Draft PR #144 at the final reviewed HEAD. No merge, Ready transition, real source operation, or later FL1 phase may start without a new exact owner decision."
+    "code": "pr144_first_review_current_i1_trust_recovery_counterexamples",
+    "scope": "SCV2-FL1-I1 one-of-one bounded remediation for 18 current-HEAD trust, durability, evidence, budget, media-header, and receipt counterexamples",
+    "resolution": "Complete only the owner-authorized synthetic and temporary-fixture remediation, freeze replacement implementation evidence, request the single terminal post-remediation review, and stop for owner audit."
   },
   "owner_decisions": [
     {
@@ -139,13 +151,43 @@
     {
       "id": "owner_defined_remote_sync_preflight_policy_20260809",
       "decision": "Fetch trusted remote before comparison; when a safe protected base has no local-only commit and is only behind, fast-forward-only is a self-heal and the same task continues. Divergence, local-only commits, tracked drift, behavior-affecting executable or symlink drift, failed fast-forward, or any need to rewrite or overwrite remains fail closed."
+    },
+    {
+      "id": "owner_authorized_pr144_first_review_bounded_remediation_20260810",
+      "decision": "Review 4891695875 at exact reviewed HEAD b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3 establishes 18 current-I1 trust-recovery findings. Authorize exactly one bounded synthetic and temporary-fixture remediation round; Ready, merge, real source, database, app storage, import, provider or LLM, media pipeline, Stable Replay, UI/runtime, production, and later FL1 phases remain unauthorized.",
+      "review_id": 4891695875,
+      "reviewed_head": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
+      "bounded_remediation_round": "1_of_1",
+      "finding_count": 18,
+      "p1_count": 15,
+      "p2_count": 3,
+      "finding_adjudications": [
+        {"number": 1, "severity": "P1", "code": "trusted_git_executable_bootstrap", "decision": "must_fix_current_i1"},
+        {"number": 2, "severity": "P1", "code": "cloud_attributes_before_final_path_resolution", "decision": "must_fix_current_i1"},
+        {"number": 3, "severity": "P1", "code": "manifest_membership_identity_rederivation", "decision": "must_fix_current_i1"},
+        {"number": 4, "severity": "P1", "code": "attribute_adapter_configuration_binding", "decision": "must_fix_current_i1"},
+        {"number": 5, "severity": "P1", "code": "runner_lock_before_invocation_mutation", "decision": "must_fix_current_i1"},
+        {"number": 6, "severity": "P1", "code": "projection_output_evidence_root_confinement", "decision": "must_fix_current_i1"},
+        {"number": 7, "severity": "P2", "code": "per_directory_listing_target_identity", "decision": "must_fix_current_i1"},
+        {"number": 8, "severity": "P1", "code": "repository_venv_python_trust_anchor", "decision": "must_fix_current_i1"},
+        {"number": 9, "severity": "P1", "code": "reject_pending_owner_registry_before_root_observation", "decision": "must_fix_current_i1"},
+        {"number": 10, "severity": "P1", "code": "per_item_disposition_operation_reconciliation", "decision": "must_fix_current_i1"},
+        {"number": 11, "severity": "P1", "code": "independent_parent_harness_restart_receipt", "decision": "must_fix_current_i1"},
+        {"number": 12, "severity": "P1", "code": "validation_receipt_executes_command", "decision": "must_fix_current_i1"},
+        {"number": 13, "severity": "P2", "code": "bounded_final_snapshot", "decision": "must_fix_current_i1"},
+        {"number": 14, "severity": "P1", "code": "recoverable_manifest_run_checkpoint", "decision": "must_fix_current_i1"},
+        {"number": 15, "severity": "P1", "code": "abandoned_intent_interruption_reconciliation", "decision": "must_fix_current_i1"},
+        {"number": 16, "severity": "P1", "code": "owner_only_private_artifact_permissions", "decision": "must_fix_current_i1"},
+        {"number": 17, "severity": "P2", "code": "bounded_media_header_validation", "decision": "must_fix_current_i1"},
+        {"number": 18, "severity": "P1", "code": "remaining_total_hash_budget_and_failed_read_accounting", "decision": "must_fix_current_i1"}
+      ]
     }
   ],
   "authorized_operations": [
     "implement and validate SCV2-FL1-I1 reusable safety tooling against synthetic and newly created temporary roots only",
     "create private ledgers and validation artifacts only under repo-local ignored or operating-system local temporary roots",
     "run repository tests, compilation, documentation checks, Git checks, redaction audits, and cross-process synthetic resume harnesses",
-    "commit and push only the named feature branch, create one Draft PR, and request one final-head Codex review"
+    "commit and push only the named existing feature branch, update Draft PR #144, and request the one authorized terminal post-remediation Codex review"
   ],
   "forbidden_operations": [
     "listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root",
@@ -164,9 +206,19 @@
     "fl1_p1_r1_final_head": "228983f510c975399b53b39dcd7dd170e59b3245",
     "fl1_p1_r1_implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
     "fl1_p1_r1_final_review_id": 4890771735,
-    "fl1_i1_implementation_evidence_frozen": true,
+    "fl1_i1_implementation_evidence_frozen": false,
     "fl1_i1_implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
     "fl1_i1_implementation_evidence_tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
+    "fl1_i1_historical_superseded_implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
+    "fl1_i1_historical_superseded_implementation_evidence_tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
+    "fl1_i1_historical_superseded_evidence_status": "superseded_by_pr144_review_4891695875_pending_replacement",
+    "fl1_i1_current_implementation_evidence_pending": true,
+    "pr144_first_review_id": 4891695875,
+    "pr144_first_reviewed_head": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
+    "pr144_first_review_finding_count": 18,
+    "pr144_first_review_p1_count": 15,
+    "pr144_first_review_p2_count": 3,
+    "bounded_remediation_round": "1_of_1",
     "i1_focused_validation_result": "36 passed, 2 skipped",
     "i1_phase_contract_and_p1_regression_result": "586 passed, 4 skipped",
     "raw_full_non_e2e_result_before_governance_projection": "3831 passed, 16 skipped, 2 failed, 15 warnings",
@@ -189,7 +241,7 @@
     "stable_replay_operation_count": 0,
     "production_operation_count": 0
   },
-  "next_required_checkpoint": "owner_audit_only_no_real_source_inventory",
+  "next_required_checkpoint": "complete_one_of_one_bounded_remediation_then_owner_audit_only_no_real_source_inventory",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -284,5 +336,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-09T22:41:23+08:00"
+  "updated_at": "2026-08-10T19:40:53+08:00"
 }

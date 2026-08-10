@@ -6,21 +6,26 @@ The owner-approved planning input remains
 `db90457d51a39b5dc930afc2a92a6ef3139a2760`. PR #143 was subsequently
 owner-accepted and merge-commit merged at
 `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`. The owner now authorizes the
-complete `SCV2-FL1-I1` reusable read-only inventory safety implementation and
-validation using only synthetic or newly created temporary fixtures.
+one and only bounded remediation round for Draft PR #144 review `4891695875`
+at exact reviewed HEAD `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3`.
+The remediation remains limited to reusable read-only inventory safety tooling
+and validation using only synthetic or newly created temporary fixtures.
 
 Canonical active phase:
 
 - ID: `SCV2-FL1-I1`
 - Title: `Read-only Inventory`
-- Current status: `fl1_i1_synthetic_implementation_ready_for_owner_audit`
+- Current status: `fl1_i1_first_review_bounded_remediation_in_progress`
 - Branch: `codex/scv2-fl1-i1-read-only-inventory-v2`
 - Accepted mainline base: `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`
-- Frozen implementation/test evidence:
+- Historical superseded implementation/test evidence:
   `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`, tree
   `9b30ba024beb6fcd58709e707d7879887ad7c081`
-- Current stop: Draft PR #144 owner audit after one final-head review; no real
-  source scope is authorized
+- Bounded remediation round: `1_of_1`
+- Current blocker: `pr144_first_review_current_i1_trust_recovery_counterexamples`
+- Current stop: finish only the bounded remediation, request the single terminal
+  post-remediation review, and return to owner audit; no real source scope is
+  authorized
 
 Final PR #143 review `4890771735` carries forward five owner-adjudicated
 constraints: complete protected roots from trusted context, merge-topology-safe
@@ -93,6 +98,38 @@ No caller boolean can create owner authorization or trusted test PASS.
 
 No PR #142 commit, governance state, P1 remediation, or wholesale patch is
 cherry-picked. The matrix preserves only independently reimplemented concepts.
+
+### PR #144 review `4891695875` bounded-remediation matrix
+
+All 18 findings apply to the current reviewed HEAD and are adjudicated
+`must_fix_current_i1`. No finding is deferred into a real-source run.
+
+| # | Severity | Finding / required trust recovery | Required regression |
+|---|---|---|---|
+| 1 | P1 | Resolve and verify an absolute trusted Git executable before setting a candidate repository as `cwd`; exclude cwd/PATH ambiguity and repo-local shims | repo-local fake `git.exe` never participates in identity or status |
+| 2 | P1 | Perform lexical/no-follow containment and Windows Cloud attribute observation before final-component resolution/open | recall-risk item is never resolved/opened before attributes |
+| 3 | P1 | Re-derive canonical relative path, path token, item ID, keyed label, extension, and signature-size relations on manifest load | swap two items and recompute editable fingerprints still fails |
+| 4 | P1 | Bind attribute-adapter type and complete normalized configuration fingerprint into policy/run identity | adapter type or synthetic-map/default drift fails resume |
+| 5 | P1 | Acquire the runner lock before any invocation, lineage, operation, or checkpoint mutation | live collision leaves every artifact byte-identical |
+| 6 | P1 | Constrain projection and all I1 writers to task-owned targets inside `phase_evidence_output_root` | output-to-source attempt fails without changing source bytes |
+| 7 | P2 | Give every directory-list operation a stable private target token and close it against discovery/final snapshots | every nested directory listing has an exact target identity |
+| 8 | P1 | Derive expected Python from canonical repository-venv policy; CLI expectation is assertion-only | system Python cannot self-approve by repeating its own path |
+| 9 | P1 | Reject pending-owner/private-runtime trust classes before any root filesystem observation and lexically reject out-of-sandbox source roots | unauthorized real-root payload produces zero root observations |
+| 10 | P1 | Reconcile every terminal disposition with item/attempt-specific metadata, attribute, read, hash, bytes, and content evidence | deleting one eligible item read/hash pair fails contract |
+| 11 | P1 | Bind restart to an independently produced parent-harness child receipt | a one-process fabricated second invocation fails |
+| 12 | P1 | Have the receipt creator launch the validation command and capture actual argv, exit, output/report bytes, HEAD, Python/Git, and cleanliness | caller-supplied PASS/exit/report cannot create completion |
+| 13 | P2 | Apply discovery-equivalent counters and deadline to the final snapshot | post-discovery tree expansion stops within budgets |
+| 14 | P1 | Make terminal item state, operations, counters, and budget usage one recoverable checkpoint/journal | fault injection between persistence boundaries reconstructs exact counters |
+| 15 | P1 | Reconcile abandoned `INTENT` records from a dead invocation to terminal `interrupted` before a new attempt | kill-after-INTENT resumes with no unresolved intents |
+| 16 | P1 | Create POSIX private temporary artifacts with explicit `0600` and verify ownership/mode before replace | mode/owner regression fails closed without broadening durability claims |
+| 17 | P2 | Add bounded auditable JPEG/PNG/GIF/WebP/AVIF header/container validation before eligibility | empty, text-suffixed, truncated, and magic-mismatch media are excluded |
+| 18 | P1 | Cap reads by `min(per_file_limit, remaining_total_budget)` and conservatively account failed/raced/interrupted bytes | growing failed reads cannot exceed or evade total-byte accounting |
+
+The same-pattern audit covers `fl1_i1_runtime_context.py`, validation receipts,
+documentation/current-phase Git helpers, operation/manifest/run/projection
+writers, resume/checkpoint paths, and the I1 contract. The round does not grant
+Ready, merge, real inventory, DB/app-storage, import, provider/LLM/media,
+Stable Replay, UI/runtime, production, or later-phase authority.
 
 ## 4. Isolation Design
 
