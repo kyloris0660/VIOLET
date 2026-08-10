@@ -37,10 +37,13 @@ wholesale patch is inherited.
 
 Draft PR #144 review `4891695875` produced 18 current-HEAD findings at reviewed
 HEAD `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3` (15 P1, 3 P2). The owner
-authorized exactly one bounded synthetic/temp-fixture remediation round. Current
-fail-closed state:
+authorized exactly one bounded synthetic/temp-fixture remediation round. The
+round is frozen at replacement implementation/test evidence
+`6992e7f1e5a45857111d15da1ad0274e49008a99` with tree
+`6ff185defb150c3751c7433ef635c00a200c44bf`; the 18 adjudicated regressions are
+closed in that evidence. Current fail-closed owner-audit state:
 
-- `status=fl1_i1_first_review_bounded_remediation_in_progress`
+- `status=fl1_i1_bounded_remediation_ready_for_owner_audit`
 - `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
@@ -51,7 +54,7 @@ fail-closed state:
 - historical superseded implementation evidence:
   `5194a484d0d8fb8dd5e0697cd61054f596aee5ec` with tree
   `9b30ba024beb6fcd58709e707d7879887ad7c081`
-- blocker: `pr144_first_review_current_i1_trust_recovery_counterexamples`
+- blocker: `pending_i1_bounded_remediation_owner_audit`
 
 The current route authorizes reusable inventory safety tooling and validation
 only against synthetic or newly created temporary fixtures. It authorizes the
@@ -60,7 +63,7 @@ but the latter may be exercised only against temporary roots under a trusted
 test registry. No real source/iCloud root may be listed, stated, observed,
 opened, read, or hashed.
 
-The remediation must recover trusted runtime/repository bootstrap, artifact
+The frozen remediation recovers trusted runtime/repository bootstrap, artifact
 confinement, Cloud-attribute-before-open ordering, manifest identity
 re-derivation, per-directory/per-item operation closure, lock/crash/checkpoint
 recovery, adapter/budget binding, bounded media-header exclusion, and
@@ -79,7 +82,8 @@ owner-audit checkpoint cannot claim `target_met`, `safe_to_merge`, or
 
 ## PR #143 Final Owner Adjudication Carry-Forward
 
-Final review `4890771735` at exact HEAD `228983f…` produced five durable
+Final review `4890771735` at exact HEAD
+`228983f510c975399b53b39dcd7dd170e59b3245` produced five durable
 owner-adjudicated boundaries:
 
 1. complete protected roots must come from trusted private runtime/repository
@@ -117,14 +121,12 @@ classification only, not self-filled contract authority.
 ## Delivery Sequence
 
 1. The I1 owner decision and implementation route are persisted.
-2. Scanner/gateway/manifest/ledger/contract implementation and temporary-root
-   validation reached historical evidence `5194a484...`, now superseded by
-   review `4891695875`.
-3. Complete the single `1_of_1` bounded remediation and freeze replacement
-   implementation/test evidence.
+2. Historical evidence `5194a484...` was superseded by review `4891695875`.
+3. The single `1_of_1` bounded remediation is frozen at replacement evidence
+   `6992e7f1...` and tree `6ff185de...`.
 4. Request the one authorized terminal post-remediation Codex review and stop
    at owner audit without replying, resolving, or modifying again.
-6. Any future real inventory requires a separate exact source-scope decision;
+5. Any future real inventory requires a separate exact source-scope decision;
    FL1-E1 does not start from this route.
 
 ## FL1 Planning Constraints

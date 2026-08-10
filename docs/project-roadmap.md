@@ -39,7 +39,10 @@ Draft PR #144 review `4891695875` at exact HEAD
 `5194a484d0d8fb8dd5e0697cd61054f596aee5ec` (tree
 `9b30ba024beb6fcd58709e707d7879887ad7c081`) is preserved as historical and
 superseded. The owner authorized one and only one bounded synthetic/temp-fixture
-remediation round; real inventory remains unauthorized.
+remediation round. That round is frozen at replacement implementation/test
+evidence `6992e7f1e5a45857111d15da1ad0274e49008a99` (tree
+`6ff185defb150c3751c7433ef635c00a200c44bf`); all 18 adjudications have focused
+regression evidence. Real inventory remains unauthorized.
 
 Current state remains:
 
@@ -47,7 +50,7 @@ Current state remains:
 target_met=false
 safe_to_merge=false
 route_approved=false
-current_status=fl1_i1_first_review_bounded_remediation_in_progress
+current_status=fl1_i1_bounded_remediation_ready_for_owner_audit
 manual_acceptance_status=pending_i1_bounded_remediation_owner_audit
 bounded_remediation_round=1_of_1
 next_phase_started=true
@@ -57,6 +60,7 @@ database_access_authorized=false
 app_storage_write_authorized=false
 provider_or_llm_authorized=false
 production_authorized=false
+active_blocker=pending_i1_bounded_remediation_owner_audit
 ```
 
 PR #142 is closed, unmerged, and non-authoritative. Its patch is inspected only
@@ -80,15 +84,13 @@ remediation, commit, or wholesale code patch is reused.
 
 ## Current FL1 Route
 
-1. Complete only the owner-adjudicated 18-finding trust recovery with
-   synthetic/new temporary roots.
-2. Freeze replacement implementation evidence while retaining `5194a484...` as
-   historical superseded evidence.
-3. Request the one authorized terminal post-remediation review and stop for
+1. Preserve replacement implementation evidence `6992e7f1...` and its exact
+   validation while retaining `5194a484...` as historical superseded evidence.
+2. Request the one authorized terminal post-remediation review and stop for
    owner audit without another fix loop.
-4. A later owner decision must name exact source identity, scope, protected
+3. A later owner decision must name exact source identity, scope, protected
    roots, budgets, Cloud policy, and stop conditions before any real inventory.
-5. Import, local classification/AI tagging, database/app-storage use, and FL1-E1
+4. Import, local classification/AI tagging, database/app-storage use, and FL1-E1
    remain later independent routes.
 
 ## Durable Boundaries

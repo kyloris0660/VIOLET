@@ -7,9 +7,9 @@
   "pr_number": 144,
   "draft": true,
   "accepted_mainline_base": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5",
-  "implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
-  "implementation_evidence_status": "historical_superseded_pending_bounded_remediation_replacement",
-  "current_status": "fl1_i1_first_review_bounded_remediation_in_progress",
+  "implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
+  "implementation_evidence_status": "bounded_remediation_replacement_frozen",
+  "current_status": "fl1_i1_bounded_remediation_ready_for_owner_audit",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -66,7 +66,7 @@
     "planning_only": false,
     "implementation_authorized": true,
     "implementation_scope": "SCV2-FL1-I1 reusable scanner, manifest, ledger, gateway, contract, CLI, and synthetic or temporary-fixture validation",
-    "implementation_completed": false,
+    "implementation_completed": true,
     "bounded_remediation_authorized": true,
     "bounded_remediation_round": "1_of_1",
     "reviewed_head": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
@@ -128,12 +128,20 @@
       "fingerprint": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
       "review_id": 4891695875,
       "finding_count": 18
+    },
+    {
+      "id": "fl1_i1_pr144_bounded_remediation_implementation_evidence_frozen",
+      "result": "one_of_one_bounded_remediation_closed_18_current_i1_counterexamples_with_synthetic_and_temporary_fixture_validation",
+      "fingerprint": "6992e7f1e5a45857111d15da1ad0274e49008a99",
+      "tree": "6ff185defb150c3751c7433ef635c00a200c44bf",
+      "review_id": 4891695875,
+      "finding_count": 18
     }
   ],
   "active_blocker": {
-    "code": "pr144_first_review_current_i1_trust_recovery_counterexamples",
-    "scope": "SCV2-FL1-I1 one-of-one bounded remediation for 18 current-HEAD trust, durability, evidence, budget, media-header, and receipt counterexamples",
-    "resolution": "Complete only the owner-authorized synthetic and temporary-fixture remediation, freeze replacement implementation evidence, request the single terminal post-remediation review, and stop for owner audit."
+    "code": "pending_i1_bounded_remediation_owner_audit",
+    "scope": "SCV2-FL1-I1 replacement implementation evidence is frozen after the one-of-one bounded remediation; real source inventory and all later FL1 routes remain unauthorized",
+    "resolution": "Request the single terminal post-remediation review, record its exact findings without repair or thread mutation, and stop for final owner audit."
   },
   "owner_decisions": [
     {
@@ -206,23 +214,26 @@
     "fl1_p1_r1_final_head": "228983f510c975399b53b39dcd7dd170e59b3245",
     "fl1_p1_r1_implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
     "fl1_p1_r1_final_review_id": 4890771735,
-    "fl1_i1_implementation_evidence_frozen": false,
-    "fl1_i1_implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
-    "fl1_i1_implementation_evidence_tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
+    "fl1_i1_implementation_evidence_frozen": true,
+    "fl1_i1_implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
+    "fl1_i1_implementation_evidence_tree": "6ff185defb150c3751c7433ef635c00a200c44bf",
     "fl1_i1_historical_superseded_implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
     "fl1_i1_historical_superseded_implementation_evidence_tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
     "fl1_i1_historical_superseded_evidence_status": "superseded_by_pr144_review_4891695875_pending_replacement",
-    "fl1_i1_current_implementation_evidence_pending": true,
+    "fl1_i1_current_implementation_evidence_pending": false,
     "pr144_first_review_id": 4891695875,
     "pr144_first_reviewed_head": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
     "pr144_first_review_finding_count": 18,
     "pr144_first_review_p1_count": 15,
     "pr144_first_review_p2_count": 3,
     "bounded_remediation_round": "1_of_1",
-    "i1_focused_validation_result": "36 passed, 2 skipped",
-    "i1_phase_contract_and_p1_regression_result": "586 passed, 4 skipped",
-    "raw_full_non_e2e_result_before_governance_projection": "3831 passed, 16 skipped, 2 failed, 15 warnings",
-    "accepted_main_exact_baseline_result": "one historical SV1 ignored-artifact failure; handoff factual node passed",
+    "i1_focused_validation_result": "56 passed, 3 skipped",
+    "i1_phase_contract_and_p1_regression_result": "675 passed, 5 skipped",
+    "raw_full_non_e2e_result_before_governance_projection": "3853 passed, 17 skipped, 1 failed, 15 warnings",
+    "accepted_main_exact_baseline_result": "same isolated SV1 node failed with missing_original_ai_execution_evidence; handoff factual node passed",
+    "bounded_remediation_synthetic_run_result": "2 distinct child invocations, 8 discovered, 35 operations, unresolved 0, source mutation 0",
+    "bounded_remediation_contract_projection_fingerprint": "f782fbc2d1ea318414ad067ce86ff7ec762d6af54d9b1c470b2b7b22a5d17761",
+    "windows_cloud_attribute_adapter_result": "temporary Windows API file observed known available without reparse offline or recall flags",
     "validation_receipt_trust_level": "local_operator_receipt",
     "machine_verifiable_ci": false,
     "github_checks_observed": 0,
@@ -241,7 +252,7 @@
     "stable_replay_operation_count": 0,
     "production_operation_count": 0
   },
-  "next_required_checkpoint": "complete_one_of_one_bounded_remediation_then_owner_audit_only_no_real_source_inventory",
+  "next_required_checkpoint": "single_terminal_post_remediation_review_then_final_owner_audit_only_no_real_source_inventory",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -336,5 +347,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-10T19:40:53+08:00"
+  "updated_at": "2026-08-10T20:35:45+08:00"
 }

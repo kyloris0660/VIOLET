@@ -15,15 +15,18 @@ Canonical active phase:
 
 - ID: `SCV2-FL1-I1`
 - Title: `Read-only Inventory`
-- Current status: `fl1_i1_first_review_bounded_remediation_in_progress`
+- Current status: `fl1_i1_bounded_remediation_ready_for_owner_audit`
 - Branch: `codex/scv2-fl1-i1-read-only-inventory-v2`
 - Accepted mainline base: `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`
 - Historical superseded implementation/test evidence:
   `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`, tree
   `9b30ba024beb6fcd58709e707d7879887ad7c081`
+- Replacement implementation/test evidence:
+  `6992e7f1e5a45857111d15da1ad0274e49008a99`, tree
+  `6ff185defb150c3751c7433ef635c00a200c44bf`
 - Bounded remediation round: `1_of_1`
-- Current blocker: `pr144_first_review_current_i1_trust_recovery_counterexamples`
-- Current stop: finish only the bounded remediation, request the single terminal
+- Current blocker: `pending_i1_bounded_remediation_owner_audit`
+- Current stop: request the single terminal
   post-remediation review, and return to owner audit; no real source scope is
   authorized
 
@@ -102,7 +105,9 @@ cherry-picked. The matrix preserves only independently reimplemented concepts.
 ### PR #144 review `4891695875` bounded-remediation matrix
 
 All 18 findings apply to the current reviewed HEAD and are adjudicated
-`must_fix_current_i1`. No finding is deferred into a real-source run.
+`must_fix_current_i1`. All 18 are implemented and covered by focused regressions
+in replacement evidence `6992e7f1e5a45857111d15da1ad0274e49008a99`; no finding
+is deferred into a real-source run.
 
 | # | Severity | Finding / required trust recovery | Required regression |
 |---|---|---|---|

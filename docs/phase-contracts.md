@@ -77,10 +77,12 @@ does not create automated positive owner, merge, or route authority.
 `4891695875` at reviewed HEAD
 `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3` then established 18 current-I1
 counterexamples (15 P1, 3 P2), superseding that evidence. The owner authorized
-the one and only bounded synthetic/temp-fixture remediation round. Current
-state:
+the one and only bounded synthetic/temp-fixture remediation round. Replacement
+implementation/test evidence is frozen at
+`6992e7f1e5a45857111d15da1ad0274e49008a99` with tree
+`6ff185defb150c3751c7433ef635c00a200c44bf`. Current state:
 
-- `status=fl1_i1_first_review_bounded_remediation_in_progress`
+- `status=fl1_i1_bounded_remediation_ready_for_owner_audit`
 - `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
@@ -89,9 +91,9 @@ state:
 - `next_phase_started=true`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pr144_first_review_current_i1_trust_recovery_counterexamples`
+- blocker: `pending_i1_bounded_remediation_owner_audit`
 
-The bounded remediation contract must close all 18 adjudications: trusted
+The bounded remediation evidence closes all 18 adjudications: trusted
 absolute Git bootstrap; repository-venv Python derivation; authorization and
 lexical-sandbox rejection before root observation; Cloud attributes before
 final-component resolution; evidence-root-confined writers with secure private
@@ -102,7 +104,9 @@ abandoned-intent interruption recovery; recoverable operation/item/counter
 checkpoints; parent-harness child receipts; bounded final snapshots and
 remaining-byte accounting; bounded media header validation; and
 command-executed validation receipts. The exact 18-row adjudication matrix and
-required regressions are canonical in the active FL1 plan.
+validated regressions are canonical in the active FL1 plan. This synthetic
+contract result does not create positive owner, Ready, merge, route, or real
+source authority.
 
 The phase registers `scv2_fl1_i1_read_only_inventory_contract_v1`. Its dedicated
 module rebuilds a canonical protected projection only from validated trusted
