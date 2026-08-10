@@ -18,6 +18,7 @@ from scripts.fl1_i1_operation_gateway import (
     OperationLedgerStore,
     OperationStatus,
     SyntheticAttributeAdapter,
+    TaskOwnedArtifactStore,
     WindowsCloudAttributeAdapter,
 )
 from tests.fl1_i1_helpers import make_i1_fixture
@@ -25,7 +26,7 @@ from tests.fl1_i1_helpers import make_i1_fixture
 
 class RecordingStore(OperationLedgerStore):
     def __init__(self, path: Path) -> None:
-        super().__init__(path)
+        super().__init__(path, artifact_store=TaskOwnedArtifactStore(path.parent))
         self.snapshots: list[list[str]] = []
 
     def save(self, ledger: OperationLedger) -> None:
@@ -51,7 +52,7 @@ def test_each_gateway_entry_persists_intent_before_terminal_result(tmp_path: Pat
     fixture, gateway, store = _gateway(tmp_path)
     target = fixture.source / "a.jpg"
     metadata = gateway.stat_entry(target, item_id="a" * 64, attempt=1)
-    gateway.list_directory(fixture.source)
+    gateway.list_directory(fixture.source, target_token="1" * 64)
     gateway.observe_attributes(target, item_id="a" * 64, attempt=1)
     gateway.hash_file(
         target,
@@ -154,7 +155,7 @@ def test_metadata_is_no_follow_and_symlink_never_reaches_hash(tmp_path: Path) ->
 
 def test_operation_ledger_tamper_fails_even_if_json_is_well_formed(tmp_path: Path) -> None:
     fixture, gateway, store = _gateway(tmp_path)
-    gateway.list_directory(fixture.source)
+    gateway.list_directory(fixture.source, target_token="1" * 64)
     payload = json.loads(store.path.read_text(encoding="utf-8"))
     payload["records"][0]["actual_git_head"] = "0" * 40
     store.path.write_text(json.dumps(payload), encoding="utf-8")
@@ -247,3 +248,101 @@ def test_per_item_deadline_stops_before_content_read(tmp_path: Path, monkeypatch
             timeout_seconds=1,
             max_bytes=1024,
         )
+
+
+def test_recall_risk_is_observed_before_final_component_resolve_or_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, gateway, _ = _gateway(
+        tmp_path,
+        adapter=SyntheticAttributeAdapter(
+            observations={"a.jpg": CloudAvailability.RECALL_RISK}
+        ),
+    )
+    target = fixture.source / "a.jpg"
+    original_resolve = Path.resolve
+    final_resolves: list[Path] = []
+
+    def recording_resolve(self: Path, *args, **kwargs):
+        if self == target:
+            final_resolves.append(self)
+        return original_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", recording_resolve)
+    monkeypatch.setattr(
+        gateway_module,
+        "_open_readonly_nofollow",
+        lambda _path: (_ for _ in ()).throw(AssertionError("content open attempted")),
+    )
+    observation = gateway.observe_attributes(target, item_id="a" * 64, attempt=1)
+    assert observation.availability is CloudAvailability.RECALL_RISK
+    assert final_resolves == []
+
+
+def test_task_owned_writer_rejects_source_target_without_modifying_bytes(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    target = fixture.source / "a.jpg"
+    before = target.read_bytes()
+    store = TaskOwnedArtifactStore(fixture.evidence)
+    with pytest.raises(OperationGatewayError, match="private_artifact_target_escape"):
+        store.atomic_write_json(target, {"forbidden": True})
+    assert target.read_bytes() == before
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX private mode/owner assertion")
+def test_task_owned_private_artifact_is_explicit_owner_0600(tmp_path: Path) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    target = fixture.evidence / "private-mode.json"
+    TaskOwnedArtifactStore(fixture.evidence).atomic_write_json(target, {"ok": True})
+    metadata = os.stat(target, follow_symlinks=False)
+    assert stat.S_IMODE(metadata.st_mode) == 0o600
+    assert metadata.st_uid == os.getuid()
+
+
+def test_growing_file_never_reads_beyond_reserved_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, gateway, _ = _gateway(tmp_path)
+    target = fixture.source / "a.jpg"
+    metadata = os.stat(target, follow_symlinks=False)
+    expected = (
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_dev,
+        metadata.st_ino,
+    )
+    original_read = gateway_module.os.read
+    actual_read = 0
+    mutated = False
+
+    def growing_read(descriptor: int, size: int) -> bytes:
+        nonlocal actual_read, mutated
+        chunk = original_read(descriptor, size)
+        actual_read += len(chunk)
+        if chunk and not mutated:
+            mutated = True
+            with target.open("ab") as handle:
+                handle.write(b"growth-beyond-original-budget")
+        return chunk
+
+    monkeypatch.setattr(gateway_module.os, "read", growing_read)
+    with pytest.raises(OperationGatewayError, match="source_entry_changed_during_read"):
+        gateway.hash_file(
+            target,
+            item_id="9" * 64,
+            attempt=1,
+            expected_signature=expected,
+            chunk_size=4,
+            timeout_seconds=2,
+            max_bytes=metadata.st_size,
+        )
+    assert actual_read <= metadata.st_size
+    read_record = next(
+        record
+        for record in gateway.ledger.records
+        if record.kind is OperationKind.SOURCE_FILE_READ
+    )
+    assert read_record.byte_count <= metadata.st_size

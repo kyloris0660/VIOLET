@@ -26,10 +26,14 @@ from scripts.fl1_i1_operation_gateway import (
     CloudAvailability,
     OperationGateway,
     OperationGatewayError,
+    OperationLedger,
+    OperationKind,
     OperationLedgerStore,
+    OperationStatus,
     SyntheticAttributeAdapter,
+    TaskOwnedArtifactStore,
     WindowsCloudAttributeAdapter,
-    atomic_write_json,
+    attribute_adapter_identity,
     load_private_json,
 )
 from scripts.fl1_i1_runtime_context import (
@@ -43,6 +47,7 @@ CONTRACT_ID = "scv2_fl1_i1_read_only_inventory_contract_v1"
 BUDGET_SCHEMA_VERSION = "violet.scv2-fl1-i1-inventory-budgets.v1"
 MANIFEST_SCHEMA_VERSION = "violet.scv2-fl1-i1-private-manifest.v1"
 RUN_LEDGER_SCHEMA_VERSION = "violet.scv2-fl1-i1-run-ledger.v1"
+CHECKPOINT_SCHEMA_VERSION = "violet.scv2-fl1-i1-inventory-checkpoint.v1"
 INVOKATION_SCHEMA_VERSION = "violet.scv2-fl1-i1-invocation.v1"
 MEMBERSHIP_IDENTITY_VERSION = "violet.scv2-fl1-i1-membership.v1"
 CONTENT_IDENTITY_VERSION = "sha256"
@@ -85,6 +90,8 @@ class InventoryBudgets:
     max_consecutive_failures: int
     max_same_reason_failures: int
     batch_size: int
+    traversal_timeout_seconds: float = 30.0
+    max_item_attempts: int = 3
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "InventoryBudgets":
@@ -103,6 +110,10 @@ class InventoryBudgets:
                 max_consecutive_failures=int(payload["max_consecutive_failures"]),
                 max_same_reason_failures=int(payload["max_same_reason_failures"]),
                 batch_size=int(payload["batch_size"]),
+                traversal_timeout_seconds=float(
+                    payload.get("traversal_timeout_seconds", 30.0)
+                ),
+                max_item_attempts=int(payload.get("max_item_attempts", 3)),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise InventoryError("budget_payload_invalid") from exc
@@ -123,6 +134,8 @@ class InventoryBudgets:
             "max_consecutive_failures": self.max_consecutive_failures,
             "max_same_reason_failures": self.max_same_reason_failures,
             "batch_size": self.batch_size,
+            "traversal_timeout_seconds": self.traversal_timeout_seconds,
+            "max_item_attempts": self.max_item_attempts,
         }
 
     def validate(self) -> None:
@@ -137,11 +150,14 @@ class InventoryBudgets:
             self.max_consecutive_failures,
             self.max_same_reason_failures,
             self.batch_size,
+            self.max_item_attempts,
         )
         if any(isinstance(value, bool) or value <= 0 for value in integer_fields):
             raise InventoryError("budget_value_invalid")
         if not 0 < self.per_item_timeout_seconds <= 3600:
             raise InventoryError("budget_timeout_invalid")
+        if not 0 < self.traversal_timeout_seconds <= 3600:
+            raise InventoryError("budget_traversal_timeout_invalid")
         if self.read_chunk_size > 16 * 1024 * 1024:
             raise InventoryError("budget_chunk_size_invalid")
         if self.max_per_file_hash_bytes > self.max_total_hashed_bytes:
@@ -332,7 +348,17 @@ class PrivateManifest:
     source_snapshot_fingerprint: str
     keyed_label_secret: str
     items: list[PrivateInventoryItem]
+    discovery_directories: list[dict[str, Any]] = field(default_factory=list)
+    final_directories: list[dict[str, Any]] = field(default_factory=list)
     manifest_fingerprint: str = ""
+
+    @property
+    def discovery_directory_tokens(self) -> list[str]:
+        return [str(value["path_token"]) for value in self.discovery_directories]
+
+    @property
+    def final_directory_tokens(self) -> list[str]:
+        return [str(value["path_token"]) for value in self.final_directories]
 
     def denominator(self) -> dict[str, int]:
         counts = {disposition: 0 for disposition in InventoryDisposition}
@@ -385,6 +411,8 @@ class PrivateManifest:
             "public_label_version": PUBLIC_LABEL_VERSION,
             "keyed_label_secret": self.keyed_label_secret,
             "items": [item.to_dict() for item in self.items],
+            "discovery_directories": list(self.discovery_directories),
+            "final_directories": list(self.final_directories),
             "denominator": self.denominator(),
         }
         if include_fingerprint:
@@ -415,6 +443,16 @@ class PrivateManifest:
             source_snapshot_fingerprint=str(payload.get("source_snapshot_fingerprint", "")),
             keyed_label_secret=str(payload.get("keyed_label_secret", "")),
             items=[PrivateInventoryItem.from_dict(item) for item in items_payload],
+            discovery_directories=[
+                dict(value)
+                for value in payload.get("discovery_directories", [])
+                if isinstance(value, Mapping)
+            ],
+            final_directories=[
+                dict(value)
+                for value in payload.get("final_directories", [])
+                if isinstance(value, Mapping)
+            ],
             manifest_fingerprint=str(payload.get("manifest_fingerprint", "")),
         )
         manifest.validate()
@@ -437,6 +475,19 @@ class PrivateManifest:
             raise InventoryError("manifest_scope_or_snapshot_invalid")
         if not HEX64_RE.fullmatch(self.keyed_label_secret):
             raise InventoryError("manifest_keyed_label_secret_invalid")
+        for directories in (self.discovery_directories, self.final_directories):
+            tokens = [value.get("path_token") for value in directories]
+            if len(set(tokens)) != len(tokens) or any(
+                not isinstance(value, Mapping)
+                or set(value) != {"relative_path", "path_token", "signature"}
+                or not isinstance(value.get("relative_path"), str)
+                or not isinstance(value.get("path_token"), str)
+                or not HEX64_RE.fullmatch(str(value.get("path_token")))
+                or not isinstance(value.get("signature"), list)
+                or len(value.get("signature", [])) != 5
+                for value in directories
+            ):
+                raise InventoryError("manifest_directory_token_invalid")
         by_id: dict[str, PrivateInventoryItem] = {}
         labels: set[str] = set()
         for item in self.items:
@@ -475,6 +526,53 @@ class PrivateManifest:
             for key in ("imported", "import_deferred", "import_failed")
         ):
             raise InventoryError("eligible_equation_mismatch")
+
+    def validate_derivations(self, context: TrustedRuntimeContext) -> None:
+        """Rebuild all editable membership identities from trusted secrets."""
+
+        try:
+            secret = bytes.fromhex(self.keyed_label_secret)
+        except ValueError as exc:
+            raise InventoryError("manifest_keyed_label_secret_invalid") from exc
+        expected_secret = hmac.new(
+            context.roots.private_derivation_key,
+            f"manifest-label\0{self.run_id}\0{self.manifest_id}".encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+        if not hmac.compare_digest(secret, expected_secret):
+            raise InventoryError("manifest_label_secret_derivation_mismatch")
+        for item in self.items:
+            relative = item.private_relative_path
+            pure = Path(relative)
+            if (
+                not relative
+                or pure.is_absolute()
+                or "\\" in relative
+                or any(part in {"", ".", ".."} for part in pure.parts)
+                or pure.as_posix() != relative
+            ):
+                raise InventoryError("manifest_relative_path_noncanonical")
+            expected_item, expected_token = _item_identity(context, relative)
+            if item.private_path_token != expected_token or item.item_id != expected_item:
+                raise InventoryError("manifest_membership_derivation_mismatch")
+            if item.private_public_label != _private_public_label(secret, expected_item):
+                raise InventoryError("manifest_private_label_derivation_mismatch")
+            if item.extension != Path(relative).suffix.casefold():
+                raise InventoryError("manifest_extension_derivation_mismatch")
+            if item.observed_size != item.signature[1] or item.signature[1] < 0:
+                raise InventoryError("manifest_signature_size_mismatch")
+        for directories in (self.discovery_directories, self.final_directories):
+            for directory in directories:
+                relative = str(directory["relative_path"])
+                if relative != "." and (
+                    Path(relative).is_absolute()
+                    or "\\" in relative
+                    or any(part in {"", ".", ".."} for part in Path(relative).parts)
+                    or Path(relative).as_posix() != relative
+                ):
+                    raise InventoryError("manifest_directory_path_noncanonical")
+                if directory["path_token"] != _path_token(context, relative):
+                    raise InventoryError("manifest_directory_token_derivation_mismatch")
 
 
 @dataclass
@@ -627,12 +725,22 @@ def _fingerprint(payload: Mapping[str, Any] | Sequence[Any]) -> str:
 def _process_start_observation() -> str:
     if os.name == "nt":
         import ctypes
+        from ctypes import wintypes
 
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        creation = ctypes.c_ulonglong()
-        exit_time = ctypes.c_ulonglong()
-        kernel = ctypes.c_ulonglong()
-        user = ctypes.c_ulonglong()
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.GetProcessTimes.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+        ]
+        kernel32.GetProcessTimes.restype = wintypes.BOOL
+        creation = wintypes.FILETIME()
+        exit_time = wintypes.FILETIME()
+        kernel = wintypes.FILETIME()
+        user = wintypes.FILETIME()
         ok = kernel32.GetProcessTimes(
             kernel32.GetCurrentProcess(),
             ctypes.byref(creation),
@@ -641,7 +749,8 @@ def _process_start_observation() -> str:
             ctypes.byref(user),
         )
         if ok:
-            return f"windows_filetime:{creation.value}"
+            value = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+            return f"windows_filetime:{value}"
     proc_stat = Path(f"/proc/{os.getpid()}/stat")
     if proc_stat.is_file():
         try:
@@ -649,6 +758,66 @@ def _process_start_observation() -> str:
         except (OSError, IndexError):
             pass
     return f"process_observation_fallback:{os.getpid()}:{time.monotonic_ns()}"
+
+
+def _process_identity_for_pid(pid: int) -> tuple[bool, str | None]:
+    """Return (definitely_alive, start identity); access uncertainty is live."""
+
+    if pid <= 0:
+        return False, None
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        kernel32.GetProcessTimes.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+        ]
+        kernel32.GetProcessTimes.restype = wintypes.BOOL
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            error = ctypes.get_last_error()
+            if error == 87:  # ERROR_INVALID_PARAMETER: no such process
+                return False, None
+            return True, None
+        try:
+            creation = wintypes.FILETIME()
+            exit_time = wintypes.FILETIME()
+            kernel = wintypes.FILETIME()
+            user = wintypes.FILETIME()
+            if not kernel32.GetProcessTimes(
+                handle,
+                ctypes.byref(creation),
+                ctypes.byref(exit_time),
+                ctypes.byref(kernel),
+                ctypes.byref(user),
+            ):
+                return True, None
+            value = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+            return True, f"windows_filetime:{value}"
+        finally:
+            kernel32.CloseHandle(handle)
+    proc_stat = Path(f"/proc/{pid}/stat")
+    try:
+        return True, f"proc_start_ticks:{proc_stat.read_text(encoding='ascii').split()[21]}"
+    except FileNotFoundError:
+        return False, None
+    except (OSError, IndexError):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False, None
+        except (PermissionError, OSError):
+            return True, None
+        return True, None
 
 
 def _path_token(context: TrustedRuntimeContext, relative_path: str) -> str:
@@ -687,6 +856,28 @@ def _signature(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
+def _bounded_media_header_valid(
+    extension: str, header: bytes, tail: bytes, total_size: int
+) -> bool:
+    """Bounded container/header screening, not pixel-level decode validation."""
+
+    if total_size <= 0:
+        return False
+    if extension in {".jpg", ".jpeg"}:
+        return total_size >= 4 and header.startswith(b"\xff\xd8\xff") and tail.endswith(b"\xff\xd9")
+    if extension == ".png":
+        return total_size >= 20 and header.startswith(b"\x89PNG\r\n\x1a\n") and b"IEND" in tail
+    if extension == ".gif":
+        return total_size >= 14 and header[:6] in {b"GIF87a", b"GIF89a"} and tail.endswith(b";")
+    if extension == ".webp":
+        if total_size < 12 or header[:4] != b"RIFF" or header[8:12] != b"WEBP":
+            return False
+        return int.from_bytes(header[4:8], "little") + 8 == total_size
+    if extension == ".avif":
+        return total_size >= 12 and header[4:8] == b"ftyp" and b"avif" in header[:64]
+    return False
+
+
 class InventoryRunner:
     SUPPORTED_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"})
 
@@ -700,6 +891,7 @@ class InventoryRunner:
         run_id: str | None = None,
         resume: bool = False,
         expected_parent_checkpoint: str | None = None,
+        after_operation_intent: Any | None = None,
     ) -> None:
         budgets.validate()
         self.context = context
@@ -708,6 +900,7 @@ class InventoryRunner:
         evidence = Path(evidence_root).resolve(strict=True)
         if evidence != context.roots.roots["phase_evidence_output_root"]:
             raise InventoryError("evidence_root_registry_mismatch")
+        self.artifacts = TaskOwnedArtifactStore(evidence)
         self.run_id = run_id or str(uuid.uuid4())
         try:
             uuid.UUID(self.run_id)
@@ -717,7 +910,9 @@ class InventoryRunner:
         self.manifest_path = self.run_dir / "private-manifest.json"
         self.run_path = self.run_dir / "private-run-ledger.json"
         self.operation_path = self.run_dir / "private-operation-ledger.json"
+        self.checkpoint_path = self.run_dir / "private-inventory-checkpoint.json"
         self.lock_path = self.run_dir / "runner.lock"
+        adapter_identity = attribute_adapter_identity(attribute_adapter)
         self.policy_fingerprint = _fingerprint(
             {
                 "contract_id": CONTRACT_ID,
@@ -726,67 +921,108 @@ class InventoryRunner:
                 "real_source": False,
                 "imported": 0,
                 "network": 0,
+                "attribute_adapter": adapter_identity,
+                "header_validation": "bounded_magic_and_container_markers_v1",
             }
         )
-        if resume:
-            if not self.run_dir.is_dir():
-                raise InventoryError("resume_run_missing")
-            self.manifest = PrivateManifest.from_dict(load_private_json(self.manifest_path))
-            self.ledger = PrivateRunLedger.from_dict(load_private_json(self.run_path))
-            if expected_parent_checkpoint != self.ledger.checkpoint_fingerprint:
-                raise InventoryError("resume_parent_checkpoint_mismatch")
-            if not self.ledger.invocations or self.ledger.invocations[-1].ended_at_ns is None:
-                raise InventoryError("resume_parent_invocation_incomplete")
-            if self.ledger.invocations[-1].pid == os.getpid():
-                raise InventoryError("same_process_restart_rejected")
-            self._validate_bindings()
-        else:
+        if resume and not self.run_dir.is_dir():
+            raise InventoryError("resume_run_missing")
+        if not resume:
             if self.run_dir.exists():
                 raise InventoryError("duplicate_runner_or_run_id")
-            self.run_dir.mkdir()
-            manifest_id = str(uuid.uuid4())
-            secret = os.urandom(32)
-            self.manifest = PrivateManifest(
-                manifest_id=manifest_id,
-                run_id=self.run_id,
-                actual_git_head=context.actual_git_head,
-                source_scope_fingerprint=context.source_scope.scope_fingerprint,
-                source_snapshot_fingerprint="0" * 64,
-                keyed_label_secret=secret.hex(),
-                items=[],
+            try:
+                os.mkdir(self.run_dir, 0o700)
+            except OSError as exc:
+                raise InventoryError("run_directory_create_failed") from exc
+        self._lock_fd: int | None = None
+        self._lock_fd = self._acquire_lock()
+        try:
+            if resume:
+                self.manifest, self.ledger, checkpoint_operations = self._load_checkpoint()
+                if expected_parent_checkpoint != self.ledger.checkpoint_fingerprint:
+                    raise InventoryError("resume_parent_checkpoint_mismatch")
+                if not self.ledger.invocations:
+                    raise InventoryError("resume_parent_invocation_missing")
+                previous = self.ledger.invocations[-1]
+                if previous.pid == os.getpid():
+                    raise InventoryError("same_process_restart_rejected")
+                if previous.ended_at_ns is None:
+                    alive, identity = _process_identity_for_pid(previous.pid)
+                    if alive and (identity is None or identity == previous.process_start_observation):
+                        raise InventoryError("resume_parent_invocation_still_live")
+                self._validate_bindings()
+            else:
+                checkpoint_operations = None
+                manifest_id = str(uuid.uuid4())
+                secret = hmac.new(
+                    context.roots.private_derivation_key,
+                    f"manifest-label\0{self.run_id}\0{manifest_id}".encode("ascii"),
+                    hashlib.sha256,
+                ).digest()
+                self.manifest = PrivateManifest(
+                    manifest_id=manifest_id,
+                    run_id=self.run_id,
+                    actual_git_head=context.actual_git_head,
+                    source_scope_fingerprint=context.source_scope.scope_fingerprint,
+                    source_snapshot_fingerprint="0" * 64,
+                    keyed_label_secret=secret.hex(),
+                    items=[],
+                )
+                self.ledger = PrivateRunLedger(
+                    run_id=self.run_id,
+                    manifest_id=manifest_id,
+                    actual_git_head=context.actual_git_head,
+                    branch=context.branch,
+                    runtime_context_fingerprint=context.context_fingerprint,
+                    source_scope_fingerprint=context.source_scope.scope_fingerprint,
+                    root_registry_fingerprint=context.roots.fingerprint,
+                    budget_fingerprint=budgets.fingerprint,
+                    policy_fingerprint=self.policy_fingerprint,
+                    status=RunStatus.DISCOVERING,
+                    invocations=[],
+                )
+            parent = self.ledger.checkpoint_fingerprint if resume else None
+            self.invocation = InvocationEvidence(
+                invocation_id=str(uuid.uuid4()),
+                pid=os.getpid(),
+                process_start_observation=_process_start_observation(),
+                started_at_ns=time.time_ns(),
+                parent_checkpoint_fingerprint=parent,
             )
-            self.ledger = PrivateRunLedger(
+            self.ledger.invocations.append(self.invocation)
+            if checkpoint_operations is not None:
+                OperationLedgerStore(
+                    self.operation_path, artifact_store=self.artifacts
+                ).save(checkpoint_operations)
+            self.gateway = OperationGateway(
+                context=context,
+                store=OperationLedgerStore(
+                    self.operation_path, artifact_store=self.artifacts
+                ),
                 run_id=self.run_id,
-                manifest_id=manifest_id,
-                actual_git_head=context.actual_git_head,
-                branch=context.branch,
-                runtime_context_fingerprint=context.context_fingerprint,
-                source_scope_fingerprint=context.source_scope.scope_fingerprint,
-                root_registry_fingerprint=context.roots.fingerprint,
-                budget_fingerprint=budgets.fingerprint,
-                policy_fingerprint=self.policy_fingerprint,
-                status=RunStatus.DISCOVERING,
-                invocations=[],
+                invocation_id=self.invocation.invocation_id,
+                attribute_adapter=attribute_adapter,
+                on_persist=self._operation_persisted,
+                after_intent=after_operation_intent,
             )
-        parent = self.ledger.checkpoint_fingerprint if resume else None
-        self.invocation = InvocationEvidence(
-            invocation_id=str(uuid.uuid4()),
-            pid=os.getpid(),
-            process_start_observation=_process_start_observation(),
-            started_at_ns=time.time_ns(),
-            parent_checkpoint_fingerprint=parent,
-        )
-        self.ledger.invocations.append(self.invocation)
-        self._save_run()
-        self.gateway = OperationGateway(
-            context=context,
-            store=OperationLedgerStore(self.operation_path),
-            run_id=self.run_id,
-            invocation_id=self.invocation.invocation_id,
-            attribute_adapter=attribute_adapter,
-        )
+            if resume:
+                previous = self.ledger.invocations[-2]
+                if previous.ended_at_ns is None:
+                    self.gateway.reconcile_interrupted_intents(
+                        dead_invocation_id=previous.invocation_id
+                    )
+                    previous.ended_at_ns = time.time_ns()
+                    previous.end_checkpoint_fingerprint = parent
+            self._reconcile_counters_from_operations()
+            self._persist_all()
+        except Exception:
+            if self._lock_fd is not None:
+                self._release_lock(self._lock_fd)
+                self._lock_fd = None
+            raise
 
     def _validate_bindings(self) -> None:
+        self.manifest.validate_derivations(self.context)
         expected = {
             "manifest_run": self.manifest.run_id == self.run_id,
             "ledger_run": self.ledger.run_id == self.run_id,
@@ -808,22 +1044,157 @@ class InventoryRunner:
 
     def _save_manifest(self) -> None:
         self.manifest.validate()
-        atomic_write_json(self.manifest_path, self.manifest.to_dict())
+        self.manifest.validate_derivations(self.context)
+        self._save_checkpoint(self.gateway.ledger if hasattr(self, "gateway") else None)
+        self.artifacts.atomic_write_json(self.manifest_path, self.manifest.to_dict())
 
     def _save_run(self) -> None:
         self.ledger.validate()
-        atomic_write_json(self.run_path, self.ledger.to_dict())
+        self._save_checkpoint(self.gateway.ledger if hasattr(self, "gateway") else None)
+        self.artifacts.atomic_write_json(self.run_path, self.ledger.to_dict())
+
+    def _checkpoint_payload(self, operations: OperationLedger | None) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": CHECKPOINT_SCHEMA_VERSION,
+            "manifest": self.manifest.to_dict(),
+            "run_ledger": self.ledger.to_dict(),
+            "operation_ledger": operations.to_dict() if operations is not None else None,
+        }
+        payload["checkpoint_bundle_fingerprint"] = _fingerprint(payload)
+        return payload
+
+    def _save_checkpoint(self, operations: OperationLedger | None) -> None:
+        if not hasattr(self, "manifest") or not hasattr(self, "ledger"):
+            return
+        self.artifacts.atomic_write_json(
+            self.checkpoint_path, self._checkpoint_payload(operations)
+        )
+
+    def _load_checkpoint(self) -> tuple[PrivateManifest, PrivateRunLedger, OperationLedger]:
+        payload = load_private_json(self.checkpoint_path)
+        if payload.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+            raise InventoryError("inventory_checkpoint_schema_invalid")
+        claimed = payload.get("checkpoint_bundle_fingerprint")
+        canonical = dict(payload)
+        canonical.pop("checkpoint_bundle_fingerprint", None)
+        if claimed != _fingerprint(canonical):
+            raise InventoryError("inventory_checkpoint_fingerprint_mismatch")
+        manifest_payload = payload.get("manifest")
+        ledger_payload = payload.get("run_ledger")
+        operation_payload = payload.get("operation_ledger")
+        if not all(isinstance(value, Mapping) for value in (manifest_payload, ledger_payload, operation_payload)):
+            raise InventoryError("inventory_checkpoint_payload_invalid")
+        manifest = PrivateManifest.from_dict(manifest_payload)  # type: ignore[arg-type]
+        ledger = PrivateRunLedger.from_dict(ledger_payload)  # type: ignore[arg-type]
+        operations = OperationLedger.from_dict(operation_payload)  # type: ignore[arg-type]
+        # The write-ahead operation projection may be one record newer than the
+        # checkpoint if a process died between the two atomic replaces.
+        if self.operation_path.exists():
+            projected = OperationLedgerStore(
+                self.operation_path, artifact_store=self.artifacts
+            ).load()
+            if len(projected.records) >= len(operations.records):
+                operations = projected
+        return manifest, ledger, operations
+
+    def _operation_persisted(self, operations: OperationLedger) -> None:
+        self._save_checkpoint(operations)
+
+    def _persist_all(self) -> None:
+        operations = self.gateway.ledger if hasattr(self, "gateway") else None
+        self._save_checkpoint(operations)
+        self.artifacts.atomic_write_json(self.manifest_path, self.manifest.to_dict())
+        self.artifacts.atomic_write_json(self.run_path, self.ledger.to_dict())
+        if operations is not None:
+            OperationLedgerStore(
+                self.operation_path, artifact_store=self.artifacts
+            ).save(operations)
+
+    def _reconcile_counters_from_operations(self) -> None:
+        if not hasattr(self, "gateway"):
+            return
+        charged = sum(
+            record.byte_count
+            for record in self.gateway.ledger.records
+            if record.kind.value == "source_file_read"
+            and record.status is not OperationStatus.INTENT
+        )
+        self.ledger.total_hashed_bytes = max(self.ledger.total_hashed_bytes, charged)
+        failed_attempt_reasons: dict[tuple[str, int], str] = {}
+        for record in self.gateway.ledger.records:
+            if (
+                record.kind is OperationKind.SOURCE_FILE_READ
+                and record.item_id is not None
+                and record.status in {OperationStatus.FAILED, OperationStatus.INTERRUPTED}
+            ):
+                failed_attempt_reasons[(record.item_id, record.attempt)] = (
+                    record.safe_reason_code or "source_read_failed"
+                )
+        for item in self.manifest.items:
+            if item.disposition is InventoryDisposition.UNREADABLE_OR_MISSING:
+                failed_attempt_reasons.setdefault(
+                    (item.item_id, item.attempt_count),
+                    item.reason_code or "source_read_failed",
+                )
+        conservative_failures = len(failed_attempt_reasons)
+        self.ledger.total_unreadable_failures = max(
+            self.ledger.total_unreadable_failures, conservative_failures
+        )
+        if conservative_failures:
+            self.ledger.consecutive_failures = max(
+                self.ledger.consecutive_failures, conservative_failures
+            )
+        reason_counts: dict[str, int] = {}
+        for reason in failed_attempt_reasons.values():
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        for reason, count in reason_counts.items():
+            self.ledger.same_reason_failures[reason] = max(
+                self.ledger.same_reason_failures.get(reason, 0), count
+            )
 
     def _acquire_lock(self) -> int:
+        if self.lock_path.exists() or self.lock_path.is_symlink():
+            try:
+                payload = json.loads(self.lock_path.read_text(encoding="utf-8"))
+                pid = int(payload["pid"])
+                identity = str(payload["process_start_observation"])
+                if str(payload["run_id"]) != self.run_id:
+                    raise InventoryError("runner_lock_run_identity_mismatch")
+            except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                raise InventoryError("runner_lock_unreadable") from exc
+            if pid == os.getpid():
+                raise InventoryError("duplicate_runner_lock_present")
+            alive, live_identity = _process_identity_for_pid(pid)
+            if alive and (live_identity is None or live_identity == identity):
+                raise InventoryError("duplicate_runner_lock_present")
+            try:
+                self.lock_path.unlink()
+            except OSError as exc:
+                raise InventoryError("stale_runner_lock_recovery_failed") from exc
         try:
             descriptor = os.open(
                 self.lock_path,
                 os.O_CREAT | os.O_EXCL | os.O_WRONLY,
                 0o600,
             )
-            os.write(descriptor, str(os.getpid()).encode("ascii"))
+            payload = json.dumps(
+                {
+                    "schema_version": "violet.scv2-fl1-i1-runner-lock.v1",
+                    "run_id": self.run_id,
+                    "pid": os.getpid(),
+                    "process_start_observation": _process_start_observation(),
+                },
+                sort_keys=True,
+            ).encode("ascii")
+            os.write(descriptor, payload)
             os.fsync(descriptor)
+            if os.name != "nt":
+                metadata = os.fstat(descriptor)
+                if metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != 0o600:
+                    raise InventoryError("runner_lock_mode_or_owner_invalid")
             return descriptor
+        except InventoryError:
+            raise
         except OSError as exc:
             raise InventoryError("duplicate_runner_lock_present") from exc
 
@@ -841,8 +1212,11 @@ class InventoryRunner:
         items: list[PrivateInventoryItem] = []
         total_entries = 0
         total_observed_bytes = 0
+        deadline = time.monotonic() + self.budgets.traversal_timeout_seconds
         secret = bytes.fromhex(self.manifest.keyed_label_secret)
         while stack:
+            if time.monotonic() > deadline:
+                raise InventoryError("source_traversal_deadline_exceeded")
             directory = stack.pop()
             relative_directory = (
                 "." if directory == source else directory.relative_to(source).as_posix()
@@ -853,11 +1227,17 @@ class InventoryRunner:
             snapshot.append(
                 {
                     "kind": "directory",
+                    "relative_path": relative_directory,
                     "path_token": _path_token(self.context, relative_directory),
                     "signature": list(_signature(directory_metadata)),
                 }
             )
-            children = self.gateway.list_directory(directory)
+            children = self.gateway.list_directory(
+                directory,
+                target_token=_path_token(self.context, relative_directory),
+                max_entries=self.budgets.max_directory_entries - total_entries,
+                deadline_monotonic=deadline,
+            )
             total_entries += len(children)
             if total_entries > self.budgets.max_directory_entries:
                 raise InventoryError("directory_entry_budget_exceeded")
@@ -908,6 +1288,18 @@ class InventoryRunner:
             raise InventoryError("source_fixture_empty")
         items.sort(key=lambda item: item.private_relative_path)
         self.manifest.items = items
+        self.manifest.discovery_directories = sorted(
+            [
+                {
+                    "relative_path": value["relative_path"],
+                    "path_token": value["path_token"],
+                    "signature": value["signature"],
+                }
+                for value in snapshot
+                if value["kind"] == "directory"
+            ],
+            key=lambda value: value["path_token"],
+        )
         self.manifest.source_snapshot_fingerprint = _fingerprint(
             sorted(snapshot, key=lambda value: (value["path_token"], value["kind"]))
         )
@@ -919,7 +1311,13 @@ class InventoryRunner:
         source = self.context.source_scope.root
         stack = [source]
         snapshot: list[dict[str, Any]] = []
+        total_entries = 0
+        total_items = 0
+        total_observed_bytes = 0
+        deadline = time.monotonic() + self.budgets.traversal_timeout_seconds
         while stack:
+            if time.monotonic() > deadline:
+                raise InventoryError("source_traversal_deadline_exceeded")
             directory = stack.pop()
             relative_directory = (
                 "." if directory == source else directory.relative_to(source).as_posix()
@@ -930,11 +1328,20 @@ class InventoryRunner:
             snapshot.append(
                 {
                     "kind": "directory",
+                    "relative_path": relative_directory,
                     "path_token": _path_token(self.context, relative_directory),
                     "signature": list(_signature(directory_metadata)),
                 }
             )
-            children = self.gateway.list_directory(directory)
+            children = self.gateway.list_directory(
+                directory,
+                target_token=_path_token(self.context, relative_directory),
+                max_entries=self.budgets.max_directory_entries - total_entries,
+                deadline_monotonic=deadline,
+            )
+            total_entries += len(children)
+            if total_entries > self.budgets.max_directory_entries:
+                raise InventoryError("directory_entry_budget_exceeded")
             child_directories: list[Path] = []
             for child in children:
                 path = Path(child.path)
@@ -951,6 +1358,12 @@ class InventoryRunner:
                         raise InventoryError("source_directory_reparse_rejected")
                     child_directories.append(path)
                 elif stat.S_ISREG(metadata.st_mode):
+                    total_items += 1
+                    total_observed_bytes += metadata.st_size
+                    if total_items > self.budgets.max_discovered_items:
+                        raise InventoryError("discovered_item_budget_exceeded")
+                    if total_observed_bytes > self.budgets.max_total_observed_bytes:
+                        raise InventoryError("observed_byte_budget_exceeded")
                     snapshot.append(
                         {
                             "kind": "file",
@@ -961,6 +1374,18 @@ class InventoryRunner:
                 else:
                     raise InventoryError("source_special_file_rejected")
             stack.extend(reversed(sorted(child_directories, key=lambda path: path.name)))
+        self.manifest.final_directories = sorted(
+            [
+                {
+                    "relative_path": value["relative_path"],
+                    "path_token": value["path_token"],
+                    "signature": value["signature"],
+                }
+                for value in snapshot
+                if value["kind"] == "directory"
+            ],
+            key=lambda value: value["path_token"],
+        )
         return _fingerprint(
             sorted(snapshot, key=lambda value: (value["path_token"], value["kind"]))
         )
@@ -1003,7 +1428,6 @@ class InventoryRunner:
     def run(self, *, stop_after_items: int | None = None) -> PrivateRunLedger:
         if stop_after_items is not None and stop_after_items <= 0:
             raise InventoryError("controlled_stop_limit_invalid")
-        lock = self._acquire_lock()
         processed_this_invocation = 0
         structural_error: Exception | None = None
         try:
@@ -1011,6 +1435,18 @@ class InventoryRunner:
                 self._discover()
             self.ledger.status = RunStatus.RUNNING
             self.ledger.stop_reason = None
+            if (
+                self.ledger.total_unreadable_failures
+                > self.budgets.max_unreadable_failures
+                or self.ledger.consecutive_failures
+                > self.budgets.max_consecutive_failures
+                or any(
+                    value > self.budgets.max_same_reason_failures
+                    for value in self.ledger.same_reason_failures.values()
+                )
+            ):
+                self.ledger.status = RunStatus.BUDGET_STOP
+                self.ledger.stop_reason = "failure_budget_exceeded"
             self._save_run()
             primary_by_content: dict[str, str] = {}
             for existing in self.manifest.items:
@@ -1035,10 +1471,23 @@ class InventoryRunner:
                 if self.ledger.status is RunStatus.BUDGET_STOP:
                     break
                 processed_this_invocation += 1
+                if item.attempt_count >= self.budgets.max_item_attempts:
+                    self._record_failure("max_item_attempts_exceeded")
+                    self._terminal(
+                        item,
+                        InventoryDisposition.UNREADABLE_OR_MISSING,
+                        "max_item_attempts_exceeded",
+                    )
+                    continue
                 item.attempt_count += 1
                 self._save_manifest()
                 path = self.context.source_scope.root / Path(item.private_relative_path)
                 if item.extension == ".icloud":
+                    self.gateway.defer_placeholder_by_policy(
+                        path,
+                        item_id=item.item_id,
+                        attempt=item.attempt_count,
+                    )
                     self.ledger.consecutive_failures = 0
                     self._terminal(
                         item,
@@ -1092,6 +1541,11 @@ class InventoryRunner:
                     self.ledger.stop_reason = "total_hash_budget_exceeded"
                     break
                 try:
+                    remaining = self.budgets.max_total_hashed_bytes - self.ledger.total_hashed_bytes
+                    if remaining <= 0:
+                        self.ledger.status = RunStatus.BUDGET_STOP
+                        self.ledger.stop_reason = "total_hash_budget_exceeded"
+                        break
                     content, byte_count = self.gateway.hash_file(
                         path,
                         item_id=item.item_id,
@@ -1099,10 +1553,14 @@ class InventoryRunner:
                         expected_signature=item.signature,
                         chunk_size=self.budgets.read_chunk_size,
                         timeout_seconds=self.budgets.per_item_timeout_seconds,
-                        max_bytes=self.budgets.max_per_file_hash_bytes,
+                        max_bytes=min(
+                            self.budgets.max_per_file_hash_bytes,
+                            remaining,
+                        ),
                     )
                 except OperationGatewayError as exc:
                     reason = str(exc)
+                    self.ledger.total_hashed_bytes += exc.byte_count
                     if reason in {
                         "source_entry_changed_before_read",
                         "source_entry_changed_during_read",
@@ -1119,6 +1577,17 @@ class InventoryRunner:
                     continue
                 self.ledger.total_hashed_bytes += byte_count
                 self.ledger.consecutive_failures = 0
+                header, tail = self.gateway.last_content_probe
+                if not _bounded_media_header_valid(
+                    item.extension, header, tail, byte_count
+                ):
+                    self._record_failure("corrupt_or_invalid_media")
+                    self._terminal(
+                        item,
+                        InventoryDisposition.UNREADABLE_OR_MISSING,
+                        "corrupt_or_invalid_media",
+                    )
+                    continue
                 primary = primary_by_content.get(content)
                 if primary is None:
                     primary_by_content[content] = item.item_id
@@ -1149,18 +1618,28 @@ class InventoryRunner:
                 self.ledger.status = RunStatus.CONTROLLED_STOP
                 self.ledger.stop_reason = "incomplete_batch"
         except Exception as exc:
-            structural_error = exc
+            structural_error = (
+                InventoryError(str(exc))
+                if isinstance(exc, OperationGatewayError)
+                else exc
+            )
             self.ledger.status = RunStatus.BLOCKED_INCOMPLETE
             self.ledger.stop_reason = (
-                str(exc) if isinstance(exc, InventoryError) else "unexpected_inventory_error"
+                str(structural_error)
+                if isinstance(structural_error, InventoryError)
+                else "unexpected_inventory_error"
             )
         finally:
-            self.invocation.ended_at_ns = time.time_ns()
-            self._save_manifest()
-            self._save_run()
-            self.invocation.end_checkpoint_fingerprint = self.ledger.checkpoint_fingerprint
-            self._save_run()
-            self._release_lock(lock)
+            try:
+                self.invocation.ended_at_ns = time.time_ns()
+                self._save_manifest()
+                self._save_run()
+                self.invocation.end_checkpoint_fingerprint = self.ledger.checkpoint_fingerprint
+                self._save_run()
+            finally:
+                if self._lock_fd is not None:
+                    self._release_lock(self._lock_fd)
+                    self._lock_fd = None
         if structural_error is not None:
             if isinstance(structural_error, InventoryError):
                 raise structural_error
@@ -1184,35 +1663,68 @@ def _load_budgets(path: Path) -> InventoryBudgets:
 
 def _adapter_from_args(args: argparse.Namespace) -> AttributeAdapter:
     if args.attribute_adapter == "windows":
+        if args.synthetic_attributes:
+            raise InventoryError("windows_adapter_synthetic_config_forbidden")
         return WindowsCloudAttributeAdapter()
     observations: dict[str, str] = {}
+    default = CloudAvailability.AVAILABLE
     if args.synthetic_attributes:
         payload = load_private_json(Path(args.synthetic_attributes))
+        if not set(payload).issubset({"observations", "default"}):
+            raise InventoryError("synthetic_attribute_payload_unknown_field")
         raw = payload.get("observations", {})
         if not isinstance(raw, Mapping):
             raise InventoryError("synthetic_attribute_payload_invalid")
         observations = {str(key): str(value) for key, value in raw.items()}
-    return SyntheticAttributeAdapter(observations=observations)
+        try:
+            default = CloudAvailability(payload.get("default", "available"))
+            for value in observations.values():
+                CloudAvailability(value)
+        except (TypeError, ValueError) as exc:
+            raise InventoryError("synthetic_attribute_payload_invalid") from exc
+    return SyntheticAttributeAdapter(observations=observations, default=default)
 
 
 def _command_scan(args: argparse.Namespace) -> int:
     context = build_trusted_runtime_context(
         repo_root=Path(args.repo_root),
-        expected_python=Path(args.expected_python),
+        expected_python=(Path(args.expected_python) if args.expected_python else None),
         private_root_config=Path(args.private_root_config),
         source_root=Path(args.source_root),
         source_mode=args.source_mode,
         source_scope_id=args.source_scope_id,
     )
     budgets = _load_budgets(Path(args.budgets_config))
+    after_intent = None
+    if args.test_abrupt_exit_after_read_intent:
+        if args.source_mode != SourceMode.SYNTHETIC_FIXTURE.value:
+            raise InventoryError("test_interrupt_hook_requires_synthetic_fixture")
+        signal_path = Path(args.test_intent_signal_output)
+        signal_store = TaskOwnedArtifactStore(Path(args.evidence_root))
+
+        def abrupt_after_intent(record: Any) -> None:
+            if record.kind is OperationKind.SOURCE_FILE_READ:
+                signal_store.atomic_write_json(
+                    signal_path,
+                    {
+                        "run_id": record.run_id,
+                        "invocation_id": record.invocation_id,
+                        "operation_id": record.operation_id,
+                        "intent_persisted": True,
+                    },
+                )
+                os._exit(91)
+
+        after_intent = abrupt_after_intent
     runner = InventoryRunner(
         context=context,
         budgets=budgets,
         evidence_root=Path(args.evidence_root),
         attribute_adapter=_adapter_from_args(args),
-        run_id=args.resume_run_id,
+        run_id=args.resume_run_id or args.new_run_id,
         resume=args.resume_run_id is not None,
         expected_parent_checkpoint=args.parent_checkpoint,
+        after_operation_intent=after_intent,
     )
     ledger = runner.run(stop_after_items=args.stop_after_items)
     print(
@@ -1220,6 +1732,8 @@ def _command_scan(args: argparse.Namespace) -> int:
             {
                 "run_id": ledger.run_id,
                 "invocation_id": runner.invocation.invocation_id,
+                "pid": runner.invocation.pid,
+                "process_start_observation": runner.invocation.process_start_observation,
                 "status": ledger.status.value,
                 "checkpoint_fingerprint": ledger.checkpoint_fingerprint,
                 "unresolved": runner.manifest.denominator()["unresolved"],
@@ -1236,7 +1750,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     scan = subparsers.add_parser("scan", help="scan one temporary fixture")
     scan.add_argument("--repo-root", required=True)
-    scan.add_argument("--expected-python", required=True)
+    scan.add_argument("--expected-python")
     scan.add_argument("--private-root-config", required=True)
     scan.add_argument("--source-root", required=True)
     scan.add_argument("--source-mode", choices=[mode.value for mode in SourceMode], required=True)
@@ -1247,7 +1761,14 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--synthetic-attributes")
     scan.add_argument("--stop-after-items", type=int)
     scan.add_argument("--resume-run-id")
+    scan.add_argument("--new-run-id", help=argparse.SUPPRESS)
     scan.add_argument("--parent-checkpoint")
+    scan.add_argument(
+        "--test-abrupt-exit-after-read-intent",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    scan.add_argument("--test-intent-signal-output", help=argparse.SUPPRESS)
     scan.set_defaults(handler=_command_scan)
     return parser
 

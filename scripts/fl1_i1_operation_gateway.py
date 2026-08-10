@@ -9,10 +9,11 @@ import os
 import stat
 import time
 import uuid
+from types import MappingProxyType
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from scripts.fl1_i1_runtime_context import TrustedRuntimeContext
 
@@ -24,6 +25,10 @@ CLOUD_OBSERVATION_SCHEMA_VERSION = "violet.scv2-fl1-i1-cloud-observation.v1"
 
 class OperationGatewayError(RuntimeError):
     """Raised when a source operation cannot be safely attributed."""
+
+    def __init__(self, code: str, *, byte_count: int = 0) -> None:
+        super().__init__(code)
+        self.byte_count = byte_count
 
 
 class OperationKind(str, Enum):
@@ -39,6 +44,7 @@ class OperationStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     DEFERRED = "deferred"
+    INTERRUPTED = "interrupted"
 
 
 class CloudAvailability(str, Enum):
@@ -75,6 +81,36 @@ class CloudAttributeObservation:
 
 class AttributeAdapter(Protocol):
     def observe(self, path: Path) -> CloudAttributeObservation: ...
+
+
+def attribute_adapter_identity(adapter: AttributeAdapter) -> Mapping[str, Any]:
+    if isinstance(adapter, WindowsCloudAttributeAdapter):
+        payload: dict[str, Any] = {
+            "adapter_type": "windows_cloud_files_attributes_v1",
+            "adapter_class": f"{type(adapter).__module__}.{type(adapter).__qualname__}",
+            "configuration": {},
+        }
+    elif isinstance(adapter, SyntheticAttributeAdapter):
+        payload = {
+            "adapter_type": "synthetic_attribute_observation_v1",
+            "adapter_class": f"{type(adapter).__module__}.{type(adapter).__qualname__}",
+            "configuration": {
+                "observations": {
+                    str(key): (
+                        value.value if isinstance(value, CloudAvailability) else str(value)
+                    )
+                    for key, value in sorted(adapter.observations.items())
+                },
+                "default": adapter.default.value,
+            },
+        }
+    else:
+        raise OperationGatewayError("attribute_adapter_type_untrusted")
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "adapter_type": payload["adapter_type"],
+        "configuration_fingerprint": hashlib.sha256(canonical).hexdigest(),
+    }
 
 
 class WindowsCloudAttributeAdapter:
@@ -136,6 +172,28 @@ class SyntheticAttributeAdapter:
     observations: Mapping[str, CloudAvailability | str]
     default: CloudAvailability = CloudAvailability.AVAILABLE
 
+    def __post_init__(self) -> None:
+        normalized: dict[str, CloudAvailability] = {}
+        try:
+            for key, value in self.observations.items():
+                normalized[str(key)] = (
+                    value
+                    if isinstance(value, CloudAvailability)
+                    else CloudAvailability(value)
+                )
+        except (TypeError, ValueError) as exc:
+            raise OperationGatewayError("synthetic_cloud_observation_invalid") from exc
+        object.__setattr__(self, "observations", MappingProxyType(normalized))
+        try:
+            normalized_default = (
+                self.default
+                if isinstance(self.default, CloudAvailability)
+                else CloudAvailability(self.default)
+            )
+        except (TypeError, ValueError) as exc:
+            raise OperationGatewayError("synthetic_cloud_observation_invalid") from exc
+        object.__setattr__(self, "default", normalized_default)
+
     def observe(self, path: Path) -> CloudAttributeObservation:
         raw = self.observations.get(path.name, self.default)
         try:
@@ -172,6 +230,8 @@ class OperationRecord:
     terminal_timestamp_ns: int | None = None
     safe_reason_code: str | None = None
     byte_count: int = 0
+    reserved_byte_count: int = 0
+    target_token: str | None = None
     observation: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -191,6 +251,8 @@ class OperationRecord:
             "terminal_timestamp_ns": self.terminal_timestamp_ns,
             "safe_reason_code": self.safe_reason_code,
             "byte_count": self.byte_count,
+            "reserved_byte_count": self.reserved_byte_count,
+            "target_token": self.target_token,
             "observation": dict(self.observation) if self.observation else None,
         }
 
@@ -222,6 +284,12 @@ class OperationRecord:
                     else None
                 ),
                 byte_count=int(payload.get("byte_count", 0)),
+                reserved_byte_count=int(payload.get("reserved_byte_count", 0)),
+                target_token=(
+                    str(payload["target_token"])
+                    if payload.get("target_token") is not None
+                    else None
+                ),
                 observation=(
                     dict(payload["observation"])
                     if isinstance(payload.get("observation"), Mapping)
@@ -240,8 +308,15 @@ class OperationRecord:
             uuid.UUID(self.invocation_id)
         except (ValueError, AttributeError) as exc:
             raise OperationGatewayError("operation_identity_invalid") from exc
-        if self.sequence < 1 or self.attempt < 0 or self.byte_count < 0:
+        if (
+            self.sequence < 1
+            or self.attempt < 0
+            or self.byte_count < 0
+            or self.reserved_byte_count < 0
+        ):
             raise OperationGatewayError("operation_counter_invalid")
+        if self.kind is OperationKind.SOURCE_DIRECTORY_LIST and not self.target_token:
+            raise OperationGatewayError("directory_listing_target_identity_missing")
         if self.status is OperationStatus.INTENT:
             if self.terminal_timestamp_ns is not None:
                 raise OperationGatewayError("operation_intent_terminal_timestamp")
@@ -329,32 +404,119 @@ def _fingerprint_records(records: Sequence[Mapping[str, Any]]) -> str:
     ).hexdigest()
 
 
-def atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    """Write one task-owned private JSON file atomically."""
+def _path_has_reparse_or_symlink(path: Path) -> bool:
+    metadata = os.lstat(path)
+    return bool(
+        stat.S_ISLNK(metadata.st_mode)
+        or getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    )
 
-    target = Path(path)
-    if not target.is_absolute() or not target.parent.is_dir() or target.is_symlink():
-        raise OperationGatewayError("private_artifact_target_invalid")
-    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("x", encoding="utf-8", newline="\n") as handle:
-            json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, target)
-        if os.name != "nt":
-            directory_fd = os.open(target.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-    except OSError as exc:
+
+class TaskOwnedArtifactStore:
+    """Constrain every I1 artifact write to one trusted evidence root."""
+
+    def __init__(self, root: Path) -> None:
+        candidate = Path(root)
+        if not candidate.is_absolute():
+            raise OperationGatewayError("private_artifact_root_invalid")
         try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise OperationGatewayError("private_artifact_atomic_write_failed") from exc
+            resolved = candidate.resolve(strict=True)
+        except OSError as exc:
+            raise OperationGatewayError("private_artifact_root_invalid") from exc
+        if resolved != candidate or not resolved.is_dir() or _path_has_reparse_or_symlink(resolved):
+            raise OperationGatewayError("private_artifact_root_invalid")
+        self.root = resolved
+
+    def target(self, path: Path) -> Path:
+        raw = Path(path)
+        if any(part == ".." for part in raw.parts):
+            raise OperationGatewayError("private_artifact_target_escape")
+        target = raw if raw.is_absolute() else self.root / raw
+        target = Path(os.path.abspath(os.fspath(target)))
+        try:
+            if os.path.commonpath((os.fspath(target), os.fspath(self.root))) != os.fspath(self.root):
+                raise OperationGatewayError("private_artifact_target_escape")
+        except ValueError as exc:
+            raise OperationGatewayError("private_artifact_target_escape") from exc
+        if target == self.root:
+            raise OperationGatewayError("private_artifact_target_invalid")
+        current = self.root
+        relative_parts = target.relative_to(self.root).parts
+        for part in relative_parts[:-1]:
+            current = current / part
+            try:
+                if not current.is_dir() or _path_has_reparse_or_symlink(current):
+                    raise OperationGatewayError("private_artifact_parent_untrusted")
+            except OSError as exc:
+                raise OperationGatewayError("private_artifact_parent_untrusted") from exc
+        if target.exists() or target.is_symlink():
+            try:
+                if _path_has_reparse_or_symlink(target) or not target.is_file():
+                    raise OperationGatewayError("private_artifact_target_untrusted")
+            except OSError as exc:
+                raise OperationGatewayError("private_artifact_target_untrusted") from exc
+        return target
+
+    def atomic_write_json(self, path: Path, payload: Mapping[str, Any]) -> None:
+        target = self.target(path)
+        temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+        descriptor: int | None = None
+        try:
+            flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+            descriptor = os.open(temporary, flags, 0o600)
+            if os.name != "nt":
+                metadata = os.fstat(descriptor)
+                if metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != 0o600:
+                    raise OperationGatewayError("private_artifact_mode_or_owner_invalid")
+            data = (
+                json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+            ).encode("utf-8")
+            offset = 0
+            while offset < len(data):
+                offset += os.write(descriptor, data[offset:])
+            os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = None
+            os.replace(temporary, target)
+            if os.name != "nt":
+                metadata = os.stat(target, follow_symlinks=False)
+                if metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != 0o600:
+                    raise OperationGatewayError("private_artifact_mode_or_owner_invalid")
+                directory_fd = os.open(target.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+        except OperationGatewayError:
+            if descriptor is not None:
+                os.close(descriptor)
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+        except OSError as exc:
+            if descriptor is not None:
+                os.close(descriptor)
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise OperationGatewayError("private_artifact_atomic_write_failed") from exc
+
+
+def atomic_write_json(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    artifact_root: Path | None = None,
+) -> None:
+    """Compatibility adapter; callers must supply the trusted evidence root."""
+
+    if artifact_root is None:
+        raise OperationGatewayError("private_artifact_root_required")
+    TaskOwnedArtifactStore(artifact_root).atomic_write_json(Path(path), payload)
 
 
 def load_private_json(path: Path) -> dict[str, Any]:
@@ -368,12 +530,13 @@ def load_private_json(path: Path) -> dict[str, Any]:
 
 
 class OperationLedgerStore:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, artifact_store: TaskOwnedArtifactStore) -> None:
         self.path = Path(path)
+        self.artifact_store = artifact_store
 
     def save(self, ledger: OperationLedger) -> None:
         ledger.validate()
-        atomic_write_json(self.path, ledger.to_dict())
+        self.artifact_store.atomic_write_json(self.path, ledger.to_dict())
 
     def load(self) -> OperationLedger:
         return OperationLedger.from_dict(load_private_json(self.path))
@@ -428,12 +591,17 @@ class OperationGateway:
         run_id: str,
         invocation_id: str,
         attribute_adapter: AttributeAdapter,
+        on_persist: Callable[[OperationLedger], None] | None = None,
+        after_intent: Callable[[OperationRecord], None] | None = None,
     ) -> None:
         self.context = context
         self.store = store
         self.run_id = run_id
         self.invocation_id = invocation_id
         self.attribute_adapter = attribute_adapter
+        self.on_persist = on_persist
+        self.after_intent = after_intent
+        self.last_content_probe: tuple[bytes, bytes] = (b"", b"")
         if store.path.exists():
             self.ledger = store.load()
             if (
@@ -451,12 +619,19 @@ class OperationGateway:
             )
             store.save(self.ledger)
 
+    def _save(self) -> None:
+        self.store.save(self.ledger)
+        if self.on_persist is not None:
+            self.on_persist(self.ledger)
+
     def _intent(
         self,
         kind: OperationKind,
         *,
         item_id: str | None,
         attempt: int,
+        reserved_byte_count: int = 0,
+        target_token: str | None = None,
     ) -> OperationRecord:
         record = OperationRecord(
             operation_id=str(uuid.uuid4()),
@@ -470,9 +645,13 @@ class OperationGateway:
             kind=kind,
             status=OperationStatus.INTENT,
             intent_timestamp_ns=time.time_ns(),
+            reserved_byte_count=reserved_byte_count,
+            target_token=target_token,
         )
         self.ledger.records.append(record)
-        self.store.save(self.ledger)
+        self._save()
+        if self.after_intent is not None:
+            self.after_intent(record)
         return record
 
     def _terminal(
@@ -489,7 +668,20 @@ class OperationGateway:
         record.safe_reason_code = reason
         record.byte_count = byte_count
         record.observation = observation
-        self.store.save(self.ledger)
+        self._save()
+
+    def reconcile_interrupted_intents(self, *, dead_invocation_id: str) -> int:
+        reconciled = 0
+        for record in self.ledger.records:
+            if record.invocation_id == dead_invocation_id and record.status is OperationStatus.INTENT:
+                record.status = OperationStatus.INTERRUPTED
+                record.terminal_timestamp_ns = time.time_ns()
+                record.safe_reason_code = "prior_invocation_interrupted"
+                record.byte_count = record.reserved_byte_count
+                reconciled += 1
+        if reconciled:
+            self._save()
+        return reconciled
 
     def _assert_contained(self, path: Path) -> Path:
         candidate = Path(os.path.abspath(Path(path)))
@@ -522,14 +714,31 @@ class OperationGateway:
             raise OperationGatewayError("source_symlink_or_reparse_escape")
         return candidate
 
-    def list_directory(self, path: Path) -> list[os.DirEntry[str]]:
+    def list_directory(
+        self,
+        path: Path,
+        *,
+        target_token: str,
+        max_entries: int | None = None,
+        deadline_monotonic: float | None = None,
+    ) -> list[os.DirEntry[str]]:
         intent = self._intent(
-            OperationKind.SOURCE_DIRECTORY_LIST, item_id=None, attempt=0
+            OperationKind.SOURCE_DIRECTORY_LIST,
+            item_id=None,
+            attempt=0,
+            target_token=target_token,
         )
         try:
             resolved = self._assert_contained(path)
             with os.scandir(resolved) as iterator:
-                entries = sorted(list(iterator), key=lambda entry: entry.name)
+                entries = []
+                for entry in iterator:
+                    if deadline_monotonic is not None and time.monotonic() > deadline_monotonic:
+                        raise OperationGatewayError("source_traversal_deadline_exceeded")
+                    entries.append(entry)
+                    if max_entries is not None and len(entries) > max_entries:
+                        raise OperationGatewayError("directory_entry_budget_exceeded")
+                entries.sort(key=lambda entry: entry.name)
         except Exception as exc:
             reason = str(exc) if isinstance(exc, OperationGatewayError) else "directory_list_failed"
             self._terminal(intent, OperationStatus.FAILED, reason)
@@ -569,8 +778,11 @@ class OperationGateway:
             attempt=attempt,
         )
         try:
-            resolved = self._assert_contained(path)
-            observation = self.attribute_adapter.observe(resolved)
+            # Do not resolve/query/open the final component before the Cloud
+            # Files attribute decision.  Only its already-verified parent is
+            # resolved here.
+            candidate = self._assert_metadata_target(path)
+            observation = self.attribute_adapter.observe(candidate)
         except Exception as exc:
             self._terminal(intent, OperationStatus.FAILED, "attribute_observation_failed")
             raise OperationGatewayError("attribute_observation_failed") from exc
@@ -587,6 +799,36 @@ class OperationGateway:
         )
         return observation
 
+    def defer_placeholder_by_policy(
+        self, path: Path, *, item_id: str, attempt: int
+    ) -> None:
+        intent = self._intent(
+            OperationKind.SOURCE_CLOUD_ATTRIBUTE_OBSERVATION,
+            item_id=item_id,
+            attempt=attempt,
+        )
+        try:
+            self._assert_metadata_target(path)
+        except OperationGatewayError as exc:
+            self._terminal(intent, OperationStatus.FAILED, str(exc))
+            raise
+        self._terminal(
+            intent,
+            OperationStatus.DEFERRED,
+            "icloud_placeholder_deferred",
+            observation={
+                "schema_version": CLOUD_OBSERVATION_SCHEMA_VERSION,
+                "availability": CloudAvailability.RECALL_RISK.value,
+                "attributes_known": False,
+                "reparse_point": False,
+                "offline": True,
+                "recall_on_open": True,
+                "recall_on_data_access": True,
+                "platform": "lexical_placeholder_policy",
+                "synthetic_observation": True,
+            },
+        )
+
     def hash_file(
         self,
         path: Path,
@@ -599,14 +841,22 @@ class OperationGateway:
         max_bytes: int,
     ) -> tuple[str, int]:
         read_intent = self._intent(
-            OperationKind.SOURCE_FILE_READ, item_id=item_id, attempt=attempt
+            OperationKind.SOURCE_FILE_READ,
+            item_id=item_id,
+            attempt=attempt,
+            reserved_byte_count=max_bytes,
         )
         hash_intent = self._intent(
-            OperationKind.SOURCE_FILE_HASH, item_id=item_id, attempt=attempt
+            OperationKind.SOURCE_FILE_HASH,
+            item_id=item_id,
+            attempt=attempt,
+            reserved_byte_count=max_bytes,
         )
         descriptor: int | None = None
         total = 0
         digest = hashlib.sha256()
+        header = bytearray()
+        tail = bytearray()
         deadline = time.monotonic() + timeout_seconds
         try:
             resolved = self._assert_contained(path)
@@ -626,12 +876,22 @@ class OperationGateway:
             while True:
                 if time.monotonic() > deadline:
                     raise OperationGatewayError("source_read_timeout")
-                chunk = os.read(descriptor, chunk_size)
+                if total >= opened.st_size:
+                    break
+                remaining = max_bytes - total
+                if remaining <= 0:
+                    raise OperationGatewayError(
+                        "source_file_hash_budget_exceeded", byte_count=total
+                    )
+                chunk = os.read(descriptor, min(chunk_size, remaining))
                 if not chunk:
                     break
                 total += len(chunk)
-                if total > max_bytes:
-                    raise OperationGatewayError("source_file_hash_budget_exceeded")
+                if len(header) < 64:
+                    header.extend(chunk[: 64 - len(header)])
+                tail.extend(chunk)
+                if len(tail) > 64:
+                    del tail[:-64]
                 digest.update(chunk)
             closed = os.fstat(descriptor)
             closed_signature = (
@@ -656,8 +916,9 @@ class OperationGateway:
                 hash_intent, OperationStatus.FAILED, reason, byte_count=total
             )
             if isinstance(exc, OperationGatewayError):
+                exc.byte_count = max(exc.byte_count, total)
                 raise
-            raise OperationGatewayError("source_file_read_failed") from exc
+            raise OperationGatewayError("source_file_read_failed", byte_count=total) from exc
         finally:
             if descriptor is not None:
                 os.close(descriptor)
@@ -672,5 +933,7 @@ class OperationGateway:
             OperationStatus.SUCCEEDED,
             "source_file_hash_succeeded",
             byte_count=total,
+            observation={"content_fingerprint": digest.hexdigest()},
         )
+        self.last_content_probe = (bytes(header), bytes(tail))
         return digest.hexdigest(), total

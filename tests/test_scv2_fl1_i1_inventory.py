@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import replace
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from scripts.fl1_i1_inventory import (
     PrivateRunLedger,
     RunStatus,
     _item_identity,
+    _process_identity_for_pid,
 )
 from scripts.fl1_i1_operation_gateway import (
     CloudAvailability,
@@ -29,6 +31,7 @@ from scripts.fl1_i1_operation_gateway import (
     OperationLedger,
     SyntheticAttributeAdapter,
 )
+from scripts.fl1_i1_restart_harness import run_controlled_restart_harness
 from scripts.phase_contracts import ContractRepositoryContext, check_phase_contract
 from scripts.phase_contracts.fl1_i1_contract import derive_canonical_public_projection
 from tests.fl1_i1_helpers import I1Fixture, make_i1_fixture, run_cli, write_json
@@ -76,24 +79,46 @@ def _run_direct(
 
 
 def _cross_process_complete(fixture: I1Fixture) -> tuple[dict, dict, Path]:
-    first = run_cli(PROJECT_ROOT, fixture, "--stop-after-items", "2")
-    assert first.returncode == 0, first.stdout + first.stderr
-    first_payload = json.loads(first.stdout)
+    first_payload, second_payload, run_dir = run_controlled_restart_harness(
+        project_root=PROJECT_ROOT,
+        repo_root=fixture.repo,
+        private_root_config=fixture.private_config,
+        source_root=fixture.source,
+        source_scope_id="pytest-temporary-fixture",
+        evidence_root=fixture.evidence,
+        budgets_config=fixture.budgets_config,
+        synthetic_attributes=fixture.synthetic_attributes,
+        stop_after_items=2,
+    )
     assert first_payload["status"] == RunStatus.CONTROLLED_STOP.value
     assert first_payload["unresolved"] == 5
-    second = run_cli(
-        PROJECT_ROOT,
-        fixture,
-        "--resume-run-id",
-        first_payload["run_id"],
-        "--parent-checkpoint",
-        first_payload["checkpoint_fingerprint"],
-    )
-    assert second.returncode == 0, second.stdout + second.stderr
-    second_payload = json.loads(second.stdout)
     assert second_payload["status"] == RunStatus.COMPLETE.value
     assert second_payload["unresolved"] == 0
-    return first_payload, second_payload, fixture.evidence / first_payload["run_id"]
+    return first_payload, second_payload, run_dir
+
+
+def _create_validation_receipt(fixture: I1Fixture) -> tuple[Path, Path]:
+    report = fixture.evidence / "focused-validation-report.json"
+    receipt = fixture.evidence / "local-validation-receipt.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            os.fspath(PROJECT_ROOT / "scripts" / "fl1_i1_validation_receipt.py"),
+            "--repo-root", os.fspath(fixture.repo),
+            "--private-root-config", os.fspath(fixture.private_config),
+            "--source-root", os.fspath(fixture.source),
+            "--source-scope-id", "pytest-temporary-fixture",
+            "--report", os.fspath(report),
+            "--output", os.fspath(receipt),
+            "--", sys.executable, "-c", "print('synthetic-focused')",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return receipt, report
 
 
 def test_synthetic_inventory_denominator_duplicate_cloud_and_read_only_source(tmp_path: Path) -> None:
@@ -193,6 +218,78 @@ def test_distinct_python_process_resume_preserves_attempts_and_skips_terminal_co
     )
 
 
+def test_abrupt_exit_after_intent_is_terminalized_and_retried_by_new_process(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    run_id = str(uuid.uuid4())
+    signal = fixture.evidence / "abrupt-intent-signal.json"
+    process = subprocess.run(
+        [
+            sys.executable,
+            os.fspath(PROJECT_ROOT / "scripts" / "fl1_i1_inventory.py"),
+            "scan",
+            *fixture.scanner_args(),
+            "--new-run-id",
+            run_id,
+            "--test-abrupt-exit-after-read-intent",
+            "--test-intent-signal-output",
+            os.fspath(signal),
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == 91
+    assert json.loads(signal.read_text(encoding="utf-8"))["intent_persisted"] is True
+    lock_payload = json.loads(
+        (fixture.evidence / run_id / "runner.lock").read_text(encoding="utf-8")
+    )
+    death_deadline = time.monotonic() + 5
+    while True:
+        alive, identity = _process_identity_for_pid(int(lock_payload["pid"]))
+        if not alive or identity != lock_payload["process_start_observation"]:
+            break
+        if time.monotonic() > death_deadline:
+            pytest.fail("abrupt child remained live after parent observed exit")
+        time.sleep(0.05)
+    checkpoint_payload = json.loads(
+        (fixture.evidence / run_id / "private-inventory-checkpoint.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    parent_checkpoint = checkpoint_payload["run_ledger"]["checkpoint_fingerprint"]
+    resumed = run_cli(
+        PROJECT_ROOT,
+        fixture,
+        "--resume-run-id",
+        run_id,
+        "--parent-checkpoint",
+        parent_checkpoint,
+    )
+    assert resumed.returncode == 0, resumed.stdout + resumed.stderr
+    assert json.loads(resumed.stdout)["status"] == RunStatus.COMPLETE.value
+    operations = OperationLedger.from_dict(
+        json.loads(
+            (fixture.evidence / run_id / "private-operation-ledger.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    )
+    assert not any(record.status.value == "intent" for record in operations.records)
+    assert any(record.status.value == "interrupted" for record in operations.records)
+    manifest = PrivateManifest.from_dict(
+        json.loads(
+            (fixture.evidence / run_id / "private-manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    )
+    first = next(item for item in manifest.items if item.private_relative_path == "a.jpg")
+    assert first.attempt_count == 2
+
+
 def test_wrong_parent_checkpoint_fails_without_second_scan(tmp_path: Path) -> None:
     fixture = make_i1_fixture(tmp_path)
     first = run_cli(PROJECT_ROOT, fixture, "--stop-after-items", "1")
@@ -235,10 +332,28 @@ def test_duplicate_runner_lock_fails_before_another_item(tmp_path: Path) -> None
         evidence_root=fixture.evidence,
         attribute_adapter=SyntheticAttributeAdapter(observations={}),
     )
-    runner.lock_path.write_text("already-running", encoding="ascii")
+    before = {
+        path.name: path.read_bytes()
+        for path in runner.run_dir.iterdir()
+        if path.is_file()
+    }
     with pytest.raises(InventoryError, match="duplicate_runner_lock_present"):
-        runner.run()
-    assert not runner.manifest_path.exists()
+        InventoryRunner(
+            context=fixture.context(),
+            budgets=fixture.budgets,
+            evidence_root=fixture.evidence,
+            attribute_adapter=SyntheticAttributeAdapter(observations={}),
+            run_id=runner.run_id,
+            resume=True,
+            expected_parent_checkpoint=runner.ledger.checkpoint_fingerprint,
+        )
+    after = {
+        path.name: path.read_bytes()
+        for path in runner.run_dir.iterdir()
+        if path.is_file()
+    }
+    assert after == before
+    runner.run(stop_after_items=1)
 
 
 def test_copied_or_same_invocation_snapshot_cannot_prove_restart(tmp_path: Path) -> None:
@@ -334,7 +449,7 @@ def test_discovery_budgets_stop_and_preserve_forensic_run(
 
 def test_hash_and_failure_budgets_stop_before_next_item(tmp_path: Path) -> None:
     fixture = make_i1_fixture(tmp_path)
-    budgets = replace(fixture.budgets, max_total_hashed_bytes=25, max_per_file_hash_bytes=25)
+    budgets = replace(fixture.budgets, max_total_hashed_bytes=40, max_per_file_hash_bytes=40)
     runner = _run_direct(fixture, budgets=budgets)
     assert runner.ledger.status is RunStatus.BUDGET_STOP
     assert runner.ledger.stop_reason == "total_hash_budget_exceeded"
@@ -403,6 +518,170 @@ def test_membership_rename_and_content_identity_are_distinct(tmp_path: Path) -> 
     assert content_before == content_after
 
 
+def test_manifest_item_swap_with_recomputed_editable_fingerprint_fails_derivation(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    runner = _run_direct(fixture)
+    payload = json.loads(runner.manifest_path.read_text(encoding="utf-8"))
+    left, right = payload["items"][0], payload["items"][1]
+    for field in ("private_relative_path", "signature", "observed_size", "extension"):
+        left[field], right[field] = right[field], left[field]
+    payload["manifest_fingerprint"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in payload.items() if key != "manifest_fingerprint"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    loaded = PrivateManifest.from_dict(payload)
+    with pytest.raises(InventoryError, match="manifest_membership_derivation_mismatch"):
+        loaded.validate_derivations(fixture.context())
+
+
+def test_attribute_adapter_configuration_drift_fails_resume(tmp_path: Path) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    first = run_cli(PROJECT_ROOT, fixture, "--stop-after-items", "1")
+    assert first.returncode == 0
+    payload = json.loads(first.stdout)
+    write_json(
+        fixture.synthetic_attributes,
+        {"observations": {"e.webp": "available", "g.gif": "unknown"}},
+    )
+    resumed = run_cli(
+        PROJECT_ROOT,
+        fixture,
+        "--resume-run-id",
+        payload["run_id"],
+        "--parent-checkpoint",
+        payload["checkpoint_fingerprint"],
+    )
+    assert resumed.returncode == 1
+    assert json.loads(resumed.stdout)["error"] == "resume_context_head_scope_budget_policy_drift"
+
+
+def test_synthetic_attribute_unknown_configuration_field_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    write_json(
+        fixture.synthetic_attributes,
+        {"observations": {}, "debug_override": "available"},
+    )
+    completed = run_cli(PROJECT_ROOT, fixture)
+    assert completed.returncode == 1
+    assert json.loads(completed.stdout)["error"] == "synthetic_attribute_payload_unknown_field"
+
+
+def test_nested_directory_listings_close_against_both_snapshots(tmp_path: Path) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    nested = fixture.source / "nested" / "deeper"
+    nested.mkdir(parents=True)
+    nested.joinpath("valid.jpg").write_bytes(
+        b"\xff\xd8\xff\xe0nested-valid\xff\xd9"
+    )
+    runner = _run_direct(fixture)
+    assert len(runner.manifest.discovery_directory_tokens) == 3
+    assert runner.manifest.discovery_directory_tokens == runner.manifest.final_directory_tokens
+    operations = OperationLedger.from_dict(
+        json.loads(runner.operation_path.read_text(encoding="utf-8"))
+    )
+    listing_tokens = [
+        record.target_token
+        for record in operations.records
+        if record.kind is OperationKind.SOURCE_DIRECTORY_LIST
+    ]
+    for token in runner.manifest.discovery_directory_tokens:
+        assert listing_tokens.count(token) == 2
+
+
+def test_final_snapshot_expansion_stops_inside_entry_budget(tmp_path: Path) -> None:
+    fixture = make_i1_fixture(tmp_path)
+
+    class ExpandingAdapter(SyntheticAttributeAdapter):
+        expanded = False
+
+        def observe(self, path: Path):
+            if not self.expanded:
+                self.expanded = True
+                for index in range(40):
+                    (path.parent / f"expansion-{index:03d}.txt").write_text(
+                        "bounded", encoding="utf-8"
+                    )
+            return super().observe(path)
+
+    runner = InventoryRunner(
+        context=fixture.context(),
+        budgets=replace(fixture.budgets, max_directory_entries=12),
+        evidence_root=fixture.evidence,
+        attribute_adapter=ExpandingAdapter(
+            observations={
+                "e.webp": CloudAvailability.RECALL_RISK,
+                "g.gif": CloudAvailability.UNKNOWN,
+            }
+        ),
+    )
+    with pytest.raises(InventoryError, match="directory_entry_budget_exceeded"):
+        runner.run()
+    assert runner.ledger.status is RunStatus.BLOCKED_INCOMPLETE
+
+
+def test_valid_duplicate_cloud_unsupported_and_invalid_media_share_exact_denominator(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path, populate=False)
+    valid = b"\xff\xd8\xff\xe0valid-fixture\xff\xd9"
+    (fixture.source / "a.jpg").write_bytes(valid)
+    (fixture.source / "b.jpg").write_bytes(valid)
+    (fixture.source / "c.jpg").write_text("plain text with image suffix", encoding="utf-8")
+    (fixture.source / "d.png").write_bytes(b"")
+    (fixture.source / "e.gif").write_bytes(b"GIF89a-truncated")
+    (fixture.source / "f.webp").write_bytes(b"recall-risk-placeholder")
+    (fixture.source / "g.txt").write_text("unsupported", encoding="utf-8")
+    runner = _run_direct(
+        fixture,
+        adapter=SyntheticAttributeAdapter(
+            observations={"f.webp": CloudAvailability.RECALL_RISK}
+        ),
+    )
+    denominator = runner.manifest.denominator()
+    assert denominator == {
+        "discovered": 7,
+        "supported": 6,
+        "unsupported": 1,
+        "duplicate": 1,
+        "cloud_recall_deferred": 1,
+        "unreadable_or_missing": 3,
+        "eligible_candidate": 1,
+        "imported": 0,
+        "import_deferred": 1,
+        "import_failed": 0,
+        "unresolved": 0,
+    }
+    assert sum(
+        item.reason_code == "corrupt_or_invalid_media" for item in runner.manifest.items
+    ) == 3
+
+
+@pytest.mark.parametrize("projection_name", ["private-manifest.json", "private-run-ledger.json"])
+def test_checkpoint_recovers_stale_split_projection(
+    tmp_path: Path, projection_name: str
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    first = run_cli(PROJECT_ROOT, fixture, "--stop-after-items", "1")
+    payload = json.loads(first.stdout)
+    projection = fixture.evidence / payload["run_id"] / projection_name
+    projection.write_text("{}\n", encoding="utf-8")
+    resumed = run_cli(
+        PROJECT_ROOT,
+        fixture,
+        "--resume-run-id", payload["run_id"],
+        "--parent-checkpoint", payload["checkpoint_fingerprint"],
+    )
+    assert resumed.returncode == 0, resumed.stdout + resumed.stderr
+    assert json.loads(resumed.stdout)["status"] == RunStatus.COMPLETE.value
+
+
 def test_i1_modules_have_no_database_network_provider_media_or_application_route_imports() -> None:
     forbidden_roots = {
         "backend",
@@ -437,33 +716,7 @@ def test_contract_rebuilds_projection_and_rejects_counts_paths_unknown_fields_an
 ) -> None:
     fixture = make_i1_fixture(tmp_path)
     _, completed, _ = _cross_process_complete(fixture)
-    report = fixture.evidence / "focused-junit.xml"
-    report.write_text("<testsuite tests='1' failures='0'/>\n", encoding="utf-8")
-    receipt_path = fixture.evidence / "local-validation-receipt.json"
-    receipt_cli = subprocess.run(
-        [
-            sys.executable,
-            os.fspath(PROJECT_ROOT / "scripts" / "fl1_i1_validation_receipt.py"),
-            "--repo-root",
-            os.fspath(fixture.repo),
-            "--command",
-            "python -m pytest synthetic-focused",
-            "--exit-code",
-            "0",
-            "--report",
-            os.fspath(report),
-            "--started-at-ns",
-            str(time.time_ns() - 1_000_000),
-            "--output",
-            os.fspath(receipt_path),
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert receipt_cli.returncode == 0, receipt_cli.stdout + receipt_cli.stderr
-    assert json.loads(receipt_cli.stdout)["machine_verifiable_ci"] is False
+    receipt_path, report = _create_validation_receipt(fixture)
     evidence = fixture.contract_evidence(
         run_id=completed["run_id"], receipt=receipt_path, report=report
     )
@@ -603,3 +856,159 @@ def test_old_head_manifest_cannot_be_combined_with_new_repo_context(tmp_path: Pa
     )
     assert resumed.returncode == 1
     assert json.loads(resumed.stdout)["error"] == "resume_context_head_scope_budget_policy_drift"
+
+
+def test_contract_rejects_one_item_read_evidence_removal_even_after_refingerprint(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    _, completed, run_dir = _cross_process_complete(fixture)
+    receipt, report = _create_validation_receipt(fixture)
+    evidence = fixture.contract_evidence(
+        run_id=completed["run_id"], receipt=receipt, report=report
+    )
+    operations_path = run_dir / "private-operation-ledger.json"
+    operations = json.loads(operations_path.read_text(encoding="utf-8"))
+    manifest = json.loads((run_dir / "private-manifest.json").read_text(encoding="utf-8"))
+    eligible = next(
+        item for item in manifest["items"] if item["disposition"] == "eligible_candidate"
+    )
+    operations["records"] = [
+        record
+        for record in operations["records"]
+        if not (
+            record["item_id"] == eligible["item_id"]
+            and record["kind"] in {"source_file_read", "source_file_hash"}
+        )
+    ]
+    for sequence, record in enumerate(operations["records"], start=1):
+        record["sequence"] = sequence
+    operations["ledger_fingerprint"] = hashlib.sha256(
+        json.dumps(
+            operations["records"], sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    write_json(operations_path, operations)
+    with pytest.raises(
+        Exception,
+        match="hashed_byte_counter_mismatch|eligible_read_hash_evidence_missing",
+    ):
+        derive_canonical_public_projection(
+            repo_root=fixture.repo,
+            expected_python=Path(sys.executable),
+            evidence=evidence,
+        )
+
+
+def test_single_process_restart_claim_without_parent_harness_receipt_fails(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    _, completed, run_dir = _cross_process_complete(fixture)
+    receipt, report = _create_validation_receipt(fixture)
+    harness = run_dir / "restart-parent-harness-receipt.json"
+    harness.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(Exception, match="restart_parent_harness_missing"):
+        derive_canonical_public_projection(
+            repo_root=fixture.repo,
+            expected_python=Path(sys.executable),
+            evidence=fixture.contract_evidence(
+                run_id=completed["run_id"], receipt=receipt, report=report
+            ),
+        )
+
+
+def test_projection_and_receipt_output_escape_cannot_overwrite_source_fixture(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    _, completed, _ = _cross_process_complete(fixture)
+    receipt, report = _create_validation_receipt(fixture)
+    evidence = fixture.contract_evidence(
+        run_id=completed["run_id"], receipt=receipt, report=report
+    )
+    evidence_path = fixture.root / "private-evidence-context.json"
+    write_json(evidence_path, evidence)
+    source_target = fixture.source / "a.jpg"
+    before = source_target.read_bytes()
+    projection = subprocess.run(
+        [
+            sys.executable,
+            "-m", "scripts.phase_contracts.fl1_i1_contract",
+            "--repo-root", os.fspath(fixture.repo),
+            "--expected-python", os.fspath(Path(sys.executable)),
+            "--evidence-context", os.fspath(evidence_path),
+            "--output", os.fspath(source_target),
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert projection.returncode == 1
+    assert source_target.read_bytes() == before
+
+    receipt_escape = subprocess.run(
+        [
+            sys.executable,
+            os.fspath(PROJECT_ROOT / "scripts" / "fl1_i1_validation_receipt.py"),
+            "--repo-root", os.fspath(fixture.repo),
+            "--private-root-config", os.fspath(fixture.private_config),
+            "--source-root", os.fspath(fixture.source),
+            "--source-scope-id", "pytest-temporary-fixture",
+            "--report", os.fspath(source_target),
+            "--output", os.fspath(source_target),
+            "--", sys.executable, "-c", "print('bounded')",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert receipt_escape.returncode == 1
+    assert source_target.read_bytes() == before
+
+
+def test_validation_receipt_has_no_caller_supplied_pass_or_exit_code(
+    tmp_path: Path,
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    output = fixture.evidence / "failing-receipt.json"
+    report = fixture.evidence / "failing-report.json"
+    failing = subprocess.run(
+        [
+            sys.executable,
+            os.fspath(PROJECT_ROOT / "scripts" / "fl1_i1_validation_receipt.py"),
+            "--repo-root", os.fspath(fixture.repo),
+            "--private-root-config", os.fspath(fixture.private_config),
+            "--source-root", os.fspath(fixture.source),
+            "--source-scope-id", "pytest-temporary-fixture",
+            "--report", os.fspath(report),
+            "--output", os.fspath(output),
+            "--", sys.executable, "-c", "raise SystemExit(7)",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert failing.returncode == 1
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["exit_code"] == 7
+    assert payload["machine_verifiable_ci"] is False
+    assert payload["owner_authority_machine_verifiable"] is False
+
+    caller_fill = subprocess.run(
+        [
+            sys.executable,
+            os.fspath(PROJECT_ROOT / "scripts" / "fl1_i1_validation_receipt.py"),
+            "--repo-root", os.fspath(fixture.repo),
+            "--exit-code", "0",
+            "--command", "true",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert caller_fill.returncode != 0

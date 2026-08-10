@@ -26,7 +26,7 @@ def test_current_handoff_is_slim_and_current_route_focused() -> None:
     handoff = read_text(ROOT / "docs" / "current-handoff.md")
     state = load_state()
     assert handoff == render_handoff(state)
-    assert 40 <= len(handoff.splitlines()) <= 60
+    assert 40 <= len(handoff.splitlines()) <= 65
     assert "docs/state/current-phase.json" in handoff
     assert state["phase_id"] in handoff
     assert "Draft PR" in handoff
@@ -44,6 +44,8 @@ def test_fl1_i1_state_stops_before_real_inventory() -> None:
     assert state["current_status"] in {
         "fl1_i1_read_only_inventory_implementation_in_progress",
         "fl1_i1_synthetic_implementation_ready_for_owner_audit",
+        "fl1_i1_first_review_bounded_remediation_in_progress",
+        "fl1_i1_bounded_remediation_ready_for_owner_audit",
     }
     assert state["target_met"] is False
     assert state["safe_to_merge"] is False

@@ -23,7 +23,7 @@ from scripts.fl1_i1_operation_gateway import (
     OperationKind,
     OperationLedger,
     OperationStatus,
-    atomic_write_json,
+    TaskOwnedArtifactStore,
     load_private_json,
 )
 from scripts.fl1_i1_runtime_context import build_trusted_runtime_context
@@ -157,6 +157,9 @@ def _validate_complete_manifest(manifest: PrivateManifest) -> dict[str, int]:
         raise FL1I1ContractError("fl1_i1_import_activity_forbidden")
     if denominator["import_deferred"] != denominator["eligible_candidate"]:
         raise FL1I1ContractError("fl1_i1_import_deferred_mismatch")
+    denominator["corrupt_or_invalid_media"] = sum(
+        item.reason_code == "corrupt_or_invalid_media" for item in manifest.items
+    )
     return denominator
 
 
@@ -208,6 +211,8 @@ def _validate_operations(
         for kind in OperationKind
     }
     synthetic_observations = 0
+    by_item: dict[str, list[Any]] = {item_id: [] for item_id in item_ids}
+    listing_tokens: list[str] = []
     for record in operations.records:
         if record.invocation_id not in invocation_ids:
             raise FL1I1ContractError("fl1_i1_operation_invocation_unbound")
@@ -219,6 +224,12 @@ def _validate_operations(
         ):
             raise FL1I1ContractError("fl1_i1_operation_write_ahead_timestamp_invalid")
         status_counts[record.kind.value][record.status.value] += 1
+        if record.item_id in by_item:
+            by_item[str(record.item_id)].append(record)
+        if record.kind is OperationKind.SOURCE_DIRECTORY_LIST:
+            if not record.target_token:
+                raise FL1I1ContractError("fl1_i1_directory_listing_target_missing")
+            listing_tokens.append(record.target_token)
         if record.kind in {
             OperationKind.SOURCE_CLOUD_ATTRIBUTE_OBSERVATION,
             OperationKind.SOURCE_FILE_READ,
@@ -238,8 +249,16 @@ def _validate_operations(
             key = (str(record.invocation_id), str(record.item_id), record.attempt)
             content_pairs.setdefault(key, set()).add(record.kind)
 
-    for kinds in content_pairs.values():
-        if kinds != {OperationKind.SOURCE_FILE_READ, OperationKind.SOURCE_FILE_HASH}:
+    for key, kinds in content_pairs.items():
+        records_for_attempt = [
+            value
+            for value in operations.records
+            if (value.invocation_id, value.item_id, value.attempt) == key
+            and value.kind in {OperationKind.SOURCE_FILE_READ, OperationKind.SOURCE_FILE_HASH}
+        ]
+        if kinds != {OperationKind.SOURCE_FILE_READ, OperationKind.SOURCE_FILE_HASH} and not all(
+            value.status is OperationStatus.INTERRUPTED for value in records_for_attempt
+        ):
             raise FL1I1ContractError("fl1_i1_read_hash_operation_pair_invalid")
 
     terminal_invocation_by_item = {
@@ -261,6 +280,106 @@ def _validate_operations(
     if terminal_reprocessed:
         raise FL1I1ContractError("fl1_i1_terminal_item_reprocessed")
 
+    charged_read_bytes = sum(
+        record.byte_count
+        for record in operations.records
+        if record.kind is OperationKind.SOURCE_FILE_READ
+        and record.status is not OperationStatus.INTENT
+    )
+    if ledger.total_hashed_bytes != charged_read_bytes:
+        raise FL1I1ContractError("fl1_i1_hashed_byte_counter_mismatch")
+    failure_attempts = {
+        (str(record.item_id), record.attempt)
+        for record in operations.records
+        if record.kind is OperationKind.SOURCE_FILE_READ
+        and record.item_id is not None
+        and record.status in {OperationStatus.FAILED, OperationStatus.INTERRUPTED}
+    }
+    for item in manifest.items:
+        if item.disposition is InventoryDisposition.UNREADABLE_OR_MISSING:
+            failure_attempts.add((item.item_id, item.attempt_count))
+    if ledger.total_unreadable_failures != len(failure_attempts):
+        raise FL1I1ContractError("fl1_i1_failure_counter_mismatch")
+
+    expected_directory_tokens = sorted(
+        manifest.discovery_directory_tokens + manifest.final_directory_tokens
+    )
+    if (
+        manifest.discovery_directories != manifest.final_directories
+        or sorted(listing_tokens) != expected_directory_tokens
+    ):
+        raise FL1I1ContractError("fl1_i1_directory_listing_snapshot_closure_invalid")
+
+    for item in manifest.items:
+        records = by_item[item.item_id]
+        metadata = [
+            value
+            for value in records
+            if value.kind is OperationKind.SOURCE_ENTRY_METADATA
+            and value.status is OperationStatus.SUCCEEDED
+        ]
+        attributes = [
+            value for value in records
+            if value.kind is OperationKind.SOURCE_CLOUD_ATTRIBUTE_OBSERVATION
+        ]
+        reads = [value for value in records if value.kind is OperationKind.SOURCE_FILE_READ]
+        hashes = [value for value in records if value.kind is OperationKind.SOURCE_FILE_HASH]
+        if not metadata:
+            raise FL1I1ContractError("fl1_i1_item_metadata_evidence_missing")
+        if item.disposition in {
+            InventoryDisposition.ELIGIBLE_CANDIDATE,
+            InventoryDisposition.DUPLICATE,
+        }:
+            terminal_attributes = [
+                value for value in attributes if value.attempt == item.attempt_count
+            ]
+            terminal_reads = [value for value in reads if value.attempt == item.attempt_count]
+            terminal_hashes = [value for value in hashes if value.attempt == item.attempt_count]
+            if len(terminal_attributes) != 1 or terminal_attributes[0].status is not OperationStatus.SUCCEEDED:
+                raise FL1I1ContractError("fl1_i1_eligible_attribute_evidence_invalid")
+            observation = terminal_attributes[0].observation or {}
+            if observation.get("availability") != "available":
+                raise FL1I1ContractError("fl1_i1_eligible_attribute_not_available")
+            if len(terminal_reads) != 1 or len(terminal_hashes) != 1:
+                raise FL1I1ContractError("fl1_i1_eligible_read_hash_evidence_missing")
+            read, hashed = terminal_reads[0], terminal_hashes[0]
+            if (
+                read.status is not OperationStatus.SUCCEEDED
+                or hashed.status is not OperationStatus.SUCCEEDED
+                or read.invocation_id != hashed.invocation_id
+                or read.attempt != hashed.attempt
+                or read.attempt != item.attempt_count
+                or read.byte_count != hashed.byte_count
+                or read.byte_count != item.observed_size
+                or (hashed.observation or {}).get("content_fingerprint")
+                != item.content_fingerprint
+            ):
+                raise FL1I1ContractError("fl1_i1_eligible_read_hash_evidence_invalid")
+        elif item.disposition is InventoryDisposition.CLOUD_RECALL_DEFERRED:
+            terminal_attributes = [
+                value for value in attributes if value.attempt == item.attempt_count
+            ]
+            if len(terminal_attributes) != 1 or terminal_attributes[0].status is not OperationStatus.DEFERRED:
+                raise FL1I1ContractError("fl1_i1_cloud_defer_evidence_invalid")
+            if reads or hashes:
+                raise FL1I1ContractError("fl1_i1_cloud_deferred_content_operation")
+        elif item.disposition is InventoryDisposition.UNSUPPORTED:
+            if reads or hashes:
+                raise FL1I1ContractError("fl1_i1_unsupported_content_operation")
+        elif item.disposition is InventoryDisposition.UNREADABLE_OR_MISSING:
+            if item.reason_code == "corrupt_or_invalid_media":
+                if (
+                    len(reads) != 1
+                    or len(hashes) != 1
+                    or reads[0].status is not OperationStatus.SUCCEEDED
+                    or hashes[0].status is not OperationStatus.SUCCEEDED
+                ):
+                    raise FL1I1ContractError("fl1_i1_invalid_media_evidence_missing")
+            elif not any(
+                value.status is OperationStatus.FAILED for value in reads + hashes
+            ) and "budget" not in str(item.reason_code) and item.reason_code != "max_item_attempts_exceeded":
+                raise FL1I1ContractError("fl1_i1_unreadable_failure_evidence_missing")
+
     kind_totals = {
         kind.value: sum(status_counts[kind.value].values()) for kind in OperationKind
     }
@@ -276,10 +395,16 @@ def _validate_operations(
         "terminal_content_reprocessed_count": terminal_reprocessed,
         "synthetic_attribute_observation_count": synthetic_observations,
         "ledger_fingerprint": operations.to_dict()["ledger_fingerprint"],
+        "charged_read_bytes": charged_read_bytes,
+        "failure_attempt_count": len(failure_attempts),
+        "directory_listing_target_closure": True,
+        "disposition_specific_item_closure": True,
     }
 
 
-def _validate_restart(ledger: PrivateRunLedger, manifest: PrivateManifest) -> dict[str, Any]:
+def _validate_restart(
+    ledger: PrivateRunLedger, manifest: PrivateManifest, run_dir: Path
+) -> dict[str, Any]:
     if len(ledger.invocations) < 2:
         raise FL1I1ContractError("fl1_i1_distinct_restart_provenance_missing")
     if ledger.status is not RunStatus.COMPLETE:
@@ -295,6 +420,38 @@ def _validate_restart(ledger: PrivateRunLedger, manifest: PrivateManifest) -> di
         raise FL1I1ContractError("fl1_i1_distinct_process_provenance_missing")
     if any(item.attempt_count < 1 or item.terminal_invocation_id is None for item in manifest.items):
         raise FL1I1ContractError("fl1_i1_item_attempt_evidence_missing")
+    receipt = load_private_json(run_dir / "restart-parent-harness-receipt.json")
+    if receipt.get("schema_version") != "violet.scv2-fl1-i1-restart-parent-harness.v1":
+        raise FL1I1ContractError("fl1_i1_restart_parent_harness_missing")
+    claimed = receipt.get("receipt_fingerprint")
+    canonical_receipt = dict(receipt)
+    canonical_receipt.pop("receipt_fingerprint", None)
+    if claimed != _fingerprint(canonical_receipt):
+        raise FL1I1ContractError("fl1_i1_restart_parent_harness_tamper")
+    children = receipt.get("children")
+    if not isinstance(children, list) or len(children) != len(ledger.invocations):
+        raise FL1I1ContractError("fl1_i1_restart_parent_child_count_invalid")
+    if (
+        receipt.get("run_id") != ledger.run_id
+        or receipt.get("actual_git_head") != ledger.actual_git_head
+        or receipt.get("parent_pid") in {value.pid for value in ledger.invocations}
+        or receipt.get("final_checkpoint_artifact_sha256")
+        != _sha256_file(run_dir / "private-inventory-checkpoint.json")
+    ):
+        raise FL1I1ContractError("fl1_i1_restart_parent_harness_binding_invalid")
+    for invocation, child in zip(ledger.invocations, children, strict=True):
+        if not isinstance(child, Mapping) or (
+            child.get("run_id") != ledger.run_id
+            or child.get("invocation_id") != invocation.invocation_id
+            or child.get("child_pid") != invocation.pid
+            or child.get("child_process_start_observation")
+            != invocation.process_start_observation
+            or child.get("parent_checkpoint_fingerprint")
+            != invocation.parent_checkpoint_fingerprint
+            or child.get("exit_code") != 0
+            or not re.fullmatch(r"[0-9a-f]{64}", str(child.get("argv_fingerprint", "")))
+        ):
+            raise FL1I1ContractError("fl1_i1_restart_child_receipt_invalid")
     return {
         "invocation_count": len(ledger.invocations),
         "distinct_invocation_ids": len({value.invocation_id for value in ledger.invocations}),
@@ -306,6 +463,7 @@ def _validate_restart(ledger: PrivateRunLedger, manifest: PrivateManifest) -> di
         "attempts_preserved": True,
         "terminal_items_reopened_or_rehashed": False,
         "attestation_level": "executable_cross_process_provenance_not_os_or_tpm_attestation",
+        "independent_parent_harness_receipt": True,
     }
 
 
@@ -354,6 +512,7 @@ def derive_canonical_public_projection(
         if resolved_artifact != evidence_root and evidence_root not in resolved_artifact.parents:
             raise FL1I1ContractError("fl1_i1_private_artifact_outside_evidence_root")
     ledger, manifest, operations = _load_private_artifacts(paths.run_dir)
+    manifest.validate_derivations(context)
     if not (
         ledger.actual_git_head == context.actual_git_head
         and ledger.branch == context.branch
@@ -366,13 +525,18 @@ def derive_canonical_public_projection(
     denominator = _validate_complete_manifest(manifest)
     duplicate_accounting = _validate_duplicate_authority(manifest)
     operation_accounting = _validate_operations(ledger, manifest, operations)
-    restart = _validate_restart(ledger, manifest)
+    restart = _validate_restart(ledger, manifest, paths.run_dir)
     receipt = load_local_validation_receipt(paths.validation_receipt)
     if (
         receipt.actual_git_head != context.actual_git_head
+        or receipt.trusted_git_fingerprint != context.git_executable.fingerprint
+        or receipt.python_identity_fingerprint
+        != context.python_identity["identity_fingerprint"]
         or receipt.report_sha256 != _sha256_file(paths.validation_report)
         or receipt.exit_code != 0
         or receipt.clean_worktree is not True
+        or receipt.machine_verifiable_ci is not False
+        or receipt.owner_authority_machine_verifiable is not False
     ):
         raise FL1I1ContractError("fl1_i1_validation_receipt_binding_invalid")
     projection: dict[str, Any] = {
@@ -432,7 +596,7 @@ def derive_canonical_public_projection(
             "media_authorized": False,
             "production_authorized": False,
             "owner_authority_machine_verifiable": False,
-            "manual_acceptance_status": "pending_i1_synthetic_implementation_owner_audit",
+            "manual_acceptance_status": "pending_i1_bounded_remediation_owner_audit",
         },
         "public_redaction": {
             "passed": True,
@@ -535,7 +699,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_python=Path(args.expected_python),
             evidence=evidence,
         )
-        atomic_write_json(Path(args.output), projection)
+        evidence_root = Path(evidence["run_dir"]).parent
+        TaskOwnedArtifactStore(evidence_root).atomic_write_json(
+            Path(args.output), projection
+        )
     except Exception as exc:
         print(json.dumps({"passed": False, "error": str(exc)}, sort_keys=True))
         return 1

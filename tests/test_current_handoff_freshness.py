@@ -41,6 +41,8 @@ def test_current_phase_schema_and_fl1_i1_boundary_are_consistent() -> None:
     assert state["current_status"] in {
         "fl1_i1_read_only_inventory_implementation_in_progress",
         "fl1_i1_synthetic_implementation_ready_for_owner_audit",
+        "fl1_i1_first_review_bounded_remediation_in_progress",
+        "fl1_i1_bounded_remediation_ready_for_owner_audit",
     }
     assert state["target_met"] is False
     assert state["safe_to_merge"] is False
@@ -55,10 +57,10 @@ def test_current_phase_schema_and_fl1_i1_boundary_are_consistent() -> None:
     assert boundary["app_storage_write_authorized"] is False
     assert boundary["provider_or_llm_authorized"] is False
     assert boundary["production_authorized"] is False
-    audit_ready = (
-        state["current_status"]
-        == "fl1_i1_synthetic_implementation_ready_for_owner_audit"
-    )
+    audit_ready = state["current_status"] in {
+        "fl1_i1_synthetic_implementation_ready_for_owner_audit",
+        "fl1_i1_bounded_remediation_ready_for_owner_audit",
+    }
     assert boundary["implementation_completed"] is audit_ready
     assert state["protected_evidence"][
         "fl1_i1_implementation_evidence_frozen"
@@ -95,6 +97,32 @@ def test_prior_pr143_acceptance_and_five_adjudications_are_exact() -> None:
         "validation receipts",
     ):
         assert concept.casefold() in decisions.casefold()
+
+
+def test_pr144_single_bounded_remediation_authority_is_exact() -> None:
+    state = _state()
+    protected = state["protected_evidence"]
+    review = next(
+        decision
+        for decision in state["owner_decisions"]
+        if decision["id"] == "owner_authorized_pr144_first_review_bounded_remediation_20260810"
+    )
+    assert state["current_status"] in {
+        "fl1_i1_first_review_bounded_remediation_in_progress",
+        "fl1_i1_bounded_remediation_ready_for_owner_audit",
+    }
+    assert state["manual_acceptance_status"] == "pending_i1_bounded_remediation_owner_audit"
+    assert protected["bounded_remediation_round"] == "1_of_1"
+    assert review["review_id"] == 4891695875
+    assert review["reviewed_head"] == "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3"
+    assert review["finding_count"] == 18
+    assert review["p1_count"] == 15
+    assert review["p2_count"] == 3
+    assert len(review["finding_adjudications"]) == 18
+    assert all(
+        finding["decision"] == "must_fix_current_i1"
+        for finding in review["finding_adjudications"]
+    )
 
 
 def test_remote_sync_policy_is_canonical_and_self_heal_is_not_contract_proof() -> None:
@@ -141,7 +169,7 @@ def test_handoff_is_exact_generated_projection() -> None:
     state = _state()
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     assert handoff == documentation_state.render_handoff(state)
-    assert 40 <= len(handoff.splitlines()) <= 60
+    assert 40 <= len(handoff.splitlines()) <= 65
     assert "SCV2-FL1-I1" in handoff
     assert "real source inventory is not authorized or started" in handoff
     assert "self_healed_by_fast_forward" in handoff

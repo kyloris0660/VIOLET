@@ -140,9 +140,16 @@ def make_i1_fixture(tmp_path: Path, *, populate: bool = True) -> I1Fixture:
     evidence = roots["phase_evidence_output_root"]
 
     if populate:
-        (source / "a.jpg").write_bytes(b"exact duplicate bytes")
-        (source / "b.jpg").write_bytes(b"exact duplicate bytes")
-        (source / "c.png").write_bytes(b"unique png bytes")
+        jpeg = b"\xff\xd8\xff\xe0" + b"bounded synthetic jpeg" + b"\xff\xd9"
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\x0dIHDR"
+            + b"bounded-synthetic-png"
+            + b"\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        (source / "a.jpg").write_bytes(jpeg)
+        (source / "b.jpg").write_bytes(jpeg)
+        (source / "c.png").write_bytes(png)
         (source / "d.txt").write_text("unsupported", encoding="utf-8")
         (source / "e.webp").write_bytes(b"recall risk")
         (source / "f.icloud").write_text("placeholder", encoding="utf-8")

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import scripts.fl1_i1_runtime_context as runtime_module
 
 from scripts.fl1_i1_runtime_context import (
     REQUIRED_PROTECTED_ROOT_ROLES,
@@ -14,6 +15,8 @@ from scripts.fl1_i1_runtime_context import (
     RuntimeContextError,
     SourceMode,
     build_trusted_runtime_context,
+    derive_repository_python_identity,
+    resolve_trusted_git_executable,
 )
 from tests.fl1_i1_helpers import make_i1_fixture, write_json
 
@@ -125,3 +128,78 @@ def test_dirty_or_head_drift_fails_before_context_is_usable(tmp_path: Path) -> N
     (fixture.repo / "tracked.txt").write_text("dirty\n", encoding="utf-8")
     with pytest.raises(RuntimeContextError, match="evidence_worktree_tracked_drift"):
         fixture.context()
+
+
+def test_repo_local_fake_git_executable_is_never_selected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    fake = fixture.repo / ("git.exe" if os.name == "nt" else "git")
+    fake.write_bytes(b"not trusted git")
+    monkeypatch.setenv("PATH", os.fspath(fixture.repo) + os.pathsep + os.environ["PATH"])
+    trusted = resolve_trusted_git_executable(excluded_roots=(fixture.repo,))
+    assert trusted.path != fake
+    assert fixture.repo not in trusted.path.parents
+    with pytest.raises(RuntimeContextError, match="evidence_worktree_tracked_drift"):
+        fixture.context()
+
+
+def test_system_python_cannot_self_approve_expected_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime_module.sys, "prefix", runtime_module.sys.base_prefix)
+    with pytest.raises(RuntimeContextError, match="repository_venv_python_required"):
+        derive_repository_python_identity(
+            caller_expected_python=Path(runtime_module.sys.executable)
+        )
+
+
+def test_pending_owner_payload_rejects_before_any_configured_root_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_root_text = os.fspath(tmp_path / "never-observe-real-root")
+    payload = {
+        "schema_version": "violet.scv2-fl1-i1-private-roots.v1",
+        "trust_class": "private_runtime_pending_owner",
+        "private_derivation_key": "11" * 32,
+        "roots": {role: real_root_text for role in REQUIRED_PROTECTED_ROOT_ROLES},
+    }
+    observed: list[str] = []
+    original_lstat = runtime_module.os.lstat
+
+    def recording_lstat(path):
+        if real_root_text in os.fspath(path):
+            observed.append(os.fspath(path))
+        return original_lstat(path)
+
+    monkeypatch.setattr(runtime_module.os, "lstat", recording_lstat)
+    with pytest.raises(RuntimeContextError, match="real_source_owner_authority_not_available"):
+        ProtectedRootRegistry.from_private_payload(payload)
+    assert observed == []
+
+
+def test_outside_sandbox_source_is_rejected_lexically_without_touching_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_i1_fixture(tmp_path)
+    outside = tmp_path / "never-observe-outside-source"
+    observed: list[str] = []
+    original_lstat = runtime_module.os.lstat
+
+    def recording_lstat(path):
+        if os.fspath(path).startswith(os.fspath(outside)):
+            observed.append(os.fspath(path))
+            raise AssertionError("outside source was observed")
+        return original_lstat(path)
+
+    monkeypatch.setattr(runtime_module.os, "lstat", recording_lstat)
+    with pytest.raises(RuntimeContextError, match="source_scope_not_temporary_fixture"):
+        build_trusted_runtime_context(
+            repo_root=fixture.repo,
+            expected_python=Path(sys.executable),
+            private_root_config=fixture.private_config,
+            source_root=outside,
+            source_mode=SourceMode.SYNTHETIC_FIXTURE,
+            source_scope_id="outside-must-not-be-touched",
+        )
+    assert observed == []
