@@ -4,7 +4,7 @@
   "phase_title": "Real-source Read-only Inventory Hardening and Canary Readiness",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-fl1-i2-real-source-inventory-plan",
-  "pr_number": null,
+  "pr_number": 145,
   "draft": false,
   "accepted_mainline_base": "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
   "implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
@@ -458,5 +458,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-11T20:10:35+08:00"
+  "updated_at": "2026-08-11T20:25:58+08:00"
 }

@@ -5,7 +5,7 @@
 ## Current Facts
 
 - Phase: `SCV2-FL1-I2` - Real-source Read-only Inventory Hardening and Canary Readiness.
-- Repository / PR: `kyloris0660/VIOLET` / PR pending creation.
+- Repository / PR: `kyloris0660/VIOLET` / PR #145.
 - Branch: `codex/scv2-fl1-i2-real-source-inventory-plan`.
 - Accepted mainline base: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 - Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.
@@ -80,4 +80,4 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 - `FL1_I2_IMPLEMENTATION_USE_BEFORE_GATE` - owner: future separately authorized SCV2-FL1-I2 implementation owner; due before: `any SCV2-FL1-I2 implementation begins`; Fourteen terminal PR #144 findings affect I2 implementation safety and evidence truth but do not authorize another PR #144 fix loop or implementation in this planning PR. Requirements: close all fourteen must_close_before_i2_implementation findings with synthetic or adversarial temporary fixtures; converge Cloud, source-kind, file-identity, and decision policy into one canonical safety boundary; produce a registered executable I2 contract and complete negative-test matrix; merge the separately authorized I2 implementation and stop before any real source operation.
 - `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized SCV2-FL1-I3 canary owner; due before: `any real source or iCloud listing, stat, attribute observation, open, read, hash, or structure validation`; No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists. Requirements: bind exact private source identity and finite scope; approve complete protected roots and public redaction boundary; approve enumeration, time, disk, read, hash, failure, and sample budgets; defer every recall-risk object without hydration and stop on structural identity or evidence drift.
 - `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future threat-model owner only if malicious same-account process resistance becomes a product requirement; due before: `any claim upgrades local invocation provenance to adversarial tamper resistance`; Parent-observed child identity is useful local operator evidence but is not OS, kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep current claims limited to local operator provenance; do not present parent receipts as CI or tamper-resistant evidence; do not expand a personal local inventory tool into forensic attestation without a separate need and design.
-Updated: `2026-08-11T20:10:35+08:00`.
+Updated: `2026-08-11T20:25:58+08:00`.
