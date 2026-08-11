@@ -4,7 +4,7 @@ import copy
 import json
 import os
 import shutil
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -37,6 +37,7 @@ def test_current_phase_schema_and_i2_planning_boundary_are_exact() -> None:
     documentation_state.validate_state(state)
     assert state["schema_version"] == "violet.current-phase.v2"
     assert state["phase_id"] == "SCV2-FL1-I2"
+    assert state["pr_number"] == documentation_state.FL1_I2_PR_NUMBER
     assert state["branch"] == documentation_state.FL1_I2_BRANCH
     assert state["accepted_mainline_base"] == documentation_state.FL1_I2_ACCEPTED_MAIN
     assert state["current_status"] == documentation_state.FL1_I2_STATUS
@@ -56,6 +57,27 @@ def test_current_phase_schema_and_i2_planning_boundary_are_exact() -> None:
     assert boundary["app_storage_write_authorized"] is False
     assert boundary["provider_or_llm_authorized"] is False
     assert boundary["production_authorized"] is False
+
+
+def test_fl1_i2_pr_number_exact_binding_accepts_145() -> None:
+    state = copy.deepcopy(_state())
+    state["pr_number"] = documentation_state.FL1_I2_PR_NUMBER
+
+    documentation_state.validate_state(state)
+
+
+@pytest.mark.parametrize("pr_number", [None, 144, 146])
+def test_fl1_i2_pr_number_exact_binding_fails_closed(
+    pr_number: int | None,
+) -> None:
+    state = copy.deepcopy(_state())
+    state["pr_number"] = pr_number
+
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_pr_number_invalid",
+    ):
+        documentation_state.validate_state(state)
 
 
 def test_pr144_acceptance_merge_and_terminal_review_are_exact() -> None:
@@ -107,19 +129,27 @@ def test_windows_git_candidates_use_os_roots_not_python_drive(
     candidates = documentation_state._trusted_git_candidates(
         platform_name="nt",
         windows_location_provider=lambda: (
-            (Path(r"c:\PROGRAM FILES\git"),),
+            (PureWindowsPath(r"c:\PROGRAM FILES\git"),),
             (
-                Path(r"C:\Program Files"),
-                Path(r"C:\Program Files (x86)"),
+                PureWindowsPath(r"C:\Program Files"),
+                PureWindowsPath(r"C:\Program Files (x86)"),
             ),
         ),
     )
     rendered = tuple(str(candidate).casefold() for candidate in candidates)
 
-    assert str(Path(r"C:\Program Files\Git\cmd\git.exe")).casefold() in rendered
-    assert str(Path(r"C:\Program Files\Git\bin\git.exe")).casefold() in rendered
-    assert len(rendered) == 4
-    assert not any(candidate.startswith("d:\\") for candidate in rendered)
+    assert all(isinstance(candidate, PureWindowsPath) for candidate in candidates)
+    assert all(candidate.drive.casefold() == "c:" for candidate in candidates)
+    assert (
+        str(PureWindowsPath(r"C:\Program Files\Git\cmd\git.exe")).casefold()
+        in rendered
+    )
+    assert (
+        str(PureWindowsPath(r"C:\Program Files\Git\bin\git.exe")).casefold()
+        in rendered
+    )
+    assert len(rendered) == len(set(rendered)) == 4
+    assert PureWindowsPath(r"D:\Program Files\Git\cmd\git.exe") not in candidates
 
 
 def test_windows_git_candidates_ignore_hostile_ordinary_environment(
@@ -133,16 +163,17 @@ def test_windows_git_candidates_ignore_hostile_ordinary_environment(
     candidates = documentation_state._trusted_git_candidates(
         platform_name="nt",
         windows_location_provider=lambda: (
-            (Path(r"C:\TrustedGit"),),
-            (Path(r"C:\TrustedProgramFiles"),),
+            (PureWindowsPath(r"C:\TrustedGit"),),
+            (PureWindowsPath(r"C:\TrustedProgramFiles"),),
         ),
     )
 
+    assert all(isinstance(candidate, PureWindowsPath) for candidate in candidates)
     assert candidates == (
-        Path(r"C:\TrustedGit\cmd\git.exe"),
-        Path(r"C:\TrustedGit\bin\git.exe"),
-        Path(r"C:\TrustedProgramFiles\Git\cmd\git.exe"),
-        Path(r"C:\TrustedProgramFiles\Git\bin\git.exe"),
+        PureWindowsPath(r"C:\TrustedGit\cmd\git.exe"),
+        PureWindowsPath(r"C:\TrustedGit\bin\git.exe"),
+        PureWindowsPath(r"C:\TrustedProgramFiles\Git\cmd\git.exe"),
+        PureWindowsPath(r"C:\TrustedProgramFiles\Git\bin\git.exe"),
     )
     assert all(
         str(hostile).casefold() not in str(candidate).casefold()
