@@ -9,7 +9,7 @@
   "accepted_mainline_base": "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
   "implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
   "implementation_evidence_status": "previous_phase_accepted_synthetic_foundation_only",
-  "current_status": "fl1_i2_planning_ready_for_owner_audit",
+  "current_status": "fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -18,7 +18,7 @@
   "planning_completed": true,
   "planning_approved": false,
   "approved_planning_head": null,
-  "manual_acceptance_status": "pending_fl1_i2_plan_owner_audit",
+  "manual_acceptance_status": "pending_fl1_i2_plan_owner_reaudit",
   "next_phase_started": true,
   "previous_phase": "SCV2-FL1-I1",
   "previous_phase_status": "owner_accepted_and_merge_commit_merged",
@@ -71,11 +71,12 @@
     "real_source_inventory_authorized": false,
     "i3_canary_started": false,
     "required_preconditions": [
-      "project owner audits and approves the exact I2 plan",
-      "all fourteen I2 implementation use-before gates are designed and closed using synthetic or adversarial temporary fixtures",
+      "project owner audits and approves the exact corrected I2 planning evidence commit and tree",
       "I2 implementation is separately authorized",
-      "I2 implementation merges and stops before any real source operation",
-      "I3 receives separate exact private source scope and budget authorization"
+      "I2 implementation is restricted to synthetic or adversarial newly created temporary fixtures while real source, iCloud, database, app storage, import, provider, model, media, and production authority remain false",
+      "all fourteen I2 delivery gates close before implementation_completed, target_met, safe_to_merge, merge, or I3",
+      "I2 passes owner audit and merges before any real source operation",
+      "a separate FL1_I3_REAL_SOURCE_SCOPE_GATE binds exact private source scope, protected roots, budgets, no-hydration policy, and stop conditions"
     ]
   },
   "prior_phase_acceptance": {
@@ -155,9 +156,9 @@
     }
   ],
   "active_blocker": {
-    "code": "pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope",
+    "code": "pending_fl1_i2_plan_owner_audit",
     "scope": "SCV2-FL1-I2 governance and full-route planning only; I2 implementation and all real-source activity remain unauthorized",
-    "resolution": "Project owner audits the I2 plan. Any later I2 implementation requires separate authorization and synthetic-only closure; any I3 real-source canary additionally requires an exact private source identity, protected-root registry, budgets, Cloud no-hydration policy, and stop conditions."
+    "resolution": "Project owner re-audits the corrected exact I2 planning evidence commit/tree. If accepted, a separately authorized governance-only projection commit binds that exact evidence, records the owner decision, sets planning approved, safe to merge, and merge authorized, keeps implementation and real-source authority false, and does not alter the accepted plan. Expected-head merge may follow only after that projection. Separate I2 implementation authorization then permits synthetic-only work to close all fourteen delivery gates before I2 completion, target, merge, or I3. Only after I2 owner audit and merge may a separate FL1_I3_REAL_SOURCE_SCOPE_GATE authorize a bounded canary."
   },
   "owner_decisions": [
     {
@@ -171,13 +172,18 @@
     {
       "id": "owner_classified_pr144_terminal_review_use_before_findings_20260811",
       "decision": "Close two documentation-governance findings now, carry fourteen engineering findings as mandatory I2 implementation use-before gates, and retain parent-observed child identity as a local-evidence claim boundary rather than claiming OS, TPM, CI, or tamper-resistant attestation."
+    },
+    {
+      "id": "owner_required_scv2_fl1_i2_bounded_planning_correction_20260811",
+      "decision": "SCV2_FL1_I2_PLANNING_OWNER_AUDIT_REQUIRES_BOUNDED_CORRECTION. The fourteen engineering findings are I2 implementation deliverables due before I2 completion, target, merge, or I3, not outcomes required before separately authorized synthetic-only implementation begins. Corrected exact planning evidence requires owner re-audit and a later separate governance-only acceptance projection before merge."
     }
   ],
   "authorized_operations": [
     "update public-safe governance, README, handoff, roadmap, plan, phase-contract projection, test-workflow, and iCloud boundary documentation",
     "make only minimal documentation-checker and focused regression changes required to express and fail closed on the I2 planning state",
     "run repository-venv documentation, handoff, governance, JSON, diff, path, privacy, and scope validation",
-    "commit and push only the named planning branch, create one normal open planning PR, and request exactly one final-head Codex review"
+    "commit and push only the existing named planning branch, update existing PR #145, and request exactly one corrected-final-head replacement Codex review",
+    "perform authorized Git and GitHub governance control-plane operations required for remote synchronization, PR update, push, and review request"
   ],
   "forbidden_operations": [
     "SCV2-FL1-I2 implementation or modification of runtime, scanner, operation gateway, manifest, ledger, contract, database, model, provider, UI, or server code",
@@ -186,7 +192,7 @@
     "app-managed storage or staging storage creation, access, comparison, or write",
     "import, classification, AI tagging, localization, graph, search, or background worker execution",
     "Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation",
-    "provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or network request",
+    "provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or external source/provider/model/media/data-plane network request",
     "Stable Replay import, reuse, replay, or authoritative evidence consumption",
     "production, watcher, scheduler, background worker, UI runtime server, I3 canary, I4 inventory, E1, E2, V1, or later phase execution",
     "cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, PR #144 reply, PR #144 thread resolution, or PR #144 reopening"
@@ -226,7 +232,8 @@
     "provider_operation_count": 0,
     "llm_operation_count": 0,
     "media_or_thumbnail_operation_count": 0,
-    "network_operation_count": 0,
+    "external_data_plane_network_operation_count": 0,
+    "authorized_git_github_governance_control_plane_operations_occurred": true,
     "stable_replay_operation_count": 0,
     "ui_or_server_operation_count": 0,
     "production_operation_count": 0
@@ -239,7 +246,7 @@
       "title": "Scrub Git control variables before trusted invocations",
       "path": "scripts/fl1_i1_runtime_context.py",
       "code": "git_control_environment_sanitization",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 2,
@@ -257,7 +264,7 @@
       "title": "Recheck recall attributes before final resolution",
       "path": "scripts/fl1_i1_operation_gateway.py",
       "code": "cloud_attribute_and_final_open_object_consistency",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 4,
@@ -266,7 +273,7 @@
       "title": "Allow interrupted attempts before corrupt-media closure",
       "path": "scripts/phase_contracts/fl1_i1_contract.py",
       "code": "interrupted_attempt_corrupt_media_accounting",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 5,
@@ -275,7 +282,7 @@
       "title": "Enforce the deadline around blocking file operations",
       "path": "scripts/fl1_i1_operation_gateway.py",
       "code": "interruptible_blocking_file_operations",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 6,
@@ -284,7 +291,7 @@
       "title": "Bind the receipt to one unchanged HEAD",
       "path": "scripts/fl1_i1_validation_receipt.py",
       "code": "validation_receipt_same_head_before_after",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 7,
@@ -293,7 +300,7 @@
       "title": "Re-derive the adapter policy during contract validation",
       "path": "scripts/phase_contracts/fl1_i1_contract.py",
       "code": "adapter_policy_rederived_from_trusted_config",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 8,
@@ -302,7 +309,7 @@
       "title": "Stop at the configured failure maximum",
       "path": "scripts/fl1_i1_inventory.py",
       "code": "failure_maximum_stop_boundary",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 9,
@@ -329,7 +336,7 @@
       "title": "Include a change identity in file signatures",
       "path": "scripts/fl1_i1_inventory.py",
       "code": "windows_file_identity_and_change_identity",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 12,
@@ -338,7 +345,7 @@
       "title": "Reject hard-linked files that alias protected data",
       "path": "scripts/fl1_i1_inventory.py",
       "code": "hard_link_reparse_and_alias_policy",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 13,
@@ -347,7 +354,7 @@
       "title": "Confine private artifact reads as well as writes",
       "path": "scripts/fl1_i1_operation_gateway.py",
       "code": "task_owned_nofollow_private_artifact_reads",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 14,
@@ -356,7 +363,7 @@
       "title": "Enumerate directories through a verified no-follow handle",
       "path": "scripts/fl1_i1_operation_gateway.py",
       "code": "handle_based_directory_enumeration",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 15,
@@ -365,7 +372,7 @@
       "title": "Reconcile intents from ended failed invocations",
       "path": "scripts/fl1_i1_inventory.py",
       "code": "ended_failed_invocation_intent_recovery",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 16,
@@ -374,7 +381,7 @@
       "title": "Validate media structure beyond boundary markers",
       "path": "scripts/fl1_i1_inventory.py",
       "code": "bounded_media_structure_validation",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     },
     {
       "number": 17,
@@ -383,10 +390,10 @@
       "title": "Handle runtime-context failures in the scanner CLI",
       "path": "scripts/fl1_i1_inventory.py",
       "code": "privacy_safe_cli_runtime_context_error_envelope",
-      "classification": "must_close_before_i2_implementation"
+      "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     }
   ],
-  "next_required_checkpoint": "project_owner_audit_of_fl1_i2_planning_pr_no_implementation_or_real_source_execution",
+  "next_required_checkpoint": "project_owner_reaudit_of_corrected_exact_fl1_i2_planning_evidence_commit_and_tree",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -426,12 +433,25 @@
       "id": "FL1_I2_IMPLEMENTATION_USE_BEFORE_GATE",
       "owner": "future separately authorized SCV2-FL1-I2 implementation owner",
       "reason": "Fourteen terminal PR #144 findings affect I2 implementation safety and evidence truth but do not authorize another PR #144 fix loop or implementation in this planning PR.",
-      "due_before": "any SCV2-FL1-I2 implementation begins",
+      "due_before": "SCV2-FL1-I2 implementation_completed, target_met, safe_to_merge, merge, or any SCV2-FL1-I3 or real-source operation",
       "requirements": [
-        "close all fourteen must_close_before_i2_implementation findings with synthetic or adversarial temporary fixtures",
+        "after exact plan approval and separate implementation authorization, close all fourteen must_close_during_i2_before_i2_completion_merge_or_i3 findings with synthetic or adversarial newly created temporary fixtures",
         "converge Cloud, source-kind, file-identity, and decision policy into one canonical safety boundary",
+        "enumerate every directory member from the same verified no-follow identity-bound directory handle; identity-before/after is supplemental drift evidence only and path-based os.scandir plus post-check cannot close finding 14",
         "produce a registered executable I2 contract and complete negative-test matrix",
         "merge the separately authorized I2 implementation and stop before any real source operation"
+      ]
+    },
+    {
+      "id": "FL1_I2_PLANNING_OWNER_ACCEPTANCE_PROJECTION_GATE",
+      "owner": "project owner and separately authorized governance projection operator",
+      "reason": "This bounded correction does not grant planning acceptance or merge authority. Owner acceptance must bind the corrected exact planning evidence without changing accepted plan content.",
+      "due_before": "planning_approved, safe_to_merge, merge_authorized, or expected-head merge",
+      "requirements": [
+        "project owner re-audits and accepts the corrected exact planning evidence commit and tree",
+        "a separate governance-only projection commit binds that exact approved planning evidence and records the owner decision",
+        "the projection changes no accepted plan content and keeps implementation and real-source authority false",
+        "expected-head merge occurs only after the projection is independently authorized and validated"
       ]
     },
     {
@@ -458,5 +478,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-11T20:25:58+08:00"
+  "updated_at": "2026-08-11T21:44:16+08:00"
 }

@@ -30,10 +30,11 @@ is planning-only on branch
 source is `docs/state/current-phase.json`.
 
 ```text
-status=fl1_i2_planning_ready_for_owner_audit
+status=fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit
 planning_authorized=true
 planning_completed=true
 planning_approved=false
+merge_authorized=false
 implementation_authorized=false
 implementation_started=false
 target_met=false
@@ -42,7 +43,7 @@ route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope
+active_blocker=pending_fl1_i2_plan_owner_audit
 ```
 
 PR #144 terminal review `4897012517` covered exact final HEAD
@@ -50,8 +51,13 @@ PR #144 terminal review `4897012517` covered exact final HEAD
 4 P2). All threads remain historical audit records. Two documentation-governance
 findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
-`github_checks=0`, and CI authority remains false. Fourteen findings are
-mandatory I2 implementation use-before gates. Parent-observed child identity is
+`github_checks=0`, and CI authority remains false. Fourteen findings are I2
+implementation deliverables that must close before `implementation_completed`,
+`target_met`, `safe_to_merge`, merge, or I3; they are not pre-existing outcomes
+required before separately authorized synthetic-only I2 coding begins.
+Finding #1 remains an I2 runtime/receipt/contract delivery item even though the
+documentation checker's own Git proof is scrubbed in this correction.
+Parent-observed child identity is
 kept as a local-evidence claim boundary, not described as tamper-resistant,
 OS/kernel/TPM/remote, or CI attestation.
 
@@ -79,6 +85,20 @@ authorities:
 6. I2 implementation and validation, if separately approved, stay on synthetic
    and adversarial temporary fixtures.
 
+The enforced order is: exact plan owner approval; separate I2 implementation
+authorization; synthetic-only I2 implementation closing all 14 gates; I2 owner
+audit and merge; separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`; then a bounded
+real-source canary. Exact private source identity, protected roots, budgets,
+no-hydration policy, and stop conditions belong only to I3 and do not gate the
+start of authorized synthetic I2 work.
+
+After this corrected planning evidence is re-audited, acceptance still requires
+a separately authorized governance-only projection commit. That commit must
+bind the exact accepted planning commit/tree, record the owner decision, set
+planning approval and merge authority while keeping implementation and
+real-source authority false, and change no accepted plan content. Only then may
+an expected-head merge occur.
+
 ## Delivery Sequence
 
 1. **SCV2-FL1-I2 - Pre-real hardening.** Close all real-source use-before
@@ -101,6 +121,11 @@ authorities:
 6. **SCV2-FL1-V1 - Product and owner validation.** Exercise real browser
    product flows, scale, failure/resume cases, and manifest-bound manual
    samples. V1 cannot authorize production import, watcher, or automatic sync.
+
+External source/provider/model/media data-plane network operations remain zero.
+Authorized Git/GitHub governance control-plane operations, including fetch,
+push, PR maintenance, and review requests, are allowed and have occurred; they
+are not provider or data execution.
 
 ## Remote Sync Preflight Policy
 

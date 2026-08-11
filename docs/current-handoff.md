@@ -12,9 +12,10 @@
 - Previous final HEAD/tree: `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; merge commit: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 - Previous I1 implementation evidence HEAD/tree: `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf` (frozen: `true`; accepted scope: `synthetic_and_new_temporary_fixture_foundation_only`).
 - Terminal review: `4897012517` at `2f8d5f8ce6cde9759c530de71d4ddd1893481656`; findings: `17` (`P1=13`, `P2=4`); GitHub checks: `0`.
-- Status: `fl1_i2_planning_ready_for_owner_audit`.
+- Status: `fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- Planning: `authorized=true`, `completed=true`, `approved=false`; `manual_acceptance_status=pending_fl1_i2_plan_owner_audit`.
+- Planning: `authorized=true`, `completed=true`, `approved=false`; `manual_acceptance_status=pending_fl1_i2_plan_owner_reaudit`.
+- Owner acceptance / merge authorization: `false/false`.
 - I2 implementation / real-source authorization: `false/false`; route scope: `SCV2-FL1-I2 governance and planning only; no I2 implementation or real-source execution`.
 
 ## Completed Checkpoints
@@ -28,41 +29,42 @@
 
 All 17 findings remain historical audit records. No PR #144 thread was replied to, resolved, or reopened.
 
-- #1 [P1] Scrub Git control variables before trusted invocations - `git_control_environment_sanitization`; `must_close_before_i2_implementation`.
+- #1 [P1] Scrub Git control variables before trusted invocations - `git_control_environment_sanitization`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
 - #2 [P1] Validate the parent-observed child identity - `parent_observed_child_identity_claim_boundary`; `claim_boundary_local_evidence_not_tamper_resistant_attestation`.
-- #3 [P1] Recheck recall attributes before final resolution - `cloud_attribute_and_final_open_object_consistency`; `must_close_before_i2_implementation`.
-- #4 [P1] Allow interrupted attempts before corrupt-media closure - `interrupted_attempt_corrupt_media_accounting`; `must_close_before_i2_implementation`.
-- #5 [P2] Enforce the deadline around blocking file operations - `interruptible_blocking_file_operations`; `must_close_before_i2_implementation`.
-- #6 [P1] Bind the receipt to one unchanged HEAD - `validation_receipt_same_head_before_after`; `must_close_before_i2_implementation`.
-- #7 [P1] Re-derive the adapter policy during contract validation - `adapter_policy_rederived_from_trusted_config`; `must_close_before_i2_implementation`.
-- #8 [P2] Stop at the configured failure maximum - `failure_maximum_stop_boundary`; `must_close_before_i2_implementation`.
+- #3 [P1] Recheck recall attributes before final resolution - `cloud_attribute_and_final_open_object_consistency`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #4 [P1] Allow interrupted attempts before corrupt-media closure - `interrupted_attempt_corrupt_media_accounting`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #5 [P2] Enforce the deadline around blocking file operations - `interruptible_blocking_file_operations`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #6 [P1] Bind the receipt to one unchanged HEAD - `validation_receipt_same_head_before_after`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #7 [P1] Re-derive the adapter policy during contract validation - `adapter_policy_rederived_from_trusted_config`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #8 [P2] Stop at the configured failure maximum - `failure_maximum_stop_boundary`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
 - #9 [P1] Pin the frozen remediation commit and tree - `frozen_i1_evidence_commit_tree_binding`; `closed_in_current_governance_pr`.
 - #10 [P1] Reject CI authority in documentation state - `documentation_ci_authority_fail_closed`; `closed_in_current_governance_pr`.
-- #11 [P1] Include a change identity in file signatures - `windows_file_identity_and_change_identity`; `must_close_before_i2_implementation`.
-- #12 [P1] Reject hard-linked files that alias protected data - `hard_link_reparse_and_alias_policy`; `must_close_before_i2_implementation`.
-- #13 [P1] Confine private artifact reads as well as writes - `task_owned_nofollow_private_artifact_reads`; `must_close_before_i2_implementation`.
-- #14 [P1] Enumerate directories through a verified no-follow handle - `handle_based_directory_enumeration`; `must_close_before_i2_implementation`.
-- #15 [P1] Reconcile intents from ended failed invocations - `ended_failed_invocation_intent_recovery`; `must_close_before_i2_implementation`.
-- #16 [P2] Validate media structure beyond boundary markers - `bounded_media_structure_validation`; `must_close_before_i2_implementation`.
-- #17 [P2] Handle runtime-context failures in the scanner CLI - `privacy_safe_cli_runtime_context_error_envelope`; `must_close_before_i2_implementation`.
+- #11 [P1] Include a change identity in file signatures - `windows_file_identity_and_change_identity`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #12 [P1] Reject hard-linked files that alias protected data - `hard_link_reparse_and_alias_policy`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #13 [P1] Confine private artifact reads as well as writes - `task_owned_nofollow_private_artifact_reads`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #14 [P1] Enumerate directories through a verified no-follow handle - `handle_based_directory_enumeration`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #15 [P1] Reconcile intents from ended failed invocations - `ended_failed_invocation_intent_recovery`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #16 [P2] Validate media structure beyond boundary markers - `bounded_media_structure_validation`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
+- #17 [P2] Handle runtime-context failures in the scanner CLI - `privacy_safe_cli_runtime_context_error_envelope`; `must_close_during_i2_before_i2_completion_merge_or_i3`.
 
 ## Current Gate And Boundary
 
-- Gate: `pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope` (SCV2-FL1-I2 governance and full-route planning only; I2 implementation and all real-source activity remain unauthorized).
-- Resolution: Project owner audits the I2 plan. Any later I2 implementation requires separate authorization and synthetic-only closure; any I3 real-source canary additionally requires an exact private source identity, protected-root registry, budgets, Cloud no-hydration policy, and stop conditions.
+- Gate: `pending_fl1_i2_plan_owner_audit` (SCV2-FL1-I2 governance and full-route planning only; I2 implementation and all real-source activity remain unauthorized).
+- Resolution: Project owner re-audits the corrected exact I2 planning evidence commit/tree. If accepted, a separately authorized governance-only projection commit binds that exact evidence, records the owner decision, sets planning approved, safe to merge, and merge authorized, keeps implementation and real-source authority false, and does not alter the accepted plan. Expected-head merge may follow only after that projection. Separate I2 implementation authorization then permits synthetic-only work to close all fourteen delivery gates before I2 completion, target, merge, or I3. Only after I2 owner audit and merge may a separate FL1_I3_REAL_SOURCE_SCOPE_GATE authorize a bounded canary.
 - Planning only: `true`; implementation/data/production authorization: `false/false/false`.
 - Existing database/real inventory/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `$0`.
 - Public evidence boundary: `trust_level=local_operator_receipt`, `machine_verifiable_ci=false`, `github_checks=0`.
+- Network truth: external source/provider/model/media data-plane operations = `0`; authorized Git/GitHub governance control-plane operations occurred = `true`.
 - Parent-observed child identity remains local provenance, not OS/kernel/TPM/remote/CI or tamper-resistant attestation.
 
 ## Allowed / Forbidden
 
-- Allowed: update public-safe governance, README, handoff, roadmap, plan, phase-contract projection, test-workflow, and iCloud boundary documentation; make only minimal documentation-checker and focused regression changes required to express and fail closed on the I2 planning state; run repository-venv documentation, handoff, governance, JSON, diff, path, privacy, and scope validation; commit and push only the named planning branch, create one normal open planning PR, and request exactly one final-head Codex review.
-- Forbidden: SCV2-FL1-I2 implementation or modification of runtime, scanner, operation gateway, manifest, ledger, contract, database, model, provider, UI, or server code; listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root; existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; app-managed storage or staging storage creation, access, comparison, or write; import, classification, AI tagging, localization, graph, search, or background worker execution; Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation; provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or network request; Stable Replay import, reuse, replay, or authoritative evidence consumption; production, watcher, scheduler, background worker, UI runtime server, I3 canary, I4 inventory, E1, E2, V1, or later phase execution; cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, PR #144 reply, PR #144 thread resolution, or PR #144 reopening.
+- Allowed: update public-safe governance, README, handoff, roadmap, plan, phase-contract projection, test-workflow, and iCloud boundary documentation; make only minimal documentation-checker and focused regression changes required to express and fail closed on the I2 planning state; run repository-venv documentation, handoff, governance, JSON, diff, path, privacy, and scope validation; commit and push only the existing named planning branch, update existing PR #145, and request exactly one corrected-final-head replacement Codex review; perform authorized Git and GitHub governance control-plane operations required for remote synchronization, PR update, push, and review request.
+- Forbidden: SCV2-FL1-I2 implementation or modification of runtime, scanner, operation gateway, manifest, ledger, contract, database, model, provider, UI, or server code; listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root; existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; app-managed storage or staging storage creation, access, comparison, or write; import, classification, AI tagging, localization, graph, search, or background worker execution; Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation; provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or external source/provider/model/media/data-plane network request; Stable Replay import, reuse, replay, or authoritative evidence consumption; production, watcher, scheduler, background worker, UI runtime server, I3 canary, I4 inventory, E1, E2, V1, or later phase execution; cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, PR #144 reply, PR #144 thread resolution, or PR #144 reopening.
 
 ## Next Action
 
-- Required checkpoint: `project_owner_audit_of_fl1_i2_planning_pr_no_implementation_or_real_source_execution`.
+- Required checkpoint: `project_owner_reaudit_of_corrected_exact_fl1_i2_planning_evidence_commit_and_tree`.
 
 ## Durable Links
 
@@ -77,7 +79,8 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 
 ## Deferred Debt
 
-- `FL1_I2_IMPLEMENTATION_USE_BEFORE_GATE` - owner: future separately authorized SCV2-FL1-I2 implementation owner; due before: `any SCV2-FL1-I2 implementation begins`; Fourteen terminal PR #144 findings affect I2 implementation safety and evidence truth but do not authorize another PR #144 fix loop or implementation in this planning PR. Requirements: close all fourteen must_close_before_i2_implementation findings with synthetic or adversarial temporary fixtures; converge Cloud, source-kind, file-identity, and decision policy into one canonical safety boundary; produce a registered executable I2 contract and complete negative-test matrix; merge the separately authorized I2 implementation and stop before any real source operation.
+- `FL1_I2_IMPLEMENTATION_USE_BEFORE_GATE` - owner: future separately authorized SCV2-FL1-I2 implementation owner; due before: `SCV2-FL1-I2 implementation_completed, target_met, safe_to_merge, merge, or any SCV2-FL1-I3 or real-source operation`; Fourteen terminal PR #144 findings affect I2 implementation safety and evidence truth but do not authorize another PR #144 fix loop or implementation in this planning PR. Requirements: after exact plan approval and separate implementation authorization, close all fourteen must_close_during_i2_before_i2_completion_merge_or_i3 findings with synthetic or adversarial newly created temporary fixtures; converge Cloud, source-kind, file-identity, and decision policy into one canonical safety boundary; enumerate every directory member from the same verified no-follow identity-bound directory handle; identity-before/after is supplemental drift evidence only and path-based os.scandir plus post-check cannot close finding 14; produce a registered executable I2 contract and complete negative-test matrix; merge the separately authorized I2 implementation and stop before any real source operation.
+- `FL1_I2_PLANNING_OWNER_ACCEPTANCE_PROJECTION_GATE` - owner: project owner and separately authorized governance projection operator; due before: `planning_approved, safe_to_merge, merge_authorized, or expected-head merge`; This bounded correction does not grant planning acceptance or merge authority. Owner acceptance must bind the corrected exact planning evidence without changing accepted plan content. Requirements: project owner re-audits and accepts the corrected exact planning evidence commit and tree; a separate governance-only projection commit binds that exact approved planning evidence and records the owner decision; the projection changes no accepted plan content and keeps implementation and real-source authority false; expected-head merge occurs only after the projection is independently authorized and validated.
 - `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized SCV2-FL1-I3 canary owner; due before: `any real source or iCloud listing, stat, attribute observation, open, read, hash, or structure validation`; No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists. Requirements: bind exact private source identity and finite scope; approve complete protected roots and public redaction boundary; approve enumeration, time, disk, read, hash, failure, and sample budgets; defer every recall-risk object without hydration and stop on structural identity or evidence drift.
 - `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future threat-model owner only if malicious same-account process resistance becomes a product requirement; due before: `any claim upgrades local invocation provenance to adversarial tamper resistance`; Parent-observed child identity is useful local operator evidence but is not OS, kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep current claims limited to local operator provenance; do not present parent receipts as CI or tamper-resistant evidence; do not expand a personal local inventory tool into forensic attestation without a separate need and design.
-Updated: `2026-08-11T20:25:58+08:00`.
+Updated: `2026-08-11T21:44:16+08:00`.

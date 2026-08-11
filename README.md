@@ -36,7 +36,11 @@ generated `docs/current-handoff.md` provides the short human-readable view.
 PR #144 merged the `SCV2-FL1-I1` inventory foundation, but the owner accepted
 it only for synthetic and newly created temporary fixtures. Current work is the
 `SCV2-FL1-I2` governance and planning route for real-source read-only inventory
-hardening and canary readiness. I2 implementation, real source/iCloud access,
+hardening and canary readiness; its owner-directed bounded correction is ready
+for re-audit, but the plan is not yet approved. The 14 engineering findings are
+synthetic-only I2 implementation deliverables due before I2 completion, merge,
+or any I3/real-source use, not results required before separately authorized I2
+coding begins. I2 implementation, real source/iCloud access,
 full-library inventory, database/app-storage access, import, classification,
 AI tagging, provider/LLM/media activity, UI/runtime execution, and production
 remain unauthorized.
@@ -153,9 +157,11 @@ not active onboarding material.
 ## Development Focus
 
 Current development focus is the FL1 read-only inventory safety route: converge
-the Cloud/source decision boundary, close the I2 use-before gates with only
-synthetic/adversarial temporary fixtures, and prepare separately authorized I3
-and I4 inventory stages. The accepted SourceConcept work remains a separate
+the Cloud/source decision boundary, obtain exact-plan owner approval and a
+separate implementation authorization, then close the 14 I2 delivery gates
+with only synthetic/adversarial temporary fixtures before any I3 use. I3 and I4
+remain separately authorized inventory stages. The accepted SourceConcept work
+remains a separate
 evidence track; it is not Entity truth and does not authorize source, import,
 provider, or tagging execution. See the roadmap and current handoff before
 starting any implementation or data-bearing phase.

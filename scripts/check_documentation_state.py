@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -96,9 +97,9 @@ FL1_I2_PREVIOUS_FINAL_TREE = "8930a21bdbac037702f92bcb75bd9b8a3632a073"
 FL1_I2_PREVIOUS_EVIDENCE = "6992e7f1e5a45857111d15da1ad0274e49008a99"
 FL1_I2_PREVIOUS_EVIDENCE_TREE = "6ff185defb150c3751c7433ef635c00a200c44bf"
 FL1_I2_TERMINAL_REVIEW_ID = 4897012517
-FL1_I2_STATUS = "fl1_i2_planning_ready_for_owner_audit"
-FL1_I2_BLOCKER = "pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope"
-FL1_I2_MANUAL_STATUS = "pending_fl1_i2_plan_owner_audit"
+FL1_I2_STATUS = "fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit"
+FL1_I2_BLOCKER = "pending_fl1_i2_plan_owner_audit"
+FL1_I2_MANUAL_STATUS = "pending_fl1_i2_plan_owner_reaudit"
 FL1_I2_ROUTE_SCOPE = (
     "SCV2-FL1-I2 governance and planning only; no I2 implementation or "
     "real-source execution"
@@ -515,6 +516,14 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "real_inventory_started": False,
         "real_source_inventory_authorized": False,
         "i3_canary_started": False,
+        "required_preconditions": [
+            "project owner audits and approves the exact corrected I2 planning evidence commit and tree",
+            "I2 implementation is separately authorized",
+            "I2 implementation is restricted to synthetic or adversarial newly created temporary fixtures while real source, iCloud, database, app storage, import, provider, model, media, and production authority remain false",
+            "all fourteen I2 delivery gates close before implementation_completed, target_met, safe_to_merge, merge, or I3",
+            "I2 passes owner audit and merges before any real source operation",
+            "a separate FL1_I3_REAL_SOURCE_SCOPE_GATE binds exact private source scope, protected roots, budgets, no-hydration policy, and stop conditions",
+        ],
     }
     if not isinstance(next_phase, dict) or any(
         next_phase.get(key) != value for key, value in expected_next_phase.items()
@@ -569,6 +578,7 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "ci_authority": False,
         "preflight_remote_sync": "self_healed_by_fast_forward",
         "preflight_remote_sync_is_contract_proof": False,
+        "authorized_git_github_governance_control_plane_operations_occurred": True,
     }
     zero_fields = (
         "real_source_inventory_operation_count",
@@ -580,34 +590,34 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "provider_operation_count",
         "llm_operation_count",
         "media_or_thumbnail_operation_count",
-        "network_operation_count",
+        "external_data_plane_network_operation_count",
         "stable_replay_operation_count",
         "ui_or_server_operation_count",
         "production_operation_count",
     )
-    if not isinstance(protected, dict) or any(
+    if not isinstance(protected, dict) or "network_operation_count" in protected or any(
         protected.get(key) != value for key, value in expected_protected.items()
     ) or any(protected.get(key) != 0 for key in zero_fields):
         raise DocumentationStateError("fl1_i2_protected_evidence_invalid")
 
     expected_findings = [
-        (1, "PRRT_kwDOSTBMB86X4OUS", "P1", "Scrub Git control variables before trusted invocations", "scripts/fl1_i1_runtime_context.py", "git_control_environment_sanitization", "must_close_before_i2_implementation"),
+        (1, "PRRT_kwDOSTBMB86X4OUS", "P1", "Scrub Git control variables before trusted invocations", "scripts/fl1_i1_runtime_context.py", "git_control_environment_sanitization", "must_close_during_i2_before_i2_completion_merge_or_i3"),
         (2, "PRRT_kwDOSTBMB86X4OUW", "P1", "Validate the parent-observed child identity", "scripts/phase_contracts/fl1_i1_contract.py", "parent_observed_child_identity_claim_boundary", "claim_boundary_local_evidence_not_tamper_resistant_attestation"),
-        (3, "PRRT_kwDOSTBMB86X4OUa", "P1", "Recheck recall attributes before final resolution", "scripts/fl1_i1_operation_gateway.py", "cloud_attribute_and_final_open_object_consistency", "must_close_before_i2_implementation"),
-        (4, "PRRT_kwDOSTBMB86X4OUe", "P1", "Allow interrupted attempts before corrupt-media closure", "scripts/phase_contracts/fl1_i1_contract.py", "interrupted_attempt_corrupt_media_accounting", "must_close_before_i2_implementation"),
-        (5, "PRRT_kwDOSTBMB86X4OUk", "P2", "Enforce the deadline around blocking file operations", "scripts/fl1_i1_operation_gateway.py", "interruptible_blocking_file_operations", "must_close_before_i2_implementation"),
-        (6, "PRRT_kwDOSTBMB86X4OUq", "P1", "Bind the receipt to one unchanged HEAD", "scripts/fl1_i1_validation_receipt.py", "validation_receipt_same_head_before_after", "must_close_before_i2_implementation"),
-        (7, "PRRT_kwDOSTBMB86X4OUy", "P1", "Re-derive the adapter policy during contract validation", "scripts/phase_contracts/fl1_i1_contract.py", "adapter_policy_rederived_from_trusted_config", "must_close_before_i2_implementation"),
-        (8, "PRRT_kwDOSTBMB86X4OU1", "P2", "Stop at the configured failure maximum", "scripts/fl1_i1_inventory.py", "failure_maximum_stop_boundary", "must_close_before_i2_implementation"),
+        (3, "PRRT_kwDOSTBMB86X4OUa", "P1", "Recheck recall attributes before final resolution", "scripts/fl1_i1_operation_gateway.py", "cloud_attribute_and_final_open_object_consistency", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (4, "PRRT_kwDOSTBMB86X4OUe", "P1", "Allow interrupted attempts before corrupt-media closure", "scripts/phase_contracts/fl1_i1_contract.py", "interrupted_attempt_corrupt_media_accounting", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (5, "PRRT_kwDOSTBMB86X4OUk", "P2", "Enforce the deadline around blocking file operations", "scripts/fl1_i1_operation_gateway.py", "interruptible_blocking_file_operations", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (6, "PRRT_kwDOSTBMB86X4OUq", "P1", "Bind the receipt to one unchanged HEAD", "scripts/fl1_i1_validation_receipt.py", "validation_receipt_same_head_before_after", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (7, "PRRT_kwDOSTBMB86X4OUy", "P1", "Re-derive the adapter policy during contract validation", "scripts/phase_contracts/fl1_i1_contract.py", "adapter_policy_rederived_from_trusted_config", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (8, "PRRT_kwDOSTBMB86X4OU1", "P2", "Stop at the configured failure maximum", "scripts/fl1_i1_inventory.py", "failure_maximum_stop_boundary", "must_close_during_i2_before_i2_completion_merge_or_i3"),
         (9, "PRRT_kwDOSTBMB86X4OU5", "P1", "Pin the frozen remediation commit and tree", "scripts/check_documentation_state.py", "frozen_i1_evidence_commit_tree_binding", "closed_in_current_governance_pr"),
         (10, "PRRT_kwDOSTBMB86X4OVA", "P1", "Reject CI authority in documentation state", "scripts/check_documentation_state.py", "documentation_ci_authority_fail_closed", "closed_in_current_governance_pr"),
-        (11, "PRRT_kwDOSTBMB86X4OVI", "P1", "Include a change identity in file signatures", "scripts/fl1_i1_inventory.py", "windows_file_identity_and_change_identity", "must_close_before_i2_implementation"),
-        (12, "PRRT_kwDOSTBMB86X4OVM", "P1", "Reject hard-linked files that alias protected data", "scripts/fl1_i1_inventory.py", "hard_link_reparse_and_alias_policy", "must_close_before_i2_implementation"),
-        (13, "PRRT_kwDOSTBMB86X4OVT", "P1", "Confine private artifact reads as well as writes", "scripts/fl1_i1_operation_gateway.py", "task_owned_nofollow_private_artifact_reads", "must_close_before_i2_implementation"),
-        (14, "PRRT_kwDOSTBMB86X4OVW", "P1", "Enumerate directories through a verified no-follow handle", "scripts/fl1_i1_operation_gateway.py", "handle_based_directory_enumeration", "must_close_before_i2_implementation"),
-        (15, "PRRT_kwDOSTBMB86X4OVa", "P1", "Reconcile intents from ended failed invocations", "scripts/fl1_i1_inventory.py", "ended_failed_invocation_intent_recovery", "must_close_before_i2_implementation"),
-        (16, "PRRT_kwDOSTBMB86X4OVe", "P2", "Validate media structure beyond boundary markers", "scripts/fl1_i1_inventory.py", "bounded_media_structure_validation", "must_close_before_i2_implementation"),
-        (17, "PRRT_kwDOSTBMB86X4OVk", "P2", "Handle runtime-context failures in the scanner CLI", "scripts/fl1_i1_inventory.py", "privacy_safe_cli_runtime_context_error_envelope", "must_close_before_i2_implementation"),
+        (11, "PRRT_kwDOSTBMB86X4OVI", "P1", "Include a change identity in file signatures", "scripts/fl1_i1_inventory.py", "windows_file_identity_and_change_identity", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (12, "PRRT_kwDOSTBMB86X4OVM", "P1", "Reject hard-linked files that alias protected data", "scripts/fl1_i1_inventory.py", "hard_link_reparse_and_alias_policy", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (13, "PRRT_kwDOSTBMB86X4OVT", "P1", "Confine private artifact reads as well as writes", "scripts/fl1_i1_operation_gateway.py", "task_owned_nofollow_private_artifact_reads", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (14, "PRRT_kwDOSTBMB86X4OVW", "P1", "Enumerate directories through a verified no-follow handle", "scripts/fl1_i1_operation_gateway.py", "handle_based_directory_enumeration", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (15, "PRRT_kwDOSTBMB86X4OVa", "P1", "Reconcile intents from ended failed invocations", "scripts/fl1_i1_inventory.py", "ended_failed_invocation_intent_recovery", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (16, "PRRT_kwDOSTBMB86X4OVe", "P2", "Validate media structure beyond boundary markers", "scripts/fl1_i1_inventory.py", "bounded_media_structure_validation", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (17, "PRRT_kwDOSTBMB86X4OVk", "P2", "Handle runtime-context failures in the scanner CLI", "scripts/fl1_i1_inventory.py", "privacy_safe_cli_runtime_context_error_envelope", "must_close_during_i2_before_i2_completion_merge_or_i3"),
     ]
     actual_findings = state["terminal_review_findings"]
     expected_payload = [
@@ -939,6 +949,98 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
             raise DocumentationStateError(f"public_state_redaction_failure:{pattern.pattern}")
 
 
+def _trusted_git_environment(
+    inherited: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Return a Git environment with caller-controlled Git state removed."""
+
+    source = os.environ if inherited is None else inherited
+    scrubbed = {
+        key: value
+        for key, value in source.items()
+        if not key.casefold().startswith("git_")
+    }
+    scrubbed.update(
+        {
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return scrubbed
+
+
+def _trusted_git_executable(*, root: Path = ROOT) -> Path:
+    """Resolve Git from fixed system locations, never from caller PATH."""
+
+    if os.name == "nt":
+        drive = Path(sys.executable).anchor or "C:\\"
+        candidates = (
+            Path(drive) / "Program Files" / "Git" / "cmd" / "git.exe",
+            Path(drive) / "Program Files" / "Git" / "bin" / "git.exe",
+            Path(drive) / "Program Files (x86)" / "Git" / "cmd" / "git.exe",
+            Path(drive) / "Program Files (x86)" / "Git" / "bin" / "git.exe",
+        )
+    else:
+        candidates = (
+            Path("/usr/bin/git"),
+            Path("/usr/local/bin/git"),
+            Path("/opt/homebrew/bin/git"),
+        )
+    resolved_root = root.resolve()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if not resolved.is_file():
+            continue
+        if resolved == resolved_root or resolved_root in resolved.parents:
+            continue
+        return resolved
+    raise DocumentationStateError("trusted_git_executable_unavailable")
+
+
+def _run_trusted_git(
+    arguments: list[str],
+    *,
+    root: Path = ROOT,
+) -> subprocess.CompletedProcess[str]:
+    """Run a non-interactive repository-bound Git command without caller config."""
+
+    executable = _trusted_git_executable(root=root)
+    command = [
+        str(executable),
+        "-c",
+        f"core.hooksPath={os.devnull}",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.useBuiltinFSMonitor=false",
+        "-C",
+        str(root.resolve()),
+        *arguments,
+    ]
+    try:
+        return subprocess.run(
+            command,
+            cwd=root,
+            env=_trusted_git_environment(),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise DocumentationStateError(
+            f"trusted_git_invocation_failed:{type(exc).__name__}"
+        ) from exc
+
+
 def validate_git_ancestry(
     state: dict[str, Any],
     *,
@@ -955,52 +1057,31 @@ def validate_git_ancestry(
         base: str(state["previous_phase_final_tree"]),
     }
     for commit, expected_tree in expected_commit_trees.items():
-        tree_result = subprocess.run(
-            ["git", "rev-parse", f"{commit}^{{tree}}"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
+        tree_result = _run_trusted_git(
+            ["rev-parse", f"{commit}^{{tree}}"], root=root
         )
         if tree_result.returncode != 0:
             raise DocumentationStateError("frozen_i1_evidence_object_missing")
         if tree_result.stdout.strip() != expected_tree:
             raise DocumentationStateError("frozen_i1_evidence_tree_mismatch")
-    base_object = subprocess.run(
-        ["git", "cat-file", "-e", f"{base}^{{commit}}"],
-        cwd=root,
-        capture_output=True,
-        check=False,
+    base_object = _run_trusted_git(
+        ["cat-file", "-e", f"{base}^{{commit}}"], root=root
     )
     if base_object.returncode != 0:
         raise DocumentationStateError("accepted_mainline_base_object_missing")
-    implementation_object = subprocess.run(
-        ["git", "cat-file", "-e", f"{implementation}^{{commit}}"],
-        cwd=root,
-        capture_output=True,
-        check=False,
+    implementation_object = _run_trusted_git(
+        ["cat-file", "-e", f"{implementation}^{{commit}}"], root=root
     )
     if implementation_object.returncode != 0:
         raise DocumentationStateError("implementation_evidence_object_missing")
-    base_check = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", base, "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
+    base_check = _run_trusted_git(
+        ["merge-base", "--is-ancestor", base, "HEAD"], root=root
     )
     if base_check.returncode != 0:
         raise DocumentationStateError("accepted_mainline_base_not_ancestor_of_head")
 
-    implementation_check = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", implementation, "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
+    implementation_check = _run_trusted_git(
+        ["merge-base", "--is-ancestor", implementation, "HEAD"], root=root
     )
     if implementation_check.returncode == 0:
         return
@@ -1178,6 +1259,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
         f"- Planning: `authorized={str(state['planning_authorized']).lower()}`, `completed={str(state['planning_completed']).lower()}`, `approved={str(state['planning_approved']).lower()}`; `manual_acceptance_status={state['manual_acceptance_status']}`.",
+        f"- Owner acceptance / merge authorization: `{str(boundary['owner_acceptance_valid']).lower()}/{str(boundary['merge_authorized']).lower()}`.",
         f"- I2 implementation / real-source authorization: `{str(boundary['implementation_authorized']).lower()}/{str(boundary['real_source_inventory_authorized']).lower()}`; route scope: `{state['route_scope']}`.",
         "",
         "## Completed Checkpoints",
@@ -1209,6 +1291,7 @@ def render_handoff(state: dict[str, Any]) -> str:
             f"- Planning only: `{str(boundary['planning_only']).lower()}`; implementation/data/production authorization: `{str(boundary['implementation_authorized']).lower()}/{str(boundary['data_execution_authorized']).lower()}/{str(boundary['production_authorized']).lower()}`.",
             f"- Existing database/real inventory/provider-or-LLM/media authorization: `{str(boundary['database_access_authorized']).lower()}/{str(boundary['real_source_inventory_authorized']).lower()}/{str(boundary['provider_or_llm_authorized']).lower()}/{str(boundary['media_authorized']).lower()}`; projected external cost: `${boundary['projected_external_cost_usd']}`.",
             f"- Public evidence boundary: `trust_level={state['protected_evidence']['validation_receipt_trust_level']}`, `machine_verifiable_ci={str(state['protected_evidence']['machine_verifiable_ci']).lower()}`, `github_checks={state['protected_evidence']['github_checks_observed']}`.",
+            f"- Network truth: external source/provider/model/media data-plane operations = `{state['protected_evidence']['external_data_plane_network_operation_count']}`; authorized Git/GitHub governance control-plane operations occurred = `{str(state['protected_evidence']['authorized_git_github_governance_control_plane_operations_occurred']).lower()}`.",
             "- Parent-observed child identity remains local provenance, not OS/kernel/TPM/remote/CI or tamper-resistant attestation.",
             "",
             "## Allowed / Forbidden",

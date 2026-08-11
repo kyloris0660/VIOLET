@@ -31,10 +31,11 @@ a machine-verifiable CI pass.
 Current phase `SCV2-FL1-I2` is governance and route planning only:
 
 ```text
-current_status=fl1_i2_planning_ready_for_owner_audit
+current_status=fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit
 planning_authorized=true
 planning_completed=true
 planning_approved=false
+merge_authorized=false
 implementation_authorized=false
 implementation_started=false
 target_met=false
@@ -52,7 +53,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope
+active_blocker=pending_fl1_i2_plan_owner_audit
 ```
 
 ## Accepted Mainline Sequence
@@ -71,9 +72,25 @@ PR #142 remains closed, unmerged, and non-authoritative.
 ### I2 - Pre-real hardening
 
 Use only synthetic/adversarial temporary fixtures. Converge canonical source
-and Cloud policy, close the 14 implementation use-before gates, produce an
-executable contract and complete negative suite, then stop after merge pending
-real canary authorization.
+and Cloud policy, close the 14 implementation delivery gates before I2
+completion, target, safe-to-merge, merge, or I3, produce an executable contract
+and complete negative suite, then stop after merge pending real canary
+authorization. The gates are I2 deliverables; they are not outcomes required
+before exact-plan approval plus separate authorization permits synthetic-only
+I2 coding.
+
+The sequence is exact plan owner approval, separate I2 implementation
+authorization, synthetic-only closure of all 14 gates, I2 owner audit and
+merge, separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`, then bounded canary. I3's
+private source identity, protected roots, budgets, no-hydration policy, and stop
+conditions do not gate synthetic I2 implementation.
+
+Corrected planning evidence remains unaccepted until owner re-audit. Acceptance
+then requires a separately authorized governance-only projection commit that
+binds the exact approved planning commit/tree and records the owner decision
+without changing plan content. It may set planning approval and merge authority
+but must keep implementation and real-source authority false before an
+expected-head merge.
 
 ### I3 - Bounded real-source inventory canary
 

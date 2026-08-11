@@ -8,6 +8,11 @@ Phase 2.4 makes the Local Library Scan pipeline safe for large iCloud-synced dir
 > readiness depends on separately approved I2 hardening, I3 bounded canary, and
 > I4 read-only inventory stages. Nothing here claims I2 implementation exists or
 > authorizes a real source/iCloud scan, hydration, database use, or import.
+> In particular, this historical path-based runtime description does not close
+> I2 finding #14. Future I2 directory membership must come from the same
+> verified, no-follow, identity-bound directory handle; identity-before/after is
+> only supplemental drift evidence, and path-based `os.scandir()` plus a
+> post-check is not an equivalent safety primitive.
 
 ## Problem
 

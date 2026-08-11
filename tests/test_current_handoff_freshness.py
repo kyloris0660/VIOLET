@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -83,7 +84,97 @@ def test_pr144_acceptance_merge_and_terminal_review_are_exact() -> None:
 
 
 def test_live_git_objects_bind_frozen_i1_commit_and_tree_evidence() -> None:
+    state = _state()
+    documentation_state.validate_git_ancestry(state)
+    commit = state["protected_evidence"]["previous_phase_implementation_evidence_head"]
+    expected_tree = state["protected_evidence"]["previous_phase_implementation_evidence_tree"]
+    result = documentation_state._run_trusted_git(
+        ["rev-parse", f"{commit}^{{tree}}"]
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == expected_tree
+
+
+@pytest.mark.parametrize("variable", ["GIT_DIR", "GIT_WORK_TREE"])
+def test_trusted_git_proof_ignores_hostile_repository_redirection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    variable: str,
+) -> None:
+    monkeypatch.setenv(variable, str(tmp_path / "hostile-not-a-repository"))
     documentation_state.validate_git_ancestry(_state())
+
+
+def test_trusted_git_environment_scrubs_mixed_case_control_keys() -> None:
+    scrubbed = documentation_state._trusted_git_environment(
+        {
+            "Path": "trusted-path-value",
+            "gIt_DiR": "hostile",
+            "Git_Work_Tree": "hostile",
+            "GIT_CONFIG_COUNT": "1",
+        }
+    )
+    assert scrubbed["Path"] == "trusted-path-value"
+    assert "gIt_DiR" not in scrubbed
+    assert "Git_Work_Tree" not in scrubbed
+    assert scrubbed["GIT_NO_REPLACE_OBJECTS"] == "1"
+    assert scrubbed["GIT_CONFIG_NOSYSTEM"] == "1"
+    assert scrubbed["GIT_CONFIG_GLOBAL"] == os.devnull
+    assert scrubbed["GIT_CONFIG_SYSTEM"] == os.devnull
+    assert not any(
+        key.casefold().startswith("git_")
+        for key in scrubbed
+        if key not in {
+            "GIT_NO_REPLACE_OBJECTS",
+            "GIT_CONFIG_NOSYSTEM",
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_SYSTEM",
+            "GIT_OPTIONAL_LOCKS",
+            "GIT_TERMINAL_PROMPT",
+        }
+    )
+
+
+def test_injected_fsmonitor_config_is_not_executed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "fsmonitor-executed"
+    if os.name == "nt":
+        monitor = tmp_path / "hostile-fsmonitor.cmd"
+        monitor.write_text(
+            f"@echo off\r\necho executed>\"{marker}\"\r\n",
+            encoding="utf-8",
+        )
+    else:
+        monitor = tmp_path / "hostile-fsmonitor.sh"
+        monitor.write_text(
+            f"#!/bin/sh\nprintf executed > '{marker}'\n",
+            encoding="utf-8",
+        )
+        monitor.chmod(0o700)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.fsmonitor")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(monitor))
+
+    result = documentation_state._run_trusted_git(
+        ["status", "--porcelain=v1", "--untracked-files=no"]
+    )
+
+    assert result.returncode == 0
+    assert not marker.exists()
+
+
+def test_frozen_i1_tree_mismatch_fails_closed() -> None:
+    state = copy.deepcopy(_state())
+    state["protected_evidence"]["previous_phase_implementation_evidence_tree"] = (
+        "f" * 40
+    )
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="frozen_i1_evidence_tree_mismatch",
+    ):
+        documentation_state.validate_git_ancestry(state)
 
 
 def test_terminal_review_use_before_register_is_complete() -> None:
@@ -93,10 +184,34 @@ def test_terminal_review_use_before_register_is_complete() -> None:
     assert sum(finding["severity"] == "P2" for finding in findings) == 4
     classifications = [finding["classification"] for finding in findings]
     assert classifications.count("closed_in_current_governance_pr") == 2
-    assert classifications.count("must_close_before_i2_implementation") == 14
+    assert classifications.count(
+        "must_close_during_i2_before_i2_completion_merge_or_i3"
+    ) == 14
     assert classifications.count(
         "claim_boundary_local_evidence_not_tamper_resistant_attestation"
     ) == 1
+
+
+def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
+    state = _state()
+    assert state["active_blocker"]["code"] == "pending_fl1_i2_plan_owner_audit"
+    preconditions = state["next_phase_authorization"]["required_preconditions"]
+    assert preconditions[0].startswith("project owner audits and approves")
+    assert preconditions[1] == "I2 implementation is separately authorized"
+    assert "synthetic or adversarial newly created temporary fixtures" in preconditions[2]
+    assert "all fourteen I2 delivery gates close" in preconditions[3]
+    assert "I2 passes owner audit and merges" in preconditions[4]
+    assert "FL1_I3_REAL_SOURCE_SCOPE_GATE" in preconditions[5]
+
+
+def test_network_truth_separates_data_plane_from_governance_control_plane() -> None:
+    protected = _state()["protected_evidence"]
+    assert "network_operation_count" not in protected
+    assert protected["external_data_plane_network_operation_count"] == 0
+    assert (
+        protected["authorized_git_github_governance_control_plane_operations_occurred"]
+        is True
+    )
 
 
 def test_handoff_is_exact_generated_projection() -> None:
@@ -265,3 +380,6 @@ def test_plan_contains_canonical_architecture_threat_model_and_full_route() -> N
         "SCV2-FL1-V1 - Product And Owner Validation",
     ):
         assert concept in plan
+    assert "same verified, no-follow, identity-bound directory handle" in plan
+    assert "path-based `os.scandir()` plus a post-check cannot close this gate" in plan
+    assert "FL1_I2_PLANNING_GOVERNANCE_PR_CORRECTED_READY_FOR_OWNER_REAUDIT" in plan

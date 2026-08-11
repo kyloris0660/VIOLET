@@ -51,6 +51,10 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
     assert "route_approved=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
+    assert "pending_fl1_i2_plan_owner_audit" in text
+    assert "FL1_I3_REAL_SOURCE_SCOPE_GATE" in text
+    assert "governance-only projection commit" in text
+    assert "data-plane network operations remain zero" in text
 
 
 def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:

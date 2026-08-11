@@ -4,7 +4,8 @@
 
 This document is the canonical public-safe FL1 route plan. The current phase is
 `SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness`.
-Its status is `fl1_i2_planning_ready_for_owner_audit`.
+Its status is
+`fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit`.
 
 PR #144 merged SCV2-FL1-I1 at merge commit
 `8955b95e91630d4c5e18e1e2ca252b19754c81d5`. The owner accepted its final
@@ -29,6 +30,7 @@ source/data/runtime operation:
 planning_authorized=true
 planning_completed=true
 planning_approved=false
+merge_authorized=false
 implementation_authorized=false
 implementation_started=false
 target_met=false
@@ -46,7 +48,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope
+active_blocker=pending_fl1_i2_plan_owner_audit
 ```
 
 ## 2. Governing Principles
@@ -66,6 +68,18 @@ active_blocker=pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope
    tamper-resistant attestation.
 7. Historical PR #144 threads remain audit records. This route does not reply,
    resolve, reopen, or continue the I1 repair loop.
+8. External source/provider/model/media data-plane network operations remain
+   zero. Authorized Git/GitHub governance control-plane fetch, push, PR, and
+   review operations are allowed and have occurred; they are not provider or
+   data execution.
+
+I2 implementation may start only after the owner approves the exact I2 plan
+evidence and separately authorizes implementation restricted to synthetic and
+adversarial newly created temporary fixtures. Real source/iCloud, DB,
+app-storage, import, provider/model/media, and production authority must all
+remain false. The 14 engineering findings are I2 implementation deliverables,
+not pre-existing results required before this separately authorized coding can
+begin.
 
 ## 3. PR #144 Terminal Review Use-Before Register
 
@@ -73,28 +87,33 @@ The 17 findings are preserved in full and classified for the next safe use.
 
 | # | Severity | Finding | Classification |
 |---:|:---:|---|---|
-| 1 | P1 | Scrub Git control variables before trusted invocations | Must close before I2 implementation: sanitize `GIT_DIR`, `GIT_WORK_TREE`, and equivalent Git control environment. |
+| 1 | P1 | Scrub Git control variables before trusted invocations | Must close during I2 before I2 completion/merge or I3: sanitize `GIT_DIR`, `GIT_WORK_TREE`, and equivalent Git control environment across I2 runtime, receipts, and contracts. The current checker-only scrub does not close this overall I2 delivery. |
 | 2 | P1 | Validate the parent-observed child identity | Claim boundary: local parent/child provenance is not tamper-resistant, OS/kernel/TPM/remote, or CI attestation. |
-| 3 | P1 | Recheck recall attributes before final resolution | Must close before I2 implementation: bind Cloud attributes and final opening to the same object/no-recall decision. |
-| 4 | P1 | Allow interrupted attempts before corrupt-media closure | Must close before I2 implementation: interrupted attempts and corrupt-media terminal accounting must remain distinct and complete. |
-| 5 | P2 | Enforce the deadline around blocking file operations | Must close before I2 implementation: potentially blocking open/read/hash/structure validation runs in a terminable worker. |
-| 6 | P1 | Bind the receipt to one unchanged HEAD | Must close before I2 implementation: validation receipt binds identical pre/post execution HEAD. |
-| 7 | P1 | Re-derive the adapter policy during contract validation | Must close before I2 implementation: adapter policy is reconstructed from trusted configuration. |
-| 8 | P2 | Stop at the configured failure maximum | Must close before I2 implementation: correct the maximum-failure off-by-one boundary. |
-| 9 | P1 | Pin the frozen remediation commit and tree | Closed in this governance PR: documentation checker pins the actual I1 evidence commit/tree. |
+| 3 | P1 | Recheck recall attributes before final resolution | Must close during I2 before I2 completion/merge or I3: bind Cloud attributes and final opening to the same object/no-recall decision. |
+| 4 | P1 | Allow interrupted attempts before corrupt-media closure | Must close during I2 before I2 completion/merge or I3: interrupted attempts and corrupt-media terminal accounting must remain distinct and complete. |
+| 5 | P2 | Enforce the deadline around blocking file operations | Must close during I2 before I2 completion/merge or I3: potentially blocking open/read/hash/structure validation runs in a terminable worker. |
+| 6 | P1 | Bind the receipt to one unchanged HEAD | Must close during I2 before I2 completion/merge or I3: validation receipt binds identical pre/post execution HEAD. |
+| 7 | P1 | Re-derive the adapter policy during contract validation | Must close during I2 before I2 completion/merge or I3: adapter policy is reconstructed from trusted configuration. |
+| 8 | P2 | Stop at the configured failure maximum | Must close during I2 before I2 completion/merge or I3: correct the maximum-failure off-by-one boundary. |
+| 9 | P1 | Pin the frozen remediation commit and tree | Closed in this governance PR: documentation checker uses a fixed trusted Git executable, explicit repository root, scrubbed `GIT_*` environment, disabled replace objects/hooks/fsmonitor/caller config, and pins the actual I1 evidence commit/tree. |
 | 10 | P1 | Reject CI authority in documentation state | Closed in this governance PR: checker requires `machine_verifiable_ci=false`, `github_checks=0`, and no CI authority. |
-| 11 | P1 | Include a change identity in file signatures | Must close before I2 implementation: carry Windows file identity and change identity. |
-| 12 | P1 | Reject hard-linked files that alias protected data | Must close before I2 implementation: define hard-link, reparse, symlink, and path-alias policy. |
-| 13 | P1 | Confine private artifact reads as well as writes | Must close before I2 implementation: private-artifact reads are no-follow and confined. |
-| 14 | P1 | Enumerate directories through a verified no-follow handle | Must close before I2 implementation: use identity-before/after or handle-based traversal for mutable directories. |
-| 15 | P1 | Reconcile intents from ended failed invocations | Must close before I2 implementation: recover residual INTENT records from terminated failed invocations. |
-| 16 | P2 | Validate media structure beyond boundary markers | Must close before I2 implementation: bounded structural validation must exceed first/last marker checks. |
-| 17 | P2 | Handle runtime-context failures in scanner CLI | Must close before I2 implementation: emit a stable privacy-safe JSON error envelope. |
+| 11 | P1 | Include a change identity in file signatures | Must close during I2 before I2 completion/merge or I3: carry Windows file identity and change identity. |
+| 12 | P1 | Reject hard-linked files that alias protected data | Must close during I2 before I2 completion/merge or I3: define hard-link, reparse, symlink, and path-alias policy. |
+| 13 | P1 | Confine private artifact reads as well as writes | Must close during I2 before I2 completion/merge or I3: private-artifact reads are no-follow and confined. |
+| 14 | P1 | Enumerate directories through a verified no-follow handle | Must close during I2 before I2 completion/merge or I3: enumerate every member from the same verified, no-follow, identity-bound directory handle. Identity-before/after is supplemental drift evidence only; path-based `os.scandir()` plus a post-check cannot close this gate. On Windows, implement a safe same-handle primitive or fail closed. |
+| 15 | P1 | Reconcile intents from ended failed invocations | Must close during I2 before I2 completion/merge or I3: recover residual INTENT records from terminated failed invocations. |
+| 16 | P2 | Validate media structure beyond boundary markers | Must close during I2 before I2 completion/merge or I3: bounded structural validation must exceed first/last marker checks. |
+| 17 | P2 | Handle runtime-context failures in scanner CLI | Must close during I2 before I2 completion/merge or I3: emit a stable privacy-safe JSON error envelope. |
 
 Findings 9 and 10 are governance closures, not retrospective code repairs.
-Findings 1, 3-8, and 11-17 are 14 implementation gates. Finding 2 limits
-claims and should not turn a personal local inventory tool into an adversarial
-forensics system unless a future owner-approved threat model requires that.
+Findings 1, 3-8, and 11-17 are 14 implementation delivery gates with canonical
+classification
+`must_close_during_i2_before_i2_completion_merge_or_i3`. All must close before
+`implementation_completed`, `target_met`, `safe_to_merge`, merge, I3, or any
+real source/iCloud listing/stat/attribute/open/read/hash/structure validation.
+Finding 2 limits claims and should not turn a personal local inventory tool
+into an adversarial forensics system unless a future owner-approved threat
+model requires that.
 
 ## 4. Canonical Architecture Convergence
 
@@ -182,6 +201,10 @@ to make a future bounded real-source canary reviewable and fail closed.
   records bind one run identity and one unchanged repository HEAD.
 - File/directory handle identity and change identity cover mutable traversal,
   aliases, reparse points, and hard links.
+- Directory membership is obtained from the same verified, no-follow,
+  identity-bound directory handle. Identity-before/after may add drift evidence
+  but cannot undo an already out-of-bound path listing and cannot replace
+  same-handle enumeration.
 - Blocking I/O has parent-enforced termination and bounded cleanup evidence.
 - INTENT/recovery and interruption/corruption accounting close exactly once.
 - CLI failures remain stable, privacy-safe JSON with no private path leakage.
@@ -190,9 +213,10 @@ to make a future bounded real-source canary reviewable and fail closed.
 
 ### Exit
 
-Merge the separately approved implementation and stop. I3 and all real-source
-activity remain false until another owner decision names the exact scope and
-budgets.
+Before this exit, all 14 delivery gates must be closed and the executable
+contract must prove them. Merge the separately approved implementation and
+stop. I3 and all real-source activity remain false until another owner decision
+names the exact scope and budgets.
 
 ## 7. SCV2-FL1-I3 - Bounded Real-Source Inventory Canary
 
@@ -342,7 +366,7 @@ crossed.
 
 The I2 planning PR changes no I1 executable and does not claim an I2 executable
 contract already exists. A later I2 implementation must register and test a
-contract that verifies the canonical decisions, all 14 use-before gates,
+contract that verifies the canonical decisions, all 14 delivery gates,
 protected/private evidence, lifecycle closure, budgets, public projection, and
 same-HEAD receipt semantics.
 
@@ -361,14 +385,31 @@ and media validation are not required and are not authorized for this PR.
 
 ## 15. Approval And Stop Boundaries
 
-The current PR may be considered only for owner audit of the plan. It cannot
+The corrected current PR may be considered only for owner re-audit of the plan.
+It cannot
 claim `planning_approved`, `implementation_authorized`, `target_met`,
 `safe_to_merge`, or `route_approved`.
 
-After the final HEAD is frozen, request one Codex review and stop. Do not repair
-findings, request another review, reply to or resolve threads, merge, start I2
-implementation, or begin I3. The required owner checkpoint is:
+The acceptance lifecycle is fixed:
+
+1. present the corrected exact planning evidence commit/tree for owner
+   re-audit;
+2. only after acceptance and separate authorization, create one governance-only
+   projection commit that binds that exact evidence, records the owner decision,
+   and sets planning approval, safe-to-merge, and merge authorization while
+   implementation and real-source authority remain false;
+3. change no accepted plan content in that projection;
+4. only then permit an expected-head merge;
+5. require separate I2 implementation authorization, synthetic-only closure of
+   all 14 gates, I2 owner audit and merge, then the separate
+   `FL1_I3_REAL_SOURCE_SCOPE_GATE` before a bounded canary.
+
+This correction must not create that acceptance projection or set positive
+authority. After the corrected final HEAD is frozen, request exactly one
+replacement Codex review and stop. Do not repair its findings, request a third
+review, reply to or resolve threads, merge, start I2 implementation, or begin
+I3. The required owner checkpoint is:
 
 ```text
-SCV2_FL1_I2_PLANNING_GOVERNANCE_PR_READY_FOR_OWNER_AUDIT
+SCV2_FL1_I2_PLANNING_GOVERNANCE_PR_CORRECTED_READY_FOR_OWNER_REAUDIT
 ```

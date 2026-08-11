@@ -40,7 +40,9 @@ def test_fl1_i2_state_stops_before_implementation_and_real_inventory() -> None:
     validate_state(state)
     validate_roadmaps(state)
     assert state["phase_id"] == "SCV2-FL1-I2"
-    assert state["current_status"] == "fl1_i2_planning_ready_for_owner_audit"
+    assert state["current_status"] == (
+        "fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit"
+    )
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
     assert state["planning_approved"] is False
@@ -109,6 +111,9 @@ def test_current_contract_names_review_gates_and_claim_boundary() -> None:
     assert "14 gates" in contract
     assert "not tamper-resistant" in contract
     assert "machine_verifiable_ci=false" in contract
+    assert "must_close_during_i2_before_i2_completion_merge_or_i3" in contract
+    assert "same verified, no-follow, identity-bound directory handle" in contract
+    assert "governance-only projection commit" in contract
     for gate in (
         "REAL_OPERATION_GATEWAY_GATE",
         "VALIDATION_RECEIPT_GATE",

@@ -73,17 +73,21 @@ evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
 `6ff185defb150c3751c7433ef635c00a200c44bf`. The acceptance scope is only a
 synthetic and newly created temporary-fixture foundation.
 
-The documentation checker pins all four identities and rejects a current state
-that asserts `machine_verifiable_ci=true`, nonzero `github_checks`, or CI
-authority. PR #144 exposed zero checks, so it has no machine-verifiable CI PASS
-claim. Its direct owner decision cannot be synthesized by a contract.
+The documentation checker pins all four identities through a fixed trusted Git
+executable and explicit repository root after case-insensitively scrubbing
+inherited `GIT_*` controls, disabling replace objects, hooks, fsmonitor, and
+caller-injected configuration. It rejects a current state that asserts
+`machine_verifiable_ci=true`, nonzero `github_checks`, or CI authority. PR #144
+exposed zero checks, so it has no machine-verifiable CI PASS claim. Its direct
+owner decision cannot be synthesized by a contract.
 
 Current planning projection:
 
-- `status=fl1_i2_planning_ready_for_owner_audit`
+- `status=fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit`
 - `planning_authorized=true`
 - `planning_completed=true`
 - `planning_approved=false`
+- `merge_authorized=false`
 - `implementation_authorized=false`
 - `implementation_started=false`
 - `target_met=false`
@@ -91,30 +95,30 @@ Current planning projection:
 - `route_approved=false`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope`
+- blocker: `pending_fl1_i2_plan_owner_audit`
 
 Terminal review `4897012517` at the exact final HEAD produced 17 historical
 findings (13 P1, 4 P2). The complete use-before projection is:
 
 | # | Finding | Contract projection |
 |---:|---|---|
-| 1 | Scrub Git control variables before trusted invocations | I2 implementation gate: trusted invocation rejects inherited Git control environment. |
+| 1 | Scrub Git control variables before trusted invocations | Must close during I2 before I2 completion/merge or I3 across runtime, receipt, and contract paths. The checker-only Git scrub does not close that overall delivery. |
 | 2 | Validate the parent-observed child identity | Claim boundary: local provenance only, not tamper-resistant or OS/kernel/TPM/remote/CI attestation. |
-| 3 | Recheck recall attributes before final resolution | I2 implementation gate: final open/no-recall decision binds the same object and refreshed Cloud attributes. |
-| 4 | Allow interrupted attempts before corrupt-media closure | I2 implementation gate: interruption and corrupt-media accounting remain distinct and reconcile exactly. |
-| 5 | Enforce the deadline around blocking file operations | I2 implementation gate: open/read/hash/structure work runs in a parent-terminable worker. |
-| 6 | Bind the receipt to one unchanged HEAD | I2 implementation gate: repository HEAD is identical before and after validation. |
-| 7 | Re-derive the adapter policy during contract validation | I2 implementation gate: policy derives from trusted configuration, not caller claims. |
-| 8 | Stop at the configured failure maximum | I2 implementation gate: maximum failure is fail-closed with no off-by-one attempt. |
+| 3 | Recheck recall attributes before final resolution | Must close during I2 before I2 completion/merge or I3: final open/no-recall decision binds the same object and refreshed Cloud attributes. |
+| 4 | Allow interrupted attempts before corrupt-media closure | Must close during I2 before I2 completion/merge or I3: interruption and corrupt-media accounting remain distinct and reconcile exactly. |
+| 5 | Enforce the deadline around blocking file operations | Must close during I2 before I2 completion/merge or I3: open/read/hash/structure work runs in a parent-terminable worker. |
+| 6 | Bind the receipt to one unchanged HEAD | Must close during I2 before I2 completion/merge or I3: repository HEAD is identical before and after validation. |
+| 7 | Re-derive the adapter policy during contract validation | Must close during I2 before I2 completion/merge or I3: policy derives from trusted configuration, not caller claims. |
+| 8 | Stop at the configured failure maximum | Must close during I2 before I2 completion/merge or I3: maximum failure is fail-closed with no off-by-one attempt. |
 | 9 | Pin the frozen remediation commit and tree | Closed by the current documentation-governance checker. |
 | 10 | Reject CI authority in documentation state | Closed by the current documentation-governance checker. |
-| 11 | Include a change identity in file signatures | I2 implementation gate: Windows file identity plus change identity. |
-| 12 | Reject hard-linked files that alias protected data | I2 implementation gate: explicit hard-link/reparse/symlink/path-alias policy. |
-| 13 | Confine private artifact reads as well as writes | I2 implementation gate: no-follow confined reads and writes. |
-| 14 | Enumerate directories through a verified no-follow handle | I2 implementation gate: handle-based traversal or identity-before/after proof. |
-| 15 | Reconcile intents from ended failed invocations | I2 implementation gate: residual INTENT closure after failed process termination. |
-| 16 | Validate media structure beyond boundary markers | I2 implementation gate: bounded structural parsing beyond boundary markers. |
-| 17 | Handle runtime-context failures in scanner CLI | I2 implementation gate: stable privacy-safe JSON error envelope. |
+| 11 | Include a change identity in file signatures | Must close during I2 before I2 completion/merge or I3: Windows file identity plus change identity. |
+| 12 | Reject hard-linked files that alias protected data | Must close during I2 before I2 completion/merge or I3: explicit hard-link/reparse/symlink/path-alias policy. |
+| 13 | Confine private artifact reads as well as writes | Must close during I2 before I2 completion/merge or I3: no-follow confined reads and writes. |
+| 14 | Enumerate directories through a verified no-follow handle | Must close during I2 before I2 completion/merge or I3: enumerate members from the same verified, no-follow, identity-bound directory handle. Identity-before/after is supplemental drift evidence only; path-based `os.scandir()` plus post-check is insufficient. Windows must implement a safe same-handle primitive or fail closed. |
+| 15 | Reconcile intents from ended failed invocations | Must close during I2 before I2 completion/merge or I3: residual INTENT closure after failed process termination. |
+| 16 | Validate media structure beyond boundary markers | Must close during I2 before I2 completion/merge or I3: bounded structural parsing beyond boundary markers. |
+| 17 | Handle runtime-context failures in scanner CLI | Must close during I2 before I2 completion/merge or I3: stable privacy-safe JSON error envelope. |
 
 The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
 only for its narrow synthetic foundation. I2 currently has no implemented or
@@ -122,12 +126,19 @@ registered executable contract. A later, separately authorized I2
 implementation must converge canonical Cloud/file-identity primitives,
 `SourceIngestionGate` policy, operation-gateway evidence, and CLI/runtime
 consumers; close all 14 gates with synthetic/adversarial temporary fixtures;
-and register a contract before any readiness claim.
+and register a contract before any readiness claim. These 14 gates are
+classified
+`must_close_during_i2_before_i2_completion_merge_or_i3`: exact-plan owner
+approval and separate implementation authorization come first, and the gates
+then close during synthetic-only I2 before `implementation_completed`,
+`target_met`, `safe_to_merge`, merge, I3, or any real-source operation.
 
 The future contract must preserve these gates:
 
-- `REAL_OPERATION_GATEWAY_GATE`: no real listing/stat/attribute/read/hash until
-  complete exact source scope and protected roots are separately authorized.
+- `REAL_OPERATION_GATEWAY_GATE`: no I3 or real listing/stat/attribute/read/hash
+  until complete exact source scope and protected roots are separately
+  authorized; that I3 scope is not a condition for starting authorized
+  synthetic-only I2 implementation.
 - `VALIDATION_RECEIPT_GATE`: local evidence remains
   `trust_level=local_operator_receipt` and `machine_verifiable_ci=false`.
 - `OWNER_AUTHORITY_GATE`: direct owner approval remains external to automation.
@@ -135,12 +146,24 @@ The future contract must preserve these gates:
   claim.
 - `STABLE_REPLAY_GATE`: no replay evidence is consumed or authorized.
 
-I2 must merge and stop before I3. I3 requires an exact private source identity,
-protected-root registry, budgets, Cloud/no-hydration policy, and stop conditions.
+The fixed order is plan owner approval, separate I2 implementation
+authorization, synthetic-only closure of all 14 gates, I2 owner audit and
+merge, separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`, then bounded canary. I3
+requires an exact private source identity, protected-root registry, budgets,
+Cloud/no-hydration policy, and stop conditions.
+
+This corrected planning evidence remains unapproved. After exact commit/tree
+owner re-audit, a separately authorized governance-only projection commit must
+bind the exact approved planning evidence, record the owner decision, set
+planning approval and merge authority, preserve implementation and real-source
+authority as false, and change no accepted plan content. Only then may an
+expected-head merge occur.
 I4 full inventory, E1 isolated import, E2 local classification/tagging, and V1
 product validation are later independent routes. No current contract authorizes
 real source/iCloud access, DB/app-storage, import, classification/tagging,
-provider/LLM/media/network, Stable Replay, UI/server, or production execution.
+provider/LLM/media or external data-plane network, Stable Replay, UI/server, or
+production execution. Authorized Git/GitHub governance control-plane operations
+are allowed and have occurred; they are not provider/data execution.
 
 ## Registered GOV3 Contracts
 
