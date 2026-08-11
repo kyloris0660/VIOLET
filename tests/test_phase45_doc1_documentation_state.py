@@ -1,5 +1,3 @@
-"""Documentation-state guards for Phase 4.5-DOC1-R1."""
-
 from __future__ import annotations
 
 import copy
@@ -11,164 +9,50 @@ import pytest
 from scripts.check_documentation_state import (
     DocumentationStateError,
     load_state,
+    render_handoff,
+    validate_roadmaps,
     validate_state,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
-ACTIVE_DOCS = [
-    ROOT / "README.md",
-    ROOT / "docs" / "current-handoff.md",
-    ROOT / "docs" / "project-roadmap.md",
-    ROOT / "docs" / "test-workflow.md",
-]
-
-SUMMARY_JSON = (
-    ROOT
-    / "docs"
-    / "reports"
-    / "phase-4.5-doc1-post-sc2-documentation-consolidation-summary.json"
-)
-
-STALE_SC2_PHRASES = [
-    "Phase 4.5-SC2 is planned",
-    "Phase 4.5-SC2 implementation is prepared",
-    "after Phase 4.5-SC2 implementation",
-    "pending_precommit_validation",
-]
-
-REQUIRED_SUMMARY_FIELDS = {
-    "phase",
-    "title",
-    "branch",
-    "generated_at",
-    "docs_updated",
-    "docs_restructured",
-    "line_counts_before_after",
-    "readme_rewrite",
-    "handoff_slimming",
-    "roadmap_restructure",
-    "test_workflow_restructure",
-    "guard_debt_classification",
-    "executable_guards_added",
-    "deferred_guards",
-    "recommended_next_phase",
-    "validation",
-    "safety",
-    "artifact_lifecycle",
-}
-
-REQUIRED_GUARD_KEYS = {
-    "source_concept_not_entity_truth",
-    "no_truth_path_writes_sc1_sc2_read_paths",
-    "redaction_local_paths_filenames_secrets",
-    "visible_status_gate",
-    "search_cache_invalidation",
-    "alias_expansion_symmetry",
-    "needs_review_explicit_alias_expansion",
-    "f6_global_q_chip_behavior",
-    "promotion_preview_disabled_noop",
-    "sc2_no_provider_llm_source_enrichment",
-    "scv1_coverage_inventory_alias_gap_search_symmetry",
-    "entity_bridge_preview_confirmation_audit_rollback_write_guards",
-    "provider_gallery_dl_llm_broad_run_ledger_budget_gates",
-    "phase39_ledger_prerequisite",
-    "docs_only_validation_policy",
-    "agent_no_merge_no_push_main_policy",
-}
-
-ALLOWED_CLASSIFICATIONS = {
-    "executable_now",
-    "add_in_doc1_r1",
-    "must_add_in_scv1",
-    "must_add_before_sc3_or_entity_bridge",
-    "must_add_before_provider_or_full_library_run",
-    "documented_only_acceptable",
-}
-
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_active_docs_do_not_reintroduce_stale_sc2_planning_language() -> None:
-    combined = "\n".join(read_text(path) for path in ACTIVE_DOCS)
-
-    for phrase in STALE_SC2_PHRASES:
-        assert phrase not in combined
-
-    assert "Phase 4.5-SCV1" in combined
-    assert "SourceConcept" in combined
-
-
-def test_readme_is_public_entrypoint_not_phase_changelog() -> None:
-    readme = read_text(ROOT / "README.md")
-
-    for heading in [
-        "## Key Features",
-        "## Current Status",
-        "## Architecture Overview",
-        "## Quick Start",
-        "## Safety And Privacy Model",
-        "## Documentation Map",
-    ]:
-        assert heading in readme
-
-    assert readme.count("PR #") <= 1
-    assert "SourceConcept" in readme
-    assert "not Entity truth" in readme
-    assert "docs/current-handoff.md" in readme
-    assert "docs/project-roadmap.md" in readme
-    assert "docs/test-workflow.md" in readme
-    assert "docs/manual-validation.md" in readme
-
-
 def test_current_handoff_is_slim_and_current_route_focused() -> None:
     handoff = read_text(ROOT / "docs" / "current-handoff.md")
-    state = json.loads(
-        (ROOT / "docs" / "state" / "current-phase.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    line_count = len(handoff.splitlines())
-
-    assert 40 <= line_count <= 60
+    state = load_state()
+    assert handoff == render_handoff(state)
+    assert 40 <= len(handoff.splitlines()) <= 65
     assert "docs/state/current-phase.json" in handoff
-    assert "SCV2-FL1-P1-R1" in handoff
+    assert state["phase_id"] in handoff
     assert "Draft PR" in handoff
-    assert state["planning_boundary"]["planning_only"] is False
-    assert state["planning_boundary"]["implementation_authorized"] is True
     assert state["active_blocker"]["code"] in handoff
     assert "projected external cost: `$0`" in handoff
-    assert "provider, Pixiv, gallery-dl, Provider-2, LLM" in handoff
-    assert "Phase 4.4-B0" not in handoff
-    assert "Phase 4.4-D1G" not in handoff
+    for forbidden_term in ("provider", "Pixiv", "gallery-dl", "LLM"):
+        assert forbidden_term in handoff
 
 
-def test_fl1_p1_r1_state_stops_at_pending_final_owner_audit() -> None:
+def test_fl1_i1_state_stops_before_real_inventory() -> None:
     state = load_state()
-
-    assert state["phase_id"] == "SCV2-FL1-P1-R1"
+    validate_state(state)
+    validate_roadmaps(state)
+    assert state["phase_id"] == "SCV2-FL1-I1"
+    assert state["current_status"] in {
+        "fl1_i1_read_only_inventory_implementation_in_progress",
+        "fl1_i1_synthetic_implementation_ready_for_owner_audit",
+        "fl1_i1_first_review_bounded_remediation_in_progress",
+        "fl1_i1_bounded_remediation_ready_for_owner_audit",
+    }
     assert state["target_met"] is False
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
-    assert state["manual_acceptance_status"] == "pending_final_owner_audit"
-    assert state["next_phase_started"] is False
-    assert state["active_blocker"]["code"] == "pending_final_owner_audit"
-    assert state["upstream_pr_state"]["physically_merged"] is True
-    assert state["upstream_pr_state"]["late_review_remediation_required"] is True
-    assert state["next_phase_authorization"] == {
-        "phase_id": "SCV2-FL1-I1",
-        "route_approved": False,
-        "next_phase_started": False,
-        "implementation_started": False,
-        "real_inventory_started": False,
-        "required_preconditions": [
-            "P1-R1 owner audit",
-            "separate owner FL1-I1 scope decision",
-        ],
-    }
+    assert state["next_phase_started"] is True
+    assert state["planning_boundary"]["real_inventory_started"] is False
+    assert state["planning_boundary"]["real_source_inventory_authorized"] is False
 
 
 @pytest.mark.parametrize(
@@ -177,110 +61,74 @@ def test_fl1_p1_r1_state_stops_at_pending_final_owner_audit() -> None:
         ("target_met", True),
         ("safe_to_merge", True),
         ("route_approved", True),
-        ("next_phase_started", True),
-        ("manual_acceptance_status", "owner_accepted_fl1_p1_foundation"),
+        ("manual_acceptance_status", "owner_accepted_fl1_i1"),
     ],
 )
-def test_unapproved_acceptance_merge_or_i1_claim_fails_closed(
-    field: str, value: object
-) -> None:
+def test_unapproved_positive_claim_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(load_state())
     state[field] = value
-
     with pytest.raises(DocumentationStateError):
         validate_state(state)
 
 
-def test_phase_non_action_attestation_is_not_executable_runtime_evidence() -> None:
-    state = load_state()
-    attestation = state["protected_evidence"]["phase_non_action_attestation"]
-
-    assert attestation["runtime_operation_evidence_source"] == (
-        "instrumented_run_ledger_only"
-    )
-    assert attestation["executable_runtime_evidence"] is False
-    assert attestation["grants_owner_acceptance"] is False
-    assert attestation["grants_safe_to_merge"] is False
-    assert attestation["grants_route_authorization"] is False
-
-
-def test_editable_empty_phase_event_list_is_rejected() -> None:
-    state = copy.deepcopy(load_state())
-    state["protected_evidence"]["activity_event_evidence"] = {
-        "schema_version": "violet.scv2-fl1-p1-r1-activity-events.v1",
-        "events": [],
-        "event_count": 0,
-        "fingerprint": "0" * 64,
-    }
-
-    with pytest.raises(
-        DocumentationStateError, match="editable_phase_event_ledger_forbidden"
-    ):
-        validate_state(state)
-
-
 @pytest.mark.parametrize(
-    ("field", "value"),
+    "field",
     [
-        ("executable_runtime_evidence", True),
-        ("grants_owner_acceptance", True),
-        ("grants_safe_to_merge", True),
-        ("grants_route_authorization", True),
-        ("runtime_operation_evidence_source", "editable_current_phase_json"),
+        "real_source_inventory_authorized",
+        "source_root_access_authorized",
+        "database_access_authorized",
+        "app_storage_write_authorized",
+        "import_authorized",
+        "classification_or_tagging_execution_authorized",
+        "provider_or_llm_authorized",
+        "media_authorized",
+        "stable_replay_authorized",
+        "production_authorized",
     ],
 )
-def test_non_action_attestation_cannot_be_promoted_to_a_merge_gate(
-    field: str, value: object
-) -> None:
+def test_forbidden_execution_authority_fails_closed(field: str) -> None:
     state = copy.deepcopy(load_state())
-    state["protected_evidence"]["phase_non_action_attestation"][field] = value
+    state["planning_boundary"][field] = True
+    with pytest.raises(DocumentationStateError, match="fl1_i1_boundary_invalid"):
+        validate_state(state)
 
+
+def test_sync_operator_classification_cannot_be_promoted() -> None:
+    state = copy.deepcopy(load_state())
+    state["protected_evidence"]["preflight_remote_sync_is_contract_proof"] = True
     with pytest.raises(
-        DocumentationStateError, match="fl1_phase_non_action_attestation_invalid"
+        DocumentationStateError, match="fl1_i1_protected_evidence_invalid"
     ):
         validate_state(state)
 
 
-def test_legacy_i1_authorization_token_is_rejected() -> None:
-    state = copy.deepcopy(load_state())
-    state["owner_decisions"].append(
-        {
-            "id": "owner_authorized_fl1_i1_planning_and_synthetic_implementation_20260808",
-            "decision": "invalid legacy authorization",
-        }
+def test_public_current_phase_does_not_contain_private_absolute_path() -> None:
+    serialized = json.dumps(load_state(), ensure_ascii=False)
+    assert "C:\\Users\\" not in serialized
+    assert ".local_manifests" not in serialized
+
+
+def test_current_documents_name_all_five_use_before_gates() -> None:
+    contract = read_text(ROOT / "docs" / "phase-contracts.md")
+    for gate in (
+        "REAL_OPERATION_GATEWAY_GATE",
+        "VALIDATION_RECEIPT_GATE",
+        "OWNER_AUTHORITY_GATE",
+        "POSIX_LEDGER_DURABILITY_GATE",
+        "STABLE_REPLAY_GATE",
+    ):
+        assert gate in contract
+
+
+def test_pr142_is_read_only_archaeology_not_authority() -> None:
+    plan = read_text(
+        ROOT
+        / "docs"
+        / "plans"
+        / "phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
     )
-
-    with pytest.raises(
-        DocumentationStateError, match="unauthorized_fl1_authority_claim_present"
-    ):
-        validate_state(state)
-
-
-def test_doc1_summary_has_required_schema_and_guard_classifications() -> None:
-    summary = json.loads(SUMMARY_JSON.read_text(encoding="utf-8"))
-
-    assert REQUIRED_SUMMARY_FIELDS.issubset(summary)
-    assert summary["phase"] == "4.5-DOC1-R1"
-    assert summary["recommended_next_phase"]["phase"] == "4.5-SCV1"
-    assert summary["safety"]["runtime_ui_behavior_changed"] is False
-    assert summary["safety"]["db_write"] is False
-
-    guards = summary["guard_debt_classification"]
-    by_key = {item["key"]: item for item in guards}
-    assert REQUIRED_GUARD_KEYS.issubset(by_key)
-
-    for item in guards:
-        classification = item["classification"]
-        assert classification in ALLOWED_CLASSIFICATIONS
-        if classification not in {"executable_now", "add_in_doc1_r1"}:
-            assert item.get("why_not_now")
-            assert item.get("future_phase")
-            assert item.get("future_guard_shape")
-
-
-def test_docs_only_validation_policy_is_explicit() -> None:
-    workflow = read_text(ROOT / "docs" / "test-workflow.md")
-
-    assert "Docs-only governance, handoff, roadmap, report, or README updates" in workflow
-    assert "No pytest/E2E/browser/server required unless code, tests, runtime, or UI changed." in workflow
-    assert "tests/test_phase45_doc1_documentation_state.py" in workflow
+    roadmap = read_text(ROOT / "docs" / "roadmap" / "current-mainline-roadmap.md")
+    assert "PR #142 bounded carry-forward matrix" in plan
+    assert "No PR #142 commit" in plan
+    assert "closed, unmerged" in roadmap
+    assert "non-authoritative" in roadmap

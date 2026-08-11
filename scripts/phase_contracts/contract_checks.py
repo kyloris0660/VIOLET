@@ -176,6 +176,7 @@ class ContractRepositoryContext:
     runtime_ledger: object | None = None
     failure_budget_scenario_bundle: object | None = None
     reconciliation_scenario_bundle: object | None = None
+    fl1_i1_evidence: object | None = None
 
 
 def load_summary_file(path: str | Path) -> dict[str, Any]:
@@ -206,6 +207,16 @@ def check_phase_contract(
     _check_forbidden_stages(contract, summary, result)
 
     for check_name in contract.custom_checks:
+        if check_name == "scv2_fl1_i1_read_only_inventory":
+            from .fl1_i1_contract import check_fl1_i1_contract
+
+            check_fl1_i1_contract(
+                contract,
+                summary,
+                result,
+                repository_context=repository_context,
+            )
+            continue
         checker = CUSTOM_CHECKS.get(check_name)
         if checker is None:
             result.fail("unknown_custom_check", f"Contract references unknown custom check {check_name!r}.")

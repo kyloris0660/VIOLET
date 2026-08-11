@@ -13,6 +13,16 @@ The project goal is a personal, local anime image library with Danbooru-style ta
 
 - At the start of every task, read and validate `docs/state/current-phase.json`;
   load only the active reports, ADRs, contracts, and roadmaps linked from it.
+- Before comparing a protected local base with its trusted remote, fetch the
+  verified remote. A safe local base that has no local-only commit and is only
+  behind is automatically fast-forwarded with `--ff-only`, recorded as
+  `preflight_remote_sync=self_healed_by_fast_forward`, and the same task
+  continues. This operator classification is not contract proof.
+- Fail closed for divergence, unsafe local-only commits, tracked/staged drift,
+  behavior-affecting untracked executable/package/module/config/symlink drift,
+  failed fast-forward-only, unverifiable remote/authentication, or any sync that
+  would require reset, rebase, force, overwrite, or deletion. Preserve unrelated
+  untracked and ignored non-executable user artifacts.
 - After every durable checkpoint or status change, update the state immediately,
   regenerate `docs/current-handoff.md`, and run
   `scripts/check_documentation_state.py --check`.

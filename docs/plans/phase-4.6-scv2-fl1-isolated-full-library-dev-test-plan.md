@@ -2,24 +2,39 @@
 
 ## 1. Owner Decision
 
-The owner approved this planning direction at
-`db90457d51a39b5dc930afc2a92a6ef3139a2760`. Approval authorizes only a separate
-FL1-P1 implementation PR for guards, ledgers, contracts, and synthetic bounded
-checkpoints; it does not authorize existing database access, source inventory,
-import, classification, AI tagging, provider/LLM/media calls, production, or any
-data execution.
+The owner-approved planning input remains
+`db90457d51a39b5dc930afc2a92a6ef3139a2760`. PR #143 was subsequently
+owner-accepted and merge-commit merged at
+`a2f48bdba979f579b7cd1cdd9ef541137b2479c5`. The owner now authorizes the
+one and only bounded remediation round for Draft PR #144 review `4891695875`
+at exact reviewed HEAD `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3`.
+The remediation remains limited to reusable read-only inventory safety tooling
+and validation using only synthetic or newly created temporary fixtures.
 
-Canonical phase:
+Canonical active phase:
 
-- ID: `SCV2-FL1`
-- Title: `Isolated Full-Library Dev/Test Planning`
-- Current status: planning input only; `SCV2-FL1-P1-R1` Draft PR #143 is
-  pending final owner audit after its last authorized implementation repair
-- Current implementation evidence:
-  `a631160f58e8d5d61998863b5b4d60a549e88151`
-- Current stop: independent P1-R1 owner audit. FL1-I1 is not authorized or
-  started; do not implement its scanner/contract/tests or read a real source
-  root without a separate later owner decision
+- ID: `SCV2-FL1-I1`
+- Title: `Read-only Inventory`
+- Current status: `fl1_i1_bounded_remediation_ready_for_owner_audit`
+- Branch: `codex/scv2-fl1-i1-read-only-inventory-v2`
+- Accepted mainline base: `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`
+- Historical superseded implementation/test evidence:
+  `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`, tree
+  `9b30ba024beb6fcd58709e707d7879887ad7c081`
+- Replacement implementation/test evidence:
+  `6992e7f1e5a45857111d15da1ad0274e49008a99`, tree
+  `6ff185defb150c3751c7433ef635c00a200c44bf`
+- Bounded remediation round: `1_of_1`
+- Current blocker: `pending_i1_bounded_remediation_owner_audit`
+- Current stop: request the single terminal
+  post-remediation review, and return to owner audit; no real source scope is
+  authorized
+
+Final PR #143 review `4890771735` carries forward five owner-adjudicated
+constraints: complete protected roots from trusted context, merge-topology-safe
+evidence, distinct restart provenance, trusted actual Git HEAD binding, and
+local validation receipts that cannot claim CI authority. Direct human owner
+acceptance remains outside executable contract authority.
 
 The older `Phase 4.6-FULLLIB-P0 Production Full-Library Import and AI Tagging
 Plan` is a historical design input only. Its production route and `FULLLIB-E1`
@@ -52,6 +67,74 @@ recommendation are superseded for current planning and provide no authorization.
 - No automatic creator union based on names, placeholders, single media,
   similarity, or model guesses.
 - No production readiness claim and no inheritance of B01/B04/B08 waivers.
+
+## 3A. I1 Implementation Contract
+
+I1 produces reusable validation/safety tooling, not a production ingestion
+runtime. The implementation is modular: trusted runtime context, complete
+protected-root role registry, layered source-operation gateway, scanner and
+private artifacts, cross-process resume provenance, and a dedicated I1 phase
+contract. The two explicit source modes are `synthetic_fixture` and
+`authorized_read_only_source`; during this phase both are validated only with
+new temporary roots.
+
+The owner-audit-ready synthetic state remains `target_met=false`,
+`safe_to_merge=false`, `route_approved=false`,
+`real_source_inventory_authorized=false`, and `real_inventory_started=false`.
+No caller boolean can create owner authorization or trusted test PASS.
+
+### PR #142 bounded carry-forward matrix
+
+| Candidate behavior | Decision | Reason | New regression |
+|---|---|---|---|
+| Deterministic tree traversal | Keep conceptually | Stable discovery and duplicate primary selection require deterministic ordering | row-order permutation and deterministic duplicate-primary tests |
+| Read-only/no-follow open plus pre/post snapshots | Redesign | POSIX `O_NOFOLLOW` and one tree snapshot do not cover Windows reparse/Cloud Files layers or per-operation evidence | Windows reparse, path escape, open/read signature-race, and source-mutation-zero tests |
+| Item/byte/chunk budgets | Redesign | I1 also needs directory-entry, per-file hash, total hash, timeout, failure, systemic, and manual-stop budgets persisted in run identity | every budget and stop reason tested independently |
+| Exact-content duplicate accounting and one terminal disposition | Keep conceptually | These are sound denominator primitives | duplicate-reference tamper and every denominator-equation tamper fail closed |
+| Public aggregates separated from private manifest | Redesign | Unkeyed per-item labels and editable redaction booleans remain enumerable or forgeable | aggregate-by-default projection plus unknown-field/path/content/key leakage rejection |
+| Real-source default deny with temporary fixtures | Keep conceptually | Current authorization is synthetic-first and real source remains external governance | real mode without exact trusted scope fails; temporary trusted scope passes |
+| Caller-supplied actual Git HEAD or Python executable | Reject | Actual identities must be derived from repository and current `sys.executable` | fake matching caller identity, old-HEAD artifact, and wrong interpreter tests |
+| Caller-supplied `forbidden_roots` completeness | Reject | One irrelevant path cannot prove all production/source/app/repo/evidence roles | missing/unknown/duplicate/alias/overlap/escape role tests |
+| Synthetic disposition override as Cloud Files proof | Reject | Synthetic observation is useful only as explicitly labeled fixture evidence | unsupported/unknown attribute never becomes available; recall-risk never opens content |
+| Copied before/after snapshot as restart proof | Reject | Restart requires independently observed process and invocation lineage | two-process harness plus same-invocation, copied snapshot, wrong-parent, wrong-HEAD/config negatives |
+| In-memory manifest and caller test booleans | Reject | Resumable evidence needs atomic private artifacts and local results need bound receipts | tampered manifest/operation ledger/receipt and `machine_verifiable_ci=true` rejection |
+
+No PR #142 commit, governance state, P1 remediation, or wholesale patch is
+cherry-picked. The matrix preserves only independently reimplemented concepts.
+
+### PR #144 review `4891695875` bounded-remediation matrix
+
+All 18 findings apply to the current reviewed HEAD and are adjudicated
+`must_fix_current_i1`. All 18 are implemented and covered by focused regressions
+in replacement evidence `6992e7f1e5a45857111d15da1ad0274e49008a99`; no finding
+is deferred into a real-source run.
+
+| # | Severity | Finding / required trust recovery | Required regression |
+|---|---|---|---|
+| 1 | P1 | Resolve and verify an absolute trusted Git executable before setting a candidate repository as `cwd`; exclude cwd/PATH ambiguity and repo-local shims | repo-local fake `git.exe` never participates in identity or status |
+| 2 | P1 | Perform lexical/no-follow containment and Windows Cloud attribute observation before final-component resolution/open | recall-risk item is never resolved/opened before attributes |
+| 3 | P1 | Re-derive canonical relative path, path token, item ID, keyed label, extension, and signature-size relations on manifest load | swap two items and recompute editable fingerprints still fails |
+| 4 | P1 | Bind attribute-adapter type and complete normalized configuration fingerprint into policy/run identity | adapter type or synthetic-map/default drift fails resume |
+| 5 | P1 | Acquire the runner lock before any invocation, lineage, operation, or checkpoint mutation | live collision leaves every artifact byte-identical |
+| 6 | P1 | Constrain projection and all I1 writers to task-owned targets inside `phase_evidence_output_root` | output-to-source attempt fails without changing source bytes |
+| 7 | P2 | Give every directory-list operation a stable private target token and close it against discovery/final snapshots | every nested directory listing has an exact target identity |
+| 8 | P1 | Derive expected Python from canonical repository-venv policy; CLI expectation is assertion-only | system Python cannot self-approve by repeating its own path |
+| 9 | P1 | Reject pending-owner/private-runtime trust classes before any root filesystem observation and lexically reject out-of-sandbox source roots | unauthorized real-root payload produces zero root observations |
+| 10 | P1 | Reconcile every terminal disposition with item/attempt-specific metadata, attribute, read, hash, bytes, and content evidence | deleting one eligible item read/hash pair fails contract |
+| 11 | P1 | Bind restart to an independently produced parent-harness child receipt | a one-process fabricated second invocation fails |
+| 12 | P1 | Have the receipt creator launch the validation command and capture actual argv, exit, output/report bytes, HEAD, Python/Git, and cleanliness | caller-supplied PASS/exit/report cannot create completion |
+| 13 | P2 | Apply discovery-equivalent counters and deadline to the final snapshot | post-discovery tree expansion stops within budgets |
+| 14 | P1 | Make terminal item state, operations, counters, and budget usage one recoverable checkpoint/journal | fault injection between persistence boundaries reconstructs exact counters |
+| 15 | P1 | Reconcile abandoned `INTENT` records from a dead invocation to terminal `interrupted` before a new attempt | kill-after-INTENT resumes with no unresolved intents |
+| 16 | P1 | Create POSIX private temporary artifacts with explicit `0600` and verify ownership/mode before replace | mode/owner regression fails closed without broadening durability claims |
+| 17 | P2 | Add bounded auditable JPEG/PNG/GIF/WebP/AVIF header/container validation before eligibility | empty, text-suffixed, truncated, and magic-mismatch media are excluded |
+| 18 | P1 | Cap reads by `min(per_file_limit, remaining_total_budget)` and conservatively account failed/raced/interrupted bytes | growing failed reads cannot exceed or evade total-byte accounting |
+
+The same-pattern audit covers `fl1_i1_runtime_context.py`, validation receipts,
+documentation/current-phase Git helpers, operation/manifest/run/projection
+writers, resume/checkpoint paths, and the I1 contract. The round does not grant
+Ready, merge, real inventory, DB/app-storage, import, provider/LLM/media,
+Stable Replay, UI/runtime, production, or later-phase authority.
 
 ## 4. Isolation Design
 
@@ -296,21 +379,22 @@ the SV1B placeholder waiver.
 
 ## 15. Executable Contract And Tests
 
-The P1 safety slice registers
-`scv2_fl1_isolated_full_library_dev_test_contract_v1`. Its P1-R1 hardening must
-derive, rather than accept manually supplied, at least:
+The accepted P1 safety slice registers
+`scv2_fl1_isolated_full_library_dev_test_contract_v1`. I1 separately registers
+`scv2_fl1_i1_read_only_inventory_contract_v1` and derives, rather than accepts
+as caller claims, at least:
 
-- exact Git/branch/Python/DB/storage/source identities;
-- planning and owner-authorization checkpoints;
+- actual Git/Python safe identities and relevant-worktree cleanliness;
+- complete protected-root role registry and exact temporary source scope;
 - manifest and denominator equations;
-- operation counts and external cost;
-- item/batch attempt and failure-budget accounting;
-- allowed/forbidden table and filesystem mutation proofs;
-- classification and AI-tagging coverage/provenance;
-- accepted-evidence reuse/loss accounting;
+- write-ahead listing/metadata/attribute/read/hash operation evidence;
+- item/read/hash/time/failure/manual-stop budget accounting;
+- cross-process invocation and parent-checkpoint provenance;
+- source mutation and all forbidden-route zero counts;
 - public redaction and private-artifact separation;
 - manual-acceptance requirement/status;
-- `target_met`, `safe_to_merge`, and route scope.
+- validation receipt trust level and CI limitation;
+- false `target_met`, `safe_to_merge`, `route_approved`, and real-source authority.
 
 The contract verifies Git objects in a trusted repository. PR audit evidence
 requires the actual current PR HEAD and implementation ancestry; squash
@@ -340,31 +424,34 @@ checking process's `sys.executable`, and builder/checker share one complete,
 versioned canonical public ledger projection derived from the trusted private
 ledger. The generic callback is a synthetic fixture harness, not a DB, source,
 provider, LLM, or media gateway and not phase-wide zero-activity proof.
-Caller-supplied owner, merge, or route JSON cannot produce a positive contract
-decision until `OWNER_AUTHORITY_GATE` is implemented. Real gateway coverage is
-deferred to `REAL_OPERATION_GATEWAY_GATE`; POSIX host-power-loss durability is
-deferred to `POSIX_LEDGER_DURABILITY_GATE`. None grants current execution.
+Caller-supplied owner, merge, route, actual Git/Python/path/count, or test-result
+JSON cannot produce protected positive claims. I1 closes the reusable temporary
+source subset of `REAL_OPERATION_GATEWAY_GATE`; the gate remains due before real
+source operations because no complete private real-root registry or real scope
+is authorized. `VALIDATION_RECEIPT_GATE`, `OWNER_AUTHORITY_GATE`,
+`POSIX_LEDGER_DURABILITY_GATE`, and `STABLE_REPLAY_GATE` retain their due-before
+boundaries.
 
-Required test groups for the implementation PR:
+Required test groups for the I1 implementation PR:
 
-- strict DB/storage/source identity and production denylist;
-- stable membership, duplicates, denominator, and ledger schema;
-- batch/restart/idempotency/live-child reconciliation;
-- failure-budget and structural fail-closed behavior;
-- temp-copy/transaction consistency and mutation allowlist;
-- local classification/AI provenance and manual-truth protection;
-- stable evidence reuse/loss ledger and numeric-ID rejection;
-- no provider/LLM/download/background localization route;
-- contract, redaction, JSON, full non-E2E, and real browser sample.
+- actual repository/Python identity and complete protected-root registry;
+- Windows Cloud Files/reparse observation and recall-risk deferral;
+- layered operation intents/results, read-only open, containment, and races;
+- stable membership/content identity, duplicates, denominator, and private
+  manifest/ledger schemas;
+- independent item/byte/hash/time/failure/systemic/manual-stop budgets;
+- two-real-process stop/resume lineage and tamper rejection;
+- canonical projection, recursive redaction, local operator receipt, registry,
+  CLI, P1 no-regression, documentation, JSON, compilation, and full non-E2E;
+- browser N/A because no UI/runtime-server behavior changes.
 
 ## 16. Proposed PR Split
 
-1. **FL1-P1 — Safety/ledger implementation (no data execution):** strict
-   identities, source/storage containment, inventory schema, item/run ledgers,
-   contract, focused tests, dry-run fixtures.
-2. **FL1-I1 — Future read-only inventory candidate:** requires a separate owner
-   scope decision after P1-R1 audit; no scanner, contract, test, source identity,
-   or inventory execution is authorized now.
+1. **FL1-P1 — Safety/ledger implementation:** owner-accepted and merged through
+   P1-R1 / PR #143.
+2. **FL1-I1 — Read-only inventory:** currently authorized for reusable tooling
+   and synthetic/new temporary fixtures only; stop at Draft owner audit before
+   any real source operation.
 3. **FL1-E1 — Bounded Dev/Test import:** exact approved subset, isolated DB and
    storage, restart/mutation proofs, stop before classification if required.
 4. **FL1-E2 — Local classification and AI tagging:** offline models, reuse-first,
@@ -393,16 +480,11 @@ equivalent. No implementation PR may silently include execution authority.
 
 ## 18. Approval Boundary
 
-Owner approval recorded: the plan and proposed FL1-P1 PR/contract structure
-only, bound to planning HEAD `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
-
-FL1-P1-R1 implements only the approved late-review remediation for isolation,
-default-deny mutation, contract evidence, source-membership/content-target
-identity, restartable synthetic ledger, reconciliation, and budget semantics.
-Its implementation evidence
-`a631160f58e8d5d61998863b5b4d60a549e88151` is pending final independent owner
-audit. No further same-PR implementation repair is authorized. Tests and an
-automated review do not create owner acceptance or merge authorization.
+Owner approval recorded: PR #143 is accepted and merge-commit merged; the I1
+reusable scanner/gateway/manifest/ledger/contract/CLI implementation and
+synthetic/new temporary-fixture validation are authorized on a fresh branch
+from `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`. Tests and automated review do
+not create owner acceptance, merge authorization, or real-source authority.
 
 Not approved: permission to connect to an existing database, inspect production, read a
 real source root, create storage, run inventory, import, classify, tag, call a

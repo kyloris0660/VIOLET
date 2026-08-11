@@ -4,41 +4,42 @@
 
 ## Current Facts
 
-- Phase: `SCV2-FL1-P1-R1` — Late Review Safety Remediation And Authority Correction.
-- Repository / PR: `kyloris0660/VIOLET` / Draft PR #143.
-- Branch: `codex/scv2-fl1-p1-r1-late-review-remediation`.
-- Accepted mainline base: `36100bfa0317387e064cd87b2e753eca3a201b5e`.
-- Implementation evidence HEAD: `a631160f58e8d5d61998863b5b4d60a549e88151`.
-- Status: `fl1_p1_r1_implementation_ready_for_owner_audit`.
+- Phase: `SCV2-FL1-I1` — Read-only Inventory.
+- Repository / PR: `kyloris0660/VIOLET` / Draft PR #144.
+- Branch: `codex/scv2-fl1-i1-read-only-inventory-v2`.
+- Accepted mainline base: `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
+- Implementation evidence HEAD: `6992e7f1e5a45857111d15da1ad0274e49008a99` (status: `bounded_remediation_replacement_frozen`; frozen: `true`).
+- Status: `fl1_i1_bounded_remediation_ready_for_owner_audit`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- `manual_acceptance_status=pending_final_owner_audit`; `next_phase_started=false` (P1-R1 awaits independent owner audit; FL1-I1 is not authorized or started).
-- Approved planning HEAD: `db90457d51a39b5dc930afc2a92a6ef3139a2760`; route scope: `SCV2-FL1-P1-R1 late-review remediation only; FL1-I1 remains an unapproved future candidate`.
+- `manual_acceptance_status=pending_i1_bounded_remediation_owner_audit`; `next_phase_started=true` (I1 synthetic implementation is authorized; real source inventory is not authorized or started).
+- Approved planning HEAD: `db90457d51a39b5dc930afc2a92a6ef3139a2760`; route scope: `SCV2-FL1-I1 reusable read-only inventory safety tooling using only synthetic and newly created temporary fixtures`.
 
 ## Completed Checkpoints
 
-- `sv1b_owner_acceptance_and_squash_merge`: `accepted_mainline_input` — `33af4111e1595dac3ece0ac50002556d466f0138`.
-- `fl1_plan_owner_approval_and_squash_merge`: `accepted_mainline_input_for_fl1_p1` — `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
-- `doc_gov_02`: `completed_active_route_and_runbook_split`.
-- `fl1_isolated_dev_test_plan`: `owner_approved_for_fl1_p1_implementation_only` — `db90457d51a39b5dc930afc2a92a6ef3139a2760`.
-- `fl1_p1_pr141_physical_merge`: `merged_with_late_review_remediation_required` — `36100bfa0317387e064cd87b2e753eca3a201b5e`.
-- `fl1_p1_r1_late_review_remediation_implementation`: `final_bounded_closure_implementation_complete_pending_final_owner_audit` — `a631160f58e8d5d61998863b5b4d60a549e88151`.
+- `fl1_plan_owner_approval_and_merge`: `accepted_mainline_input` — `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
+- `fl1_p1_r1_final_owner_acceptance_and_merge_commit`: `owner_accepted_with_five_use_before_adjudications` — `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
+- `fl1_i1_remote_sync_preflight`: `self_healed_by_fast_forward` — `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
+- `fl1_i1_owner_authorized_implementation_entry`: `synthetic_and_temporary_fixture_implementation_in_progress`.
+- `fl1_i1_implementation_evidence_frozen`: `historical_superseded_scanner_gateway_manifest_ledger_contract_cli_transition_tests_and_synthetic_validation` — `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`.
+- `fl1_i1_pr144_first_review_bounded_remediation_authorized`: `owner_authorized_one_of_one_synthetic_trust_recovery_for_18_current_head_findings` — `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3`.
+- `fl1_i1_pr144_bounded_remediation_implementation_evidence_frozen`: `one_of_one_bounded_remediation_closed_18_current_i1_counterexamples_with_synthetic_and_temporary_fixture_validation` — `6992e7f1e5a45857111d15da1ad0274e49008a99`.
 
 ## Current Gate And Boundary
 
-- Gate: `pending_final_owner_audit` (SCV2-FL1-P1-R1 Draft PR #143 after its final owner-authorized bounded implementation repair round).
-- Resolution: Project owner performs a final read-only audit and adjudicates Ready, merge, and any future FL1-I1 route. No further same-PR implementation remediation is authorized; final-review findings are owner inputs only.
+- Gate: `pending_i1_bounded_remediation_owner_audit` (SCV2-FL1-I1 replacement implementation evidence is frozen after the one-of-one bounded remediation; real source inventory and all later FL1 routes remain unauthorized).
+- Resolution: Request the single terminal post-remediation review, record its exact findings without repair or thread mutation, and stop for final owner audit.
 - Planning only: `false`; implementation/data/production authorization: `true/false/false`.
 - Existing database/real inventory/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `$0`.
-- Public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`. Phase-level zero-activity is an operator attestation only; executable runtime operation evidence comes only from the instrumented `RunLedger`, and the attestation grants no acceptance, merge safety, or route authorization.
+- Public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`. Preflight sync and phase non-actions are operator classifications only; executable I1 claims must be rebuilt from trusted private artifacts and grant no owner, merge, route, or real-source authority.
 
 ## Allowed / Forbidden
 
-- Allowed: implement and validate only the final bounded H1-H4 evidence trust repairs plus synthetic-callback and positive-authority tightening on existing Draft PR #143 while preserving all prior remediations; update only the existing SCV2-FL1-P1-R1 Draft branch and request one review on its stable final HEAD; local focused and full non-E2E validation using only synthetic, in-memory, or newly created temporary fixtures.
-- Forbidden: existing database creation, connection, comparison, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; production database, production storage, production source root, or production library access; source or iCloud root inventory, read, hydration, copy, move, rename, deletion, or mutation; provider, Pixiv, gallery-dl, Provider-2, LLM, model download, media, or thumbnail request; full-library import, classification, AI tagging, localization, graph/search execution, or background worker start; Entity, EntityAlias, confirmed assignment, user truth, source truth, or provider-derived media_tags write; Stable Replay or authoritative evidence import, replay, or reuse; FL1-I1 scanner, implementation, contract, tests, or runtime execution; real source inventory execution, owner acceptance, Ready transition, merge, direct main push, force-push, or any later FL1 stage; new PR creation or any modification, reopening, merge, branch deletion, or commit deletion for PR #142.
+- Allowed: implement and validate SCV2-FL1-I1 reusable safety tooling against synthetic and newly created temporary roots only; create private ledgers and validation artifacts only under repo-local ignored or operating-system local temporary roots; run repository tests, compilation, documentation checks, Git checks, redaction audits, and cross-process synthetic resume harnesses; commit and push only the named existing feature branch, update Draft PR #144, and request the one authorized terminal post-remediation Codex review.
+- Forbidden: listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root; existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; app-managed storage or staging storage creation or write; import, classification, AI tagging, localization, graph, search, or background worker execution; Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation; provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or network request; Stable Replay import, reuse, replay, or authoritative evidence consumption; production, watcher, scheduler, background worker, UI runtime server, or later FL1 phase execution; cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, Draft promotion, or PR #142 mutation.
 
 ## Next Action
 
-- Required checkpoint: `project_owner_final_read_only_audit_of_pr143`.
+- Required checkpoint: `single_terminal_post_remediation_review_then_final_owner_audit_only_no_real_source_inventory`.
 
 ## Durable Links
 
@@ -53,8 +54,9 @@
 
 ## Deferred Debt
 
-- `REAL_OPERATION_GATEWAY_GATE` — owner: future exact operation-stage owner; due before: `any real source listing/read/hash, database access, provider/LLM/media call, or use of RunLedger as comprehensive real-operation proof`; The current generic callback is a synthetic fixture harness only and cannot prove phase-wide absence of real operations. Requirements: instrument every relevant real-operation gateway before side effects; persist write-ahead operation evidence bound to the exact run and HEAD; do not treat synthetic callback attribution as process-wide or phase-wide proof.
-- `STABLE_REPLAY_GATE` — owner: future Stable Replay owner; due before: `any Stable Replay evidence import, replay, or authoritative reuse`; Deferred use-before gate; it is not a PR #140 blocker and grants no current replay or database authority. Requirements: scan accepted packages for observation_key duplicates across parent records; use parent-qualified stable observation identity; stop and report any actual collision without replaying a database.
-- `OWNER_AUTHORITY_GATE` — owner: future automated-acceptance owner; due before: `any automated pipeline treats owner acceptance, merge authorization, or route approval as machine-verifiable positive authority`; Current caller-supplied acceptance and authorization JSON is not trusted positive authority. Requirements: establish a genuinely out-of-band trusted owner authority context; bind identity and decision scope to immutable reviewed Git evidence; keep direct human GitHub decisions distinct from automated contract claims.
-- `POSIX_LEDGER_DURABILITY_GATE` — owner: future non-synthetic POSIX execution owner; due before: `any real POSIX mutation, power-loss durability claim, or crash-safe ledger use beyond process-level interruption`; Current synthetic foundation proves process-level interruption behavior, not host power-loss durability on POSIX. Requirements: fsync or FlushFileBuffers equivalent for replaced directory metadata where applicable; document platform behavior and add platform-specific durability tests; make no host power-loss survival claim before this gate closes.
-Updated: `2026-08-09T14:49:23+08:00`.
+- `REAL_OPERATION_GATEWAY_GATE` — owner: future exact real-source operation owner; due before: `any real source listing, stat, attribute observation, read, or hash`; I1 implements and validates the gateway against temporary roots, but no real source scope or complete private protected-root values are authorized in this phase. Requirements: resolve the complete protected-root role registry from trusted runtime and repository context; derive actual Git HEAD from the trusted repository and bind run, source scope, manifest, ledgers, scenario evidence, receipt, and public projection to it; record write-ahead intent and terminal result for every listing, metadata, attribute, read, and hash operation; require independently observed invocation and process provenance for any restart or resume claim; never use synthetic callback evidence as phase-wide gateway proof.
+- `VALIDATION_RECEIPT_GATE` — owner: future CI or independent validation authority owner; due before: `any automated or reusable claim that focused or full local test results are protected executable evidence`; Current test evidence is a local operator receipt, not external or CI authority. Requirements: bind receipt to actual HEAD, exact command, exit code, timestamps, clean relevant worktree, and report or JUnit hash; keep trust_level equal to local_operator_receipt; keep machine_verifiable_ci false unless an independent CI authority exists; reject caller booleans and self-signed summaries as protected PASS authority.
+- `OWNER_AUTHORITY_GATE` — owner: future automated-acceptance owner; due before: `any automated pipeline treats owner acceptance, merge authorization, or route approval as machine-verifiable positive authority`; Direct human GitHub decisions remain outside the automated contract. Requirements: establish genuinely out-of-band trusted owner authority; bind identity and decision scope to immutable reviewed Git evidence; keep caller input unable to create a positive authority decision.
+- `POSIX_LEDGER_DURABILITY_GATE` — owner: future non-synthetic POSIX execution owner; due before: `any real POSIX mutation, host power-loss durability claim, or mutation ledger use beyond process-level interruption`; I1 is read-only and proves process-level atomic ledger behavior, not host power-loss durability for mutation. Requirements: sync replaced directory metadata where applicable; document and test platform-specific durability behavior; make no host power-loss survival claim before this gate closes.
+- `STABLE_REPLAY_GATE` — owner: future Stable Replay owner; due before: `any Stable Replay evidence import, replay, or authoritative reuse`; I1 does not import, consume, or validate Stable Replay packages. Requirements: scan accepted packages for observation_key duplicates across parent records; use parent-qualified stable observation identity; stop and report any collision without replaying a database.
+Updated: `2026-08-10T20:35:45+08:00`.
