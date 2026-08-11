@@ -95,6 +95,159 @@ def test_live_git_objects_bind_frozen_i1_commit_and_tree_evidence() -> None:
     assert result.stdout.strip() == expected_tree
 
 
+def test_windows_git_candidates_use_os_roots_not_python_drive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        documentation_state.sys,
+        "executable",
+        r"D:\venv\Scripts\python.exe",
+    )
+
+    candidates = documentation_state._trusted_git_candidates(
+        platform_name="nt",
+        windows_location_provider=lambda: (
+            (Path(r"c:\PROGRAM FILES\git"),),
+            (
+                Path(r"C:\Program Files"),
+                Path(r"C:\Program Files (x86)"),
+            ),
+        ),
+    )
+    rendered = tuple(str(candidate).casefold() for candidate in candidates)
+
+    assert str(Path(r"C:\Program Files\Git\cmd\git.exe")).casefold() in rendered
+    assert str(Path(r"C:\Program Files\Git\bin\git.exe")).casefold() in rendered
+    assert len(rendered) == 4
+    assert not any(candidate.startswith("d:\\") for candidate in rendered)
+
+
+def test_windows_git_candidates_ignore_hostile_ordinary_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    hostile = tmp_path / "hostile-git-root"
+    for variable in ("PATH", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
+        monkeypatch.setenv(variable, str(hostile))
+
+    candidates = documentation_state._trusted_git_candidates(
+        platform_name="nt",
+        windows_location_provider=lambda: (
+            (Path(r"C:\TrustedGit"),),
+            (Path(r"C:\TrustedProgramFiles"),),
+        ),
+    )
+
+    assert candidates == (
+        Path(r"C:\TrustedGit\cmd\git.exe"),
+        Path(r"C:\TrustedGit\bin\git.exe"),
+        Path(r"C:\TrustedProgramFiles\Git\cmd\git.exe"),
+        Path(r"C:\TrustedProgramFiles\Git\bin\git.exe"),
+    )
+    assert all(
+        str(hostile).casefold() not in str(candidate).casefold()
+        for candidate in candidates
+    )
+
+
+def test_windows_registry_discovery_reads_hklm_64_and_32_bit_views() -> None:
+    class FakeRegistry:
+        HKEY_LOCAL_MACHINE = object()
+        KEY_READ = 0x20019
+        KEY_WOW64_64KEY = 0x0100
+        KEY_WOW64_32KEY = 0x0200
+
+        def __init__(self) -> None:
+            self.closed: list[tuple[str, int]] = []
+            self.values = {
+                (r"SOFTWARE\GitForWindows", self.KEY_WOW64_64KEY, "InstallPath"): (
+                    r"C:\Program Files\Git"
+                ),
+                (
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion",
+                    self.KEY_WOW64_64KEY,
+                    "ProgramFilesDir",
+                ): r"C:\Program Files",
+                (
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion",
+                    self.KEY_WOW64_32KEY,
+                    "ProgramFilesDir (x86)",
+                ): r"C:\Program Files (x86)",
+            }
+
+        def OpenKey(
+            self,
+            hive: object,
+            key_path: str,
+            reserved: int,
+            access: int,
+        ) -> tuple[str, int]:
+            assert hive is self.HKEY_LOCAL_MACHINE
+            assert reserved == 0
+            view = access & (self.KEY_WOW64_64KEY | self.KEY_WOW64_32KEY)
+            if not any(
+                key == key_path and stored_view == view
+                for key, stored_view, _ in self.values
+            ):
+                raise FileNotFoundError(key_path)
+            return key_path, view
+
+        def QueryValueEx(
+            self,
+            handle: tuple[str, int],
+            value_name: str,
+        ) -> tuple[str, int]:
+            try:
+                value = self.values[(*handle, value_name)]
+            except KeyError as exc:
+                raise FileNotFoundError(value_name) from exc
+            return value, 1
+
+        def CloseKey(self, handle: tuple[str, int]) -> None:
+            self.closed.append(handle)
+
+    registry = FakeRegistry()
+    git_roots, program_files_roots = documentation_state._windows_system_git_roots(
+        registry=registry
+    )
+
+    assert git_roots == (Path(r"C:\Program Files\Git"),)
+    assert program_files_roots == (
+        Path(r"C:\Program Files"),
+        Path(r"C:\Program Files (x86)"),
+    )
+    assert {view for _, view in registry.closed} == {
+        registry.KEY_WOW64_64KEY,
+        registry.KEY_WOW64_32KEY,
+    }
+
+
+def test_windows_git_discovery_unavailable_fails_closed(tmp_path: Path) -> None:
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="trusted_git_executable_unavailable",
+    ):
+        documentation_state._trusted_git_executable(
+            root=tmp_path,
+            platform_name="nt",
+            windows_location_provider=lambda: ((), ()),
+        )
+
+
+def test_non_windows_git_candidates_remain_fixed() -> None:
+    def unexpected_windows_provider() -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+        raise AssertionError("Windows location provider must not run")
+
+    assert documentation_state._trusted_git_candidates(
+        platform_name="posix",
+        windows_location_provider=unexpected_windows_provider,
+    ) == (
+        Path("/usr/bin/git"),
+        Path("/usr/local/bin/git"),
+        Path("/opt/homebrew/bin/git"),
+    )
+
+
 @pytest.mark.parametrize("variable", ["GIT_DIR", "GIT_WORK_TREE"])
 def test_trusted_git_proof_ignores_hostile_repository_redirection(
     monkeypatch: pytest.MonkeyPatch,

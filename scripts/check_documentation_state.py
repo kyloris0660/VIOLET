@@ -8,8 +8,13 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PureWindowsPath
+from typing import Any, Callable, Iterable
+
+
+WindowsGitLocationProvider = Callable[
+    [], tuple[tuple[Path, ...], tuple[Path, ...]]
+]
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -973,23 +978,159 @@ def _trusted_git_environment(
     return scrubbed
 
 
-def _trusted_git_executable(*, root: Path = ROOT) -> Path:
-    """Resolve Git from fixed system locations, never from caller PATH."""
+def _casefold_deduplicated_paths(paths: Iterable[Path]) -> tuple[Path, ...]:
+    """Return paths in first-seen order with Windows-style case deduplication."""
 
-    if os.name == "nt":
-        drive = Path(sys.executable).anchor or "C:\\"
-        candidates = (
-            Path(drive) / "Program Files" / "Git" / "cmd" / "git.exe",
-            Path(drive) / "Program Files" / "Git" / "bin" / "git.exe",
-            Path(drive) / "Program Files (x86)" / "Git" / "cmd" / "git.exe",
-            Path(drive) / "Program Files (x86)" / "Git" / "bin" / "git.exe",
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return tuple(unique)
+
+
+def _read_windows_registry_path(
+    registry: Any,
+    *,
+    key_path: str,
+    value_name: str,
+    view: int,
+) -> Path | None:
+    """Read one absolute Windows path from an explicit HKLM registry view."""
+
+    try:
+        handle = registry.OpenKey(
+            registry.HKEY_LOCAL_MACHINE,
+            key_path,
+            0,
+            registry.KEY_READ | view,
         )
-    else:
-        candidates = (
-            Path("/usr/bin/git"),
-            Path("/usr/local/bin/git"),
-            Path("/opt/homebrew/bin/git"),
+    except (OSError, TypeError, ValueError):
+        return None
+    try:
+        value, _value_type = registry.QueryValueEx(handle, value_name)
+    except (OSError, TypeError, ValueError):
+        return None
+    finally:
+        try:
+            registry.CloseKey(handle)
+        except OSError:
+            pass
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized or not PureWindowsPath(normalized).is_absolute():
+        return None
+    return Path(normalized)
+
+
+def _windows_system_git_roots(
+    *,
+    registry: Any | None = None,
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Discover Git and Program Files roots from OS-backed HKLM registration."""
+
+    if registry is None:
+        try:
+            import winreg as registry
+        except ImportError:
+            return (), ()
+
+    views: list[int] = []
+    for view in (
+        getattr(registry, "KEY_WOW64_64KEY", 0),
+        getattr(registry, "KEY_WOW64_32KEY", 0),
+    ):
+        if view not in views:
+            views.append(view)
+
+    git_install_roots: list[Path] = []
+    program_files_roots: list[Path] = []
+    for view in views:
+        install_root = _read_windows_registry_path(
+            registry,
+            key_path=r"SOFTWARE\GitForWindows",
+            value_name="InstallPath",
+            view=view,
         )
+        if install_root is not None:
+            git_install_roots.append(install_root)
+        for value_name in ("ProgramFilesDir", "ProgramFilesDir (x86)"):
+            program_files_root = _read_windows_registry_path(
+                registry,
+                key_path=r"SOFTWARE\Microsoft\Windows\CurrentVersion",
+                value_name=value_name,
+                view=view,
+            )
+            if program_files_root is not None:
+                program_files_roots.append(program_files_root)
+
+    return (
+        _casefold_deduplicated_paths(git_install_roots),
+        _casefold_deduplicated_paths(program_files_roots),
+    )
+
+
+def _windows_trusted_git_candidates(
+    *,
+    git_install_roots: Iterable[Path],
+    program_files_roots: Iterable[Path],
+) -> tuple[Path, ...]:
+    """Build bounded Git executable candidates from trusted Windows roots."""
+
+    install_roots = _casefold_deduplicated_paths(
+        (
+            *git_install_roots,
+            *(root / "Git" for root in program_files_roots),
+        )
+    )
+    return _casefold_deduplicated_paths(
+        candidate
+        for install_root in install_roots
+        for candidate in (
+            install_root / "cmd" / "git.exe",
+            install_root / "bin" / "git.exe",
+        )
+    )
+
+
+def _trusted_git_candidates(
+    *,
+    platform_name: str | None = None,
+    windows_location_provider: WindowsGitLocationProvider | None = None,
+) -> tuple[Path, ...]:
+    """Return bounded system candidates without consulting caller environment."""
+
+    effective_platform = os.name if platform_name is None else platform_name
+    if effective_platform == "nt":
+        provider = windows_location_provider or _windows_system_git_roots
+        git_install_roots, program_files_roots = provider()
+        return _windows_trusted_git_candidates(
+            git_install_roots=git_install_roots,
+            program_files_roots=program_files_roots,
+        )
+    return (
+        Path("/usr/bin/git"),
+        Path("/usr/local/bin/git"),
+        Path("/opt/homebrew/bin/git"),
+    )
+
+
+def _trusted_git_executable(
+    *,
+    root: Path = ROOT,
+    platform_name: str | None = None,
+    windows_location_provider: WindowsGitLocationProvider | None = None,
+) -> Path:
+    """Resolve Git from trusted system locations, never from caller PATH."""
+
+    candidates = _trusted_git_candidates(
+        platform_name=platform_name,
+        windows_location_provider=windows_location_provider,
+    )
     resolved_root = root.resolve()
     for candidate in candidates:
         try:
