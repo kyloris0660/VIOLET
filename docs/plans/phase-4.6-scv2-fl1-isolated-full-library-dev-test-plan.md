@@ -1,491 +1,374 @@
 # SCV2-FL1 Isolated Full-Library Dev/Test Plan
 
-## 1. Owner Decision
-
-The owner-approved planning input remains
-`db90457d51a39b5dc930afc2a92a6ef3139a2760`. PR #143 was subsequently
-owner-accepted and merge-commit merged at
-`a2f48bdba979f579b7cd1cdd9ef541137b2479c5`. The owner now authorizes the
-one and only bounded remediation round for Draft PR #144 review `4891695875`
-at exact reviewed HEAD `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3`.
-The remediation remains limited to reusable read-only inventory safety tooling
-and validation using only synthetic or newly created temporary fixtures.
-
-Canonical active phase:
-
-- ID: `SCV2-FL1-I1`
-- Title: `Read-only Inventory`
-- Current status: `fl1_i1_bounded_remediation_ready_for_owner_audit`
-- Branch: `codex/scv2-fl1-i1-read-only-inventory-v2`
-- Accepted mainline base: `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`
-- Historical superseded implementation/test evidence:
-  `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`, tree
-  `9b30ba024beb6fcd58709e707d7879887ad7c081`
-- Replacement implementation/test evidence:
-  `6992e7f1e5a45857111d15da1ad0274e49008a99`, tree
-  `6ff185defb150c3751c7433ef635c00a200c44bf`
-- Bounded remediation round: `1_of_1`
-- Current blocker: `pending_i1_bounded_remediation_owner_audit`
-- Current stop: request the single terminal
-  post-remediation review, and return to owner audit; no real source scope is
-  authorized
-
-Final PR #143 review `4890771735` carries forward five owner-adjudicated
-constraints: complete protected roots from trusted context, merge-topology-safe
-evidence, distinct restart provenance, trusted actual Git HEAD binding, and
-local validation receipts that cannot claim CI authority. Direct human owner
-acceptance remains outside executable contract authority.
-
-The older `Phase 4.6-FULLLIB-P0 Production Full-Library Import and AI Tagging
-Plan` is a historical design input only. Its production route and `FULLLIB-E1`
-recommendation are superseded for current planning and provide no authorization.
-
-## 2. Goals
-
-- Define a safe, resumable Dev/Test rehearsal for the full eligible library.
-- Establish an exact inventory denominator and complete per-item accounting.
-- Prove isolation between source roots, test staging/storage, strict-test
-  databases, accepted SV1 evidence databases, and production.
-- Reuse compatible accepted SV1-A/SV1B evidence without importing phase-local
-  row IDs, weak identity claims, or waivers.
-- Define bounded local classification and WD tagging with durable provenance.
-- Specify future metadata/localization/source-graph expansion checkpoints
-  without entering external routes now.
-- Produce executable contract and manual-acceptance requirements before any
-  scale or production decision.
-
-## 3. Non-Goals
-
-- No production DB, storage, source root, library snapshot, or production
-  comparison.
-- No current database creation, schema change, import, classification, tagging,
-  localization, graph/search derivation, replay, or cleanup.
-- No Pixiv, gallery-dl, Provider-2, reverse search, external LLM, media, or
-  thumbnail request.
-- No Entity, EntityAlias, confirmed assignment, user truth, or provider-derived
-  `media_tags` truth.
-- No automatic creator union based on names, placeholders, single media,
-  similarity, or model guesses.
-- No production readiness claim and no inheritance of B01/B04/B08 waivers.
-
-## 3A. I1 Implementation Contract
-
-I1 produces reusable validation/safety tooling, not a production ingestion
-runtime. The implementation is modular: trusted runtime context, complete
-protected-root role registry, layered source-operation gateway, scanner and
-private artifacts, cross-process resume provenance, and a dedicated I1 phase
-contract. The two explicit source modes are `synthetic_fixture` and
-`authorized_read_only_source`; during this phase both are validated only with
-new temporary roots.
-
-The owner-audit-ready synthetic state remains `target_met=false`,
-`safe_to_merge=false`, `route_approved=false`,
-`real_source_inventory_authorized=false`, and `real_inventory_started=false`.
-No caller boolean can create owner authorization or trusted test PASS.
-
-### PR #142 bounded carry-forward matrix
-
-| Candidate behavior | Decision | Reason | New regression |
-|---|---|---|---|
-| Deterministic tree traversal | Keep conceptually | Stable discovery and duplicate primary selection require deterministic ordering | row-order permutation and deterministic duplicate-primary tests |
-| Read-only/no-follow open plus pre/post snapshots | Redesign | POSIX `O_NOFOLLOW` and one tree snapshot do not cover Windows reparse/Cloud Files layers or per-operation evidence | Windows reparse, path escape, open/read signature-race, and source-mutation-zero tests |
-| Item/byte/chunk budgets | Redesign | I1 also needs directory-entry, per-file hash, total hash, timeout, failure, systemic, and manual-stop budgets persisted in run identity | every budget and stop reason tested independently |
-| Exact-content duplicate accounting and one terminal disposition | Keep conceptually | These are sound denominator primitives | duplicate-reference tamper and every denominator-equation tamper fail closed |
-| Public aggregates separated from private manifest | Redesign | Unkeyed per-item labels and editable redaction booleans remain enumerable or forgeable | aggregate-by-default projection plus unknown-field/path/content/key leakage rejection |
-| Real-source default deny with temporary fixtures | Keep conceptually | Current authorization is synthetic-first and real source remains external governance | real mode without exact trusted scope fails; temporary trusted scope passes |
-| Caller-supplied actual Git HEAD or Python executable | Reject | Actual identities must be derived from repository and current `sys.executable` | fake matching caller identity, old-HEAD artifact, and wrong interpreter tests |
-| Caller-supplied `forbidden_roots` completeness | Reject | One irrelevant path cannot prove all production/source/app/repo/evidence roles | missing/unknown/duplicate/alias/overlap/escape role tests |
-| Synthetic disposition override as Cloud Files proof | Reject | Synthetic observation is useful only as explicitly labeled fixture evidence | unsupported/unknown attribute never becomes available; recall-risk never opens content |
-| Copied before/after snapshot as restart proof | Reject | Restart requires independently observed process and invocation lineage | two-process harness plus same-invocation, copied snapshot, wrong-parent, wrong-HEAD/config negatives |
-| In-memory manifest and caller test booleans | Reject | Resumable evidence needs atomic private artifacts and local results need bound receipts | tampered manifest/operation ledger/receipt and `machine_verifiable_ci=true` rejection |
-
-No PR #142 commit, governance state, P1 remediation, or wholesale patch is
-cherry-picked. The matrix preserves only independently reimplemented concepts.
-
-### PR #144 review `4891695875` bounded-remediation matrix
-
-All 18 findings apply to the current reviewed HEAD and are adjudicated
-`must_fix_current_i1`. All 18 are implemented and covered by focused regressions
-in replacement evidence `6992e7f1e5a45857111d15da1ad0274e49008a99`; no finding
-is deferred into a real-source run.
-
-| # | Severity | Finding / required trust recovery | Required regression |
-|---|---|---|---|
-| 1 | P1 | Resolve and verify an absolute trusted Git executable before setting a candidate repository as `cwd`; exclude cwd/PATH ambiguity and repo-local shims | repo-local fake `git.exe` never participates in identity or status |
-| 2 | P1 | Perform lexical/no-follow containment and Windows Cloud attribute observation before final-component resolution/open | recall-risk item is never resolved/opened before attributes |
-| 3 | P1 | Re-derive canonical relative path, path token, item ID, keyed label, extension, and signature-size relations on manifest load | swap two items and recompute editable fingerprints still fails |
-| 4 | P1 | Bind attribute-adapter type and complete normalized configuration fingerprint into policy/run identity | adapter type or synthetic-map/default drift fails resume |
-| 5 | P1 | Acquire the runner lock before any invocation, lineage, operation, or checkpoint mutation | live collision leaves every artifact byte-identical |
-| 6 | P1 | Constrain projection and all I1 writers to task-owned targets inside `phase_evidence_output_root` | output-to-source attempt fails without changing source bytes |
-| 7 | P2 | Give every directory-list operation a stable private target token and close it against discovery/final snapshots | every nested directory listing has an exact target identity |
-| 8 | P1 | Derive expected Python from canonical repository-venv policy; CLI expectation is assertion-only | system Python cannot self-approve by repeating its own path |
-| 9 | P1 | Reject pending-owner/private-runtime trust classes before any root filesystem observation and lexically reject out-of-sandbox source roots | unauthorized real-root payload produces zero root observations |
-| 10 | P1 | Reconcile every terminal disposition with item/attempt-specific metadata, attribute, read, hash, bytes, and content evidence | deleting one eligible item read/hash pair fails contract |
-| 11 | P1 | Bind restart to an independently produced parent-harness child receipt | a one-process fabricated second invocation fails |
-| 12 | P1 | Have the receipt creator launch the validation command and capture actual argv, exit, output/report bytes, HEAD, Python/Git, and cleanliness | caller-supplied PASS/exit/report cannot create completion |
-| 13 | P2 | Apply discovery-equivalent counters and deadline to the final snapshot | post-discovery tree expansion stops within budgets |
-| 14 | P1 | Make terminal item state, operations, counters, and budget usage one recoverable checkpoint/journal | fault injection between persistence boundaries reconstructs exact counters |
-| 15 | P1 | Reconcile abandoned `INTENT` records from a dead invocation to terminal `interrupted` before a new attempt | kill-after-INTENT resumes with no unresolved intents |
-| 16 | P1 | Create POSIX private temporary artifacts with explicit `0600` and verify ownership/mode before replace | mode/owner regression fails closed without broadening durability claims |
-| 17 | P2 | Add bounded auditable JPEG/PNG/GIF/WebP/AVIF header/container validation before eligibility | empty, text-suffixed, truncated, and magic-mismatch media are excluded |
-| 18 | P1 | Cap reads by `min(per_file_limit, remaining_total_budget)` and conservatively account failed/raced/interrupted bytes | growing failed reads cannot exceed or evade total-byte accounting |
-
-The same-pattern audit covers `fl1_i1_runtime_context.py`, validation receipts,
-documentation/current-phase Git helpers, operation/manifest/run/projection
-writers, resume/checkpoint paths, and the I1 contract. The round does not grant
-Ready, merge, real inventory, DB/app-storage, import, provider/LLM/media,
-Stable Replay, UI/runtime, production, or later-phase authority.
-
-## 4. Isolation Design
-
-The future implementation prompt must name all identities exactly. Proposed
-shape:
-
-| Surface | Required boundary |
-|---|---|
-| Working database | Fresh separately owned strict-test DB with a canonical segmented test identity; never production/default/dev or accepted SV1 DB |
-| Replay/verification database | Optional only if the approved implementation contract needs independent logical replay; separately owned, strict-test, distinct from working DB |
-| Staging/storage | New local non-network test root outside source roots, app production storage, repo tracked paths, and accepted SV1 storage |
-| Source input | Immutable manifest or separately approved read-only test fixture; real full source roots remain unavailable until an explicit inventory authorization |
-| Evidence output | New repo-local gitignored root with atomic ledgers; public output contains aggregates and safe labels only |
-| Process environment | Repo venv, `VIOLET_ENV=test`, exact `TEST_DATABASE_URL`, no production variables, no provider/LLM credential routes |
-
-Mandatory preflight before any future DB connection or filesystem write:
-
-1. Git/branch/HEAD and Python identity.
-2. Strict segmented test DB identity and ownership key.
-3. Database pairwise distinction and accepted-evidence DB denylist.
-4. Test storage containment and non-overlap with source/production/accepted
-   roots.
-5. No active conflicting runner or server process.
-6. External-call route count and projected external cost both zero.
-
-## 5. Full-Library Inventory Denominator
-
-The denominator is a manifest-bound set of stable source-item identities, not a
-current DB row count. Each discovered item receives one stable private key and
-one public-safe label. The inventory equation must balance:
-
-`discovered = supported + unsupported`
-
-`supported = duplicate + cloud_recall_deferred + unreadable_or_missing + eligible_candidate`
-
-`eligible_candidate = imported + import_deferred + import_failed`
-
-Every item must have exactly one terminal inventory disposition and, when
-applicable, separate import/classification/tagging lifecycle states.
-
-Required aggregate dimensions:
-
-- total discovered files and unique stable items;
-- supported/unsupported extension;
-- exact duplicate, content duplicate, and path-only duplicate signal;
-- Cloud Files hydrated/recall-risk/unavailable state;
-- missing, unreadable, permission, timeout, size/hash mismatch;
-- content eligibility and exclusion reason;
-- import/classification/AI-tagging attempted, complete, deferred, failed;
-- unresolved count, which must be zero for a completion claim.
-
-Filename, row order, database numeric ID, or display label may not define stable
-membership.
-
-## 6. Duplicate, Unsupported, And Cloud-Recall Policy
-
-- Exact content fingerprints are the deduplication authority. Filename/path
-  similarity is diagnostic only.
-- Duplicate items remain ledgered with their matched stable fingerprint and do
-  not count as failed imports.
-- Unsupported extensions and corrupt media are explicit terminal exclusions.
-- Cloud recall-risk is a visible per-item state, not silent loss or a permanent
-  full-run blocker.
-- Default real-source policy is no broad hydration. Any cloud-aware read/copy
-  authorization must be separately scoped with bounded retries and source
-  mutation still forbidden.
-- A systemic cluster of same-reason failures may stop the run even when each
-  failure would otherwise be per-item.
-
-## 7. Batch Import And Recovery
-
-Future execution must be finite and restartable:
-
-- immutable run manifest plus run ID and batch IDs;
-- deterministic batch ordering and no concurrent duplicate item execution;
-- temp-first copy inside test app-managed storage, content verification, then
-  atomic finalization;
-- small transaction boundaries with DB/file coherence proof;
-- checkpoint after every item attempt and batch boundary;
-- maximum item attempts fixed by contract; attempts never reset on restart;
-- live-child reconciliation before retry;
-- idempotency by stable content fingerprint and logical target identity;
-- backfill consumes only explicitly deferred/failed membership;
-- resume requires exact Git, manifest, DB ownership, storage, model, policy,
-  and ledger fingerprints.
-
-Rollback for the rehearsal means abandoning the separately owned test DB and
-storage only under a later exact destructive authorization. The default failure
-response is preserve-forensics and stop, not cleanup.
-
-## 8. Classification And Local AI Tagging
-
-Classification and WD tagging are separate future substages after import
-closure:
-
-- Run local/offline models only; model artifacts must already be available.
-- Classify only newly imported, contract-eligible items.
-- AI tag only eligible items and prefer compatible stable-fingerprint reuse
-  before inference.
-- Bind model identity, revision/cache fingerprint, thresholds, code HEAD,
-  source (`ai_wd`), confidence, and job/run identity.
-- Preserve manual/locked truth. AI suggestions cannot overwrite manual rows.
-- Proper-noun AI output is weak evidence/statistics/query seed only and cannot
-  create Entity truth, confirmed assignment, or trusted creator identity.
-- Disable background localization and all external LLM/provider fallbacks.
-
-Proposed local mutation surface for a later approved Dev/Test run is limited to
-new rehearsal rows in `Media`, classification jobs/results, AI-tag jobs, and AI
-provenance tag links. Exact table names and pre/post fingerprints must be
-declared by the implementation contract before writes.
-
-## 9. SV1-A / SV1-B Evidence Reuse
-
-Accepted evidence may be reused only when schema, stable key, stable
-fingerprint, model/provider identity, and lifecycle semantics are compatible.
-
-Allowed candidates for reuse:
-
-- stable media membership and content fingerprints from SV1-A;
-- compatible local AI-tag evidence with exact model/threshold provenance;
-- accepted non-derived source metadata and translations from SV1B for exact
-  stable media/tag/source identities;
-- accepted R2R/source-graph evidence as read-only comparison input.
-
-Forbidden inheritance:
-
-- database numeric row IDs or physical insertion order;
-- provider execution attempts, credentials, URLs, raw responses, or queue state;
-- B01/B04/B08 owner waiver as a real-creator or scale-up policy;
-- derived SourceConcept rows without independent replay/derivation proof;
-- `Entity`, confirmed assignment, user truth, or provider-derived media-tags
-  truth.
-
-The implementation plan must produce a reuse/loss ledger and fail closed on any
-unknown graph-effective, trusted-complete, localization, or provenance field.
-
-## 10. Metadata, Localization, And Graph Extension Route
-
-FL1 import/classification/tagging does not require external source metadata.
-After the local rehearsal closes, a later proposal may assess coverage gaps:
-
-1. cache-first reuse of accepted Pixiv metadata for exact stable identities;
-2. local canonical-tag display fallback and accepted translation reuse;
-3. independent source-graph derivation from accepted non-derived packages;
-4. search lifecycle and media-level AND validation;
-5. provider acquisition only for an exact open universe under a separate
-   privacy/budget/credential authorization.
-
-No later route may relabel cached data as newly authenticated provider truth or
-promote SourceConcept to Entity/user truth without its own contract.
-
-## 11. Provider And External Request Boundary
-
-Current need: none. Current external-call budget and projected cost: zero.
-
-Any future provider or LLM proposal must independently declare:
-
-- exact finite membership and why local/cache evidence is insufficient;
-- provider-specific privacy eligibility and payload projection;
-- credential route, redaction, cache, timeout, retry, rate-limit, spacing, and
-  subprocess safety;
-- cost ceiling and stop conditions;
-- metadata/media download policy;
-- separate owner authorization before first network request.
-
-Provider calls, LLM calls, model downloads, and media/thumbnail downloads cannot
-be enabled by approving this plan.
-
-## 12. Mutation Allowlist And Forbidden Tables
-
-Future Dev/Test execution must use default-deny table accounting.
-
-Potentially allowlisted only after implementation review:
-
-- newly imported rehearsal `Media` rows;
-- phase-owned scan/import item-state rows;
-- phase-owned classification job/result rows;
-- phase-owned AI-tag job and AI provenance tag links;
-- explicitly required canonical `Tag` rows without overriding accepted/manual
-  semantics.
-
-Always forbidden in FL1 without a later explicit amendment:
-
-- production and accepted SV1 databases;
-- users, API keys, albums, settings, unrelated operational tables;
-- provider cache/source acquisition tables;
-- source metadata, translation, SourceConcept graph/search tables during local
-  import/tagging substages;
-- Entity, EntityAlias, evidence/candidate/assignment/truth tables;
-- confirmed assignment, user truth, and provider-derived `media_tags` truth;
-- delete, truncate, reset, drop, cleanup, or in-place repair.
-
-## 13. Failure Budget And Fail-Closed Conditions
-
-Initial per-batch proposal, subject to owner approval:
-
-- `max_item_failures=20`
-- `max_failure_rate=0.05`
-- `max_consecutive_failures=10`
-- `max_same_reason_failures=20`
-- finite per-item timeout and maximum attempts declared by implementation
-
-Per-item failures remain ledgered and excluded from eligible completion.
-Structural blockers stop the entire stage:
-
-- Git/Python/DB/storage/source identity mismatch;
-- production or accepted-evidence DB/storage resolution;
-- path escape or source/app-storage overlap;
-- manifest schema, duplicate stable key, or fingerprint conflict;
-- unexpected table/filesystem mutation;
-- source/iCloud mutation;
-- missing/corrupt checkpoint or non-idempotent restart;
-- background job or duplicate runner conflict;
-- external route entered or projected cost nonzero;
-- public redaction failure;
-- denominator equation mismatch or unexplained item.
-
-## 14. Manual Acceptance And Stop Points
-
-Proposed owner checkpoints:
-
-1. approve this implementation plan;
-2. approve exact read-only inventory identities and source scope;
-3. review inventory denominator and failure-risk report before writes;
-4. approve bounded Dev/Test import/classification/tagging execution;
-5. review a manifest-bound manual sample after automated closure;
-6. separately decide whether production planning may begin.
-
-The final sample should be selected from current phase deltas and include:
-
-- imported media and duplicate/exclusion evidence;
-- cloud-deferred and recovery cases;
-- classification boundary cases;
-- AI tag provenance and manual-truth preservation;
-- search results using new local tags;
-- creator/identity cases demonstrating that weak or placeholder signals remain
-  independent.
-
-Automated browser prevalidation is not owner acceptance. Any unresolved real
-creator, reliable account, normal search, or truth-path issue is not covered by
-the SV1B placeholder waiver.
-
-## 15. Executable Contract And Tests
-
-The accepted P1 safety slice registers
-`scv2_fl1_isolated_full_library_dev_test_contract_v1`. I1 separately registers
-`scv2_fl1_i1_read_only_inventory_contract_v1` and derives, rather than accepts
-as caller claims, at least:
-
-- actual Git/Python safe identities and relevant-worktree cleanliness;
-- complete protected-root role registry and exact temporary source scope;
-- manifest and denominator equations;
-- write-ahead listing/metadata/attribute/read/hash operation evidence;
-- item/read/hash/time/failure/manual-stop budget accounting;
-- cross-process invocation and parent-checkpoint provenance;
-- source mutation and all forbidden-route zero counts;
-- public redaction and private-artifact separation;
-- manual-acceptance requirement/status;
-- validation receipt trust level and CI limitation;
-- false `target_met`, `safe_to_merge`, `route_approved`, and real-source authority.
-
-The contract verifies Git objects in a trusted repository. PR audit evidence
-requires the actual current PR HEAD and implementation ancestry; squash
-carry-forward evidence instead requires the approved base as the squash
-commit's sole parent and exact equality with the owner-reviewed final tree.
-The documentation checker consumes the same trusted `ImplementationEvidence`
-after squash and cannot pass on topology alone. Formal evidence collection and
-repository revalidation reject relevant staged, unstaged, deleted, renamed, or
-untracked execution drift.
-Synthetic invocations reconcile per item against private `RunLedger` attempt
-counts. Failure-budget/manual-stop completion is a five-scenario synthetic
-matrix with independent run identities and fingerprints, not a property of one
-ordinary success run. Phase-level non-action declarations are attestations
-only; they cannot replace write-ahead runtime gateway evidence or grant owner
-acceptance, merge safety, or route approval.
-
-The second bounded PR #143 review-fix additionally binds audit-ready status to
-the trusted repository, main runtime ledger, fixed-schema private
-failure-budget scenarios, and private interrupted-reconciliation scenarios.
-The reconciliation stage requires independently reconstructed COMMITTED,
-UNKNOWN, and NOT_COMMITTED restart behavior. The complete public summary,
-including unknown fields, must pass the shared recursive redaction scanner;
-caller-supplied booleans or recomputed editable digests are not evidence.
-
-The final bounded PR #143 closure derives actual Python identity only from the
-checking process's `sys.executable`, and builder/checker share one complete,
-versioned canonical public ledger projection derived from the trusted private
-ledger. The generic callback is a synthetic fixture harness, not a DB, source,
-provider, LLM, or media gateway and not phase-wide zero-activity proof.
-Caller-supplied owner, merge, route, actual Git/Python/path/count, or test-result
-JSON cannot produce protected positive claims. I1 closes the reusable temporary
-source subset of `REAL_OPERATION_GATEWAY_GATE`; the gate remains due before real
-source operations because no complete private real-root registry or real scope
-is authorized. `VALIDATION_RECEIPT_GATE`, `OWNER_AUTHORITY_GATE`,
-`POSIX_LEDGER_DURABILITY_GATE`, and `STABLE_REPLAY_GATE` retain their due-before
-boundaries.
-
-Required test groups for the I1 implementation PR:
-
-- actual repository/Python identity and complete protected-root registry;
-- Windows Cloud Files/reparse observation and recall-risk deferral;
-- layered operation intents/results, read-only open, containment, and races;
-- stable membership/content identity, duplicates, denominator, and private
-  manifest/ledger schemas;
-- independent item/byte/hash/time/failure/systemic/manual-stop budgets;
-- two-real-process stop/resume lineage and tamper rejection;
-- canonical projection, recursive redaction, local operator receipt, registry,
-  CLI, P1 no-regression, documentation, JSON, compilation, and full non-E2E;
-- browser N/A because no UI/runtime-server behavior changes.
-
-## 16. Proposed PR Split
-
-1. **FL1-P1 — Safety/ledger implementation:** owner-accepted and merged through
-   P1-R1 / PR #143.
-2. **FL1-I1 — Read-only inventory:** currently authorized for reusable tooling
-   and synthetic/new temporary fixtures only; stop at Draft owner audit before
-   any real source operation.
-3. **FL1-E1 — Bounded Dev/Test import:** exact approved subset, isolated DB and
-   storage, restart/mutation proofs, stop before classification if required.
-4. **FL1-E2 — Local classification and AI tagging:** offline models, reuse-first,
-   explicit coverage and manual-truth proof.
-5. **FL1-V1 — Logical validation/manual acceptance:** search lifecycle, sample
-   harness, owner acceptance, route decision.
-6. **Future production planning:** independent scope and authorization; never
-   automatic after FL1.
-
-Phases may be combined only if the owner approves and risk/stop points remain
-equivalent. No implementation PR may silently include execution authority.
-
-## 17. Risks And Open Decisions
-
-- The real inventory denominator and cloud-recall distribution are unknown
-  until separately authorized read-only inventory.
-- Stable AI-tag reuse compatibility needs exact model/threshold evidence.
-- Storage capacity and runtime bounds need read-only preflight inputs.
-- Full-library search/graph scalability has not been proven by planning.
-- B01/B04/B08 remain SV1B-only low-value placeholder limitations; FL1 must fail
-  closed if the pattern reaches real creators or reliable accounts.
-- Decide whether a separate replay database is worth its cost for FL1 logical
-  verification.
-- Decide the exact inventory failure budget and manual sample size before
-  implementation execution.
-
-## 18. Approval Boundary
-
-Owner approval recorded: PR #143 is accepted and merge-commit merged; the I1
-reusable scanner/gateway/manifest/ledger/contract/CLI implementation and
-synthetic/new temporary-fixture validation are authorized on a fresh branch
-from `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`. Tests and automated review do
-not create owner acceptance, merge authorization, or real-source authority.
-
-Not approved: permission to connect to an existing database, inspect production, read a
-real source root, create storage, run inventory, import, classify, tag, call a
-provider/LLM, download media/models, derive graph/search, or begin production.
+## 1. Current Decision And Authority
+
+This document is the canonical public-safe FL1 route plan. The current phase is
+`SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness`.
+Its status is `fl1_i2_planning_ready_for_owner_audit`.
+
+PR #144 merged SCV2-FL1-I1 at merge commit
+`8955b95e91630d4c5e18e1e2ca252b19754c81d5`. The owner accepted its final
+HEAD/tree `2f8d5f8ce6cde9759c530de71d4ddd1893481656` /
+`8930a21bdbac037702f92bcb75bd9b8a3632a073` and frozen implementation
+evidence/tree `6992e7f1e5a45857111d15da1ad0274e49008a99` /
+`6ff185defb150c3751c7433ef635c00a200c44bf` only as a synthetic and newly
+created temporary-fixture foundation with use-before gates.
+
+That acceptance does not prove real iCloud/source inventory, import, database,
+app storage, classification, AI tagging, localization, provider/LLM behavior,
+media download, Stable Replay, UI/runtime, or production readiness. Terminal
+review `4897012517` recorded 17 findings at the final HEAD (13 P1, 4 P2).
+GitHub exposed zero checks; `github_checks=0` is not CI pass evidence and
+`machine_verifiable_ci=false` remains mandatory.
+
+Current authority is limited to governance, public-safe documentation, and the
+I2/I3/I4/E1/E2/V1 route plan. It does not authorize I2 implementation or any
+source/data/runtime operation:
+
+```text
+planning_authorized=true
+planning_completed=true
+planning_approved=false
+implementation_authorized=false
+implementation_started=false
+target_met=false
+safe_to_merge=false
+route_approved=false
+real_inventory_started=false
+real_source_inventory_authorized=false
+source_root_access_authorized=false
+database_access_authorized=false
+app_storage_write_authorized=false
+import_authorized=false
+classification_or_tagging_execution_authorized=false
+provider_or_llm_authorized=false
+media_or_thumbnail_download_authorized=false
+stable_replay_authorized=false
+production_authorized=false
+projected_external_cost_usd=0
+active_blocker=pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope
+```
+
+## 2. Governing Principles
+
+1. Current-phase truth comes from `docs/state/current-phase.json`; this plan is
+   its durable human projection.
+2. Every implementation, real-source, write-bearing, model/provider, browser,
+   or production stage requires a distinct owner authorization.
+3. Public documents contain aggregates and public-safe identities only—never a
+   private root, path, filename, file contents, keyed label, or content
+   fingerprint.
+4. Membership is frozen by a manifest cut. A path, row ID, order, or filename
+   never establishes content identity.
+5. Every discovered item receives one explicit terminal disposition. Deferred
+   Cloud files are not silently counted as exact duplicates or content-verified.
+6. Local receipts are operator evidence, not CI, owner, route, or
+   tamper-resistant attestation.
+7. Historical PR #144 threads remain audit records. This route does not reply,
+   resolve, reopen, or continue the I1 repair loop.
+
+## 3. PR #144 Terminal Review Use-Before Register
+
+The 17 findings are preserved in full and classified for the next safe use.
+
+| # | Severity | Finding | Classification |
+|---:|:---:|---|---|
+| 1 | P1 | Scrub Git control variables before trusted invocations | Must close before I2 implementation: sanitize `GIT_DIR`, `GIT_WORK_TREE`, and equivalent Git control environment. |
+| 2 | P1 | Validate the parent-observed child identity | Claim boundary: local parent/child provenance is not tamper-resistant, OS/kernel/TPM/remote, or CI attestation. |
+| 3 | P1 | Recheck recall attributes before final resolution | Must close before I2 implementation: bind Cloud attributes and final opening to the same object/no-recall decision. |
+| 4 | P1 | Allow interrupted attempts before corrupt-media closure | Must close before I2 implementation: interrupted attempts and corrupt-media terminal accounting must remain distinct and complete. |
+| 5 | P2 | Enforce the deadline around blocking file operations | Must close before I2 implementation: potentially blocking open/read/hash/structure validation runs in a terminable worker. |
+| 6 | P1 | Bind the receipt to one unchanged HEAD | Must close before I2 implementation: validation receipt binds identical pre/post execution HEAD. |
+| 7 | P1 | Re-derive the adapter policy during contract validation | Must close before I2 implementation: adapter policy is reconstructed from trusted configuration. |
+| 8 | P2 | Stop at the configured failure maximum | Must close before I2 implementation: correct the maximum-failure off-by-one boundary. |
+| 9 | P1 | Pin the frozen remediation commit and tree | Closed in this governance PR: documentation checker pins the actual I1 evidence commit/tree. |
+| 10 | P1 | Reject CI authority in documentation state | Closed in this governance PR: checker requires `machine_verifiable_ci=false`, `github_checks=0`, and no CI authority. |
+| 11 | P1 | Include a change identity in file signatures | Must close before I2 implementation: carry Windows file identity and change identity. |
+| 12 | P1 | Reject hard-linked files that alias protected data | Must close before I2 implementation: define hard-link, reparse, symlink, and path-alias policy. |
+| 13 | P1 | Confine private artifact reads as well as writes | Must close before I2 implementation: private-artifact reads are no-follow and confined. |
+| 14 | P1 | Enumerate directories through a verified no-follow handle | Must close before I2 implementation: use identity-before/after or handle-based traversal for mutable directories. |
+| 15 | P1 | Reconcile intents from ended failed invocations | Must close before I2 implementation: recover residual INTENT records from terminated failed invocations. |
+| 16 | P2 | Validate media structure beyond boundary markers | Must close before I2 implementation: bounded structural validation must exceed first/last marker checks. |
+| 17 | P2 | Handle runtime-context failures in scanner CLI | Must close before I2 implementation: emit a stable privacy-safe JSON error envelope. |
+
+Findings 9 and 10 are governance closures, not retrospective code repairs.
+Findings 1, 3-8, and 11-17 are 14 implementation gates. Finding 2 limits
+claims and should not turn a personal local inventory tool into an adversarial
+forensics system unless a future owner-approved threat model requires that.
+
+## 4. Canonical Architecture Convergence
+
+I2 must not preserve two independent Cloud/source policy authorities. Before
+implementation, audit and design the convergence across:
+
+```text
+backend/app/utils/cloud_files.py
+backend/app/services/source_ingestion_gate.py
+backend/app/utils/local_library_scanner.py
+scripts/fl1_i1_operation_gateway.py
+scripts/fl1_i1_inventory.py
+scripts/phase_contracts/fl1_i1_contract.py
+```
+
+The intended architecture is:
+
+1. `cloud_files.py`, or one explicitly named shared safety module, supplies
+   canonical Windows Cloud attributes, safe handles, object/file identity, and
+   change-identity primitives.
+2. `SourceIngestionGate` owns the unified source-kind and Cloud-availability
+   policy and emits one canonical decision result.
+3. The I1/I2 operation gateway owns write-ahead operation records, budgets,
+   manifest and resume control, and contract evidence.
+4. The CLI and future runtime scanner consume the same canonical decision
+   result rather than copying Cloud flags or availability logic.
+5. The legacy `scan_and_import(dry_run=True)` path is not the first full
+   read-only inventory runner. It creates a DB dependency, reads and hashes
+   source content, treats dry-run as “do not import” rather than metadata-only,
+   and lacks I1 manifest/restart/evidence closure.
+6. I2 implementation and tests, if separately approved, use only synthetic and
+   adversarial newly created temporary fixtures. They do not touch a real
+   library.
+
+The design review must assign exactly one authority for each of: source-kind
+classification, Cloud availability, no-recall decision, handle identity,
+policy/config derivation, operation admission, manifest membership, receipt
+closure, and public projection.
+
+## 5. Threat Model
+
+### In scope
+
+- Configuration mistakes and selection of the wrong path.
+- Normal iCloud/Cloud Files concurrency and availability changes.
+- Files or directories disappearing, changing, or being replaced during a run.
+- Reparse points, symlinks, hard links, and path aliases.
+- Worker or parent crash, stale artifacts, and resume/recovery.
+- Blocking open/read/hash/structure-validation operations.
+- Budget, disk, runtime, and evidence drift.
+- Operator or agent error.
+
+### Out of scope
+
+- OS or kernel compromise.
+- A malicious same-account process actively replacing every object between
+  every syscall.
+- TPM, remote, or hardware attestation.
+- Presenting a local operator receipt as CI or tamper-resistant evidence.
+
+The out-of-scope line limits claims; it does not waive containment, race,
+identity, no-follow, or normal concurrent-change controls.
+
+## 6. SCV2-FL1-I2 - Pre-Real Hardening
+
+### Objective
+
+Produce the design and—only after separate approval—the implementation needed
+to make a future bounded real-source canary reviewable and fail closed.
+
+### Inputs and execution boundary
+
+- Synthetic and adversarial newly created temporary fixtures only.
+- No real source path discovery, metadata observation, open, read, or hash.
+- No DB/app-storage, import, classification/tagging, provider/LLM, media
+  download, server, Stable Replay, or production operation.
+
+### Required design and implementation gates
+
+- The 14 implementation findings in Section 3 are closed with focused negative
+  tests.
+- Canonical source/Cloud policy has one consumer-facing decision result.
+- Trusted configuration and repository identity are re-derived at use time.
+- Membership, operation admission, budget, worker, receipt, and projection
+  records bind one run identity and one unchanged repository HEAD.
+- File/directory handle identity and change identity cover mutable traversal,
+  aliases, reparse points, and hard links.
+- Blocking I/O has parent-enforced termination and bounded cleanup evidence.
+- INTENT/recovery and interruption/corruption accounting close exactly once.
+- CLI failures remain stable, privacy-safe JSON with no private path leakage.
+- A registered executable I2 phase contract and complete positive/negative
+  temporary-fixture suite are delivered.
+
+### Exit
+
+Merge the separately approved implementation and stop. I3 and all real-source
+activity remain false until another owner decision names the exact scope and
+budgets.
+
+## 7. SCV2-FL1-I3 - Bounded Real-Source Inventory Canary
+
+I3 requires a separate authorization containing all of:
+
+- exact private source identity and bounded scope;
+- complete protected-root registry and source role;
+- item/byte/time/disk/failure budgets;
+- Cloud/no-hydration policy;
+- explicit stop conditions and owner checkpoints.
+
+Execution order is fixed:
+
+1. Perform bounded metadata-only enumeration with no content open/read/hash.
+2. Stop for owner audit of counts, policy, dispositions, and privacy-safe
+   evidence.
+3. Only with the next explicit authorization, select a small stratified sample
+   from objects already proven AVAILABLE/HYDRATED and perform bounded
+   hash/structure validation.
+4. Always defer recall-risk or ambiguous Cloud objects; never trigger
+   hydration.
+5. Keep source mutation, DB access, app-storage access, and import at zero.
+
+No public artifact may include a real root, path, filename, content fragment,
+or content fingerprint. A successful I3 canary is not full-library readiness.
+
+## 8. SCV2-FL1-I4 - Full-Library Read-Only Inventory
+
+I4 is another separately approved execution phase. It must:
+
+- freeze a manifest cut before content work;
+- enumerate the authorized scope fully but hash only safely available content;
+- report discovered, metadata, hash, and structure-validation coverage as
+  separate denominators;
+- assign explicit recall-risk, unsupported, corrupt, unreadable, missing,
+  changed, and eligible dispositions;
+- never count an un-hashed Cloud-deferred item as an exact duplicate;
+- put newly discovered or changed files into a later delta run rather than
+  mutating current membership;
+- report capacity, runtime, failure distribution, staging requirements, and an
+  E1 route recommendation;
+- produce a privacy-safe ChatGPT review pack whose route decision remains
+  provisional until owner audit.
+
+Every item closes exactly once. Aggregate sums must reconcile to the frozen
+manifest denominator; incomplete hash or structure coverage remains explicit.
+
+## 9. SCV2-FL1-E1 - Isolated Import Rehearsal
+
+E1 begins only after accepted I4 closure and separate write authorization.
+
+- Create a fresh isolated test DB and storage root; accepted evidence and
+  production DB/storage remain read-only.
+- Copy into staging, verify content and policy, then atomically finalize.
+- Consume only I4 content-verified eligible membership.
+- Reconcile on stable/content fingerprints, never path, filename, DB row ID,
+  or input order.
+- Record independent intent, completion, failure, resume, rollback, and budget
+  evidence.
+- Stop on membership drift, protected-root conflict, content mismatch,
+  insufficient recovery space, or destination identity ambiguity.
+
+No E1 write is implied by I2/I3/I4 approval.
+
+## 10. SCV2-FL1-E2 - Local Classification And AI Tagging
+
+E2 begins only after E1 import closure and a separate authorization.
+
+- Use offline/cache-only local models; model/provider downloads remain off.
+- Define anime and unknown eligibility before classification.
+- Keep general/meta tags separate from proper-noun identity evidence.
+- Treat AI proper-noun suggestions only as weak evidence; never as confirmed
+  assignment or user truth.
+- Keep translation workers, providers, and LLMs disabled by default.
+- Use independent ledgers, budgets, recovery, and owner acceptance.
+
+E2 must not mutate SourceConcept or Entity truth by inference, and does not
+authorize broad localization or provider enrichment.
+
+## 11. SCV2-FL1-V1 - Product And Owner Validation
+
+V1 is a controlled validation phase after E1/E2 closure. It covers:
+
+- search, filter, media-detail, and gallery lifecycle;
+- scale and performance;
+- duplicate, Cloud-deferred, corrupt, and resume samples;
+- controlled real browser validation against the exact test runtime;
+- a manifest-bound manual owner sample.
+
+The exit is an owner decision on whether to plan production separately.
+Production import, watcher, automatic sync, scheduling, or background ingestion
+cannot be inferred from V1 success.
+
+## 12. Coverage, Disposition, And Evidence Model
+
+I3/I4 plans must distinguish:
+
+```text
+discovered_coverage
+metadata_coverage
+hash_coverage
+structure_validation_coverage
+```
+
+Allowed terminal inventory dispositions must be explicit and mutually
+exclusive, including at least:
+
+```text
+eligible_content_verified
+cloud_recall_risk_deferred
+unsupported
+corrupt
+unreadable
+missing
+changed_during_run
+budget_deferred
+policy_deferred
+interrupted
+```
+
+An exact-duplicate claim requires content verification for both compared
+objects under the accepted fingerprint policy. Metadata equality is not enough.
+Public projections expose aggregates and keyed labels only; private evidence
+retains item-level identities under confined, no-follow access.
+
+## 13. Budgets And Stop Conditions
+
+Each executable phase contract must bind explicit limits for:
+
+- discovered items and directories;
+- metadata observations;
+- content-open attempts, bytes, and hash operations;
+- structure validations;
+- wall-clock and per-operation time;
+- failures, interruptions, retries, and concurrent workers;
+- private-artifact and staging disk use;
+- external cost, which remains zero unless separately authorized.
+
+Fail closed on protected-root ambiguity, path/handle identity mismatch,
+manifest/config/HEAD drift, Cloud recall risk, deadline escape, receipt
+incompleteness, ledger collision/corruption, budget exhaustion, or privacy
+projection leakage. Bounded per-item failures may continue only when the
+approved contract explicitly permits them and the failure maximum is not
+crossed.
+
+## 14. Executable Contracts And Validation
+
+The I2 planning PR changes no I1 executable and does not claim an I2 executable
+contract already exists. A later I2 implementation must register and test a
+contract that verifies the canonical decisions, all 14 use-before gates,
+protected/private evidence, lifecycle closure, budgets, public projection, and
+same-HEAD receipt semantics.
+
+Validation for this governance/planning lifecycle is limited to:
+
+1. approved repository-venv Python identity preflight when Python runs;
+2. `scripts/check_documentation_state.py --check`;
+3. focused documentation, generated-handoff, and governance tests;
+4. tracked JSON parsing;
+5. `git diff --check` and `git diff --cached --check`;
+6. changed-path, privacy/redaction, and forbidden-scope audits;
+7. clean intended tracked/staged state and local/remote branch equality.
+
+Raw full non-E2E, browser/E2E, server, DB, source/iCloud, model/provider/LLM,
+and media validation are not required and are not authorized for this PR.
+
+## 15. Approval And Stop Boundaries
+
+The current PR may be considered only for owner audit of the plan. It cannot
+claim `planning_approved`, `implementation_authorized`, `target_met`,
+`safe_to_merge`, or `route_approved`.
+
+After the final HEAD is frozen, request one Codex review and stop. Do not repair
+findings, request another review, reply to or resolve threads, merge, start I2
+implementation, or begin I3. The required owner checkpoint is:
+
+```text
+SCV2_FL1_I2_PLANNING_GOVERNANCE_PR_READY_FOR_OWNER_AUDIT
+```

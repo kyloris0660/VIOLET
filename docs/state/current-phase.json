@@ -1,82 +1,118 @@
 {
   "schema_version": "violet.current-phase.v2",
-  "phase_id": "SCV2-FL1-I1",
-  "phase_title": "Read-only Inventory",
+  "phase_id": "SCV2-FL1-I2",
+  "phase_title": "Real-source Read-only Inventory Hardening and Canary Readiness",
   "repository": "kyloris0660/VIOLET",
-  "branch": "codex/scv2-fl1-i1-read-only-inventory-v2",
-  "pr_number": 144,
-  "draft": true,
-  "accepted_mainline_base": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5",
+  "branch": "codex/scv2-fl1-i2-real-source-inventory-plan",
+  "pr_number": null,
+  "draft": false,
+  "accepted_mainline_base": "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
   "implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
-  "implementation_evidence_status": "bounded_remediation_replacement_frozen",
-  "current_status": "fl1_i1_bounded_remediation_ready_for_owner_audit",
+  "implementation_evidence_status": "previous_phase_accepted_synthetic_foundation_only",
+  "current_status": "fl1_i2_planning_ready_for_owner_audit",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
-  "route_scope": "SCV2-FL1-I1 reusable read-only inventory safety tooling using only synthetic and newly created temporary fixtures",
-  "planning_approved": true,
-  "approved_planning_head": "db90457d51a39b5dc930afc2a92a6ef3139a2760",
-  "manual_acceptance_status": "pending_i1_bounded_remediation_owner_audit",
-  "bounded_remediation_round": "1_of_1",
+  "route_scope": "SCV2-FL1-I2 governance and planning only; no I2 implementation or real-source execution",
+  "planning_authorized": true,
+  "planning_completed": true,
+  "planning_approved": false,
+  "approved_planning_head": null,
+  "manual_acceptance_status": "pending_fl1_i2_plan_owner_audit",
   "next_phase_started": true,
+  "previous_phase": "SCV2-FL1-I1",
+  "previous_phase_status": "owner_accepted_and_merge_commit_merged",
+  "previous_phase_merge_commit": "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
+  "previous_phase_final_head": "2f8d5f8ce6cde9759c530de71d4ddd1893481656",
+  "previous_phase_final_tree": "8930a21bdbac037702f92bcb75bd9b8a3632a073",
+  "previous_phase_implementation_completed": true,
+  "previous_phase_accepted_scope": "synthetic_and_new_temporary_fixture_foundation_only",
+  "previous_phase_real_inventory_target_met": false,
+  "previous_phase_owner_accepted": true,
+  "previous_phase_safe_to_merge": true,
+  "previous_phase_terminal_review_id": 4897012517,
+  "previous_phase_terminal_review_findings": 17,
+  "previous_phase_terminal_review_p1": 13,
+  "previous_phase_terminal_review_p2": 4,
+  "previous_phase_github_checks": 0,
+  "previous_phase_machine_verifiable_ci": false,
   "upstream_pr_state": {
-    "pr_number": 143,
+    "pr_number": 144,
     "state": "merged",
+    "merged": true,
     "draft": false,
-    "merge_commit": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5",
-    "final_head": "228983f510c975399b53b39dcd7dd170e59b3245",
-    "implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
-    "final_review_id": 4890771735,
-    "final_review_submitted_at": "2026-08-09T07:24:25Z",
-    "owner_closeout_active_unresolved_thread_count": 10,
-    "owner_closeout_outdated_unresolved_thread_count": 7,
+    "merge_commit": "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
+    "merge_topology": "merge_commit",
+    "final_head": "2f8d5f8ce6cde9759c530de71d4ddd1893481656",
+    "final_tree": "8930a21bdbac037702f92bcb75bd9b8a3632a073",
+    "implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
+    "implementation_evidence_tree": "6ff185defb150c3751c7433ef635c00a200c44bf",
+    "terminal_review_id": 4897012517,
+    "terminal_reviewed_head": "2f8d5f8ce6cde9759c530de71d4ddd1893481656",
+    "terminal_review_finding_count": 17,
+    "terminal_review_p1_count": 13,
+    "terminal_review_p2_count": 4,
+    "terminal_review_resolved_count": 0,
+    "terminal_review_outdated_count": 0,
+    "github_checks": 0,
+    "historical_review_threads_preserved": true,
     "owner_accepted": true,
-    "merge_topology": "merge_commit"
+    "owner_decision": "SCV2_FL1_I1_PR144_TERMINAL_OWNER_AUDIT_ACCEPTED_AS_SYNTHETIC_FOUNDATION_WITH_USE_BEFORE_GATES"
   },
   "next_phase_authorization": {
-    "phase_id": "SCV2-FL1-I1",
-    "implementation_route_authorized": true,
-    "next_phase_started": true,
-    "implementation_started": true,
-    "synthetic_fixture_execution_authorized": true,
-    "temporary_fixture_execution_authorized": true,
-    "authorized_read_only_source_code_path_implementation_authorized": true,
+    "phase_id": "SCV2-FL1-I2",
+    "planning_authorized": true,
+    "planning_completed": true,
+    "planning_approved": false,
+    "implementation_authorized": false,
+    "implementation_started": false,
+    "synthetic_fixture_execution_authorized": false,
     "real_inventory_started": false,
     "real_source_inventory_authorized": false,
-    "required_later_preconditions": [
-      "separate owner decision naming exact real source identity and scope",
-      "complete trusted protected-root registry",
-      "approved real-source budgets and Cloud Files policy",
-      "all use-before gates due for real source operations"
+    "i3_canary_started": false,
+    "required_preconditions": [
+      "project owner audits and approves the exact I2 plan",
+      "all fourteen I2 implementation use-before gates are designed and closed using synthetic or adversarial temporary fixtures",
+      "I2 implementation is separately authorized",
+      "I2 implementation merges and stops before any real source operation",
+      "I3 receives separate exact private source scope and budget authorization"
     ]
   },
   "prior_phase_acceptance": {
-    "phase_id": "SCV2-FL1-P1-R1",
+    "phase_id": "SCV2-FL1-I1",
     "status": "owner_accepted_and_merge_commit_merged",
-    "merge_commit": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5",
-    "final_pr_head": "228983f510c975399b53b39dcd7dd170e59b3245",
-    "implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
-    "final_review_id": 4890771735,
-    "final_review_submitted_at": "2026-08-09T07:24:25Z",
-    "owner_adjudication_count": 5,
-    "owner_decision_source": "direct_human_github_pr_body_and_merge_commit",
+    "accepted_scope": "synthetic_and_new_temporary_fixture_foundation_only",
+    "real_inventory_target_met": false,
+    "implementation_completed": true,
+    "owner_accepted": true,
+    "safe_to_merge": true,
+    "merge_commit": "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
+    "final_head": "2f8d5f8ce6cde9759c530de71d4ddd1893481656",
+    "final_tree": "8930a21bdbac037702f92bcb75bd9b8a3632a073",
+    "implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
+    "implementation_evidence_tree": "6ff185defb150c3751c7433ef635c00a200c44bf",
+    "terminal_review_id": 4897012517,
+    "terminal_review_finding_count": 17,
+    "terminal_review_p1_count": 13,
+    "terminal_review_p2_count": 4,
+    "github_checks": 0,
+    "machine_verifiable_ci": false,
     "automated_positive_authority": false
   },
   "planning_boundary": {
-    "planning_only": false,
-    "implementation_authorized": true,
-    "implementation_scope": "SCV2-FL1-I1 reusable scanner, manifest, ledger, gateway, contract, CLI, and synthetic or temporary-fixture validation",
-    "implementation_completed": true,
-    "bounded_remediation_authorized": true,
-    "bounded_remediation_round": "1_of_1",
-    "reviewed_head": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
+    "planning_only": true,
+    "planning_authorized": true,
+    "planning_completed": true,
+    "planning_approved": false,
+    "implementation_authorized": false,
+    "implementation_started": false,
+    "implementation_completed": false,
     "owner_audit_pending": true,
     "owner_acceptance_valid": false,
     "merge_authorized": false,
-    "fl1_i1_route_authorized": true,
-    "fl1_i1_implementation_started": true,
-    "synthetic_ephemeral_test_fixture_authorized": true,
-    "authorized_read_only_source_code_path_implementation_authorized": true,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false,
     "real_inventory_started": false,
     "real_source_inventory_authorized": false,
     "source_root_access_authorized": false,
@@ -93,151 +129,92 @@
     "media_authorized": false,
     "stable_replay_authorized": false,
     "production_authorized": false,
+    "synthetic_ephemeral_test_fixture_authorized": false,
+    "documentation_validation_authorized": true,
     "projected_external_cost_usd": 0
   },
   "completed_checkpoints": [
     {
-      "id": "fl1_plan_owner_approval_and_merge",
-      "result": "accepted_mainline_input",
-      "fingerprint": "9ce1128be643c0eaa998ccdff8890d76196ce7db"
+      "id": "fl1_i1_pr144_terminal_owner_acceptance_and_merge_commit",
+      "result": "accepted_as_synthetic_foundation_with_use_before_gates",
+      "fingerprint": "8955b95e91630d4c5e18e1e2ca252b19754c81d5"
     },
     {
-      "id": "fl1_p1_r1_final_owner_acceptance_and_merge_commit",
-      "result": "owner_accepted_with_five_use_before_adjudications",
-      "fingerprint": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5"
+      "id": "fl1_i1_terminal_review_use_before_classification",
+      "result": "17_findings_preserved_as_two_governance_closures_fourteen_i2_use_before_gates_and_one_claim_boundary",
+      "fingerprint": "2f8d5f8ce6cde9759c530de71d4ddd1893481656"
     },
     {
-      "id": "fl1_i1_remote_sync_preflight",
+      "id": "fl1_i2_full_route_plan",
+      "result": "governance_and_route_planning_complete_pending_owner_audit"
+    },
+    {
+      "id": "fl1_i2_remote_sync_preflight",
       "result": "self_healed_by_fast_forward",
-      "fingerprint": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5"
-    },
-    {
-      "id": "fl1_i1_owner_authorized_implementation_entry",
-      "result": "synthetic_and_temporary_fixture_implementation_in_progress"
-    },
-    {
-      "id": "fl1_i1_implementation_evidence_frozen",
-      "result": "historical_superseded_scanner_gateway_manifest_ledger_contract_cli_transition_tests_and_synthetic_validation",
-      "fingerprint": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
-      "tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
-      "pr_number": 144
-    },
-    {
-      "id": "fl1_i1_pr144_first_review_bounded_remediation_authorized",
-      "result": "owner_authorized_one_of_one_synthetic_trust_recovery_for_18_current_head_findings",
-      "fingerprint": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
-      "review_id": 4891695875,
-      "finding_count": 18
-    },
-    {
-      "id": "fl1_i1_pr144_bounded_remediation_implementation_evidence_frozen",
-      "result": "one_of_one_bounded_remediation_closed_18_current_i1_counterexamples_with_synthetic_and_temporary_fixture_validation",
-      "fingerprint": "6992e7f1e5a45857111d15da1ad0274e49008a99",
-      "tree": "6ff185defb150c3751c7433ef635c00a200c44bf",
-      "review_id": 4891695875,
-      "finding_count": 18
+      "fingerprint": "8955b95e91630d4c5e18e1e2ca252b19754c81d5"
     }
   ],
   "active_blocker": {
-    "code": "pending_i1_bounded_remediation_owner_audit",
-    "scope": "SCV2-FL1-I1 replacement implementation evidence is frozen after the one-of-one bounded remediation; real source inventory and all later FL1 routes remain unauthorized",
-    "resolution": "Request the single terminal post-remediation review, record its exact findings without repair or thread mutation, and stop for final owner audit."
+    "code": "pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope",
+    "scope": "SCV2-FL1-I2 governance and full-route planning only; I2 implementation and all real-source activity remain unauthorized",
+    "resolution": "Project owner audits the I2 plan. Any later I2 implementation requires separate authorization and synthetic-only closure; any I3 real-source canary additionally requires an exact private source identity, protected-root registry, budgets, Cloud no-hydration policy, and stop conditions."
   },
   "owner_decisions": [
     {
-      "id": "owner_accepted_scv2_fl1_p1_r1_pr143_20260809",
-      "decision": "Accept PR #143 at exact final HEAD 228983f510c975399b53b39dcd7dd170e59b3245 and merge it by merge commit a2f48bdba979f579b7cd1cdd9ef541137b2479c5; this direct human decision does not create machine-verifiable owner authority."
+      "id": "owner_accepted_scv2_fl1_i1_pr144_as_synthetic_foundation_20260811",
+      "decision": "SCV2_FL1_I1_PR144_TERMINAL_OWNER_AUDIT_ACCEPTED_AS_SYNTHETIC_FOUNDATION_WITH_USE_BEFORE_GATES. Acceptance is limited to synthetic and newly created temporary fixtures and grants no real inventory, import, database, app-storage, provider, LLM, UI/runtime, Stable Replay, or production authority."
     },
     {
-      "id": "owner_adjudicated_pr143_final_review_five_findings_20260809",
-      "decision": "Carry forward five valid use-before findings: trusted complete protected roots, merge-commit mitigation for post-squash documentation topology, distinct restart invocation provenance, trusted actual runtime Git HEAD binding, and local validation receipts that cannot claim machine-verifiable CI."
+      "id": "owner_authorized_scv2_fl1_i2_governance_and_route_planning_20260811",
+      "decision": "Authorize PR #144 governance closeout, public-safe documentation correction, and a normal open SCV2-FL1-I2 planning PR only. I2 implementation, real source or iCloud access, database/app-storage access, import, classification, AI tagging, localization, provider/LLM/media, Stable Replay, UI/server, and production execution remain unauthorized."
     },
     {
-      "id": "owner_authorized_scv2_fl1_i1_synthetic_implementation_20260809",
-      "decision": "Authorize complete SCV2-FL1-I1 reusable scanner, manifest, ledger, gateway, contract, CLI, and synthetic or newly created temporary-fixture validation; real source or iCloud listing, stat, attribute observation, read, hash, or inventory remains unauthorized."
-    },
-    {
-      "id": "owner_defined_remote_sync_preflight_policy_20260809",
-      "decision": "Fetch trusted remote before comparison; when a safe protected base has no local-only commit and is only behind, fast-forward-only is a self-heal and the same task continues. Divergence, local-only commits, tracked drift, behavior-affecting executable or symlink drift, failed fast-forward, or any need to rewrite or overwrite remains fail closed."
-    },
-    {
-      "id": "owner_authorized_pr144_first_review_bounded_remediation_20260810",
-      "decision": "Review 4891695875 at exact reviewed HEAD b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3 establishes 18 current-I1 trust-recovery findings. Authorize exactly one bounded synthetic and temporary-fixture remediation round; Ready, merge, real source, database, app storage, import, provider or LLM, media pipeline, Stable Replay, UI/runtime, production, and later FL1 phases remain unauthorized.",
-      "review_id": 4891695875,
-      "reviewed_head": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
-      "bounded_remediation_round": "1_of_1",
-      "finding_count": 18,
-      "p1_count": 15,
-      "p2_count": 3,
-      "finding_adjudications": [
-        {"number": 1, "severity": "P1", "code": "trusted_git_executable_bootstrap", "decision": "must_fix_current_i1"},
-        {"number": 2, "severity": "P1", "code": "cloud_attributes_before_final_path_resolution", "decision": "must_fix_current_i1"},
-        {"number": 3, "severity": "P1", "code": "manifest_membership_identity_rederivation", "decision": "must_fix_current_i1"},
-        {"number": 4, "severity": "P1", "code": "attribute_adapter_configuration_binding", "decision": "must_fix_current_i1"},
-        {"number": 5, "severity": "P1", "code": "runner_lock_before_invocation_mutation", "decision": "must_fix_current_i1"},
-        {"number": 6, "severity": "P1", "code": "projection_output_evidence_root_confinement", "decision": "must_fix_current_i1"},
-        {"number": 7, "severity": "P2", "code": "per_directory_listing_target_identity", "decision": "must_fix_current_i1"},
-        {"number": 8, "severity": "P1", "code": "repository_venv_python_trust_anchor", "decision": "must_fix_current_i1"},
-        {"number": 9, "severity": "P1", "code": "reject_pending_owner_registry_before_root_observation", "decision": "must_fix_current_i1"},
-        {"number": 10, "severity": "P1", "code": "per_item_disposition_operation_reconciliation", "decision": "must_fix_current_i1"},
-        {"number": 11, "severity": "P1", "code": "independent_parent_harness_restart_receipt", "decision": "must_fix_current_i1"},
-        {"number": 12, "severity": "P1", "code": "validation_receipt_executes_command", "decision": "must_fix_current_i1"},
-        {"number": 13, "severity": "P2", "code": "bounded_final_snapshot", "decision": "must_fix_current_i1"},
-        {"number": 14, "severity": "P1", "code": "recoverable_manifest_run_checkpoint", "decision": "must_fix_current_i1"},
-        {"number": 15, "severity": "P1", "code": "abandoned_intent_interruption_reconciliation", "decision": "must_fix_current_i1"},
-        {"number": 16, "severity": "P1", "code": "owner_only_private_artifact_permissions", "decision": "must_fix_current_i1"},
-        {"number": 17, "severity": "P2", "code": "bounded_media_header_validation", "decision": "must_fix_current_i1"},
-        {"number": 18, "severity": "P1", "code": "remaining_total_hash_budget_and_failed_read_accounting", "decision": "must_fix_current_i1"}
-      ]
+      "id": "owner_classified_pr144_terminal_review_use_before_findings_20260811",
+      "decision": "Close two documentation-governance findings now, carry fourteen engineering findings as mandatory I2 implementation use-before gates, and retain parent-observed child identity as a local-evidence claim boundary rather than claiming OS, TPM, CI, or tamper-resistant attestation."
     }
   ],
   "authorized_operations": [
-    "implement and validate SCV2-FL1-I1 reusable safety tooling against synthetic and newly created temporary roots only",
-    "create private ledgers and validation artifacts only under repo-local ignored or operating-system local temporary roots",
-    "run repository tests, compilation, documentation checks, Git checks, redaction audits, and cross-process synthetic resume harnesses",
-    "commit and push only the named existing feature branch, update Draft PR #144, and request the one authorized terminal post-remediation Codex review"
+    "update public-safe governance, README, handoff, roadmap, plan, phase-contract projection, test-workflow, and iCloud boundary documentation",
+    "make only minimal documentation-checker and focused regression changes required to express and fail closed on the I2 planning state",
+    "run repository-venv documentation, handoff, governance, JSON, diff, path, privacy, and scope validation",
+    "commit and push only the named planning branch, create one normal open planning PR, and request exactly one final-head Codex review"
   ],
   "forbidden_operations": [
+    "SCV2-FL1-I2 implementation or modification of runtime, scanner, operation gateway, manifest, ledger, contract, database, model, provider, UI, or server code",
     "listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root",
     "existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair",
-    "app-managed storage or staging storage creation or write",
+    "app-managed storage or staging storage creation, access, comparison, or write",
     "import, classification, AI tagging, localization, graph, search, or background worker execution",
     "Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation",
     "provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or network request",
     "Stable Replay import, reuse, replay, or authoritative evidence consumption",
-    "production, watcher, scheduler, background worker, UI runtime server, or later FL1 phase execution",
-    "cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, Draft promotion, or PR #142 mutation"
+    "production, watcher, scheduler, background worker, UI runtime server, I3 canary, I4 inventory, E1, E2, V1, or later phase execution",
+    "cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, PR #144 reply, PR #144 thread resolution, or PR #144 reopening"
+  ],
+  "artifact_lifecycle": [
+    "governance_and_route_planning",
+    "public_safe_documentation",
+    "minimal_documentation_checker_and_regression_changes_only_if_required"
   ],
   "public_state_boundary": "public_safe_governance_only_no_private_proof_payloads_or_paths",
   "protected_evidence": {
-    "accepted_mainline_merge_commit": "a2f48bdba979f579b7cd1cdd9ef541137b2479c5",
-    "fl1_p1_r1_final_head": "228983f510c975399b53b39dcd7dd170e59b3245",
-    "fl1_p1_r1_implementation_evidence_head": "a631160f58e8d5d61998863b5b4d60a549e88151",
-    "fl1_p1_r1_final_review_id": 4890771735,
+    "accepted_mainline_merge_commit": "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
+    "previous_phase_final_head": "2f8d5f8ce6cde9759c530de71d4ddd1893481656",
+    "previous_phase_final_tree": "8930a21bdbac037702f92bcb75bd9b8a3632a073",
+    "previous_phase_implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
+    "previous_phase_implementation_evidence_tree": "6ff185defb150c3751c7433ef635c00a200c44bf",
     "fl1_i1_implementation_evidence_frozen": true,
-    "fl1_i1_implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
-    "fl1_i1_implementation_evidence_tree": "6ff185defb150c3751c7433ef635c00a200c44bf",
-    "fl1_i1_historical_superseded_implementation_evidence_head": "5194a484d0d8fb8dd5e0697cd61054f596aee5ec",
-    "fl1_i1_historical_superseded_implementation_evidence_tree": "9b30ba024beb6fcd58709e707d7879887ad7c081",
-    "fl1_i1_historical_superseded_evidence_status": "superseded_by_pr144_review_4891695875_pending_replacement",
-    "fl1_i1_current_implementation_evidence_pending": false,
-    "pr144_first_review_id": 4891695875,
-    "pr144_first_reviewed_head": "b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3",
-    "pr144_first_review_finding_count": 18,
-    "pr144_first_review_p1_count": 15,
-    "pr144_first_review_p2_count": 3,
-    "bounded_remediation_round": "1_of_1",
-    "i1_focused_validation_result": "56 passed, 3 skipped",
-    "i1_phase_contract_and_p1_regression_result": "675 passed, 5 skipped",
-    "raw_full_non_e2e_result_before_governance_projection": "3853 passed, 17 skipped, 1 failed, 15 warnings",
-    "accepted_main_exact_baseline_result": "same isolated SV1 node failed with missing_original_ai_execution_evidence; handoff factual node passed",
-    "bounded_remediation_synthetic_run_result": "2 distinct child invocations, 8 discovered, 35 operations, unresolved 0, source mutation 0",
-    "bounded_remediation_contract_projection_fingerprint": "f782fbc2d1ea318414ad067ce86ff7ec762d6af54d9b1c470b2b7b22a5d17761",
-    "windows_cloud_attribute_adapter_result": "temporary Windows API file observed known available without reparse offline or recall flags",
+    "previous_phase_terminal_review_id": 4897012517,
+    "previous_phase_terminal_reviewed_head": "2f8d5f8ce6cde9759c530de71d4ddd1893481656",
+    "previous_phase_terminal_review_finding_count": 17,
+    "previous_phase_terminal_review_p1_count": 13,
+    "previous_phase_terminal_review_p2_count": 4,
+    "previous_phase_terminal_review_resolved_count": 0,
+    "previous_phase_terminal_review_outdated_count": 0,
     "validation_receipt_trust_level": "local_operator_receipt",
     "machine_verifiable_ci": false,
     "github_checks_observed": 0,
-    "browser_validation": "not_applicable_no_ui_or_runtime_change",
+    "ci_authority": false,
     "preflight_remote_sync": "self_healed_by_fast_forward",
     "preflight_remote_sync_is_contract_proof": false,
     "real_source_inventory_operation_count": 0,
@@ -245,14 +222,171 @@
     "existing_database_write_operation_count": 0,
     "app_storage_write_operation_count": 0,
     "import_operation_count": 0,
+    "classification_or_tagging_operation_count": 0,
     "provider_operation_count": 0,
     "llm_operation_count": 0,
     "media_or_thumbnail_operation_count": 0,
     "network_operation_count": 0,
     "stable_replay_operation_count": 0,
+    "ui_or_server_operation_count": 0,
     "production_operation_count": 0
   },
-  "next_required_checkpoint": "single_terminal_post_remediation_review_then_final_owner_audit_only_no_real_source_inventory",
+  "terminal_review_findings": [
+    {
+      "number": 1,
+      "thread_id": "PRRT_kwDOSTBMB86X4OUS",
+      "severity": "P1",
+      "title": "Scrub Git control variables before trusted invocations",
+      "path": "scripts/fl1_i1_runtime_context.py",
+      "code": "git_control_environment_sanitization",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 2,
+      "thread_id": "PRRT_kwDOSTBMB86X4OUW",
+      "severity": "P1",
+      "title": "Validate the parent-observed child identity",
+      "path": "scripts/phase_contracts/fl1_i1_contract.py",
+      "code": "parent_observed_child_identity_claim_boundary",
+      "classification": "claim_boundary_local_evidence_not_tamper_resistant_attestation"
+    },
+    {
+      "number": 3,
+      "thread_id": "PRRT_kwDOSTBMB86X4OUa",
+      "severity": "P1",
+      "title": "Recheck recall attributes before final resolution",
+      "path": "scripts/fl1_i1_operation_gateway.py",
+      "code": "cloud_attribute_and_final_open_object_consistency",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 4,
+      "thread_id": "PRRT_kwDOSTBMB86X4OUe",
+      "severity": "P1",
+      "title": "Allow interrupted attempts before corrupt-media closure",
+      "path": "scripts/phase_contracts/fl1_i1_contract.py",
+      "code": "interrupted_attempt_corrupt_media_accounting",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 5,
+      "thread_id": "PRRT_kwDOSTBMB86X4OUk",
+      "severity": "P2",
+      "title": "Enforce the deadline around blocking file operations",
+      "path": "scripts/fl1_i1_operation_gateway.py",
+      "code": "interruptible_blocking_file_operations",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 6,
+      "thread_id": "PRRT_kwDOSTBMB86X4OUq",
+      "severity": "P1",
+      "title": "Bind the receipt to one unchanged HEAD",
+      "path": "scripts/fl1_i1_validation_receipt.py",
+      "code": "validation_receipt_same_head_before_after",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 7,
+      "thread_id": "PRRT_kwDOSTBMB86X4OUy",
+      "severity": "P1",
+      "title": "Re-derive the adapter policy during contract validation",
+      "path": "scripts/phase_contracts/fl1_i1_contract.py",
+      "code": "adapter_policy_rederived_from_trusted_config",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 8,
+      "thread_id": "PRRT_kwDOSTBMB86X4OU1",
+      "severity": "P2",
+      "title": "Stop at the configured failure maximum",
+      "path": "scripts/fl1_i1_inventory.py",
+      "code": "failure_maximum_stop_boundary",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 9,
+      "thread_id": "PRRT_kwDOSTBMB86X4OU5",
+      "severity": "P1",
+      "title": "Pin the frozen remediation commit and tree",
+      "path": "scripts/check_documentation_state.py",
+      "code": "frozen_i1_evidence_commit_tree_binding",
+      "classification": "closed_in_current_governance_pr"
+    },
+    {
+      "number": 10,
+      "thread_id": "PRRT_kwDOSTBMB86X4OVA",
+      "severity": "P1",
+      "title": "Reject CI authority in documentation state",
+      "path": "scripts/check_documentation_state.py",
+      "code": "documentation_ci_authority_fail_closed",
+      "classification": "closed_in_current_governance_pr"
+    },
+    {
+      "number": 11,
+      "thread_id": "PRRT_kwDOSTBMB86X4OVI",
+      "severity": "P1",
+      "title": "Include a change identity in file signatures",
+      "path": "scripts/fl1_i1_inventory.py",
+      "code": "windows_file_identity_and_change_identity",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 12,
+      "thread_id": "PRRT_kwDOSTBMB86X4OVM",
+      "severity": "P1",
+      "title": "Reject hard-linked files that alias protected data",
+      "path": "scripts/fl1_i1_inventory.py",
+      "code": "hard_link_reparse_and_alias_policy",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 13,
+      "thread_id": "PRRT_kwDOSTBMB86X4OVT",
+      "severity": "P1",
+      "title": "Confine private artifact reads as well as writes",
+      "path": "scripts/fl1_i1_operation_gateway.py",
+      "code": "task_owned_nofollow_private_artifact_reads",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 14,
+      "thread_id": "PRRT_kwDOSTBMB86X4OVW",
+      "severity": "P1",
+      "title": "Enumerate directories through a verified no-follow handle",
+      "path": "scripts/fl1_i1_operation_gateway.py",
+      "code": "handle_based_directory_enumeration",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 15,
+      "thread_id": "PRRT_kwDOSTBMB86X4OVa",
+      "severity": "P1",
+      "title": "Reconcile intents from ended failed invocations",
+      "path": "scripts/fl1_i1_inventory.py",
+      "code": "ended_failed_invocation_intent_recovery",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 16,
+      "thread_id": "PRRT_kwDOSTBMB86X4OVe",
+      "severity": "P2",
+      "title": "Validate media structure beyond boundary markers",
+      "path": "scripts/fl1_i1_inventory.py",
+      "code": "bounded_media_structure_validation",
+      "classification": "must_close_before_i2_implementation"
+    },
+    {
+      "number": 17,
+      "thread_id": "PRRT_kwDOSTBMB86X4OVk",
+      "severity": "P2",
+      "title": "Handle runtime-context failures in the scanner CLI",
+      "path": "scripts/fl1_i1_inventory.py",
+      "code": "privacy_safe_cli_runtime_context_error_envelope",
+      "classification": "must_close_before_i2_implementation"
+    }
+  ],
+  "next_required_checkpoint": "project_owner_audit_of_fl1_i2_planning_pr_no_implementation_or_real_source_execution",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -289,63 +423,40 @@
   ],
   "deferred_debt": [
     {
-      "id": "REAL_OPERATION_GATEWAY_GATE",
-      "owner": "future exact real-source operation owner",
-      "reason": "I1 implements and validates the gateway against temporary roots, but no real source scope or complete private protected-root values are authorized in this phase.",
-      "due_before": "any real source listing, stat, attribute observation, read, or hash",
+      "id": "FL1_I2_IMPLEMENTATION_USE_BEFORE_GATE",
+      "owner": "future separately authorized SCV2-FL1-I2 implementation owner",
+      "reason": "Fourteen terminal PR #144 findings affect I2 implementation safety and evidence truth but do not authorize another PR #144 fix loop or implementation in this planning PR.",
+      "due_before": "any SCV2-FL1-I2 implementation begins",
       "requirements": [
-        "resolve the complete protected-root role registry from trusted runtime and repository context",
-        "derive actual Git HEAD from the trusted repository and bind run, source scope, manifest, ledgers, scenario evidence, receipt, and public projection to it",
-        "record write-ahead intent and terminal result for every listing, metadata, attribute, read, and hash operation",
-        "require independently observed invocation and process provenance for any restart or resume claim",
-        "never use synthetic callback evidence as phase-wide gateway proof"
+        "close all fourteen must_close_before_i2_implementation findings with synthetic or adversarial temporary fixtures",
+        "converge Cloud, source-kind, file-identity, and decision policy into one canonical safety boundary",
+        "produce a registered executable I2 contract and complete negative-test matrix",
+        "merge the separately authorized I2 implementation and stop before any real source operation"
       ]
     },
     {
-      "id": "VALIDATION_RECEIPT_GATE",
-      "owner": "future CI or independent validation authority owner",
-      "reason": "Current test evidence is a local operator receipt, not external or CI authority.",
-      "due_before": "any automated or reusable claim that focused or full local test results are protected executable evidence",
+      "id": "FL1_I3_REAL_SOURCE_SCOPE_GATE",
+      "owner": "future separately authorized SCV2-FL1-I3 canary owner",
+      "reason": "No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists.",
+      "due_before": "any real source or iCloud listing, stat, attribute observation, open, read, hash, or structure validation",
       "requirements": [
-        "bind receipt to actual HEAD, exact command, exit code, timestamps, clean relevant worktree, and report or JUnit hash",
-        "keep trust_level equal to local_operator_receipt",
-        "keep machine_verifiable_ci false unless an independent CI authority exists",
-        "reject caller booleans and self-signed summaries as protected PASS authority"
+        "bind exact private source identity and finite scope",
+        "approve complete protected roots and public redaction boundary",
+        "approve enumeration, time, disk, read, hash, failure, and sample budgets",
+        "defer every recall-risk object without hydration and stop on structural identity or evidence drift"
       ]
     },
     {
-      "id": "OWNER_AUTHORITY_GATE",
-      "owner": "future automated-acceptance owner",
-      "reason": "Direct human GitHub decisions remain outside the automated contract.",
-      "due_before": "any automated pipeline treats owner acceptance, merge authorization, or route approval as machine-verifiable positive authority",
+      "id": "PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY",
+      "owner": "future threat-model owner only if malicious same-account process resistance becomes a product requirement",
+      "reason": "Parent-observed child identity is useful local operator evidence but is not OS, kernel, TPM, remote, CI, or tamper-resistant attestation.",
+      "due_before": "any claim upgrades local invocation provenance to adversarial tamper resistance",
       "requirements": [
-        "establish genuinely out-of-band trusted owner authority",
-        "bind identity and decision scope to immutable reviewed Git evidence",
-        "keep caller input unable to create a positive authority decision"
-      ]
-    },
-    {
-      "id": "POSIX_LEDGER_DURABILITY_GATE",
-      "owner": "future non-synthetic POSIX execution owner",
-      "reason": "I1 is read-only and proves process-level atomic ledger behavior, not host power-loss durability for mutation.",
-      "due_before": "any real POSIX mutation, host power-loss durability claim, or mutation ledger use beyond process-level interruption",
-      "requirements": [
-        "sync replaced directory metadata where applicable",
-        "document and test platform-specific durability behavior",
-        "make no host power-loss survival claim before this gate closes"
-      ]
-    },
-    {
-      "id": "STABLE_REPLAY_GATE",
-      "owner": "future Stable Replay owner",
-      "reason": "I1 does not import, consume, or validate Stable Replay packages.",
-      "due_before": "any Stable Replay evidence import, replay, or authoritative reuse",
-      "requirements": [
-        "scan accepted packages for observation_key duplicates across parent records",
-        "use parent-qualified stable observation identity",
-        "stop and report any collision without replaying a database"
+        "keep current claims limited to local operator provenance",
+        "do not present parent receipts as CI or tamper-resistant evidence",
+        "do not expand a personal local inventory tool into forensic attestation without a separate need and design"
       ]
     }
   ],
-  "updated_at": "2026-08-10T20:35:45+08:00"
+  "updated_at": "2026-08-11T20:10:35+08:00"
 }

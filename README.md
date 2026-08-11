@@ -33,10 +33,13 @@ The historical local folder name may still be `AnimeLocalBooru`.
 V.I.O.L.E.T. is a personal/local development project, not a production SaaS.
 The single current-route authority is `docs/state/current-phase.json`; the
 generated `docs/current-handoff.md` provides the short human-readable view.
-Current work is the planning-only `SCV2-FL1` isolated full-library Dev/Test
-route. No implementation, database, source-root, production, provider, LLM,
-media, classification, AI-tagging, graph/search, localization, or truth
-operation is authorized by that planning status.
+PR #144 merged the `SCV2-FL1-I1` inventory foundation, but the owner accepted
+it only for synthetic and newly created temporary fixtures. Current work is the
+`SCV2-FL1-I2` governance and planning route for real-source read-only inventory
+hardening and canary readiness. I2 implementation, real source/iCloud access,
+full-library inventory, database/app-storage access, import, classification,
+AI tagging, provider/LLM/media activity, UI/runtime execution, and production
+remain unauthorized.
 
 Accepted SourceConcept evidence remains deliberately not Entity truth. It is
 not `EntityAlias` truth, confirmed assignment, or `media_tags` truth, and it
@@ -149,10 +152,13 @@ not active onboarding material.
 
 ## Development Focus
 
-Current source-backed work is focused on validating SourceConcept coverage,
-alias linking, redaction, and search symmetry before any SourceConcept editing,
-Entity bridge, promotion, broad provider run, or full-library scale-up. See the
-roadmap and current handoff before starting a new phase.
+Current development focus is the FL1 read-only inventory safety route: converge
+the Cloud/source decision boundary, close the I2 use-before gates with only
+synthetic/adversarial temporary fixtures, and prepare separately authorized I3
+and I4 inventory stages. The accepted SourceConcept work remains a separate
+evidence track; it is not Entity truth and does not authorize source, import,
+provider, or tagging execution. See the roadmap and current handoff before
+starting any implementation or data-bearing phase.
 
 ## Upstream Attribution / License
 

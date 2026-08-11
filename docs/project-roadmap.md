@@ -9,112 +9,132 @@ evidence without treating weak AI or provider signals as user truth.
 
 ## Current Active Roadmap
 
-<!-- CURRENT_PHASE: SCV2-FL1-I1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-I2 -->
 
 The authoritative current state is `docs/state/current-phase.json`.
 
-`SCV2-FL1-I1: Read-only Inventory` is the current phase on branch
-`codex/scv2-fl1-i1-read-only-inventory-v2`. It began from exact accepted main
-`a2f48bdba979f579b7cd1cdd9ef541137b2479c5`, the merge-commit result of
-owner-accepted PR #143. PR #143 final HEAD `228983f…` and implementation
-evidence `a631160…` are preserved as ancestors.
+PR #144 merged at `8955b95e91630d4c5e18e1e2ca252b19754c81d5` after owner
+acceptance of SCV2-FL1-I1 strictly as a synthetic and newly created
+temporary-fixture inventory foundation. The accepted final HEAD/tree are
+`2f8d5f8ce6cde9759c530de71d4ddd1893481656` /
+`8930a21bdbac037702f92bcb75bd9b8a3632a073`; frozen implementation
+evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
+`6ff185defb150c3751c7433ef635c00a200c44bf`.
 
-Final review `4890771735` was owner-adjudicated as five valid use-before
-constraints: trusted complete protected roots, merge-topology-safe evidence,
-distinct restart invocation provenance, trusted actual Git HEAD binding, and
-honest local validation receipts. These constraints are carried into I1; the
-owner decision remains a direct human GitHub fact and is not machine-generated
-authority.
+That acceptance is deliberately narrow. It does not prove a real iCloud or
+source inventory, import, DB/app-storage behavior, classification, AI tagging,
+provider/LLM use, media download, UI/runtime behavior, or production readiness.
+Terminal review `4897012517` recorded 17 unresolved, non-outdated findings at
+the final HEAD (13 P1, 4 P2), and GitHub exposed zero checks. Zero checks is not
+a machine-verifiable CI pass.
 
-The current route authorizes the complete reusable I1 scanner, manifest,
-operation gateway, private ledger, cross-process resume harness, canonical
-public projection, executable contract, CLI, and safety regression suite. All
-source-like operations must target only synthetic or newly created temporary
-fixtures. `authorized_read_only_source` is an implemented code mode, not
-permission to access a real source.
-
-Draft PR #144 review `4891695875` at exact HEAD
-`b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3` produced 18 current-I1 findings
-(15 P1, 3 P2). The former evidence
-`5194a484d0d8fb8dd5e0697cd61054f596aee5ec` (tree
-`9b30ba024beb6fcd58709e707d7879887ad7c081`) is preserved as historical and
-superseded. The owner authorized one and only one bounded synthetic/temp-fixture
-remediation round. That round is frozen at replacement implementation/test
-evidence `6992e7f1e5a45857111d15da1ad0274e49008a99` (tree
-`6ff185defb150c3751c7433ef635c00a200c44bf`); all 18 adjudications have focused
-regression evidence. Real inventory remains unauthorized.
-
-Current state remains:
+Current phase `SCV2-FL1-I2` is governance and route planning only:
 
 ```text
+current_status=fl1_i2_planning_ready_for_owner_audit
+planning_authorized=true
+planning_completed=true
+planning_approved=false
+implementation_authorized=false
+implementation_started=false
 target_met=false
 safe_to_merge=false
 route_approved=false
-current_status=fl1_i1_bounded_remediation_ready_for_owner_audit
-manual_acceptance_status=pending_i1_bounded_remediation_owner_audit
-bounded_remediation_round=1_of_1
-next_phase_started=true
 real_inventory_started=false
 real_source_inventory_authorized=false
+source_root_access_authorized=false
 database_access_authorized=false
 app_storage_write_authorized=false
+import_authorized=false
+classification_or_tagging_execution_authorized=false
 provider_or_llm_authorized=false
+media_or_thumbnail_download_authorized=false
+stable_replay_authorized=false
 production_authorized=false
-active_blocker=pending_i1_bounded_remediation_owner_audit
+projected_external_cost_usd=0
+active_blocker=pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope
 ```
-
-PR #142 is closed, unmerged, and non-authoritative. Its patch is inspected only
-through a bounded archaeology matrix. No PR #142 governance state, P1
-remediation, commit, or wholesale code patch is reused.
 
 ## Accepted Mainline Sequence
 
-1. R1R / PR #132.
-2. SCV2-A1R / PR #133.
-3. SCV2-R2 / PR #134.
-4. SCV2-R2R / PR #135.
-5. SCV2-ML1 / PR #136.
-6. SCV2-ML2 / PR #137.
-7. SCV2-SV1-A / PR #138.
-8. SCV2-SV1B / PR #139.
-9. SCV2-FL1 planning / PR #140.
-10. SCV2-FL1-P1 / PR #141.
-11. SCV2-FL1-P1-R1 / PR #143, owner-accepted and merge-commit merged at
-    `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
+1. R1R through SCV2-SV1B / PRs #132-#139.
+2. SCV2-FL1 planning / PR #140.
+3. SCV2-FL1-P1 / PR #141.
+4. SCV2-FL1-P1-R1 / PR #143.
+5. SCV2-FL1-I1 synthetic foundation / PR #144, owner-accepted and merged at
+   `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 
-## Current FL1 Route
+PR #142 remains closed, unmerged, and non-authoritative.
 
-1. Preserve replacement implementation evidence `6992e7f1...` and its exact
-   validation while retaining `5194a484...` as historical superseded evidence.
-2. Request the one authorized terminal post-remediation review and stop for
-   owner audit without another fix loop.
-3. A later owner decision must name exact source identity, scope, protected
-   roots, budgets, Cloud policy, and stop conditions before any real inventory.
-4. Import, local classification/AI tagging, database/app-storage use, and FL1-E1
-   remain later independent routes.
+## FL1 Route
+
+### I2 - Pre-real hardening
+
+Use only synthetic/adversarial temporary fixtures. Converge canonical source
+and Cloud policy, close the 14 implementation use-before gates, produce an
+executable contract and complete negative suite, then stop after merge pending
+real canary authorization.
+
+### I3 - Bounded real-source inventory canary
+
+Require a separate exact private source scope, protected-root registry,
+budgets, no-hydration policy, and stop conditions. Perform bounded metadata-only
+enumeration, stop for owner audit, then—only if separately authorized—hash and
+structurally validate a small stratified AVAILABLE/HYDRATED sample. Recall-risk
+objects always defer. Source mutation, DB, app-storage, and import remain zero.
+
+### I4 - Full-library read-only inventory
+
+Freeze manifest membership. Enumerate the full scope but hash only safely
+available objects. Report discovered, metadata, hash, and structure-validation
+coverage separately; record recall-risk, unsupported, corrupt, unreadable, and
+missing dispositions explicitly. Delta files join a later run. Produce
+capacity/time/failure/staging evidence, an E1 route decision, and a privacy-safe
+review pack whose result remains provisional until owner audit.
+
+### E1 - Isolated import rehearsal
+
+Use a fresh isolated test DB/storage and staging-first copy/hash verification
+with atomic finalization. Consume only I4 content-verified eligible membership
+and reconcile on stable/content fingerprints, never path or DB row ID. All
+writes require separate authorization; production and accepted evidence stores
+remain read-only.
+
+### E2 - Local classification and AI tagging
+
+Begin only after import closure. Use offline/cache-only models, explicit
+anime/unknown eligibility, separate general/meta and proper-noun evidence, weak
+AI proper-noun authority, disabled translation/provider/LLM routes, and
+independent ledgers, budgets, and recovery.
+
+### V1 - Product and owner validation
+
+Validate search/filter/media-detail/gallery lifecycle, scale, duplicate,
+cloud-deferred, corrupt, and resume scenarios in a controlled real browser,
+plus a manifest-bound owner sample. V1 ends at an owner decision about a
+separate production plan; it cannot imply production import, watcher, or sync.
 
 ## Durable Boundaries
 
-- No real source/iCloud listing, stat, attribute observation, opening, read,
-  hash, hydration, copy, rename, delete, or mutation.
-- No existing or production database/app-storage access or schema change.
-- No import, classification, AI tagging, localization, provider/LLM/media,
-  Stable Replay, SourceConcept graph/search mutation, Entity/truth, server, or
-  production execution.
-- Private paths, filenames, content fingerprints, and keyed-label secrets remain
-  only in ignored/private artifacts and never enter public summaries or PR text.
-- Local test evidence is `local_operator_receipt`; it cannot claim CI or owner
-  authority.
+- No real source/iCloud path may be listed, stated, observed, opened, read, or
+  hashed in I2 planning or implementation.
+- No existing or production DB/app-storage access, import, mutation, replay,
+  provider, LLM, media, model download, server, or production execution.
+- Public artifacts contain no private roots, paths, filenames, contents, or
+  content fingerprints.
+- Local receipts remain `local_operator_receipt`; parent-observed child
+  identity is not tamper-resistant or OS/TPM/CI attestation.
+- I1 terminal threads remain historical: no reply, resolve, reopen, or repair
+  loop is implied by this route.
 
 ## Remote Sync Preflight Policy
 
 Fetch the trusted remote before comparing bases. A safe local base that is only
-behind and has no local-only commit is fast-forwarded with `--ff-only` and the
-task continues. Divergence, unsafe local-only commits, tracked drift,
-behavior-affecting executable/module/config/symlink drift, failed fast-forward,
-or any need to reset, rebase, force, rewrite, overwrite, or delete state remains
-fail closed. Preserve
-unrelated untracked and ignored non-executable user artifacts.
+behind and has no local-only commit may be fast-forwarded with `--ff-only`.
+Divergence, unsafe local-only commits, tracked drift, behavior-affecting
+untracked code/configuration, failed fast-forward, or any need for reset,
+rebase, force, rewrite, overwrite, or deletion remains fail closed. Preserve
+unrelated untracked and ignored user artifacts.
 
 ## Documentation Map
 

@@ -65,7 +65,7 @@ contracts before treating the artifacts as deliverable.
 
 ## Current Active Validation Entry Points
 
-Use these first for current SourceConcept/documentation work:
+Use these first for current FL1 governance and other maintained routes:
 
 | Scope | Entry point |
 |-------|-------------|
@@ -78,7 +78,8 @@ Use these first for current SourceConcept/documentation work:
 | GOV3 executable pipeline contracts | `& "$PY" -m pytest tests/test_phase_contracts.py tests/test_phase45_doc1_documentation_state.py -v`; `& "$PY" scripts/check_phase_contract.py --list-contracts`; run `route_audit_contract_v1` on A1 summary, `public_redaction_contract_v1` on INC1 summary, and `source_concept_full_chain_contract_v1` on passing/failing mock fixtures. No server/browser/import/provider/LLM/DB writes |
 | Historical FULLLIB-P0 production plan | Historical design input only; it is not current authorization and must not be used to enter production or FULLLIB-E1 execution. |
 | Accepted SCV2-FL1 planning closeout | Historical PR #140 documentation proof only; it does not authorize current data or external execution. |
-| Current SCV2-FL1-I1 bounded remediation checkpoint | Review `4891695875` superseded historical evidence `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`; round `1_of_1` closes all 18 current-HEAD findings at frozen replacement evidence `6992e7f1e5a45857111d15da1ad0274e49008a99` (tree `6ff185defb150c3751c7433ef635c00a200c44bf`). Exact validation: I1 focused `56 passed, 3 skipped`; combined I1/contract/P1/governance `675 passed, 5 skipped`; raw non-E2E `3853 passed, 17 skipped, 1 failed, 15 warnings`, with the sole `missing_original_ai_execution_evidence` failure independently reproduced at accepted main `a2f48bd...`. Required evidence includes repo-local Git shim rejection; zero-observation authorization/sandbox rejection; Cloud attributes before final-path access; evidence-root writer confinement; manifest swap tamper rejection; adapter config drift; per-directory and per-item operation closure; live/stale lock and byte-identical collision; kill-after-INTENT recovery; fault-injected checkpoint reconstruction; parent-harness child receipts; bounded final snapshots and growing-file byte accounting; explicit corrupt-media exclusion; POSIX `0600`; and command-executed local receipts with `trust_level=local_operator_receipt`, `machine_verifiable_ci=false`, and no owner authority. Browser remains N/A because no UI/runtime-server behavior changes. No real source/iCloud operation, database/app-storage access, import/classification/AI tagging, provider/LLM/media/network, Stable Replay, graph/search, Entity/truth, server, production, or FL1-E1 execution. |
+| Accepted SCV2-FL1-I1 synthetic foundation | PR #144 merged at `8955b95e91630d4c5e18e1e2ca252b19754c81d5`; final HEAD/tree `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; frozen implementation evidence/tree `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf`. Owner acceptance is synthetic/new-temporary-fixture only. Terminal review `4897012517` recorded 17 findings (13 P1, 4 P2). GitHub checks were 0 and `machine_verifiable_ci=false`; do not report CI PASS or real inventory readiness. |
+| Current SCV2-FL1-I2 governance/planning PR | Repository-venv identity preflight when Python runs; `& "$PY" scripts/check_documentation_state.py --check`; `& "$PY" -m pytest tests/test_current_handoff_freshness.py tests/test_phase45_doc1_documentation_state.py tests/test_pd1a_mainline_governance.py -q`; parse every tracked JSON; `git diff --check`; `git diff --cached --check`; changed-path, privacy/redaction, forbidden-runtime/I1/DB/UI/provider scope, and branch-equality audits. Raw full non-E2E, server, browser/E2E, DB, source/iCloud, model/provider/LLM, and media validation are not required or authorized. |
 | Phase 4.7-S1 dynamic sync product foundation | `& "$PY" -m pytest tests/test_dynamic_library_sync.py tests/test_ai_tagging_localization_gate.py -v`; `npx playwright test tests/e2e/admin-content.spec.ts --project=edge` with a controlled `VIOLET_ENV=test` server; plus required diff/JSON/Python identity checks. No full production import, AI tagging run, LLM batch, provider, SourceConcept, Entity, destructive cleanup, or source/iCloud mutation |
 | Phase 4.7-S2 baseline import / classification / AI tagging / localization | Requires S1 merge, explicit S2 approval, production DB/storage identity, backup/recovery proof, dynamic source root state, dry-run ledger pass, offline model preflight, AI tagging readiness, tag localization readiness, proper-noun safeguard proof, and relevant GOV3 contract checks. Provider/SourceConcept/Entity/R1R/A1R/R2 remain forbidden |
 | S2G-M1 AI tagging execution / manual sync foundation | `& "$PY" scripts/run_s2g_m1_ai_manual_sync_foundation.py --synthetic-samples 2 --validation-focused-tests-passed`; `& "$PY" -m pytest tests/test_ai_tagging_provider_foundation.py tests/test_dynamic_library_sync.py tests/test_phase_contracts.py -v`; `& "$PY" scripts/check_phase_contract.py --contract s2g_manual_sync_foundation_contract_v1 --summary docs/reports/s2g-m1-ai-manual-sync-foundation-summary.json`; `& "$PY" scripts/check_phase_contract.py --contract public_redaction_contract_v1 --summary docs/reports/s2g-m1-ai-manual-sync-foundation-summary.json`; `& "$PY" -m json.tool docs/reports/s2g-m1-ai-manual-sync-foundation-summary.json`; `git diff --check`. No production import/classification/AI/localization writes, no provider/LLM/SourceConcept/Entity work, no source/iCloud/app-storage mutation, no automatic/scheduled sync. Browser validation is not required unless visible UI/frontend behavior changes |
@@ -95,14 +96,14 @@ Entity metadata UI/API validation must reflect the product model: targeted corre
 
 ### Local Test Output Path Safety
 
-Unless the user explicitly authorizes otherwise, CodeX/local agent tests must not use `Z:\`, `\\192.168.71.230\Storage`, or any NAS/network-share path as a test output directory, pytest tmpdir, working directory, staging directory, log directory, or default script output directory.
+Unless the user explicitly authorizes otherwise, CodeX/local agent tests must not use `<network-drive-root>`, `<private-network-share>`, or any NAS/network-share path as a test output directory, pytest tmpdir, working directory, staging directory, log directory, or default script output directory.
 
 Allowed local artifact locations:
 
 - repo-local gitignored directories;
 - local machine temporary directories from `tmp_path`, `tempfile`, or OS local temp.
 
-Do not use fake-looking drive letters or UNC paths to simulate write failures. A path like `Z:\nonexistent_drive\...` may resolve to a real NAS/share on the user's machine. To force write failures, use deterministic local constructs such as an existing directory at the intended output file path, a file where a directory is expected, or another contained local temp conflict.
+Do not use fake-looking drive letters or UNC paths to simulate write failures. A path like `<network-drive-root>\nonexistent_drive\...` may resolve to a real NAS/share on the user's machine. To force write failures, use deterministic local constructs such as an existing directory at the intended output file path, a file where a directory is expected, or another contained local temp conflict.
 
 ### Tier 1 — Unit Tests (no external dependencies)
 
@@ -203,7 +204,7 @@ This is recommended for all test/pilot runs where the CLIP model has already bee
 ### Prerequisites
 
 1. PostgreSQL 17 running on `localhost:5432`
-2. Python 3.12 venv with project dependencies (`$PY = C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`). Run `& "$PY" scripts/check_python_env.py --expected-python "$PY"` before any test/server operation — this is a hard gate.
+2. Python 3.12 venv with project dependencies (`$PY = <repo>\venv\Scripts\python.exe`). Run `& "$PY" scripts/check_python_env.py --expected-python "$PY"` before any test/server operation — this is a hard gate.
 3. Node.js with Playwright installed (`npx playwright install`)
 
 ### Test Database
@@ -245,8 +246,8 @@ VioletTestFixture/
 Validate the fixture (read-only, never modifies files):
 
 ```powershell
-& "$PY" scripts/inspect_test_fixture.py --path "C:\Users\kyloris\Pictures\VioletTestFixture"
-& "$PY" scripts/inspect_test_fixture.py --path "C:\Users\kyloris\Pictures\VioletTestFixture" --json
+& "$PY" scripts/inspect_test_fixture.py --path "<private-test-fixture-root>"
+& "$PY" scripts/inspect_test_fixture.py --path "<private-test-fixture-root>" --json
 ```
 
 ### Test Storage
@@ -254,7 +255,7 @@ Validate the fixture (read-only, never modifies files):
 Test storage should be a dedicated directory separate from production storage:
 
 ```
-VIOLET_STORAGE_ROOT=C:\Users\kyloris\VioletStorage\test
+VIOLET_STORAGE_ROOT=<local-test-storage-root>
 ```
 
 ## Running Tests
@@ -351,7 +352,7 @@ Recommended SCV1 validation shape:
 ### Fixture Validation (Tier 2)
 
 ```powershell
-$env:VIOLET_TEST_FIXTURE_PATH = "C:\Users\kyloris\Pictures\VioletTestFixture"
+$env:VIOLET_TEST_FIXTURE_PATH = "<private-test-fixture-root>"
 & "$PY" -m pytest tests/test_fixture_validation.py -v
 ```
 
@@ -377,7 +378,7 @@ $env:VIOLET_BASE_URL = "http://127.0.0.1:$($env:APP_PORT)"
 
 # 4. Start server in background from the PR branch/worktree
 #    If worktree has no venv, use the main repo Python:
-#    C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe run.py --debug
+#    <repo>\venv\Scripts\python.exe run.py --debug
 cd <worktree-or-branch-path>
 Start-Process -NoNewWindow python -ArgumentList "run.py","--debug"
 # Record the command, APP_PORT, VIOLET_BASE_URL, parent/reloader PID,

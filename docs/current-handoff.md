@@ -4,42 +4,65 @@
 
 ## Current Facts
 
-- Phase: `SCV2-FL1-I1` — Read-only Inventory.
-- Repository / PR: `kyloris0660/VIOLET` / Draft PR #144.
-- Branch: `codex/scv2-fl1-i1-read-only-inventory-v2`.
-- Accepted mainline base: `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
-- Implementation evidence HEAD: `6992e7f1e5a45857111d15da1ad0274e49008a99` (status: `bounded_remediation_replacement_frozen`; frozen: `true`).
-- Status: `fl1_i1_bounded_remediation_ready_for_owner_audit`.
+- Phase: `SCV2-FL1-I2` - Real-source Read-only Inventory Hardening and Canary Readiness.
+- Repository / PR: `kyloris0660/VIOLET` / PR pending creation.
+- Branch: `codex/scv2-fl1-i2-real-source-inventory-plan`.
+- Accepted mainline base: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
+- Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.
+- Previous final HEAD/tree: `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; merge commit: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
+- Previous I1 implementation evidence HEAD/tree: `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf` (frozen: `true`; accepted scope: `synthetic_and_new_temporary_fixture_foundation_only`).
+- Terminal review: `4897012517` at `2f8d5f8ce6cde9759c530de71d4ddd1893481656`; findings: `17` (`P1=13`, `P2=4`); GitHub checks: `0`.
+- Status: `fl1_i2_planning_ready_for_owner_audit`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- `manual_acceptance_status=pending_i1_bounded_remediation_owner_audit`; `next_phase_started=true` (I1 synthetic implementation is authorized; real source inventory is not authorized or started).
-- Approved planning HEAD: `db90457d51a39b5dc930afc2a92a6ef3139a2760`; route scope: `SCV2-FL1-I1 reusable read-only inventory safety tooling using only synthetic and newly created temporary fixtures`.
+- Planning: `authorized=true`, `completed=true`, `approved=false`; `manual_acceptance_status=pending_fl1_i2_plan_owner_audit`.
+- I2 implementation / real-source authorization: `false/false`; route scope: `SCV2-FL1-I2 governance and planning only; no I2 implementation or real-source execution`.
 
 ## Completed Checkpoints
 
-- `fl1_plan_owner_approval_and_merge`: `accepted_mainline_input` — `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
-- `fl1_p1_r1_final_owner_acceptance_and_merge_commit`: `owner_accepted_with_five_use_before_adjudications` — `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
-- `fl1_i1_remote_sync_preflight`: `self_healed_by_fast_forward` — `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
-- `fl1_i1_owner_authorized_implementation_entry`: `synthetic_and_temporary_fixture_implementation_in_progress`.
-- `fl1_i1_implementation_evidence_frozen`: `historical_superseded_scanner_gateway_manifest_ledger_contract_cli_transition_tests_and_synthetic_validation` — `5194a484d0d8fb8dd5e0697cd61054f596aee5ec`.
-- `fl1_i1_pr144_first_review_bounded_remediation_authorized`: `owner_authorized_one_of_one_synthetic_trust_recovery_for_18_current_head_findings` — `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3`.
-- `fl1_i1_pr144_bounded_remediation_implementation_evidence_frozen`: `one_of_one_bounded_remediation_closed_18_current_i1_counterexamples_with_synthetic_and_temporary_fixture_validation` — `6992e7f1e5a45857111d15da1ad0274e49008a99`.
+- `fl1_i1_pr144_terminal_owner_acceptance_and_merge_commit`: `accepted_as_synthetic_foundation_with_use_before_gates` - `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
+- `fl1_i1_terminal_review_use_before_classification`: `17_findings_preserved_as_two_governance_closures_fourteen_i2_use_before_gates_and_one_claim_boundary` - `2f8d5f8ce6cde9759c530de71d4ddd1893481656`.
+- `fl1_i2_full_route_plan`: `governance_and_route_planning_complete_pending_owner_audit`.
+- `fl1_i2_remote_sync_preflight`: `self_healed_by_fast_forward` - `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
+
+## PR #144 Terminal Review Use-Before Classification
+
+All 17 findings remain historical audit records. No PR #144 thread was replied to, resolved, or reopened.
+
+- #1 [P1] Scrub Git control variables before trusted invocations - `git_control_environment_sanitization`; `must_close_before_i2_implementation`.
+- #2 [P1] Validate the parent-observed child identity - `parent_observed_child_identity_claim_boundary`; `claim_boundary_local_evidence_not_tamper_resistant_attestation`.
+- #3 [P1] Recheck recall attributes before final resolution - `cloud_attribute_and_final_open_object_consistency`; `must_close_before_i2_implementation`.
+- #4 [P1] Allow interrupted attempts before corrupt-media closure - `interrupted_attempt_corrupt_media_accounting`; `must_close_before_i2_implementation`.
+- #5 [P2] Enforce the deadline around blocking file operations - `interruptible_blocking_file_operations`; `must_close_before_i2_implementation`.
+- #6 [P1] Bind the receipt to one unchanged HEAD - `validation_receipt_same_head_before_after`; `must_close_before_i2_implementation`.
+- #7 [P1] Re-derive the adapter policy during contract validation - `adapter_policy_rederived_from_trusted_config`; `must_close_before_i2_implementation`.
+- #8 [P2] Stop at the configured failure maximum - `failure_maximum_stop_boundary`; `must_close_before_i2_implementation`.
+- #9 [P1] Pin the frozen remediation commit and tree - `frozen_i1_evidence_commit_tree_binding`; `closed_in_current_governance_pr`.
+- #10 [P1] Reject CI authority in documentation state - `documentation_ci_authority_fail_closed`; `closed_in_current_governance_pr`.
+- #11 [P1] Include a change identity in file signatures - `windows_file_identity_and_change_identity`; `must_close_before_i2_implementation`.
+- #12 [P1] Reject hard-linked files that alias protected data - `hard_link_reparse_and_alias_policy`; `must_close_before_i2_implementation`.
+- #13 [P1] Confine private artifact reads as well as writes - `task_owned_nofollow_private_artifact_reads`; `must_close_before_i2_implementation`.
+- #14 [P1] Enumerate directories through a verified no-follow handle - `handle_based_directory_enumeration`; `must_close_before_i2_implementation`.
+- #15 [P1] Reconcile intents from ended failed invocations - `ended_failed_invocation_intent_recovery`; `must_close_before_i2_implementation`.
+- #16 [P2] Validate media structure beyond boundary markers - `bounded_media_structure_validation`; `must_close_before_i2_implementation`.
+- #17 [P2] Handle runtime-context failures in the scanner CLI - `privacy_safe_cli_runtime_context_error_envelope`; `must_close_before_i2_implementation`.
 
 ## Current Gate And Boundary
 
-- Gate: `pending_i1_bounded_remediation_owner_audit` (SCV2-FL1-I1 replacement implementation evidence is frozen after the one-of-one bounded remediation; real source inventory and all later FL1 routes remain unauthorized).
-- Resolution: Request the single terminal post-remediation review, record its exact findings without repair or thread mutation, and stop for final owner audit.
-- Planning only: `false`; implementation/data/production authorization: `true/false/false`.
+- Gate: `pending_fl1_i2_plan_owner_audit_and_exact_real_source_scope` (SCV2-FL1-I2 governance and full-route planning only; I2 implementation and all real-source activity remain unauthorized).
+- Resolution: Project owner audits the I2 plan. Any later I2 implementation requires separate authorization and synthetic-only closure; any I3 real-source canary additionally requires an exact private source identity, protected-root registry, budgets, Cloud no-hydration policy, and stop conditions.
+- Planning only: `true`; implementation/data/production authorization: `false/false/false`.
 - Existing database/real inventory/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `$0`.
-- Public state boundary: `public_safe_governance_only_no_private_proof_payloads_or_paths`. Preflight sync and phase non-actions are operator classifications only; executable I1 claims must be rebuilt from trusted private artifacts and grant no owner, merge, route, or real-source authority.
+- Public evidence boundary: `trust_level=local_operator_receipt`, `machine_verifiable_ci=false`, `github_checks=0`.
+- Parent-observed child identity remains local provenance, not OS/kernel/TPM/remote/CI or tamper-resistant attestation.
 
 ## Allowed / Forbidden
 
-- Allowed: implement and validate SCV2-FL1-I1 reusable safety tooling against synthetic and newly created temporary roots only; create private ledgers and validation artifacts only under repo-local ignored or operating-system local temporary roots; run repository tests, compilation, documentation checks, Git checks, redaction audits, and cross-process synthetic resume harnesses; commit and push only the named existing feature branch, update Draft PR #144, and request the one authorized terminal post-remediation Codex review.
-- Forbidden: listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root; existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; app-managed storage or staging storage creation or write; import, classification, AI tagging, localization, graph, search, or background worker execution; Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation; provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or network request; Stable Replay import, reuse, replay, or authoritative evidence consumption; production, watcher, scheduler, background worker, UI runtime server, or later FL1 phase execution; cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, Draft promotion, or PR #142 mutation.
+- Allowed: update public-safe governance, README, handoff, roadmap, plan, phase-contract projection, test-workflow, and iCloud boundary documentation; make only minimal documentation-checker and focused regression changes required to express and fail closed on the I2 planning state; run repository-venv documentation, handoff, governance, JSON, diff, path, privacy, and scope validation; commit and push only the named planning branch, create one normal open planning PR, and request exactly one final-head Codex review.
+- Forbidden: SCV2-FL1-I2 implementation or modification of runtime, scanner, operation gateway, manifest, ledger, contract, database, model, provider, UI, or server code; listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root; existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; app-managed storage or staging storage creation, access, comparison, or write; import, classification, AI tagging, localization, graph, search, or background worker execution; Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation; provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or network request; Stable Replay import, reuse, replay, or authoritative evidence consumption; production, watcher, scheduler, background worker, UI runtime server, I3 canary, I4 inventory, E1, E2, V1, or later phase execution; cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, PR #144 reply, PR #144 thread resolution, or PR #144 reopening.
 
 ## Next Action
 
-- Required checkpoint: `single_terminal_post_remediation_review_then_final_owner_audit_only_no_real_source_inventory`.
+- Required checkpoint: `project_owner_audit_of_fl1_i2_planning_pr_no_implementation_or_real_source_execution`.
 
 ## Durable Links
 
@@ -54,9 +77,7 @@
 
 ## Deferred Debt
 
-- `REAL_OPERATION_GATEWAY_GATE` — owner: future exact real-source operation owner; due before: `any real source listing, stat, attribute observation, read, or hash`; I1 implements and validates the gateway against temporary roots, but no real source scope or complete private protected-root values are authorized in this phase. Requirements: resolve the complete protected-root role registry from trusted runtime and repository context; derive actual Git HEAD from the trusted repository and bind run, source scope, manifest, ledgers, scenario evidence, receipt, and public projection to it; record write-ahead intent and terminal result for every listing, metadata, attribute, read, and hash operation; require independently observed invocation and process provenance for any restart or resume claim; never use synthetic callback evidence as phase-wide gateway proof.
-- `VALIDATION_RECEIPT_GATE` — owner: future CI or independent validation authority owner; due before: `any automated or reusable claim that focused or full local test results are protected executable evidence`; Current test evidence is a local operator receipt, not external or CI authority. Requirements: bind receipt to actual HEAD, exact command, exit code, timestamps, clean relevant worktree, and report or JUnit hash; keep trust_level equal to local_operator_receipt; keep machine_verifiable_ci false unless an independent CI authority exists; reject caller booleans and self-signed summaries as protected PASS authority.
-- `OWNER_AUTHORITY_GATE` — owner: future automated-acceptance owner; due before: `any automated pipeline treats owner acceptance, merge authorization, or route approval as machine-verifiable positive authority`; Direct human GitHub decisions remain outside the automated contract. Requirements: establish genuinely out-of-band trusted owner authority; bind identity and decision scope to immutable reviewed Git evidence; keep caller input unable to create a positive authority decision.
-- `POSIX_LEDGER_DURABILITY_GATE` — owner: future non-synthetic POSIX execution owner; due before: `any real POSIX mutation, host power-loss durability claim, or mutation ledger use beyond process-level interruption`; I1 is read-only and proves process-level atomic ledger behavior, not host power-loss durability for mutation. Requirements: sync replaced directory metadata where applicable; document and test platform-specific durability behavior; make no host power-loss survival claim before this gate closes.
-- `STABLE_REPLAY_GATE` — owner: future Stable Replay owner; due before: `any Stable Replay evidence import, replay, or authoritative reuse`; I1 does not import, consume, or validate Stable Replay packages. Requirements: scan accepted packages for observation_key duplicates across parent records; use parent-qualified stable observation identity; stop and report any collision without replaying a database.
-Updated: `2026-08-10T20:35:45+08:00`.
+- `FL1_I2_IMPLEMENTATION_USE_BEFORE_GATE` - owner: future separately authorized SCV2-FL1-I2 implementation owner; due before: `any SCV2-FL1-I2 implementation begins`; Fourteen terminal PR #144 findings affect I2 implementation safety and evidence truth but do not authorize another PR #144 fix loop or implementation in this planning PR. Requirements: close all fourteen must_close_before_i2_implementation findings with synthetic or adversarial temporary fixtures; converge Cloud, source-kind, file-identity, and decision policy into one canonical safety boundary; produce a registered executable I2 contract and complete negative-test matrix; merge the separately authorized I2 implementation and stop before any real source operation.
+- `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized SCV2-FL1-I3 canary owner; due before: `any real source or iCloud listing, stat, attribute observation, open, read, hash, or structure validation`; No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists. Requirements: bind exact private source identity and finite scope; approve complete protected roots and public redaction boundary; approve enumeration, time, disk, read, hash, failure, and sample budgets; defer every recall-risk object without hydration and stop on structural identity or evidence drift.
+- `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future threat-model owner only if malicious same-account process resistance becomes a product requirement; due before: `any claim upgrades local invocation provenance to adversarial tamper resistance`; Parent-observed child identity is useful local operator evidence but is not OS, kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep current claims limited to local operator provenance; do not present parent receipts as CI or tamper-resistant evidence; do not expand a personal local inventory tool into forensic attestation without a separate need and design.
+Updated: `2026-08-11T20:10:35+08:00`.
