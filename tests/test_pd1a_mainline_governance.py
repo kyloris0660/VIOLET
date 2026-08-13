@@ -49,11 +49,13 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
     state = json.loads(_read("docs/state/current-phase.json"))
     assert state["current_status"] in text
     assert "route_approved=false" in text
+    assert "planning_approved=true" in text
+    assert "safe_to_merge=true" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
-    assert "pending_fl1_i2_plan_owner_audit" in text
+    assert "pending_pr145_expected_head_merge" in text
     assert "FL1_I3_REAL_SOURCE_SCOPE_GATE" in text
-    assert "governance-only projection commit" in text
+    assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in text
     assert "data-plane network operations remain zero" in text
 
 

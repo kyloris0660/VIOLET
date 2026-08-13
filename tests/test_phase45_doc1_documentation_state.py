@@ -41,13 +41,13 @@ def test_fl1_i2_state_stops_before_implementation_and_real_inventory() -> None:
     validate_roadmaps(state)
     assert state["phase_id"] == "SCV2-FL1-I2"
     assert state["current_status"] == (
-        "fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit"
+        "fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge"
     )
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
-    assert state["planning_approved"] is False
+    assert state["planning_approved"] is True
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is False
+    assert state["safe_to_merge"] is True
     assert state["route_approved"] is False
     assert state["planning_boundary"]["implementation_authorized"] is False
     assert state["planning_boundary"]["real_inventory_started"] is False
@@ -58,13 +58,13 @@ def test_fl1_i2_state_stops_before_implementation_and_real_inventory() -> None:
     ("field", "value"),
     [
         ("target_met", True),
-        ("safe_to_merge", True),
+        ("safe_to_merge", False),
         ("route_approved", True),
-        ("planning_approved", True),
-        ("manual_acceptance_status", "owner_accepted_fl1_i2"),
+        ("planning_approved", False),
+        ("manual_acceptance_status", "pending_fl1_i2_plan_owner_reaudit"),
     ],
 )
-def test_unapproved_positive_claim_fails_closed(field: str, value: object) -> None:
+def test_owner_accepted_state_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(load_state())
     state[field] = value
     with pytest.raises(DocumentationStateError):
@@ -113,7 +113,8 @@ def test_current_contract_names_review_gates_and_claim_boundary() -> None:
     assert "machine_verifiable_ci=false" in contract
     assert "must_close_during_i2_before_i2_completion_merge_or_i3" in contract
     assert "same verified, no-follow, identity-bound directory handle" in contract
-    assert "governance-only projection commit" in contract
+    assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in contract
+    assert "4907783329" in contract
     for gate in (
         "REAL_OPERATION_GATEWAY_GATE",
         "VALIDATION_RECEIPT_GATE",

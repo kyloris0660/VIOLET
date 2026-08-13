@@ -30,20 +30,22 @@ is planning-only on branch
 source is `docs/state/current-phase.json`.
 
 ```text
-status=fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit
+status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge
 planning_authorized=true
 planning_completed=true
-planning_approved=false
-merge_authorized=false
+planning_approved=true
+approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf
+approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
+merge_authorized=true
 implementation_authorized=false
 implementation_started=false
 target_met=false
-safe_to_merge=false
+safe_to_merge=true
 route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_plan_owner_audit
+active_blocker=pending_pr145_expected_head_merge
 ```
 
 PR #144 terminal review `4897012517` covered exact final HEAD
@@ -92,12 +94,15 @@ real-source canary. Exact private source identity, protected roots, budgets,
 no-hydration policy, and stop conditions belong only to I3 and do not gate the
 start of authorized synthetic I2 work.
 
-After this corrected planning evidence is re-audited, acceptance still requires
-a separately authorized governance-only projection commit. That commit must
-bind the exact accepted planning commit/tree, record the owner decision, set
-planning approval and merge authority while keeping implementation and
-real-source authority false, and change no accepted plan content. Only then may
-an expected-head merge occur.
+The owner accepted exact planning HEAD/tree
+`acb12c1db258fdef1d4f063b053d422e0d887abf` /
+`fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
+Its P1 thread `PRRT_kwDOSTBMB86YRuq7` is classified
+`closed_in_owner_acceptance_projection_exact_binding_contract`: the checker
+re-derives the tree, requires ancestry, and permits only the governance
+projection allowlist after the accepted plan. The only current blocker is the
+authorized PR #145 expected-head merge. Implementation and all real-source or
+data authority remain false.
 
 ## Delivery Sequence
 

@@ -31,7 +31,7 @@ def _copy_docs_root(tmp_path: Path) -> Path:
     return copied
 
 
-def test_current_phase_schema_and_i2_planning_boundary_are_exact() -> None:
+def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> None:
     state = _state()
 
     documentation_state.validate_state(state)
@@ -43,12 +43,17 @@ def test_current_phase_schema_and_i2_planning_boundary_are_exact() -> None:
     assert state["current_status"] == documentation_state.FL1_I2_STATUS
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
-    assert state["planning_approved"] is False
+    assert state["planning_approved"] is True
+    assert state["approved_planning_head"] == documentation_state.FL1_I2_APPROVED_PLANNING_HEAD
+    assert state["approved_planning_tree"] == documentation_state.FL1_I2_APPROVED_PLANNING_TREE
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is False
+    assert state["safe_to_merge"] is True
     assert state["route_approved"] is False
     boundary = state["planning_boundary"]
     assert boundary["planning_only"] is True
+    assert boundary["owner_audit_pending"] is False
+    assert boundary["owner_acceptance_valid"] is True
+    assert boundary["merge_authorized"] is True
     assert boundary["implementation_authorized"] is False
     assert boundary["implementation_started"] is False
     assert boundary["real_inventory_started"] is False
@@ -115,6 +120,124 @@ def test_live_git_objects_bind_frozen_i1_commit_and_tree_evidence() -> None:
     )
     assert result.returncode == 0
     assert result.stdout.strip() == expected_tree
+
+
+def test_live_git_objects_bind_exact_owner_approved_i2_plan_and_tree() -> None:
+    state = _state()
+    documentation_state.validate_git_ancestry(state)
+    result = documentation_state._run_trusted_git(
+        ["rev-parse", f"{documentation_state.FL1_I2_APPROVED_PLANNING_HEAD}^{{tree}}"]
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == documentation_state.FL1_I2_APPROVED_PLANNING_TREE
+
+
+@pytest.mark.parametrize("approved_head", [None, "f" * 40])
+def test_missing_or_wrong_approved_planning_head_fails_closed(
+    approved_head: str | None,
+) -> None:
+    state = copy.deepcopy(_state())
+    state["approved_planning_head"] = approved_head
+    with pytest.raises(documentation_state.DocumentationStateError):
+        documentation_state.validate_state(state)
+
+
+def test_wrong_approved_planning_tree_fails_closed() -> None:
+    state = copy.deepcopy(_state())
+    state["approved_planning_tree"] = "f" * 40
+    with pytest.raises(documentation_state.DocumentationStateError):
+        documentation_state.validate_state(state)
+
+
+def test_approved_planning_tree_git_mismatch_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = documentation_state._run_trusted_git
+
+    def mismatch(arguments: list[str], *, root: Path = ROOT):
+        if arguments == [
+            "rev-parse",
+            f"{documentation_state.FL1_I2_APPROVED_PLANNING_HEAD}^{{tree}}",
+        ]:
+            return documentation_state.subprocess.CompletedProcess(
+                arguments, 0, stdout="f" * 40 + "\n", stderr=""
+            )
+        return original(arguments, root=root)
+
+    monkeypatch.setattr(documentation_state, "_run_trusted_git", mismatch)
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_approved_planning_tree_mismatch",
+    ):
+        documentation_state.validate_git_ancestry(_state())
+
+
+def test_approved_planning_commit_must_be_head_ancestor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = documentation_state._run_trusted_git
+
+    def nonancestor(arguments: list[str], *, root: Path = ROOT):
+        if arguments == [
+            "merge-base",
+            "--is-ancestor",
+            documentation_state.FL1_I2_APPROVED_PLANNING_HEAD,
+            "HEAD",
+        ]:
+            return documentation_state.subprocess.CompletedProcess(
+                arguments, 1, stdout="", stderr=""
+            )
+        return original(arguments, root=root)
+
+    monkeypatch.setattr(documentation_state, "_run_trusted_git", nonancestor)
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_approved_planning_not_ancestor",
+    ):
+        documentation_state.validate_git_ancestry(_state())
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md",
+        "backend/app/utils/cloud_files.py",
+        "scripts/fl1_i1_inventory.py",
+    ],
+)
+def test_projection_change_to_plan_or_runtime_path_fails_closed(path: str) -> None:
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_governance_projection_path_invalid",
+    ):
+        documentation_state._validate_fl1_i2_projection_paths([path])
+
+
+def test_governance_only_carry_forward_paths_pass() -> None:
+    documentation_state._validate_fl1_i2_projection_paths(
+        documentation_state.FL1_I2_PROJECTION_ALLOWLIST
+    )
+
+
+def test_owner_acceptance_carry_forward_uses_ancestry_not_head_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = documentation_state._run_trusted_git
+    calls: list[tuple[str, ...]] = []
+
+    def record(arguments: list[str], *, root: Path = ROOT):
+        calls.append(tuple(arguments))
+        return original(arguments, root=root)
+
+    monkeypatch.setattr(documentation_state, "_run_trusted_git", record)
+    documentation_state.validate_git_ancestry(_state())
+    assert (
+        "merge-base",
+        "--is-ancestor",
+        documentation_state.FL1_I2_APPROVED_PLANNING_HEAD,
+        "HEAD",
+    ) in calls
+    assert not any(any(argument.startswith("HEAD^") for argument in call) for call in calls)
 
 
 def test_windows_git_candidates_use_os_roots_not_python_drive(
@@ -378,9 +501,9 @@ def test_terminal_review_use_before_register_is_complete() -> None:
 
 def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
     state = _state()
-    assert state["active_blocker"]["code"] == "pending_fl1_i2_plan_owner_audit"
+    assert state["active_blocker"]["code"] == "pending_pr145_expected_head_merge"
     preconditions = state["next_phase_authorization"]["required_preconditions"]
-    assert preconditions[0].startswith("project owner audits and approves")
+    assert preconditions[0].startswith("PR #145 is merged")
     assert preconditions[1] == "I2 implementation is separately authorized"
     assert "synthetic or adversarial newly created temporary fixtures" in preconditions[2]
     assert "all fourteen I2 delivery gates close" in preconditions[3]
@@ -453,14 +576,16 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
     ("field", "value"),
     [
         ("current_status", "fl1_i2_implementation_in_progress"),
-        ("planning_approved", True),
+        ("planning_approved", False),
         ("target_met", True),
-        ("safe_to_merge", True),
+        ("safe_to_merge", False),
         ("route_approved", True),
-        ("manual_acceptance_status", "owner_accepted"),
+        ("manual_acceptance_status", "pending_fl1_i2_plan_owner_reaudit"),
     ],
 )
-def test_i2_positive_status_claims_fail_closed(field: str, value: object) -> None:
+def test_i2_owner_accepted_status_mutations_fail_closed(
+    field: str, value: object
+) -> None:
     state = copy.deepcopy(_state())
     state[field] = value
     with pytest.raises(
@@ -475,16 +600,21 @@ def test_i2_positive_status_claims_fail_closed(field: str, value: object) -> Non
     [
         "implementation_authorized",
         "implementation_started",
-        "owner_acceptance_valid",
-        "merge_authorized",
+        "implementation_completed",
+        "synthetic_ephemeral_test_fixture_authorized",
         "real_inventory_started",
         "real_source_inventory_authorized",
         "source_root_access_authorized",
+        "data_execution_authorized",
         "database_access_authorized",
+        "database_data_execution_authorized",
         "app_storage_write_authorized",
         "import_authorized",
         "classification_or_tagging_execution_authorized",
         "provider_or_llm_authorized",
+        "provider_authorized",
+        "llm_authorized",
+        "media_or_thumbnail_download_authorized",
         "media_authorized",
         "stable_replay_authorized",
         "production_authorized",
@@ -496,6 +626,35 @@ def test_i2_execution_authority_fails_closed(field: str) -> None:
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="fl1_i2_boundary_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_positive_merge_authority_without_exact_owner_binding_fails_closed() -> None:
+    state = copy.deepcopy(_state())
+    state["owner_decisions"] = [
+        decision
+        for decision in state["owner_decisions"]
+        if decision["id"] != documentation_state.FL1_I2_OWNER_DECISION_ID
+    ]
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_owner_acceptance_binding_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_exact_owner_acceptance_binding_is_immutable() -> None:
+    state = copy.deepcopy(_state())
+    decision = next(
+        decision
+        for decision in state["owner_decisions"]
+        if decision["id"] == documentation_state.FL1_I2_OWNER_DECISION_ID
+    )
+    decision["review_id"] = 0
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_owner_acceptance_binding_invalid",
     ):
         documentation_state.validate_state(state)
 

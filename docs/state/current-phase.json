@@ -9,16 +9,17 @@
   "accepted_mainline_base": "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
   "implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",
   "implementation_evidence_status": "previous_phase_accepted_synthetic_foundation_only",
-  "current_status": "fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit",
+  "current_status": "fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge",
   "target_met": false,
-  "safe_to_merge": false,
+  "safe_to_merge": true,
   "route_approved": false,
   "route_scope": "SCV2-FL1-I2 governance and planning only; no I2 implementation or real-source execution",
   "planning_authorized": true,
   "planning_completed": true,
-  "planning_approved": false,
-  "approved_planning_head": null,
-  "manual_acceptance_status": "pending_fl1_i2_plan_owner_reaudit",
+  "planning_approved": true,
+  "approved_planning_head": "acb12c1db258fdef1d4f063b053d422e0d887abf",
+  "approved_planning_tree": "fc573c7646ad5edf10c32c7712de7f27ab058a2a",
+  "manual_acceptance_status": "owner_accepted_exact_fl1_i2_plan",
   "next_phase_started": true,
   "previous_phase": "SCV2-FL1-I1",
   "previous_phase_status": "owner_accepted_and_merge_commit_merged",
@@ -63,7 +64,7 @@
     "phase_id": "SCV2-FL1-I2",
     "planning_authorized": true,
     "planning_completed": true,
-    "planning_approved": false,
+    "planning_approved": true,
     "implementation_authorized": false,
     "implementation_started": false,
     "synthetic_fixture_execution_authorized": false,
@@ -71,7 +72,7 @@
     "real_source_inventory_authorized": false,
     "i3_canary_started": false,
     "required_preconditions": [
-      "project owner audits and approves the exact corrected I2 planning evidence commit and tree",
+      "PR #145 is merged at the owner-authorized expected governance projection HEAD before any I2 implementation",
       "I2 implementation is separately authorized",
       "I2 implementation is restricted to synthetic or adversarial newly created temporary fixtures while real source, iCloud, database, app storage, import, provider, model, media, and production authority remain false",
       "all fourteen I2 delivery gates close before implementation_completed, target_met, safe_to_merge, merge, or I3",
@@ -104,15 +105,15 @@
     "planning_only": true,
     "planning_authorized": true,
     "planning_completed": true,
-    "planning_approved": false,
+    "planning_approved": true,
     "implementation_authorized": false,
     "implementation_started": false,
     "implementation_completed": false,
-    "owner_audit_pending": true,
-    "owner_acceptance_valid": false,
-    "merge_authorized": false,
+    "owner_audit_pending": false,
+    "owner_acceptance_valid": true,
+    "merge_authorized": true,
     "target_met": false,
-    "safe_to_merge": false,
+    "safe_to_merge": true,
     "route_approved": false,
     "real_inventory_started": false,
     "real_source_inventory_authorized": false,
@@ -147,18 +148,23 @@
     },
     {
       "id": "fl1_i2_full_route_plan",
-      "result": "governance_and_route_planning_complete_pending_owner_audit"
+      "result": "governance_and_route_planning_complete_owner_accepted_exact_evidence"
     },
     {
       "id": "fl1_i2_remote_sync_preflight",
       "result": "self_healed_by_fast_forward",
       "fingerprint": "8955b95e91630d4c5e18e1e2ca252b19754c81d5"
+    },
+    {
+      "id": "fl1_i2_exact_plan_owner_acceptance",
+      "result": "owner_accepted_exact_planning_head_tree_pending_expected_head_merge",
+      "fingerprint": "acb12c1db258fdef1d4f063b053d422e0d887abf"
     }
   ],
   "active_blocker": {
-    "code": "pending_fl1_i2_plan_owner_audit",
+    "code": "pending_pr145_expected_head_merge",
     "scope": "SCV2-FL1-I2 governance and full-route planning only; I2 implementation and all real-source activity remain unauthorized",
-    "resolution": "Project owner re-audits the corrected exact I2 planning evidence commit/tree. If accepted, a separately authorized governance-only projection commit binds that exact evidence, records the owner decision, sets planning approved, safe to merge, and merge authorized, keeps implementation and real-source authority false, and does not alter the accepted plan. Expected-head merge may follow only after that projection. Separate I2 implementation authorization then permits synthetic-only work to close all fourteen delivery gates before I2 completion, target, merge, or I3. Only after I2 owner audit and merge may a separate FL1_I3_REAL_SOURCE_SCOPE_GATE authorize a bounded canary."
+    "resolution": "Merge PR #145 once with merge-commit topology only when its remote HEAD equals the validated governance projection HEAD and no new current blocking review exists. The merge discharges this blocker without authorizing I2 implementation. A later separate I2 implementation authorization may permit synthetic-only work to close all fourteen delivery gates before I2 completion, target, merge, or I3. Only after I2 owner audit and merge may a separate FL1_I3_REAL_SOURCE_SCOPE_GATE authorize a bounded canary."
   },
   "owner_decisions": [
     {
@@ -176,14 +182,29 @@
     {
       "id": "owner_required_scv2_fl1_i2_bounded_planning_correction_20260811",
       "decision": "SCV2_FL1_I2_PLANNING_OWNER_AUDIT_REQUIRES_BOUNDED_CORRECTION. The fourteen engineering findings are I2 implementation deliverables due before I2 completion, target, merge, or I3, not outcomes required before separately authorized synthetic-only implementation begins. Corrected exact planning evidence requires owner re-audit and a later separate governance-only acceptance projection before merge."
+    },
+    {
+      "id": "owner_accepted_scv2_fl1_i2_pr145_exact_planning_evidence_20260813",
+      "decision": "SCV2_FL1_I2_PR145_OWNER_ACCEPTED_EXACT_PLANNING_EVIDENCE_AND_AUTHORIZED_GOVERNANCE_PROJECTION_EXPECTED_HEAD_MERGE",
+      "pr_number": 145,
+      "accepted_planning_head": "acb12c1db258fdef1d4f063b053d422e0d887abf",
+      "accepted_planning_tree": "fc573c7646ad5edf10c32c7712de7f27ab058a2a",
+      "review_id": 4907783329,
+      "thread_id": "PRRT_kwDOSTBMB86YRuq7",
+      "comment_id": 3759240785,
+      "finding_severity": "P1",
+      "finding_disposition": "closed_in_owner_acceptance_projection_exact_binding_contract",
+      "implementation_authorized": false,
+      "real_source_inventory_authorized": false
     }
   ],
   "authorized_operations": [
-    "update public-safe governance, README, handoff, roadmap, plan, phase-contract projection, test-workflow, and iCloud boundary documentation",
-    "make only minimal documentation-checker and focused regression changes required to express and fail closed on the I2 planning state",
+    "apply one governance-only owner-acceptance projection within the exact PR #145 path allowlist without changing the accepted plan or runtime/I1 code",
+    "make only minimal documentation-checker and focused governance regression changes required to bind the exact accepted planning evidence and carry-forward topology",
     "run repository-venv documentation, handoff, governance, JSON, diff, path, privacy, and scope validation",
-    "commit and push only the existing named planning branch, update existing PR #145, and request exactly one corrected-final-head replacement Codex review",
-    "perform authorized Git and GitHub governance control-plane operations required for remote synchronization, PR update, push, and review request"
+    "commit and push only the existing named planning branch and update existing PR #145 without requesting another review",
+    "perform one expected-head merge-commit merge of PR #145 after all projection gates pass and no new current blocking review exists",
+    "perform authorized Git and GitHub governance control-plane operations required for remote synchronization, PR update, push, and expected-head merge"
   ],
   "forbidden_operations": [
     "SCV2-FL1-I2 implementation or modification of runtime, scanner, operation gateway, manifest, ledger, contract, database, model, provider, UI, or server code",
@@ -195,7 +216,7 @@
     "provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or external source/provider/model/media/data-plane network request",
     "Stable Replay import, reuse, replay, or authoritative evidence consumption",
     "production, watcher, scheduler, background worker, UI runtime server, I3 canary, I4 inventory, E1, E2, V1, or later phase execution",
-    "cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, merge, PR #144 reply, PR #144 thread resolution, or PR #144 reopening"
+    "cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, squash merge, rebase merge, auto-merge, admin bypass, any merge other than the authorized PR #145 expected-head merge-commit, PR #144 reply, PR #144 thread resolution, or PR #144 reopening"
   ],
   "artifact_lifecycle": [
     "governance_and_route_planning",
@@ -223,6 +244,13 @@
     "ci_authority": false,
     "preflight_remote_sync": "self_healed_by_fast_forward",
     "preflight_remote_sync_is_contract_proof": false,
+    "approved_planning_head": "acb12c1db258fdef1d4f063b053d422e0d887abf",
+    "approved_planning_tree": "fc573c7646ad5edf10c32c7712de7f27ab058a2a",
+    "approved_planning_pr_number": 145,
+    "approved_planning_review_id": 4907783329,
+    "approved_planning_thread_id": "PRRT_kwDOSTBMB86YRuq7",
+    "approved_planning_comment_id": 3759240785,
+    "owner_acceptance_decision_id": "owner_accepted_scv2_fl1_i2_pr145_exact_planning_evidence_20260813",
     "real_source_inventory_operation_count": 0,
     "existing_database_read_operation_count": 0,
     "existing_database_write_operation_count": 0,
@@ -393,7 +421,7 @@
       "classification": "must_close_during_i2_before_i2_completion_merge_or_i3"
     }
   ],
-  "next_required_checkpoint": "project_owner_reaudit_of_corrected_exact_fl1_i2_planning_evidence_commit_and_tree",
+  "next_required_checkpoint": "owner_authorized_expected_head_merge_of_pr145_governance_projection",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -443,18 +471,6 @@
       ]
     },
     {
-      "id": "FL1_I2_PLANNING_OWNER_ACCEPTANCE_PROJECTION_GATE",
-      "owner": "project owner and separately authorized governance projection operator",
-      "reason": "This bounded correction does not grant planning acceptance or merge authority. Owner acceptance must bind the corrected exact planning evidence without changing accepted plan content.",
-      "due_before": "planning_approved, safe_to_merge, merge_authorized, or expected-head merge",
-      "requirements": [
-        "project owner re-audits and accepts the corrected exact planning evidence commit and tree",
-        "a separate governance-only projection commit binds that exact approved planning evidence and records the owner decision",
-        "the projection changes no accepted plan content and keeps implementation and real-source authority false",
-        "expected-head merge occurs only after the projection is independently authorized and validated"
-      ]
-    },
-    {
       "id": "FL1_I3_REAL_SOURCE_SCOPE_GATE",
       "owner": "future separately authorized SCV2-FL1-I3 canary owner",
       "reason": "No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists.",
@@ -478,5 +494,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-11T21:44:16+08:00"
+  "updated_at": "2026-08-13T20:59:52+08:00"
 }

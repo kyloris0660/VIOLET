@@ -31,15 +31,17 @@ a machine-verifiable CI pass.
 Current phase `SCV2-FL1-I2` is governance and route planning only:
 
 ```text
-current_status=fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit
+current_status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge
 planning_authorized=true
 planning_completed=true
-planning_approved=false
-merge_authorized=false
+planning_approved=true
+approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf
+approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
+merge_authorized=true
 implementation_authorized=false
 implementation_started=false
 target_met=false
-safe_to_merge=false
+safe_to_merge=true
 route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
@@ -53,7 +55,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_plan_owner_audit
+active_blocker=pending_pr145_expected_head_merge
 ```
 
 ## Accepted Mainline Sequence
@@ -85,12 +87,14 @@ merge, separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`, then bounded canary. I3's
 private source identity, protected roots, budgets, no-hydration policy, and stop
 conditions do not gate synthetic I2 implementation.
 
-Corrected planning evidence remains unaccepted until owner re-audit. Acceptance
-then requires a separately authorized governance-only projection commit that
-binds the exact approved planning commit/tree and records the owner decision
-without changing plan content. It may set planning approval and merge authority
-but must keep implementation and real-source authority false before an
-expected-head merge.
+The owner accepted exact planning HEAD/tree
+`acb12c1db258fdef1d4f063b053d422e0d887abf` /
+`fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
+The governance projection closes P1 thread `PRRT_kwDOSTBMB86YRuq7` through an
+exact tree, ancestry, and governance-path carry-forward contract without
+changing this accepted plan. The only current blocker is the authorized PR
+#145 expected-head merge. Implementation and real-source authority remain
+false.
 
 ### I3 - Bounded real-source inventory canary
 

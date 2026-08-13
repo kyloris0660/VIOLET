@@ -83,19 +83,21 @@ owner decision cannot be synthesized by a contract.
 
 Current planning projection:
 
-- `status=fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit`
+- `status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge`
 - `planning_authorized=true`
 - `planning_completed=true`
-- `planning_approved=false`
-- `merge_authorized=false`
+- `planning_approved=true`
+- `approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf`
+- `approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a`
+- `merge_authorized=true`
 - `implementation_authorized=false`
 - `implementation_started=false`
 - `target_met=false`
-- `safe_to_merge=false`
+- `safe_to_merge=true`
 - `route_approved=false`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pending_fl1_i2_plan_owner_audit`
+- blocker: `pending_pr145_expected_head_merge`
 
 Terminal review `4897012517` at the exact final HEAD produced 17 historical
 findings (13 P1, 4 P2). The complete use-before projection is:
@@ -152,12 +154,16 @@ merge, separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`, then bounded canary. I3
 requires an exact private source identity, protected-root registry, budgets,
 Cloud/no-hydration policy, and stop conditions.
 
-This corrected planning evidence remains unapproved. After exact commit/tree
-owner re-audit, a separately authorized governance-only projection commit must
-bind the exact approved planning evidence, record the owner decision, set
-planning approval and merge authority, preserve implementation and real-source
-authority as false, and change no accepted plan content. Only then may an
-expected-head merge occur.
+The owner accepted exact planning HEAD/tree
+`acb12c1db258fdef1d4f063b053d422e0d887abf` /
+`fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
+P1 thread `PRRT_kwDOSTBMB86YRuq7` is closed in the owner-acceptance projection
+contract: trusted Git re-derives the accepted tree, proves that the accepted
+commit is an ancestor of either the projection HEAD or its later merge commit,
+and rejects every post-plan path outside the explicit governance allowlist.
+This binding cannot be replaced by caller JSON, environment variables, or a
+CLI authority flag. The only current blocker is the authorized PR #145
+expected-head merge; implementation and real-source authority remain false.
 I4 full inventory, E1 isolated import, E2 local classification/tagging, and V1
 product validation are later independent routes. No current contract authorizes
 real source/iCloud access, DB/app-storage, import, classification/tagging,

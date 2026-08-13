@@ -36,8 +36,10 @@ generated `docs/current-handoff.md` provides the short human-readable view.
 PR #144 merged the `SCV2-FL1-I1` inventory foundation, but the owner accepted
 it only for synthetic and newly created temporary fixtures. Current work is the
 `SCV2-FL1-I2` governance and planning route for real-source read-only inventory
-hardening and canary readiness; its owner-directed bounded correction is ready
-for re-audit, but the plan is not yet approved. The 14 engineering findings are
+hardening and canary readiness. The owner accepted exact planning HEAD/tree
+`acb12c1db258fdef1d4f063b053d422e0d887abf` /
+`fc573c7646ad5edf10c32c7712de7f27ab058a2a`; planning is approved and PR #145
+is safe to merge only through its authorized expected-head merge. The 14 engineering findings are
 synthetic-only I2 implementation deliverables due before I2 completion, merge,
 or any I3/real-source use, not results required before separately authorized I2
 coding begins. I2 implementation, real source/iCloud access,
@@ -157,8 +159,8 @@ not active onboarding material.
 ## Development Focus
 
 Current development focus is the FL1 read-only inventory safety route: converge
-the Cloud/source decision boundary, obtain exact-plan owner approval and a
-separate implementation authorization, then close the 14 I2 delivery gates
+the Cloud/source decision boundary, complete the authorized PR #145
+expected-head merge, obtain a separate implementation authorization, then close the 14 I2 delivery gates
 with only synthetic/adversarial temporary fixtures before any I3 use. I3 and I4
 remain separately authorized inventory stages. The accepted SourceConcept work
 remains a separate
