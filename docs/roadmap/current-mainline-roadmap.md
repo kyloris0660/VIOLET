@@ -2,145 +2,147 @@
 
 ## Accepted Mainline
 
-`origin/main` is owner-accepted at
-`a2f48bdba979f579b7cd1cdd9ef541137b2479c5`, the merge-commit result of PR
-#143. Merge-commit topology preserves final PR HEAD
-`228983f510c975399b53b39dcd7dd170e59b3245` and implementation evidence
-`a631160f58e8d5d61998863b5b4d60a549e88151` as ancestors.
+`origin/main` is owner-accepted at merge commit
+`8955b95e91630d4c5e18e1e2ca252b19754c81d5`, the merge-commit result of PR
+#144. Its final PR HEAD/tree are
+`2f8d5f8ce6cde9759c530de71d4ddd1893481656` /
+`8930a21bdbac037702f92bcb75bd9b8a3632a073`; frozen I1 implementation
+evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
+`6ff185defb150c3751c7433ef635c00a200c44bf`.
 
-1. R1R merged in PR #132.
-2. SCV2-A1R merged in PR #133.
-3. SCV2-R2 merged in PR #134.
-4. SCV2-R2R merged in PR #135.
-5. SCV2-ML1 merged in PR #136.
-6. SCV2-ML2 merged in PR #137.
-7. SCV2-SV1-A merged in PR #138.
-8. SCV2-SV1B merged in PR #139.
-9. SCV2-FL1 planning merged in PR #140 at
-   `9ce1128be643c0eaa998ccdff8890d76196ce7db`.
-10. SCV2-FL1-P1 physically merged in PR #141.
-11. SCV2-FL1-P1-R1 was owner-accepted and merge-commit merged in PR #143 at
-   `a2f48bdba979f579b7cd1cdd9ef541137b2479c5`.
+1. R1R through SCV2-SV1B merged in PRs #132-#139.
+2. SCV2-FL1 planning merged in PR #140.
+3. SCV2-FL1-P1 merged in PR #141.
+4. SCV2-FL1-P1-R1 was owner-accepted and merged in PR #143.
+5. SCV2-FL1-I1 was owner-accepted as a synthetic/new-temporary-fixture
+   foundation with use-before gates and merged in PR #144.
 
-PR #142 remains closed, unmerged, Draft, and non-authoritative. Its code and
-tests are read-only archaeology inputs only; no governance state, commit, or
-wholesale patch is inherited.
+PR #142 remains closed, unmerged, Draft, and non-authoritative. Its patch is an
+archaeology input only.
 
 ## Current Phase And Stop Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1-I1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-I2 -->
 
-`SCV2-FL1-I1: Read-only Inventory` is active on branch
-`codex/scv2-fl1-i1-read-only-inventory-v2`. Its fact source is
-`docs/state/current-phase.json` and its planning input is
-`docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`.
+`SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness`
+is planning-only on branch
+`codex/scv2-fl1-i2-real-source-inventory-plan`. The machine-readable fact
+source is `docs/state/current-phase.json`.
 
-Draft PR #144 review `4891695875` produced 18 current-HEAD findings at reviewed
-HEAD `b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3` (15 P1, 3 P2). The owner
-authorized exactly one bounded synthetic/temp-fixture remediation round. The
-round is frozen at replacement implementation/test evidence
-`6992e7f1e5a45857111d15da1ad0274e49008a99` with tree
-`6ff185defb150c3751c7433ef635c00a200c44bf`; the 18 adjudicated regressions are
-closed in that evidence. Current fail-closed owner-audit state:
+```text
+status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge
+planning_authorized=true
+planning_completed=true
+planning_approved=true
+approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf
+approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
+merge_authorized=true
+implementation_authorized=false
+implementation_started=false
+target_met=false
+safe_to_merge=true
+route_approved=false
+real_inventory_started=false
+real_source_inventory_authorized=false
+projected_external_cost_usd=0
+active_blocker=pending_pr145_expected_head_merge
+```
 
-- `status=fl1_i1_bounded_remediation_ready_for_owner_audit`
-- `target_met=false`
-- `safe_to_merge=false`
-- `route_approved=false`
-- `manual_acceptance_status=pending_i1_bounded_remediation_owner_audit`
-- `bounded_remediation_round=1_of_1`
-- `next_phase_started=true`
-- `real_inventory_started=false`
-- historical superseded implementation evidence:
-  `5194a484d0d8fb8dd5e0697cd61054f596aee5ec` with tree
-  `9b30ba024beb6fcd58709e707d7879887ad7c081`
-- blocker: `pending_i1_bounded_remediation_owner_audit`
+PR #144 terminal review `4897012517` covered exact final HEAD
+`2f8d5f8ce6cde9759c530de71d4ddd1893481656` and produced 17 findings (13 P1,
+4 P2). All threads remain historical audit records. Two documentation-governance
+findings are closed by this planning PR: the checker binds the actual frozen I1
+evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
+`github_checks=0`, and CI authority remains false. Fourteen findings are I2
+implementation deliverables that must close before `implementation_completed`,
+`target_met`, `safe_to_merge`, merge, or I3; they are not pre-existing outcomes
+required before separately authorized synthetic-only I2 coding begins.
+Finding #1 remains an I2 runtime/receipt/contract delivery item even though the
+documentation checker's own Git proof is scrubbed in this correction.
+Parent-observed child identity is
+kept as a local-evidence claim boundary, not described as tamper-resistant,
+OS/kernel/TPM/remote, or CI attestation.
 
-The current route authorizes reusable inventory safety tooling and validation
-only against synthetic or newly created temporary fixtures. It authorizes the
-two explicit code modes `synthetic_fixture` and `authorized_read_only_source`,
-but the latter may be exercised only against temporary roots under a trusted
-test registry. No real source/iCloud root may be listed, stated, observed,
-opened, read, or hashed.
+The owner accepted I1 only as a synthetic/newly-created temporary-fixture
+foundation. It does not establish real iCloud inventory, import, database,
+app-storage, classification, tagging, provider, LLM, UI/runtime, or production
+readiness. GitHub exposed zero checks; this is not a CI pass.
 
-The frozen remediation recovers trusted runtime/repository bootstrap, artifact
-confinement, Cloud-attribute-before-open ordering, manifest identity
-re-derivation, per-directory/per-item operation closure, lock/crash/checkpoint
-recovery, adapter/budget binding, bounded media-header exclusion, and
-command-executed local validation receipts. The route must still deliver a complete
-protected-root role registry, layered write-ahead source-operation evidence,
-private atomic manifests and ledgers, denominator and exact-duplicate
-accounting, Cloud Files recall-risk deferral, bounded race-safe reading,
-cross-process restart provenance, a canonical protected public projection, and
-`scv2_fl1_i1_read_only_inventory_contract_v1`.
+## Canonical Safety Boundary
 
-Database/app-storage access, import, classification, AI tagging,
-provider/LLM/media/network activity, Stable Replay, graph/search, Entity/truth,
-UI/runtime servers, production, and later FL1 phases remain forbidden. The
-owner-audit checkpoint cannot claim `target_met`, `safe_to_merge`, or
-`route_approved`.
+I2 planning converges policy rather than retaining two independent Cloud/source
+authorities:
 
-## PR #143 Final Owner Adjudication Carry-Forward
+1. `cloud_files.py` or one explicit shared safety module supplies canonical
+   Windows Cloud, handle, and file/change-identity primitives.
+2. `SourceIngestionGate` owns the unified source-kind and Cloud-availability
+   policy.
+3. The operation gateway owns write-ahead operation evidence, budgets,
+   manifest/resume controls, and contract evidence.
+4. CLI and later runtime scanners consume the same canonical decision result;
+   they do not copy Cloud-flag rules.
+5. Legacy `scan_and_import(dry_run=True)` is not the first real inventory
+   runner: it connects to the database and reads/hashes source content, while
+   dry-run only suppresses import and lacks I1 manifest/restart/evidence closure.
+6. I2 implementation and validation, if separately approved, stay on synthetic
+   and adversarial temporary fixtures.
 
-Final review `4890771735` at exact HEAD
-`228983f510c975399b53b39dcd7dd170e59b3245` produced five durable
-owner-adjudicated boundaries:
+The enforced order is: exact plan owner approval; separate I2 implementation
+authorization; synthetic-only I2 implementation closing all 14 gates; I2 owner
+audit and merge; separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`; then a bounded
+real-source canary. Exact private source identity, protected roots, budgets,
+no-hydration policy, and stop conditions belong only to I3 and do not gate the
+start of authorized synthetic I2 work.
 
-1. complete protected roots must come from trusted private runtime/repository
-   context before a real operation;
-2. PR #143 used merge-commit topology; a topology-only post-squash check is not
-   trusted evidence;
-3. restart claims require distinct process/invocation provenance;
-4. actual Git HEAD must be derived from the trusted repository and bind all
-   run artifacts;
-5. local validation may produce only a `local_operator_receipt` with
-   `machine_verifiable_ci=false`.
-
-`REAL_OPERATION_GATEWAY_GATE` and `VALIDATION_RECEIPT_GATE` carry these forward.
-`OWNER_AUTHORITY_GATE`, `POSIX_LEDGER_DURABILITY_GATE`, and
-`STABLE_REPLAY_GATE` remain in force.
-
-## Remote Sync Preflight Policy
-
-Fetch the verified remote before comparing protected base branches. A safe
-local base that has no local-only commit and is only behind its remote is
-fast-forwarded with `--ff-only`, classified as a preflight self-heal, and the
-same task continues. Local/remote inequality alone is not a blocker.
-
-Fail closed for divergence, local-only commits without safe preservation,
-tracked drift, behavior-affecting untracked executable/module/config/symlink
-drift, failed fast-forward-only, unverified remote identity/authentication, or
-any sync requiring reset, rebase, force, overwrite, or deletion. Unrelated
-untracked and ignored non-executable user artifacts are preserved and do not
-automatically block work.
-
-The entry sync for this phase was
-`preflight_remote_sync=self_healed_by_fast_forward`; this is operator
-classification only, not self-filled contract authority.
+The owner accepted exact planning HEAD/tree
+`acb12c1db258fdef1d4f063b053d422e0d887abf` /
+`fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
+Its P1 thread `PRRT_kwDOSTBMB86YRuq7` is classified
+`closed_in_owner_acceptance_projection_exact_binding_contract`: the checker
+re-derives the tree, requires ancestry, and permits only the governance
+projection allowlist after the accepted plan. The only current blocker is the
+authorized PR #145 expected-head merge. Implementation and all real-source or
+data authority remain false.
 
 ## Delivery Sequence
 
-1. The I1 owner decision and implementation route are persisted.
-2. Historical evidence `5194a484...` was superseded by review `4891695875`.
-3. The single `1_of_1` bounded remediation is frozen at replacement evidence
-   `6992e7f1...` and tree `6ff185de...`.
-4. Request the one authorized terminal post-remediation Codex review and stop
-   at owner audit without replying, resolving, or modifying again.
-5. Any future real inventory requires a separate exact source-scope decision;
-   FL1-E1 does not start from this route.
+1. **SCV2-FL1-I2 - Pre-real hardening.** Close all real-source use-before
+   gates with executable contracts and negative temporary-fixture tests. Merge
+   and stop; no real source is accessed.
+2. **SCV2-FL1-I3 - Bounded real-source canary.** Requires separate exact
+   private source identity/scope, protected roots, budgets, Cloud/no-hydration
+   policy, and stop conditions. Enumerate metadata first; only after owner audit
+   may a small AVAILABLE/HYDRATED sample be hashed and structurally validated.
+3. **SCV2-FL1-I4 - Full-library read-only inventory.** Freeze one manifest cut,
+   separate discovery/metadata/hash/structure coverage, and explicitly account
+   for every deferred or failed disposition. The review-pack route remains
+   provisional until owner audit.
+4. **SCV2-FL1-E1 - Isolated import rehearsal.** Use fresh isolated test DB and
+   storage, staging-first atomic copy/verification, and only I4
+   content-verified membership. Writes require separate authorization.
+5. **SCV2-FL1-E2 - Local classification and AI tagging.** Begin only after
+   import closure; use offline/cache-only models, weak-evidence proper nouns,
+   separate ledgers/budgets, and disabled translation/provider/LLM routes.
+6. **SCV2-FL1-V1 - Product and owner validation.** Exercise real browser
+   product flows, scale, failure/resume cases, and manifest-bound manual
+   samples. V1 cannot authorize production import, watcher, or automatic sync.
 
-## FL1 Planning Constraints
+External source/provider/model/media data-plane network operations remain zero.
+Authorized Git/GitHub governance control-plane operations, including fetch,
+push, PR maintenance, and review requests, are allowed and have occurred; they
+are not provider or data execution.
 
-- Membership is manifest-bound; content fingerprints establish exact
-  duplicates; filenames, row order, and DB IDs do not establish identity.
-- Public output defaults to aggregates and never contains paths, filenames,
-  content fingerprints, keys, or per-item private records.
-- Every discovered item has exactly one terminal inventory disposition; an
-  owner-audit-ready manifest has `unresolved=0`, `imported=0`,
-  `import_failed=0`, and `import_deferred=eligible_candidate`.
-- Structural identity, containment, race, ledger, resume-parent, or policy drift
-  blocks the run. Bounded per-item failures remain private ledger evidence.
-- Browser validation is N/A because I1 changes no UI or runtime server.
+## Remote Sync Preflight Policy
+
+Fetch and authenticate the trusted remote before comparing protected bases. A
+local base with no local-only commits that is only behind may be fast-forwarded
+with `--ff-only`. Divergence, tracked drift, behavior-affecting untracked code
+or configuration, or any need to reset, rebase, force, overwrite, or delete is
+fail closed. Preserve unrelated untracked and ignored user artifacts.
+
+The entry sync for this phase was
+`preflight_remote_sync=self_healed_by_fast_forward`; that is an operator
+classification, not executable contract or CI authority.
 
 ## Durable Links
 

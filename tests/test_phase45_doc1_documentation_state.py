@@ -22,35 +22,34 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_current_handoff_is_slim_and_current_route_focused() -> None:
+def test_current_handoff_is_current_route_focused() -> None:
     handoff = read_text(ROOT / "docs" / "current-handoff.md")
     state = load_state()
     assert handoff == render_handoff(state)
-    assert 40 <= len(handoff.splitlines()) <= 65
+    assert 55 <= len(handoff.splitlines()) <= 115
     assert "docs/state/current-phase.json" in handoff
     assert state["phase_id"] in handoff
-    assert "Draft PR" in handoff
+    assert "PR pending creation" in handoff or f"PR #{state['pr_number']}" in handoff
     assert state["active_blocker"]["code"] in handoff
     assert "projected external cost: `$0`" in handoff
-    for forbidden_term in ("provider", "Pixiv", "gallery-dl", "LLM"):
-        assert forbidden_term in handoff
+    assert "17 findings" in handoff
 
 
-def test_fl1_i1_state_stops_before_real_inventory() -> None:
+def test_fl1_i2_state_stops_before_implementation_and_real_inventory() -> None:
     state = load_state()
     validate_state(state)
     validate_roadmaps(state)
-    assert state["phase_id"] == "SCV2-FL1-I1"
-    assert state["current_status"] in {
-        "fl1_i1_read_only_inventory_implementation_in_progress",
-        "fl1_i1_synthetic_implementation_ready_for_owner_audit",
-        "fl1_i1_first_review_bounded_remediation_in_progress",
-        "fl1_i1_bounded_remediation_ready_for_owner_audit",
-    }
+    assert state["phase_id"] == "SCV2-FL1-I2"
+    assert state["current_status"] == (
+        "fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge"
+    )
+    assert state["planning_authorized"] is True
+    assert state["planning_completed"] is True
+    assert state["planning_approved"] is True
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is False
+    assert state["safe_to_merge"] is True
     assert state["route_approved"] is False
-    assert state["next_phase_started"] is True
+    assert state["planning_boundary"]["implementation_authorized"] is False
     assert state["planning_boundary"]["real_inventory_started"] is False
     assert state["planning_boundary"]["real_source_inventory_authorized"] is False
 
@@ -59,12 +58,13 @@ def test_fl1_i1_state_stops_before_real_inventory() -> None:
     ("field", "value"),
     [
         ("target_met", True),
-        ("safe_to_merge", True),
+        ("safe_to_merge", False),
         ("route_approved", True),
-        ("manual_acceptance_status", "owner_accepted_fl1_i1"),
+        ("planning_approved", False),
+        ("manual_acceptance_status", "pending_fl1_i2_plan_owner_reaudit"),
     ],
 )
-def test_unapproved_positive_claim_fails_closed(field: str, value: object) -> None:
+def test_owner_accepted_state_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(load_state())
     state[field] = value
     with pytest.raises(DocumentationStateError):
@@ -74,6 +74,7 @@ def test_unapproved_positive_claim_fails_closed(field: str, value: object) -> No
 @pytest.mark.parametrize(
     "field",
     [
+        "implementation_authorized",
         "real_source_inventory_authorized",
         "source_root_access_authorized",
         "database_access_authorized",
@@ -89,27 +90,31 @@ def test_unapproved_positive_claim_fails_closed(field: str, value: object) -> No
 def test_forbidden_execution_authority_fails_closed(field: str) -> None:
     state = copy.deepcopy(load_state())
     state["planning_boundary"][field] = True
-    with pytest.raises(DocumentationStateError, match="fl1_i1_boundary_invalid"):
+    with pytest.raises(DocumentationStateError, match="fl1_i2_boundary_invalid"):
         validate_state(state)
 
 
-def test_sync_operator_classification_cannot_be_promoted() -> None:
-    state = copy.deepcopy(load_state())
-    state["protected_evidence"]["preflight_remote_sync_is_contract_proof"] = True
-    with pytest.raises(
-        DocumentationStateError, match="fl1_i1_protected_evidence_invalid"
-    ):
-        validate_state(state)
-
-
-def test_public_current_phase_does_not_contain_private_absolute_path() -> None:
+def test_public_current_phase_and_updated_icloud_doc_are_redacted() -> None:
     serialized = json.dumps(load_state(), ensure_ascii=False)
+    icloud = read_text(ROOT / "docs" / "icloud-safe-ingestion.md")
     assert "C:\\Users\\" not in serialized
-    assert ".local_manifests" not in serialized
+    assert "C:\\Users\\kyloris\\Pictures" not in icloud
+    assert "<private-source-root>" in icloud
+    assert "canonically integrated with that runtime scanner" in icloud
+    assert "Nothing here claims I2 implementation exists" in icloud
 
 
-def test_current_documents_name_all_five_use_before_gates() -> None:
+def test_current_contract_names_review_gates_and_claim_boundary() -> None:
     contract = read_text(ROOT / "docs" / "phase-contracts.md")
+    assert "Terminal review `4897012517`" in contract
+    assert "17 historical" in contract
+    assert "14 gates" in contract
+    assert "not tamper-resistant" in contract
+    assert "machine_verifiable_ci=false" in contract
+    assert "must_close_during_i2_before_i2_completion_merge_or_i3" in contract
+    assert "same verified, no-follow, identity-bound directory handle" in contract
+    assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in contract
+    assert "4907783329" in contract
     for gate in (
         "REAL_OPERATION_GATEWAY_GATE",
         "VALIDATION_RECEIPT_GATE",
@@ -118,17 +123,3 @@ def test_current_documents_name_all_five_use_before_gates() -> None:
         "STABLE_REPLAY_GATE",
     ):
         assert gate in contract
-
-
-def test_pr142_is_read_only_archaeology_not_authority() -> None:
-    plan = read_text(
-        ROOT
-        / "docs"
-        / "plans"
-        / "phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
-    )
-    roadmap = read_text(ROOT / "docs" / "roadmap" / "current-mainline-roadmap.md")
-    assert "PR #142 bounded carry-forward matrix" in plan
-    assert "No PR #142 commit" in plan
-    assert "closed, unmerged" in roadmap
-    assert "non-authoritative" in roadmap

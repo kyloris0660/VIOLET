@@ -31,32 +31,32 @@ def _assert_split_s2g_not_active(text: str) -> None:
 def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() -> None:
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
-    assert "PR #135" in text
-    assert "PR #133" in text
-    assert "9ce1128be643c0eaa998ccdff8890d76196ce7db" in text
+    assert "PRs #132-#139" in text
     _assert_in_order(
         text,
         [
-            "1. R1R merged in PR #132",
-            "2. SCV2-A1R merged in PR #133",
-            "3. SCV2-R2 merged in PR #134",
-            "4. SCV2-R2R merged in PR #135",
-            "5. SCV2-ML1 merged in PR #136",
-            "6. SCV2-ML2 merged in PR #137",
-            "7. SCV2-SV1-A merged in PR #138",
-            "8. SCV2-SV1B merged in PR #139",
-            "9. SCV2-FL1 planning merged in PR #140",
-            "10. SCV2-FL1-P1 physically merged in PR #141",
-            "11. SCV2-FL1-P1-R1 was owner-accepted",
+            "1. R1R through SCV2-SV1B merged in PRs #132-#139",
+            "2. SCV2-FL1 planning merged in PR #140",
+            "3. SCV2-FL1-P1 merged in PR #141",
+            "4. SCV2-FL1-P1-R1 was owner-accepted",
+            "5. SCV2-FL1-I1 was owner-accepted",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "SCV2-FL1-I1: Read-only Inventory" in text
+    assert "SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness" in text
+    assert "PR #144 terminal review `4897012517`" in text
+    assert "machine_verifiable_ci=false" in text
     state = json.loads(_read("docs/state/current-phase.json"))
     assert state["current_status"] in text
     assert "route_approved=false" in text
+    assert "planning_approved=true" in text
+    assert "safe_to_merge=true" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
+    assert "pending_pr145_expected_head_merge" in text
+    assert "FL1_I3_REAL_SOURCE_SCOPE_GATE" in text
+    assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in text
+    assert "data-plane network operations remain zero" in text
 
 
 def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:
@@ -90,7 +90,8 @@ def test_handoff_points_to_current_mainline_roadmap() -> None:
 
     assert "roadmap/current-mainline-roadmap.md" in text
     assert "SCV2-FL1" in text
-    assert "Draft PR" in text
+    assert "PR pending creation" in text or "PR #" in text
+    assert "All 17 findings remain historical audit records" in text
     for forbidden_term in ("provider", "Pixiv", "gallery-dl", "LLM"):
         assert forbidden_term in text
     assert "Current phase | `S3A-M2-R" not in text

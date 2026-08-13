@@ -2,9 +2,21 @@
 
 Phase 2.4 makes the Local Library Scan pipeline safe for large iCloud-synced directories on Windows. The core guarantee: **scanning never triggers mass iCloud downloads and never hangs on a single file**.
 
+> **FL1 boundary:** This page documents existing runtime scanner behavior from
+> Phase 2.4 through Phase 3.8d. The merged SCV2-FL1-I1 synthetic foundation has
+> not yet been canonically integrated with that runtime scanner. Full-library
+> readiness depends on separately approved I2 hardening, I3 bounded canary, and
+> I4 read-only inventory stages. Nothing here claims I2 implementation exists or
+> authorizes a real source/iCloud scan, hydration, database use, or import.
+> In particular, this historical path-based runtime description does not close
+> I2 finding #14. Future I2 directory membership must come from the same
+> verified, no-follow, identity-bound directory handle; identity-before/after is
+> only supplemental drift evidence, and path-based `os.scandir()` plus a
+> post-check is not an equivalent safety primitive.
+
 ## Problem
 
-iCloud for Windows syncs photos as lightweight placeholders. When a program calls `open()` on a cloud-only file, Windows automatically requests a download from iCloud — potentially hydrating thousands of files and consuming bandwidth, disk space, and time. The scan pipeline reads every file to compute MD5 hashes, which means a naive scan of `C:\Users\...\iCloud Photos` could trigger a full library download.
+iCloud for Windows syncs photos as lightweight placeholders. When a program calls `open()` on a cloud-only file, Windows automatically requests a download from iCloud — potentially hydrating thousands of files and consuming bandwidth, disk space, and time. The scan pipeline reads every file to compute MD5 hashes, which means a naive scan of `<private-source-root>` could trigger a full library download.
 
 Additionally, cloud-only files may block indefinitely when `open()` is called and the network is unavailable, causing the scan to hang.
 
@@ -14,7 +26,7 @@ Additionally, cloud-only files may block indefinitely when `open()` is called an
 |-------|-----------|
 | **Preflight** | Stat-only scan (no `open()`) to preview file counts, sizes, and extensions before committing |
 | **Hydrated-only** | Skip files with cloud-only Windows attributes (default ON) |
-| **Per-file timeout** | Wrap `calculate_file_hash` in a ThreadPoolExecutor with configurable timeout |
+| **Per-file timeout** | Run `calculate_file_hash` in a terminable subprocess with a configurable timeout |
 | **Max file size** | Skip files larger than `SCAN_MAX_FILE_SIZE_MB` |
 | **Extended skip stats** | Per-reason counters instead of a blanket `skipped_unsupported` |
 
@@ -90,7 +102,7 @@ POST /api/admin/scan-local-library/preflight
 Content-Type: application/json
 
 {
-  "paths": ["C:\\Users\\kyloris\\Pictures\\iCloud Photos"],
+  "paths": ["<private-source-root>"],
   "max_files": 100,
   "hydrated_only": true
 }
@@ -170,12 +182,16 @@ The Local Library Scan section in the Admin Panel includes:
 - **6 extended stat cards** — shown during/after scan with per-reason skip counts
 - **Preflight results** — estimated size, largest file, extension breakdown displayed after preflight
 
-## Recommended Workflow for iCloud Libraries
+## Historical Runtime Workflow For An Authorized iCloud Library
+
+This runtime workflow is not the FL1-I2/I3/I4 route and is not current
+authorization. Use it only when a separately approved runtime phase explicitly
+names the private source scope and permits the corresponding operations.
 
 1. **Preflight first** — click Preflight to see file counts and sizes without opening any files
 2. **Review results** — check cloud placeholder count, total size, extension breakdown
-3. **Dry-run scan** — run with dry_run=true and a small max_files to test actual import behavior
-4. **Full scan** — if dry-run looks good, run without dry_run, keeping hydrated_only=true
+3. **Dry-run scan** — run with dry_run=true and a small max_files to test actual import behavior; dry-run does not mean metadata-only and may connect to the DB and read/hash source content
+4. **Full scan** — only under a separately approved runtime/import phase, run without dry_run while keeping hydrated_only=true
 
 ## Files Modified
 

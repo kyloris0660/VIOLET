@@ -63,110 +63,113 @@ outside the automated contract.
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1-I1 -->
+<!-- CURRENT_PHASE: SCV2-FL1-I2 -->
 
-PR #143 was owner-accepted and merge-commit merged at exact main
-`a2f48bdba979f579b7cd1cdd9ef541137b2479c5`. Its final reviewed HEAD is
-`228983f510c975399b53b39dcd7dd170e59b3245` and its immutable implementation
-evidence is `a631160f58e8d5d61998863b5b4d60a549e88151`. The direct human decision
-does not create automated positive owner, merge, or route authority.
+PR #144 was owner-accepted and merge-commit merged at exact main
+`8955b95e91630d4c5e18e1e2ca252b19754c81d5`. Its final HEAD/tree are
+`2f8d5f8ce6cde9759c530de71d4ddd1893481656` /
+`8930a21bdbac037702f92bcb75bd9b8a3632a073`; the frozen implementation
+evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
+`6ff185defb150c3751c7433ef635c00a200c44bf`. The acceptance scope is only a
+synthetic and newly created temporary-fixture foundation.
 
-`SCV2-FL1-I1: Read-only Inventory` reached historical implementation evidence
-`5194a484d0d8fb8dd5e0697cd61054f596aee5ec` and tree
-`9b30ba024beb6fcd58709e707d7879887ad7c081`. Draft PR #144 review
-`4891695875` at reviewed HEAD
-`b65c7b84adfe45b92f85dfb72d60920bd1fb0ad3` then established 18 current-I1
-counterexamples (15 P1, 3 P2), superseding that evidence. The owner authorized
-the one and only bounded synthetic/temp-fixture remediation round. Replacement
-implementation/test evidence is frozen at
-`6992e7f1e5a45857111d15da1ad0274e49008a99` with tree
-`6ff185defb150c3751c7433ef635c00a200c44bf`. Current state:
+The documentation checker pins all four identities through a fixed trusted Git
+executable and explicit repository root after case-insensitively scrubbing
+inherited `GIT_*` controls, disabling replace objects, hooks, fsmonitor, and
+caller-injected configuration. It rejects a current state that asserts
+`machine_verifiable_ci=true`, nonzero `github_checks`, or CI authority. PR #144
+exposed zero checks, so it has no machine-verifiable CI PASS claim. Its direct
+owner decision cannot be synthesized by a contract.
 
-- `status=fl1_i1_bounded_remediation_ready_for_owner_audit`
+Current planning projection:
+
+- `status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge`
+- `planning_authorized=true`
+- `planning_completed=true`
+- `planning_approved=true`
+- `approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf`
+- `approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a`
+- `merge_authorized=true`
+- `implementation_authorized=false`
+- `implementation_started=false`
 - `target_met=false`
-- `safe_to_merge=false`
+- `safe_to_merge=true`
 - `route_approved=false`
-- `manual_acceptance_status=pending_i1_bounded_remediation_owner_audit`
-- `bounded_remediation_round=1_of_1`
-- `next_phase_started=true`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pending_i1_bounded_remediation_owner_audit`
+- blocker: `pending_pr145_expected_head_merge`
 
-The bounded remediation evidence closes all 18 adjudications: trusted
-absolute Git bootstrap; repository-venv Python derivation; authorization and
-lexical-sandbox rejection before root observation; Cloud attributes before
-final-component resolution; evidence-root-confined writers with secure private
-artifact creation; manifest identity re-derivation; adapter configuration
-binding; per-directory listing identity; disposition-specific per-item
-operation closure; lock-before-lineage mutation; stale/live-lock provenance;
-abandoned-intent interruption recovery; recoverable operation/item/counter
-checkpoints; parent-harness child receipts; bounded final snapshots and
-remaining-byte accounting; bounded media header validation; and
-command-executed validation receipts. The exact 18-row adjudication matrix and
-validated regressions are canonical in the active FL1 plan. This synthetic
-contract result does not create positive owner, Ready, merge, route, or real
-source authority.
+Terminal review `4897012517` at the exact final HEAD produced 17 historical
+findings (13 P1, 4 P2). The complete use-before projection is:
 
-The phase registers `scv2_fl1_i1_read_only_inventory_contract_v1`. Its dedicated
-module rebuilds a canonical protected projection only from validated trusted
-repository/runtime context, protected-root registry, private manifest, run and
-operation ledgers, invocation lineage, budget/policy/source-scope fingerprints,
-and local operator validation receipt. Caller-supplied actual Git/Python/path,
-denominator/count, test booleans, owner/merge/route authority, public digest, or
-synthetic Cloud observation cannot create trusted PASS.
+| # | Finding | Contract projection |
+|---:|---|---|
+| 1 | Scrub Git control variables before trusted invocations | Must close during I2 before I2 completion/merge or I3 across runtime, receipt, and contract paths. The checker-only Git scrub does not close that overall delivery. |
+| 2 | Validate the parent-observed child identity | Claim boundary: local provenance only, not tamper-resistant or OS/kernel/TPM/remote/CI attestation. |
+| 3 | Recheck recall attributes before final resolution | Must close during I2 before I2 completion/merge or I3: final open/no-recall decision binds the same object and refreshed Cloud attributes. |
+| 4 | Allow interrupted attempts before corrupt-media closure | Must close during I2 before I2 completion/merge or I3: interruption and corrupt-media accounting remain distinct and reconcile exactly. |
+| 5 | Enforce the deadline around blocking file operations | Must close during I2 before I2 completion/merge or I3: open/read/hash/structure work runs in a parent-terminable worker. |
+| 6 | Bind the receipt to one unchanged HEAD | Must close during I2 before I2 completion/merge or I3: repository HEAD is identical before and after validation. |
+| 7 | Re-derive the adapter policy during contract validation | Must close during I2 before I2 completion/merge or I3: policy derives from trusted configuration, not caller claims. |
+| 8 | Stop at the configured failure maximum | Must close during I2 before I2 completion/merge or I3: maximum failure is fail-closed with no off-by-one attempt. |
+| 9 | Pin the frozen remediation commit and tree | Closed by the current documentation-governance checker. |
+| 10 | Reject CI authority in documentation state | Closed by the current documentation-governance checker. |
+| 11 | Include a change identity in file signatures | Must close during I2 before I2 completion/merge or I3: Windows file identity plus change identity. |
+| 12 | Reject hard-linked files that alias protected data | Must close during I2 before I2 completion/merge or I3: explicit hard-link/reparse/symlink/path-alias policy. |
+| 13 | Confine private artifact reads as well as writes | Must close during I2 before I2 completion/merge or I3: no-follow confined reads and writes. |
+| 14 | Enumerate directories through a verified no-follow handle | Must close during I2 before I2 completion/merge or I3: enumerate members from the same verified, no-follow, identity-bound directory handle. Identity-before/after is supplemental drift evidence only; path-based `os.scandir()` plus post-check is insufficient. Windows must implement a safe same-handle primitive or fail closed. |
+| 15 | Reconcile intents from ended failed invocations | Must close during I2 before I2 completion/merge or I3: residual INTENT closure after failed process termination. |
+| 16 | Validate media structure beyond boundary markers | Must close during I2 before I2 completion/merge or I3: bounded structural parsing beyond boundary markers. |
+| 17 | Handle runtime-context failures in scanner CLI | Must close during I2 before I2 completion/merge or I3: stable privacy-safe JSON error envelope. |
 
-All source operations are layered and write-ahead instrumented as directory
-listing, no-follow metadata, Cloud Files/reparse attribute observation, file
-read, and file hash. Metadata observation is separate from content access;
-unknown/unsupported attributes never imply availability, and recall-risk is
-terminally deferred without opening content. Structural containment, identity,
-race, policy, source-scope, HEAD, worktree, budget, or resume-parent mismatch
-fails closed while preserving the private incomplete forensic ledger.
+The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
+only for its narrow synthetic foundation. I2 currently has no implemented or
+registered executable contract. A later, separately authorized I2
+implementation must converge canonical Cloud/file-identity primitives,
+`SourceIngestionGate` policy, operation-gateway evidence, and CLI/runtime
+consumers; close all 14 gates with synthetic/adversarial temporary fixtures;
+and register a contract before any readiness claim. These 14 gates are
+classified
+`must_close_during_i2_before_i2_completion_merge_or_i3`: exact-plan owner
+approval and separate implementation authorization come first, and the gates
+then close during synthetic-only I2 before `implementation_completed`,
+`target_met`, `safe_to_merge`, merge, I3, or any real-source operation.
 
-Private manifests and ledgers are atomic, repo-local ignored or local-temp
-artifacts. They retain membership evidence, private relative-path tokens,
-content fingerprints, exact dispositions, attempts, and operation attribution.
-Public output defaults to aggregates and contains no path, filename, content
-fingerprint, secret/key, or per-item record. Complete public payload redaction
-rejects unknown sensitive fields.
+The future contract must preserve these gates:
 
-An owner-audit-ready manifest enforces exactly one terminal disposition per
-item and the three denominator equations. It holds `imported=0`,
-`import_failed=0`, `import_deferred=eligible_candidate`, and `unresolved=0`.
-The scanner persists finite discovery, directory-entry, observed-byte,
-per-file-hash, total-hash, chunk, timeout/worker, failure/systemic, and
-manual-stop budgets into run identity.
-
-Restart proof requires a runner lock before artifact mutation, a parent harness
-that independently records child PID/process-start/argv/exit/checkpoints and
-artifact digests, terminal interruption reconciliation for abandoned intents,
-and recoverable counters from the operation/item journal. Attempts do not reset
-and terminal items are not re-read or re-hashed. This remains local executable
-provenance, not OS/TPM/CI attestation.
-
-PR #142 remains closed, unmerged, and non-authoritative. Its deterministic
-traversal, read-only observation, denominator, duplicate, and private/public
-separation ideas may be independently redesigned; its caller identities,
-caller roots, booleans, synthetic Cloud override, copied restart snapshots,
-in-memory-only evidence, governance state, and P1 remediation are rejected.
-
-Five gates remain explicit:
-
-- `REAL_OPERATION_GATEWAY_GATE`: I1 validates the source gateway with temporary
-  roots, but complete private real roots and a real source scope remain due
-  before any real listing/stat/attribute/read/hash.
-- `VALIDATION_RECEIPT_GATE`: local evidence is always
+- `REAL_OPERATION_GATEWAY_GATE`: no I3 or real listing/stat/attribute/read/hash
+  until complete exact source scope and protected roots are separately
+  authorized; that I3 scope is not a condition for starting authorized
+  synthetic-only I2 implementation.
+- `VALIDATION_RECEIPT_GATE`: local evidence remains
   `trust_level=local_operator_receipt` and `machine_verifiable_ci=false`.
-- `OWNER_AUTHORITY_GATE`: direct human decisions remain outside the contract.
-- `POSIX_LEDGER_DURABILITY_GATE`: I1 makes no real mutation or host power-loss
-  durability claim.
-- `STABLE_REPLAY_GATE`: I1 does not consume or authorize replay evidence.
+- `OWNER_AUTHORITY_GATE`: direct owner approval remains external to automation.
+- `POSIX_LEDGER_DURABILITY_GATE`: no unsupported host power-loss durability
+  claim.
+- `STABLE_REPLAY_GATE`: no replay evidence is consumed or authorized.
 
-No real source/iCloud operation, database/app-storage access, import,
-classification/AI tagging, provider/LLM/media/network activity, Stable Replay,
-graph/search, Entity/truth, UI/runtime server, production, or later FL1 phase is
-authorized or performed.
+The fixed order is plan owner approval, separate I2 implementation
+authorization, synthetic-only closure of all 14 gates, I2 owner audit and
+merge, separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`, then bounded canary. I3
+requires an exact private source identity, protected-root registry, budgets,
+Cloud/no-hydration policy, and stop conditions.
+
+The owner accepted exact planning HEAD/tree
+`acb12c1db258fdef1d4f063b053d422e0d887abf` /
+`fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
+P1 thread `PRRT_kwDOSTBMB86YRuq7` is closed in the owner-acceptance projection
+contract: trusted Git re-derives the accepted tree, proves that the accepted
+commit is an ancestor of either the projection HEAD or its later merge commit,
+and rejects every post-plan path outside the explicit governance allowlist.
+This binding cannot be replaced by caller JSON, environment variables, or a
+CLI authority flag. The only current blocker is the authorized PR #145
+expected-head merge; implementation and real-source authority remain false.
+I4 full inventory, E1 isolated import, E2 local classification/tagging, and V1
+product validation are later independent routes. No current contract authorizes
+real source/iCloud access, DB/app-storage, import, classification/tagging,
+provider/LLM/media or external data-plane network, Stable Replay, UI/server, or
+production execution. Authorized Git/GitHub governance control-plane operations
+are allowed and have occurred; they are not provider/data execution.
 
 ## Registered GOV3 Contracts
 

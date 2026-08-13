@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PureWindowsPath
+from typing import Any, Callable, Iterable
+
+
+WindowsGitLocationProvider = Callable[
+    [], tuple[tuple[Path, ...], tuple[Path, ...]]
+]
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,8 +45,11 @@ REQUIRED_FIELDS = {
     "implementation_evidence_head",
     "current_status",
     "route_scope",
+    "planning_authorized",
+    "planning_completed",
     "planning_approved",
     "approved_planning_head",
+    "approved_planning_tree",
     *STATUS_FIELDS,
     "prior_phase_acceptance",
     "planning_boundary",
@@ -56,6 +65,7 @@ REQUIRED_FIELDS = {
     "deferred_debt",
     "upstream_pr_state",
     "next_phase_authorization",
+    "terminal_review_findings",
     "updated_at",
 }
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
@@ -85,6 +95,49 @@ FL1_I1_FIRST_REVIEW_ID = 4891695875
 FL1_I1_ROUTE_SCOPE = (
     "SCV2-FL1-I1 reusable read-only inventory safety tooling using only "
     "synthetic and newly created temporary fixtures"
+)
+FL1_I2_BRANCH = "codex/scv2-fl1-i2-real-source-inventory-plan"
+FL1_I2_ACCEPTED_MAIN = "8955b95e91630d4c5e18e1e2ca252b19754c81d5"
+FL1_I2_PREVIOUS_FINAL_HEAD = "2f8d5f8ce6cde9759c530de71d4ddd1893481656"
+FL1_I2_PREVIOUS_FINAL_TREE = "8930a21bdbac037702f92bcb75bd9b8a3632a073"
+FL1_I2_PREVIOUS_EVIDENCE = "6992e7f1e5a45857111d15da1ad0274e49008a99"
+FL1_I2_PREVIOUS_EVIDENCE_TREE = "6ff185defb150c3751c7433ef635c00a200c44bf"
+FL1_I2_TERMINAL_REVIEW_ID = 4897012517
+FL1_I2_PR_NUMBER = 145
+FL1_I2_APPROVED_PLANNING_HEAD = "acb12c1db258fdef1d4f063b053d422e0d887abf"
+FL1_I2_APPROVED_PLANNING_TREE = "fc573c7646ad5edf10c32c7712de7f27ab058a2a"
+FL1_I2_OWNER_REVIEW_ID = 4907783329
+FL1_I2_OWNER_THREAD_ID = "PRRT_kwDOSTBMB86YRuq7"
+FL1_I2_OWNER_COMMENT_ID = 3759240785
+FL1_I2_OWNER_DECISION_ID = (
+    "owner_accepted_scv2_fl1_i2_pr145_exact_planning_evidence_20260813"
+)
+FL1_I2_OWNER_DECISION = (
+    "SCV2_FL1_I2_PR145_OWNER_ACCEPTED_EXACT_PLANNING_EVIDENCE_AND_"
+    "AUTHORIZED_GOVERNANCE_PROJECTION_EXPECTED_HEAD_MERGE"
+)
+FL1_I2_STATUS = (
+    "fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge"
+)
+FL1_I2_BLOCKER = "pending_pr145_expected_head_merge"
+FL1_I2_MANUAL_STATUS = "owner_accepted_exact_fl1_i2_plan"
+FL1_I2_ROUTE_SCOPE = (
+    "SCV2-FL1-I2 governance and planning only; no I2 implementation or "
+    "real-source execution"
+)
+FL1_I2_PROJECTION_ALLOWLIST = frozenset(
+    {
+        "README.md",
+        "docs/current-handoff.md",
+        "docs/phase-contracts.md",
+        "docs/project-roadmap.md",
+        "docs/roadmap/current-mainline-roadmap.md",
+        "docs/state/current-phase.json",
+        "scripts/check_documentation_state.py",
+        "tests/test_current_handoff_freshness.py",
+        "tests/test_pd1a_mainline_governance.py",
+        "tests/test_phase45_doc1_documentation_state.py",
+    }
 )
 SV1B_MERGE_COMMIT = "33af4111e1595dac3ece0ac50002556d466f0138"
 SV1B_WAIVER = "owner_accepted_sv1b_placeholder_creator_identity_limitations_v1_20260807"
@@ -371,6 +424,307 @@ def _validate_fl1_state(state: dict[str, Any]) -> None:
             )
 
 
+def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
+    """Validate the post-PR-144 governance closeout and I2 planning boundary."""
+
+    expected_top_level = {
+        "phase_id": "SCV2-FL1-I2",
+        "phase_title": "Real-source Read-only Inventory Hardening and Canary Readiness",
+        "branch": FL1_I2_BRANCH,
+        "draft": False,
+        "accepted_mainline_base": FL1_I2_ACCEPTED_MAIN,
+        "implementation_evidence_head": FL1_I2_PREVIOUS_EVIDENCE,
+        "implementation_evidence_status": "previous_phase_accepted_synthetic_foundation_only",
+        "current_status": FL1_I2_STATUS,
+        "target_met": False,
+        "safe_to_merge": True,
+        "route_approved": False,
+        "route_scope": FL1_I2_ROUTE_SCOPE,
+        "planning_authorized": True,
+        "planning_completed": True,
+        "planning_approved": True,
+        "approved_planning_head": FL1_I2_APPROVED_PLANNING_HEAD,
+        "approved_planning_tree": FL1_I2_APPROVED_PLANNING_TREE,
+        "manual_acceptance_status": FL1_I2_MANUAL_STATUS,
+        "next_phase_started": True,
+        "previous_phase": "SCV2-FL1-I1",
+        "previous_phase_status": "owner_accepted_and_merge_commit_merged",
+        "previous_phase_merge_commit": FL1_I2_ACCEPTED_MAIN,
+        "previous_phase_final_head": FL1_I2_PREVIOUS_FINAL_HEAD,
+        "previous_phase_final_tree": FL1_I2_PREVIOUS_FINAL_TREE,
+        "previous_phase_implementation_completed": True,
+        "previous_phase_accepted_scope": "synthetic_and_new_temporary_fixture_foundation_only",
+        "previous_phase_real_inventory_target_met": False,
+        "previous_phase_owner_accepted": True,
+        "previous_phase_safe_to_merge": True,
+        "previous_phase_terminal_review_id": FL1_I2_TERMINAL_REVIEW_ID,
+        "previous_phase_terminal_review_findings": 17,
+        "previous_phase_terminal_review_p1": 13,
+        "previous_phase_terminal_review_p2": 4,
+        "previous_phase_github_checks": 0,
+        "previous_phase_machine_verifiable_ci": False,
+    }
+    if any(state.get(key) != value for key, value in expected_top_level.items()):
+        raise DocumentationStateError("fl1_i2_status_fields_conflict")
+    if state["pr_number"] != FL1_I2_PR_NUMBER:
+        raise DocumentationStateError("fl1_i2_pr_number_invalid")
+    if state["active_blocker"].get("code") != FL1_I2_BLOCKER:
+        raise DocumentationStateError("fl1_i2_blocker_conflict")
+
+    boundary = state["planning_boundary"]
+    expected_boundary = {
+        "planning_only": True,
+        "planning_authorized": True,
+        "planning_completed": True,
+        "planning_approved": True,
+        "implementation_authorized": False,
+        "implementation_started": False,
+        "implementation_completed": False,
+        "owner_audit_pending": False,
+        "owner_acceptance_valid": True,
+        "merge_authorized": True,
+        "target_met": False,
+        "safe_to_merge": True,
+        "route_approved": False,
+        "real_inventory_started": False,
+        "real_source_inventory_authorized": False,
+        "source_root_access_authorized": False,
+        "data_execution_authorized": False,
+        "database_access_authorized": False,
+        "database_data_execution_authorized": False,
+        "app_storage_write_authorized": False,
+        "import_authorized": False,
+        "classification_or_tagging_execution_authorized": False,
+        "provider_or_llm_authorized": False,
+        "provider_authorized": False,
+        "llm_authorized": False,
+        "media_or_thumbnail_download_authorized": False,
+        "media_authorized": False,
+        "stable_replay_authorized": False,
+        "production_authorized": False,
+        "synthetic_ephemeral_test_fixture_authorized": False,
+        "documentation_validation_authorized": True,
+        "projected_external_cost_usd": 0,
+    }
+    if not isinstance(boundary, dict) or any(
+        boundary.get(key) != value for key, value in expected_boundary.items()
+    ):
+        raise DocumentationStateError("fl1_i2_boundary_invalid")
+
+    upstream = state["upstream_pr_state"]
+    expected_upstream = {
+        "pr_number": 144,
+        "state": "merged",
+        "merged": True,
+        "draft": False,
+        "merge_commit": FL1_I2_ACCEPTED_MAIN,
+        "merge_topology": "merge_commit",
+        "final_head": FL1_I2_PREVIOUS_FINAL_HEAD,
+        "final_tree": FL1_I2_PREVIOUS_FINAL_TREE,
+        "implementation_evidence_head": FL1_I2_PREVIOUS_EVIDENCE,
+        "implementation_evidence_tree": FL1_I2_PREVIOUS_EVIDENCE_TREE,
+        "terminal_review_id": FL1_I2_TERMINAL_REVIEW_ID,
+        "terminal_reviewed_head": FL1_I2_PREVIOUS_FINAL_HEAD,
+        "terminal_review_finding_count": 17,
+        "terminal_review_p1_count": 13,
+        "terminal_review_p2_count": 4,
+        "terminal_review_resolved_count": 0,
+        "terminal_review_outdated_count": 0,
+        "github_checks": 0,
+        "historical_review_threads_preserved": True,
+        "owner_accepted": True,
+        "owner_decision": "SCV2_FL1_I1_PR144_TERMINAL_OWNER_AUDIT_ACCEPTED_AS_SYNTHETIC_FOUNDATION_WITH_USE_BEFORE_GATES",
+    }
+    if not isinstance(upstream, dict) or any(
+        upstream.get(key) != value for key, value in expected_upstream.items()
+    ):
+        raise DocumentationStateError("fl1_i2_upstream_state_invalid")
+
+    next_phase = state["next_phase_authorization"]
+    expected_next_phase = {
+        "phase_id": "SCV2-FL1-I2",
+        "planning_authorized": True,
+        "planning_completed": True,
+        "planning_approved": True,
+        "implementation_authorized": False,
+        "implementation_started": False,
+        "synthetic_fixture_execution_authorized": False,
+        "real_inventory_started": False,
+        "real_source_inventory_authorized": False,
+        "i3_canary_started": False,
+        "required_preconditions": [
+            "PR #145 is merged at the owner-authorized expected governance projection HEAD before any I2 implementation",
+            "I2 implementation is separately authorized",
+            "I2 implementation is restricted to synthetic or adversarial newly created temporary fixtures while real source, iCloud, database, app storage, import, provider, model, media, and production authority remain false",
+            "all fourteen I2 delivery gates close before implementation_completed, target_met, safe_to_merge, merge, or I3",
+            "I2 passes owner audit and merges before any real source operation",
+            "a separate FL1_I3_REAL_SOURCE_SCOPE_GATE binds exact private source scope, protected roots, budgets, no-hydration policy, and stop conditions",
+        ],
+    }
+    if not isinstance(next_phase, dict) or any(
+        next_phase.get(key) != value for key, value in expected_next_phase.items()
+    ):
+        raise DocumentationStateError("fl1_i2_authorization_state_invalid")
+
+    prior = state["prior_phase_acceptance"]
+    expected_prior = {
+        "phase_id": "SCV2-FL1-I1",
+        "status": "owner_accepted_and_merge_commit_merged",
+        "accepted_scope": "synthetic_and_new_temporary_fixture_foundation_only",
+        "real_inventory_target_met": False,
+        "implementation_completed": True,
+        "owner_accepted": True,
+        "safe_to_merge": True,
+        "merge_commit": FL1_I2_ACCEPTED_MAIN,
+        "final_head": FL1_I2_PREVIOUS_FINAL_HEAD,
+        "final_tree": FL1_I2_PREVIOUS_FINAL_TREE,
+        "implementation_evidence_head": FL1_I2_PREVIOUS_EVIDENCE,
+        "implementation_evidence_tree": FL1_I2_PREVIOUS_EVIDENCE_TREE,
+        "terminal_review_id": FL1_I2_TERMINAL_REVIEW_ID,
+        "terminal_review_finding_count": 17,
+        "terminal_review_p1_count": 13,
+        "terminal_review_p2_count": 4,
+        "github_checks": 0,
+        "machine_verifiable_ci": False,
+        "automated_positive_authority": False,
+    }
+    if not isinstance(prior, dict) or any(
+        prior.get(key) != value for key, value in expected_prior.items()
+    ):
+        raise DocumentationStateError("fl1_i2_prior_phase_acceptance_invalid")
+
+    protected = state["protected_evidence"]
+    expected_protected = {
+        "accepted_mainline_merge_commit": FL1_I2_ACCEPTED_MAIN,
+        "previous_phase_final_head": FL1_I2_PREVIOUS_FINAL_HEAD,
+        "previous_phase_final_tree": FL1_I2_PREVIOUS_FINAL_TREE,
+        "previous_phase_implementation_evidence_head": FL1_I2_PREVIOUS_EVIDENCE,
+        "previous_phase_implementation_evidence_tree": FL1_I2_PREVIOUS_EVIDENCE_TREE,
+        "fl1_i1_implementation_evidence_frozen": True,
+        "previous_phase_terminal_review_id": FL1_I2_TERMINAL_REVIEW_ID,
+        "previous_phase_terminal_reviewed_head": FL1_I2_PREVIOUS_FINAL_HEAD,
+        "previous_phase_terminal_review_finding_count": 17,
+        "previous_phase_terminal_review_p1_count": 13,
+        "previous_phase_terminal_review_p2_count": 4,
+        "previous_phase_terminal_review_resolved_count": 0,
+        "previous_phase_terminal_review_outdated_count": 0,
+        "validation_receipt_trust_level": "local_operator_receipt",
+        "machine_verifiable_ci": False,
+        "github_checks_observed": 0,
+        "ci_authority": False,
+        "preflight_remote_sync": "self_healed_by_fast_forward",
+        "preflight_remote_sync_is_contract_proof": False,
+        "authorized_git_github_governance_control_plane_operations_occurred": True,
+        "approved_planning_head": FL1_I2_APPROVED_PLANNING_HEAD,
+        "approved_planning_tree": FL1_I2_APPROVED_PLANNING_TREE,
+        "approved_planning_pr_number": FL1_I2_PR_NUMBER,
+        "approved_planning_review_id": FL1_I2_OWNER_REVIEW_ID,
+        "approved_planning_thread_id": FL1_I2_OWNER_THREAD_ID,
+        "approved_planning_comment_id": FL1_I2_OWNER_COMMENT_ID,
+        "owner_acceptance_decision_id": FL1_I2_OWNER_DECISION_ID,
+    }
+    zero_fields = (
+        "real_source_inventory_operation_count",
+        "existing_database_read_operation_count",
+        "existing_database_write_operation_count",
+        "app_storage_write_operation_count",
+        "import_operation_count",
+        "classification_or_tagging_operation_count",
+        "provider_operation_count",
+        "llm_operation_count",
+        "media_or_thumbnail_operation_count",
+        "external_data_plane_network_operation_count",
+        "stable_replay_operation_count",
+        "ui_or_server_operation_count",
+        "production_operation_count",
+    )
+    if not isinstance(protected, dict) or "network_operation_count" in protected or any(
+        protected.get(key) != value for key, value in expected_protected.items()
+    ) or any(protected.get(key) != 0 for key in zero_fields):
+        raise DocumentationStateError("fl1_i2_protected_evidence_invalid")
+
+    matching_decisions = [
+        decision
+        for decision in state["owner_decisions"]
+        if isinstance(decision, dict)
+        and decision.get("id") == FL1_I2_OWNER_DECISION_ID
+    ]
+    expected_owner_decision = {
+        "id": FL1_I2_OWNER_DECISION_ID,
+        "decision": FL1_I2_OWNER_DECISION,
+        "pr_number": FL1_I2_PR_NUMBER,
+        "accepted_planning_head": FL1_I2_APPROVED_PLANNING_HEAD,
+        "accepted_planning_tree": FL1_I2_APPROVED_PLANNING_TREE,
+        "review_id": FL1_I2_OWNER_REVIEW_ID,
+        "thread_id": FL1_I2_OWNER_THREAD_ID,
+        "comment_id": FL1_I2_OWNER_COMMENT_ID,
+        "finding_severity": "P1",
+        "finding_disposition": (
+            "closed_in_owner_acceptance_projection_exact_binding_contract"
+        ),
+        "implementation_authorized": False,
+        "real_source_inventory_authorized": False,
+    }
+    if matching_decisions != [expected_owner_decision]:
+        raise DocumentationStateError("fl1_i2_owner_acceptance_binding_invalid")
+
+    matching_checkpoints = [
+        checkpoint
+        for checkpoint in state["completed_checkpoints"]
+        if isinstance(checkpoint, dict)
+        and checkpoint.get("id") == "fl1_i2_exact_plan_owner_acceptance"
+    ]
+    if matching_checkpoints != [
+        {
+            "id": "fl1_i2_exact_plan_owner_acceptance",
+            "result": "owner_accepted_exact_planning_head_tree_pending_expected_head_merge",
+            "fingerprint": FL1_I2_APPROVED_PLANNING_HEAD,
+        }
+    ]:
+        raise DocumentationStateError("fl1_i2_owner_acceptance_checkpoint_invalid")
+
+    expected_findings = [
+        (1, "PRRT_kwDOSTBMB86X4OUS", "P1", "Scrub Git control variables before trusted invocations", "scripts/fl1_i1_runtime_context.py", "git_control_environment_sanitization", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (2, "PRRT_kwDOSTBMB86X4OUW", "P1", "Validate the parent-observed child identity", "scripts/phase_contracts/fl1_i1_contract.py", "parent_observed_child_identity_claim_boundary", "claim_boundary_local_evidence_not_tamper_resistant_attestation"),
+        (3, "PRRT_kwDOSTBMB86X4OUa", "P1", "Recheck recall attributes before final resolution", "scripts/fl1_i1_operation_gateway.py", "cloud_attribute_and_final_open_object_consistency", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (4, "PRRT_kwDOSTBMB86X4OUe", "P1", "Allow interrupted attempts before corrupt-media closure", "scripts/phase_contracts/fl1_i1_contract.py", "interrupted_attempt_corrupt_media_accounting", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (5, "PRRT_kwDOSTBMB86X4OUk", "P2", "Enforce the deadline around blocking file operations", "scripts/fl1_i1_operation_gateway.py", "interruptible_blocking_file_operations", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (6, "PRRT_kwDOSTBMB86X4OUq", "P1", "Bind the receipt to one unchanged HEAD", "scripts/fl1_i1_validation_receipt.py", "validation_receipt_same_head_before_after", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (7, "PRRT_kwDOSTBMB86X4OUy", "P1", "Re-derive the adapter policy during contract validation", "scripts/phase_contracts/fl1_i1_contract.py", "adapter_policy_rederived_from_trusted_config", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (8, "PRRT_kwDOSTBMB86X4OU1", "P2", "Stop at the configured failure maximum", "scripts/fl1_i1_inventory.py", "failure_maximum_stop_boundary", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (9, "PRRT_kwDOSTBMB86X4OU5", "P1", "Pin the frozen remediation commit and tree", "scripts/check_documentation_state.py", "frozen_i1_evidence_commit_tree_binding", "closed_in_current_governance_pr"),
+        (10, "PRRT_kwDOSTBMB86X4OVA", "P1", "Reject CI authority in documentation state", "scripts/check_documentation_state.py", "documentation_ci_authority_fail_closed", "closed_in_current_governance_pr"),
+        (11, "PRRT_kwDOSTBMB86X4OVI", "P1", "Include a change identity in file signatures", "scripts/fl1_i1_inventory.py", "windows_file_identity_and_change_identity", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (12, "PRRT_kwDOSTBMB86X4OVM", "P1", "Reject hard-linked files that alias protected data", "scripts/fl1_i1_inventory.py", "hard_link_reparse_and_alias_policy", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (13, "PRRT_kwDOSTBMB86X4OVT", "P1", "Confine private artifact reads as well as writes", "scripts/fl1_i1_operation_gateway.py", "task_owned_nofollow_private_artifact_reads", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (14, "PRRT_kwDOSTBMB86X4OVW", "P1", "Enumerate directories through a verified no-follow handle", "scripts/fl1_i1_operation_gateway.py", "handle_based_directory_enumeration", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (15, "PRRT_kwDOSTBMB86X4OVa", "P1", "Reconcile intents from ended failed invocations", "scripts/fl1_i1_inventory.py", "ended_failed_invocation_intent_recovery", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (16, "PRRT_kwDOSTBMB86X4OVe", "P2", "Validate media structure beyond boundary markers", "scripts/fl1_i1_inventory.py", "bounded_media_structure_validation", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+        (17, "PRRT_kwDOSTBMB86X4OVk", "P2", "Handle runtime-context failures in the scanner CLI", "scripts/fl1_i1_inventory.py", "privacy_safe_cli_runtime_context_error_envelope", "must_close_during_i2_before_i2_completion_merge_or_i3"),
+    ]
+    actual_findings = state["terminal_review_findings"]
+    expected_payload = [
+        {
+            "number": number,
+            "thread_id": thread_id,
+            "severity": severity,
+            "title": title,
+            "path": path,
+            "code": code,
+            "classification": classification,
+        }
+        for number, thread_id, severity, title, path, code, classification in expected_findings
+    ]
+    if actual_findings != expected_payload:
+        raise DocumentationStateError("fl1_i2_terminal_review_findings_invalid")
+    if state.get("artifact_lifecycle") != [
+        "governance_and_route_planning",
+        "public_safe_documentation",
+        "minimal_documentation_checker_and_regression_changes_only_if_required",
+    ]:
+        raise DocumentationStateError("fl1_i2_artifact_lifecycle_invalid")
+
+
 def _validate_historical_fl1_p1_r1_state(state: dict[str, Any]) -> None:
     if (
         state["phase_id"] != "SCV2-FL1-P1-R1"
@@ -554,6 +908,10 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         raise DocumentationStateError("accepted_mainline_base_invalid")
     if not HEX40.fullmatch(str(state["implementation_evidence_head"])):
         raise DocumentationStateError("implementation_evidence_head_invalid")
+    if not HEX40.fullmatch(str(state["approved_planning_head"])):
+        raise DocumentationStateError("approved_planning_head_invalid")
+    if not HEX40.fullmatch(str(state["approved_planning_tree"])):
+        raise DocumentationStateError("approved_planning_tree_invalid")
     if state["pr_number"] is not None and (
         isinstance(state["pr_number"], bool)
         or not isinstance(state["pr_number"], int)
@@ -562,7 +920,15 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         raise DocumentationStateError("pr_number_invalid")
     if not isinstance(state["draft"], bool):
         raise DocumentationStateError("draft_must_be_boolean")
-    for key in ("target_met", "safe_to_merge", "route_approved", "next_phase_started"):
+    for key in (
+        "target_met",
+        "safe_to_merge",
+        "route_approved",
+        "next_phase_started",
+        "planning_authorized",
+        "planning_completed",
+        "planning_approved",
+    ):
         if not isinstance(state[key], bool):
             raise DocumentationStateError(f"{key}_must_be_boolean")
     if not isinstance(state["manual_acceptance_status"], str) or not state[
@@ -586,8 +952,8 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     ):
         raise DocumentationStateError("public_state_boundary_invalid")
 
-    if state["phase_id"] == "SCV2-FL1-I1":
-        _validate_fl1_state(state)
+    if state["phase_id"] == "SCV2-FL1-I2":
+        _validate_fl1_i2_state(state)
     else:
         raise DocumentationStateError("unsupported_active_phase")
 
@@ -607,7 +973,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
         "ai tagging execution",
     )
     if any(term in joined_authorized for term in authorization_deny_terms):
-        raise DocumentationStateError("fl1_i1_authorizes_data_execution")
+        raise DocumentationStateError("fl1_i2_authorizes_execution")
     for required in (
         "database",
         "production",
@@ -647,22 +1013,375 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
             raise DocumentationStateError(f"durable_link_missing:{link.get('path')}")
 
     serialized = json.dumps(state, ensure_ascii=False, sort_keys=True)
-    serialized_folded = serialized.casefold()
-    forbidden_authority_claims = (
-        '"target_met": true',
-        '"safe_to_merge": true',
-        '"route_approved": true',
-        '"real_source_inventory_authorized": true',
-        '"database_access_authorized": true',
-        '"app_storage_write_authorized": true',
-        '"production_authorized": true',
-        '"manual_acceptance_status": "owner_accepted',
-    )
-    if any(claim in serialized_folded for claim in forbidden_authority_claims):
-        raise DocumentationStateError("unauthorized_fl1_authority_claim_present")
+    forbidden_positive_authority = any(
+        state[field] for field in ("target_met", "route_approved")
+    ) or any(
+        state["planning_boundary"][field]
+        for field in (
+            "implementation_authorized",
+            "implementation_started",
+            "implementation_completed",
+            "real_inventory_started",
+            "real_source_inventory_authorized",
+            "source_root_access_authorized",
+            "data_execution_authorized",
+            "database_access_authorized",
+            "app_storage_write_authorized",
+            "import_authorized",
+            "classification_or_tagging_execution_authorized",
+            "provider_or_llm_authorized",
+            "media_authorized",
+            "stable_replay_authorized",
+            "production_authorized",
+        )
+    ) or state["protected_evidence"]["machine_verifiable_ci"] is not False
+    if forbidden_positive_authority:
+        raise DocumentationStateError("unauthorized_fl1_i2_authority_claim_present")
     for pattern in PUBLIC_FORBIDDEN:
         if pattern.search(serialized):
             raise DocumentationStateError(f"public_state_redaction_failure:{pattern.pattern}")
+
+
+def _trusted_git_environment(
+    inherited: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Return a Git environment with caller-controlled Git state removed."""
+
+    source = os.environ if inherited is None else inherited
+    scrubbed = {
+        key: value
+        for key, value in source.items()
+        if not key.casefold().startswith("git_")
+    }
+    scrubbed.update(
+        {
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return scrubbed
+
+
+def _casefold_deduplicated_paths(paths: Iterable[Path]) -> tuple[Path, ...]:
+    """Return paths in first-seen order with Windows-style case deduplication."""
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return tuple(unique)
+
+
+def _read_windows_registry_path(
+    registry: Any,
+    *,
+    key_path: str,
+    value_name: str,
+    view: int,
+) -> Path | None:
+    """Read one absolute Windows path from an explicit HKLM registry view."""
+
+    try:
+        handle = registry.OpenKey(
+            registry.HKEY_LOCAL_MACHINE,
+            key_path,
+            0,
+            registry.KEY_READ | view,
+        )
+    except (OSError, TypeError, ValueError):
+        return None
+    try:
+        value, _value_type = registry.QueryValueEx(handle, value_name)
+    except (OSError, TypeError, ValueError):
+        return None
+    finally:
+        try:
+            registry.CloseKey(handle)
+        except OSError:
+            pass
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized or not PureWindowsPath(normalized).is_absolute():
+        return None
+    return Path(normalized)
+
+
+def _windows_system_git_roots(
+    *,
+    registry: Any | None = None,
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Discover Git and Program Files roots from OS-backed HKLM registration."""
+
+    if registry is None:
+        try:
+            import winreg as registry
+        except ImportError:
+            return (), ()
+
+    views: list[int] = []
+    for view in (
+        getattr(registry, "KEY_WOW64_64KEY", 0),
+        getattr(registry, "KEY_WOW64_32KEY", 0),
+    ):
+        if view not in views:
+            views.append(view)
+
+    git_install_roots: list[Path] = []
+    program_files_roots: list[Path] = []
+    for view in views:
+        install_root = _read_windows_registry_path(
+            registry,
+            key_path=r"SOFTWARE\GitForWindows",
+            value_name="InstallPath",
+            view=view,
+        )
+        if install_root is not None:
+            git_install_roots.append(install_root)
+        for value_name in ("ProgramFilesDir", "ProgramFilesDir (x86)"):
+            program_files_root = _read_windows_registry_path(
+                registry,
+                key_path=r"SOFTWARE\Microsoft\Windows\CurrentVersion",
+                value_name=value_name,
+                view=view,
+            )
+            if program_files_root is not None:
+                program_files_roots.append(program_files_root)
+
+    return (
+        _casefold_deduplicated_paths(git_install_roots),
+        _casefold_deduplicated_paths(program_files_roots),
+    )
+
+
+def _windows_trusted_git_candidates(
+    *,
+    git_install_roots: Iterable[Path],
+    program_files_roots: Iterable[Path],
+) -> tuple[Path, ...]:
+    """Build bounded Git executable candidates from trusted Windows roots."""
+
+    install_roots = _casefold_deduplicated_paths(
+        (
+            *git_install_roots,
+            *(root / "Git" for root in program_files_roots),
+        )
+    )
+    return _casefold_deduplicated_paths(
+        candidate
+        for install_root in install_roots
+        for candidate in (
+            install_root / "cmd" / "git.exe",
+            install_root / "bin" / "git.exe",
+        )
+    )
+
+
+def _trusted_git_candidates(
+    *,
+    platform_name: str | None = None,
+    windows_location_provider: WindowsGitLocationProvider | None = None,
+) -> tuple[Path, ...]:
+    """Return bounded system candidates without consulting caller environment."""
+
+    effective_platform = os.name if platform_name is None else platform_name
+    if effective_platform == "nt":
+        provider = windows_location_provider or _windows_system_git_roots
+        git_install_roots, program_files_roots = provider()
+        return _windows_trusted_git_candidates(
+            git_install_roots=git_install_roots,
+            program_files_roots=program_files_roots,
+        )
+    return (
+        Path("/usr/bin/git"),
+        Path("/usr/local/bin/git"),
+        Path("/opt/homebrew/bin/git"),
+    )
+
+
+def _trusted_git_executable(
+    *,
+    root: Path = ROOT,
+    platform_name: str | None = None,
+    windows_location_provider: WindowsGitLocationProvider | None = None,
+) -> Path:
+    """Resolve Git from trusted system locations, never from caller PATH."""
+
+    candidates = _trusted_git_candidates(
+        platform_name=platform_name,
+        windows_location_provider=windows_location_provider,
+    )
+    resolved_root = root.resolve()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if not resolved.is_file():
+            continue
+        if resolved == resolved_root or resolved_root in resolved.parents:
+            continue
+        return resolved
+    raise DocumentationStateError("trusted_git_executable_unavailable")
+
+
+def _run_trusted_git(
+    arguments: list[str],
+    *,
+    root: Path = ROOT,
+) -> subprocess.CompletedProcess[str]:
+    """Run a non-interactive repository-bound Git command without caller config."""
+
+    executable = _trusted_git_executable(root=root)
+    command = [
+        str(executable),
+        "-c",
+        f"core.hooksPath={os.devnull}",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.useBuiltinFSMonitor=false",
+        "-C",
+        str(root.resolve()),
+        *arguments,
+    ]
+    try:
+        return subprocess.run(
+            command,
+            cwd=root,
+            env=_trusted_git_environment(),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise DocumentationStateError(
+            f"trusted_git_invocation_failed:{type(exc).__name__}"
+        ) from exc
+
+
+def _validate_fl1_i2_projection_paths(paths: Iterable[str]) -> None:
+    """Fail closed unless every post-plan path is governance projection only."""
+
+    for raw_path in paths:
+        path = raw_path.replace("\\", "/")
+        if path not in FL1_I2_PROJECTION_ALLOWLIST:
+            raise DocumentationStateError(
+                f"fl1_i2_governance_projection_path_invalid:{path}"
+            )
+
+
+def _trusted_git_changed_paths(
+    arguments: list[str],
+    *,
+    root: Path,
+    error_code: str,
+) -> tuple[str, ...]:
+    result = _run_trusted_git(arguments, root=root)
+    if result.returncode != 0:
+        raise DocumentationStateError(error_code)
+    return tuple(path for path in result.stdout.split("\0") if path)
+
+
+def _validate_fl1_i2_owner_acceptance_git(
+    state: dict[str, Any],
+    *,
+    root: Path,
+) -> None:
+    """Bind owner acceptance to the exact plan and governance-only descendants."""
+
+    if (
+        state.get("approved_planning_head") != FL1_I2_APPROVED_PLANNING_HEAD
+        or state.get("approved_planning_tree") != FL1_I2_APPROVED_PLANNING_TREE
+    ):
+        raise DocumentationStateError("fl1_i2_approved_planning_binding_invalid")
+
+    planning_object = _run_trusted_git(
+        ["cat-file", "-e", f"{FL1_I2_APPROVED_PLANNING_HEAD}^{{commit}}"],
+        root=root,
+    )
+    if planning_object.returncode != 0:
+        raise DocumentationStateError("fl1_i2_approved_planning_object_missing")
+    planning_tree = _run_trusted_git(
+        ["rev-parse", f"{FL1_I2_APPROVED_PLANNING_HEAD}^{{tree}}"],
+        root=root,
+    )
+    if planning_tree.returncode != 0:
+        raise DocumentationStateError("fl1_i2_approved_planning_object_missing")
+    if planning_tree.stdout.strip() != FL1_I2_APPROVED_PLANNING_TREE:
+        raise DocumentationStateError("fl1_i2_approved_planning_tree_mismatch")
+
+    ancestor = _run_trusted_git(
+        [
+            "merge-base",
+            "--is-ancestor",
+            FL1_I2_APPROVED_PLANNING_HEAD,
+            "HEAD",
+        ],
+        root=root,
+    )
+    if ancestor.returncode != 0:
+        raise DocumentationStateError("fl1_i2_approved_planning_not_ancestor")
+
+    changed_paths: list[str] = []
+    changed_paths.extend(
+        _trusted_git_changed_paths(
+            [
+                "diff",
+                "--no-ext-diff",
+                "--name-only",
+                "-z",
+                "--diff-filter=ACDMRTUXB",
+                FL1_I2_APPROVED_PLANNING_HEAD,
+                "HEAD",
+                "--",
+            ],
+            root=root,
+            error_code="fl1_i2_projection_committed_diff_unavailable",
+        )
+    )
+    changed_paths.extend(
+        _trusted_git_changed_paths(
+            [
+                "diff",
+                "--no-ext-diff",
+                "--name-only",
+                "-z",
+                "--diff-filter=ACDMRTUXB",
+                "HEAD",
+                "--",
+            ],
+            root=root,
+            error_code="fl1_i2_projection_worktree_diff_unavailable",
+        )
+    )
+    changed_paths.extend(
+        _trusted_git_changed_paths(
+            [
+                "diff",
+                "--no-ext-diff",
+                "--cached",
+                "--name-only",
+                "-z",
+                "--diff-filter=ACDMRTUXB",
+                "HEAD",
+                "--",
+            ],
+            root=root,
+            error_code="fl1_i2_projection_index_diff_unavailable",
+        )
+    )
+    _validate_fl1_i2_projection_paths(changed_paths)
 
 
 def validate_git_ancestry(
@@ -673,40 +1392,42 @@ def validate_git_ancestry(
 ) -> None:
     base = str(state["accepted_mainline_base"])
     implementation = str(state["implementation_evidence_head"])
-    base_object = subprocess.run(
-        ["git", "cat-file", "-e", f"{base}^{{commit}}"],
-        cwd=root,
-        capture_output=True,
-        check=False,
+    expected_commit_trees = {
+        str(state["previous_phase_final_head"]): str(state["previous_phase_final_tree"]),
+        str(state["protected_evidence"]["previous_phase_implementation_evidence_head"]): str(
+            state["protected_evidence"]["previous_phase_implementation_evidence_tree"]
+        ),
+        base: str(state["previous_phase_final_tree"]),
+    }
+    for commit, expected_tree in expected_commit_trees.items():
+        tree_result = _run_trusted_git(
+            ["rev-parse", f"{commit}^{{tree}}"], root=root
+        )
+        if tree_result.returncode != 0:
+            raise DocumentationStateError("frozen_i1_evidence_object_missing")
+        if tree_result.stdout.strip() != expected_tree:
+            raise DocumentationStateError("frozen_i1_evidence_tree_mismatch")
+    base_object = _run_trusted_git(
+        ["cat-file", "-e", f"{base}^{{commit}}"], root=root
     )
     if base_object.returncode != 0:
         raise DocumentationStateError("accepted_mainline_base_object_missing")
-    implementation_object = subprocess.run(
-        ["git", "cat-file", "-e", f"{implementation}^{{commit}}"],
-        cwd=root,
-        capture_output=True,
-        check=False,
+    implementation_object = _run_trusted_git(
+        ["cat-file", "-e", f"{implementation}^{{commit}}"], root=root
     )
     if implementation_object.returncode != 0:
         raise DocumentationStateError("implementation_evidence_object_missing")
-    base_check = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", base, "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
+    base_check = _run_trusted_git(
+        ["merge-base", "--is-ancestor", base, "HEAD"], root=root
     )
     if base_check.returncode != 0:
         raise DocumentationStateError("accepted_mainline_base_not_ancestor_of_head")
 
-    implementation_check = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", implementation, "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
+    if state.get("phase_id") == "SCV2-FL1-I2":
+        _validate_fl1_i2_owner_acceptance_git(state, root=root)
+
+    implementation_check = _run_trusted_git(
+        ["merge-base", "--is-ancestor", implementation, "HEAD"], root=root
     )
     if implementation_check.returncode == 0:
         return
@@ -785,7 +1506,7 @@ def _link_for_handoff(link: dict[str, str]) -> str:
     return f"[{link['label']}]({path.removeprefix('docs/')})"
 
 
-def render_handoff(state: dict[str, Any]) -> str:
+def _render_handoff_legacy(state: dict[str, Any]) -> str:
     blocker = state["active_blocker"]
     boundary = state["planning_boundary"]
     if state["pr_number"] is None:
@@ -855,13 +1576,103 @@ def render_handoff(state: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_handoff(state: dict[str, Any]) -> str:
+    """Render the complete public-safe I2 planning handoff."""
+
+    blocker = state["active_blocker"]
+    boundary = state["planning_boundary"]
+    if state["pr_number"] is None:
+        pr_label = "PR pending creation"
+    elif state["draft"]:
+        pr_label = f"Draft PR #{state['pr_number']}"
+    else:
+        pr_label = f"PR #{state['pr_number']}"
+    lines = [
+        "# Current Handoff - V.I.O.L.E.T.",
+        "",
+        "> Generated from `docs/state/current-phase.json`; this file is not the fact source.",
+        "",
+        "## Current Facts",
+        "",
+        f"- Phase: `{state['phase_id']}` - {state['phase_title']}.",
+        f"- Repository / PR: `{state['repository']}` / {pr_label}.",
+        f"- Branch: `{state['branch']}`.",
+        f"- Accepted mainline base: `{state['accepted_mainline_base']}`.",
+        f"- Previous phase: `{state['previous_phase']}` / PR #144; status: `{state['previous_phase_status']}`.",
+        f"- Previous final HEAD/tree: `{state['previous_phase_final_head']}` / `{state['previous_phase_final_tree']}`; merge commit: `{state['previous_phase_merge_commit']}`.",
+        f"- Previous I1 implementation evidence HEAD/tree: `{state['implementation_evidence_head']}` / `{state['protected_evidence']['previous_phase_implementation_evidence_tree']}` (frozen: `true`; accepted scope: `{state['previous_phase_accepted_scope']}`).",
+        f"- Terminal review: `{state['previous_phase_terminal_review_id']}` at `{state['previous_phase_final_head']}`; findings: `{state['previous_phase_terminal_review_findings']}` (`P1={state['previous_phase_terminal_review_p1']}`, `P2={state['previous_phase_terminal_review_p2']}`); GitHub checks: `{state['previous_phase_github_checks']}`.",
+        f"- Status: `{state['current_status']}`.",
+        f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
+        f"- Planning: `authorized={str(state['planning_authorized']).lower()}`, `completed={str(state['planning_completed']).lower()}`, `approved={str(state['planning_approved']).lower()}`; `manual_acceptance_status={state['manual_acceptance_status']}`.",
+        f"- Owner-approved planning HEAD/tree: `{state['approved_planning_head']}` / `{state['approved_planning_tree']}`.",
+        f"- Owner evidence: PR `#{state['protected_evidence']['approved_planning_pr_number']}`, review `{state['protected_evidence']['approved_planning_review_id']}`, thread `{state['protected_evidence']['approved_planning_thread_id']}`, comment `{state['protected_evidence']['approved_planning_comment_id']}`; the P1 exact-revision finding closes in this governance projection binding.",
+        f"- Owner acceptance / merge authorization: `{str(boundary['owner_acceptance_valid']).lower()}/{str(boundary['merge_authorized']).lower()}`.",
+        f"- I2 implementation / real-source authorization: `{str(boundary['implementation_authorized']).lower()}/{str(boundary['real_source_inventory_authorized']).lower()}`; route scope: `{state['route_scope']}`.",
+        "",
+        "## Completed Checkpoints",
+        "",
+    ]
+    for checkpoint in state["completed_checkpoints"]:
+        suffix = f" - `{checkpoint['fingerprint']}`" if checkpoint.get("fingerprint") else ""
+        lines.append(f"- `{checkpoint['id']}`: `{checkpoint['result']}`{suffix}.")
+    lines.extend(
+        [
+            "",
+            "## PR #144 Terminal Review Use-Before Classification",
+            "",
+            "All 17 findings remain historical audit records. No PR #144 thread was replied to, resolved, or reopened.",
+            "",
+        ]
+    )
+    for finding in state["terminal_review_findings"]:
+        lines.append(
+            f"- #{finding['number']} [{finding['severity']}] {finding['title']} - `{finding['code']}`; `{finding['classification']}`."
+        )
+    lines.extend(
+        [
+            "",
+            "## Current Gate And Boundary",
+            "",
+            f"- Gate: `{blocker['code']}` ({blocker['scope']}).",
+            f"- Resolution: {blocker['resolution']}",
+            f"- Planning only: `{str(boundary['planning_only']).lower()}`; implementation/data/production authorization: `{str(boundary['implementation_authorized']).lower()}/{str(boundary['data_execution_authorized']).lower()}/{str(boundary['production_authorized']).lower()}`.",
+            f"- Existing database/real inventory/provider-or-LLM/media authorization: `{str(boundary['database_access_authorized']).lower()}/{str(boundary['real_source_inventory_authorized']).lower()}/{str(boundary['provider_or_llm_authorized']).lower()}/{str(boundary['media_authorized']).lower()}`; projected external cost: `${boundary['projected_external_cost_usd']}`.",
+            f"- Public evidence boundary: `trust_level={state['protected_evidence']['validation_receipt_trust_level']}`, `machine_verifiable_ci={str(state['protected_evidence']['machine_verifiable_ci']).lower()}`, `github_checks={state['protected_evidence']['github_checks_observed']}`.",
+            f"- Network truth: external source/provider/model/media data-plane operations = `{state['protected_evidence']['external_data_plane_network_operation_count']}`; authorized Git/GitHub governance control-plane operations occurred = `{str(state['protected_evidence']['authorized_git_github_governance_control_plane_operations_occurred']).lower()}`.",
+            "- Parent-observed child identity remains local provenance, not OS/kernel/TPM/remote/CI or tamper-resistant attestation.",
+            "",
+            "## Allowed / Forbidden",
+            "",
+            "- Allowed: " + "; ".join(map(str, state["authorized_operations"])) + ".",
+            "- Forbidden: " + "; ".join(map(str, state["forbidden_operations"])) + ".",
+            "",
+            "## Next Action",
+            "",
+            f"- Required checkpoint: `{state['next_required_checkpoint']}`.",
+            "",
+            "## Durable Links",
+            "",
+        ]
+    )
+    lines.extend(f"- {_link_for_handoff(link)}" for link in state["durable_links"])
+    lines.extend(["", "## Deferred Debt", ""])
+    for debt in state["deferred_debt"]:
+        requirements = "; ".join(debt["requirements"])
+        lines.append(
+            f"- `{debt['id']}` - owner: {debt['owner']}; due before: `{debt['due_before']}`; {debt['reason']} Requirements: {requirements}."
+        )
+    lines.extend([f"Updated: `{state['updated_at']}`.", ""])
+    return "\n".join(lines)
+
+
 def check_handoff(state: dict[str, Any], *, path: Path = HANDOFF_PATH) -> None:
     expected = render_handoff(state)
     actual = path.read_text(encoding="utf-8")
     if actual != expected:
         raise DocumentationStateError("generated_handoff_drift")
     line_count = len(actual.splitlines())
-    if not 40 <= line_count <= 65:
+    if not 55 <= line_count <= 115:
         raise DocumentationStateError(f"handoff_line_count_out_of_range:{line_count}")
 
 
