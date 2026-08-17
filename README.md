@@ -38,8 +38,8 @@ it only for synthetic and newly created temporary fixtures. PR #145 merged the
 owner-accepted `SCV2-FL1-I2` plan at merge commit
 `1913bd27517efc1a6007a202fc9650de4f20fab4`. The separately authorized
 synthetic pre-real hardening implementation is frozen at evidence HEAD/tree
-`32f62c3e9a1bda2e39a560e134c068f05d83e383` /
-`894d746c900799f717d127bb2628422c793e3c4a`. Contract
+`cb5f4784ac9e23030b792aedee24fca6338d6677` /
+`cbe06b80c1f99954a3ef03613d1d8e52443e93fe`. Contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives all 14 delivery gates
 from confined private synthetic evidence. The owner accepted exact planning HEAD/tree
 `acb12c1db258fdef1d4f063b053d422e0d887abf` /

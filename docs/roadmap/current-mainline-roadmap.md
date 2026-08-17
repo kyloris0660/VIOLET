@@ -18,6 +18,10 @@ evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
    foundation with use-before gates and merged in PR #144.
 6. SCV2-FL1-I2 planning was owner-accepted and merged in PR #145.
 
+The accepted `SCV2-ML1` multilingual-alias/source-metadata closure remains an
+independent evidence track; it is not the current FL1 execution route or a
+grant of provider, LLM, classification, or real-source authority.
+
 PR #142 remains closed, unmerged, Draft, and non-authoritative. Its patch is an
 archaeology input only.
 
@@ -57,8 +61,8 @@ findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
 `github_checks=0`, and CI authority remains false. Fourteen findings are closed
 at frozen implementation evidence HEAD/tree
-`32f62c3e9a1bda2e39a560e134c068f05d83e383` /
-`894d746c900799f717d127bb2628422c793e3c4a`. Executable contract
+`cb5f4784ac9e23030b792aedee24fca6338d6677` /
+`cbe06b80c1f99954a3ef03613d1d8e52443e93fe`. Executable contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without
 accepting caller booleans. The result remains local operator evidence pending
 owner audit, not CI, target, safe-to-merge, merge, route, or real-source

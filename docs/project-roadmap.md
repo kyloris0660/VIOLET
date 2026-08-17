@@ -80,7 +80,7 @@ PR #142 remains closed, unmerged, and non-authoritative.
 Only synthetic/adversarial temporary fixtures were used. Canonical source and
 Cloud policy, all 14 implementation delivery gates, the negative suite, and
 executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
-`32f62c3e9a1bda2e39a560e134c068f05d83e383`. The result stops at owner audit;
+`cb5f4784ac9e23030b792aedee24fca6338d6677`. The result stops at owner audit;
 `target_met`, `safe_to_merge`, merge authority, route approval, and every
 real-source/data authority remain false.
 
