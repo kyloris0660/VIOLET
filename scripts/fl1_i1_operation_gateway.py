@@ -514,10 +514,28 @@ def atomic_write_json(
 
 
 def load_private_json(path: Path) -> dict[str, Any]:
+    descriptor: int | None = None
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        target = Path(path)
+        descriptor = _open_readonly_nofollow(target)
+        opened = os.fstat(descriptor)
+        named = os.stat(target, follow_symlinks=False)
+        if (
+            stat.S_ISLNK(named.st_mode)
+            or getattr(named, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+            or not stat.S_ISREG(opened.st_mode)
+        ):
+            raise OperationGatewayError("private_artifact_target_untrusted")
+        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+            descriptor = None
+            payload = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
         raise OperationGatewayError("private_artifact_unreadable") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     if not isinstance(payload, dict):
         raise OperationGatewayError("private_artifact_invalid")
     return payload
