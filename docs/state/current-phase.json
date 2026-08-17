@@ -4,7 +4,7 @@
   "phase_title": "Real-source Read-only Inventory Hardening and Canary Readiness",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-fl1-i2-synthetic-pre-real-hardening",
-  "pr_number": null,
+  "pr_number": 146,
   "draft": true,
   "accepted_mainline_base": "1913bd27517efc1a6007a202fc9650de4f20fab4",
   "implementation_evidence_head": "6992e7f1e5a45857111d15da1ad0274e49008a99",

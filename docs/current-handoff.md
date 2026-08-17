@@ -5,7 +5,7 @@
 ## Current Facts
 
 - Phase: `SCV2-FL1-I2` - Real-source Read-only Inventory Hardening and Canary Readiness.
-- Repository / PR: `kyloris0660/VIOLET` / PR pending creation.
+- Repository / PR: `kyloris0660/VIOLET` / Draft PR #146.
 - Branch: `codex/scv2-fl1-i2-synthetic-pre-real-hardening`.
 - Accepted mainline base: `1913bd27517efc1a6007a202fc9650de4f20fab4`.
 - Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.

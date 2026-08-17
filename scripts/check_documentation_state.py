@@ -119,7 +119,7 @@ FL1_I2_PREVIOUS_FINAL_TREE = "8930a21bdbac037702f92bcb75bd9b8a3632a073"
 FL1_I2_PREVIOUS_EVIDENCE = "6992e7f1e5a45857111d15da1ad0274e49008a99"
 FL1_I2_PREVIOUS_EVIDENCE_TREE = "6ff185defb150c3751c7433ef635c00a200c44bf"
 FL1_I2_TERMINAL_REVIEW_ID = 4897012517
-FL1_I2_PR_NUMBER = None
+FL1_I2_PR_NUMBER = 146
 FL1_I2_PLANNING_PR_NUMBER = 145
 FL1_I2_APPROVED_PLANNING_HEAD = "acb12c1db258fdef1d4f063b053d422e0d887abf"
 FL1_I2_APPROVED_PLANNING_TREE = "fc573c7646ad5edf10c32c7712de7f27ab058a2a"
@@ -502,7 +502,7 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
     }
     if any(state.get(key) != value for key, value in expected_top_level.items()):
         raise DocumentationStateError("fl1_i2_status_fields_conflict")
-    if state["pr_number"] is not FL1_I2_PR_NUMBER:
+    if state["pr_number"] != FL1_I2_PR_NUMBER:
         raise DocumentationStateError("fl1_i2_pr_number_invalid")
     if state["active_blocker"].get("code") != FL1_I2_BLOCKER:
         raise DocumentationStateError("fl1_i2_blocker_conflict")

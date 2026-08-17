@@ -64,15 +64,15 @@ def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> No
     assert boundary["production_authorized"] is False
 
 
-def test_fl1_i2_pr_number_is_pending_until_draft_creation() -> None:
+def test_fl1_i2_pr_number_exact_binding_accepts_146() -> None:
     state = copy.deepcopy(_state())
     state["pr_number"] = documentation_state.FL1_I2_PR_NUMBER
 
     documentation_state.validate_state(state)
 
 
-@pytest.mark.parametrize("pr_number", [144, 145, 146])
-def test_fl1_i2_pre_pr_number_fails_closed(
+@pytest.mark.parametrize("pr_number", [None, 145, 147])
+def test_fl1_i2_pr_number_exact_binding_fails_closed(
     pr_number: int | None,
 ) -> None:
     state = copy.deepcopy(_state())
