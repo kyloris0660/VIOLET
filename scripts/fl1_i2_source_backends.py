@@ -149,6 +149,9 @@ class PosixHandleBackend(BaseHandleBackend):
         after = self.observe(directory)
         if before.object_identity != after.object_identity:
             raise SourceBackendError("source_directory_identity_drift")
+        identities = [member.object_identity for member in records]
+        if len(set(identities)) != len(identities):
+            raise SourceBackendError("source_alias_identity_rejected")
         return tuple(records)
 
     def open_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
@@ -374,6 +377,13 @@ class WindowsHandleBackend(BaseHandleBackend):
         after = self.observe(directory)
         if before.object_identity != after.object_identity:
             raise SourceBackendError("source_directory_identity_drift")
+        if any(member.attributes & FILE_ATTRIBUTE_REPARSE_POINT or member.reparse_tag for member in members):
+            raise SourceBackendError("source_reparse_point_rejected")
+        identities = [member.object_identity for member in members]
+        if len(set(identities)) != len(identities):
+            raise SourceBackendError("source_alias_identity_rejected")
+        if len({member.name.casefold() for member in members}) != len(members):
+            raise SourceBackendError("source_name_collision_rejected")
         return tuple(members)
 
     def open_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:

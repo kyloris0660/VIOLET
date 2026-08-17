@@ -33,6 +33,16 @@ PUBLIC_SCHEMA = "violet.scv2-fl1-i2-public-summary.v1"
 CONFIG_SCHEMA = "violet.scv2-fl1-i2-synthetic-run-config.v1"
 MARKER_NAME = ".violet-synthetic-fixture.json"
 ELIGIBLE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"})
+CANONICAL_POLICY = {
+    "policy_version": "scv2-fl1-i2-source-safety.v1",
+    "allowed_source_kinds": ["path_source"],
+    "require_known_attributes": True,
+    "require_no_follow": True,
+    "require_identity_bound": True,
+    "reject_reparse_points": True,
+    "reject_multiple_links": True,
+    "reject_recall_risk": True,
+}
 
 
 class RunnerError(RuntimeError):
@@ -84,16 +94,7 @@ def create_synthetic_run_config(
     if marker.exists() or marker.is_symlink():
         raise RunnerError("synthetic_fixture_marker_already_exists")
     active_budget = budget or FailureBudget(3, 100, 8 * 1024 * 1024, 10)
-    policy = {
-        "policy_version": "scv2-fl1-i2-source-safety.v1",
-        "allowed_source_kinds": ["path_source"],
-        "require_known_attributes": True,
-        "require_no_follow": True,
-        "require_identity_bound": True,
-        "reject_reparse_points": True,
-        "reject_multiple_links": True,
-        "reject_recall_risk": True,
-    }
+    policy = dict(CANONICAL_POLICY)
     marker_payload = {
         "schema_version": "violet.scv2-fl1-i2-synthetic-fixture-marker.v1",
         "run_id": identifier,
@@ -150,6 +151,8 @@ def _load_config(path: Path) -> tuple[dict[str, Any], Path, Path, FailureBudget]
     }
     if payload["authorities"] != expected_authorities:
         raise RunnerError("synthetic_run_authority_escalation")
+    if payload["policy"] != CANONICAL_POLICY:
+        raise RunnerError("synthetic_run_policy_drift")
     try:
         budget = FailureBudget(**payload["budget"])
     except (TypeError, EvidenceError) as exc:
@@ -186,46 +189,107 @@ def run_synthetic_hardening(config_path: Path) -> dict[str, Any]:
     config_fingerprint = canonical_fingerprint(config)
     policy_fingerprint = canonical_fingerprint(config["policy"])
     budget_fingerprint = canonical_fingerprint(budget.to_dict())
-    ledger = OperationLedger(run_id, "pending_manifest", budget_fingerprint)
     controller = WorkerController()
-    worker_records: list[dict[str, Any]] = []
+    ledger_path = evidence / "private-operation-ledger.json"
+    manifest_path = evidence / "private-manifest.json"
+    workers_path = evidence / "private-worker-results.json"
+    if ledger_path.exists() or ledger_path.is_symlink():
+        ledger = OperationLedger.from_private_dict(store.read("private-operation-ledger.json"))
+        if ledger.run_id != run_id or ledger.budget_fingerprint != budget_fingerprint:
+            raise RunnerError("synthetic_resume_ledger_context_drift")
+        ledger.recover_residuals()
+        store.write("private-operation-ledger.json", ledger.to_private_dict())
+    else:
+        ledger = OperationLedger(run_id, "pending_manifest", budget_fingerprint)
+    if workers_path.exists() or workers_path.is_symlink():
+        existing_workers = store.read("private-worker-results.json")
+        if existing_workers.get("run_id") != run_id or not isinstance(existing_workers.get("records"), list):
+            raise RunnerError("synthetic_resume_worker_context_drift")
+        worker_records = list(existing_workers["records"])
+    else:
+        worker_records = []
 
-    discovery = ledger.begin(item_id="directory-membership", attempt=1, budget=budget)
-    store.write("private-operation-ledger.json", ledger.to_private_dict())
+    def persist_workers() -> dict[str, Any]:
+        payload = {
+            "schema_version": "violet.scv2-fl1-i2-private-worker-results.v1",
+            "run_id": run_id,
+            "records": worker_records,
+        }
+        store.write("private-worker-results.json", payload)
+        return payload
 
-    def persist_discovery_started() -> None:
-        ledger.mark_started(discovery)
+    if manifest_path.exists() or manifest_path.is_symlink():
+        raw_manifest = store.read("private-manifest.json")
+        try:
+            manifest = FixedCutManifest.build(
+                run_id=str(raw_manifest["run_id"]),
+                source_scope_fingerprint=str(raw_manifest["source_scope_fingerprint"]),
+                members=tuple(
+                    ManifestMember(str(item["item_id"]), str(item["private_name"]), item["object_identity"])
+                    for item in raw_manifest["members"]
+                ),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RunnerError("synthetic_resume_manifest_invalid") from exc
+        if manifest.to_private_dict() != raw_manifest or manifest.run_id != run_id or ledger.manifest_fingerprint != manifest.manifest_fingerprint:
+            raise RunnerError("synthetic_resume_manifest_drift")
+    else:
+        discovery_attempt = 1 + sum(record.get("kind") == "list_directory" for record in worker_records)
+        discovery = ledger.begin(item_id="directory-membership", attempt=discovery_attempt, budget=budget)
         store.write("private-operation-ledger.json", ledger.to_private_dict())
 
-    listing = controller.run(
-        WorkerOperation.LIST_DIRECTORY,
-        {"root": os.fspath(source), "policy": config["policy"]},
-        deadline_seconds=budget.worker_deadline_seconds,
-        persist_started=persist_discovery_started,
-    )
-    _close_from_worker(ledger, discovery, listing)
-    worker_records.append({"operation_id": discovery, "kind": "list_directory", **_worker_private(listing)})
-    if listing.status is not WorkerStatus.COMPLETED or listing.payload is None:
+        def persist_discovery_started() -> None:
+            ledger.mark_started(discovery)
+            store.write("private-operation-ledger.json", ledger.to_private_dict())
+
+        listing = controller.run(
+            WorkerOperation.LIST_DIRECTORY,
+            {"root": os.fspath(source), "policy": config["policy"]},
+            deadline_seconds=budget.worker_deadline_seconds,
+            persist_started=persist_discovery_started,
+        )
+        _close_from_worker(ledger, discovery, listing)
+        worker_records.append({"operation_id": discovery, "item_id": "directory-membership", "kind": "list_directory", **_worker_private(listing)})
+        persist_workers()
+        if listing.status is not WorkerStatus.COMPLETED or listing.payload is None:
+            store.write("private-operation-ledger.json", ledger.to_private_dict())
+            raise RunnerError("synthetic_directory_listing_failed", public_code="worker_interrupted")
+        directory_identity = listing.payload["directory_observation"]["object_identity"]
+        scope_fingerprint = canonical_fingerprint(directory_identity)
+        manifest_members: list[ManifestMember] = []
+        for raw in listing.payload["members"]:
+            name = str(raw["name"])
+            if Path(name).suffix.casefold() not in ELIGIBLE_SUFFIXES:
+                continue
+            item_id = canonical_fingerprint({"scope": scope_fingerprint, "name": name, "identity": raw["object_identity"]})
+            manifest_members.append(ManifestMember(item_id, name, raw["object_identity"]))
+        manifest = FixedCutManifest.build(run_id=run_id, source_scope_fingerprint=scope_fingerprint, members=manifest_members)
+        ledger.manifest_fingerprint = manifest.manifest_fingerprint
+        store.write("private-manifest.json", manifest.to_private_dict())
         store.write("private-operation-ledger.json", ledger.to_private_dict())
-        raise RunnerError("synthetic_directory_listing_failed", public_code="worker_interrupted")
-    directory_identity = listing.payload["directory_observation"]["object_identity"]
-    scope_fingerprint = canonical_fingerprint(directory_identity)
-    manifest_members: list[ManifestMember] = []
-    for raw in listing.payload["members"]:
-        name = str(raw["name"])
-        if Path(name).suffix.casefold() not in ELIGIBLE_SUFFIXES:
-            continue
-        item_id = canonical_fingerprint({"scope": scope_fingerprint, "name": name, "identity": raw["object_identity"]})
-        manifest_members.append(ManifestMember(item_id, name, raw["object_identity"]))
-    manifest = FixedCutManifest.build(run_id=run_id, source_scope_fingerprint=scope_fingerprint, members=manifest_members)
-    ledger.manifest_fingerprint = manifest.manifest_fingerprint
-    store.write("private-manifest.json", manifest.to_private_dict())
-    store.write("private-operation-ledger.json", ledger.to_private_dict())
 
     for member in manifest.members:
+        if ledger.item_dispositions.get(member.item_id) in {
+            ItemDisposition.CONTENT_VERIFIED,
+            ItemDisposition.CORRUPT_MEDIA,
+        }:
+            continue
         item_failed = False
         for operation_kind in (WorkerOperation.HASH_FILE, WorkerOperation.VALIDATE_MEDIA):
-            operation_id = ledger.begin(item_id=member.item_id, attempt=1, budget=budget)
+            prior = [
+                record
+                for record in worker_records
+                if record.get("item_id") == member.item_id
+                and record.get("kind") == operation_kind.value
+            ]
+            if any(record.get("status") == WorkerStatus.COMPLETED.value for record in prior):
+                if operation_kind is WorkerOperation.VALIDATE_MEDIA:
+                    latest = next(record for record in reversed(prior) if record.get("status") == WorkerStatus.COMPLETED.value)
+                    if isinstance(latest.get("payload"), Mapping) and not latest["payload"].get("valid"):
+                        ledger.set_disposition(member.item_id, ItemDisposition.CORRUPT_MEDIA)
+                        item_failed = True
+                continue
+            operation_id = ledger.begin(item_id=member.item_id, attempt=len(prior) + 1, budget=budget)
             store.write("private-operation-ledger.json", ledger.to_private_dict())
 
             def persist_started(identifier: str = operation_id) -> None:
@@ -242,7 +306,8 @@ def run_synthetic_hardening(config_path: Path) -> dict[str, Any]:
                 payload.update({"max_depth": 1024, "parser_deadline_monotonic": time.monotonic() + budget.worker_deadline_seconds})
             result = controller.run(operation_kind, payload, deadline_seconds=budget.worker_deadline_seconds, persist_started=persist_started)
             _close_from_worker(ledger, operation_id, result)
-            worker_records.append({"operation_id": operation_id, "kind": operation_kind.value, **_worker_private(result)})
+            worker_records.append({"operation_id": operation_id, "item_id": member.item_id, "kind": operation_kind.value, **_worker_private(result)})
+            persist_workers()
             store.write("private-operation-ledger.json", ledger.to_private_dict())
             if result.status is not WorkerStatus.COMPLETED:
                 disposition = ItemDisposition.INTERRUPTED if result.status in {WorkerStatus.INTERRUPTED, WorkerStatus.BLOCKED} else ItemDisposition.FAILED
@@ -256,8 +321,7 @@ def run_synthetic_hardening(config_path: Path) -> dict[str, Any]:
             ledger.set_disposition(member.item_id, ItemDisposition.CONTENT_VERIFIED)
         store.write("private-operation-ledger.json", ledger.to_private_dict())
 
-    worker_payload = {"schema_version": "violet.scv2-fl1-i2-private-worker-results.v1", "run_id": run_id, "records": worker_records}
-    store.write("private-worker-results.json", worker_payload)
+    worker_payload = persist_workers()
     ledger_payload = ledger.to_private_dict()
     counts = {disposition.value: sum(value is disposition for value in ledger.item_dispositions.values()) for disposition in ItemDisposition}
     public_summary = {

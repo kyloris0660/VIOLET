@@ -14,6 +14,7 @@ from typing import Any, Callable, Mapping
 from backend.app.services.source_ingestion_gate import SourceIngestionGate, SourceKind
 from backend.app.services.source_safety import SourceSafetyPolicy
 from scripts.fl1_i2_source_backends import SourceBackendError, current_handle_backend
+from scripts.fl1_i2_media_validation import MediaValidationError
 
 
 class WorkerError(RuntimeError):
@@ -134,7 +135,7 @@ def _worker_main(connection: Any, operation: str, payload: Mapping[str, Any]) ->
             return
         result = _execute(operation, payload)
         connection.send(("COMPLETED", result))
-    except (SourceBackendError, WorkerError, ValueError, KeyError) as exc:
+    except (SourceBackendError, WorkerError, MediaValidationError, ValueError, KeyError) as exc:
         connection.send(("FAILED", {"safe_code": str(exc)}))
     except BaseException:
         # Traceback remains inside the child and is never projected publicly.

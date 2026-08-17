@@ -62,3 +62,28 @@ def test_budget_overflow_fails_without_private_value_projection(tmp_path: Path) 
     assert result.status is WorkerStatus.FAILED
     assert result.safe_code == "worker_byte_budget_exceeded"
     assert result.payload is None
+
+
+def test_unconfirmed_termination_blocks_entire_run() -> None:
+    class UnkillableProcess:
+        def is_alive(self) -> bool:
+            return True
+
+        def terminate(self) -> None:
+            pass
+
+        def kill(self) -> None:
+            pass
+
+        def join(self, _timeout: float) -> None:
+            pass
+
+    result = WorkerController(exit_timeout_seconds=0.01)._terminate(  # type: ignore[arg-type]
+        UnkillableProcess(),
+        0.0,
+        True,
+        "worker_deadline_exceeded",
+    )
+    assert result.status is WorkerStatus.BLOCKED
+    assert result.safe_code == "worker_termination_unconfirmed"
+    assert not result.exit_confirmed

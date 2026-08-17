@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.fl1_i2_evidence import FailureBudget
+from scripts.fl1_i2_evidence import (
+    EvidenceStore,
+    FailureBudget,
+    OperationLedger,
+    canonical_fingerprint,
+)
 from scripts.fl1_i2_runner import create_synthetic_run_config, run_synthetic_hardening
 
 
@@ -51,6 +56,19 @@ def test_runner_rejects_non_temp_or_authority_escalated_config(tmp_path: Path) -
         run_synthetic_hardening(config)
 
 
+def test_runner_rejects_weakened_policy_even_when_shape_is_valid(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    evidence = tmp_path / "evidence"
+    source.mkdir()
+    evidence.mkdir()
+    config = create_synthetic_run_config(source_root=source, evidence_root=evidence)
+    payload = json.loads(config.read_text(encoding="utf-8"))
+    payload["policy"]["reject_multiple_links"] = False
+    config.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(Exception, match="synthetic_run_policy_drift"):
+        run_synthetic_hardening(config)
+
+
 def test_fixture_marker_cannot_be_reused(tmp_path: Path) -> None:
     source = tmp_path / "source"
     evidence = tmp_path / "evidence"
@@ -59,3 +77,35 @@ def test_fixture_marker_cannot_be_reused(tmp_path: Path) -> None:
     create_synthetic_run_config(source_root=source, evidence_root=evidence)
     with pytest.raises(Exception, match="marker_already_exists"):
         create_synthetic_run_config(source_root=source, evidence_root=evidence)
+
+
+def test_resume_keeps_fixed_manifest_and_does_not_repeat_completed_operations(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    evidence = tmp_path / "evidence"
+    source.mkdir()
+    evidence.mkdir()
+    (source / "first.png").write_bytes(_png())
+    config = create_synthetic_run_config(source_root=source, evidence_root=evidence, run_id="resume-run")
+    first = run_synthetic_hardening(config)
+    (source / "delta.png").write_bytes(_png())
+    second = run_synthetic_hardening(config)
+    assert second == first
+    assert second["item_counts"]["manifest"] == 1
+
+
+def test_residual_intent_is_recovered_before_new_operation_id(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    evidence = tmp_path / "evidence"
+    source.mkdir()
+    evidence.mkdir()
+    (source / "fixture.png").write_bytes(_png())
+    budget = FailureBudget(3, 20, 1024, 5)
+    config = create_synthetic_run_config(source_root=source, evidence_root=evidence, run_id="crash-run", budget=budget)
+    ledger = OperationLedger("crash-run", "pending_manifest", canonical_fingerprint(budget.to_dict()))
+    abandoned = ledger.begin(item_id="directory-membership", attempt=1, budget=budget)
+    EvidenceStore(evidence).write("private-operation-ledger.json", ledger.to_private_dict())
+    summary = run_synthetic_hardening(config)
+    persisted = json.loads((evidence / "private-operation-ledger.json").read_text(encoding="utf-8"))
+    states = [event["state"] for event in persisted["events"] if event["operation_id"] == abandoned]
+    assert states == ["intent", "recovered"]
+    assert summary["operation_counts"]["recovered"] == 1

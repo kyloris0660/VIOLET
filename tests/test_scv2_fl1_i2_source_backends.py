@@ -39,9 +39,8 @@ def test_current_backend_rejects_hard_link(tmp_path: Path) -> None:
     os.link(source, root / "two.png")
     backend = current_handle_backend()
     with backend.open_directory(root) as directory:
-        member = next(item for item in backend.enumerate_directory(directory) if item.name == source.name)
-        with pytest.raises(SourceBackendError, match="source_hard_link_rejected"):
-            backend.open_child(directory, member)
+        with pytest.raises(SourceBackendError, match="source_alias_identity_rejected"):
+            backend.enumerate_directory(directory)
 
 
 def test_literal_backslash_member_name_is_never_treated_as_separator() -> None:

@@ -16,7 +16,7 @@ from scripts.fl1_i2_evidence import (
     OperationState,
     canonical_fingerprint,
 )
-from scripts.fl1_i2_runner import CONFIG_SCHEMA, CONTRACT_ID, PUBLIC_SCHEMA
+from scripts.fl1_i2_runner import CANONICAL_POLICY, CONFIG_SCHEMA, CONTRACT_ID, PUBLIC_SCHEMA
 from scripts.fl1_i2_validation_receipt import SameHeadValidationReceipt
 from scripts.trusted_git import (
     assert_trusted_worktree_clean,
@@ -160,8 +160,12 @@ def _derive_gate_closure(
     if any(not item.get("started_persisted") or not item.get("exit_confirmed") for item in records):
         raise FL1I2ContractError("fl1_i2_worker_closure_incomplete")
     operation_ids = {event.operation_id for event in ledger.events}
-    if {str(item.get("operation_id")) for item in records} != operation_ids:
+    recorded_worker_ids = {str(item.get("operation_id")) for item in records}
+    if not recorded_worker_ids <= operation_ids:
         raise FL1I2ContractError("fl1_i2_worker_ledger_reconciliation_failed")
+    for missing in operation_ids - recorded_worker_ids:
+        if ledger.state(missing) not in {OperationState.RECOVERED, OperationState.INTERRUPTED}:
+            raise FL1I2ContractError("fl1_i2_worker_ledger_reconciliation_failed")
     if any(sum(event.state in {OperationState.COMPLETED, OperationState.FAILED, OperationState.INTERRUPTED, OperationState.RECOVERED} for event in ledger.events if event.operation_id == identifier) != 1 for identifier in operation_ids):
         raise FL1I2ContractError("fl1_i2_terminal_closure_invalid")
 
@@ -196,6 +200,8 @@ def derive_canonical_public_projection(*, repo_root: Path, evidence_paths: FL1I2
     config = evidence["config"]
     if config.get("schema_version") != CONFIG_SCHEMA or config.get("mode") != "synthetic_new_temp_fixture":
         raise FL1I2ContractError("fl1_i2_config_invalid")
+    if config.get("policy") != CANONICAL_POLICY:
+        raise FL1I2ContractError("fl1_i2_policy_drift")
     authorities = config.get("authorities")
     if not isinstance(authorities, Mapping) or any(value is not False for value in authorities.values()):
         raise FL1I2ContractError("fl1_i2_authority_escalation")
