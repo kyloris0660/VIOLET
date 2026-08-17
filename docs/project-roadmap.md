@@ -80,7 +80,7 @@ PR #142 remains closed, unmerged, and non-authoritative.
 Only synthetic/adversarial temporary fixtures were used. Canonical source and
 Cloud policy, all 14 implementation delivery gates, the negative suite, and
 executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
-corrected implementation evidence `7ce9151630fe908d09773e1718c00b568c953ed1`.
+corrected implementation evidence `e1a978c4c12bcb8ae4a8312c148fca3fcbfac049`.
 The rejected `78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded.
 The result stops at the authorized follow-up review and owner re-audit;
 `target_met`, `safe_to_merge`, merge authority, route approval, and every

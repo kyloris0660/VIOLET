@@ -11,7 +11,7 @@
 - Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.
 - Previous final HEAD/tree: `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; merge commit: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 - Previous I1 implementation evidence HEAD/tree: `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf` (frozen: `true`; accepted scope: `synthetic_and_new_temporary_fixture_foundation_only`).
-- Current I2 implementation evidence HEAD/tree: `7ce9151630fe908d09773e1718c00b568c953ed1` / `102ad303a2763197d95b47eb4a747cf3825d5679`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
+- Current I2 implementation evidence HEAD/tree: `e1a978c4c12bcb8ae4a8312c148fca3fcbfac049` / `99573bda4c45f9b51f8a1acd5989de0c807efbd1`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
 - PR #146 bounded correction: rejected evidence `78ccbdc69ee1bf0f51c297435b56e2be868b54e9` / `311b34f7c7fb5e5947b696598ded15dfd325e3f4` is superseded by owner adjudication of review `4952182962` and `10` accepted findings; one follow-up Codex review is authorized.
 - Terminal review: `4897012517` at `2f8d5f8ce6cde9759c530de71d4ddd1893481656`; findings: `17` (`P1=13`, `P2=4`); GitHub checks: `0`.
 - Status: `fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit`.
@@ -31,7 +31,7 @@
 - `fl1_i2_exact_plan_owner_acceptance`: `owner_accepted_exact_planning_head_tree_pending_expected_head_merge` - `acb12c1db258fdef1d4f063b053d422e0d887abf`.
 - `fl1_i2_g0_post_merge_governance_entry_gate`: `five_post_merge_p1_findings_closed_in_shared_git_state_and_history_guards` - `1913bd27517efc1a6007a202fc9650de4f20fab4`.
 - `fl1_i2_windows_same_handle_feasibility`: `pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback` - `windows_live_temp_file_id_extd_ntcreatefile_v1`.
-- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_closed_and_executable_contract_registered` - `7ce9151630fe908d09773e1718c00b568c953ed1`.
+- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_closed_and_executable_contract_registered` - `e1a978c4c12bcb8ae4a8312c148fca3fcbfac049`.
 
 ## PR #144 Terminal Review Use-Before Classification
 

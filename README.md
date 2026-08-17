@@ -39,8 +39,8 @@ owner-accepted `SCV2-FL1-I2` plan at merge commit
 `1913bd27517efc1a6007a202fc9650de4f20fab4`. The separately authorized
 synthetic pre-real hardening implementation has an owner-authorized bounded
 correction frozen at implementation evidence HEAD/tree
-`7ce9151630fe908d09773e1718c00b568c953ed1` /
-`102ad303a2763197d95b47eb4a747cf3825d5679`. The earlier
+`e1a978c4c12bcb8ae4a8312c148fca3fcbfac049` /
+`99573bda4c45f9b51f8a1acd5989de0c807efbd1`. The earlier
 `78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded by the
 owner's exact-head finding adjudication. Contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives all 14 delivery gates

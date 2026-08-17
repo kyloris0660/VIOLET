@@ -127,8 +127,8 @@ findings (13 P1, 4 P2). The complete use-before projection is:
 The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
 only for its narrow synthetic foundation. I2 contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at corrected frozen
-implementation evidence HEAD/tree `7ce9151630fe908d09773e1718c00b568c953ed1` /
-`102ad303a2763197d95b47eb4a747cf3825d5679`. The owner-adjudicated
+implementation evidence HEAD/tree `e1a978c4c12bcb8ae4a8312c148fca3fcbfac049` /
+`99573bda4c45f9b51f8a1acd5989de0c807efbd1`. The owner-adjudicated
 `78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded. The
 contract reconstructs the 14 gate
 closures from fixed-name, no-follow private artifacts and trusted repository
