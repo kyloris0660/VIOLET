@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
+from backend.app.services.source_safety import CloudAvailability
 from scripts.fl1_i1_runtime_context import TrustedRuntimeContext
 
 
@@ -45,13 +46,6 @@ class OperationStatus(str, Enum):
     FAILED = "failed"
     DEFERRED = "deferred"
     INTERRUPTED = "interrupted"
-
-
-class CloudAvailability(str, Enum):
-    AVAILABLE = "available"
-    RECALL_RISK = "recall_risk"
-    REPARSE_POINT = "reparse_point"
-    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
