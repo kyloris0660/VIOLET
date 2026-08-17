@@ -148,6 +148,7 @@ def canonical_focused_test_command(python_executable: Path) -> tuple[str, ...]:
         raise ReceiptError("validation_receipt_python_invalid")
     return (
         os.fspath(approved),
+        "-B",
         "-I",
         "-s",
         "-m",

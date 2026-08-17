@@ -19,6 +19,11 @@ def _bindings() -> dict[str, str]:
     return {name: str(index) * 64 for index, name in enumerate(("config", "policy", "manifest", "ledger", "worker"), start=1)}
 
 
+def test_canonical_pytest_command_disables_repository_bytecode() -> None:
+    command = canonical_focused_test_command(Path(sys.executable))
+    assert command[1:6] == ("-B", "-I", "-s", "-m", "pytest")
+
+
 def _init_repo(path: Path) -> None:
     git = resolve_trusted_git_executable(repo_root=path)
     environment = trusted_git_environment()

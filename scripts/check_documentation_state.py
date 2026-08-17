@@ -196,6 +196,7 @@ FL1_I2_PROJECTION_ALLOWLIST = frozenset(
         "tests/test_phase45_doc1_documentation_state.py",
         "tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py",
         "tests/test_phase45_scv2_r1_post_px1_source_concept_triage.py",
+        "tests/test_scv2_fl1_i2_validation_receipt.py",
     }
 )
 SV1B_MERGE_COMMIT = "33af4111e1595dac3ece0ac50002556d466f0138"
