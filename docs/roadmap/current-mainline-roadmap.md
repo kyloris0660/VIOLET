@@ -3,8 +3,8 @@
 ## Accepted Mainline
 
 `origin/main` is owner-accepted at merge commit
-`8955b95e91630d4c5e18e1e2ca252b19754c81d5`, the merge-commit result of PR
-#144. Its final PR HEAD/tree are
+`1913bd27517efc1a6007a202fc9650de4f20fab4`, the merge-commit result of PR
+#145. The prior I1 final PR HEAD/tree are
 `2f8d5f8ce6cde9759c530de71d4ddd1893481656` /
 `8930a21bdbac037702f92bcb75bd9b8a3632a073`; frozen I1 implementation
 evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
@@ -16,6 +16,7 @@ evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
 4. SCV2-FL1-P1-R1 was owner-accepted and merged in PR #143.
 5. SCV2-FL1-I1 was owner-accepted as a synthetic/new-temporary-fixture
    foundation with use-before gates and merged in PR #144.
+6. SCV2-FL1-I2 planning was owner-accepted and merged in PR #145.
 
 PR #142 remains closed, unmerged, Draft, and non-authoritative. Its patch is an
 archaeology input only.
@@ -25,12 +26,12 @@ archaeology input only.
 <!-- CURRENT_PHASE: SCV2-FL1-I2 -->
 
 `SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness`
-is in synthetic pre-real implementation on branch
+has frozen synthetic pre-real implementation evidence on branch
 `codex/scv2-fl1-i2-synthetic-pre-real-hardening`. The machine-readable fact
 source is `docs/state/current-phase.json`.
 
 ```text
-status=fl1_i2_synthetic_implementation_in_progress
+status=fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -39,13 +40,14 @@ approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
 merge_authorized=false
 implementation_authorized=true
 implementation_started=true
+implementation_completed=true
 target_met=false
 safe_to_merge=false
 route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_synthetic_implementation_and_contract_closure
+active_blocker=pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance
 ```
 
 PR #144 terminal review `4897012517` covered exact final HEAD
@@ -53,13 +55,14 @@ PR #144 terminal review `4897012517` covered exact final HEAD
 4 P2). All threads remain historical audit records. Two documentation-governance
 findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
-`github_checks=0`, and CI authority remains false. Fourteen findings are I2
-implementation deliverables that must close before `implementation_completed`,
-`target_met`, `safe_to_merge`, merge, or I3; they are not pre-existing outcomes
-required before separately authorized synthetic-only I2 coding begins.
-Finding #1 is implemented at G0 across the shared checker, runtime-context, and
-receipt Git runner, but remains an open I2 delivery gate until the later I2
-contract consumes and re-derives the same boundary.
+`github_checks=0`, and CI authority remains false. Fourteen findings are closed
+at frozen implementation evidence HEAD/tree
+`2ae06deb2126a5951d7cc90b4bcac99a30c8373e` /
+`e0a95087e5a3b5a9c770fa14399fcac8d358087a`. Executable contract
+`scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without
+accepting caller booleans. The result remains local operator evidence pending
+owner audit, not CI, target, safe-to-merge, merge, route, or real-source
+authority.
 Parent-observed child identity is
 kept as a local-evidence claim boundary, not described as tamper-resistant,
 OS/kernel/TPM/remote, or CI attestation.
@@ -85,8 +88,9 @@ authorities:
 5. Legacy `scan_and_import(dry_run=True)` is not the first real inventory
    runner: it connects to the database and reads/hashes source content, while
    dry-run only suppresses import and lacks I1 manifest/restart/evidence closure.
-6. I2 implementation and validation are separately approved only on synthetic
-   and adversarial newly created temporary fixtures.
+6. I2 implementation and validation executed only on synthetic and adversarial
+   newly created temporary fixtures; the frozen result now waits for exact-HEAD
+   owner audit.
 
 The enforced order is: exact plan owner approval; separate I2 implementation
 authorization; synthetic-only I2 implementation closing all 14 gates; I2 owner

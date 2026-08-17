@@ -36,15 +36,19 @@ generated `docs/current-handoff.md` provides the short human-readable view.
 PR #144 merged the `SCV2-FL1-I1` inventory foundation, but the owner accepted
 it only for synthetic and newly created temporary fixtures. PR #145 merged the
 owner-accepted `SCV2-FL1-I2` plan at merge commit
-`1913bd27517efc1a6007a202fc9650de4f20fab4`. Current work is the separately
-authorized synthetic pre-real hardening implementation. The owner accepted exact planning HEAD/tree
+`1913bd27517efc1a6007a202fc9650de4f20fab4`. The separately authorized
+synthetic pre-real hardening implementation is frozen at evidence HEAD/tree
+`2ae06deb2126a5951d7cc90b4bcac99a30c8373e` /
+`e0a95087e5a3b5a9c770fa14399fcac8d358087a`. Contract
+`scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives all 14 delivery gates
+from confined private synthetic evidence. The owner accepted exact planning HEAD/tree
 `acb12c1db258fdef1d4f063b053d422e0d887abf` /
 `fc573c7646ad5edf10c32c7712de7f27ab058a2a`; planning remains approved, while
-the one-time planning merge authority is consumed. The 14 engineering findings are
-synthetic-only I2 implementation deliverables due before I2 completion, merge,
-or any I3/real-source use, not results required before separately authorized I2
-coding begins. I2 implementation is authorized only on adversarial newly
-created temporary fixtures. Real source/iCloud access,
+the one-time planning merge authority is consumed. The 14 engineering findings
+are closed in the frozen synthetic evidence, but exact-HEAD implementation
+owner audit is pending. Local evidence grants no `safe_to_merge`, merge,
+target, route, I3, or real-source authority. I2 execution remained restricted
+to adversarial newly created temporary fixtures. Real source/iCloud access,
 full-library inventory, database/app-storage access, import, classification,
 AI tagging, provider/LLM/media activity, UI/runtime execution, and production
 remain unauthorized.

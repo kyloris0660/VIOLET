@@ -28,10 +28,11 @@ Terminal review `4897012517` recorded 17 unresolved, non-outdated findings at
 the final HEAD (13 P1, 4 P2), and GitHub exposed zero checks. Zero checks is not
 a machine-verifiable CI pass.
 
-Current phase `SCV2-FL1-I2` is synthetic pre-real hardening implementation only:
+Current phase `SCV2-FL1-I2` has frozen synthetic pre-real hardening
+implementation evidence and awaits exact-HEAD owner audit:
 
 ```text
-current_status=fl1_i2_synthetic_implementation_in_progress
+current_status=fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -40,6 +41,7 @@ approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
 merge_authorized=false
 implementation_authorized=true
 implementation_started=true
+implementation_completed=true
 target_met=false
 safe_to_merge=false
 route_approved=false
@@ -55,7 +57,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_synthetic_implementation_and_contract_closure
+active_blocker=pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance
 ```
 
 ## Accepted Mainline Sequence
@@ -75,13 +77,12 @@ PR #142 remains closed, unmerged, and non-authoritative.
 
 ### I2 - Pre-real hardening
 
-Use only synthetic/adversarial temporary fixtures. Converge canonical source
-and Cloud policy, close the 14 implementation delivery gates before I2
-completion, target, safe-to-merge, merge, or I3, produce an executable contract
-and complete negative suite, then stop after merge pending real canary
-authorization. The gates are I2 deliverables; they are not outcomes required
-before exact-plan approval plus separate authorization permits synthetic-only
-I2 coding.
+Only synthetic/adversarial temporary fixtures were used. Canonical source and
+Cloud policy, all 14 implementation delivery gates, the negative suite, and
+executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
+`2ae06deb2126a5951d7cc90b4bcac99a30c8373e`. The result stops at owner audit;
+`target_met`, `safe_to_merge`, merge authority, route approval, and every
+real-source/data authority remain false.
 
 The sequence is exact plan owner approval, separate I2 implementation
 authorization, synthetic-only closure of all 14 gates, I2 owner audit and

@@ -56,6 +56,7 @@ def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> No
     assert boundary["merge_authorized"] is False
     assert boundary["implementation_authorized"] is True
     assert boundary["implementation_started"] is True
+    assert boundary["implementation_completed"] is True
     assert boundary["real_inventory_started"] is False
     assert boundary["real_source_inventory_authorized"] is False
     assert boundary["database_access_authorized"] is False
@@ -492,7 +493,7 @@ def test_terminal_review_use_before_register_is_complete() -> None:
     classifications = [finding["classification"] for finding in findings]
     assert classifications.count("closed_in_current_governance_pr") == 2
     assert classifications.count(
-        "must_close_during_i2_before_i2_completion_merge_or_i3"
+        "closed_in_fl1_i2_synthetic_implementation_evidence"
     ) == 14
     assert classifications.count(
         "claim_boundary_local_evidence_not_tamper_resistant_attestation"
@@ -502,7 +503,7 @@ def test_terminal_review_use_before_register_is_complete() -> None:
 def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
     state = _state()
     assert state["active_blocker"]["code"] == (
-        "pending_fl1_i2_synthetic_implementation_and_contract_closure"
+        "pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance"
     )
     preconditions = state["next_phase_authorization"]["required_preconditions"]
     assert preconditions[0].startswith("PR #145 is merged")
@@ -546,7 +547,7 @@ def test_windows_same_handle_feasibility_checkpoint_is_exact() -> None:
         "open_itself_only_not_later_read_guarantee"
     )
     assert state["next_required_checkpoint"] == (
-        "canonical_source_safety_policy_and_handle_backends"
+        "exact_final_head_owner_audit_without_automatic_remediation_or_merge"
     )
 
 
@@ -627,7 +628,6 @@ def test_i2_owner_accepted_status_mutations_fail_closed(
 @pytest.mark.parametrize(
     "field",
     [
-        "implementation_completed",
         "real_inventory_started",
         "real_source_inventory_authorized",
         "source_root_access_authorized",
@@ -674,6 +674,16 @@ def test_i2_synthetic_implementation_authority_cannot_be_removed(field: str) -> 
         documentation_state.validate_state(state)
 
 
+def test_i2_completed_evidence_cannot_be_reverted() -> None:
+    state = copy.deepcopy(_state())
+    state["planning_boundary"]["implementation_completed"] = False
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_boundary_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
 def test_positive_merge_authority_without_exact_owner_binding_fails_closed() -> None:
     state = copy.deepcopy(_state())
     state["owner_decisions"] = [
@@ -708,6 +718,8 @@ def test_exact_owner_acceptance_binding_is_immutable() -> None:
     [
         ("previous_phase_implementation_evidence_head", "f" * 40),
         ("previous_phase_implementation_evidence_tree", "f" * 40),
+        ("fl1_i2_implementation_evidence_head", "f" * 40),
+        ("fl1_i2_implementation_evidence_tree", "f" * 40),
         ("machine_verifiable_ci", True),
         ("github_checks_observed", 1),
         ("ci_authority", True),

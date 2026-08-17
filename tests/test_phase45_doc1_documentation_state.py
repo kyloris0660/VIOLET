@@ -40,7 +40,7 @@ def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
     validate_state(state)
     validate_roadmaps(state)
     assert state["phase_id"] == "SCV2-FL1-I2"
-    assert state["current_status"] == "fl1_i2_synthetic_implementation_in_progress"
+    assert state["current_status"] == "fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit"
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
     assert state["planning_approved"] is True
@@ -49,6 +49,7 @@ def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
     assert state["route_approved"] is False
     assert state["planning_boundary"]["implementation_authorized"] is True
     assert state["planning_boundary"]["implementation_started"] is True
+    assert state["planning_boundary"]["implementation_completed"] is True
     assert state["planning_boundary"]["synthetic_ephemeral_test_fixture_authorized"] is True
     assert state["planning_boundary"]["real_inventory_started"] is False
     assert state["planning_boundary"]["real_source_inventory_authorized"] is False
@@ -111,8 +112,11 @@ def test_current_contract_names_review_gates_and_claim_boundary() -> None:
     assert "14 gates" in contract
     assert "not tamper-resistant" in contract
     assert "machine_verifiable_ci=false" in contract
-    assert "must_close_during_i2_before_i2_completion_merge_or_i3" in contract
-    assert "same verified, no-follow, identity-bound directory handle" in contract
+    assert "closed_in_fl1_i2_synthetic_implementation_evidence" in json.dumps(
+        load_state(), ensure_ascii=False
+    )
+    assert "scv2_fl1_i2_pre_real_hardening_contract_v1" in contract
+    assert "FileIdExtdDirectory" in contract
     assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in contract
     assert "4907783329" in contract
     for gate in (

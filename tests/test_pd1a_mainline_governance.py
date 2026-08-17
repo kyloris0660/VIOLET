@@ -40,6 +40,7 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
             "3. SCV2-FL1-P1 merged in PR #141",
             "4. SCV2-FL1-P1-R1 was owner-accepted",
             "5. SCV2-FL1-I1 was owner-accepted",
+            "6. SCV2-FL1-I2 planning was owner-accepted",
         ],
     )
     _assert_split_s2g_not_active(text)
@@ -53,7 +54,8 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
     assert "safe_to_merge=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
-    assert "pending_fl1_i2_synthetic_implementation_and_contract_closure" in text
+    assert "pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance" in text
+    assert "scv2_fl1_i2_pre_real_hardening_contract_v1" in text
     assert "FL1_I3_REAL_SOURCE_SCOPE_GATE" in text
     assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in text
     assert "data-plane network operations remain zero" in text
