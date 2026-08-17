@@ -525,6 +525,31 @@ def test_network_truth_separates_data_plane_from_governance_control_plane() -> N
     )
 
 
+def test_windows_same_handle_feasibility_checkpoint_is_exact() -> None:
+    state = _state()
+    protected = state["protected_evidence"]
+    checkpoint = next(
+        item
+        for item in state["completed_checkpoints"]
+        if item["id"] == "fl1_i2_windows_same_handle_feasibility"
+    )
+    assert checkpoint == {
+        "id": "fl1_i2_windows_same_handle_feasibility",
+        "result": (
+            "pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback"
+        ),
+        "fingerprint": "windows_live_temp_file_id_extd_ntcreatefile_v1",
+    }
+    assert protected["windows_same_handle_feasibility_passed"] is True
+    assert protected["windows_same_handle_no_path_fallback"] is True
+    assert protected["file_open_no_recall_claim_scope"] == (
+        "open_itself_only_not_later_read_guarantee"
+    )
+    assert state["next_required_checkpoint"] == (
+        "canonical_source_safety_policy_and_handle_backends"
+    )
+
+
 def test_handoff_is_exact_generated_projection() -> None:
     state = _state()
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")

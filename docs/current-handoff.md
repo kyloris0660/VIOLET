@@ -28,6 +28,7 @@
 - `fl1_i2_remote_sync_preflight`: `self_healed_by_fast_forward` - `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 - `fl1_i2_exact_plan_owner_acceptance`: `owner_accepted_exact_planning_head_tree_pending_expected_head_merge` - `acb12c1db258fdef1d4f063b053d422e0d887abf`.
 - `fl1_i2_g0_post_merge_governance_entry_gate`: `five_post_merge_p1_findings_closed_in_shared_git_state_and_history_guards` - `1913bd27517efc1a6007a202fc9650de4f20fab4`.
+- `fl1_i2_windows_same_handle_feasibility`: `pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback` - `windows_live_temp_file_id_extd_ntcreatefile_v1`.
 
 ## PR #144 Terminal Review Use-Before Classification
 
@@ -68,7 +69,7 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 
 ## Next Action
 
-- Required checkpoint: `windows_same_handle_synthetic_feasibility`.
+- Required checkpoint: `canonical_source_safety_policy_and_handle_backends`.
 
 ## Durable Links
 

@@ -667,6 +667,12 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "post_merge_review_id": FL1_I2_POST_MERGE_REVIEW_ID,
         "g0_post_merge_governance_entry_gate_closed": True,
         "g0_thread_ids": list(FL1_I2_G0_THREAD_IDS),
+        "windows_same_handle_feasibility_passed": True,
+        "windows_same_handle_feasibility_scope": "os_created_temporary_directory_only",
+        "windows_same_handle_no_path_fallback": True,
+        "file_open_no_recall_claim_scope": (
+            "open_itself_only_not_later_read_guarantee"
+        ),
     }
     zero_fields = (
         "real_source_inventory_operation_count",
@@ -767,6 +773,23 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         }
     ]:
         raise DocumentationStateError("fl1_i2_g0_checkpoint_invalid")
+
+    feasibility_checkpoints = [
+        checkpoint
+        for checkpoint in state["completed_checkpoints"]
+        if isinstance(checkpoint, dict)
+        and checkpoint.get("id") == "fl1_i2_windows_same_handle_feasibility"
+    ]
+    if feasibility_checkpoints != [
+        {
+            "id": "fl1_i2_windows_same_handle_feasibility",
+            "result": (
+                "pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback"
+            ),
+            "fingerprint": "windows_live_temp_file_id_extd_ntcreatefile_v1",
+        }
+    ]:
+        raise DocumentationStateError("fl1_i2_windows_feasibility_checkpoint_invalid")
 
     expected_findings = [
         (1, "PRRT_kwDOSTBMB86X4OUS", "P1", "Scrub Git control variables before trusted invocations", "scripts/fl1_i1_runtime_context.py", "git_control_environment_sanitization", "must_close_during_i2_before_i2_completion_merge_or_i3"),
