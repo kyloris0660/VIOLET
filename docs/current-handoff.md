@@ -11,7 +11,7 @@
 - Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.
 - Previous final HEAD/tree: `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; merge commit: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 - Previous I1 implementation evidence HEAD/tree: `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf` (frozen: `true`; accepted scope: `synthetic_and_new_temporary_fixture_foundation_only`).
-- Current I2 implementation evidence HEAD/tree: `2ae06deb2126a5951d7cc90b4bcac99a30c8373e` / `e0a95087e5a3b5a9c770fa14399fcac8d358087a`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
+- Current I2 implementation evidence HEAD/tree: `32f62c3e9a1bda2e39a560e134c068f05d83e383` / `894d746c900799f717d127bb2628422c793e3c4a`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
 - Terminal review: `4897012517` at `2f8d5f8ce6cde9759c530de71d4ddd1893481656`; findings: `17` (`P1=13`, `P2=4`); GitHub checks: `0`.
 - Status: `fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
@@ -30,7 +30,7 @@
 - `fl1_i2_exact_plan_owner_acceptance`: `owner_accepted_exact_planning_head_tree_pending_expected_head_merge` - `acb12c1db258fdef1d4f063b053d422e0d887abf`.
 - `fl1_i2_g0_post_merge_governance_entry_gate`: `five_post_merge_p1_findings_closed_in_shared_git_state_and_history_guards` - `1913bd27517efc1a6007a202fc9650de4f20fab4`.
 - `fl1_i2_windows_same_handle_feasibility`: `pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback` - `windows_live_temp_file_id_extd_ntcreatefile_v1`.
-- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_closed_and_executable_contract_registered` - `2ae06deb2126a5951d7cc90b4bcac99a30c8373e`.
+- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_closed_and_executable_contract_registered` - `32f62c3e9a1bda2e39a560e134c068f05d83e383`.
 
 ## PR #144 Terminal Review Use-Before Classification
 

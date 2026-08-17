@@ -7,7 +7,7 @@
   "pr_number": 146,
   "draft": false,
   "accepted_mainline_base": "1913bd27517efc1a6007a202fc9650de4f20fab4",
-  "implementation_evidence_head": "2ae06deb2126a5951d7cc90b4bcac99a30c8373e",
+  "implementation_evidence_head": "32f62c3e9a1bda2e39a560e134c068f05d83e383",
   "implementation_evidence_status": "current_i2_synthetic_implementation_evidence_frozen",
   "current_status": "fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit",
   "target_met": false,
@@ -174,7 +174,7 @@
     {
       "id": "fl1_i2_synthetic_implementation_evidence",
       "result": "fourteen_delivery_gates_closed_and_executable_contract_registered",
-      "fingerprint": "2ae06deb2126a5951d7cc90b4bcac99a30c8373e"
+      "fingerprint": "32f62c3e9a1bda2e39a560e134c068f05d83e383"
     }
   ],
   "active_blocker": {
@@ -304,8 +304,8 @@
     "windows_same_handle_feasibility_scope": "os_created_temporary_directory_only",
     "windows_same_handle_no_path_fallback": true,
     "file_open_no_recall_claim_scope": "open_itself_only_not_later_read_guarantee",
-    "fl1_i2_implementation_evidence_head": "2ae06deb2126a5951d7cc90b4bcac99a30c8373e",
-    "fl1_i2_implementation_evidence_tree": "e0a95087e5a3b5a9c770fa14399fcac8d358087a",
+    "fl1_i2_implementation_evidence_head": "32f62c3e9a1bda2e39a560e134c068f05d83e383",
+    "fl1_i2_implementation_evidence_tree": "894d746c900799f717d127bb2628422c793e3c4a",
     "fl1_i2_implementation_evidence_frozen": true,
     "fl1_i2_contract_id": "scv2_fl1_i2_pre_real_hardening_contract_v1",
     "fl1_i2_public_schema": "violet.scv2-fl1-i2-public-summary.v1",

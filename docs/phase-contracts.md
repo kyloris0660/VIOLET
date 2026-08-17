@@ -127,8 +127,8 @@ findings (13 P1, 4 P2). The complete use-before projection is:
 The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
 only for its narrow synthetic foundation. I2 contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at frozen evidence
-HEAD/tree `2ae06deb2126a5951d7cc90b4bcac99a30c8373e` /
-`e0a95087e5a3b5a9c770fa14399fcac8d358087a`. It reconstructs the 14 gate
+HEAD/tree `32f62c3e9a1bda2e39a560e134c068f05d83e383` /
+`894d746c900799f717d127bb2628422c793e3c4a`. It reconstructs the 14 gate
 closures from fixed-name, no-follow private artifacts and trusted repository
 state; caller JSON cannot create a positive result. Its local receipt is not
 CI or owner authority. `target_met`, `safe_to_merge`, route, merge, I3, and

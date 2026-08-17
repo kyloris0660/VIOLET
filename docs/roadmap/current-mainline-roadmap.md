@@ -57,8 +57,8 @@ findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
 `github_checks=0`, and CI authority remains false. Fourteen findings are closed
 at frozen implementation evidence HEAD/tree
-`2ae06deb2126a5951d7cc90b4bcac99a30c8373e` /
-`e0a95087e5a3b5a9c770fa14399fcac8d358087a`. Executable contract
+`32f62c3e9a1bda2e39a560e134c068f05d83e383` /
+`894d746c900799f717d127bb2628422c793e3c4a`. Executable contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without
 accepting caller booleans. The result remains local operator evidence pending
 owner audit, not CI, target, safe-to-merge, merge, route, or real-source
