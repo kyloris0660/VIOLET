@@ -35,7 +35,7 @@ has frozen synthetic pre-real implementation evidence on branch
 source is `docs/state/current-phase.json`.
 
 ```text
-status=fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit
+status=fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -51,7 +51,7 @@ route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance
+active_blocker=pending_fl1_i2_bounded_followup_review_and_owner_reaudit
 ```
 
 PR #144 terminal review `4897012517` covered exact final HEAD
@@ -60,13 +60,15 @@ PR #144 terminal review `4897012517` covered exact final HEAD
 findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
 `github_checks=0`, and CI authority remains false. Fourteen findings are closed
-at frozen implementation evidence HEAD/tree
-`cb5f4784ac9e23030b792aedee24fca6338d6677` /
-`cbe06b80c1f99954a3ef03613d1d8e52443e93fe`. Executable contract
+at corrected frozen implementation evidence HEAD/tree
+`7ce9151630fe908d09773e1718c00b568c953ed1` /
+`102ad303a2763197d95b47eb4a747cf3825d5679`. The rejected
+`78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded.
+Executable contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without
 accepting caller booleans. The result remains local operator evidence pending
-owner audit, not CI, target, safe-to-merge, merge, route, or real-source
-authority.
+the one authorized follow-up review and owner re-audit, not CI, target,
+safe-to-merge, merge, route, or real-source authority.
 Parent-observed child identity is
 kept as a local-evidence claim boundary, not described as tamper-resistant,
 OS/kernel/TPM/remote, or CI attestation.

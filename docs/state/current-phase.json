@@ -7,9 +7,9 @@
   "pr_number": 146,
   "draft": false,
   "accepted_mainline_base": "1913bd27517efc1a6007a202fc9650de4f20fab4",
-  "implementation_evidence_head": "cb5f4784ac9e23030b792aedee24fca6338d6677",
-  "implementation_evidence_status": "current_i2_synthetic_implementation_evidence_frozen",
-  "current_status": "fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit",
+  "implementation_evidence_head": "7ce9151630fe908d09773e1718c00b568c953ed1",
+  "implementation_evidence_status": "current_i2_bounded_correction_implementation_evidence_frozen",
+  "current_status": "fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -19,7 +19,7 @@
   "planning_approved": true,
   "approved_planning_head": "acb12c1db258fdef1d4f063b053d422e0d887abf",
   "approved_planning_tree": "fc573c7646ad5edf10c32c7712de7f27ab058a2a",
-  "manual_acceptance_status": "pending_fl1_i2_implementation_owner_audit",
+  "manual_acceptance_status": "pending_fl1_i2_bounded_correction_owner_reaudit",
   "next_phase_started": true,
   "previous_phase": "SCV2-FL1-I1",
   "previous_phase_status": "owner_accepted_and_merge_commit_merged",
@@ -174,13 +174,13 @@
     {
       "id": "fl1_i2_synthetic_implementation_evidence",
       "result": "fourteen_delivery_gates_closed_and_executable_contract_registered",
-      "fingerprint": "cb5f4784ac9e23030b792aedee24fca6338d6677"
+      "fingerprint": "7ce9151630fe908d09773e1718c00b568c953ed1"
     }
   ],
   "active_blocker": {
-    "code": "pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance",
-    "scope": "SCV2-FL1-I2 frozen synthetic-only implementation evidence in Draft PR #146; all real-source and data-plane authority remains false",
-    "resolution": "Project owner audits the exact final implementation HEAD/tree and executable contract. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this evidence freeze grants neither."
+    "code": "pending_fl1_i2_bounded_followup_review_and_owner_reaudit",
+    "scope": "SCV2-FL1-I2 bounded additive correction evidence in PR #146; all real-source and data-plane authority remains false",
+    "resolution": "After exact local validation and a normal push, request the one authorized follow-up Codex review and stop for project-owner re-audit. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this correction evidence grants neither."
   },
   "owner_decisions": [
     {
@@ -229,6 +229,32 @@
       "synthetic_fixture_execution_authorized": true,
       "real_source_inventory_authorized": false,
       "merge_authorized": false
+    },
+    {
+      "id": "owner_authorized_scv2_fl1_i2_pr146_bounded_correction_20260817",
+      "decision": "Authorize one bounded additive correction round in PR #146 for all ten accepted exact-head findings, followed by one explicit Codex review request and an owner re-audit stop.",
+      "pr_number": 146,
+      "superseded_head": "78ccbdc69ee1bf0f51c297435b56e2be868b54e9",
+      "superseded_tree": "311b34f7c7fb5e5947b696598ded15dfd325e3f4",
+      "review_id": 4952182962,
+      "thread_ids": [
+        "PRRT_kwDOSTBMB86Z0JuG",
+        "PRRT_kwDOSTBMB86Z0JuI",
+        "PRRT_kwDOSTBMB86Z0JuM",
+        "PRRT_kwDOSTBMB86Z0JuP",
+        "PRRT_kwDOSTBMB86Z0JuR",
+        "PRRT_kwDOSTBMB86Z0JuT",
+        "PRRT_kwDOSTBMB86Z0JuV",
+        "PRRT_kwDOSTBMB86Z0JuY",
+        "PRRT_kwDOSTBMB86Z0Juc",
+        "PRRT_kwDOSTBMB86Z0Juf"
+      ],
+      "finding_disposition": "accept_and_require_fix",
+      "correction_authorized": true,
+      "same_branch_normal_push_authorized": true,
+      "one_followup_codex_review_authorized": true,
+      "merge_authorized": false,
+      "real_source_inventory_authorized": false
     }
   ],
   "authorized_operations": [
@@ -304,9 +330,27 @@
     "windows_same_handle_feasibility_scope": "os_created_temporary_directory_only",
     "windows_same_handle_no_path_fallback": true,
     "file_open_no_recall_claim_scope": "open_itself_only_not_later_read_guarantee",
-    "fl1_i2_implementation_evidence_head": "cb5f4784ac9e23030b792aedee24fca6338d6677",
-    "fl1_i2_implementation_evidence_tree": "cbe06b80c1f99954a3ef03613d1d8e52443e93fe",
+    "fl1_i2_implementation_evidence_head": "7ce9151630fe908d09773e1718c00b568c953ed1",
+    "fl1_i2_implementation_evidence_tree": "102ad303a2763197d95b47eb4a747cf3825d5679",
     "fl1_i2_implementation_evidence_frozen": true,
+    "fl1_i2_superseded_evidence_head": "78ccbdc69ee1bf0f51c297435b56e2be868b54e9",
+    "fl1_i2_superseded_evidence_tree": "311b34f7c7fb5e5947b696598ded15dfd325e3f4",
+    "fl1_i2_superseded_evidence_reason": "owner_adjudicated_pr146_review_findings_require_bounded_correction",
+    "fl1_i2_bounded_correction_review_id": 4952182962,
+    "fl1_i2_bounded_correction_thread_ids": [
+      "PRRT_kwDOSTBMB86Z0JuG",
+      "PRRT_kwDOSTBMB86Z0JuI",
+      "PRRT_kwDOSTBMB86Z0JuM",
+      "PRRT_kwDOSTBMB86Z0JuP",
+      "PRRT_kwDOSTBMB86Z0JuR",
+      "PRRT_kwDOSTBMB86Z0JuT",
+      "PRRT_kwDOSTBMB86Z0JuV",
+      "PRRT_kwDOSTBMB86Z0JuY",
+      "PRRT_kwDOSTBMB86Z0Juc",
+      "PRRT_kwDOSTBMB86Z0Juf"
+    ],
+    "fl1_i2_bounded_correction_authorized": true,
+    "fl1_i2_one_followup_codex_review_authorized": true,
     "fl1_i2_contract_id": "scv2_fl1_i2_pre_real_hardening_contract_v1",
     "fl1_i2_public_schema": "violet.scv2-fl1-i2-public-summary.v1",
     "fl1_i2_delivery_gate_count": 14,
@@ -481,7 +525,7 @@
       "classification": "closed_in_fl1_i2_synthetic_implementation_evidence"
     }
   ],
-  "next_required_checkpoint": "exact_final_head_owner_audit_without_automatic_remediation_or_merge",
+  "next_required_checkpoint": "one_authorized_followup_codex_review_then_exact_corrected_head_owner_reaudit_without_merge",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -553,5 +597,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-17T20:47:00+08:00"
+  "updated_at": "2026-08-17T23:10:00+08:00"
 }

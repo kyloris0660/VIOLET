@@ -37,16 +37,20 @@ PR #144 merged the `SCV2-FL1-I1` inventory foundation, but the owner accepted
 it only for synthetic and newly created temporary fixtures. PR #145 merged the
 owner-accepted `SCV2-FL1-I2` plan at merge commit
 `1913bd27517efc1a6007a202fc9650de4f20fab4`. The separately authorized
-synthetic pre-real hardening implementation is frozen at evidence HEAD/tree
-`cb5f4784ac9e23030b792aedee24fca6338d6677` /
-`cbe06b80c1f99954a3ef03613d1d8e52443e93fe`. Contract
+synthetic pre-real hardening implementation has an owner-authorized bounded
+correction frozen at implementation evidence HEAD/tree
+`7ce9151630fe908d09773e1718c00b568c953ed1` /
+`102ad303a2763197d95b47eb4a747cf3825d5679`. The earlier
+`78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded by the
+owner's exact-head finding adjudication. Contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives all 14 delivery gates
 from confined private synthetic evidence. The owner accepted exact planning HEAD/tree
 `acb12c1db258fdef1d4f063b053d422e0d887abf` /
 `fc573c7646ad5edf10c32c7712de7f27ab058a2a`; planning remains approved, while
 the one-time planning merge authority is consumed. The 14 engineering findings
-are closed in the frozen synthetic evidence, but exact-HEAD implementation
-owner audit is pending. Local evidence grants no `safe_to_merge`, merge,
+are closed in the corrected frozen synthetic evidence, but the one authorized
+follow-up review and exact-HEAD owner re-audit remain pending. Local evidence
+grants no `safe_to_merge`, merge,
 target, route, I3, or real-source authority. I2 execution remained restricted
 to adversarial newly created temporary fixtures. Real source/iCloud access,
 full-library inventory, database/app-storage access, import, classification,

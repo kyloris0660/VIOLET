@@ -11,11 +11,12 @@
 - Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.
 - Previous final HEAD/tree: `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; merge commit: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 - Previous I1 implementation evidence HEAD/tree: `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf` (frozen: `true`; accepted scope: `synthetic_and_new_temporary_fixture_foundation_only`).
-- Current I2 implementation evidence HEAD/tree: `cb5f4784ac9e23030b792aedee24fca6338d6677` / `cbe06b80c1f99954a3ef03613d1d8e52443e93fe`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
+- Current I2 implementation evidence HEAD/tree: `7ce9151630fe908d09773e1718c00b568c953ed1` / `102ad303a2763197d95b47eb4a747cf3825d5679`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
+- PR #146 bounded correction: rejected evidence `78ccbdc69ee1bf0f51c297435b56e2be868b54e9` / `311b34f7c7fb5e5947b696598ded15dfd325e3f4` is superseded by owner adjudication of review `4952182962` and `10` accepted findings; one follow-up Codex review is authorized.
 - Terminal review: `4897012517` at `2f8d5f8ce6cde9759c530de71d4ddd1893481656`; findings: `17` (`P1=13`, `P2=4`); GitHub checks: `0`.
-- Status: `fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit`.
+- Status: `fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- Planning: `authorized=true`, `completed=true`, `approved=true`; `manual_acceptance_status=pending_fl1_i2_implementation_owner_audit`.
+- Planning: `authorized=true`, `completed=true`, `approved=true`; `manual_acceptance_status=pending_fl1_i2_bounded_correction_owner_reaudit`.
 - Owner-approved planning HEAD/tree: `acb12c1db258fdef1d4f063b053d422e0d887abf` / `fc573c7646ad5edf10c32c7712de7f27ab058a2a`.
 - Owner evidence: PR `#145`, review `4907783329`, thread `PRRT_kwDOSTBMB86YRuq7`, comment `3759240785`; the P1 exact-revision finding closes in this governance projection binding.
 - Planning owner acceptance / current implementation merge authorization: `true/false`.
@@ -30,7 +31,7 @@
 - `fl1_i2_exact_plan_owner_acceptance`: `owner_accepted_exact_planning_head_tree_pending_expected_head_merge` - `acb12c1db258fdef1d4f063b053d422e0d887abf`.
 - `fl1_i2_g0_post_merge_governance_entry_gate`: `five_post_merge_p1_findings_closed_in_shared_git_state_and_history_guards` - `1913bd27517efc1a6007a202fc9650de4f20fab4`.
 - `fl1_i2_windows_same_handle_feasibility`: `pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback` - `windows_live_temp_file_id_extd_ntcreatefile_v1`.
-- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_closed_and_executable_contract_registered` - `cb5f4784ac9e23030b792aedee24fca6338d6677`.
+- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_closed_and_executable_contract_registered` - `7ce9151630fe908d09773e1718c00b568c953ed1`.
 
 ## PR #144 Terminal Review Use-Before Classification
 
@@ -56,8 +57,8 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 
 ## Current Gate And Boundary
 
-- Gate: `pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance` (SCV2-FL1-I2 frozen synthetic-only implementation evidence in Draft PR #146; all real-source and data-plane authority remains false).
-- Resolution: Project owner audits the exact final implementation HEAD/tree and executable contract. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this evidence freeze grants neither.
+- Gate: `pending_fl1_i2_bounded_followup_review_and_owner_reaudit` (SCV2-FL1-I2 bounded additive correction evidence in PR #146; all real-source and data-plane authority remains false).
+- Resolution: After exact local validation and a normal push, request the one authorized follow-up Codex review and stop for project-owner re-audit. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this correction evidence grants neither.
 - Planning only: `false`; implementation/data/production authorization: `true/false/false`.
 - Existing database/real inventory/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `$0`.
 - Public evidence boundary: `trust_level=local_operator_receipt`, `machine_verifiable_ci=false`, `github_checks=0`.
@@ -71,7 +72,7 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 
 ## Next Action
 
-- Required checkpoint: `exact_final_head_owner_audit_without_automatic_remediation_or_merge`.
+- Required checkpoint: `one_authorized_followup_codex_review_then_exact_corrected_head_owner_reaudit_without_merge`.
 
 ## Durable Links
 
@@ -89,4 +90,4 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 - `FL1_I2_OWNER_AUDIT_AND_MERGE_GATE` - owner: SCV2-FL1-I2 project owner; due before: `any safe_to_merge or merge_authorized projection, merge, SCV2-FL1-I3, or real-source operation`; The fourteen delivery gates and executable contract are locally complete on frozen synthetic evidence, but local operator evidence is not owner acceptance, CI, safe-to-merge authority, or merge authority. Requirements: audit the exact final PR #146 HEAD/tree, all current review findings, and the registered SCV2-FL1-I2 contract; issue any acceptance as a separate exact-head governance projection that keeps target_met and every real-source/data authority false; grant safe-to-merge and expected-head merge authority explicitly if and only if the exact implementation evidence is accepted; stop after merge until a separate FL1_I3_REAL_SOURCE_SCOPE_GATE is authorized.
 - `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized SCV2-FL1-I3 canary owner; due before: `any real source or iCloud listing, stat, attribute observation, open, read, hash, or structure validation`; No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists. Requirements: bind exact private source identity and finite scope; approve complete protected roots and public redaction boundary; approve enumeration, time, disk, read, hash, failure, and sample budgets; defer every recall-risk object without hydration and stop on structural identity or evidence drift.
 - `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future threat-model owner only if malicious same-account process resistance becomes a product requirement; due before: `any claim upgrades local invocation provenance to adversarial tamper resistance`; Parent-observed child identity is useful local operator evidence but is not OS, kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep current claims limited to local operator provenance; do not present parent receipts as CI or tamper-resistant evidence; do not expand a personal local inventory tool into forensic attestation without a separate need and design.
-Updated: `2026-08-17T20:47:00+08:00`.
+Updated: `2026-08-17T23:10:00+08:00`.

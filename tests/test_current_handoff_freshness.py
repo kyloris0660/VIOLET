@@ -713,6 +713,28 @@ def test_exact_owner_acceptance_binding_is_immutable() -> None:
         documentation_state.validate_state(state)
 
 
+def test_pr146_bounded_correction_binding_is_exact_and_immutable() -> None:
+    state = copy.deepcopy(_state())
+    decision = next(
+        decision
+        for decision in state["owner_decisions"]
+        if decision["id"]
+        == documentation_state.FL1_I2_BOUNDED_CORRECTION_DECISION_ID
+    )
+    assert decision["superseded_head"] == (
+        documentation_state.FL1_I2_SUPERSEDED_EVIDENCE_HEAD
+    )
+    assert decision["thread_ids"] == list(
+        documentation_state.FL1_I2_BOUNDED_CORRECTION_THREAD_IDS
+    )
+    decision["one_followup_codex_review_authorized"] = False
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_bounded_correction_binding_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -720,6 +742,10 @@ def test_exact_owner_acceptance_binding_is_immutable() -> None:
         ("previous_phase_implementation_evidence_tree", "f" * 40),
         ("fl1_i2_implementation_evidence_head", "f" * 40),
         ("fl1_i2_implementation_evidence_tree", "f" * 40),
+        ("fl1_i2_superseded_evidence_head", "f" * 40),
+        ("fl1_i2_bounded_correction_review_id", 0),
+        ("fl1_i2_bounded_correction_authorized", False),
+        ("fl1_i2_one_followup_codex_review_authorized", False),
         ("machine_verifiable_ci", True),
         ("github_checks_observed", 1),
         ("ci_authority", True),

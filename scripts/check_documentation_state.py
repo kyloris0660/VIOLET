@@ -141,13 +141,31 @@ FL1_I2_OWNER_DECISION = (
     "SCV2_FL1_I2_PR145_OWNER_ACCEPTED_EXACT_PLANNING_EVIDENCE_AND_"
     "AUTHORIZED_GOVERNANCE_PROJECTION_EXPECTED_HEAD_MERGE"
 )
-FL1_I2_STATUS = "fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit"
+FL1_I2_STATUS = "fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit"
 FL1_I2_IMPLEMENTATION_DECISION_ID = (
     "owner_authorized_scv2_fl1_i2_synthetic_pre_real_hardening_20260817"
 )
 FL1_I2_POST_MERGE_REVIEW_ID = 4927462216
-FL1_I2_IMPLEMENTATION_EVIDENCE_HEAD = "cb5f4784ac9e23030b792aedee24fca6338d6677"
-FL1_I2_IMPLEMENTATION_EVIDENCE_TREE = "cbe06b80c1f99954a3ef03613d1d8e52443e93fe"
+FL1_I2_IMPLEMENTATION_EVIDENCE_HEAD = "7ce9151630fe908d09773e1718c00b568c953ed1"
+FL1_I2_IMPLEMENTATION_EVIDENCE_TREE = "102ad303a2763197d95b47eb4a747cf3825d5679"
+FL1_I2_SUPERSEDED_EVIDENCE_HEAD = "78ccbdc69ee1bf0f51c297435b56e2be868b54e9"
+FL1_I2_SUPERSEDED_EVIDENCE_TREE = "311b34f7c7fb5e5947b696598ded15dfd325e3f4"
+FL1_I2_BOUNDED_CORRECTION_REVIEW_ID = 4952182962
+FL1_I2_BOUNDED_CORRECTION_DECISION_ID = (
+    "owner_authorized_scv2_fl1_i2_pr146_bounded_correction_20260817"
+)
+FL1_I2_BOUNDED_CORRECTION_THREAD_IDS = (
+    "PRRT_kwDOSTBMB86Z0JuG",
+    "PRRT_kwDOSTBMB86Z0JuI",
+    "PRRT_kwDOSTBMB86Z0JuM",
+    "PRRT_kwDOSTBMB86Z0JuP",
+    "PRRT_kwDOSTBMB86Z0JuR",
+    "PRRT_kwDOSTBMB86Z0JuT",
+    "PRRT_kwDOSTBMB86Z0JuV",
+    "PRRT_kwDOSTBMB86Z0JuY",
+    "PRRT_kwDOSTBMB86Z0Juc",
+    "PRRT_kwDOSTBMB86Z0Juf",
+)
 FL1_I2_CONTRACT_ID = "scv2_fl1_i2_pre_real_hardening_contract_v1"
 FL1_I2_PUBLIC_SCHEMA = "violet.scv2-fl1-i2-public-summary.v1"
 FL1_I2_G0_THREAD_IDS = (
@@ -157,8 +175,8 @@ FL1_I2_G0_THREAD_IDS = (
     "PRRT_kwDOSTBMB86Y8Xjx",
     "PRRT_kwDOSTBMB86Y8Xj1",
 )
-FL1_I2_BLOCKER = "pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance"
-FL1_I2_MANUAL_STATUS = "pending_fl1_i2_implementation_owner_audit"
+FL1_I2_BLOCKER = "pending_fl1_i2_bounded_followup_review_and_owner_reaudit"
+FL1_I2_MANUAL_STATUS = "pending_fl1_i2_bounded_correction_owner_reaudit"
 FL1_I2_ROUTE_SCOPE = (
     "SCV2-FL1-I2 synthetic pre-real hardening implementation using only "
     "adversarial newly created temporary fixtures; no real-source execution"
@@ -473,7 +491,7 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "draft": False,
         "accepted_mainline_base": FL1_I2_PLANNING_MERGE_COMMIT,
         "implementation_evidence_head": FL1_I2_IMPLEMENTATION_EVIDENCE_HEAD,
-        "implementation_evidence_status": "current_i2_synthetic_implementation_evidence_frozen",
+        "implementation_evidence_status": "current_i2_bounded_correction_implementation_evidence_frozen",
         "current_status": FL1_I2_STATUS,
         "target_met": False,
         "safe_to_merge": False,
@@ -680,6 +698,19 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "fl1_i2_implementation_evidence_head": FL1_I2_IMPLEMENTATION_EVIDENCE_HEAD,
         "fl1_i2_implementation_evidence_tree": FL1_I2_IMPLEMENTATION_EVIDENCE_TREE,
         "fl1_i2_implementation_evidence_frozen": True,
+        "fl1_i2_superseded_evidence_head": FL1_I2_SUPERSEDED_EVIDENCE_HEAD,
+        "fl1_i2_superseded_evidence_tree": FL1_I2_SUPERSEDED_EVIDENCE_TREE,
+        "fl1_i2_superseded_evidence_reason": (
+            "owner_adjudicated_pr146_review_findings_require_bounded_correction"
+        ),
+        "fl1_i2_bounded_correction_review_id": (
+            FL1_I2_BOUNDED_CORRECTION_REVIEW_ID
+        ),
+        "fl1_i2_bounded_correction_thread_ids": list(
+            FL1_I2_BOUNDED_CORRECTION_THREAD_IDS
+        ),
+        "fl1_i2_bounded_correction_authorized": True,
+        "fl1_i2_one_followup_codex_review_authorized": True,
         "fl1_i2_contract_id": FL1_I2_CONTRACT_ID,
         "fl1_i2_public_schema": FL1_I2_PUBLIC_SCHEMA,
         "fl1_i2_delivery_gate_count": 14,
@@ -754,6 +785,35 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         }
     ]:
         raise DocumentationStateError("fl1_i2_implementation_authority_binding_invalid")
+
+    correction_decisions = [
+        decision
+        for decision in state["owner_decisions"]
+        if isinstance(decision, dict)
+        and decision.get("id") == FL1_I2_BOUNDED_CORRECTION_DECISION_ID
+    ]
+    if correction_decisions != [
+        {
+            "id": FL1_I2_BOUNDED_CORRECTION_DECISION_ID,
+            "decision": (
+                "Authorize one bounded additive correction round in PR #146 "
+                "for all ten accepted exact-head findings, followed by one "
+                "explicit Codex review request and an owner re-audit stop."
+            ),
+            "pr_number": FL1_I2_PR_NUMBER,
+            "superseded_head": FL1_I2_SUPERSEDED_EVIDENCE_HEAD,
+            "superseded_tree": FL1_I2_SUPERSEDED_EVIDENCE_TREE,
+            "review_id": FL1_I2_BOUNDED_CORRECTION_REVIEW_ID,
+            "thread_ids": list(FL1_I2_BOUNDED_CORRECTION_THREAD_IDS),
+            "finding_disposition": "accept_and_require_fix",
+            "correction_authorized": True,
+            "same_branch_normal_push_authorized": True,
+            "one_followup_codex_review_authorized": True,
+            "merge_authorized": False,
+            "real_source_inventory_authorized": False,
+        }
+    ]:
+        raise DocumentationStateError("fl1_i2_bounded_correction_binding_invalid")
 
     matching_checkpoints = [
         checkpoint
@@ -1765,6 +1825,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Previous final HEAD/tree: `{state['previous_phase_final_head']}` / `{state['previous_phase_final_tree']}`; merge commit: `{state['previous_phase_merge_commit']}`.",
         f"- Previous I1 implementation evidence HEAD/tree: `{state['protected_evidence']['previous_phase_implementation_evidence_head']}` / `{state['protected_evidence']['previous_phase_implementation_evidence_tree']}` (frozen: `true`; accepted scope: `{state['previous_phase_accepted_scope']}`).",
         f"- Current I2 implementation evidence HEAD/tree: `{state['implementation_evidence_head']}` / `{state['protected_evidence']['fl1_i2_implementation_evidence_tree']}`; contract: `{state['protected_evidence']['fl1_i2_contract_id']}`; fourteen delivery gates closed in synthetic evidence.",
+        f"- PR #146 bounded correction: rejected evidence `{state['protected_evidence']['fl1_i2_superseded_evidence_head']}` / `{state['protected_evidence']['fl1_i2_superseded_evidence_tree']}` is superseded by owner adjudication of review `{state['protected_evidence']['fl1_i2_bounded_correction_review_id']}` and `{len(state['protected_evidence']['fl1_i2_bounded_correction_thread_ids'])}` accepted findings; one follow-up Codex review is authorized.",
         f"- Terminal review: `{state['previous_phase_terminal_review_id']}` at `{state['previous_phase_final_head']}`; findings: `{state['previous_phase_terminal_review_findings']}` (`P1={state['previous_phase_terminal_review_p1']}`, `P2={state['previous_phase_terminal_review_p2']}`); GitHub checks: `{state['previous_phase_github_checks']}`.",
         f"- Status: `{state['current_status']}`.",
         f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",

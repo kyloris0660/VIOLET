@@ -32,7 +32,7 @@ Current phase `SCV2-FL1-I2` has frozen synthetic pre-real hardening
 implementation evidence and awaits exact-HEAD owner audit:
 
 ```text
-current_status=fl1_i2_synthetic_implementation_evidence_frozen_ready_for_owner_audit
+current_status=fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -57,7 +57,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_implementation_owner_audit_and_exact_head_acceptance
+active_blocker=pending_fl1_i2_bounded_followup_review_and_owner_reaudit
 ```
 
 ## Accepted Mainline Sequence
@@ -80,7 +80,9 @@ PR #142 remains closed, unmerged, and non-authoritative.
 Only synthetic/adversarial temporary fixtures were used. Canonical source and
 Cloud policy, all 14 implementation delivery gates, the negative suite, and
 executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
-`cb5f4784ac9e23030b792aedee24fca6338d6677`. The result stops at owner audit;
+corrected implementation evidence `7ce9151630fe908d09773e1718c00b568c953ed1`.
+The rejected `78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded.
+The result stops at the authorized follow-up review and owner re-audit;
 `target_met`, `safe_to_merge`, merge authority, route approval, and every
 real-source/data authority remain false.
 
