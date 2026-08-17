@@ -1540,19 +1540,26 @@ def validate_git_ancestry(
 ) -> None:
     base = str(state["accepted_mainline_base"])
     implementation = str(state["implementation_evidence_head"])
-    expected_commit_trees = {
-        str(state["previous_phase_final_head"]): str(state["previous_phase_final_tree"]),
-        str(state["protected_evidence"]["previous_phase_implementation_evidence_head"]): str(
-            state["protected_evidence"]["previous_phase_implementation_evidence_tree"]
-        ),
-        implementation: str(
-            state["protected_evidence"]["fl1_i2_implementation_evidence_tree"]
-        ),
-    }
-    if base == FL1_I2_PLANNING_MERGE_COMMIT:
-        expected_commit_trees[base] = FL1_I2_PLANNING_MERGE_TREE
-    else:
-        expected_commit_trees[base] = str(state["previous_phase_final_tree"])
+    expected_commit_trees: dict[str, str] = {}
+    if state.get("phase_id") == "SCV2-FL1-I2":
+        expected_commit_trees = {
+            str(state["previous_phase_final_head"]): str(
+                state["previous_phase_final_tree"]
+            ),
+            str(
+                state["protected_evidence"][
+                    "previous_phase_implementation_evidence_head"
+                ]
+            ): str(
+                state["protected_evidence"][
+                    "previous_phase_implementation_evidence_tree"
+                ]
+            ),
+            implementation: str(
+                state["protected_evidence"]["fl1_i2_implementation_evidence_tree"]
+            ),
+            base: FL1_I2_PLANNING_MERGE_TREE,
+        }
     for commit, expected_tree in expected_commit_trees.items():
         tree_result = _run_trusted_git(
             ["rev-parse", f"{commit}^{{tree}}"], root=root
