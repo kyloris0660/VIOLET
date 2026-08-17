@@ -11,7 +11,7 @@
 - Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.
 - Previous final HEAD/tree: `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; merge commit: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 - Previous I1 implementation evidence HEAD/tree: `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf` (frozen: `true`; accepted scope: `synthetic_and_new_temporary_fixture_foundation_only`).
-- Current I2 implementation evidence HEAD/tree: `e1a978c4c12bcb8ae4a8312c148fca3fcbfac049` / `99573bda4c45f9b51f8a1acd5989de0c807efbd1`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
+- Current I2 implementation evidence HEAD/tree: `8a4801ad216c668ba74b2ed1ddc131de2bbad5de` / `7cb6a34f603fa70ef2e364ac9295df885b6061bb`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
 - PR #146 bounded correction: rejected evidence `78ccbdc69ee1bf0f51c297435b56e2be868b54e9` / `311b34f7c7fb5e5947b696598ded15dfd325e3f4` is superseded by owner adjudication of review `4952182962` and `10` accepted findings; one follow-up Codex review is authorized.
 - Terminal review: `4897012517` at `2f8d5f8ce6cde9759c530de71d4ddd1893481656`; findings: `17` (`P1=13`, `P2=4`); GitHub checks: `0`.
 - Status: `fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit`.
@@ -31,7 +31,7 @@
 - `fl1_i2_exact_plan_owner_acceptance`: `owner_accepted_exact_planning_head_tree_pending_expected_head_merge` - `acb12c1db258fdef1d4f063b053d422e0d887abf`.
 - `fl1_i2_g0_post_merge_governance_entry_gate`: `five_post_merge_p1_findings_closed_in_shared_git_state_and_history_guards` - `1913bd27517efc1a6007a202fc9650de4f20fab4`.
 - `fl1_i2_windows_same_handle_feasibility`: `pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback` - `windows_live_temp_file_id_extd_ntcreatefile_v1`.
-- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_closed_and_executable_contract_registered` - `e1a978c4c12bcb8ae4a8312c148fca3fcbfac049`.
+- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_closed_and_executable_contract_registered` - `8a4801ad216c668ba74b2ed1ddc131de2bbad5de`.
 
 ## PR #144 Terminal Review Use-Before Classification
 
@@ -90,4 +90,4 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 - `FL1_I2_OWNER_AUDIT_AND_MERGE_GATE` - owner: SCV2-FL1-I2 project owner; due before: `any safe_to_merge or merge_authorized projection, merge, SCV2-FL1-I3, or real-source operation`; The fourteen delivery gates and executable contract are locally complete on frozen synthetic evidence, but local operator evidence is not owner acceptance, CI, safe-to-merge authority, or merge authority. Requirements: audit the exact final PR #146 HEAD/tree, all current review findings, and the registered SCV2-FL1-I2 contract; issue any acceptance as a separate exact-head governance projection that keeps target_met and every real-source/data authority false; grant safe-to-merge and expected-head merge authority explicitly if and only if the exact implementation evidence is accepted; stop after merge until a separate FL1_I3_REAL_SOURCE_SCOPE_GATE is authorized.
 - `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized SCV2-FL1-I3 canary owner; due before: `any real source or iCloud listing, stat, attribute observation, open, read, hash, or structure validation`; No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists. Requirements: bind exact private source identity and finite scope; approve complete protected roots and public redaction boundary; approve enumeration, time, disk, read, hash, failure, and sample budgets; defer every recall-risk object without hydration and stop on structural identity or evidence drift.
 - `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future threat-model owner only if malicious same-account process resistance becomes a product requirement; due before: `any claim upgrades local invocation provenance to adversarial tamper resistance`; Parent-observed child identity is useful local operator evidence but is not OS, kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep current claims limited to local operator provenance; do not present parent receipts as CI or tamper-resistant evidence; do not expand a personal local inventory tool into forensic attestation without a separate need and design.
-Updated: `2026-08-17T23:10:00+08:00`.
+Updated: `2026-08-17T23:20:09+08:00`.

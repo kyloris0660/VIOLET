@@ -61,8 +61,8 @@ findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
 `github_checks=0`, and CI authority remains false. Fourteen findings are closed
 at corrected frozen implementation evidence HEAD/tree
-`e1a978c4c12bcb8ae4a8312c148fca3fcbfac049` /
-`99573bda4c45f9b51f8a1acd5989de0c807efbd1`. The rejected
+`8a4801ad216c668ba74b2ed1ddc131de2bbad5de` /
+`7cb6a34f603fa70ef2e364ac9295df885b6061bb`. The rejected
 `78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded.
 Executable contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without

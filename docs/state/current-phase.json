@@ -7,7 +7,7 @@
   "pr_number": 146,
   "draft": false,
   "accepted_mainline_base": "1913bd27517efc1a6007a202fc9650de4f20fab4",
-  "implementation_evidence_head": "e1a978c4c12bcb8ae4a8312c148fca3fcbfac049",
+  "implementation_evidence_head": "8a4801ad216c668ba74b2ed1ddc131de2bbad5de",
   "implementation_evidence_status": "current_i2_bounded_correction_implementation_evidence_frozen",
   "current_status": "fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit",
   "target_met": false,
@@ -174,7 +174,7 @@
     {
       "id": "fl1_i2_synthetic_implementation_evidence",
       "result": "fourteen_delivery_gates_closed_and_executable_contract_registered",
-      "fingerprint": "e1a978c4c12bcb8ae4a8312c148fca3fcbfac049"
+      "fingerprint": "8a4801ad216c668ba74b2ed1ddc131de2bbad5de"
     }
   ],
   "active_blocker": {
@@ -330,8 +330,8 @@
     "windows_same_handle_feasibility_scope": "os_created_temporary_directory_only",
     "windows_same_handle_no_path_fallback": true,
     "file_open_no_recall_claim_scope": "open_itself_only_not_later_read_guarantee",
-    "fl1_i2_implementation_evidence_head": "e1a978c4c12bcb8ae4a8312c148fca3fcbfac049",
-    "fl1_i2_implementation_evidence_tree": "99573bda4c45f9b51f8a1acd5989de0c807efbd1",
+    "fl1_i2_implementation_evidence_head": "8a4801ad216c668ba74b2ed1ddc131de2bbad5de",
+    "fl1_i2_implementation_evidence_tree": "7cb6a34f603fa70ef2e364ac9295df885b6061bb",
     "fl1_i2_implementation_evidence_frozen": true,
     "fl1_i2_superseded_evidence_head": "78ccbdc69ee1bf0f51c297435b56e2be868b54e9",
     "fl1_i2_superseded_evidence_tree": "311b34f7c7fb5e5947b696598ded15dfd325e3f4",
@@ -597,5 +597,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-17T23:10:00+08:00"
+  "updated_at": "2026-08-17T23:20:09+08:00"
 }
