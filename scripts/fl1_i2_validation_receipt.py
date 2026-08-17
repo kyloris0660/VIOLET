@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -18,7 +20,19 @@ from scripts.trusted_git import (
 )
 
 
-RECEIPT_SCHEMA = "violet.scv2-fl1-i2-local-validation-receipt.v1"
+RECEIPT_SCHEMA = "violet.scv2-fl1-i2-local-validation-receipt.v2"
+CANONICAL_FOCUSED_TESTS = (
+    "tests/test_trusted_git.py",
+    "tests/test_scv2_fl1_i2_source_policy.py",
+    "tests/test_scv2_fl1_i2_source_backends.py",
+    "tests/test_scv2_fl1_i2_windows_feasibility.py",
+    "tests/test_scv2_fl1_i2_worker.py",
+    "tests/test_scv2_fl1_i2_evidence.py",
+    "tests/test_scv2_fl1_i2_media_cli.py",
+    "tests/test_scv2_fl1_i2_runner.py",
+    "tests/test_scv2_fl1_i2_validation_receipt.py",
+    "tests/test_scv2_fl1_i2_contract.py",
+)
 
 
 class ReceiptError(RuntimeError):
@@ -37,6 +51,7 @@ class SameHeadValidationReceipt:
     git_head: str
     git_tree: str
     trusted_git_fingerprint: str
+    python_executable_fingerprint: str
     config_fingerprint: str
     policy_fingerprint: str
     manifest_fingerprint: str
@@ -65,6 +80,7 @@ class SameHeadValidationReceipt:
             "git_head": self.git_head,
             "git_tree": self.git_tree,
             "trusted_git_fingerprint": self.trusted_git_fingerprint,
+            "python_executable_fingerprint": self.python_executable_fingerprint,
             "command_fingerprint": self.command_fingerprint,
             "exit_code": self.exit_code,
             "same_head_tree": self.same_head_tree,
@@ -93,12 +109,14 @@ class SameHeadValidationReceipt:
             raise ReceiptError("validation_receipt_invalid") from exc
         if receipt.command_fingerprint != _fingerprint(list(receipt.command_argv)):
             raise ReceiptError("validation_receipt_command_fingerprint_mismatch")
+        validate_canonical_focused_command(receipt.command_argv, Path(receipt.command_argv[0]))
         if receipt.positive != (receipt.exit_code == 0 and receipt.same_head_tree and receipt.clean_before_after):
             raise ReceiptError("validation_receipt_positive_invalid")
         if receipt.trust_level != "local_operator_receipt" or receipt.machine_verifiable_ci or receipt.owner_authority_machine_verifiable:
             raise ReceiptError("validation_receipt_authority_invalid")
         for value in (
             receipt.trusted_git_fingerprint,
+            receipt.python_executable_fingerprint,
             receipt.config_fingerprint,
             receipt.policy_fingerprint,
             receipt.manifest_fingerprint,
@@ -121,6 +139,40 @@ def _fingerprint(payload: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def canonical_focused_test_command(python_executable: Path) -> tuple[str, ...]:
+    try:
+        approved = python_executable.resolve(strict=True)
+    except OSError as exc:
+        raise ReceiptError("validation_receipt_python_invalid") from exc
+    if not approved.is_file():
+        raise ReceiptError("validation_receipt_python_invalid")
+    return (
+        os.fspath(approved),
+        "-I",
+        "-s",
+        "-m",
+        "pytest",
+        "-q",
+        *CANONICAL_FOCUSED_TESTS,
+    )
+
+
+def validate_canonical_focused_command(
+    command: Sequence[str],
+    approved_python: Path,
+) -> None:
+    expected = canonical_focused_test_command(approved_python)
+    if tuple(command) != expected:
+        raise ReceiptError("validation_receipt_command_not_canonical")
+
+
+def _python_fingerprint(python_executable: Path) -> str:
+    try:
+        return hashlib.sha256(python_executable.resolve(strict=True).read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ReceiptError("validation_receipt_python_invalid") from exc
+
+
 def trusted_git_snapshot(repo_root: Path) -> tuple[GitSnapshot, str]:
     git = resolve_trusted_git_executable(repo_root=repo_root)
     head = run_trusted_git_text(repo_root, ("rev-parse", "HEAD^{commit}"), git=git)
@@ -128,6 +180,22 @@ def trusted_git_snapshot(repo_root: Path) -> tuple[GitSnapshot, str]:
     if head.returncode or tree.returncode:
         raise ReceiptError("validation_receipt_git_snapshot_failed")
     return GitSnapshot(head.stdout.strip(), tree.stdout.strip()), git.fingerprint
+
+
+def _run_validation_command(
+    command: Sequence[str],
+    *,
+    repo_root: Path,
+    environment: Mapping[str, str],
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        tuple(command),
+        cwd=repo_root,
+        env=environment,
+        capture_output=True,
+        check=False,
+        timeout=900,
+    )
 
 
 def create_same_head_receipt(
@@ -142,8 +210,8 @@ def create_same_head_receipt(
     required = {"config", "policy", "manifest", "ledger", "worker"}
     if set(bindings) != required or any(len(value) != 64 for value in bindings.values()):
         raise ReceiptError("validation_receipt_bindings_invalid")
-    if not command:
-        raise ReceiptError("validation_receipt_command_missing")
+    approved_python = Path(sys.executable).resolve(strict=True)
+    validate_canonical_focused_command(command, approved_python)
     before, git_fingerprint = trusted_git_snapshot(repo_root)
     git = resolve_trusted_git_executable(repo_root=repo_root)
     try:
@@ -152,7 +220,18 @@ def create_same_head_receipt(
     except Exception:
         clean_before = False
     started = time.time_ns()
-    completed = subprocess.run(tuple(command), cwd=repo_root, capture_output=True, check=False, timeout=900)
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key.casefold() != "pythonpath"
+    }
+    environment.update(
+        {
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+    )
+    completed = _run_validation_command(command, repo_root=repo_root, environment=environment)
     ended = time.time_ns()
     after, after_git_fingerprint = trusted_git_snapshot(repo_root)
     try:
@@ -167,6 +246,7 @@ def create_same_head_receipt(
         git_head=before.head,
         git_tree=before.tree,
         trusted_git_fingerprint=git_fingerprint,
+        python_executable_fingerprint=_python_fingerprint(approved_python),
         config_fingerprint=bindings["config"],
         policy_fingerprint=bindings["policy"],
         manifest_fingerprint=bindings["manifest"],

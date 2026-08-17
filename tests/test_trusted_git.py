@@ -160,6 +160,53 @@ def test_untracked_unknown_type_fails_closed_without_path_disclosure(
     assert "opaque" not in str(caught.value)
 
 
+def test_ignored_behavior_files_are_bounded_and_fail_closed_without_path_disclosure(tmp_path: Path) -> None:
+    repo = _new_repo(tmp_path)
+    (repo / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+    _commit(repo, "ignore synthetic directory", ".gitignore")
+    ignored = repo / "ignored"
+    ignored.mkdir()
+    for name in (".env", ".env.local", "pytest.ini", "conftest.py", "redirect.pth", "sitecustomize.py", "importable.py"):
+        (ignored / name).write_text("synthetic\n", encoding="utf-8")
+    git = resolve_trusted_git_executable(excluded_roots=(repo,))
+    summary = inspect_worktree_drift(git, repo)
+    assert summary.behavior_ignored_count == 7
+    with pytest.raises(TrustedGitError, match="behavior_affecting_ignored:7") as caught:
+        assert_trusted_worktree_clean(git, repo)
+    assert ".env.local" not in str(caught.value)
+
+
+def test_explicit_ordinary_ignored_cache_and_private_receipts_can_remain(tmp_path: Path) -> None:
+    repo = _new_repo(tmp_path)
+    (repo / ".gitignore").write_text(".pytest_cache/\n.local_manifests/\n", encoding="utf-8")
+    _commit(repo, "ignore task artifacts", ".gitignore")
+    cache = repo / ".pytest_cache"
+    cache.mkdir()
+    (cache / "state.txt").write_text("synthetic\n", encoding="utf-8")
+    private = repo / ".local_manifests" / "scv2-fl1-i2-private"
+    private.mkdir(parents=True)
+    (private / "receipt.json").write_text("{}\n", encoding="utf-8")
+    git = resolve_trusted_git_executable(excluded_roots=(repo,))
+    summary = assert_trusted_worktree_clean(git, repo)
+    assert summary.ordinary_ignored_count == 2
+    assert summary.behavior_ignored_count == 0
+    assert summary.uncertain_ignored_count == 0
+
+
+def test_ignored_enumeration_budget_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _new_repo(tmp_path)
+    (repo / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+    _commit(repo, "ignore synthetic directory", ".gitignore")
+    ignored = repo / "ignored"
+    ignored.mkdir()
+    (ignored / "one.txt").write_text("one\n", encoding="utf-8")
+    (ignored / "two.txt").write_text("two\n", encoding="utf-8")
+    monkeypatch.setattr("scripts.trusted_git.MAX_STATUS_ENTRIES", 1)
+    git = resolve_trusted_git_executable(excluded_roots=(repo,))
+    with pytest.raises(TrustedGitError, match="status_budget_exceeded"):
+        inspect_worktree_drift(git, repo)
+
+
 def test_hostile_local_core_worktree_fails_closed_even_with_explicit_pin(
     tmp_path: Path,
 ) -> None:

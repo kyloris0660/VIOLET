@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import multiprocessing
 import time
 import traceback
@@ -12,21 +13,29 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from backend.app.services.source_ingestion_gate import SourceIngestionGate, SourceKind
-from backend.app.services.source_safety import SourceSafetyPolicy
-from scripts.fl1_i2_source_backends import SourceBackendError, current_handle_backend
+from backend.app.services.source_safety import (
+    FileChangeIdentity,
+    FileObjectIdentity,
+    SourceSafetyPolicy,
+)
+from scripts.fl1_i2_source_backends import (
+    EnumerationBudget,
+    SourceBackendError,
+    current_handle_backend,
+)
 from scripts.fl1_i2_media_validation import MediaValidationError
 
 
 class WorkerError(RuntimeError):
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, bytes_consumed: int = 0) -> None:
         super().__init__(code)
         self.code = code
+        self.bytes_consumed = bytes_consumed
 
 
 class WorkerOperation(str, Enum):
     LIST_DIRECTORY = "list_directory"
-    HASH_FILE = "hash_file"
-    VALIDATE_MEDIA = "validate_media"
+    COMBINED_CONTENT = "combined_content"
     SYNTHETIC_BLOCK = "synthetic_block"
 
 
@@ -45,22 +54,109 @@ class WorkerResult:
     started_persisted: bool
     exit_confirmed: bool
     elapsed_ms: int
+    bytes_consumed: int = 0
 
 
 def _member_payload(member: Any) -> dict[str, Any]:
     return {
         "name": member.name,
         "object_identity": member.object_identity.to_private_dict(),
+        "change_identity": member.change_identity.to_private_dict(),
         "attributes": member.attributes,
         "reparse_tag": member.reparse_tag,
     }
 
 
-def _select_member(backend: Any, directory: Any, name: str) -> Any:
-    matches = [member for member in backend.enumerate_directory(directory) if member.name == name]
+def _object_identity(payload: Mapping[str, Any]) -> FileObjectIdentity:
+    try:
+        return FileObjectIdentity(
+            str(payload["platform"]),
+            str(payload["volume_id"]),
+            str(payload["file_id"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WorkerError("worker_expected_object_identity_invalid") from exc
+
+
+def _change_identity(payload: Mapping[str, Any]) -> FileChangeIdentity:
+    try:
+        return FileChangeIdentity(
+            int(payload["change_time_ns"]),
+            int(payload["write_time_ns"]),
+            int(payload["size"]),
+            int(payload["allocation_size"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WorkerError("worker_expected_change_identity_invalid") from exc
+
+
+def _enumeration_budget(payload: Mapping[str, Any]) -> EnumerationBudget:
+    try:
+        raw = payload["enumeration_budget"]
+        if not isinstance(raw, Mapping):
+            raise TypeError
+        return EnumerationBudget(
+            max_entries=int(raw["max_entries"]),
+            max_pages=int(raw["max_pages"]),
+            max_metadata_bytes=int(raw["max_metadata_bytes"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WorkerError("worker_enumeration_budget_invalid") from exc
+
+
+def _select_member(
+    backend: Any,
+    directory: Any,
+    name: str,
+    expected_object: FileObjectIdentity,
+    expected_change: FileChangeIdentity,
+    budget: EnumerationBudget,
+) -> Any:
+    matches = [
+        member
+        for member in backend.enumerate_directory(directory, budget=budget)
+        if member.name == name
+    ]
     if len(matches) != 1:
         raise WorkerError("source_member_membership_changed")
-    return matches[0]
+    member = matches[0]
+    if member.object_identity != expected_object:
+        raise WorkerError("source_member_object_identity_drift")
+    if member.change_identity != expected_change:
+        raise WorkerError("source_member_change_identity_drift")
+    return member
+
+
+def _gate_observation(observation: Any, policy: SourceSafetyPolicy) -> None:
+    decision = SourceIngestionGate.decide_observation(
+        source_kind=SourceKind.PATH_SOURCE,
+        observation=observation,
+        policy=policy,
+    )
+    if decision.blocked:
+        raise WorkerError(decision.reason)
+
+
+class _DigestingChunks:
+    def __init__(self, chunks: Any, max_bytes: int) -> None:
+        self._chunks = iter(chunks)
+        self.max_bytes = max_bytes
+        self.byte_count = 0
+        self.digest = hashlib.sha256()
+
+    def __iter__(self) -> "_DigestingChunks":
+        return self
+
+    def __next__(self) -> bytes:
+        chunk = next(self._chunks)
+        self.byte_count += len(chunk)
+        if self.byte_count > self.max_bytes:
+            raise WorkerError(
+                "worker_byte_budget_exceeded",
+                bytes_consumed=self.byte_count,
+            )
+        self.digest.update(chunk)
+        return chunk
 
 
 def _execute(operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -70,59 +166,91 @@ def _execute(operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     root = Path(str(payload["root"]))
     backend = current_handle_backend()
     policy = SourceSafetyPolicy.from_trusted_config(payload["policy"])
+    enumeration_budget = _enumeration_budget(payload)
     with backend.open_directory(root) as directory:
         if operation == WorkerOperation.LIST_DIRECTORY.value:
             before = backend.observe(directory)
-            members = backend.enumerate_directory(directory)
+            members = backend.enumerate_directory(directory, budget=enumeration_budget)
             after = backend.observe(directory)
-            if before.object_identity != after.object_identity:
+            if before.object_identity != after.object_identity or before.change_identity != after.change_identity:
                 raise WorkerError("source_directory_identity_drift")
             return {
                 "directory_observation": before.to_private_dict(),
                 "members": [_member_payload(member) for member in members],
             }
+        if operation != WorkerOperation.COMBINED_CONTENT.value:
+            raise WorkerError("worker_operation_invalid")
+        expected_root = payload["expected_root_observation"]
+        if not isinstance(expected_root, Mapping):
+            raise WorkerError("worker_expected_root_observation_invalid")
+        if directory.observation.object_identity != _object_identity(expected_root["object_identity"]):
+            raise WorkerError("source_root_object_identity_drift")
+        if directory.observation.change_identity != _change_identity(expected_root["change_identity"]):
+            raise WorkerError("source_root_change_identity_drift")
         name = str(payload["member_name"])
-        member = _select_member(backend, directory, name)
+        expected_object = _object_identity(payload["expected_member_object_identity"])
+        expected_change = _change_identity(payload["expected_member_change_identity"])
+        member = _select_member(
+            backend,
+            directory,
+            name,
+            expected_object,
+            expected_change,
+            enumeration_budget,
+        )
         with backend.open_child(directory, member) as child:
-            decision = SourceIngestionGate.decide_observation(
-                source_kind=SourceKind.PATH_SOURCE,
-                observation=child.observation,
-                policy=policy,
-            )
-            if decision.blocked:
-                raise WorkerError(decision.reason)
+            opened = child.observation
+            _gate_observation(opened, policy)
             before = backend.observe(child)
+            _gate_observation(before, policy)
+            if opened != before:
+                raise WorkerError("source_object_changed_before_read")
             max_bytes = int(payload["max_bytes"])
             if max_bytes <= 0:
                 raise WorkerError("worker_byte_budget_invalid")
-            if operation == WorkerOperation.HASH_FILE.value:
-                digest = hashlib.sha256()
-                byte_count = 0
-                for chunk in backend.read_chunks(child, chunk_size=64 * 1024, max_bytes=max_bytes + 1):
-                    byte_count += len(chunk)
-                    if byte_count > max_bytes:
-                        raise WorkerError("worker_byte_budget_exceeded")
-                    digest.update(chunk)
-                result = {"byte_count": byte_count, "content_fingerprint": digest.hexdigest()}
-            elif operation == WorkerOperation.VALIDATE_MEDIA.value:
-                from scripts.fl1_i2_media_validation import validate_media_stream
+            if max_bytes != max(1, expected_change.size):
+                raise WorkerError("worker_byte_reservation_mismatch")
+            from scripts.fl1_i2_media_validation import validate_media_stream
 
-                result = validate_media_stream(
-                    backend.read_chunks(child, chunk_size=64 * 1024, max_bytes=max_bytes + 1),
+            stream = _DigestingChunks(
+                backend.read_chunks(
+                    child,
+                    chunk_size=64 * 1024,
+                    max_bytes=max_bytes,
+                ),
+                max_bytes,
+            )
+            try:
+                media = validate_media_stream(
+                    stream,
                     max_bytes=max_bytes,
                     max_depth=int(payload["max_depth"]),
                     deadline_monotonic=float(payload["parser_deadline_monotonic"]),
-                ).to_private_dict()
-            else:
-                raise WorkerError("worker_operation_invalid")
+                )
+            except (MediaValidationError, SourceBackendError, WorkerError) as exc:
+                code = exc.code if isinstance(exc, (SourceBackendError, WorkerError)) else str(exc)
+                raise WorkerError(code, bytes_consumed=stream.byte_count) from exc
             after = backend.observe(child)
-            if before.object_identity != after.object_identity or before.change_identity != after.change_identity:
+            _gate_observation(after, policy)
+            if before != after:
                 raise WorkerError("source_object_changed_during_operation")
             return {
-                **result,
+                "byte_count": stream.byte_count,
+                "content_fingerprint": stream.digest.hexdigest(),
+                "media": media.to_private_dict(),
                 "object_identity": before.object_identity.to_private_dict(),
                 "change_identity": before.change_identity.to_private_dict(),
                 "policy_version": policy.policy_version,
+                "policy_fingerprint": hashlib.sha256(
+                    json.dumps(
+                        policy.to_fingerprint_payload(),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest(),
+                "opened_observation": opened.to_private_dict(),
+                "pre_read_observation": before.to_private_dict(),
+                "post_read_observation": after.to_private_dict(),
             }
 
 
@@ -136,7 +264,15 @@ def _worker_main(connection: Any, operation: str, payload: Mapping[str, Any]) ->
         result = _execute(operation, payload)
         connection.send(("COMPLETED", result))
     except (SourceBackendError, WorkerError, MediaValidationError, ValueError, KeyError) as exc:
-        connection.send(("FAILED", {"safe_code": str(exc)}))
+        connection.send(
+            (
+                "FAILED",
+                {
+                    "safe_code": str(exc),
+                    "bytes_consumed": getattr(exc, "bytes_consumed", 0),
+                },
+            )
+        )
     except BaseException:
         # Traceback remains inside the child and is never projected publicly.
         traceback.format_exc()
@@ -189,10 +325,29 @@ class WorkerController:
             if process.is_alive():
                 return self._terminate(process, started_at, started_persisted, "worker_exit_unconfirmed")
             if message == "COMPLETED":
-                return WorkerResult(WorkerStatus.COMPLETED, "worker_completed", result, started_persisted, True, int((time.monotonic() - started_at) * 1000))
-            return WorkerResult(WorkerStatus.FAILED, str(result.get("safe_code", "worker_failed")), None, started_persisted, True, int((time.monotonic() - started_at) * 1000))
+                return WorkerResult(
+                    WorkerStatus.COMPLETED,
+                    "worker_completed",
+                    result,
+                    started_persisted,
+                    True,
+                    int((time.monotonic() - started_at) * 1000),
+                    int(result.get("byte_count", 0)),
+                )
+            return WorkerResult(
+                WorkerStatus.FAILED,
+                str(result.get("safe_code", "worker_failed")),
+                None,
+                started_persisted,
+                True,
+                int((time.monotonic() - started_at) * 1000),
+                int(result.get("bytes_consumed", 0)),
+            )
         except (EOFError, OSError, WorkerError):
             return self._terminate(process, started_at, started_persisted, "worker_channel_failed")
+        except BaseException:
+            self._terminate(process, started_at, started_persisted, "worker_parent_interrupted")
+            raise
         finally:
             parent.close()
 
@@ -211,4 +366,5 @@ class WorkerController:
             started_persisted,
             confirmed,
             int((time.monotonic() - started_at) * 1000),
+            0,
         )

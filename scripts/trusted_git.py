@@ -38,6 +38,7 @@ _BEHAVIOR_SUFFIXES = frozenset(
         ".jsx",
         ".mjs",
         ".node",
+        ".pth",
         ".ps1",
         ".py",
         ".pyc",
@@ -50,6 +51,11 @@ _BEHAVIOR_SUFFIXES = frozenset(
         ".tsx",
         ".wasm",
         ".zsh",
+        ".cfg",
+        ".ini",
+        ".toml",
+        ".yaml",
+        ".yml",
     }
 )
 _BEHAVIOR_NAMES = frozenset(
@@ -81,6 +87,10 @@ _BEHAVIOR_NAMES = frozenset(
         "tox.ini",
         "uv.lock",
         "yarn.lock",
+        "conftest.py",
+        "pytest.ini",
+        "sitecustomize.py",
+        "usercustomize.py",
     }
 )
 _ORDINARY_ARTIFACT_SUFFIXES = frozenset(
@@ -156,6 +166,22 @@ class WorktreeDriftSummary:
     ordinary_untracked_count: int
     behavior_untracked_count: int
     uncertain_untracked_count: int
+    ordinary_ignored_count: int = 0
+    behavior_ignored_count: int = 0
+    uncertain_ignored_count: int = 0
+
+
+MAX_STATUS_BYTES = 4 * 1024 * 1024
+MAX_STATUS_ENTRIES = 4096
+_ORDINARY_IGNORED_DIRECTORIES = frozenset(
+    {
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
+)
+_PRIVATE_ARTIFACT_PREFIX = ".local_manifests/scv2-fl1-i2-private"
+_PRIVATE_ARTIFACT_SUFFIXES = frozenset({".json", ".log", ".md", ".txt"})
 
 
 def trusted_git_environment(
@@ -566,7 +592,21 @@ def parse_porcelain_v2_z(raw: bytes) -> tuple[WorktreeEntry, ...]:
     return tuple(entries)
 
 
-def _classify_untracked(repo_root: Path, path: str) -> str:
+def _explicit_ordinary_ignored(path: str, metadata: os.stat_result) -> bool:
+    normalized = path.rstrip("/")
+    parts = PurePosixPath(normalized).parts
+    if stat.S_ISDIR(metadata.st_mode):
+        return normalized in _ORDINARY_IGNORED_DIRECTORIES or normalized == _PRIVATE_ARTIFACT_PREFIX
+    if not stat.S_ISREG(metadata.st_mode):
+        return False
+    if parts and parts[0] in _ORDINARY_IGNORED_DIRECTORIES:
+        return PurePosixPath(normalized).suffix.casefold() not in _BEHAVIOR_SUFFIXES
+    if normalized.startswith(_PRIVATE_ARTIFACT_PREFIX + "/"):
+        return PurePosixPath(normalized).suffix.casefold() in _PRIVATE_ARTIFACT_SUFFIXES
+    return normalized in {".coverage"}
+
+
+def _classify_untracked(repo_root: Path, path: str, *, ignored: bool = False) -> str:
     parts = path.split("/")
     candidate = repo_root.joinpath(*parts)
     if not _lexically_within(candidate, repo_root):
@@ -592,13 +632,15 @@ def _classify_untracked(repo_root: Path, path: str) -> str:
         attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
     ):
         return "behavior"
+    if ignored and _explicit_ordinary_ignored(path, metadata):
+        return "ordinary"
     if not stat.S_ISREG(metadata.st_mode):
         return "uncertain"
     name = PurePosixPath(path).name.casefold()
     suffix = PurePosixPath(path).suffix.casefold()
     if metadata.st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH):
         return "behavior"
-    if name in _BEHAVIOR_NAMES or name.startswith("requirements-"):
+    if name in _BEHAVIOR_NAMES or name.startswith("requirements-") or name.startswith(".env."):
         return "behavior"
     if suffix in _BEHAVIOR_SUFFIXES:
         return "behavior"
@@ -618,10 +660,22 @@ def inspect_worktree_drift(
     )
     if completed.returncode != 0:
         raise TrustedGitError("trusted_git_status_failed")
+    ignored = run_trusted_git_bytes(
+        root,
+        ("ls-files", "-z", "--others", "--ignored", "--exclude-standard"),
+        git=git,
+    )
+    if ignored.returncode != 0:
+        raise TrustedGitError("trusted_git_ignored_status_failed")
+    if len(completed.stdout) + len(ignored.stdout) > MAX_STATUS_BYTES:
+        raise TrustedGitError("trusted_git_status_budget_exceeded")
+    entries = parse_porcelain_v2_z(completed.stdout)
+    ignored_paths = decode_git_z_paths(ignored.stdout)
+    if len(entries) + len(ignored_paths) > MAX_STATUS_ENTRIES:
+        raise TrustedGitError("trusted_git_status_budget_exceeded")
     tracked = ordinary = behavior = uncertain = 0
-    for entry in parse_porcelain_v2_z(completed.stdout):
-        if entry.record_type == "!":
-            continue
+    ordinary_ignored = behavior_ignored = uncertain_ignored = 0
+    for entry in entries:
         if entry.record_type != "?":
             tracked += 1
             continue
@@ -632,7 +686,23 @@ def inspect_worktree_drift(
             behavior += 1
         else:
             uncertain += 1
-    return WorktreeDriftSummary(tracked, ordinary, behavior, uncertain)
+    for path in ignored_paths:
+        classification = _classify_untracked(root, path, ignored=True)
+        if classification == "ordinary":
+            ordinary_ignored += 1
+        elif classification == "behavior":
+            behavior_ignored += 1
+        else:
+            uncertain_ignored += 1
+    return WorktreeDriftSummary(
+        tracked,
+        ordinary,
+        behavior,
+        uncertain,
+        ordinary_ignored,
+        behavior_ignored,
+        uncertain_ignored,
+    )
 
 
 def assert_trusted_worktree_clean(
@@ -650,5 +720,15 @@ def assert_trusted_worktree_clean(
         raise TrustedGitError(
             "evidence_worktree_identity_or_type_uncertain:"
             f"{summary.uncertain_untracked_count}"
+        )
+    if summary.behavior_ignored_count:
+        raise TrustedGitError(
+            "evidence_worktree_behavior_affecting_ignored:"
+            f"{summary.behavior_ignored_count}"
+        )
+    if summary.uncertain_ignored_count:
+        raise TrustedGitError(
+            "evidence_worktree_ignored_identity_or_type_uncertain:"
+            f"{summary.uncertain_ignored_count}"
         )
     return summary
