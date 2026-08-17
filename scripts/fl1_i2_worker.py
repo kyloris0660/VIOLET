@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from backend.app.services.source_ingestion_gate import SourceIngestionGate, SourceKind
-from backend.app.services.source_safety import SourceSafetyPolicy
+from violet_source_safety import SourceSafetyPolicy
 from scripts.fl1_i2_source_backends import SourceBackendError, current_handle_backend
 from scripts.fl1_i2_media_validation import MediaValidationError
 

@@ -15,8 +15,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
-from backend.app.services.source_safety import CloudAvailability
 from scripts.fl1_i1_runtime_context import TrustedRuntimeContext
+from violet_source_safety import CloudAvailability
 
 
 OPERATION_LEDGER_SCHEMA_VERSION = "violet.scv2-fl1-i1-operation-ledger.v1"

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from backend.app.services.source_safety import (
+from violet_source_safety import (
     CloudAvailability,
     FileChangeIdentity,
     FileObjectIdentity,
