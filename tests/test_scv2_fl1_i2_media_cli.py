@@ -158,7 +158,7 @@ def test_cli_success_projection_rejects_private_fields() -> None:
 def test_direct_script_invocation_bootstraps_before_import_and_redacts_errors(arguments: tuple[str, ...]) -> None:
     runner = Path(__file__).resolve().parents[1] / "scripts" / "fl1_i2_runner.py"
     completed = subprocess.run(
-        [sys.executable, "-I", "-s", str(runner), *arguments],
+        [sys.executable, "-B", "-I", "-s", str(runner), *arguments],
         cwd=runner.parent.parent,
         capture_output=True,
         text=True,
