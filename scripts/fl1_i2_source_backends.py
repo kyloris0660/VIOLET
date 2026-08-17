@@ -70,6 +70,9 @@ class BaseHandleBackend:
     def close_handle(self, raw_handle: int) -> None:
         raise NotImplementedError
 
+    def read_chunks(self, handle: OpenHandle, *, chunk_size: int, max_bytes: int) -> Iterator[bytes]:
+        raise NotImplementedError
+
 
 def _validate_member_name(name: str) -> None:
     if not name or name in {".", ".."} or "/" in name or "\\" in name:
@@ -173,6 +176,15 @@ class PosixHandleBackend(BaseHandleBackend):
     def close_handle(self, raw_handle: int) -> None:
         os.close(raw_handle)
 
+    def read_chunks(self, handle: OpenHandle, *, chunk_size: int, max_bytes: int) -> Iterator[bytes]:
+        total = 0
+        while total < max_bytes:
+            chunk = os.read(handle.raw_handle, min(chunk_size, max_bytes - total))
+            if not chunk:
+                return
+            total += len(chunk)
+            yield chunk
+
 
 # Windows declarations are kept explicit and covered by the ABI checkpoint.
 FILE_LIST_DIRECTORY = 0x0001
@@ -265,6 +277,8 @@ class WindowsHandleBackend(BaseHandleBackend):
         self.kernel32.GetFileInformationByHandleEx.restype = wintypes.BOOL
         self.kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
         self.kernel32.CloseHandle.restype = wintypes.BOOL
+        self.kernel32.ReadFile.argtypes = (wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID)
+        self.kernel32.ReadFile.restype = wintypes.BOOL
         self.ntdll.NtCreateFile.argtypes = (ctypes.POINTER(wintypes.HANDLE), wintypes.ULONG, ctypes.POINTER(OBJECT_ATTRIBUTES), ctypes.POINTER(IO_STATUS_BLOCK), ctypes.POINTER(ctypes.c_longlong), wintypes.ULONG, wintypes.ULONG, wintypes.ULONG, wintypes.ULONG, wintypes.LPVOID, wintypes.ULONG)
         self.ntdll.NtCreateFile.restype = wintypes.LONG
 
@@ -393,6 +407,19 @@ class WindowsHandleBackend(BaseHandleBackend):
     def close_handle(self, raw_handle: int) -> None:
         if not self.kernel32.CloseHandle(raw_handle):
             raise SourceBackendError("source_handle_close_failed")
+
+    def read_chunks(self, handle: OpenHandle, *, chunk_size: int, max_bytes: int) -> Iterator[bytes]:
+        total = 0
+        while total < max_bytes:
+            requested = min(chunk_size, max_bytes - total)
+            buffer = ctypes.create_string_buffer(requested)
+            read = wintypes.DWORD()
+            if not self.kernel32.ReadFile(handle.raw_handle, buffer, requested, ctypes.byref(read), None):
+                raise SourceBackendError("source_handle_read_failed")
+            if read.value == 0:
+                return
+            total += int(read.value)
+            yield bytes(buffer.raw[: read.value])
 
 
 def current_handle_backend() -> BaseHandleBackend:
