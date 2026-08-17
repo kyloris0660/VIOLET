@@ -6,7 +6,7 @@ import hashlib
 import json
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -42,6 +42,7 @@ class SameHeadValidationReceipt:
     manifest_fingerprint: str
     ledger_fingerprint: str
     worker_fingerprint: str
+    command_argv: tuple[str, ...]
     command_fingerprint: str
     exit_code: int
     stdout_fingerprint: str
@@ -74,6 +75,42 @@ class SameHeadValidationReceipt:
             "owner_authority_machine_verifiable": False,
             "private_bindings_redacted": True,
         }
+
+    @classmethod
+    def from_private_dict(cls, payload: Mapping[str, Any]) -> "SameHeadValidationReceipt":
+        expected = {field.name for field in fields(cls)} | {"schema_version"}
+        if set(payload) != expected or payload.get("schema_version") != RECEIPT_SCHEMA:
+            raise ReceiptError("validation_receipt_schema_invalid")
+        try:
+            command = payload["command_argv"]
+            if not isinstance(command, list) or not all(isinstance(value, str) and value for value in command):
+                raise TypeError
+            values = dict(payload)
+            values.pop("schema_version")
+            values["command_argv"] = tuple(command)
+            receipt = cls(**values)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ReceiptError("validation_receipt_invalid") from exc
+        if receipt.command_fingerprint != _fingerprint(list(receipt.command_argv)):
+            raise ReceiptError("validation_receipt_command_fingerprint_mismatch")
+        if receipt.positive != (receipt.exit_code == 0 and receipt.same_head_tree and receipt.clean_before_after):
+            raise ReceiptError("validation_receipt_positive_invalid")
+        if receipt.trust_level != "local_operator_receipt" or receipt.machine_verifiable_ci or receipt.owner_authority_machine_verifiable:
+            raise ReceiptError("validation_receipt_authority_invalid")
+        for value in (
+            receipt.trusted_git_fingerprint,
+            receipt.config_fingerprint,
+            receipt.policy_fingerprint,
+            receipt.manifest_fingerprint,
+            receipt.ledger_fingerprint,
+            receipt.worker_fingerprint,
+            receipt.command_fingerprint,
+            receipt.stdout_fingerprint,
+            receipt.stderr_fingerprint,
+        ):
+            if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+                raise ReceiptError("validation_receipt_fingerprint_invalid")
+        return receipt
 
 
 def _fingerprint(payload: Any) -> str:
@@ -135,6 +172,7 @@ def create_same_head_receipt(
         manifest_fingerprint=bindings["manifest"],
         ledger_fingerprint=bindings["ledger"],
         worker_fingerprint=bindings["worker"],
+        command_argv=tuple(command),
         command_fingerprint=_fingerprint(list(command)),
         exit_code=completed.returncode,
         stdout_fingerprint=_fingerprint(completed.stdout),
