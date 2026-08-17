@@ -13,6 +13,7 @@ from scripts.fl1_i2_validation_receipt import SameHeadValidationReceipt
 from scripts.phase_contracts import ContractRepositoryContext, check_phase_contract, get_contract
 from scripts.phase_contracts import fl1_i2_contract
 from scripts.phase_contracts.fl1_i2_contract import FL1I2EvidencePaths, REQUIRED_FOCUSED_TESTS
+from scripts.check_phase_contract import build_parser
 
 
 def _png() -> bytes:
@@ -110,3 +111,20 @@ def test_missing_private_context_fails_closed() -> None:
     result = check_phase_contract("scv2_fl1_i2_pre_real_hardening_contract_v1", {"contract_id": "scv2_fl1_i2_pre_real_hardening_contract_v1"})
     assert not result.passed
     assert "fl1_i2_private_evidence_required" in {error.code for error in result.errors}
+
+
+def test_contract_cli_exposes_only_fixed_root_i2_evidence_option() -> None:
+    args = build_parser().parse_args(
+        [
+            "--contract",
+            "scv2_fl1_i2_pre_real_hardening_contract_v1",
+            "--summary",
+            "public-summary.json",
+            "--repo-root",
+            "repo",
+            "--fl1-i2-evidence",
+            "private-root",
+        ]
+    )
+    assert args.fl1_i2_evidence == "private-root"
+    assert not hasattr(args, "fl1_i2_passed")

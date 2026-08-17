@@ -50,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--fl1-i1-evidence",
         help="Private JSON context containing paths to the complete FL1-I1 evidence bundle.",
     )
+    parser.add_argument(
+        "--fl1-i2-evidence",
+        help="Confined directory containing the complete fixed-name FL1-I2 evidence bundle.",
+    )
     parser.add_argument("--list-contracts", action="store_true", help="List registered contracts as JSON and exit.")
     parser.add_argument("--explain", action="store_true", help="Include contract metadata in output.")
     return parser
@@ -122,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         or args.failure_budget_scenarios
         or args.reconciliation_scenarios
         or args.fl1_i1_evidence
+        or args.fl1_i2_evidence
     ):
         if not args.repo_root:
             parser.error("private evidence options require --repo-root")
@@ -158,6 +163,26 @@ def main(argv: list[str] | None = None) -> int:
             args.fl1_i1_evidence,
             "fl1_i1_evidence",
         )
+        fl1_i2_evidence = None
+        if args.fl1_i2_evidence:
+            from scripts.phase_contracts.fl1_i2_contract import FL1I2EvidencePaths
+
+            try:
+                evidence_root = Path(args.fl1_i2_evidence).resolve(strict=True)
+            except OSError as exc:
+                print(
+                    json.dumps(
+                        {
+                            "contract_id": args.contract,
+                            "passed": False,
+                            "error": "fl1_i2_evidence_root_unreadable",
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+                return 2
+            fl1_i2_evidence = FL1I2EvidencePaths(evidence_root)
         repository_context = ContractRepositoryContext(
             repo_root=Path(args.repo_root).resolve(),
             expected_python=(
@@ -167,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
             failure_budget_scenario_bundle=failure_budget_scenarios,
             reconciliation_scenario_bundle=reconciliation_scenarios,
             fl1_i1_evidence=fl1_i1_evidence,
+            fl1_i2_evidence=fl1_i2_evidence,
         )
 
     result = check_phase_contract(
