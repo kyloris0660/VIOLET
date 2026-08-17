@@ -81,23 +81,23 @@ caller-injected configuration. It rejects a current state that asserts
 exposed zero checks, so it has no machine-verifiable CI PASS claim. Its direct
 owner decision cannot be synthesized by a contract.
 
-Current planning projection:
+Current synthetic implementation projection:
 
-- `status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge`
+- `status=fl1_i2_synthetic_implementation_in_progress`
 - `planning_authorized=true`
 - `planning_completed=true`
 - `planning_approved=true`
 - `approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf`
 - `approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a`
-- `merge_authorized=true`
-- `implementation_authorized=false`
-- `implementation_started=false`
+- `merge_authorized=false`
+- `implementation_authorized=true`
+- `implementation_started=true`
 - `target_met=false`
-- `safe_to_merge=true`
+- `safe_to_merge=false`
 - `route_approved=false`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pending_pr145_expected_head_merge`
+- blocker: `pending_fl1_i2_synthetic_implementation_and_contract_closure`
 
 Terminal review `4897012517` at the exact final HEAD produced 17 historical
 findings (13 P1, 4 P2). The complete use-before projection is:
@@ -123,8 +123,8 @@ findings (13 P1, 4 P2). The complete use-before projection is:
 | 17 | Handle runtime-context failures in scanner CLI | Must close during I2 before I2 completion/merge or I3: stable privacy-safe JSON error envelope. |
 
 The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
-only for its narrow synthetic foundation. I2 currently has no implemented or
-registered executable contract. A later, separately authorized I2
+only for its narrow synthetic foundation. I2 currently has no completed or
+registered executable contract. The separately authorized synthetic I2
 implementation must converge canonical Cloud/file-identity primitives,
 `SourceIngestionGate` policy, operation-gateway evidence, and CLI/runtime
 consumers; close all 14 gates with synthetic/adversarial temporary fixtures;
@@ -162,8 +162,10 @@ contract: trusted Git re-derives the accepted tree, proves that the accepted
 commit is an ancestor of either the projection HEAD or its later merge commit,
 and rejects every post-plan path outside the explicit governance allowlist.
 This binding cannot be replaced by caller JSON, environment variables, or a
-CLI authority flag. The only current blocker is the authorized PR #145
-expected-head merge; implementation and real-source authority remain false.
+CLI authority flag. PR #145 merged at
+`1913bd27517efc1a6007a202fc9650de4f20fab4`; G0 closes its five accepted
+post-merge governance-entry findings. Synthetic implementation authority is
+true, while real-source, safe-to-merge, and merge authority remain false.
 I4 full inventory, E1 isolated import, E2 local classification/tagging, and V1
 product validation are later independent routes. No current contract authorizes
 real source/iCloud access, DB/app-storage, import, classification/tagging,

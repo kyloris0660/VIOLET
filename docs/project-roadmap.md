@@ -28,20 +28,20 @@ Terminal review `4897012517` recorded 17 unresolved, non-outdated findings at
 the final HEAD (13 P1, 4 P2), and GitHub exposed zero checks. Zero checks is not
 a machine-verifiable CI pass.
 
-Current phase `SCV2-FL1-I2` is governance and route planning only:
+Current phase `SCV2-FL1-I2` is synthetic pre-real hardening implementation only:
 
 ```text
-current_status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge
+current_status=fl1_i2_synthetic_implementation_in_progress
 planning_authorized=true
 planning_completed=true
 planning_approved=true
 approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf
 approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
-merge_authorized=true
-implementation_authorized=false
-implementation_started=false
+merge_authorized=false
+implementation_authorized=true
+implementation_started=true
 target_met=false
-safe_to_merge=true
+safe_to_merge=false
 route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
@@ -55,7 +55,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_pr145_expected_head_merge
+active_blocker=pending_fl1_i2_synthetic_implementation_and_contract_closure
 ```
 
 ## Accepted Mainline Sequence
@@ -66,6 +66,8 @@ active_blocker=pending_pr145_expected_head_merge
 4. SCV2-FL1-P1-R1 / PR #143.
 5. SCV2-FL1-I1 synthetic foundation / PR #144, owner-accepted and merged at
    `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
+6. SCV2-FL1-I2 accepted planning / PR #145, merged at
+   `1913bd27517efc1a6007a202fc9650de4f20fab4`.
 
 PR #142 remains closed, unmerged, and non-authoritative.
 
@@ -92,9 +94,9 @@ The owner accepted exact planning HEAD/tree
 `fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
 The governance projection closes P1 thread `PRRT_kwDOSTBMB86YRuq7` through an
 exact tree, ancestry, and governance-path carry-forward contract without
-changing this accepted plan. The only current blocker is the authorized PR
-#145 expected-head merge. Implementation and real-source authority remain
-false.
+changing this accepted plan. PR #145 is merged and its one-time merge authority
+is consumed. Synthetic implementation is authorized; real-source authority,
+safe-to-merge, and merge authority remain false.
 
 ### I3 - Bounded real-source inventory canary
 

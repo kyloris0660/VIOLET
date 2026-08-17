@@ -25,27 +25,27 @@ archaeology input only.
 <!-- CURRENT_PHASE: SCV2-FL1-I2 -->
 
 `SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness`
-is planning-only on branch
-`codex/scv2-fl1-i2-real-source-inventory-plan`. The machine-readable fact
+is in synthetic pre-real implementation on branch
+`codex/scv2-fl1-i2-synthetic-pre-real-hardening`. The machine-readable fact
 source is `docs/state/current-phase.json`.
 
 ```text
-status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge
+status=fl1_i2_synthetic_implementation_in_progress
 planning_authorized=true
 planning_completed=true
 planning_approved=true
 approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf
 approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
-merge_authorized=true
-implementation_authorized=false
-implementation_started=false
+merge_authorized=false
+implementation_authorized=true
+implementation_started=true
 target_met=false
-safe_to_merge=true
+safe_to_merge=false
 route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_pr145_expected_head_merge
+active_blocker=pending_fl1_i2_synthetic_implementation_and_contract_closure
 ```
 
 PR #144 terminal review `4897012517` covered exact final HEAD
@@ -57,8 +57,9 @@ evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
 implementation deliverables that must close before `implementation_completed`,
 `target_met`, `safe_to_merge`, merge, or I3; they are not pre-existing outcomes
 required before separately authorized synthetic-only I2 coding begins.
-Finding #1 remains an I2 runtime/receipt/contract delivery item even though the
-documentation checker's own Git proof is scrubbed in this correction.
+Finding #1 is implemented at G0 across the shared checker, runtime-context, and
+receipt Git runner, but remains an open I2 delivery gate until the later I2
+contract consumes and re-derives the same boundary.
 Parent-observed child identity is
 kept as a local-evidence claim boundary, not described as tamper-resistant,
 OS/kernel/TPM/remote, or CI attestation.
@@ -84,8 +85,8 @@ authorities:
 5. Legacy `scan_and_import(dry_run=True)` is not the first real inventory
    runner: it connects to the database and reads/hashes source content, while
    dry-run only suppresses import and lacks I1 manifest/restart/evidence closure.
-6. I2 implementation and validation, if separately approved, stay on synthetic
-   and adversarial temporary fixtures.
+6. I2 implementation and validation are separately approved only on synthetic
+   and adversarial newly created temporary fixtures.
 
 The enforced order is: exact plan owner approval; separate I2 implementation
 authorization; synthetic-only I2 implementation closing all 14 gates; I2 owner
@@ -100,9 +101,10 @@ The owner accepted exact planning HEAD/tree
 Its P1 thread `PRRT_kwDOSTBMB86YRuq7` is classified
 `closed_in_owner_acceptance_projection_exact_binding_contract`: the checker
 re-derives the tree, requires ancestry, and permits only the governance
-projection allowlist after the accepted plan. The only current blocker is the
-authorized PR #145 expected-head merge. Implementation and all real-source or
-data authority remain false.
+projection allowlist after the accepted plan. PR #145 merged at
+`1913bd27517efc1a6007a202fc9650de4f20fab4`; G0 now closes the five accepted
+post-merge governance-entry findings. Synthetic implementation authority is
+true, but safe-to-merge, merge, real-source, and data authority remain false.
 
 ## Delivery Sequence
 

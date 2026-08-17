@@ -115,6 +115,10 @@ def make_i1_fixture(tmp_path: Path, *, populate: bool = True) -> I1Fixture:
     _git(repo, "init", "--initial-branch=main")
     _git(repo, "config", "user.email", "fl1-i1-tests@example.invalid")
     _git(repo, "config", "user.name", "FL1 I1 Tests")
+    # Evidence Git disables caller global config.  Pin checkout normalization in
+    # the synthetic repository so a host-level core.autocrlf value cannot make
+    # the freshly committed fixture appear dirty under that trusted view.
+    _git(repo, "config", "core.autocrlf", "false")
     (repo / "tracked.txt").write_text("trusted repository\n", encoding="utf-8")
     _git(repo, "add", "tracked.txt")
     _git(repo, "commit", "-m", "test baseline")

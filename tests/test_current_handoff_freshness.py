@@ -39,7 +39,7 @@ def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> No
     assert state["phase_id"] == "SCV2-FL1-I2"
     assert state["pr_number"] == documentation_state.FL1_I2_PR_NUMBER
     assert state["branch"] == documentation_state.FL1_I2_BRANCH
-    assert state["accepted_mainline_base"] == documentation_state.FL1_I2_ACCEPTED_MAIN
+    assert state["accepted_mainline_base"] == documentation_state.FL1_I2_PLANNING_MERGE_COMMIT
     assert state["current_status"] == documentation_state.FL1_I2_STATUS
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
@@ -47,15 +47,15 @@ def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> No
     assert state["approved_planning_head"] == documentation_state.FL1_I2_APPROVED_PLANNING_HEAD
     assert state["approved_planning_tree"] == documentation_state.FL1_I2_APPROVED_PLANNING_TREE
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is True
+    assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
     boundary = state["planning_boundary"]
-    assert boundary["planning_only"] is True
-    assert boundary["owner_audit_pending"] is False
+    assert boundary["planning_only"] is False
+    assert boundary["owner_audit_pending"] is True
     assert boundary["owner_acceptance_valid"] is True
-    assert boundary["merge_authorized"] is True
-    assert boundary["implementation_authorized"] is False
-    assert boundary["implementation_started"] is False
+    assert boundary["merge_authorized"] is False
+    assert boundary["implementation_authorized"] is True
+    assert boundary["implementation_started"] is True
     assert boundary["real_inventory_started"] is False
     assert boundary["real_source_inventory_authorized"] is False
     assert boundary["database_access_authorized"] is False
@@ -64,15 +64,15 @@ def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> No
     assert boundary["production_authorized"] is False
 
 
-def test_fl1_i2_pr_number_exact_binding_accepts_145() -> None:
+def test_fl1_i2_pr_number_is_pending_until_draft_creation() -> None:
     state = copy.deepcopy(_state())
     state["pr_number"] = documentation_state.FL1_I2_PR_NUMBER
 
     documentation_state.validate_state(state)
 
 
-@pytest.mark.parametrize("pr_number", [None, 144, 146])
-def test_fl1_i2_pr_number_exact_binding_fails_closed(
+@pytest.mark.parametrize("pr_number", [144, 145, 146])
+def test_fl1_i2_pre_pr_number_fails_closed(
     pr_number: int | None,
 ) -> None:
     state = copy.deepcopy(_state())
@@ -96,7 +96,7 @@ def test_pr144_acceptance_merge_and_terminal_review_are_exact() -> None:
         "synthetic_and_new_temporary_fixture_foundation_only"
     )
     assert state["previous_phase_real_inventory_target_met"] is False
-    assert prior["merge_commit"] == documentation_state.FL1_I2_ACCEPTED_MAIN
+    assert prior["merge_commit"] == documentation_state.FL1_I1_MERGE_COMMIT
     assert prior["final_head"] == documentation_state.FL1_I2_PREVIOUS_FINAL_HEAD
     assert prior["final_tree"] == documentation_state.FL1_I2_PREVIOUS_FINAL_TREE
     assert prior["implementation_evidence_head"] == documentation_state.FL1_I2_PREVIOUS_EVIDENCE
@@ -182,7 +182,7 @@ def test_approved_planning_commit_must_be_head_ancestor(
             "merge-base",
             "--is-ancestor",
             documentation_state.FL1_I2_APPROVED_PLANNING_HEAD,
-            "HEAD",
+            documentation_state.FL1_I2_PLANNING_PROJECTION_HEAD,
         ]:
             return documentation_state.subprocess.CompletedProcess(
                 arguments, 1, stdout="", stderr=""
@@ -235,7 +235,7 @@ def test_owner_acceptance_carry_forward_uses_ancestry_not_head_parent(
         "merge-base",
         "--is-ancestor",
         documentation_state.FL1_I2_APPROVED_PLANNING_HEAD,
-        "HEAD",
+        documentation_state.FL1_I2_PLANNING_PROJECTION_HEAD,
     ) in calls
     assert not any(any(argument.startswith("HEAD^") for argument in call) for call in calls)
 
@@ -501,10 +501,14 @@ def test_terminal_review_use_before_register_is_complete() -> None:
 
 def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
     state = _state()
-    assert state["active_blocker"]["code"] == "pending_pr145_expected_head_merge"
+    assert state["active_blocker"]["code"] == (
+        "pending_fl1_i2_synthetic_implementation_and_contract_closure"
+    )
     preconditions = state["next_phase_authorization"]["required_preconditions"]
     assert preconditions[0].startswith("PR #145 is merged")
-    assert preconditions[1] == "I2 implementation is separately authorized"
+    assert preconditions[1] == (
+        "I2 implementation is separately authorized by the owner for this synthetic-only branch"
+    )
     assert "synthetic or adversarial newly created temporary fixtures" in preconditions[2]
     assert "all fourteen I2 delivery gates close" in preconditions[3]
     assert "I2 passes owner audit and merges" in preconditions[4]
@@ -578,7 +582,7 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
         ("current_status", "fl1_i2_implementation_in_progress"),
         ("planning_approved", False),
         ("target_met", True),
-        ("safe_to_merge", False),
+        ("safe_to_merge", True),
         ("route_approved", True),
         ("manual_acceptance_status", "pending_fl1_i2_plan_owner_reaudit"),
     ],
@@ -598,10 +602,7 @@ def test_i2_owner_accepted_status_mutations_fail_closed(
 @pytest.mark.parametrize(
     "field",
     [
-        "implementation_authorized",
-        "implementation_started",
         "implementation_completed",
-        "synthetic_ephemeral_test_fixture_authorized",
         "real_inventory_started",
         "real_source_inventory_authorized",
         "source_root_access_authorized",
@@ -623,6 +624,24 @@ def test_i2_owner_accepted_status_mutations_fail_closed(
 def test_i2_execution_authority_fails_closed(field: str) -> None:
     state = copy.deepcopy(_state())
     state["planning_boundary"][field] = True
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_boundary_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "implementation_authorized",
+        "implementation_started",
+        "synthetic_ephemeral_test_fixture_authorized",
+    ],
+)
+def test_i2_synthetic_implementation_authority_cannot_be_removed(field: str) -> None:
+    state = copy.deepcopy(_state())
+    state["planning_boundary"][field] = False
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="fl1_i2_boundary_invalid",

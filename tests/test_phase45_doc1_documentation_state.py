@@ -35,21 +35,21 @@ def test_current_handoff_is_current_route_focused() -> None:
     assert "17 findings" in handoff
 
 
-def test_fl1_i2_state_stops_before_implementation_and_real_inventory() -> None:
+def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
     state = load_state()
     validate_state(state)
     validate_roadmaps(state)
     assert state["phase_id"] == "SCV2-FL1-I2"
-    assert state["current_status"] == (
-        "fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge"
-    )
+    assert state["current_status"] == "fl1_i2_synthetic_implementation_in_progress"
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
     assert state["planning_approved"] is True
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is True
+    assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
-    assert state["planning_boundary"]["implementation_authorized"] is False
+    assert state["planning_boundary"]["implementation_authorized"] is True
+    assert state["planning_boundary"]["implementation_started"] is True
+    assert state["planning_boundary"]["synthetic_ephemeral_test_fixture_authorized"] is True
     assert state["planning_boundary"]["real_inventory_started"] is False
     assert state["planning_boundary"]["real_source_inventory_authorized"] is False
 
@@ -58,7 +58,7 @@ def test_fl1_i2_state_stops_before_implementation_and_real_inventory() -> None:
     ("field", "value"),
     [
         ("target_met", True),
-        ("safe_to_merge", False),
+        ("safe_to_merge", True),
         ("route_approved", True),
         ("planning_approved", False),
         ("manual_acceptance_status", "pending_fl1_i2_plan_owner_reaudit"),
@@ -74,7 +74,6 @@ def test_owner_accepted_state_mutation_fails_closed(field: str, value: object) -
 @pytest.mark.parametrize(
     "field",
     [
-        "implementation_authorized",
         "real_source_inventory_authorized",
         "source_root_access_authorized",
         "database_access_authorized",
@@ -101,7 +100,8 @@ def test_public_current_phase_and_updated_icloud_doc_are_redacted() -> None:
     assert "C:\\Users\\kyloris\\Pictures" not in icloud
     assert "<private-source-root>" in icloud
     assert "canonically integrated with that runtime scanner" in icloud
-    assert "Nothing here claims I2 implementation exists" in icloud
+    assert "Nothing here claims I2 source-safety" in icloud
+    assert "runtime integration is complete" in icloud
 
 
 def test_current_contract_names_review_gates_and_claim_boundary() -> None:

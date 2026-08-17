@@ -18,6 +18,22 @@ WindowsGitLocationProvider = Callable[
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.trusted_git import (
+    TrustedGitError,
+    decode_git_z_paths,
+    resolve_trusted_git_executable as _shared_resolve_trusted_git_executable,
+    run_trusted_git_bytes,
+    run_trusted_git_text,
+    trusted_git_candidates as _shared_trusted_git_candidates,
+    trusted_git_environment as _shared_trusted_git_environment,
+    validate_git_path,
+    windows_system_git_roots as _shared_windows_system_git_roots,
+    windows_trusted_git_candidates as _shared_windows_trusted_git_candidates,
+)
+
 STATE_PATH = ROOT / "docs" / "state" / "current-phase.json"
 HANDOFF_PATH = ROOT / "docs" / "current-handoff.md"
 ACTIVE_ROUTE_PATHS = (
@@ -96,16 +112,25 @@ FL1_I1_ROUTE_SCOPE = (
     "SCV2-FL1-I1 reusable read-only inventory safety tooling using only "
     "synthetic and newly created temporary fixtures"
 )
-FL1_I2_BRANCH = "codex/scv2-fl1-i2-real-source-inventory-plan"
-FL1_I2_ACCEPTED_MAIN = "8955b95e91630d4c5e18e1e2ca252b19754c81d5"
+FL1_I2_BRANCH = "codex/scv2-fl1-i2-synthetic-pre-real-hardening"
+FL1_I1_MERGE_COMMIT = "8955b95e91630d4c5e18e1e2ca252b19754c81d5"
 FL1_I2_PREVIOUS_FINAL_HEAD = "2f8d5f8ce6cde9759c530de71d4ddd1893481656"
 FL1_I2_PREVIOUS_FINAL_TREE = "8930a21bdbac037702f92bcb75bd9b8a3632a073"
 FL1_I2_PREVIOUS_EVIDENCE = "6992e7f1e5a45857111d15da1ad0274e49008a99"
 FL1_I2_PREVIOUS_EVIDENCE_TREE = "6ff185defb150c3751c7433ef635c00a200c44bf"
 FL1_I2_TERMINAL_REVIEW_ID = 4897012517
-FL1_I2_PR_NUMBER = 145
+FL1_I2_PR_NUMBER = None
+FL1_I2_PLANNING_PR_NUMBER = 145
 FL1_I2_APPROVED_PLANNING_HEAD = "acb12c1db258fdef1d4f063b053d422e0d887abf"
 FL1_I2_APPROVED_PLANNING_TREE = "fc573c7646ad5edf10c32c7712de7f27ab058a2a"
+FL1_I2_PLANNING_PROJECTION_HEAD = "7275bceff9152ea5f823186691e6b91ee2ca1e11"
+FL1_I2_PLANNING_PROJECTION_TREE = "5cd76cf148c99c456c7bed1ee87f74d3ecf323a7"
+FL1_I2_PLANNING_MERGE_COMMIT = "1913bd27517efc1a6007a202fc9650de4f20fab4"
+FL1_I2_PLANNING_MERGE_TREE = "5cd76cf148c99c456c7bed1ee87f74d3ecf323a7"
+FL1_I2_PLANNING_MERGE_PARENTS = (
+    "8955b95e91630d4c5e18e1e2ca252b19754c81d5",
+    FL1_I2_PLANNING_PROJECTION_HEAD,
+)
 FL1_I2_OWNER_REVIEW_ID = 4907783329
 FL1_I2_OWNER_THREAD_ID = "PRRT_kwDOSTBMB86YRuq7"
 FL1_I2_OWNER_COMMENT_ID = 3759240785
@@ -117,13 +142,24 @@ FL1_I2_OWNER_DECISION = (
     "AUTHORIZED_GOVERNANCE_PROJECTION_EXPECTED_HEAD_MERGE"
 )
 FL1_I2_STATUS = (
-    "fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge"
+    "fl1_i2_synthetic_implementation_in_progress"
 )
-FL1_I2_BLOCKER = "pending_pr145_expected_head_merge"
-FL1_I2_MANUAL_STATUS = "owner_accepted_exact_fl1_i2_plan"
+FL1_I2_IMPLEMENTATION_DECISION_ID = (
+    "owner_authorized_scv2_fl1_i2_synthetic_pre_real_hardening_20260817"
+)
+FL1_I2_POST_MERGE_REVIEW_ID = 4927462216
+FL1_I2_G0_THREAD_IDS = (
+    "PRRT_kwDOSTBMB86Y8Xjl",
+    "PRRT_kwDOSTBMB86Y8Xjr",
+    "PRRT_kwDOSTBMB86Y8Xju",
+    "PRRT_kwDOSTBMB86Y8Xjx",
+    "PRRT_kwDOSTBMB86Y8Xj1",
+)
+FL1_I2_BLOCKER = "pending_fl1_i2_synthetic_implementation_and_contract_closure"
+FL1_I2_MANUAL_STATUS = "owner_accepted_exact_plan_and_authorized_synthetic_i2_implementation"
 FL1_I2_ROUTE_SCOPE = (
-    "SCV2-FL1-I2 governance and planning only; no I2 implementation or "
-    "real-source execution"
+    "SCV2-FL1-I2 synthetic pre-real hardening implementation using only "
+    "adversarial newly created temporary fixtures; no real-source execution"
 )
 FL1_I2_PROJECTION_ALLOWLIST = frozenset(
     {
@@ -431,13 +467,13 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "phase_id": "SCV2-FL1-I2",
         "phase_title": "Real-source Read-only Inventory Hardening and Canary Readiness",
         "branch": FL1_I2_BRANCH,
-        "draft": False,
-        "accepted_mainline_base": FL1_I2_ACCEPTED_MAIN,
+        "draft": True,
+        "accepted_mainline_base": FL1_I2_PLANNING_MERGE_COMMIT,
         "implementation_evidence_head": FL1_I2_PREVIOUS_EVIDENCE,
         "implementation_evidence_status": "previous_phase_accepted_synthetic_foundation_only",
         "current_status": FL1_I2_STATUS,
         "target_met": False,
-        "safe_to_merge": True,
+        "safe_to_merge": False,
         "route_approved": False,
         "route_scope": FL1_I2_ROUTE_SCOPE,
         "planning_authorized": True,
@@ -449,7 +485,7 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "next_phase_started": True,
         "previous_phase": "SCV2-FL1-I1",
         "previous_phase_status": "owner_accepted_and_merge_commit_merged",
-        "previous_phase_merge_commit": FL1_I2_ACCEPTED_MAIN,
+        "previous_phase_merge_commit": FL1_I1_MERGE_COMMIT,
         "previous_phase_final_head": FL1_I2_PREVIOUS_FINAL_HEAD,
         "previous_phase_final_tree": FL1_I2_PREVIOUS_FINAL_TREE,
         "previous_phase_implementation_completed": True,
@@ -466,25 +502,25 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
     }
     if any(state.get(key) != value for key, value in expected_top_level.items()):
         raise DocumentationStateError("fl1_i2_status_fields_conflict")
-    if state["pr_number"] != FL1_I2_PR_NUMBER:
+    if state["pr_number"] is not FL1_I2_PR_NUMBER:
         raise DocumentationStateError("fl1_i2_pr_number_invalid")
     if state["active_blocker"].get("code") != FL1_I2_BLOCKER:
         raise DocumentationStateError("fl1_i2_blocker_conflict")
 
     boundary = state["planning_boundary"]
     expected_boundary = {
-        "planning_only": True,
+        "planning_only": False,
         "planning_authorized": True,
         "planning_completed": True,
         "planning_approved": True,
-        "implementation_authorized": False,
-        "implementation_started": False,
+        "implementation_authorized": True,
+        "implementation_started": True,
         "implementation_completed": False,
-        "owner_audit_pending": False,
+        "owner_audit_pending": True,
         "owner_acceptance_valid": True,
-        "merge_authorized": True,
+        "merge_authorized": False,
         "target_met": False,
-        "safe_to_merge": True,
+        "safe_to_merge": False,
         "route_approved": False,
         "real_inventory_started": False,
         "real_source_inventory_authorized": False,
@@ -502,7 +538,7 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "media_authorized": False,
         "stable_replay_authorized": False,
         "production_authorized": False,
-        "synthetic_ephemeral_test_fixture_authorized": False,
+        "synthetic_ephemeral_test_fixture_authorized": True,
         "documentation_validation_authorized": True,
         "projected_external_cost_usd": 0,
     }
@@ -517,7 +553,7 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "state": "merged",
         "merged": True,
         "draft": False,
-        "merge_commit": FL1_I2_ACCEPTED_MAIN,
+        "merge_commit": FL1_I1_MERGE_COMMIT,
         "merge_topology": "merge_commit",
         "final_head": FL1_I2_PREVIOUS_FINAL_HEAD,
         "final_tree": FL1_I2_PREVIOUS_FINAL_TREE,
@@ -546,15 +582,15 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "planning_authorized": True,
         "planning_completed": True,
         "planning_approved": True,
-        "implementation_authorized": False,
-        "implementation_started": False,
-        "synthetic_fixture_execution_authorized": False,
+        "implementation_authorized": True,
+        "implementation_started": True,
+        "synthetic_fixture_execution_authorized": True,
         "real_inventory_started": False,
         "real_source_inventory_authorized": False,
         "i3_canary_started": False,
         "required_preconditions": [
             "PR #145 is merged at the owner-authorized expected governance projection HEAD before any I2 implementation",
-            "I2 implementation is separately authorized",
+            "I2 implementation is separately authorized by the owner for this synthetic-only branch",
             "I2 implementation is restricted to synthetic or adversarial newly created temporary fixtures while real source, iCloud, database, app storage, import, provider, model, media, and production authority remain false",
             "all fourteen I2 delivery gates close before implementation_completed, target_met, safe_to_merge, merge, or I3",
             "I2 passes owner audit and merges before any real source operation",
@@ -575,7 +611,7 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "implementation_completed": True,
         "owner_accepted": True,
         "safe_to_merge": True,
-        "merge_commit": FL1_I2_ACCEPTED_MAIN,
+        "merge_commit": FL1_I1_MERGE_COMMIT,
         "final_head": FL1_I2_PREVIOUS_FINAL_HEAD,
         "final_tree": FL1_I2_PREVIOUS_FINAL_TREE,
         "implementation_evidence_head": FL1_I2_PREVIOUS_EVIDENCE,
@@ -595,7 +631,11 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
 
     protected = state["protected_evidence"]
     expected_protected = {
-        "accepted_mainline_merge_commit": FL1_I2_ACCEPTED_MAIN,
+        "accepted_mainline_merge_commit": FL1_I2_PLANNING_MERGE_COMMIT,
+        "accepted_mainline_merge_tree": FL1_I2_PLANNING_MERGE_TREE,
+        "accepted_mainline_merge_parents": list(FL1_I2_PLANNING_MERGE_PARENTS),
+        "planning_projection_head": FL1_I2_PLANNING_PROJECTION_HEAD,
+        "planning_projection_tree": FL1_I2_PLANNING_PROJECTION_TREE,
         "previous_phase_final_head": FL1_I2_PREVIOUS_FINAL_HEAD,
         "previous_phase_final_tree": FL1_I2_PREVIOUS_FINAL_TREE,
         "previous_phase_implementation_evidence_head": FL1_I2_PREVIOUS_EVIDENCE,
@@ -617,11 +657,16 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "authorized_git_github_governance_control_plane_operations_occurred": True,
         "approved_planning_head": FL1_I2_APPROVED_PLANNING_HEAD,
         "approved_planning_tree": FL1_I2_APPROVED_PLANNING_TREE,
-        "approved_planning_pr_number": FL1_I2_PR_NUMBER,
+        "approved_planning_pr_number": FL1_I2_PLANNING_PR_NUMBER,
         "approved_planning_review_id": FL1_I2_OWNER_REVIEW_ID,
         "approved_planning_thread_id": FL1_I2_OWNER_THREAD_ID,
         "approved_planning_comment_id": FL1_I2_OWNER_COMMENT_ID,
         "owner_acceptance_decision_id": FL1_I2_OWNER_DECISION_ID,
+        "planning_merge_authority_consumed": True,
+        "planning_merge_authorized": False,
+        "post_merge_review_id": FL1_I2_POST_MERGE_REVIEW_ID,
+        "g0_post_merge_governance_entry_gate_closed": True,
+        "g0_thread_ids": list(FL1_I2_G0_THREAD_IDS),
     }
     zero_fields = (
         "real_source_inventory_operation_count",
@@ -652,7 +697,7 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
     expected_owner_decision = {
         "id": FL1_I2_OWNER_DECISION_ID,
         "decision": FL1_I2_OWNER_DECISION,
-        "pr_number": FL1_I2_PR_NUMBER,
+        "pr_number": FL1_I2_PLANNING_PR_NUMBER,
         "accepted_planning_head": FL1_I2_APPROVED_PLANNING_HEAD,
         "accepted_planning_tree": FL1_I2_APPROVED_PLANNING_TREE,
         "review_id": FL1_I2_OWNER_REVIEW_ID,
@@ -668,6 +713,31 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
     if matching_decisions != [expected_owner_decision]:
         raise DocumentationStateError("fl1_i2_owner_acceptance_binding_invalid")
 
+    implementation_decisions = [
+        decision
+        for decision in state["owner_decisions"]
+        if isinstance(decision, dict)
+        and decision.get("id") == FL1_I2_IMPLEMENTATION_DECISION_ID
+    ]
+    if implementation_decisions != [
+        {
+            "id": FL1_I2_IMPLEMENTATION_DECISION_ID,
+            "decision": (
+                "Authorize one SCV2-FL1-I2 synthetic pre-real hardening "
+                "implementation branch and Draft PR using only adversarial "
+                "newly created temporary fixtures."
+            ),
+            "accepted_mainline_base": FL1_I2_PLANNING_MERGE_COMMIT,
+            "post_merge_review_id": FL1_I2_POST_MERGE_REVIEW_ID,
+            "g0_thread_ids": list(FL1_I2_G0_THREAD_IDS),
+            "implementation_authorized": True,
+            "synthetic_fixture_execution_authorized": True,
+            "real_source_inventory_authorized": False,
+            "merge_authorized": False,
+        }
+    ]:
+        raise DocumentationStateError("fl1_i2_implementation_authority_binding_invalid")
+
     matching_checkpoints = [
         checkpoint
         for checkpoint in state["completed_checkpoints"]
@@ -682,6 +752,21 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         }
     ]:
         raise DocumentationStateError("fl1_i2_owner_acceptance_checkpoint_invalid")
+
+    g0_checkpoints = [
+        checkpoint
+        for checkpoint in state["completed_checkpoints"]
+        if isinstance(checkpoint, dict)
+        and checkpoint.get("id") == "fl1_i2_g0_post_merge_governance_entry_gate"
+    ]
+    if g0_checkpoints != [
+        {
+            "id": "fl1_i2_g0_post_merge_governance_entry_gate",
+            "result": "five_post_merge_p1_findings_closed_in_shared_git_state_and_history_guards",
+            "fingerprint": FL1_I2_PLANNING_MERGE_COMMIT,
+        }
+    ]:
+        raise DocumentationStateError("fl1_i2_g0_checkpoint_invalid")
 
     expected_findings = [
         (1, "PRRT_kwDOSTBMB86X4OUS", "P1", "Scrub Git control variables before trusted invocations", "scripts/fl1_i1_runtime_context.py", "git_control_environment_sanitization", "must_close_during_i2_before_i2_completion_merge_or_i3"),
@@ -718,9 +803,9 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
     if actual_findings != expected_payload:
         raise DocumentationStateError("fl1_i2_terminal_review_findings_invalid")
     if state.get("artifact_lifecycle") != [
-        "governance_and_route_planning",
-        "public_safe_documentation",
-        "minimal_documentation_checker_and_regression_changes_only_if_required",
+        "synthetic_pre_real_hardening_implementation",
+        "task_owned_private_evidence",
+        "public_safe_contract_projection",
     ]:
         raise DocumentationStateError("fl1_i2_artifact_lifecycle_invalid")
 
@@ -948,7 +1033,7 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     if not state["next_required_checkpoint"]:
         raise DocumentationStateError("next_required_checkpoint_missing")
     if state.get("public_state_boundary") != (
-        "public_safe_governance_only_no_private_proof_payloads_or_paths"
+        "public_safe_synthetic_implementation_no_private_proof_payloads_or_paths"
     ):
         raise DocumentationStateError("public_state_boundary_invalid")
 
@@ -1018,8 +1103,6 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     ) or any(
         state["planning_boundary"][field]
         for field in (
-            "implementation_authorized",
-            "implementation_started",
             "implementation_completed",
             "real_inventory_started",
             "real_source_inventory_authorized",
@@ -1045,25 +1128,9 @@ def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
 def _trusted_git_environment(
     inherited: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Return a Git environment with caller-controlled Git state removed."""
+    """Compatibility wrapper for the shared Git control scrubber."""
 
-    source = os.environ if inherited is None else inherited
-    scrubbed = {
-        key: value
-        for key, value in source.items()
-        if not key.casefold().startswith("git_")
-    }
-    scrubbed.update(
-        {
-            "GIT_NO_REPLACE_OBJECTS": "1",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_SYSTEM": os.devnull,
-            "GIT_OPTIONAL_LOCKS": "0",
-            "GIT_TERMINAL_PROMPT": "0",
-        }
-    )
-    return scrubbed
+    return _shared_trusted_git_environment(inherited)
 
 
 def _casefold_deduplicated_paths(paths: Iterable[Path]) -> tuple[Path, ...]:
@@ -1119,46 +1186,11 @@ def _windows_system_git_roots(
     *,
     registry: Any | None = None,
 ) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
-    """Discover Git and Program Files roots from OS-backed HKLM registration."""
+    """Compatibility wrapper for shared OS-backed HKLM discovery."""
 
-    if registry is None:
-        try:
-            import winreg as registry
-        except ImportError:
-            return (), ()
-
-    views: list[int] = []
-    for view in (
-        getattr(registry, "KEY_WOW64_64KEY", 0),
-        getattr(registry, "KEY_WOW64_32KEY", 0),
-    ):
-        if view not in views:
-            views.append(view)
-
-    git_install_roots: list[Path] = []
-    program_files_roots: list[Path] = []
-    for view in views:
-        install_root = _read_windows_registry_path(
-            registry,
-            key_path=r"SOFTWARE\GitForWindows",
-            value_name="InstallPath",
-            view=view,
-        )
-        if install_root is not None:
-            git_install_roots.append(install_root)
-        for value_name in ("ProgramFilesDir", "ProgramFilesDir (x86)"):
-            program_files_root = _read_windows_registry_path(
-                registry,
-                key_path=r"SOFTWARE\Microsoft\Windows\CurrentVersion",
-                value_name=value_name,
-                view=view,
-            )
-            if program_files_root is not None:
-                program_files_roots.append(program_files_root)
-
-    return (
-        _casefold_deduplicated_paths(git_install_roots),
-        _casefold_deduplicated_paths(program_files_roots),
+    roots, program_files = _shared_windows_system_git_roots(registry=registry)
+    return tuple(Path(value) for value in roots), tuple(
+        Path(value) for value in program_files
     )
 
 
@@ -1167,20 +1199,12 @@ def _windows_trusted_git_candidates(
     git_install_roots: Iterable[Path],
     program_files_roots: Iterable[Path],
 ) -> tuple[Path, ...]:
-    """Build bounded Git executable candidates from trusted Windows roots."""
+    """Compatibility wrapper for shared bounded candidate generation."""
 
-    install_roots = _casefold_deduplicated_paths(
-        (
-            *git_install_roots,
-            *(root / "Git" for root in program_files_roots),
-        )
-    )
-    return _casefold_deduplicated_paths(
-        candidate
-        for install_root in install_roots
-        for candidate in (
-            install_root / "cmd" / "git.exe",
-            install_root / "bin" / "git.exe",
+    return tuple(
+        _shared_windows_trusted_git_candidates(
+            git_install_roots=git_install_roots,
+            program_files_roots=program_files_roots,
         )
     )
 
@@ -1192,18 +1216,12 @@ def _trusted_git_candidates(
 ) -> tuple[Path, ...]:
     """Return bounded system candidates without consulting caller environment."""
 
-    effective_platform = os.name if platform_name is None else platform_name
-    if effective_platform == "nt":
-        provider = windows_location_provider or _windows_system_git_roots
-        git_install_roots, program_files_roots = provider()
-        return _windows_trusted_git_candidates(
-            git_install_roots=git_install_roots,
-            program_files_roots=program_files_roots,
+    provider = windows_location_provider or _windows_system_git_roots
+    return tuple(
+        _shared_trusted_git_candidates(
+            platform_name=platform_name,
+            windows_location_provider=provider,
         )
-    return (
-        Path("/usr/bin/git"),
-        Path("/usr/local/bin/git"),
-        Path("/opt/homebrew/bin/git"),
     )
 
 
@@ -1215,22 +1233,14 @@ def _trusted_git_executable(
 ) -> Path:
     """Resolve Git from trusted system locations, never from caller PATH."""
 
-    candidates = _trusted_git_candidates(
-        platform_name=platform_name,
-        windows_location_provider=windows_location_provider,
-    )
-    resolved_root = root.resolve()
-    for candidate in candidates:
-        try:
-            resolved = candidate.resolve(strict=True)
-        except OSError:
-            continue
-        if not resolved.is_file():
-            continue
-        if resolved == resolved_root or resolved_root in resolved.parents:
-            continue
-        return resolved
-    raise DocumentationStateError("trusted_git_executable_unavailable")
+    try:
+        return _shared_resolve_trusted_git_executable(
+            repo_root=root,
+            platform_name=platform_name,
+            windows_location_provider=windows_location_provider,
+        ).path
+    except TrustedGitError as exc:
+        raise DocumentationStateError(str(exc)) from exc
 
 
 def _run_trusted_git(
@@ -1240,41 +1250,22 @@ def _run_trusted_git(
 ) -> subprocess.CompletedProcess[str]:
     """Run a non-interactive repository-bound Git command without caller config."""
 
-    executable = _trusted_git_executable(root=root)
-    command = [
-        str(executable),
-        "-c",
-        f"core.hooksPath={os.devnull}",
-        "-c",
-        "core.fsmonitor=false",
-        "-c",
-        "core.useBuiltinFSMonitor=false",
-        "-C",
-        str(root.resolve()),
-        *arguments,
-    ]
     try:
-        return subprocess.run(
-            command,
-            cwd=root,
-            env=_trusted_git_environment(),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-            timeout=15,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise DocumentationStateError(
-            f"trusted_git_invocation_failed:{type(exc).__name__}"
-        ) from exc
+        return run_trusted_git_text(root, arguments)
+    except TrustedGitError as exc:
+        raise DocumentationStateError(str(exc)) from exc
 
 
 def _validate_fl1_i2_projection_paths(paths: Iterable[str]) -> None:
     """Fail closed unless every post-plan path is governance projection only."""
 
     for raw_path in paths:
-        path = raw_path.replace("\\", "/")
+        try:
+            path = validate_git_path(raw_path)
+        except TrustedGitError as exc:
+            raise DocumentationStateError(
+                "fl1_i2_governance_projection_path_invalid"
+            ) from exc
         if path not in FL1_I2_PROJECTION_ALLOWLIST:
             raise DocumentationStateError(
                 f"fl1_i2_governance_projection_path_invalid:{path}"
@@ -1287,10 +1278,95 @@ def _trusted_git_changed_paths(
     root: Path,
     error_code: str,
 ) -> tuple[str, ...]:
-    result = _run_trusted_git(arguments, root=root)
-    if result.returncode != 0:
-        raise DocumentationStateError(error_code)
-    return tuple(path for path in result.stdout.split("\0") if path)
+    try:
+        result = run_trusted_git_bytes(root, arguments)
+        if result.returncode != 0:
+            raise DocumentationStateError(error_code)
+        return decode_git_z_paths(result.stdout)
+    except TrustedGitError as exc:
+        raise DocumentationStateError(error_code) from exc
+
+
+def _validate_fl1_i2_projection_history(*, root: Path) -> None:
+    """Audit every parent edge in the immutable plan-to-projection history."""
+
+    projection_tree = _run_trusted_git(
+        ["rev-parse", f"{FL1_I2_PLANNING_PROJECTION_HEAD}^{{tree}}"], root=root
+    )
+    if (
+        projection_tree.returncode != 0
+        or projection_tree.stdout.strip() != FL1_I2_PLANNING_PROJECTION_TREE
+    ):
+        raise DocumentationStateError("fl1_i2_projection_tree_mismatch")
+    ancestry = _run_trusted_git(
+        [
+            "merge-base",
+            "--is-ancestor",
+            FL1_I2_APPROVED_PLANNING_HEAD,
+            FL1_I2_PLANNING_PROJECTION_HEAD,
+        ],
+        root=root,
+    )
+    if ancestry.returncode != 0:
+        raise DocumentationStateError("fl1_i2_projection_ancestry_invalid")
+    revision_list = _run_trusted_git(
+        [
+            "rev-list",
+            "--topo-order",
+            "--reverse",
+            FL1_I2_PLANNING_PROJECTION_HEAD,
+            f"^{FL1_I2_APPROVED_PLANNING_HEAD}",
+        ],
+        root=root,
+    )
+    if revision_list.returncode != 0:
+        raise DocumentationStateError("fl1_i2_projection_history_unavailable")
+    commits = tuple(line for line in revision_list.stdout.splitlines() if line)
+    if not commits or commits[-1] != FL1_I2_PLANNING_PROJECTION_HEAD:
+        raise DocumentationStateError("fl1_i2_projection_history_invalid")
+    for commit in commits:
+        if not HEX40.fullmatch(commit):
+            raise DocumentationStateError("fl1_i2_projection_history_invalid")
+        parent_result = _run_trusted_git(
+            ["show", "-s", "--format=%P", commit], root=root
+        )
+        if parent_result.returncode != 0:
+            raise DocumentationStateError("fl1_i2_projection_history_unavailable")
+        parents = tuple(parent_result.stdout.strip().split())
+        if not parents:
+            raise DocumentationStateError("fl1_i2_projection_history_invalid")
+        for parent in parents:
+            paths = _trusted_git_changed_paths(
+                [
+                    "diff",
+                    "--no-ext-diff",
+                    "--name-only",
+                    "-z",
+                    "--diff-filter=ACDMRTUXB",
+                    parent,
+                    commit,
+                    "--",
+                ],
+                root=root,
+                error_code="fl1_i2_projection_history_diff_unavailable",
+            )
+            _validate_fl1_i2_projection_paths(paths)
+
+
+def _validate_fl1_i2_merge_topology(*, root: Path) -> None:
+    tree = _run_trusted_git(
+        ["rev-parse", f"{FL1_I2_PLANNING_MERGE_COMMIT}^{{tree}}"], root=root
+    )
+    if tree.returncode != 0 or tree.stdout.strip() != FL1_I2_PLANNING_MERGE_TREE:
+        raise DocumentationStateError("fl1_i2_planning_merge_tree_mismatch")
+    parents = _run_trusted_git(
+        ["show", "-s", "--format=%P", FL1_I2_PLANNING_MERGE_COMMIT], root=root
+    )
+    if (
+        parents.returncode != 0
+        or tuple(parents.stdout.strip().split()) != FL1_I2_PLANNING_MERGE_PARENTS
+    ):
+        raise DocumentationStateError("fl1_i2_planning_merge_topology_invalid")
 
 
 def _validate_fl1_i2_owner_acceptance_git(
@@ -1326,62 +1402,26 @@ def _validate_fl1_i2_owner_acceptance_git(
             "merge-base",
             "--is-ancestor",
             FL1_I2_APPROVED_PLANNING_HEAD,
-            "HEAD",
+            FL1_I2_PLANNING_PROJECTION_HEAD,
         ],
         root=root,
     )
     if ancestor.returncode != 0:
         raise DocumentationStateError("fl1_i2_approved_planning_not_ancestor")
 
-    changed_paths: list[str] = []
-    changed_paths.extend(
-        _trusted_git_changed_paths(
-            [
-                "diff",
-                "--no-ext-diff",
-                "--name-only",
-                "-z",
-                "--diff-filter=ACDMRTUXB",
-                FL1_I2_APPROVED_PLANNING_HEAD,
-                "HEAD",
-                "--",
-            ],
-            root=root,
-            error_code="fl1_i2_projection_committed_diff_unavailable",
-        )
+    _validate_fl1_i2_projection_history(root=root)
+    _validate_fl1_i2_merge_topology(root=root)
+    merge_ancestor = _run_trusted_git(
+        [
+            "merge-base",
+            "--is-ancestor",
+            FL1_I2_PLANNING_MERGE_COMMIT,
+            "HEAD",
+        ],
+        root=root,
     )
-    changed_paths.extend(
-        _trusted_git_changed_paths(
-            [
-                "diff",
-                "--no-ext-diff",
-                "--name-only",
-                "-z",
-                "--diff-filter=ACDMRTUXB",
-                "HEAD",
-                "--",
-            ],
-            root=root,
-            error_code="fl1_i2_projection_worktree_diff_unavailable",
-        )
-    )
-    changed_paths.extend(
-        _trusted_git_changed_paths(
-            [
-                "diff",
-                "--no-ext-diff",
-                "--cached",
-                "--name-only",
-                "-z",
-                "--diff-filter=ACDMRTUXB",
-                "HEAD",
-                "--",
-            ],
-            root=root,
-            error_code="fl1_i2_projection_index_diff_unavailable",
-        )
-    )
-    _validate_fl1_i2_projection_paths(changed_paths)
+    if merge_ancestor.returncode != 0:
+        raise DocumentationStateError("fl1_i2_planning_merge_not_ancestor")
 
 
 def validate_git_ancestry(
@@ -1397,8 +1437,11 @@ def validate_git_ancestry(
         str(state["protected_evidence"]["previous_phase_implementation_evidence_head"]): str(
             state["protected_evidence"]["previous_phase_implementation_evidence_tree"]
         ),
-        base: str(state["previous_phase_final_tree"]),
     }
+    if base == FL1_I2_PLANNING_MERGE_COMMIT:
+        expected_commit_trees[base] = FL1_I2_PLANNING_MERGE_TREE
+    else:
+        expected_commit_trees[base] = str(state["previous_phase_final_tree"])
     for commit, expected_tree in expected_commit_trees.items():
         tree_result = _run_trusted_git(
             ["rev-parse", f"{commit}^{{tree}}"], root=root
