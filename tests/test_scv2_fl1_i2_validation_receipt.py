@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from scripts.fl1_i2_confinement import (
+    create_owned_validation_temp_root,
+    remove_owned_validation_temp_root,
+)
 from scripts.fl1_i2_validation_receipt import (
     ReceiptError,
     canonical_validation_environment,
@@ -24,6 +29,34 @@ def _bindings() -> dict[str, str]:
 def test_canonical_pytest_command_disables_repository_bytecode() -> None:
     command = canonical_focused_test_command(Path(sys.executable))
     assert command[1:6] == ("-B", "-I", "-s", "-m", "pytest")
+
+
+def test_owned_validation_temp_cleanup_handles_read_only_regular_files() -> None:
+    root = create_owned_validation_temp_root()
+    artifact = root.path / "readonly-object"
+    artifact.write_bytes(b"task-owned")
+    artifact.chmod(stat.S_IREAD)
+    try:
+        remove_owned_validation_temp_root(root)
+    finally:
+        if artifact.exists():
+            artifact.chmod(stat.S_IWRITE | stat.S_IREAD)
+            remove_owned_validation_temp_root(root)
+    assert not root.path.exists()
+
+
+def test_owned_validation_temp_cleanup_unlinks_alias_without_following() -> None:
+    root = create_owned_validation_temp_root()
+    target = root.path / "target"
+    target.mkdir()
+    alias = root.path / "alias"
+    try:
+        alias.symlink_to(target, target_is_directory=True)
+    except OSError:
+        remove_owned_validation_temp_root(root)
+        pytest.skip("directory symlink privilege unavailable")
+    remove_owned_validation_temp_root(root)
+    assert not root.path.exists()
 
 
 def _init_repo(path: Path) -> None:

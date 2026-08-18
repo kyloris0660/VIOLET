@@ -195,19 +195,57 @@ def remove_owned_validation_temp_root(bound: BoundDirectory) -> None:
             raise ConfinementError("validation_temp_cleanup_failed") from exc
         for entry in entries:
             try:
-                metadata = entry.stat(follow_symlinks=False)
+                child = directory / entry.name
+                metadata = os.lstat(child)
                 attributes = getattr(metadata, "st_file_attributes", 0)
-                if stat.S_ISLNK(metadata.st_mode) or (
+                is_alias = stat.S_ISLNK(metadata.st_mode) or bool(
                     attributes
                     & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-                ):
-                    raise ConfinementError("validation_temp_cleanup_alias_rejected")
-                child = directory / entry.name
+                )
+                if is_alias:
+                    if os.name == "nt" and stat.S_ISDIR(metadata.st_mode):
+                        os.rmdir(child)
+                    else:
+                        os.unlink(child)
+                    continue
                 if stat.S_ISDIR(metadata.st_mode):
                     remove_contents(child)
                     os.rmdir(child)
                 elif stat.S_ISREG(metadata.st_mode):
-                    os.unlink(child)
+                    try:
+                        os.unlink(child)
+                    except PermissionError:
+                        if os.name != "nt":
+                            raise
+                        current = os.lstat(child)
+                        current_attributes = getattr(
+                            current, "st_file_attributes", 0
+                        )
+                        if (
+                            not stat.S_ISREG(current.st_mode)
+                            or stat.S_ISLNK(current.st_mode)
+                            or current_attributes
+                            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+                            or (current.st_dev, current.st_ino)
+                            != (metadata.st_dev, metadata.st_ino)
+                        ):
+                            raise ConfinementError(
+                                "validation_temp_cleanup_identity_drift"
+                            )
+                        os.chmod(child, current.st_mode | stat.S_IWRITE)
+                        writable = os.lstat(child)
+                        if (
+                            not stat.S_ISREG(writable.st_mode)
+                            or stat.S_ISLNK(writable.st_mode)
+                            or getattr(writable, "st_file_attributes", 0)
+                            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+                            or (writable.st_dev, writable.st_ino)
+                            != (metadata.st_dev, metadata.st_ino)
+                        ):
+                            raise ConfinementError(
+                                "validation_temp_cleanup_identity_drift"
+                            )
+                        os.unlink(child)
                 else:
                     raise ConfinementError("validation_temp_cleanup_type_rejected")
             except ConfinementError:
