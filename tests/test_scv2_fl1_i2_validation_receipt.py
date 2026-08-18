@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -142,3 +143,20 @@ def test_validation_environment_is_minimal_allowlisted_and_disables_plugin_autol
     assert environment["PYTHONNOUSERSITE"] == "1"
     assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert "PATH" not in environment and "VIOLET_UNRELATED" not in environment
+
+
+def test_validation_environment_constructs_path_only_from_trusted_git(
+    tmp_path: Path,
+) -> None:
+    trusted = tmp_path / "trusted" / "git.exe"
+    trusted.parent.mkdir()
+    trusted.write_bytes(b"trusted-test-executable")
+    environment = canonical_validation_environment(
+        {
+            "SystemRoot": r"C:\Windows",
+            "PATH": str(tmp_path / "hostile-bin"),
+        },
+        trusted_git_executable=trusted,
+    )
+    assert environment["PATH"].split(os.pathsep)[0] == str(trusted.parent.resolve())
+    assert "hostile-bin" not in environment["PATH"]

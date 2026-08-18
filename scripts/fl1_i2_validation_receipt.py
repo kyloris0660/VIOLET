@@ -185,6 +185,7 @@ def execution_environment_policy_payload() -> dict[str, Any]:
         "control_prefixes": list(CONTROL_ENVIRONMENT_PREFIXES),
         "control_names": sorted(CONTROL_ENVIRONMENT_NAMES),
         "plugin_autoload": False,
+        "path_policy": "trusted_git_parent_plus_os_system_directory_only",
         "python_isolated_argv": ["-B", "-I", "-s", "-m", "pytest"],
     }
 
@@ -193,7 +194,11 @@ def execution_environment_policy_fingerprint() -> str:
     return _fingerprint(execution_environment_policy_payload())
 
 
-def canonical_validation_environment(caller: Mapping[str, str] | None = None) -> dict[str, str]:
+def canonical_validation_environment(
+    caller: Mapping[str, str] | None = None,
+    *,
+    trusted_git_executable: Path | None = None,
+) -> dict[str, str]:
     source = dict(os.environ if caller is None else caller)
     casefolded = {key.casefold(): (key, value) for key, value in source.items()}
     forced_casefolded = {key.casefold(): value for key, value in FORCED_VALIDATION_ENVIRONMENT.items()}
@@ -214,6 +219,16 @@ def canonical_validation_environment(caller: Mapping[str, str] | None = None) ->
         found = casefolded.get(canonical.casefold())
         if found is not None:
             environment[canonical] = found[1]
+    if trusted_git_executable is not None:
+        try:
+            trusted_parent = trusted_git_executable.resolve(strict=True).parent
+        except OSError as exc:
+            raise ReceiptError("validation_receipt_trusted_git_invalid") from exc
+        path_roots = [os.fspath(trusted_parent)]
+        system_root = environment.get("SystemRoot") or environment.get("WINDIR")
+        if os.name == "nt" and system_root:
+            path_roots.append(os.fspath(Path(system_root) / "System32"))
+        environment["PATH"] = os.pathsep.join(path_roots)
     environment.update(FORCED_VALIDATION_ENVIRONMENT)
     return environment
 
@@ -308,7 +323,9 @@ def create_same_head_receipt(
     except Exception:
         clean_before = False
     started = time.time_ns()
-    environment = canonical_validation_environment()
+    environment = canonical_validation_environment(
+        trusted_git_executable=git.path,
+    )
     completed = _run_validation_command(command, repo_root=repo_root, environment=environment)
     ended = time.time_ns()
     after, after_git_fingerprint = trusted_git_snapshot(repo_root)
