@@ -22,7 +22,9 @@ from scripts.fl1_i2_evidence import (
     OperationState,
     TERMINAL_STATES,
     canonical_fingerprint,
+    derive_snapshot_usage,
 )
+from scripts.fl1_i2_confinement import ConfinementError, verify_synthetic_roots
 from scripts.fl1_i2_runner import (
     CANONICAL_ENUMERATION_BUDGET,
     CANONICAL_POLICY,
@@ -45,6 +47,7 @@ from scripts.trusted_git import (
     assert_trusted_worktree_clean,
     resolve_trusted_git_executable,
     run_trusted_git_text,
+    verify_approved_python_runtime,
 )
 
 
@@ -84,6 +87,10 @@ class FL1I2EvidencePaths:
     def receipt(self) -> str:
         return "local-validation-receipt.json"
 
+    @property
+    def summary(self) -> str:
+        return "public-summary.json"
+
 
 def _load(paths: FL1I2EvidencePaths) -> dict[str, Any]:
     store = EvidenceStore(paths.root)
@@ -93,7 +100,113 @@ def _load(paths: FL1I2EvidencePaths) -> dict[str, Any]:
         "ledger": store.read(paths.ledger),
         "workers": store.read(paths.workers),
         "receipt": store.read(paths.receipt),
+        "summary": store.read(paths.summary),
     }
+
+
+def _validate_synthetic_confinement(
+    config: Mapping[str, Any],
+    evidence_paths: FL1I2EvidencePaths,
+    budget: FailureBudget,
+) -> int:
+    try:
+        roots = verify_synthetic_roots(
+            Path(config["source_root"]), Path(config["evidence_root"])
+        )
+    except (KeyError, TypeError, ConfinementError) as exc:
+        raise FL1I2ContractError("fl1_i2_synthetic_confinement_invalid") from exc
+    try:
+        evidence_argument = Path(evidence_paths.root)
+        if not evidence_argument.is_absolute() or evidence_argument != roots.evidence_root.path:
+            raise FL1I2ContractError("fl1_i2_evidence_root_binding_invalid")
+    except (OSError, ValueError) as exc:
+        raise FL1I2ContractError("fl1_i2_evidence_root_binding_invalid") from exc
+    confinement = config.get("confinement")
+    expected_keys = {
+        "task_root",
+        "task_root_identity",
+        "source_root_identity",
+        "evidence_root_identity",
+        "synthetic_marker_bytes",
+        "synthetic_marker_budget_scope",
+    }
+    if not isinstance(confinement, Mapping) or set(confinement) != expected_keys:
+        raise FL1I2ContractError("fl1_i2_synthetic_confinement_invalid")
+    if (
+        confinement.get("task_root") != os.fspath(roots.task_root.path)
+        or confinement.get("task_root_identity") != roots.task_root.identity_fingerprint
+        or confinement.get("source_root_identity")
+        != roots.source_root.identity_fingerprint
+        or confinement.get("evidence_root_identity")
+        != roots.evidence_root.identity_fingerprint
+        or confinement.get("synthetic_marker_budget_scope")
+        != "separate_from_evidence_root_disk_budget"
+        or type(confinement.get("synthetic_marker_bytes")) is not int
+        or confinement["synthetic_marker_bytes"] < 0
+    ):
+        raise FL1I2ContractError("fl1_i2_synthetic_confinement_invalid")
+    marker_store = EvidenceStore(roots.source_root.path)
+    try:
+        marker = marker_store.read(".violet-synthetic-fixture.json")
+        marker_bytes = len(
+            marker_store.read_bytes(
+                ".violet-synthetic-fixture.json",
+                max_bytes=budget.max_synthetic_marker_bytes + 1,
+            )
+        )
+    except EvidenceError as exc:
+        raise FL1I2ContractError("fl1_i2_synthetic_marker_invalid") from exc
+    if (
+        set(marker) != {"schema_version", "run_id", "mode", "created_at_ns"}
+        or marker.get("schema_version")
+        != "violet.scv2-fl1-i2-synthetic-fixture-marker.v1"
+        or marker.get("run_id") != config.get("run_id")
+        or marker.get("mode") != config.get("mode")
+        or type(marker.get("created_at_ns")) is not int
+        or marker["created_at_ns"] <= 0
+        or marker_bytes != confinement["synthetic_marker_bytes"]
+        or marker_bytes > budget.max_synthetic_marker_bytes
+    ):
+        raise FL1I2ContractError("fl1_i2_synthetic_marker_invalid")
+    return marker_bytes
+
+
+def _actual_evidence_bundle_bytes(
+    paths: FL1I2EvidencePaths,
+    evidence: Mapping[str, Mapping[str, Any]],
+    budget: FailureBudget,
+) -> int:
+    store = EvidenceStore(paths.root)
+    names = {
+        "config": paths.config,
+        "manifest": paths.manifest,
+        "ledger": paths.ledger,
+        "workers": paths.workers,
+        "receipt": paths.receipt,
+        "summary": paths.summary,
+    }
+    total = 0
+    for key, name in names.items():
+        try:
+            raw = store.read_bytes(name, max_bytes=budget.max_evidence_bytes + 1)
+        except EvidenceError as exc:
+            if "budget_exceeded" in str(exc):
+                raise FL1I2ContractError(
+                    "fl1_i2_evidence_disk_budget_invalid"
+                ) from exc
+            raise FL1I2ContractError("fl1_i2_evidence_disk_read_invalid") from exc
+        canonical = (
+            json.dumps(
+                evidence[key], ensure_ascii=True, indent=2, sort_keys=True
+            )
+            + "\n"
+        ).encode("utf-8")
+        if raw != canonical:
+            raise FL1I2ContractError("fl1_i2_evidence_not_canonical")
+        total += len(raw)
+    if total > budget.max_evidence_bytes:
+        raise FL1I2ContractError("fl1_i2_evidence_disk_budget_invalid")
+    return total
 
 
 def _manifest(payload: Mapping[str, Any]) -> FixedCutManifest:
@@ -173,7 +286,12 @@ def _manifest(payload: Mapping[str, Any]) -> FixedCutManifest:
 
 def _repository_snapshot(repo_root: Path) -> tuple[str, str, str]:
     git = resolve_trusted_git_executable(repo_root=repo_root)
-    assert_trusted_worktree_clean(git, repo_root)
+    runtime = verify_approved_python_runtime(Path(sys.executable), repo_root=repo_root)
+    assert_trusted_worktree_clean(
+        git,
+        repo_root,
+        approved_python_runtime=runtime,
+    )
 
     def value(*arguments: str) -> str:
         result = run_trusted_git_text(repo_root, arguments, git=git)
@@ -210,10 +328,10 @@ def _snapshot_identity(result: Mapping[str, Any]) -> dict[str, Any]:
     expected = {"directory_observation", "directories", "members", "enumeration_usage"}
     if set(result) != expected or not isinstance(result["directories"], list) or not isinstance(result["members"], list):
         raise FL1I2ContractError("fl1_i2_snapshot_invalid")
-    usage = result["enumeration_usage"]
-    usage_keys = {"directories", "entries", "pages", "metadata_bytes", "metadata_observations"}
-    if not isinstance(usage, Mapping) or set(usage) != usage_keys or any(type(usage[key]) is not int or usage[key] < 0 for key in usage_keys):
-        raise FL1I2ContractError("fl1_i2_snapshot_usage_invalid")
+    try:
+        derive_snapshot_usage(result)
+    except EvidenceError as exc:
+        raise FL1I2ContractError("fl1_i2_snapshot_usage_invalid") from exc
     return {
         "directory_observation": result["directory_observation"],
         "directories": result["directories"],
@@ -233,9 +351,24 @@ def _validate_listing(manifest: FixedCutManifest, record: Mapping[str, Any], *, 
     if final:
         return
     raw_directories = result.get("directories")
-    if not isinstance(raw_directories, list) or sorted(raw_directories, key=lambda item: item["component_chain"]) != [
-        directory.to_private_dict() for directory in manifest.directories
-    ]:
+    if not isinstance(raw_directories, list):
+        raise FL1I2ContractError("fl1_i2_manifest_directory_mapping_invalid")
+    projected_directories = [
+        {
+            key: raw[key]
+            for key in (
+                "component_chain",
+                "observation",
+                "parent_object_identity",
+                "parent_change_identity",
+            )
+        }
+        for raw in raw_directories
+        if isinstance(raw, Mapping)
+    ]
+    if len(projected_directories) != len(raw_directories) or sorted(
+        projected_directories, key=lambda item: item["component_chain"]
+    ) != [directory.to_private_dict() for directory in manifest.directories]:
         raise FL1I2ContractError("fl1_i2_manifest_directory_mapping_invalid")
     raw_members = result.get("members")
     if not isinstance(raw_members, list):
@@ -345,7 +478,12 @@ def _validate_member_result(
     if not isinstance(content_fingerprint, str) or len(content_fingerprint) != 64 or any(value not in "0123456789abcdef" for value in content_fingerprint):
         raise FL1I2ContractError("fl1_i2_content_fingerprint_invalid")
     media = result.get("media")
-    if not isinstance(media, Mapping) or media.get("bytes_examined") != expected_bytes:
+    if (
+        not isinstance(media, Mapping)
+        or media.get("bytes_examined") != expected_bytes
+        or type(media.get("decoded_structure_bytes")) is not int
+        or media["decoded_structure_bytes"] < 0
+    ):
         raise FL1I2ContractError("fl1_i2_media_result_binding_invalid")
     if _expected_disposition(media) is not disposition:
         raise FL1I2ContractError("fl1_i2_disposition_result_mismatch")
@@ -380,10 +518,12 @@ def _validate_run_budget(
     limits = {
         "directories_discovered": budget.max_directories,
         "entries_discovered": budget.max_entries,
+        "enumeration_pages": budget.max_enumeration_pages,
         "metadata_observations": budget.max_metadata_observations,
         "metadata_bytes": budget.max_metadata_bytes,
         "content_opens": budget.max_content_opens,
         "content_bytes": budget.max_bytes,
+        "decoded_structure_bytes": budget.max_decoded_structure_bytes,
         "hash_operations": budget.max_hash_operations,
         "structure_validations": budget.max_structure_validations,
         "total_operations": budget.max_operations,
@@ -395,20 +535,11 @@ def _validate_run_budget(
     }
     if any(counters[key] > maximum for key, maximum in limits.items()):
         raise FL1I2ContractError("fl1_i2_run_counter_budget_invalid")
-    pages = 0
-    for record in ledger.committed_results.values():
-        envelope = record.get("payload")
-        result = envelope.get("result") if isinstance(envelope, Mapping) else None
-        if record.get("kind") in {WorkerOperation.LIST_DIRECTORY.value, WorkerOperation.FINAL_SNAPSHOT.value} and isinstance(result, Mapping):
-            usage = result.get("enumeration_usage")
-            if not isinstance(usage, Mapping):
-                raise FL1I2ContractError("fl1_i2_snapshot_usage_invalid")
-            pages += int(usage.get("pages", -1))
     if (
         counters["entries_discovered"] > enumeration_budget["max_entries"]
         or counters["directories_discovered"] > enumeration_budget["max_directories"]
         or counters["metadata_bytes"] > enumeration_budget["max_metadata_bytes"]
-        or pages > enumeration_budget["max_pages"]
+        or counters["enumeration_pages"] > enumeration_budget["max_pages"]
     ):
         raise FL1I2ContractError("fl1_i2_enumeration_budget_invalid")
     timestamps = [event.timestamp_ns for event in ledger.events]
@@ -421,6 +552,7 @@ def _validate_run_budget(
 
 def _derive_gate_closure(
     *,
+    repo_root: Path,
     config: Mapping[str, Any],
     manifest: FixedCutManifest,
     ledger: OperationLedger,
@@ -432,6 +564,12 @@ def _derive_gate_closure(
     python_path = Path(sys.executable).resolve(strict=True)
     if receipt.python_executable_fingerprint != hashlib.sha256(python_path.read_bytes()).hexdigest():
         raise FL1I2ContractError("fl1_i2_python_identity_mismatch")
+    runtime = verify_approved_python_runtime(python_path, repo_root=repo_root)
+    if (
+        receipt.approved_python_runtime_fingerprint
+        != runtime.execution_manifest_fingerprint
+    ):
+        raise FL1I2ContractError("fl1_i2_python_runtime_identity_mismatch")
     if receipt.execution_environment_policy_fingerprint != execution_environment_policy_fingerprint():
         raise FL1I2ContractError("fl1_i2_execution_environment_policy_invalid")
     expected_workers = ledger.to_worker_projection()
@@ -502,7 +640,7 @@ def derive_canonical_public_projection(
     config = evidence["config"]
     config_keys = {
         "schema_version", "run_id", "mode", "source_root", "evidence_root", "policy",
-        "enumeration_budget", "budget", "authorities",
+        "confinement", "enumeration_budget", "budget", "authorities",
     }
     if set(config) != config_keys or config.get("schema_version") != CONFIG_SCHEMA or config.get("mode") != "synthetic_new_temp_fixture":
         raise FL1I2ContractError("fl1_i2_config_invalid")
@@ -523,6 +661,7 @@ def derive_canonical_public_projection(
         raise FL1I2ContractError("fl1_i2_budget_invalid") from exc
     if config["budget"] != budget.to_dict():
         raise FL1I2ContractError("fl1_i2_budget_invalid")
+    marker_bytes = _validate_synthetic_confinement(config, evidence_paths, budget)
     manifest = _manifest(evidence["manifest"])
     ledger = OperationLedger.from_private_dict(evidence["ledger"])
     if ledger.run_id != config["run_id"] or ledger.manifest_fingerprint != manifest.manifest_fingerprint:
@@ -537,31 +676,32 @@ def derive_canonical_public_projection(
         "manifest": manifest.manifest_fingerprint,
         "ledger": canonical_fingerprint(evidence["ledger"]),
         "worker": canonical_fingerprint(workers),
+        "receipt": canonical_fingerprint(evidence["receipt"]),
     }
-    if receipt.run_id != config["run_id"] or any(getattr(receipt, f"{name}_fingerprint") != value for name, value in bindings.items()):
+    receipt_bindings = {key: value for key, value in bindings.items() if key != "receipt"}
+    if receipt.run_id != config["run_id"] or any(getattr(receipt, f"{name}_fingerprint") != value for name, value in receipt_bindings.items()):
         raise FL1I2ContractError("fl1_i2_receipt_binding_mismatch")
     head, tree, git_fingerprint = _repository_snapshot(repo_root)
     if not receipt.positive or (receipt.git_head, receipt.git_tree, receipt.trusted_git_fingerprint) != (head, tree, git_fingerprint):
         raise FL1I2ContractError("fl1_i2_same_head_receipt_invalid")
+    evidence_bytes = _actual_evidence_bundle_bytes(
+        evidence_paths,
+        evidence,
+        budget,
+    )
     gates = _derive_gate_closure(
+        repo_root=repo_root,
         config=config,
         manifest=manifest,
         ledger=ledger,
         workers=workers,
         receipt=receipt,
-        evidence_bytes=sum(
-            len(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8"))
-            for payload in (config, evidence["manifest"], evidence["ledger"], workers)
-        ),
+        evidence_bytes=evidence_bytes,
     )
     item_counts = {"manifest": len(manifest.members)}
     for disposition in ItemDisposition:
         item_counts[disposition.value] = sum(value is disposition for value in ledger.item_dispositions.values())
     run_counters = ledger.run_counters()
-    evidence_bytes = sum(
-        len(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8"))
-        for payload in (config, evidence["manifest"], evidence["ledger"], workers)
-    )
     summary = {
         "schema_version": PUBLIC_SCHEMA,
         "contract_id": CONTRACT_ID,
@@ -580,6 +720,8 @@ def derive_canonical_public_projection(
             "consumed_bytes": ledger.consumed_bytes,
             "remaining_bytes": ledger.remaining_bytes(budget),
             "evidence_disk_bytes": evidence_bytes,
+            "synthetic_marker_bytes": marker_bytes,
+            "synthetic_marker_budget_scope": "separate_from_evidence_root_disk_budget",
             "counters": run_counters,
         },
         "evidence_bindings": bindings,
@@ -597,6 +739,8 @@ def derive_canonical_public_projection(
             "content_hashes_redacted": True,
         },
     }
+    if dict(evidence["summary"]) != summary:
+        raise FL1I2ContractError("fl1_i2_persisted_public_summary_mismatch")
     return summary, gates
 
 

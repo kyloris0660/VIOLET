@@ -44,9 +44,14 @@ def test_same_head_receipt_binds_all_evidence(tmp_path: Path, monkeypatch: pytes
     _init_repo(repo)
     evidence = tmp_path / "evidence"
     evidence.mkdir()
+    observed_environment: dict[str, str] = {}
+
+    def succeed(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        observed_environment.update(kwargs["environment"])  # type: ignore[arg-type]
+        return subprocess.CompletedProcess(args[0], 0, stdout=b"ok", stderr=b"")
+
     monkeypatch.setattr(
-        "scripts.fl1_i2_validation_receipt._run_validation_command",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout=b"ok", stderr=b""),
+        "scripts.fl1_i2_validation_receipt._run_validation_command", succeed
     )
     receipt = create_same_head_receipt(
         repo_root=repo,
@@ -58,6 +63,15 @@ def test_same_head_receipt_binds_all_evidence(tmp_path: Path, monkeypatch: pytes
     )
     assert receipt.positive and receipt.same_head_tree and receipt.clean_before_after
     assert receipt.to_public_dict()["private_bindings_redacted"] is True
+    validation_roots = {
+        observed_environment["TEMP"],
+        observed_environment["TMP"],
+        observed_environment["TMPDIR"],
+    }
+    assert len(validation_roots) == 1
+    validation_root = Path(next(iter(validation_roots)))
+    assert not validation_root.exists()
+    assert validation_root not in {repo, evidence}
 
 
 def test_head_or_tree_drift_never_issues_positive_receipt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,6 +157,28 @@ def test_validation_environment_is_minimal_allowlisted_and_disables_plugin_autol
     assert environment["PYTHONNOUSERSITE"] == "1"
     assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert "PATH" not in environment and "VIOLET_UNRELATED" not in environment
+    assert not {"TEMP", "TMP", "TMPDIR"}.intersection(environment)
+
+
+@pytest.mark.parametrize(
+    "hostile_name",
+    ["TEMP", "Temp", "TMP", "tmp", "TMPDIR", "tMpDiR"],
+)
+def test_hostile_temp_environment_cannot_redirect_validation_destination(
+    tmp_path: Path, hostile_name: str
+) -> None:
+    approved = tmp_path / "approved-validation-temp"
+    approved.mkdir()
+    environment = canonical_validation_environment(
+        {
+            "SystemRoot": r"C:\Windows",
+            hostile_name: r"\\hostile.invalid\share\redirect",
+        },
+        validation_temp_root=approved,
+    )
+    assert environment["TEMP"] == str(approved)
+    assert environment["TMP"] == str(approved)
+    assert environment["TMPDIR"] == str(approved)
 
 
 def test_validation_environment_constructs_path_only_from_trusted_git(

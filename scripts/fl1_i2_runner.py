@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 import sys
-import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -21,6 +20,12 @@ if __package__ in {None, ""}:
 
 from scripts.fl1_i1_operation_gateway import load_private_json
 from scripts.fl1_i2_cli import public_error_envelope, render_public_json
+from scripts.fl1_i2_confinement import (
+    ConfinementError,
+    bind_directory,
+    os_local_temp_root,
+    verify_synthetic_roots,
+)
 from scripts.fl1_i2_evidence import (
     EvidenceError,
     EvidenceStore,
@@ -38,7 +43,7 @@ from scripts.fl1_i2_worker import WorkerController, WorkerOperation, WorkerResul
 
 CONTRACT_ID = "scv2_fl1_i2_pre_real_hardening_contract_v1"
 PUBLIC_SCHEMA = "violet.scv2-fl1-i2-public-summary.v1"
-CONFIG_SCHEMA = "violet.scv2-fl1-i2-synthetic-run-config.v2"
+CONFIG_SCHEMA = "violet.scv2-fl1-i2-synthetic-run-config.v3"
 MARKER_NAME = ".violet-synthetic-fixture.json"
 ELIGIBLE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"})
 CANONICAL_POLICY = {
@@ -92,19 +97,13 @@ def _within(candidate: Path, root: Path) -> bool:
 
 def _validate_temp_root(path: Path) -> Path:
     try:
-        resolved = path.resolve(strict=True)
-        temp_root = Path(tempfile.gettempdir()).resolve(strict=True)
-    except OSError as exc:
+        bound = bind_directory(path)
+        temp_root = os_local_temp_root()
+    except ConfinementError as exc:
         raise RunnerError("synthetic_temp_root_invalid") from exc
-    if not resolved.is_dir() or resolved == temp_root or not _within(resolved, temp_root):
+    if bound.path == temp_root.path or not _within(bound.path, temp_root.path):
         raise RunnerError("synthetic_temp_root_invalid")
-    current = resolved
-    while current != temp_root:
-        metadata = os.lstat(current)
-        if os.path.islink(current) or getattr(metadata, "st_file_attributes", 0) & 0x400:
-            raise RunnerError("synthetic_temp_root_alias_rejected")
-        current = current.parent
-    return resolved
+    return bound.path
 
 
 def create_synthetic_run_config(
@@ -114,10 +113,12 @@ def create_synthetic_run_config(
     run_id: str | None = None,
     budget: FailureBudget | None = None,
 ) -> Path:
-    source = _validate_temp_root(source_root)
-    evidence = _validate_temp_root(evidence_root)
-    if source == evidence or _within(source, evidence) or _within(evidence, source):
-        raise RunnerError("synthetic_roots_overlap")
+    try:
+        roots = verify_synthetic_roots(source_root, evidence_root)
+    except ConfinementError as exc:
+        raise RunnerError("synthetic_roots_invalid") from exc
+    source = roots.source_root.path
+    evidence = roots.evidence_root.path
     identifier = run_id or uuid.uuid4().hex
     marker = source / MARKER_NAME
     if marker.exists() or marker.is_symlink():
@@ -130,12 +131,23 @@ def create_synthetic_run_config(
         "created_at_ns": time.time_ns(),
     }
     EvidenceStore(source).write(MARKER_NAME, marker_payload)
+    marker_size = (source / MARKER_NAME).stat(follow_symlinks=False).st_size
+    if marker_size > active_budget.max_synthetic_marker_bytes:
+        raise RunnerError("synthetic_marker_budget_exhausted")
     config = {
         "schema_version": CONFIG_SCHEMA,
         "run_id": identifier,
         "mode": "synthetic_new_temp_fixture",
         "source_root": os.fspath(source),
         "evidence_root": os.fspath(evidence),
+        "confinement": {
+            "task_root": os.fspath(roots.task_root.path),
+            "task_root_identity": roots.task_root.identity_fingerprint,
+            "source_root_identity": roots.source_root.identity_fingerprint,
+            "evidence_root_identity": roots.evidence_root.identity_fingerprint,
+            "synthetic_marker_bytes": marker_size,
+            "synthetic_marker_budget_scope": "separate_from_evidence_root_disk_budget",
+        },
         "policy": dict(CANONICAL_POLICY),
         "enumeration_budget": dict(CANONICAL_ENUMERATION_BUDGET),
         "budget": active_budget.to_dict(),
@@ -153,6 +165,7 @@ def _load_config(path: Path) -> tuple[dict[str, Any], Path, Path, FailureBudget]
         "mode",
         "source_root",
         "evidence_root",
+        "confinement",
         "policy",
         "enumeration_budget",
         "budget",
@@ -160,12 +173,50 @@ def _load_config(path: Path) -> tuple[dict[str, Any], Path, Path, FailureBudget]
     }
     if set(payload) != expected or payload.get("schema_version") != CONFIG_SCHEMA or payload.get("mode") != "synthetic_new_temp_fixture":
         raise RunnerError("synthetic_run_config_invalid")
-    source = _validate_temp_root(Path(str(payload["source_root"])))
-    evidence = _validate_temp_root(Path(str(payload["evidence_root"])))
-    if path.resolve(strict=True) != evidence / "private-run-config.json":
+    try:
+        roots = verify_synthetic_roots(
+            Path(str(payload["source_root"])), Path(str(payload["evidence_root"]))
+        )
+    except ConfinementError as exc:
+        raise RunnerError("synthetic_roots_invalid") from exc
+    source = roots.source_root.path
+    evidence = roots.evidence_root.path
+    confinement = payload.get("confinement")
+    if (
+        not isinstance(confinement, Mapping)
+        or type(confinement.get("synthetic_marker_bytes")) is not int
+        or confinement["synthetic_marker_bytes"] < 0
+    ):
+        raise RunnerError("synthetic_confinement_binding_invalid")
+    expected_confinement = {
+        "task_root": os.fspath(roots.task_root.path),
+        "task_root_identity": roots.task_root.identity_fingerprint,
+        "source_root_identity": roots.source_root.identity_fingerprint,
+        "evidence_root_identity": roots.evidence_root.identity_fingerprint,
+        "synthetic_marker_bytes": confinement["synthetic_marker_bytes"],
+        "synthetic_marker_budget_scope": "separate_from_evidence_root_disk_budget",
+    }
+    if payload.get("confinement") != expected_confinement:
+        raise RunnerError("synthetic_confinement_binding_invalid")
+    try:
+        config_bound = Path(path)
+        if config_bound.parent != evidence or config_bound.name != "private-run-config.json":
+            raise RunnerError("synthetic_run_config_location_invalid")
+    except (OSError, ValueError) as exc:
+        raise RunnerError("synthetic_run_config_location_invalid") from exc
+    if config_bound != evidence / "private-run-config.json":
         raise RunnerError("synthetic_run_config_location_invalid")
-    marker = load_private_json(source / MARKER_NAME)
-    if marker.get("run_id") != payload["run_id"] or marker.get("mode") != "synthetic_new_temp_fixture":
+    marker_path = source / MARKER_NAME
+    marker = EvidenceStore(source).read(MARKER_NAME)
+    marker_keys = {"schema_version", "run_id", "mode", "created_at_ns"}
+    if (
+        set(marker) != marker_keys
+        or marker.get("schema_version") != "violet.scv2-fl1-i2-synthetic-fixture-marker.v1"
+        or marker.get("run_id") != payload["run_id"]
+        or marker.get("mode") != "synthetic_new_temp_fixture"
+        or type(marker.get("created_at_ns")) is not int
+        or marker["created_at_ns"] <= 0
+    ):
         raise RunnerError("synthetic_fixture_marker_invalid")
     authorities = payload["authorities"]
     if (
@@ -180,6 +231,12 @@ def _load_config(path: Path) -> tuple[dict[str, Any], Path, Path, FailureBudget]
         budget = FailureBudget(**payload["budget"])
     except (TypeError, EvidenceError) as exc:
         raise RunnerError("synthetic_run_budget_invalid") from exc
+    marker_size = marker_path.stat(follow_symlinks=False).st_size
+    if (
+        marker_size != payload["confinement"]["synthetic_marker_bytes"]
+        or marker_size > budget.max_synthetic_marker_bytes
+    ):
+        raise RunnerError("synthetic_marker_budget_exhausted")
     return payload, source, evidence, budget
 
 
@@ -268,10 +325,25 @@ def _commit_worker_result(
     *,
     crash_injector: Callable[[str], None] | None,
 ) -> None:
-    first = ledger._events(operation_id)[0]
-    consumed = result.bytes_consumed
-    if result.status in {WorkerStatus.INTERRUPTED, WorkerStatus.BLOCKED} and consumed == 0:
-        consumed = first.bytes_reserved
+    authoritative = OperationLedger.from_private_dict(
+        store.read("private-operation-ledger.json")
+    )
+    if authoritative.to_private_dict() != ledger.to_private_dict():
+        raise RunnerError("operation_closure_conflict")
+    current = authoritative.state(operation_id)
+    if result.started_persisted:
+        if current is not OperationState.STARTED:
+            raise RunnerError("operation_closure_conflict")
+        terminal = _terminal_state(result)
+        consumed = result.bytes_consumed
+    else:
+        if current is not OperationState.INTENT or result.status not in {
+            WorkerStatus.INTERRUPTED,
+            WorkerStatus.BLOCKED,
+        }:
+            raise RunnerError("operation_closure_conflict")
+        terminal = OperationState.RECOVERED
+        consumed = 0
     controller_payload = {
         "result": dict(result.payload) if result.payload is not None else None,
         "started_persisted": result.started_persisted,
@@ -280,7 +352,7 @@ def _commit_worker_result(
     }
     ledger.commit_terminal(
         operation_id,
-        _terminal_state(result),
+        terminal,
         result.safe_code,
         bytes_consumed=consumed,
         payload=controller_payload,
@@ -345,11 +417,7 @@ def _remaining_enumeration_budget(config: Mapping[str, Any], ledger: OperationLe
     configured = config["enumeration_budget"]
     remaining = {
         "max_entries": int(configured["max_entries"]) - counters["entries_discovered"],
-        "max_pages": int(configured["max_pages"]) - sum(
-            int(record.get("payload", {}).get("result", {}).get("enumeration_usage", {}).get("pages", 0))
-            for record in ledger.committed_results.values()
-            if isinstance(record.get("payload"), Mapping)
-        ),
+        "max_pages": int(configured["max_pages"]) - counters["enumeration_pages"],
         "max_metadata_bytes": int(configured["max_metadata_bytes"]) - counters["metadata_bytes"],
         "max_directories": int(configured["max_directories"]) - counters["directories_discovered"],
         "max_depth": int(configured["max_depth"]),
@@ -364,10 +432,12 @@ def _validate_run_counters(ledger: OperationLedger, budget: FailureBudget) -> di
     limits = {
         "directories_discovered": budget.max_directories,
         "entries_discovered": budget.max_entries,
+        "enumeration_pages": budget.max_enumeration_pages,
         "metadata_observations": budget.max_metadata_observations,
         "metadata_bytes": budget.max_metadata_bytes,
         "content_opens": budget.max_content_opens,
         "content_bytes": budget.max_bytes,
+        "decoded_structure_bytes": budget.max_decoded_structure_bytes,
         "hash_operations": budget.max_hash_operations,
         "structure_validations": budget.max_structure_validations,
         "total_operations": budget.max_operations,
@@ -390,6 +460,82 @@ def _canonical_evidence_bytes(*payloads: Mapping[str, Any]) -> int:
         len(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8"))
         for payload in payloads
     )
+
+
+def _persisted_json_bytes(payload: Mapping[str, Any]) -> bytes:
+    return (
+        json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+
+
+def finalize_synthetic_evidence_bundle(evidence_root: Path) -> dict[str, Any]:
+    """Finalize the receipt-bound public summary and exact evidence-byte fixed point."""
+
+    store = EvidenceStore(evidence_root)
+    config = store.read("private-run-config.json")
+    try:
+        budget = FailureBudget(**config["budget"])
+    except (KeyError, TypeError, EvidenceError) as exc:
+        raise RunnerError("synthetic_run_budget_invalid") from exc
+    summary = store.read("public-summary.json")
+    receipt = store.read("local-validation-receipt.json")
+    manifest_payload = store.read("private-manifest.json")
+    ledger_payload = store.read("private-operation-ledger.json")
+    worker_payload = store.read("private-worker-results.json")
+    required = (
+        "private-run-config.json",
+        "private-manifest.json",
+        "private-operation-ledger.json",
+        "private-worker-results.json",
+        "local-validation-receipt.json",
+    )
+    base_bytes = sum(
+        len(store.read_bytes(name, max_bytes=budget.max_evidence_bytes + 1))
+        for name in required
+    )
+    bindings = summary.get("evidence_bindings")
+    if not isinstance(bindings, dict):
+        raise RunnerError("synthetic_public_summary_invalid")
+    bindings.update(
+        {
+            "config": canonical_fingerprint(config),
+            "policy": canonical_fingerprint(config["policy"]),
+            "manifest": manifest_payload["manifest_fingerprint"],
+            "ledger": canonical_fingerprint(ledger_payload),
+            "worker": canonical_fingerprint(worker_payload),
+            "receipt": canonical_fingerprint(receipt),
+        }
+    )
+    summary["status"] = "synthetic_implementation_evidence_complete"
+    run_budget = summary.get("run_budget")
+    if not isinstance(run_budget, dict):
+        raise RunnerError("synthetic_public_summary_invalid")
+    run_budget["synthetic_marker_bytes"] = config["confinement"][
+        "synthetic_marker_bytes"
+    ]
+    run_budget["synthetic_marker_budget_scope"] = config["confinement"][
+        "synthetic_marker_budget_scope"
+    ]
+    previous = -1
+    for _ in range(16):
+        total = base_bytes + len(_persisted_json_bytes(summary))
+        run_budget["evidence_disk_bytes"] = total
+        if total == previous:
+            break
+        previous = total
+    else:
+        raise RunnerError("evidence_disk_fixed_point_unavailable")
+    if total > budget.max_evidence_bytes:
+        raise RunnerError("run_wide_evidence_disk_budget_exhausted")
+    store.write("public-summary.json", summary)
+    observed = base_bytes + len(
+        store.read_bytes(
+            "public-summary.json", max_bytes=budget.max_evidence_bytes + 1
+        )
+    )
+    if observed != total:
+        raise RunnerError("evidence_disk_fixed_point_mismatch")
+    return summary
 
 
 def _worker_member_payload(member: ManifestMember) -> dict[str, Any]:
@@ -598,10 +744,17 @@ def run_synthetic_hardening(
             for record in ledger.committed_results.values()
             if record.get("item_id") == member.item_id and record.get("kind") == WorkerOperation.COMBINED_CONTENT.value
         ]
-        if len(prior) > 1:
+        executed_prior = [
+            record
+            for record in prior
+            if record.get("status") != OperationState.RECOVERED.value
+        ]
+        if len(executed_prior) > 1:
             raise RunnerError("operation_closure_conflict")
-        if prior:
-            ledger.set_disposition(member.item_id, _disposition_from_result(prior[0]))
+        if executed_prior:
+            ledger.set_disposition(
+                member.item_id, _disposition_from_result(executed_prior[0])
+            )
             _persist_and_verify_ledger(
                 store,
                 ledger,
@@ -611,10 +764,16 @@ def run_synthetic_hardening(
             continue
         expected_size = int(member.change_identity["size"])
         reservation = max(1, expected_size)
+        decoded_remaining = (
+            budget.max_decoded_structure_bytes
+            - ledger.run_counters()["decoded_structure_bytes"]
+        )
+        if decoded_remaining <= 0:
+            raise RunnerError("run_wide_decoded_structure_budget_exhausted")
         operation_id = ledger.begin(
             item_id=member.item_id,
             kind=WorkerOperation.COMBINED_CONTENT.value,
-            attempt=1,
+            attempt=1 + len(prior),
             budget=budget,
             bytes_reserved=reservation,
         )
@@ -632,6 +791,7 @@ def run_synthetic_hardening(
                 "ancestor_members": _worker_ancestor_payloads(manifest, member),
                 "member": _worker_member_payload(member),
                 "max_bytes": reservation,
+                "max_decoded_structure_bytes": decoded_remaining,
                 "max_depth": 1024,
                 "parser_deadline_monotonic": time.monotonic() + budget.worker_deadline_seconds,
                 "policy": config["policy"],
@@ -693,7 +853,15 @@ def run_synthetic_hardening(
     worker_payload = _validate_or_rebuild_projection(store, ledger, evidence)
     ledger_payload = ledger.to_private_dict()
     run_counters = _validate_run_counters(ledger, budget)
-    evidence_bytes = _canonical_evidence_bytes(config, manifest.to_private_dict(), ledger_payload, worker_payload)
+    evidence_bytes = sum(
+        len(store.read_bytes(name, max_bytes=budget.max_evidence_bytes + 1))
+        for name in (
+            "private-run-config.json",
+            "private-manifest.json",
+            "private-operation-ledger.json",
+            "private-worker-results.json",
+        )
+    )
     if evidence_bytes > budget.max_evidence_bytes:
         raise RunnerError("run_wide_evidence_disk_budget_exhausted")
     counts = {
@@ -703,7 +871,7 @@ def run_synthetic_hardening(
     public_summary = {
         "schema_version": PUBLIC_SCHEMA,
         "contract_id": CONTRACT_ID,
-        "status": "synthetic_implementation_evidence_complete",
+        "status": "synthetic_implementation_evidence_pending_receipt",
         "run_token": hashlib.sha256(run_id.encode("utf-8")).hexdigest()[:24],
         "item_counts": {"manifest": len(manifest.members), **counts},
         "operation_counts": {
@@ -718,6 +886,10 @@ def run_synthetic_hardening(
             "consumed_bytes": ledger.consumed_bytes,
             "remaining_bytes": ledger.remaining_bytes(budget),
             "evidence_disk_bytes": evidence_bytes,
+            "synthetic_marker_bytes": config["confinement"]["synthetic_marker_bytes"],
+            "synthetic_marker_budget_scope": config["confinement"][
+                "synthetic_marker_budget_scope"
+            ],
             "counters": run_counters,
         },
         "evidence_bindings": {

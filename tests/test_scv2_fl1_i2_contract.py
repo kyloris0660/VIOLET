@@ -10,7 +10,11 @@ from pathlib import Path
 import pytest
 
 from scripts.fl1_i2_evidence import EvidenceStore, FailureBudget, canonical_fingerprint
-from scripts.fl1_i2_runner import create_synthetic_run_config, run_synthetic_hardening
+from scripts.fl1_i2_runner import (
+    create_synthetic_run_config,
+    finalize_synthetic_evidence_bundle,
+    run_synthetic_hardening,
+)
 from scripts.fl1_i2_validation_receipt import (
     SameHeadValidationReceipt,
     canonical_focused_test_command,
@@ -21,6 +25,7 @@ from scripts.phase_contracts import fl1_i2_contract
 from scripts.phase_contracts.fl1_i2_contract import FL1I2EvidencePaths, REQUIRED_FOCUSED_TESTS
 from scripts.phase_contracts.fl1_i2_contract import FL1I2ContractError, derive_canonical_public_projection
 from scripts.check_phase_contract import build_parser
+from scripts.trusted_git import verify_approved_python_runtime
 
 
 def _png() -> bytes:
@@ -51,7 +56,12 @@ def _evidence(tmp_path: Path) -> tuple[dict[str, object], FL1I2EvidencePaths]:
         git_tree="b" * 40,
         trusted_git_fingerprint="c" * 64,
         python_executable_fingerprint=hashlib.sha256(Path(sys.executable).resolve(strict=True).read_bytes()).hexdigest(),
+        approved_python_runtime_fingerprint=verify_approved_python_runtime(
+            Path(sys.executable), repo_root=Path.cwd()
+        ).execution_manifest_fingerprint,
         execution_environment_policy_fingerprint=execution_environment_policy_fingerprint(),
+        execution_environment_fingerprint="f" * 64,
+        validation_temp_root_identity_fingerprint="1" * 64,
         config_fingerprint=bindings["config"],
         policy_fingerprint=bindings["policy"],
         manifest_fingerprint=bindings["manifest"],
@@ -69,11 +79,16 @@ def _evidence(tmp_path: Path) -> tuple[dict[str, object], FL1I2EvidencePaths]:
         positive=True,
     )
     EvidenceStore(root).write("local-validation-receipt.json", receipt.to_private_dict())
+    summary = finalize_synthetic_evidence_bundle(root)
     return summary, FL1I2EvidencePaths(root)
 
 
 def _write(path: Path, payload: object) -> None:
-    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    path.write_bytes(
+        (
+            json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+    )
 
 
 def _refresh_ledger_worker_and_receipt(paths: FL1I2EvidencePaths) -> None:
@@ -345,6 +360,130 @@ def test_contract_rebuilds_budget_and_runtime_boundaries_from_disk(
         _write(ledger_path, ledger)
         _refresh_ledger_worker_and_receipt(paths)
     with pytest.raises(Exception, match="budget|deadline"):
+        derive_canonical_public_projection(repo_root=tmp_path, evidence_paths=paths)
+
+
+@pytest.mark.parametrize(
+    ("artifact_kind", "mutate"),
+    [
+        (
+            "marker",
+            lambda payload: payload.update({"run_id": "wrong-run"}),
+        ),
+        (
+            "config",
+            lambda payload: payload.update(
+                {"evidence_root": payload["source_root"]}
+            ),
+        ),
+        (
+            "config",
+            lambda payload: payload["confinement"].update(
+                {"evidence_root_identity": "0" * 64}
+            ),
+        ),
+    ],
+)
+def test_contract_rederives_synthetic_confinement_and_marker(
+    tmp_path: Path,
+    repository_proof: None,
+    artifact_kind: str,
+    mutate: object,
+) -> None:
+    _summary, paths = _evidence(tmp_path)
+    config_path = paths.root / "private-run-config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    if artifact_kind == "marker":
+        target = Path(config["source_root"]) / ".violet-synthetic-fixture.json"
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    else:
+        target = config_path
+        payload = config
+    mutate(payload)  # type: ignore[operator]
+    _write(target, payload)
+    with pytest.raises(Exception, match="synthetic|confinement|root|marker"):
+        derive_canonical_public_projection(repo_root=tmp_path, evidence_paths=paths)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["forged_zero", "page_low_report", "duplicate_page", "omitted_member"],
+)
+def test_contract_rebuilds_enumeration_usage_from_bound_snapshot_evidence(
+    tmp_path: Path,
+    repository_proof: None,
+    mutation: str,
+) -> None:
+    _summary, paths = _evidence(tmp_path)
+    ledger_path = paths.root / "private-operation-ledger.json"
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    listing = next(
+        record
+        for record in ledger["committed_results"].values()
+        if record["kind"] == "list_directory"
+    )
+    snapshot = listing["payload"]["result"]
+    if mutation == "forged_zero":
+        snapshot["enumeration_usage"] = {
+            "directories": 0,
+            "entries": 0,
+            "pages": 0,
+            "metadata_bytes": 0,
+            "metadata_observations": 0,
+            "page_records": [],
+        }
+    elif mutation == "page_low_report":
+        snapshot["directories"][0]["pages"][0]["entry_count"] = 0
+    elif mutation == "duplicate_page":
+        snapshot["directories"][0]["pages"].append(
+            dict(snapshot["directories"][0]["pages"][0])
+        )
+        snapshot["directories"][0]["page_count"] += 1
+    else:
+        snapshot["members"].pop()
+    _write(ledger_path, ledger)
+    _refresh_ledger_worker_and_receipt(paths)
+    with pytest.raises(Exception, match="snapshot|usage|mapping"):
+        derive_canonical_public_projection(repo_root=tmp_path, evidence_paths=paths)
+
+
+def test_evidence_disk_budget_includes_summary_and_receipt_at_exact_boundary(
+    tmp_path: Path,
+    repository_proof: None,
+) -> None:
+    _summary, paths = _evidence(tmp_path)
+    observed = 1_000_000
+    for _ in range(8):
+        config_path = paths.root / "private-run-config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["budget"]["max_evidence_bytes"] = observed
+        _write(config_path, config)
+        ledger_path = paths.root / "private-operation-ledger.json"
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        ledger["budget_fingerprint"] = canonical_fingerprint(config["budget"])
+        _write(ledger_path, ledger)
+        _refresh_ledger_worker_and_receipt(paths)
+        summary = finalize_synthetic_evidence_bundle(paths.root)
+        rebuilt = summary["run_budget"]["evidence_disk_bytes"]
+        if rebuilt == observed:
+            break
+        observed = rebuilt
+    assert summary["run_budget"]["evidence_disk_bytes"] == observed
+    expected, gates = derive_canonical_public_projection(
+        repo_root=tmp_path, evidence_paths=paths
+    )
+    assert expected == summary and all(gates.values())
+
+    config = json.loads((paths.root / "private-run-config.json").read_text(encoding="utf-8"))
+    config["budget"]["max_evidence_bytes"] = observed - 1
+    _write(paths.root / "private-run-config.json", config)
+    ledger = json.loads(
+        (paths.root / "private-operation-ledger.json").read_text(encoding="utf-8")
+    )
+    ledger["budget_fingerprint"] = canonical_fingerprint(config["budget"])
+    _write(paths.root / "private-operation-ledger.json", ledger)
+    _refresh_ledger_worker_and_receipt(paths)
+    with pytest.raises(Exception, match="evidence.*budget"):
         derive_canonical_public_projection(repo_root=tmp_path, evidence_paths=paths)
 
 

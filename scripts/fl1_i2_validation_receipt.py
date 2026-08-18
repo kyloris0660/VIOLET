@@ -13,14 +13,20 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from scripts.fl1_i2_evidence import EvidenceStore
+from scripts.fl1_i2_confinement import (
+    ConfinementError,
+    create_owned_validation_temp_root,
+    remove_owned_validation_temp_root,
+)
 from scripts.trusted_git import (
     assert_trusted_worktree_clean,
     resolve_trusted_git_executable,
     run_trusted_git_text,
+    verify_approved_python_runtime,
 )
 
 
-RECEIPT_SCHEMA = "violet.scv2-fl1-i2-local-validation-receipt.v3"
+RECEIPT_SCHEMA = "violet.scv2-fl1-i2-local-validation-receipt.v4"
 CANONICAL_FOCUSED_TESTS = (
     "tests/test_trusted_git.py",
     "tests/test_scv2_fl1_i2_source_policy.py",
@@ -38,9 +44,6 @@ SYSTEM_ENVIRONMENT_ALLOWLIST = (
     "WINDIR",
     "COMSPEC",
     "PATHEXT",
-    "TEMP",
-    "TMP",
-    "TMPDIR",
     "LOCALAPPDATA",
     "APPDATA",
     "PROGRAMDATA",
@@ -93,7 +96,10 @@ class SameHeadValidationReceipt:
     git_tree: str
     trusted_git_fingerprint: str
     python_executable_fingerprint: str
+    approved_python_runtime_fingerprint: str
     execution_environment_policy_fingerprint: str
+    execution_environment_fingerprint: str
+    validation_temp_root_identity_fingerprint: str
     config_fingerprint: str
     policy_fingerprint: str
     manifest_fingerprint: str
@@ -123,7 +129,10 @@ class SameHeadValidationReceipt:
             "git_tree": self.git_tree,
             "trusted_git_fingerprint": self.trusted_git_fingerprint,
             "python_executable_fingerprint": self.python_executable_fingerprint,
+            "approved_python_runtime_fingerprint": self.approved_python_runtime_fingerprint,
             "execution_environment_policy_fingerprint": self.execution_environment_policy_fingerprint,
+            "execution_environment_fingerprint": self.execution_environment_fingerprint,
+            "validation_temp_root_identity_fingerprint": self.validation_temp_root_identity_fingerprint,
             "command_fingerprint": self.command_fingerprint,
             "exit_code": self.exit_code,
             "same_head_tree": self.same_head_tree,
@@ -162,7 +171,10 @@ class SameHeadValidationReceipt:
         for value in (
             receipt.trusted_git_fingerprint,
             receipt.python_executable_fingerprint,
+            receipt.approved_python_runtime_fingerprint,
             receipt.execution_environment_policy_fingerprint,
+            receipt.execution_environment_fingerprint,
+            receipt.validation_temp_root_identity_fingerprint,
             receipt.config_fingerprint,
             receipt.policy_fingerprint,
             receipt.manifest_fingerprint,
@@ -187,6 +199,7 @@ def execution_environment_policy_payload() -> dict[str, Any]:
         "plugin_autoload": False,
         "path_policy": "trusted_git_parent_plus_os_system_directory_only",
         "python_isolated_argv": ["-B", "-I", "-s", "-m", "pytest"],
+        "temporary_directory_policy": "verified_os_local_exclusive_task_root",
     }
 
 
@@ -198,6 +211,7 @@ def canonical_validation_environment(
     caller: Mapping[str, str] | None = None,
     *,
     trusted_git_executable: Path | None = None,
+    validation_temp_root: Path | None = None,
 ) -> dict[str, str]:
     source = dict(os.environ if caller is None else caller)
     casefolded = {key.casefold(): (key, value) for key, value in source.items()}
@@ -229,6 +243,9 @@ def canonical_validation_environment(
         if os.name == "nt" and system_root:
             path_roots.append(os.fspath(Path(system_root) / "System32"))
         environment["PATH"] = os.pathsep.join(path_roots)
+    if validation_temp_root is not None:
+        exact_temp = os.fspath(validation_temp_root)
+        environment.update({"TEMP": exact_temp, "TMP": exact_temp, "TMPDIR": exact_temp})
     environment.update(FORCED_VALIDATION_ENVIRONMENT)
     return environment
 
@@ -239,6 +256,14 @@ def _fingerprint(payload: Any) -> str:
     else:
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _paths_overlap(left: Path, right: Path) -> bool:
+    try:
+        common = Path(os.path.commonpath((left, right)))
+    except ValueError:
+        return False
+    return common in {left, right}
 
 
 def canonical_focused_test_command(python_executable: Path) -> tuple[str, ...]:
@@ -314,23 +339,58 @@ def create_same_head_receipt(
     if set(bindings) != required or any(len(value) != 64 for value in bindings.values()):
         raise ReceiptError("validation_receipt_bindings_invalid")
     approved_python = Path(sys.executable).resolve(strict=True)
+    runtime = verify_approved_python_runtime(
+        approved_python,
+        repo_root=repo_root,
+    )
     validate_canonical_focused_command(command, approved_python)
     before, git_fingerprint = trusted_git_snapshot(repo_root)
     git = resolve_trusted_git_executable(repo_root=repo_root)
     try:
-        assert_trusted_worktree_clean(git, repo_root)
+        assert_trusted_worktree_clean(
+            git,
+            repo_root,
+            approved_python_runtime=runtime,
+        )
         clean_before = True
     except Exception:
         clean_before = False
+    try:
+        validation_temp = create_owned_validation_temp_root()
+    except ConfinementError as exc:
+        raise ReceiptError("validation_receipt_temp_root_unavailable") from exc
+    if any(
+        _paths_overlap(validation_temp.path, boundary)
+        for boundary in (
+            Path(repo_root).resolve(strict=True),
+            Path(evidence_root).resolve(strict=True),
+        )
+    ):
+        raise ReceiptError("validation_receipt_temp_root_overlap")
     started = time.time_ns()
     environment = canonical_validation_environment(
         trusted_git_executable=git.path,
+        validation_temp_root=validation_temp.path,
     )
-    completed = _run_validation_command(command, repo_root=repo_root, environment=environment)
+    try:
+        completed = _run_validation_command(
+            command,
+            repo_root=repo_root,
+            environment=environment,
+        )
+    finally:
+        try:
+            remove_owned_validation_temp_root(validation_temp)
+        except ConfinementError as exc:
+            raise ReceiptError("validation_receipt_temp_cleanup_failed") from exc
     ended = time.time_ns()
     after, after_git_fingerprint = trusted_git_snapshot(repo_root)
     try:
-        assert_trusted_worktree_clean(git, repo_root)
+        assert_trusted_worktree_clean(
+            git,
+            repo_root,
+            approved_python_runtime=runtime,
+        )
         clean_after = True
     except Exception:
         clean_after = False
@@ -342,7 +402,10 @@ def create_same_head_receipt(
         git_tree=before.tree,
         trusted_git_fingerprint=git_fingerprint,
         python_executable_fingerprint=_python_fingerprint(approved_python),
+        approved_python_runtime_fingerprint=runtime.execution_manifest_fingerprint,
         execution_environment_policy_fingerprint=execution_environment_policy_fingerprint(),
+        execution_environment_fingerprint=_fingerprint(dict(sorted(environment.items()))),
+        validation_temp_root_identity_fingerprint=validation_temp.identity_fingerprint,
         config_fingerprint=bindings["config"],
         policy_fingerprint=bindings["policy"],
         manifest_fingerprint=bindings["manifest"],

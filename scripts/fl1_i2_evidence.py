@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence
 from scripts.fl1_i1_operation_gateway import (
     OperationGatewayError,
     TaskOwnedArtifactStore,
+    load_private_bytes,
     load_private_json,
 )
 
@@ -64,6 +65,146 @@ def canonical_fingerprint(payload: Any) -> str:
         ensure_ascii=True,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def derive_snapshot_usage(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Rebuild enumeration counters from bound directory/page/member evidence."""
+
+    if set(snapshot) != {
+        "directory_observation",
+        "directories",
+        "members",
+        "enumeration_usage",
+    }:
+        raise EvidenceError("snapshot_schema_invalid")
+    directories = snapshot["directories"]
+    members = snapshot["members"]
+    claimed = snapshot["enumeration_usage"]
+    if not isinstance(directories, list) or not isinstance(members, list):
+        raise EvidenceError("snapshot_schema_invalid")
+    if not isinstance(claimed, Mapping):
+        raise EvidenceError("snapshot_usage_invalid")
+    directory_keys = {
+        "component_chain",
+        "parent_object_identity",
+        "parent_change_identity",
+        "observation",
+        "page_count",
+        "entry_count",
+        "metadata_observations",
+        "metadata_bytes",
+        "pages",
+    }
+    member_keys = {
+        "name",
+        "member_type",
+        "object_identity",
+        "change_identity",
+        "attributes",
+        "reparse_tag",
+        "link_count",
+        "component_chain",
+        "parent_object_identity",
+        "parent_change_identity",
+    }
+    by_chain: dict[tuple[str, ...], Mapping[str, Any]] = {}
+    for raw in directories:
+        if not isinstance(raw, Mapping) or set(raw) != directory_keys:
+            raise EvidenceError("snapshot_directory_schema_invalid")
+        chain_raw = raw["component_chain"]
+        if not isinstance(chain_raw, list) or not all(
+            type(value) is str and value for value in chain_raw
+        ):
+            if chain_raw != []:
+                raise EvidenceError("snapshot_directory_chain_invalid")
+        chain = tuple(chain_raw)
+        if chain in by_chain:
+            raise EvidenceError("snapshot_directory_duplicate")
+        by_chain[chain] = raw
+    if () not in by_chain or len(by_chain) != len(directories):
+        raise EvidenceError("snapshot_root_directory_invalid")
+    member_by_parent: dict[tuple[str, ...], list[Mapping[str, Any]]] = {}
+    for raw in members:
+        if not isinstance(raw, Mapping) or set(raw) != member_keys:
+            raise EvidenceError("snapshot_member_schema_invalid")
+        chain_raw = raw["component_chain"]
+        if (
+            not isinstance(chain_raw, list)
+            or not chain_raw
+            or not all(type(value) is str and value for value in chain_raw)
+            or raw.get("member_type") != "file"
+            or raw.get("name") != chain_raw[-1]
+        ):
+            raise EvidenceError("snapshot_member_chain_invalid")
+        parent = tuple(chain_raw[:-1])
+        if parent not in by_chain:
+            raise EvidenceError("snapshot_member_parent_missing")
+        member_by_parent.setdefault(parent, []).append(raw)
+    root_identity = by_chain[()]["observation"]
+    try:
+        platform = root_identity["object_identity"]["platform"]
+    except (KeyError, TypeError) as exc:
+        raise EvidenceError("snapshot_root_observation_invalid") from exc
+    if platform not in {"posix", "windows"}:
+        raise EvidenceError("snapshot_platform_invalid")
+    if platform == "windows":
+        from scripts.fl1_i2_source_backends import FILE_ID_EXTD_DIR_INFO
+
+        windows_record_prefix = int(FILE_ID_EXTD_DIR_INFO.FileName.offset)
+    page_records: list[dict[str, int]] = []
+    total_entries = total_metadata_bytes = total_metadata_observations = 0
+    for chain, raw in sorted(by_chain.items(), key=lambda item: item[0]):
+        children = [
+            child_chain[-1]
+            for child_chain in by_chain
+            if len(child_chain) == len(chain) + 1 and child_chain[:-1] == chain
+        ]
+        names = children + [str(item["name"]) for item in member_by_parent.get(chain, ())]
+        entry_count = len(names)
+        if platform == "posix":
+            metadata_bytes = sum(len(name.encode("utf-8", errors="strict")) + 128 for name in names)
+        else:
+            metadata_bytes = sum(
+                windows_record_prefix + len(name.encode("utf-16-le", errors="strict"))
+                for name in names
+            )
+        pages = raw["pages"]
+        if not isinstance(pages, list) or not pages:
+            raise EvidenceError("snapshot_page_evidence_invalid")
+        if any(
+            not isinstance(page, Mapping)
+            or set(page) != {"page_index", "entry_count", "metadata_bytes"}
+            or any(type(page[key]) is not int or page[key] < 0 for key in page)
+            for page in pages
+        ):
+            raise EvidenceError("snapshot_page_evidence_invalid")
+        if (
+            sum(page["entry_count"] for page in pages) != entry_count
+            or sum(page["metadata_bytes"] for page in pages) != metadata_bytes
+            or raw["page_count"] != len(pages)
+            or raw["entry_count"] != entry_count
+            or raw["metadata_observations"] != entry_count + 1
+            or raw["metadata_bytes"] != metadata_bytes
+        ):
+            raise EvidenceError("snapshot_usage_mismatch")
+        page_records.extend(dict(page) for page in pages)
+        total_entries += entry_count
+        total_metadata_bytes += metadata_bytes
+        total_metadata_observations += entry_count + 1
+    expected_page_indexes = list(range(1, len(page_records) + 1))
+    if [page["page_index"] for page in page_records] != expected_page_indexes:
+        raise EvidenceError("snapshot_page_sequence_invalid")
+    rebuilt = {
+        "directories": len(directories),
+        "entries": total_entries,
+        "pages": len(page_records),
+        "metadata_bytes": total_metadata_bytes,
+        "metadata_observations": total_metadata_observations,
+        "page_records": page_records,
+    }
+    if dict(claimed) != rebuilt:
+        raise EvidenceError("snapshot_usage_mismatch")
+    return rebuilt
 
 
 @dataclass(frozen=True)
@@ -210,6 +351,7 @@ class FailureBudget:
     worker_deadline_seconds: float
     max_directories: int = 1024
     max_entries: int = 8192
+    max_enumeration_pages: int = 2048
     max_metadata_observations: int = 16384
     max_metadata_bytes: int = 8 * 1024 * 1024
     max_content_opens: int = 4096
@@ -219,6 +361,8 @@ class FailureBudget:
     max_concurrent_workers: int = 1
     max_run_seconds: float = 900.0
     max_evidence_bytes: int = 64 * 1024 * 1024
+    max_decoded_structure_bytes: int = 64 * 1024 * 1024
+    max_synthetic_marker_bytes: int = 16 * 1024
     max_external_cost_usd: int = 0
 
     def __post_init__(self) -> None:
@@ -228,6 +372,7 @@ class FailureBudget:
             self.max_bytes,
             self.max_directories,
             self.max_entries,
+            self.max_enumeration_pages,
             self.max_metadata_observations,
             self.max_metadata_bytes,
             self.max_content_opens,
@@ -236,6 +381,8 @@ class FailureBudget:
             self.max_retries,
             self.max_concurrent_workers,
             self.max_evidence_bytes,
+            self.max_decoded_structure_bytes,
+            self.max_synthetic_marker_bytes,
             self.max_external_cost_usd,
         )
         if any(type(value) is not int for value in integer_fields) or any(
@@ -249,6 +396,7 @@ class FailureBudget:
             self.worker_deadline_seconds,
             self.max_directories,
             self.max_entries,
+            self.max_enumeration_pages,
             self.max_metadata_observations,
             self.max_metadata_bytes,
             self.max_content_opens,
@@ -257,6 +405,8 @@ class FailureBudget:
             self.max_concurrent_workers,
             self.max_run_seconds,
             self.max_evidence_bytes,
+            self.max_decoded_structure_bytes,
+            self.max_synthetic_marker_bytes,
         )
         if self.max_failures < 0 or self.max_retries < 0 or min(positive) <= 0 or self.max_external_cost_usd != 0:
             raise EvidenceError("budget_invalid")
@@ -269,6 +419,7 @@ class FailureBudget:
             "worker_deadline_seconds": self.worker_deadline_seconds,
             "max_directories": self.max_directories,
             "max_entries": self.max_entries,
+            "max_enumeration_pages": self.max_enumeration_pages,
             "max_metadata_observations": self.max_metadata_observations,
             "max_metadata_bytes": self.max_metadata_bytes,
             "max_content_opens": self.max_content_opens,
@@ -278,6 +429,8 @@ class FailureBudget:
             "max_concurrent_workers": self.max_concurrent_workers,
             "max_run_seconds": self.max_run_seconds,
             "max_evidence_bytes": self.max_evidence_bytes,
+            "max_decoded_structure_bytes": self.max_decoded_structure_bytes,
+            "max_synthetic_marker_bytes": self.max_synthetic_marker_bytes,
             "max_external_cost_usd": self.max_external_cost_usd,
         }
 
@@ -559,10 +712,12 @@ class OperationLedger:
         counters = {
             "directories_discovered": 0,
             "entries_discovered": 0,
+            "enumeration_pages": 0,
             "metadata_observations": 0,
             "metadata_bytes": 0,
             "content_opens": 0,
             "content_bytes": self.consumed_bytes,
+            "decoded_structure_bytes": 0,
             "hash_operations": 0,
             "structure_validations": 0,
             "total_operations": self.operation_count,
@@ -589,16 +744,22 @@ class OperationLedger:
             if not isinstance(result, Mapping):
                 continue
             if record.get("kind") in {"list_directory", "final_snapshot"}:
-                usage = result.get("enumeration_usage")
-                if isinstance(usage, Mapping):
-                    counters["directories_discovered"] += int(usage.get("directories", 0))
-                    counters["entries_discovered"] += int(usage.get("entries", 0))
-                    counters["metadata_observations"] += int(usage.get("metadata_observations", 0))
-                    counters["metadata_bytes"] += int(usage.get("metadata_bytes", 0))
+                usage = derive_snapshot_usage(result)
+                counters["directories_discovered"] += usage["directories"]
+                counters["entries_discovered"] += usage["entries"]
+                counters["enumeration_pages"] += usage["pages"]
+                counters["metadata_observations"] += usage["metadata_observations"]
+                counters["metadata_bytes"] += usage["metadata_bytes"]
             elif record.get("kind") == "combined_content" and record.get("status") == "completed":
                 counters["content_opens"] += 1
                 counters["hash_operations"] += 1
                 counters["structure_validations"] += 1
+                media = result.get("media")
+                if isinstance(media, Mapping):
+                    decoded = media.get("decoded_structure_bytes", 0)
+                    if type(decoded) is not int or decoded < 0:
+                        raise EvidenceError("operation_counter_invalid")
+                    counters["decoded_structure_bytes"] += decoded
         return counters
 
     def to_worker_projection(self) -> dict[str, Any]:
@@ -685,5 +846,12 @@ class EvidenceStore:
         target = self.store.target(Path(relative_path))
         try:
             return load_private_json(target)
+        except OperationGatewayError as exc:
+            raise EvidenceError(str(exc)) from exc
+
+    def read_bytes(self, relative_path: str, *, max_bytes: int) -> bytes:
+        target = self.store.target(Path(relative_path))
+        try:
+            return load_private_bytes(target, max_bytes=max_bytes)
         except OperationGatewayError as exc:
             raise EvidenceError(str(exc)) from exc

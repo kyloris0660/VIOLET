@@ -14,7 +14,11 @@ from scripts.fl1_i2_evidence import (
     canonical_fingerprint,
 )
 from scripts.fl1_i2_runner import create_synthetic_run_config, run_synthetic_hardening
-from scripts.fl1_i2_worker import WorkerOperation
+from scripts.fl1_i2_worker import (
+    WorkerOperation,
+    WorkerResult,
+    WorkerStatus,
+)
 
 
 def _png() -> bytes:
@@ -116,6 +120,73 @@ def test_residual_intent_is_recovered_before_new_operation_id(tmp_path: Path) ->
     states = [event["state"] for event in persisted["events"] if event["operation_id"] == abandoned]
     assert states == ["intent", "recovered"]
     assert summary["operation_counts"]["recovered"] == 1
+
+
+@pytest.mark.parametrize(
+    "safe_code",
+    ["worker_ready_timeout", "worker_ready_protocol_invalid", "worker_channel_failed"],
+)
+def test_pre_started_worker_failure_commits_recovered_zero_bytes_and_retries_new_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    safe_code: str,
+) -> None:
+    source = tmp_path / f"source-{safe_code}"
+    evidence = tmp_path / f"evidence-{safe_code}"
+    source.mkdir()
+    evidence.mkdir()
+    (source / "fixture.png").write_bytes(_png())
+    config = create_synthetic_run_config(
+        source_root=source,
+        evidence_root=evidence,
+        run_id=f"pre-start-{safe_code}",
+    )
+    from scripts import fl1_i2_runner
+
+    original = fl1_i2_runner.WorkerController.run
+    injected = False
+
+    def interrupt_once(*args: object, **kwargs: object) -> WorkerResult:
+        nonlocal injected
+        if not injected:
+            injected = True
+            return WorkerResult(
+                WorkerStatus.INTERRUPTED,
+                safe_code,
+                None,
+                False,
+                True,
+                1,
+                0,
+            )
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(fl1_i2_runner.WorkerController, "run", interrupt_once)
+    with pytest.raises(Exception, match="directory_listing_failed"):
+        run_synthetic_hardening(config)
+    first = json.loads(
+        (evidence / "private-operation-ledger.json").read_text(encoding="utf-8")
+    )
+    first_id = next(iter(first["committed_results"]))
+    assert [
+        event["state"]
+        for event in first["events"]
+        if event["operation_id"] == first_id
+    ] == ["intent", "recovered"]
+    assert first["committed_results"][first_id]["bytes_consumed"] == 0
+    summary = run_synthetic_hardening(config)
+    second = json.loads(
+        (evidence / "private-operation-ledger.json").read_text(encoding="utf-8")
+    )
+    assert summary["item_counts"]["content_verified"] == 1
+    assert len(second["committed_results"]) == 4
+    assert len(set(second["committed_results"])) == 4
+    second_summary = run_synthetic_hardening(config)
+    third = json.loads(
+        (evidence / "private-operation-ledger.json").read_text(encoding="utf-8")
+    )
+    assert second_summary == summary
+    assert set(third["committed_results"]) == set(second["committed_results"])
 
 
 @pytest.mark.parametrize(

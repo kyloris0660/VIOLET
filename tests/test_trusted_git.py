@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,7 @@ from scripts.trusted_git import (
     run_trusted_git_text,
     trusted_git_environment,
     validate_git_path,
+    verify_approved_python_runtime,
 )
 from tests.fl1_i1_helpers import make_i1_fixture
 
@@ -205,6 +208,155 @@ def test_ignored_enumeration_budget_fails_closed(tmp_path: Path, monkeypatch: py
     git = resolve_trusted_git_executable(excluded_roots=(repo,))
     with pytest.raises(TrustedGitError, match="status_budget_exceeded"):
         inspect_worktree_drift(git, repo)
+
+
+def test_exact_verified_repo_venv_is_excluded_before_ignored_budget(
+    tmp_path: Path,
+) -> None:
+    repo = _new_repo(tmp_path)
+    (repo / ".gitignore").write_text("venv/\nextra-venv/\n", encoding="utf-8")
+    _commit(repo, "ignore synthetic venvs", ".gitignore")
+    subprocess.run(
+        [sys.executable, "-I", "-s", "-m", "venv", "--without-pip", repo / "venv"],
+        check=True,
+        timeout=60,
+    )
+    for index in range(MAX_STATUS_ENTRIES := 4200):
+        (repo / "venv" / f"synthetic-{index}.py").write_text(
+            "VALUE = 1\n", encoding="utf-8"
+        )
+    runtime = verify_approved_python_runtime(
+        repo / "venv" / "Scripts" / "python.exe",
+        repo_root=repo,
+    )
+    git = resolve_trusted_git_executable(excluded_roots=(repo,))
+    summary = assert_trusted_worktree_clean(
+        git,
+        repo,
+        approved_python_runtime=runtime,
+    )
+    assert summary.behavior_ignored_count == 0
+    assert MAX_STATUS_ENTRIES > 4096
+
+    extra = repo / "extra-venv"
+    extra.mkdir()
+    (extra / "redirect.pth").write_text("synthetic\n", encoding="utf-8")
+    with pytest.raises(TrustedGitError, match="behavior_affecting_ignored"):
+        assert_trusted_worktree_clean(
+            git,
+            repo,
+            approved_python_runtime=runtime,
+        )
+
+
+def test_verified_venv_control_file_drift_fails_closed(tmp_path: Path) -> None:
+    repo = _new_repo(tmp_path)
+    (repo / ".gitignore").write_text("venv/\n", encoding="utf-8")
+    _commit(repo, "ignore synthetic venv", ".gitignore")
+    subprocess.run(
+        [sys.executable, "-I", "-s", "-m", "venv", "--without-pip", repo / "venv"],
+        check=True,
+        timeout=60,
+    )
+    runtime = verify_approved_python_runtime(
+        repo / "venv" / "Scripts" / "python.exe",
+        repo_root=repo,
+    )
+    site_packages = repo / "venv" / "Lib" / "site-packages"
+    site_packages.mkdir(parents=True, exist_ok=True)
+    (site_packages / "hostile.pth").write_text("synthetic\n", encoding="utf-8")
+    git = resolve_trusted_git_executable(excluded_roots=(repo,))
+    with pytest.raises(TrustedGitError, match="identity_drift"):
+        assert_trusted_worktree_clean(
+            git,
+            repo,
+            approved_python_runtime=runtime,
+        )
+
+
+def test_trusted_git_candidate_and_parent_aliases_are_rejected(tmp_path: Path) -> None:
+    real = resolve_trusted_git_executable(excluded_roots=(tmp_path,)).path
+    install = tmp_path / "git-install"
+    command = install / "cmd"
+    command.mkdir(parents=True)
+    try:
+        (command / "git.exe").symlink_to(real)
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+    with pytest.raises(TrustedGitError, match="trusted_git_executable_unavailable"):
+        resolve_trusted_git_executable(
+            platform_name="nt",
+            windows_location_provider=lambda: ((install,), ()),
+        )
+
+    (command / "git.exe").unlink()
+    command.rmdir()
+    real_parent = tmp_path / "real-command"
+    real_parent.mkdir()
+    (real_parent / "git.exe").write_bytes(b"synthetic")
+    try:
+        command.symlink_to(real_parent, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation unavailable")
+    with pytest.raises(TrustedGitError, match="trusted_git_executable_unavailable"):
+        resolve_trusted_git_executable(
+            platform_name="nt",
+            windows_location_provider=lambda: ((install,), ()),
+        )
+
+
+def test_trusted_git_replacement_between_binding_and_invocation_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import trusted_git as trusted_git_module
+
+    repo = _new_repo(tmp_path)
+    git = resolve_trusted_git_executable(excluded_roots=(repo,))
+    original = trusted_git_module._bind_executable
+    calls = 0
+
+    def drift(path: Path) -> tuple[str, str]:
+        nonlocal calls
+        calls += 1
+        digest, identity = original(path)
+        if calls == 2:
+            return digest, "0" * 64
+        return digest, identity
+
+    monkeypatch.setattr(trusted_git_module, "_bind_executable", drift)
+    with pytest.raises(TrustedGitError, match="identity_drift"):
+        run_trusted_git_text(repo, ("status", "--porcelain=v2"), git=git)
+
+
+@pytest.mark.parametrize("target_kind", ["parent", "candidate"])
+def test_trusted_git_reparse_attribute_is_rejected_before_resolve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    from scripts import trusted_git as trusted_git_module
+
+    parent = tmp_path / "candidate"
+    parent.mkdir()
+    candidate = parent / "git.exe"
+    candidate.write_bytes(b"synthetic")
+    target = parent if target_kind == "parent" else candidate
+    original = os.lstat
+
+    def lstat(path: object) -> object:
+        observed = original(path)
+        if os.path.normcase(os.path.abspath(os.fspath(path))) == os.path.normcase(
+            os.path.abspath(os.fspath(target))
+        ):
+            return SimpleNamespace(
+                st_mode=observed.st_mode,
+                st_file_attributes=0x400,
+            )
+        return observed
+
+    monkeypatch.setattr(trusted_git_module.os, "lstat", lstat)
+    with pytest.raises(TrustedGitError, match="alias_rejected"):
+        trusted_git_module._assert_no_alias_components(candidate)
 
 
 def test_hostile_local_core_worktree_fails_closed_even_with_explicit_pin(

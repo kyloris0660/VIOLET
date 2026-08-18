@@ -17,6 +17,7 @@ class MediaValidationResult:
     safe_code: str
     bytes_examined: int
     structure_depth: int
+    decoded_structure_bytes: int
 
     def to_private_dict(self) -> dict[str, object]:
         return {
@@ -26,6 +27,7 @@ class MediaValidationResult:
             "safe_code": self.safe_code,
             "bytes_examined": self.bytes_examined,
             "structure_depth": self.structure_depth,
+            "decoded_structure_bytes": self.decoded_structure_bytes,
         }
 
 
@@ -224,7 +226,11 @@ def _jpeg(stream: _BoundedStream, max_depth: int) -> _Outcome:
         return _invalid("jpeg", "jpeg_truncated", locals().get("depth", 0))
 
 
-def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
+def _png(
+    stream: _BoundedStream,
+    max_depth: int,
+    max_decoded_structure_bytes: int,
+) -> _Outcome:
     try:
         if stream.read_exact(8) != b"\x89PNG\r\n\x1a\n":
             return _invalid("png", "png_signature_missing")
@@ -244,7 +250,11 @@ def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
                 if row_size and decoded_bytes % row_size == 0 and value > 4:
                     return False
                 decoded_bytes += 1
-                if decoded_bytes > expected_decoded:
+                stream.decoded_structure_bytes = decoded_bytes
+                if (
+                    decoded_bytes > expected_decoded
+                    or decoded_bytes > max_decoded_structure_bytes
+                ):
                     return False
             return True
 
@@ -295,11 +305,16 @@ def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
                     if first[12] != 0:
                         return _unsupported("png", "png_interlace_unsupported", depth)
                     return _invalid("png", "png_ihdr_invalid", depth)
-                row_payload = (width * allowed[color_type][1] * bit_depth + 7) // 8
+                bits_per_pixel = allowed[color_type][1] * bit_depth
+                if width > (max_decoded_structure_bytes * 8) // bits_per_pixel:
+                    return _invalid("png", "png_decoded_byte_budget_exceeded", depth)
+                row_payload = (width * bits_per_pixel + 7) // 8
                 row_size = 1 + row_payload
+                if height > max_decoded_structure_bytes // row_size:
+                    return _invalid("png", "png_decoded_byte_budget_exceeded", depth)
                 expected_decoded = row_size * height
-                if expected_decoded <= 0 or expected_decoded > stream.max_bytes:
-                    return _invalid("png", "png_decoded_size_invalid", depth)
+                if expected_decoded <= 0 or expected_decoded > max_decoded_structure_bytes:
+                    return _invalid("png", "png_decoded_byte_budget_exceeded", depth)
                 decompressor = zlib.decompressobj()
                 saw_ihdr = True
                 continue
@@ -322,7 +337,9 @@ def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
                     return _invalid("png", "png_iend_invalid", depth)
                 assert decompressor is not None
                 try:
-                    tail = decompressor.flush()
+                    tail = decompressor.flush(
+                        max(1, max_decoded_structure_bytes - decoded_bytes + 1)
+                    )
                 except zlib.error:
                     return _invalid("png", "png_zlib_invalid", depth)
                 if not consume_decoded(tail) or not decompressor.eof or decompressor.unused_data or decoded_bytes != expected_decoded:
@@ -443,7 +460,7 @@ def _gif(stream: _BoundedStream, max_depth: int) -> _Outcome:
             if descriptor[8] & 0x80:
                 stream.skip(3 * (2 ** ((descriptor[8] & 0x07) + 1)))
             lzw_minimum = stream.read_byte()
-            if lzw_minimum < 2 or lzw_minimum > 12:
+            if lzw_minimum < 2 or lzw_minimum > 8:
                 return _invalid("gif", "gif_lzw_code_size_invalid", depth)
             validator = _GifLzwValidator(lzw_minimum)
             has_data, _length = _gif_subblocks(stream, validator)
@@ -693,15 +710,23 @@ def _avif(stream: _BoundedStream, max_depth: int) -> _Outcome:
         return _invalid("avif", code, locals().get("depth", 0))
 
 
-def validate_media_stream(chunks: Iterable[bytes], *, max_bytes: int, max_depth: int, deadline_monotonic: float) -> MediaValidationResult:
-    if max_bytes <= 0 or max_depth <= 0:
+def validate_media_stream(
+    chunks: Iterable[bytes],
+    *,
+    max_bytes: int,
+    max_depth: int,
+    deadline_monotonic: float,
+    max_decoded_structure_bytes: int = 64 * 1024 * 1024,
+) -> MediaValidationResult:
+    if max_bytes <= 0 or max_depth <= 0 or max_decoded_structure_bytes <= 0:
         raise MediaValidationError("media_validation_budget_invalid")
     stream = _BoundedStream(chunks, max_bytes=max_bytes, deadline=deadline_monotonic)
+    stream.decoded_structure_bytes = 0
     prefix = stream.peek_up_to(12)
     if prefix.startswith(b"\xff\xd8"):
         outcome = _jpeg(stream, max_depth)
     elif prefix.startswith(b"\x89PNG\r\n\x1a\n"):
-        outcome = _png(stream, max_depth)
+        outcome = _png(stream, max_depth, max_decoded_structure_bytes)
     elif prefix.startswith((b"GIF87a", b"GIF89a")):
         outcome = _gif(stream, max_depth)
     elif prefix.startswith(b"RIFF"):
@@ -711,4 +736,12 @@ def validate_media_stream(chunks: Iterable[bytes], *, max_bytes: int, max_depth:
     else:
         outcome = _unsupported("unknown", "media_format_unsupported")
     stream.drain()
-    return MediaValidationResult(outcome.format, outcome.valid, outcome.disposition, outcome.safe_code, stream.bytes_received, outcome.depth)
+    return MediaValidationResult(
+        outcome.format,
+        outcome.valid,
+        outcome.disposition,
+        outcome.safe_code,
+        stream.bytes_received,
+        outcome.depth,
+        stream.decoded_structure_bytes,
+    )

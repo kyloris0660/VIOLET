@@ -65,6 +65,11 @@ class EnumerationUsage:
     pages: int = 0
     metadata_bytes: int = 0
     metadata_observations: int = 0
+    page_records: list[dict[str, int]] | None = None
+
+    def __post_init__(self) -> None:
+        if self.page_records is None:
+            self.page_records = []
 
     def begin_directory(self, budget: EnumerationBudget, *, depth: int) -> None:
         if depth > budget.max_depth:
@@ -78,6 +83,10 @@ class EnumerationUsage:
         if self.pages >= budget.max_pages:
             raise SourceBackendError("source_enumeration_page_budget_exceeded")
         self.pages += 1
+        assert self.page_records is not None
+        self.page_records.append(
+            {"page_index": self.pages, "entry_count": 0, "metadata_bytes": 0}
+        )
 
     def add_entry(self, budget: EnumerationBudget, metadata_bytes: int) -> None:
         if self.entries >= budget.max_entries:
@@ -87,6 +96,11 @@ class EnumerationUsage:
         self.entries += 1
         self.metadata_observations += 1
         self.metadata_bytes += metadata_bytes
+        assert self.page_records is not None
+        if not self.page_records:
+            raise SourceBackendError("source_enumeration_page_missing")
+        self.page_records[-1]["entry_count"] += 1
+        self.page_records[-1]["metadata_bytes"] += metadata_bytes
 
     def to_private_dict(self) -> dict[str, int]:
         return {
@@ -95,6 +109,7 @@ class EnumerationUsage:
             "pages": self.pages,
             "metadata_bytes": self.metadata_bytes,
             "metadata_observations": self.metadata_observations,
+            "page_records": [dict(record) for record in self.page_records or ()],
         }
 
 

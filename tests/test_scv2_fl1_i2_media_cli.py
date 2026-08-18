@@ -36,8 +36,38 @@ def _png() -> bytes:
     return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", ihdr) + _png_chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00")) + _png_chunk(b"IEND", b"")
 
 
+def _compressed_grayscale_png(height: int) -> tuple[bytes, int]:
+    ihdr = (
+        (1).to_bytes(4, "big")
+        + height.to_bytes(4, "big")
+        + b"\x08\x00\x00\x00\x00"
+    )
+    decoded = b"\x00\x00" * height
+    payload = (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", ihdr)
+        + _png_chunk(b"IDAT", zlib.compress(decoded, 9))
+        + _png_chunk(b"IEND", b"")
+    )
+    return payload, len(decoded)
+
+
 def _gif() -> bytes:
     return b"GIF89a\x01\x00\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b"
+
+
+def _gif_with_minimum_code_size(minimum: int) -> bytes:
+    code_size = minimum + 1
+    codes = (1 << minimum, 0, (1 << minimum) + 1)
+    bit_buffer = sum(code << (index * code_size) for index, code in enumerate(codes))
+    encoded = bit_buffer.to_bytes((len(codes) * code_size + 7) // 8, "little")
+    return (
+        b"GIF89a\x01\x00\x01\x00\x00\x00\x00"
+        b"\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00"
+        + bytes((minimum, len(encoded)))
+        + encoded
+        + b"\x00\x3b"
+    )
 
 
 def _webp_vp8() -> bytes:
@@ -86,6 +116,53 @@ def test_supported_media_structures_validate_without_decode(payload: bytes, form
     assert result.format == format_name
     assert result.disposition == "structure_valid"
     assert result.bytes_examined == len(payload)
+
+
+def test_png_uses_independent_decoded_structure_budget() -> None:
+    payload, decoded = _compressed_grayscale_png(20_000)
+    assert len(payload) < decoded
+    result = validate_media_stream(
+        [payload[:31], payload[31:]],
+        max_bytes=len(payload),
+        max_decoded_structure_bytes=decoded,
+        max_depth=20,
+        deadline_monotonic=_deadline(),
+    )
+    assert result.valid
+    assert result.decoded_structure_bytes == decoded
+
+    blocked = validate_media_stream(
+        [payload],
+        max_bytes=len(payload),
+        max_decoded_structure_bytes=decoded - 1,
+        max_depth=20,
+        deadline_monotonic=_deadline(),
+    )
+    assert not blocked.valid
+    assert blocked.safe_code == "png_decoded_byte_budget_exceeded"
+
+
+@pytest.mark.parametrize("minimum", [2, 8])
+def test_gif_lzw_minimum_code_size_boundaries_are_supported(minimum: int) -> None:
+    result = validate_media_stream(
+        [_gif_with_minimum_code_size(minimum)],
+        max_bytes=4096,
+        max_depth=20,
+        deadline_monotonic=_deadline(),
+    )
+    assert result.valid
+
+
+@pytest.mark.parametrize("minimum", [9, 10, 11, 12])
+def test_gif_lzw_minimum_code_size_above_eight_is_rejected(minimum: int) -> None:
+    result = validate_media_stream(
+        [_gif_with_minimum_code_size(minimum)],
+        max_bytes=4096,
+        max_depth=20,
+        deadline_monotonic=_deadline(),
+    )
+    assert not result.valid
+    assert result.safe_code == "gif_lzw_code_size_invalid"
 
 
 @pytest.mark.parametrize(

@@ -146,19 +146,39 @@ def _recursive_snapshot(
             raise WorkerError("source_alias_identity_rejected")
         seen_objects.add(before.object_identity)
         seen_paths.add(chain)
-        directory_records.append(
-            {
-                "component_chain": list(chain),
-                "parent_object_identity": parent.object_identity.to_private_dict() if parent else None,
-                "parent_change_identity": parent.change_identity.to_private_dict() if parent else None,
-                "observation": before.to_private_dict(),
-            }
-        )
+        directory_record = {
+            "component_chain": list(chain),
+            "parent_object_identity": parent.object_identity.to_private_dict() if parent else None,
+            "parent_change_identity": parent.change_identity.to_private_dict() if parent else None,
+            "observation": before.to_private_dict(),
+            "page_count": 0,
+            "entry_count": 0,
+            "metadata_observations": 0,
+            "metadata_bytes": 0,
+            "pages": [],
+        }
+        directory_records.append(directory_record)
+        usage_before = usage.to_private_dict()
         members = backend.enumerate_directory(
             directory,
             budget=budget,
             usage=usage,
             depth=depth,
+        )
+        usage_after = usage.to_private_dict()
+        directory_record.update(
+            {
+                "page_count": usage_after["pages"] - usage_before["pages"],
+                "entry_count": usage_after["entries"] - usage_before["entries"],
+                "metadata_observations": (
+                    usage_after["metadata_observations"]
+                    - usage_before["metadata_observations"]
+                ),
+                "metadata_bytes": (
+                    usage_after["metadata_bytes"] - usage_before["metadata_bytes"]
+                ),
+                "pages": usage_after["page_records"][usage_before["pages"] :],
+            }
         )
         for member in sorted(members, key=lambda value: (value.name.casefold(), value.name)):
             child_chain = (*chain, member.name)
@@ -342,6 +362,9 @@ def _execute(
                     max_bytes=max_bytes,
                     max_depth=int(payload["max_depth"]),
                     deadline_monotonic=float(payload["parser_deadline_monotonic"]),
+                    max_decoded_structure_bytes=int(
+                        payload.get("max_decoded_structure_bytes", 64 * 1024 * 1024)
+                    ),
                 )
             except (MediaValidationError, SourceBackendError, WorkerError) as exc:
                 code = exc.code if isinstance(exc, (SourceBackendError, WorkerError)) else str(exc)

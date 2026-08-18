@@ -415,7 +415,17 @@ class TaskOwnedArtifactStore:
         if not candidate.is_absolute():
             raise OperationGatewayError("private_artifact_root_invalid")
         try:
+            lexical = Path(os.path.abspath(os.fspath(candidate)))
+            current = Path(lexical.anchor)
+            if _path_has_reparse_or_symlink(current):
+                raise OperationGatewayError("private_artifact_root_invalid")
+            for component in lexical.parts[1:]:
+                current /= component
+                if _path_has_reparse_or_symlink(current):
+                    raise OperationGatewayError("private_artifact_root_invalid")
             resolved = candidate.resolve(strict=True)
+        except OperationGatewayError:
+            raise
         except OSError as exc:
             raise OperationGatewayError("private_artifact_root_invalid") from exc
         if resolved != candidate or not resolved.is_dir() or _path_has_reparse_or_symlink(resolved):
@@ -539,6 +549,51 @@ def load_private_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise OperationGatewayError("private_artifact_invalid")
     return payload
+
+
+def load_private_bytes(path: Path, *, max_bytes: int) -> bytes:
+    """Read one no-follow identity-bound artifact with an exact byte ceiling."""
+
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise OperationGatewayError("private_artifact_read_budget_invalid")
+    descriptor: int | None = None
+    try:
+        target = Path(path)
+        descriptor = _open_readonly_nofollow(target)
+        opened = os.fstat(descriptor)
+        named = os.stat(target, follow_symlinks=False)
+        if (
+            stat.S_ISLNK(named.st_mode)
+            or getattr(named, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+            or not stat.S_ISREG(opened.st_mode)
+        ):
+            raise OperationGatewayError("private_artifact_target_untrusted")
+        data = bytearray()
+        while True:
+            chunk = os.read(descriptor, min(64 * 1024, max_bytes + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+            if len(data) > max_bytes:
+                raise OperationGatewayError("private_artifact_read_budget_exceeded")
+        after = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+        ):
+            raise OperationGatewayError("private_artifact_identity_drift")
+        return bytes(data)
+    except OperationGatewayError:
+        raise
+    except OSError as exc:
+        raise OperationGatewayError("private_artifact_unreadable") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 class OperationLedgerStore:

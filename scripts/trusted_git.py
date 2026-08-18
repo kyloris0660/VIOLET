@@ -9,6 +9,7 @@ first proves that Git observes the same work tree the caller named.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import stat
@@ -142,15 +143,28 @@ class TrustedGitError(RuntimeError):
 class TrustedGitExecutable:
     path: Path
     fingerprint: str
+    object_identity_fingerprint: str
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
             "identity_source": "os_backed_bounded_system_location",
             "executable_fingerprint": self.fingerprint,
+            "object_identity_fingerprint": self.object_identity_fingerprint,
             "absolute_path_emitted": False,
             "repo_local": False,
             "symlink_or_reparse": False,
         }
+
+
+@dataclass(frozen=True)
+class ApprovedPythonRuntime:
+    executable: Path
+    venv_root: Path
+    executable_fingerprint: str
+    executable_identity_fingerprint: str
+    venv_root_identity_fingerprint: str
+    pyvenv_cfg_fingerprint: str
+    execution_manifest_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -173,6 +187,12 @@ class WorktreeDriftSummary:
 
 MAX_STATUS_BYTES = 4 * 1024 * 1024
 MAX_STATUS_ENTRIES = 4096
+MAX_PYVENV_CFG_BYTES = 64 * 1024
+MAX_RUNTIME_ENVIRONMENT_ENTRIES = 200_000
+_RUNTIME_CONTROL_SUFFIXES = frozenset({".pth", ".pyd", ".dll", ".so", ".dylib"})
+_RUNTIME_CONTROL_NAMES = frozenset(
+    {"sitecustomize.py", "usercustomize.py", "pytest.ini", "pyproject.toml"}
+)
 _ORDINARY_IGNORED_DIRECTORIES = frozenset(
     {
         ".pytest_cache",
@@ -344,6 +364,274 @@ def _lexically_within(path: Path, root: Path) -> bool:
         return False
 
 
+def _identity_fingerprint(metadata: os.stat_result) -> str:
+    identity = (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_size),
+        int(metadata.st_mtime_ns),
+    )
+    return hashlib.sha256(repr(identity).encode("ascii")).hexdigest()
+
+
+def _lexical_absolute(path: Path) -> Path:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        raise TrustedGitError("trusted_git_executable_lexical_path_invalid")
+    return Path(os.path.abspath(os.fspath(candidate)))
+
+
+def _assert_no_alias_components(path: Path) -> tuple[Path, os.stat_result]:
+    """Inspect the lexical chain before resolving any component."""
+
+    lexical = _lexical_absolute(path)
+    anchor = Path(lexical.anchor)
+    current = anchor
+    try:
+        anchor_metadata = os.lstat(anchor)
+        anchor_attributes = getattr(anchor_metadata, "st_file_attributes", 0)
+        if stat.S_ISLNK(anchor_metadata.st_mode) or (
+            anchor_attributes
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        ):
+            raise TrustedGitError("trusted_git_executable_alias_rejected")
+        metadata = anchor_metadata
+        for component in lexical.parts[1:]:
+            current /= component
+            metadata = os.lstat(current)
+            attributes = getattr(metadata, "st_file_attributes", 0)
+            if stat.S_ISLNK(metadata.st_mode) or (
+                attributes
+                & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            ):
+                raise TrustedGitError("trusted_git_executable_alias_rejected")
+    except TrustedGitError:
+        raise
+    except OSError as exc:
+        raise TrustedGitError("trusted_git_executable_unavailable") from exc
+    return lexical, metadata
+
+
+def _bind_executable(path: Path) -> tuple[str, str]:
+    lexical, lexical_metadata = _assert_no_alias_components(path)
+    if not stat.S_ISREG(lexical_metadata.st_mode):
+        raise TrustedGitError("trusted_git_executable_unavailable")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(lexical, flags)
+        opened = os.fstat(descriptor)
+        if (
+            opened.st_dev != lexical_metadata.st_dev
+            or opened.st_ino != lexical_metadata.st_ino
+        ):
+            raise TrustedGitError("trusted_git_executable_identity_drift")
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+        if _identity_fingerprint(opened) != _identity_fingerprint(after):
+            raise TrustedGitError("trusted_git_executable_identity_drift")
+        return digest.hexdigest(), _identity_fingerprint(after)
+    except TrustedGitError:
+        raise
+    except OSError as exc:
+        raise TrustedGitError("trusted_git_executable_unavailable") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _read_regular_nofollow(path: Path, *, max_bytes: int) -> tuple[bytes, str]:
+    lexical, lexical_metadata = _assert_no_alias_components(path)
+    if not stat.S_ISREG(lexical_metadata.st_mode):
+        raise TrustedGitError("approved_python_runtime_invalid")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(lexical, flags)
+        opened = os.fstat(descriptor)
+        if (
+            opened.st_dev != lexical_metadata.st_dev
+            or opened.st_ino != lexical_metadata.st_ino
+        ):
+            raise TrustedGitError("approved_python_runtime_identity_drift")
+        data = bytearray()
+        while True:
+            chunk = os.read(descriptor, min(64 * 1024, max_bytes + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+            if len(data) > max_bytes:
+                raise TrustedGitError("approved_python_runtime_manifest_too_large")
+        after = os.fstat(descriptor)
+        if _identity_fingerprint(opened) != _identity_fingerprint(after):
+            raise TrustedGitError("approved_python_runtime_identity_drift")
+        return bytes(data), _identity_fingerprint(after)
+    except TrustedGitError:
+        raise
+    except OSError as exc:
+        raise TrustedGitError("approved_python_runtime_invalid") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def verify_approved_python_runtime(
+    python_executable: Path,
+    *,
+    repo_root: Path,
+    timeout: float = 15,
+) -> ApprovedPythonRuntime:
+    """Bind the exact venv used by canonical pytest without trusting env redirects."""
+
+    executable_lexical, _ = _assert_no_alias_components(Path(python_executable))
+    executable = executable_lexical.resolve(strict=True)
+    venv_root_lexical = executable_lexical.parent.parent
+    venv_root_lexical, venv_metadata = _assert_no_alias_components(venv_root_lexical)
+    if not stat.S_ISDIR(venv_metadata.st_mode):
+        raise TrustedGitError("approved_python_runtime_invalid")
+    venv_root = venv_root_lexical.resolve(strict=True)
+    config_bytes, _ = _read_regular_nofollow(
+        venv_root_lexical / "pyvenv.cfg", max_bytes=MAX_PYVENV_CFG_BYTES
+    )
+    executable_digest, executable_identity = _bind_executable(executable_lexical)
+    probe = (
+        "import json,sys;print(json.dumps({"
+        "'executable':sys.executable,'prefix':sys.prefix,'base_prefix':sys.base_prefix,"
+        "'path':sys.path},sort_keys=True,separators=(',',':')))"
+    )
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.casefold().startswith("python")
+        and not key.casefold().startswith("pytest_")
+        and not key.casefold().startswith("coverage")
+        and not key.casefold().startswith("cov_core")
+    }
+    environment.update(
+        {
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        }
+    )
+    try:
+        completed = subprocess.run(
+            [os.fspath(executable), "-B", "-I", "-s", "-c", probe],
+            cwd=_canonical_root(repo_root),
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise TrustedGitError("approved_python_runtime_probe_failed") from exc
+    if completed.returncode != 0 or completed.stderr:
+        raise TrustedGitError("approved_python_runtime_probe_failed")
+    try:
+        observed = json.loads(completed.stdout)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise TrustedGitError("approved_python_runtime_probe_invalid") from exc
+    if set(observed) != {"base_prefix", "executable", "path", "prefix"}:
+        raise TrustedGitError("approved_python_runtime_probe_invalid")
+    if not isinstance(observed["path"], list) or not all(
+        isinstance(item, str) and item for item in observed["path"]
+    ):
+        raise TrustedGitError("approved_python_runtime_probe_invalid")
+    try:
+        observed_executable = Path(observed["executable"]).resolve(strict=True)
+        observed_prefix = Path(observed["prefix"]).resolve(strict=True)
+    except (OSError, TypeError) as exc:
+        raise TrustedGitError("approved_python_runtime_probe_invalid") from exc
+    if not _same_path(observed_executable, executable) or not _same_path(
+        observed_prefix, venv_root
+    ):
+        raise TrustedGitError("approved_python_runtime_identity_mismatch")
+    repo = _canonical_root(repo_root)
+    for entry in observed["path"]:
+        entry_path = Path(entry)
+        if entry_path.is_absolute() and _lexically_within(entry_path, repo):
+            if not _lexically_within(entry_path, venv_root):
+                raise TrustedGitError("approved_python_runtime_repo_redirect")
+    environment_files: list[dict[str, Any]] = []
+    scanned = 0
+    for current_root, directory_names, file_names in os.walk(
+        venv_root, topdown=True, followlinks=False
+    ):
+        directory_names.sort(key=str.casefold)
+        file_names.sort(key=str.casefold)
+        current = Path(current_root)
+        for name in (*directory_names, *file_names):
+            scanned += 1
+            if scanned > MAX_RUNTIME_ENVIRONMENT_ENTRIES:
+                raise TrustedGitError("approved_python_runtime_manifest_too_large")
+            child = current / name
+            try:
+                metadata = os.lstat(child)
+            except OSError as exc:
+                raise TrustedGitError("approved_python_runtime_invalid") from exc
+            attributes = getattr(metadata, "st_file_attributes", 0)
+            if stat.S_ISLNK(metadata.st_mode) or (
+                attributes
+                & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            ):
+                raise TrustedGitError("approved_python_runtime_alias_rejected")
+        for name in file_names:
+            child = current / name
+            suffix = child.suffix.casefold()
+            if suffix not in _RUNTIME_CONTROL_SUFFIXES and name.casefold() not in _RUNTIME_CONTROL_NAMES:
+                continue
+            metadata = os.lstat(child)
+            if suffix == ".pth" or name.casefold() in _RUNTIME_CONTROL_NAMES:
+                data, identity = _read_regular_nofollow(
+                    child, max_bytes=1024 * 1024
+                )
+                content_fingerprint = hashlib.sha256(data).hexdigest()
+            else:
+                identity = _identity_fingerprint(metadata)
+                content_fingerprint = "identity_bound_native_module"
+            environment_files.append(
+                {
+                    "relative_path": child.relative_to(venv_root).as_posix(),
+                    "identity": identity,
+                    "content_fingerprint": content_fingerprint,
+                }
+            )
+    manifest = {
+        "probe": observed,
+        "python_argv": ["-B", "-I", "-s"],
+        "forced_environment": {
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONNOUSERSITE": "1",
+        },
+        "pyvenv_cfg_fingerprint": hashlib.sha256(config_bytes).hexdigest(),
+        "execution_control_files": environment_files,
+    }
+    return ApprovedPythonRuntime(
+        executable=executable,
+        venv_root=venv_root,
+        executable_fingerprint=executable_digest,
+        executable_identity_fingerprint=executable_identity,
+        venv_root_identity_fingerprint=_identity_fingerprint(venv_metadata),
+        pyvenv_cfg_fingerprint=hashlib.sha256(config_bytes).hexdigest(),
+        execution_manifest_fingerprint=hashlib.sha256(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
+    )
+
+
 def resolve_trusted_git_executable(
     *,
     repo_root: Path | None = None,
@@ -363,9 +651,9 @@ def resolve_trusted_git_executable(
         windows_location_provider=windows_location_provider,
     ):
         try:
-            resolved = Path(candidate).resolve(strict=True)
-            metadata = os.lstat(resolved)
-        except OSError:
+            lexical, metadata = _assert_no_alias_components(Path(candidate))
+            resolved = lexical.resolve(strict=True)
+        except (OSError, TrustedGitError):
             continue
         attributes = getattr(metadata, "st_file_attributes", 0)
         if stat.S_ISLNK(metadata.st_mode) or (
@@ -377,10 +665,14 @@ def resolve_trusted_git_executable(
         if any(_lexically_within(resolved, root) for root in excluded):
             continue
         try:
-            digest = hashlib.sha256(resolved.read_bytes()).hexdigest()
-        except OSError:
+            digest, identity = _bind_executable(lexical)
+        except TrustedGitError:
             continue
-        return TrustedGitExecutable(path=resolved, fingerprint=digest)
+        return TrustedGitExecutable(
+            path=resolved,
+            fingerprint=digest,
+            object_identity_fingerprint=identity,
+        )
     raise TrustedGitError("trusted_git_executable_unavailable")
 
 
@@ -416,8 +708,14 @@ def _invoke(
     *,
     timeout: float,
 ) -> subprocess.CompletedProcess[bytes]:
+    before_digest, before_identity = _bind_executable(git.path)
+    if (
+        before_digest != git.fingerprint
+        or before_identity != git.object_identity_fingerprint
+    ):
+        raise TrustedGitError("trusted_git_executable_identity_drift")
     try:
-        return subprocess.run(
+        completed = subprocess.run(
             [*_command_prefix(git, root), *arguments],
             cwd=root,
             env=trusted_git_environment(),
@@ -430,6 +728,13 @@ def _invoke(
         raise TrustedGitError(
             f"trusted_git_invocation_failed:{type(exc).__name__}"
         ) from exc
+    after_digest, after_identity = _bind_executable(git.path)
+    if (
+        after_digest != git.fingerprint
+        or after_identity != git.object_identity_fingerprint
+    ):
+        raise TrustedGitError("trusted_git_executable_identity_drift")
+    return completed
 
 
 def _decode_utf8(raw: bytes, code: str) -> str:
@@ -650,7 +955,10 @@ def _classify_untracked(repo_root: Path, path: str, *, ignored: bool = False) ->
 
 
 def inspect_worktree_drift(
-    git: TrustedGitExecutable, repo_root: Path
+    git: TrustedGitExecutable,
+    repo_root: Path,
+    *,
+    approved_python_runtime: ApprovedPythonRuntime | None = None,
 ) -> WorktreeDriftSummary:
     root = _canonical_root(repo_root)
     completed = run_trusted_git_bytes(
@@ -660,9 +968,31 @@ def inspect_worktree_drift(
     )
     if completed.returncode != 0:
         raise TrustedGitError("trusted_git_status_failed")
+    ignored_arguments: list[str] = [
+        "ls-files",
+        "-z",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--",
+        ".",
+    ]
+    if approved_python_runtime is not None and _lexically_within(
+        approved_python_runtime.venv_root, root
+    ):
+        current_runtime = verify_approved_python_runtime(
+            approved_python_runtime.executable, repo_root=root
+        )
+        if current_runtime != approved_python_runtime:
+            raise TrustedGitError("approved_python_runtime_identity_drift")
+        relative = approved_python_runtime.venv_root.relative_to(root).as_posix()
+        validate_git_path(relative)
+        ignored_arguments.extend(
+            (f":(exclude,top){relative}", f":(exclude,top){relative}/**")
+        )
     ignored = run_trusted_git_bytes(
         root,
-        ("ls-files", "-z", "--others", "--ignored", "--exclude-standard"),
+        tuple(ignored_arguments),
         git=git,
     )
     if ignored.returncode != 0:
@@ -706,9 +1036,16 @@ def inspect_worktree_drift(
 
 
 def assert_trusted_worktree_clean(
-    git: TrustedGitExecutable, repo_root: Path
+    git: TrustedGitExecutable,
+    repo_root: Path,
+    *,
+    approved_python_runtime: ApprovedPythonRuntime | None = None,
 ) -> WorktreeDriftSummary:
-    summary = inspect_worktree_drift(git, repo_root)
+    summary = inspect_worktree_drift(
+        git,
+        repo_root,
+        approved_python_runtime=approved_python_runtime,
+    )
     if summary.tracked_count:
         raise TrustedGitError("evidence_worktree_tracked_drift")
     if summary.behavior_untracked_count:
