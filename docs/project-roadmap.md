@@ -81,8 +81,8 @@ Only synthetic/adversarial temporary fixtures were used. Canonical source and
 Cloud policy, all 14 implementation delivery gates, the negative suite, and
 executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
 post-terminal bounded-correction implementation evidence
-`46d38cff259823588863e6ef36dbd0ed886edf35` /
-`6322959f96bb55ca5a5de133c07dd3e93172087f`. Terminal review `4961359578`
+`46bc25363531d9fb1fb3995d0eb361abab84a016` /
+`476bf43b0ed771e8be33a099997019ed2d8b61fc`. Terminal review `4961359578`
 rejected projection `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
 `9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72`; the pre-terminal evidence is
 superseded and rejected, while prior regression coverage remains preserved.

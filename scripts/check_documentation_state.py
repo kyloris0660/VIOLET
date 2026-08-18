@@ -148,10 +148,12 @@ FL1_I2_IMPLEMENTATION_DECISION_ID = (
     "owner_authorized_scv2_fl1_i2_synthetic_pre_real_hardening_20260817"
 )
 FL1_I2_POST_MERGE_REVIEW_ID = 4927462216
-FL1_I2_IMPLEMENTATION_EVIDENCE_HEAD = "46d38cff259823588863e6ef36dbd0ed886edf35"
-FL1_I2_IMPLEMENTATION_EVIDENCE_TREE = "6322959f96bb55ca5a5de133c07dd3e93172087f"
-FL1_I2_POST_TERMINAL_PROJECTION_HEAD = "85407b8fd29652c5e2999c77552bf5d0ab2e1f14"
-FL1_I2_POST_TERMINAL_PROJECTION_TREE = "1d2c1243b14cfcda893840ae40bebb0c543284cc"
+FL1_I2_IMPLEMENTATION_EVIDENCE_HEAD = "46bc25363531d9fb1fb3995d0eb361abab84a016"
+FL1_I2_IMPLEMENTATION_EVIDENCE_TREE = "476bf43b0ed771e8be33a099997019ed2d8b61fc"
+FL1_I2_PRE_RECEIPT_EVIDENCE_HEAD = "46d38cff259823588863e6ef36dbd0ed886edf35"
+FL1_I2_PRE_RECEIPT_EVIDENCE_TREE = "6322959f96bb55ca5a5de133c07dd3e93172087f"
+FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_HEAD = "85407b8fd29652c5e2999c77552bf5d0ab2e1f14"
+FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_TREE = "1d2c1243b14cfcda893840ae40bebb0c543284cc"
 FL1_I2_PRE_TERMINAL_EVIDENCE_HEAD = "4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5"
 FL1_I2_PRE_TERMINAL_EVIDENCE_TREE = "e3dc5d6d6047b195964123396bf3b814665010b7"
 FL1_I2_SUPERSEDED_EVIDENCE_HEAD = "78ccbdc69ee1bf0f51c297435b56e2be868b54e9"
@@ -740,9 +742,12 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "fl1_i2_implementation_evidence_head": FL1_I2_IMPLEMENTATION_EVIDENCE_HEAD,
         "fl1_i2_implementation_evidence_tree": FL1_I2_IMPLEMENTATION_EVIDENCE_TREE,
         "fl1_i2_implementation_evidence_frozen": True,
-        "fl1_i2_post_terminal_governance_projection_head": FL1_I2_POST_TERMINAL_PROJECTION_HEAD,
-        "fl1_i2_post_terminal_governance_projection_tree": FL1_I2_POST_TERMINAL_PROJECTION_TREE,
-        "fl1_i2_post_terminal_governance_projection_frozen": True,
+        "fl1_i2_pre_receipt_evidence_head": FL1_I2_PRE_RECEIPT_EVIDENCE_HEAD,
+        "fl1_i2_pre_receipt_evidence_tree": FL1_I2_PRE_RECEIPT_EVIDENCE_TREE,
+        "fl1_i2_pre_receipt_evidence_status": "superseded_by_validation_temp_cleanup_correction",
+        "fl1_i2_intermediate_post_terminal_projection_head": FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_HEAD,
+        "fl1_i2_intermediate_post_terminal_projection_tree": FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_TREE,
+        "fl1_i2_intermediate_post_terminal_projection_status": "superseded_by_validation_temp_cleanup_correction",
         "fl1_i2_superseded_evidence_head": FL1_I2_SUPERSEDED_EVIDENCE_HEAD,
         "fl1_i2_superseded_evidence_tree": FL1_I2_SUPERSEDED_EVIDENCE_TREE,
         "fl1_i2_superseded_evidence_reason": (
@@ -1017,16 +1022,16 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         checkpoint
         for checkpoint in state["completed_checkpoints"]
         if isinstance(checkpoint, dict)
-        and checkpoint.get("id") == "fl1_i2_post_terminal_governance_projection"
+        and checkpoint.get("id") == "fl1_i2_intermediate_post_terminal_governance_projection"
     ]
     if projection_checkpoints != [
         {
-            "id": "fl1_i2_post_terminal_governance_projection",
+            "id": "fl1_i2_intermediate_post_terminal_governance_projection",
             "result": (
                 "post_terminal_review_rejection_and_bounded_correction_truth_"
                 "projected_pending_exact_head_owner_reaudit"
             ),
-            "fingerprint": FL1_I2_POST_TERMINAL_PROJECTION_HEAD,
+            "fingerprint": FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_HEAD,
         }
     ]:
         raise DocumentationStateError("fl1_i2_post_terminal_projection_checkpoint_invalid")
@@ -1778,7 +1783,7 @@ def validate_git_ancestry(
     implementation = str(state["implementation_evidence_head"])
     projection = str(
         state.get("protected_evidence", {}).get(
-            "fl1_i2_post_terminal_governance_projection_head", ""
+            "fl1_i2_intermediate_post_terminal_projection_head", ""
         )
     )
     expected_commit_trees: dict[str, str] = {}
@@ -1801,7 +1806,7 @@ def validate_git_ancestry(
             ),
             projection: str(
                 state["protected_evidence"][
-                    "fl1_i2_post_terminal_governance_projection_tree"
+                    "fl1_i2_intermediate_post_terminal_projection_tree"
                 ]
             ),
             base: FL1_I2_PLANNING_MERGE_TREE,
@@ -1837,7 +1842,7 @@ def validate_git_ancestry(
         )
         if projection_check.returncode != 0:
             raise DocumentationStateError(
-                "fl1_i2_post_terminal_projection_not_ancestor"
+                "fl1_i2_intermediate_post_terminal_projection_not_ancestor"
             )
 
     implementation_check = _run_trusted_git(
@@ -2050,7 +2055,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Previous final HEAD/tree: `{state['previous_phase_final_head']}` / `{state['previous_phase_final_tree']}`; merge commit: `{state['previous_phase_merge_commit']}`.",
         f"- Previous I1 implementation evidence HEAD/tree: `{state['protected_evidence']['previous_phase_implementation_evidence_head']}` / `{state['protected_evidence']['previous_phase_implementation_evidence_tree']}` (frozen: `true`; accepted scope: `{state['previous_phase_accepted_scope']}`).",
         f"- Current I2 post-terminal bounded-correction implementation evidence HEAD/tree: `{state['implementation_evidence_head']}` / `{state['protected_evidence']['fl1_i2_implementation_evidence_tree']}`; contract: `{state['protected_evidence']['fl1_i2_contract_id']}`; fourteen delivery gates are re-established only in this new synthetic evidence and remain pending exact-HEAD owner re-audit.",
-        f"- Post-terminal governance projection HEAD/tree: `{state['protected_evidence']['fl1_i2_post_terminal_governance_projection_head']}` / `{state['protected_evidence']['fl1_i2_post_terminal_governance_projection_tree']}`; the current HEAD is a governance-only binding carry-forward.",
+        f"- Intermediate post-terminal governance projection HEAD/tree: `{state['protected_evidence']['fl1_i2_intermediate_post_terminal_projection_head']}` / `{state['protected_evidence']['fl1_i2_intermediate_post_terminal_projection_tree']}`; it was superseded after canonical receipt exposed and the implementation closed a task-owned Windows readonly cleanup gap.",
         f"- PR #146 correction history: review `{state['protected_evidence']['fl1_i2_bounded_correction_review_id']}` and its `{len(state['protected_evidence']['fl1_i2_bounded_correction_thread_ids'])}` findings remain regression-covered; review `{state['protected_evidence']['fl1_i2_final_convergence_review_id']}` and its `{len(state['protected_evidence']['fl1_i2_final_convergence_thread_ids'])}` findings remain regression-covered; terminal review `{state['protected_evidence']['fl1_i2_post_terminal_review_id']}` rejected `{state['protected_evidence']['fl1_i2_terminal_rejected_head']}` / `{state['protected_evidence']['fl1_i2_terminal_rejected_tree']}` with `{len(state['protected_evidence']['fl1_i2_post_terminal_findings'])}` accepted findings superseded by the new additive evidence; one post-terminal follow-up Codex review is authorized.",
         f"- Terminal review: `{state['previous_phase_terminal_review_id']}` at `{state['previous_phase_final_head']}`; findings: `{state['previous_phase_terminal_review_findings']}` (`P1={state['previous_phase_terminal_review_p1']}`, `P2={state['previous_phase_terminal_review_p2']}`); GitHub checks: `{state['previous_phase_github_checks']}`.",
         f"- Status: `{state['current_status']}`.",

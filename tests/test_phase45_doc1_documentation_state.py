@@ -65,10 +65,10 @@ def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
     assert state["protected_evidence"]["fl1_i2_final_convergence_review_id"] == 4952516658
     assert state["protected_evidence"]["fl1_i2_one_terminal_followup_review_authorized"] is True
     assert state["protected_evidence"]["fl1_i2_post_terminal_review_id"] == 4961359578
-    assert state["protected_evidence"]["fl1_i2_post_terminal_governance_projection_head"] == (
+    assert state["protected_evidence"]["fl1_i2_intermediate_post_terminal_projection_head"] == (
         "85407b8fd29652c5e2999c77552bf5d0ab2e1f14"
     )
-    assert state["protected_evidence"]["fl1_i2_post_terminal_governance_projection_tree"] == (
+    assert state["protected_evidence"]["fl1_i2_intermediate_post_terminal_projection_tree"] == (
         "1d2c1243b14cfcda893840ae40bebb0c543284cc"
     )
     assert len(state["protected_evidence"]["fl1_i2_post_terminal_findings"]) == 9

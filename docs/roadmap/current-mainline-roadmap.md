@@ -67,8 +67,8 @@ review `4961359578` rejected the prior projection
 `4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
 `e3dc5d6d6047b195964123396bf3b814665010b7` is superseded and rejected. The
 nine accepted findings and all 14 delivery gates are re-established only at
-new bounded-correction evidence `46d38cff259823588863e6ef36dbd0ed886edf35` /
-`6322959f96bb55ca5a5de133c07dd3e93172087f`.
+new bounded-correction evidence `46bc25363531d9fb1fb3995d0eb361abab84a016` /
+`476bf43b0ed771e8be33a099997019ed2d8b61fc`.
 Executable contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without
 accepting caller booleans. The result remains local operator evidence pending
