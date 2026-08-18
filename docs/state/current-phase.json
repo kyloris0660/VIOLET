@@ -175,6 +175,11 @@
       "id": "fl1_i2_synthetic_implementation_evidence",
       "result": "post_terminal_bounded_correction_reestablishes_fourteen_delivery_gates_with_executable_contract_pending_owner_reaudit",
       "fingerprint": "46d38cff259823588863e6ef36dbd0ed886edf35"
+    },
+    {
+      "id": "fl1_i2_post_terminal_governance_projection",
+      "result": "post_terminal_review_rejection_and_bounded_correction_truth_projected_pending_exact_head_owner_reaudit",
+      "fingerprint": "85407b8fd29652c5e2999c77552bf5d0ab2e1f14"
     }
   ],
   "active_blocker": {
@@ -382,6 +387,9 @@
     "fl1_i2_implementation_evidence_head": "46d38cff259823588863e6ef36dbd0ed886edf35",
     "fl1_i2_implementation_evidence_tree": "6322959f96bb55ca5a5de133c07dd3e93172087f",
     "fl1_i2_implementation_evidence_frozen": true,
+    "fl1_i2_post_terminal_governance_projection_head": "85407b8fd29652c5e2999c77552bf5d0ab2e1f14",
+    "fl1_i2_post_terminal_governance_projection_tree": "1d2c1243b14cfcda893840ae40bebb0c543284cc",
+    "fl1_i2_post_terminal_governance_projection_frozen": true,
     "fl1_i2_superseded_evidence_head": "78ccbdc69ee1bf0f51c297435b56e2be868b54e9",
     "fl1_i2_superseded_evidence_tree": "311b34f7c7fb5e5947b696598ded15dfd325e3f4",
     "fl1_i2_superseded_evidence_reason": "owner_adjudicated_pr146_review_findings_require_bounded_correction",
@@ -679,5 +687,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-18T22:54:19+08:00"
+  "updated_at": "2026-08-18T23:03:00+08:00"
 }
