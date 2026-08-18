@@ -35,7 +35,7 @@ has frozen synthetic pre-real implementation evidence on branch
 source is `docs/state/current-phase.json`.
 
 ```text
-status=fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit
+status=fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -51,7 +51,7 @@ route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_terminal_review_and_owner_audit
+active_blocker=pending_fl1_i2_post_terminal_exact_head_owner_reaudit
 ```
 
 PR #144 terminal review `4897012517` covered exact final HEAD
@@ -60,16 +60,19 @@ PR #144 terminal review `4897012517` covered exact final HEAD
 findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
 `github_checks=0`, and CI authority remains false. Fourteen findings and the
-final convergence corrections are closed at frozen implementation evidence
-HEAD/tree `4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
-`e3dc5d6d6047b195964123396bf3b814665010b7`. The prior bounded correction
-review remains covered by its regressions. Exact-head review `4952516658`
-rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; its seven accepted findings
-are superseded by this additive correction evidence.
+final convergence corrections remain covered by regression evidence. Terminal
+review `4961359578` rejected the prior projection
+`ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
+`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72`; pre-terminal evidence
+`4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
+`e3dc5d6d6047b195964123396bf3b814665010b7` is superseded and rejected. The
+nine accepted findings and all 14 delivery gates are re-established only at
+new bounded-correction evidence `46d38cff259823588863e6ef36dbd0ed886edf35` /
+`6322959f96bb55ca5a5de133c07dd3e93172087f`.
 Executable contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without
 accepting caller booleans. The result remains local operator evidence pending
-the one authorized terminal review and owner audit, not CI, target,
+the one authorized post-terminal review and exact-HEAD owner re-audit, not CI, target,
 safe-to-merge, merge, route, or real-source authority.
 Parent-observed child identity is
 kept as a local-evidence claim boundary, not described as tamper-resistant,

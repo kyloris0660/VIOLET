@@ -32,7 +32,7 @@ Current phase `SCV2-FL1-I2` has frozen synthetic pre-real hardening
 implementation evidence and awaits exact-HEAD owner audit:
 
 ```text
-current_status=fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit
+current_status=fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -57,7 +57,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_terminal_review_and_owner_audit
+active_blocker=pending_fl1_i2_post_terminal_exact_head_owner_reaudit
 ```
 
 ## Accepted Mainline Sequence
@@ -80,12 +80,13 @@ PR #142 remains closed, unmerged, and non-authoritative.
 Only synthetic/adversarial temporary fixtures were used. Canonical source and
 Cloud policy, all 14 implementation delivery gates, the negative suite, and
 executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
-final convergence implementation evidence
-`4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
-`e3dc5d6d6047b195964123396bf3b814665010b7`. Exact-head review `4952516658`
-rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; its seven accepted findings
-are superseded while prior correction regressions remain preserved. The result
-stops at the authorized terminal review and owner audit;
+post-terminal bounded-correction implementation evidence
+`46d38cff259823588863e6ef36dbd0ed886edf35` /
+`6322959f96bb55ca5a5de133c07dd3e93172087f`. Terminal review `4961359578`
+rejected projection `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
+`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72`; the pre-terminal evidence is
+superseded and rejected, while prior regression coverage remains preserved.
+The result stops at the authorized post-terminal review and exact-HEAD owner re-audit;
 `target_met`, `safe_to_merge`, merge authority, route approval, and every
 real-source/data authority remain false.
 

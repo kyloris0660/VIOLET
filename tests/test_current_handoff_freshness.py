@@ -506,7 +506,7 @@ def test_terminal_review_use_before_register_is_complete() -> None:
 def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
     state = _state()
     assert state["active_blocker"]["code"] == (
-        "pending_fl1_i2_terminal_review_and_owner_audit"
+        "pending_fl1_i2_post_terminal_exact_head_owner_reaudit"
     )
     preconditions = state["next_phase_authorization"]["required_preconditions"]
     assert preconditions[0].startswith("PR #145 is merged")
@@ -550,8 +550,8 @@ def test_windows_same_handle_feasibility_checkpoint_is_exact() -> None:
         "open_itself_only_not_later_read_guarantee"
     )
     assert state["next_required_checkpoint"] == (
-        "one_authorized_terminal_codex_review_then_exact_final_head_"
-        "owner_audit_without_merge_or_i3"
+        "one_authorized_post_terminal_codex_review_then_exact_final_head_"
+        "owner_reaudit_without_merge_or_i3"
     )
 
 

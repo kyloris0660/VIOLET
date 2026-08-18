@@ -84,7 +84,7 @@ owner decision cannot be synthesized by a contract.
 
 Current synthetic implementation projection:
 
-- `status=fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit`
+- `status=fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit`
 - `planning_authorized=true`
 - `planning_completed=true`
 - `planning_approved=true`
@@ -99,7 +99,7 @@ Current synthetic implementation projection:
 - `route_approved=false`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pending_fl1_i2_terminal_review_and_owner_audit`
+- blocker: `pending_fl1_i2_post_terminal_exact_head_owner_reaudit`
 
 Terminal review `4897012517` at the exact final HEAD produced 17 historical
 findings (13 P1, 4 P2). The complete use-before projection is:
@@ -126,18 +126,19 @@ findings (13 P1, 4 P2). The complete use-before projection is:
 
 The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
 only for its narrow synthetic foundation. I2 contract
-`scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at final
-convergence implementation evidence HEAD/tree
-`4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
-`e3dc5d6d6047b195964123396bf3b814665010b7`. Exact-head review `4952516658`
-rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; its seven accepted findings
-are superseded while the prior ten-finding correction regressions remain.
+`scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at post-terminal
+bounded-correction implementation evidence HEAD/tree
+`46d38cff259823588863e6ef36dbd0ed886edf35` /
+`6322959f96bb55ca5a5de133c07dd3e93172087f`. Terminal review `4961359578`
+rejected `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
+`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72`; the pre-terminal evidence is
+superseded and rejected while its regression coverage remains.
 The contract reconstructs the 14 gate
 closures from fixed-name, no-follow private artifacts and trusted repository
 state; caller JSON cannot create a positive result. Its local receipt is not
 CI or owner authority. `target_met`, `safe_to_merge`, route, merge, I3, and
-every real-source/data authority remain false pending the authorized terminal
-review and exact final-HEAD owner audit.
+every real-source/data authority remain false pending the authorized
+post-terminal review and exact final-HEAD owner re-audit.
 
 The I2 contract preserves these continuing boundaries:
 

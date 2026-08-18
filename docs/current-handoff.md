@@ -11,12 +11,12 @@
 - Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.
 - Previous final HEAD/tree: `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; merge commit: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
 - Previous I1 implementation evidence HEAD/tree: `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf` (frozen: `true`; accepted scope: `synthetic_and_new_temporary_fixture_foundation_only`).
-- Current I2 implementation evidence HEAD/tree: `4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` / `e3dc5d6d6047b195964123396bf3b814665010b7`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates closed in synthetic evidence.
-- PR #146 correction history: review `4952182962` and its `10` accepted findings remain covered by regression evidence; exact-head review `4952516658` rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2` / `83f28d1f0dbb50f4ac0331b4c14cc046383eb6f7` with `7` accepted findings now closed in the additive implementation evidence; one terminal Codex review is authorized.
+- Current I2 post-terminal bounded-correction implementation evidence HEAD/tree: `46d38cff259823588863e6ef36dbd0ed886edf35` / `6322959f96bb55ca5a5de133c07dd3e93172087f`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates are re-established only in this new synthetic evidence and remain pending exact-HEAD owner re-audit.
+- PR #146 correction history: review `4952182962` and its `10` findings remain regression-covered; review `4952516658` and its `7` findings remain regression-covered; terminal review `4961359578` rejected `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` / `9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72` with `9` accepted findings superseded by the new additive evidence; one post-terminal follow-up Codex review is authorized.
 - Terminal review: `4897012517` at `2f8d5f8ce6cde9759c530de71d4ddd1893481656`; findings: `17` (`P1=13`, `P2=4`); GitHub checks: `0`.
-- Status: `fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit`.
+- Status: `fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit`.
 - `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- Planning: `authorized=true`, `completed=true`, `approved=true`; `manual_acceptance_status=pending_fl1_i2_terminal_owner_audit`.
+- Planning: `authorized=true`, `completed=true`, `approved=true`; `manual_acceptance_status=pending_fl1_i2_post_terminal_exact_head_owner_reaudit`.
 - Owner-approved planning HEAD/tree: `acb12c1db258fdef1d4f063b053d422e0d887abf` / `fc573c7646ad5edf10c32c7712de7f27ab058a2a`.
 - Owner evidence: PR `#145`, review `4907783329`, thread `PRRT_kwDOSTBMB86YRuq7`, comment `3759240785`; the P1 exact-revision finding closes in this governance projection binding.
 - Planning owner acceptance / current implementation merge authorization: `true/false`.
@@ -31,7 +31,7 @@
 - `fl1_i2_exact_plan_owner_acceptance`: `owner_accepted_exact_planning_head_tree_pending_expected_head_merge` - `acb12c1db258fdef1d4f063b053d422e0d887abf`.
 - `fl1_i2_g0_post_merge_governance_entry_gate`: `five_post_merge_p1_findings_closed_in_shared_git_state_and_history_guards` - `1913bd27517efc1a6007a202fc9650de4f20fab4`.
 - `fl1_i2_windows_same_handle_feasibility`: `pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback` - `windows_live_temp_file_id_extd_ntcreatefile_v1`.
-- `fl1_i2_synthetic_implementation_evidence`: `fourteen_delivery_gates_and_final_convergence_findings_closed_with_executable_contract_registered` - `4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5`.
+- `fl1_i2_synthetic_implementation_evidence`: `post_terminal_bounded_correction_reestablishes_fourteen_delivery_gates_with_executable_contract_pending_owner_reaudit` - `46d38cff259823588863e6ef36dbd0ed886edf35`.
 
 ## PR #144 Terminal Review Use-Before Classification
 
@@ -57,8 +57,8 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 
 ## Current Gate And Boundary
 
-- Gate: `pending_fl1_i2_terminal_review_and_owner_audit` (SCV2-FL1-I2 final convergence correction evidence in PR #146; all merge, I3, real-source, and data-plane authority remains false).
-- Resolution: After exact local validation and a normal push, request the one authorized terminal Codex review and stop for project-owner audit. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this correction evidence grants neither.
+- Gate: `pending_fl1_i2_post_terminal_exact_head_owner_reaudit` (SCV2-FL1-I2 post-terminal bounded-correction evidence in PR #146; all merge, I3, real-source, and data-plane authority remains false).
+- Resolution: After exact local validation and a normal push, request the one authorized post-terminal Codex review and stop for project-owner exact-HEAD re-audit. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this correction evidence grants neither.
 - Planning only: `false`; implementation/data/production authorization: `true/false/false`.
 - Existing database/real inventory/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `$0`.
 - Public evidence boundary: `trust_level=local_operator_receipt`, `machine_verifiable_ci=false`, `github_checks=0`.
@@ -67,12 +67,12 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 
 ## Allowed / Forbidden
 
-- Allowed: implement SCV2-FL1-I2 synthetic pre-real hardening only in the isolated clean linked worktree; create and use only adversarial newly created temporary fixtures under task-owned temporary roots; run repository-venv compile, documentation, focused, synthetic, compatibility, and full non-E2E validation; create one implementation branch and one Draft PR, then promote it ready once after final evidence freeze; perform authorized Git and GitHub governance control-plane operations required for remote synchronization, branch push, Draft PR creation, and final ready transition.
+- Allowed: implement SCV2-FL1-I2 synthetic pre-real hardening only in the isolated clean linked worktree; create and use only adversarial newly created temporary fixtures under task-owned temporary roots; run repository-venv compile, documentation, focused, synthetic, compatibility, and full non-E2E validation; continue the existing implementation branch and PR #146 with bounded additive post-terminal correction only; perform authorized Git and GitHub governance control-plane operations required for remote synchronization, normal branch push, PR body update, and one post-terminal Codex review request.
 - Forbidden: listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root; existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; app-managed storage or staging storage creation, access, comparison, or write; import, classification, AI tagging, localization, graph, search, or background worker execution; Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation; provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or external source/provider/model/media/data-plane network request; Stable Replay import, reuse, replay, or authoritative evidence consumption; production, watcher, scheduler, background worker, UI runtime server, I3 canary, I4 inventory, E1, E2, V1, or later phase execution; cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, any merge, removal of the isolated worktree or implementation branch, or any PR #145 thread reply, resolution, or reaction.
 
 ## Next Action
 
-- Required checkpoint: `one_authorized_terminal_codex_review_then_exact_final_head_owner_audit_without_merge_or_i3`.
+- Required checkpoint: `one_authorized_post_terminal_codex_review_then_exact_final_head_owner_reaudit_without_merge_or_i3`.
 
 ## Durable Links
 
@@ -87,7 +87,7 @@ All 17 findings remain historical audit records. No PR #144 thread was replied t
 
 ## Deferred Debt
 
-- `FL1_I2_OWNER_AUDIT_AND_MERGE_GATE` - owner: SCV2-FL1-I2 project owner; due before: `any safe_to_merge or merge_authorized projection, merge, SCV2-FL1-I3, or real-source operation`; The fourteen delivery gates and executable contract are locally complete on frozen synthetic evidence, but local operator evidence is not owner acceptance, CI, safe-to-merge authority, or merge authority. Requirements: audit the exact final PR #146 HEAD/tree, all current review findings, and the registered SCV2-FL1-I2 contract; issue any acceptance as a separate exact-head governance projection that keeps target_met and every real-source/data authority false; grant safe-to-merge and expected-head merge authority explicitly if and only if the exact implementation evidence is accepted; stop after merge until a separate FL1_I3_REAL_SOURCE_SCOPE_GATE is authorized.
+- `FL1_I2_OWNER_AUDIT_AND_MERGE_GATE` - owner: SCV2-FL1-I2 project owner; due before: `any safe_to_merge or merge_authorized projection, merge, SCV2-FL1-I3, or real-source operation`; The pre-terminal evidence was rejected by review 4961359578. The fourteen delivery gates and executable contract are re-established only on the new frozen synthetic correction evidence, but local operator evidence is not owner acceptance, CI, safe-to-merge authority, or merge authority. Requirements: audit the exact final PR #146 HEAD/tree, all current review findings, and the registered SCV2-FL1-I2 contract; issue any acceptance as a separate exact-head governance projection that keeps target_met and every real-source/data authority false; grant safe-to-merge and expected-head merge authority explicitly if and only if the exact implementation evidence is accepted; stop after merge until a separate FL1_I3_REAL_SOURCE_SCOPE_GATE is authorized.
 - `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized SCV2-FL1-I3 canary owner; due before: `any real source or iCloud listing, stat, attribute observation, open, read, hash, or structure validation`; No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists. Requirements: bind exact private source identity and finite scope; approve complete protected roots and public redaction boundary; approve enumeration, time, disk, read, hash, failure, and sample budgets; defer every recall-risk object without hydration and stop on structural identity or evidence drift.
 - `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future threat-model owner only if malicious same-account process resistance becomes a product requirement; due before: `any claim upgrades local invocation provenance to adversarial tamper resistance`; Parent-observed child identity is useful local operator evidence but is not OS, kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep current claims limited to local operator provenance; do not present parent receipts as CI or tamper-resistant evidence; do not expand a personal local inventory tool into forensic attestation without a separate need and design.
-Updated: `2026-08-18T20:49:00+08:00`.
+Updated: `2026-08-18T22:54:19+08:00`.

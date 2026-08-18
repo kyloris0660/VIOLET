@@ -5,18 +5,20 @@
 This document is the canonical public-safe FL1 route plan. The current phase is
 `SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness`.
 Its status is
-`fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit`.
+`fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit`.
 
 The accepted planning HEAD/tree remain immutable Git-history evidence at
 `acb12c1db258fdef1d4f063b053d422e0d887abf` /
 `fc573c7646ad5edf10c32c7712de7f27ab058a2a`. The separately authorized
-synthetic implementation has occurred in PR #146. Exact-head review
-`4952516658` rejected HEAD/tree
-`441d0c1bb1d8d0823b6f24c31accf44e068509f2` /
-`83f28d1f0dbb50f4ac0331b4c14cc046383eb6f7`; its seven accepted findings and
-the owner-required recursive traversal/run-wide budget closure are frozen at
-the corrected implementation evidence below, pending one terminal review and
-exact-HEAD owner audit.
+synthetic implementation has occurred in PR #146. Earlier exact-head review
+`4952516658` rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`;
+its regression closure remains preserved. Terminal review `4961359578`
+rejected projection HEAD/tree
+`ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
+`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72` with nine accepted findings. The
+pre-terminal evidence is superseded and rejected; its established regressions
+remain. The post-terminal bounded correction below re-establishes all 14 gates
+pending one follow-up review and exact-HEAD owner re-audit.
 
 PR #144 merged SCV2-FL1-I1 at merge commit
 `8955b95e91630d4c5e18e1e2ca252b19754c81d5`. The owner accepted its final
@@ -41,8 +43,8 @@ real source/data operation, or production:
 planning_authorized=true
 planning_completed=true
 planning_approved=true
-implementation_evidence_head=4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5
-implementation_evidence_tree=e3dc5d6d6047b195964123396bf3b814665010b7
+implementation_evidence_head=46d38cff259823588863e6ef36dbd0ed886edf35
+implementation_evidence_tree=6322959f96bb55ca5a5de133c07dd3e93172087f
 merge_authorized=false
 implementation_authorized=true
 implementation_started=true
@@ -62,7 +64,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_terminal_review_and_owner_audit
+active_blocker=pending_fl1_i2_post_terminal_exact_head_owner_reaudit
 ```
 
 ## 2. Governing Principles

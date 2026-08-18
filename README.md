@@ -37,19 +37,21 @@ PR #144 merged the `SCV2-FL1-I1` inventory foundation, but the owner accepted
 it only for synthetic and newly created temporary fixtures. PR #145 merged the
 owner-accepted `SCV2-FL1-I2` plan at merge commit
 `1913bd27517efc1a6007a202fc9650de4f20fab4`. The separately authorized
-synthetic pre-real hardening implementation has a final convergence correction
-frozen at implementation evidence HEAD/tree
-`4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
-`e3dc5d6d6047b195964123396bf3b814665010b7`. Exact-head review `4952516658`
-rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; the seven accepted findings
-are superseded by additive code and regression evidence. Contract
+synthetic pre-real hardening implementation now has a post-terminal bounded
+correction frozen at implementation evidence HEAD/tree
+`46d38cff259823588863e6ef36dbd0ed886edf35` /
+`6322959f96bb55ca5a5de133c07dd3e93172087f`. Terminal review `4961359578`
+rejected the prior projection `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
+`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72` with nine accepted findings; the
+pre-terminal evidence `4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` is superseded and rejected.
+Contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives all 14 delivery gates
 from confined private synthetic evidence. The owner accepted exact planning HEAD/tree
 `acb12c1db258fdef1d4f063b053d422e0d887abf` /
 `fc573c7646ad5edf10c32c7712de7f27ab058a2a`; planning remains approved, while
 the one-time planning merge authority is consumed. The 14 engineering findings
-are closed in the corrected frozen synthetic evidence, but the one authorized
-terminal review and exact-HEAD owner audit remain pending. Local evidence
+are re-established only in the new corrected synthetic evidence, but one
+authorized post-terminal review and exact-HEAD owner re-audit remain pending. Local evidence
 grants no `safe_to_merge`, merge,
 target, route, I3, or real-source authority. I2 execution remained restricted
 to adversarial newly created temporary fixtures. Real source/iCloud access,
