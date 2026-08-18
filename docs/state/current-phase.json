@@ -7,9 +7,9 @@
   "pr_number": 146,
   "draft": false,
   "accepted_mainline_base": "1913bd27517efc1a6007a202fc9650de4f20fab4",
-  "implementation_evidence_head": "8a4801ad216c668ba74b2ed1ddc131de2bbad5de",
-  "implementation_evidence_status": "current_i2_bounded_correction_implementation_evidence_frozen",
-  "current_status": "fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit",
+  "implementation_evidence_head": "8052ca4fd60becbae3ce512b4ea5f270e9ee177d",
+  "implementation_evidence_status": "current_i2_final_convergence_implementation_evidence_frozen",
+  "current_status": "fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -19,7 +19,7 @@
   "planning_approved": true,
   "approved_planning_head": "acb12c1db258fdef1d4f063b053d422e0d887abf",
   "approved_planning_tree": "fc573c7646ad5edf10c32c7712de7f27ab058a2a",
-  "manual_acceptance_status": "pending_fl1_i2_bounded_correction_owner_reaudit",
+  "manual_acceptance_status": "pending_fl1_i2_terminal_owner_audit",
   "next_phase_started": true,
   "previous_phase": "SCV2-FL1-I1",
   "previous_phase_status": "owner_accepted_and_merge_commit_merged",
@@ -173,14 +173,14 @@
     },
     {
       "id": "fl1_i2_synthetic_implementation_evidence",
-      "result": "fourteen_delivery_gates_closed_and_executable_contract_registered",
-      "fingerprint": "8a4801ad216c668ba74b2ed1ddc131de2bbad5de"
+      "result": "fourteen_delivery_gates_and_final_convergence_findings_closed_with_executable_contract_registered",
+      "fingerprint": "8052ca4fd60becbae3ce512b4ea5f270e9ee177d"
     }
   ],
   "active_blocker": {
-    "code": "pending_fl1_i2_bounded_followup_review_and_owner_reaudit",
-    "scope": "SCV2-FL1-I2 bounded additive correction evidence in PR #146; all real-source and data-plane authority remains false",
-    "resolution": "After exact local validation and a normal push, request the one authorized follow-up Codex review and stop for project-owner re-audit. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this correction evidence grants neither."
+    "code": "pending_fl1_i2_terminal_review_and_owner_audit",
+    "scope": "SCV2-FL1-I2 final convergence correction evidence in PR #146; all merge, I3, real-source, and data-plane authority remains false",
+    "resolution": "After exact local validation and a normal push, request the one authorized terminal Codex review and stop for project-owner audit. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this correction evidence grants neither."
   },
   "owner_decisions": [
     {
@@ -254,6 +254,30 @@
       "same_branch_normal_push_authorized": true,
       "one_followup_codex_review_authorized": true,
       "merge_authorized": false,
+      "real_source_inventory_authorized": false
+    },
+    {
+      "id": "owner_authorized_scv2_fl1_i2_pr146_final_convergence_20260818",
+      "decision": "Authorize the final additive convergence correction in PR #146 for seven accepted exact-head findings plus bounded recursive same-handle traversal and run-wide budget closure, followed by one terminal Codex review and an owner audit stop.",
+      "pr_number": 146,
+      "rejected_head": "441d0c1bb1d8d0823b6f24c31accf44e068509f2",
+      "rejected_tree": "83f28d1f0dbb50f4ac0331b4c14cc046383eb6f7",
+      "review_id": 4952516658,
+      "thread_ids": [
+        "PRRT_kwDOSTBMB86Z0xo5",
+        "PRRT_kwDOSTBMB86Z0xo6",
+        "PRRT_kwDOSTBMB86Z0xo7",
+        "PRRT_kwDOSTBMB86Z0xo-",
+        "PRRT_kwDOSTBMB86Z0xpB",
+        "PRRT_kwDOSTBMB86Z0xpD",
+        "PRRT_kwDOSTBMB86Z0xpG"
+      ],
+      "finding_disposition": "accept_and_require_fix",
+      "final_convergence_correction_authorized": true,
+      "same_branch_normal_push_authorized": true,
+      "one_terminal_followup_review_authorized": true,
+      "merge_authorized": false,
+      "i3_started": false,
       "real_source_inventory_authorized": false
     }
   ],
@@ -330,8 +354,8 @@
     "windows_same_handle_feasibility_scope": "os_created_temporary_directory_only",
     "windows_same_handle_no_path_fallback": true,
     "file_open_no_recall_claim_scope": "open_itself_only_not_later_read_guarantee",
-    "fl1_i2_implementation_evidence_head": "8a4801ad216c668ba74b2ed1ddc131de2bbad5de",
-    "fl1_i2_implementation_evidence_tree": "7cb6a34f603fa70ef2e364ac9295df885b6061bb",
+    "fl1_i2_implementation_evidence_head": "8052ca4fd60becbae3ce512b4ea5f270e9ee177d",
+    "fl1_i2_implementation_evidence_tree": "c278143903da1f7703c4e015f626407f7e5d8236",
     "fl1_i2_implementation_evidence_frozen": true,
     "fl1_i2_superseded_evidence_head": "78ccbdc69ee1bf0f51c297435b56e2be868b54e9",
     "fl1_i2_superseded_evidence_tree": "311b34f7c7fb5e5947b696598ded15dfd325e3f4",
@@ -351,6 +375,20 @@
     ],
     "fl1_i2_bounded_correction_authorized": true,
     "fl1_i2_one_followup_codex_review_authorized": true,
+    "fl1_i2_final_convergence_rejected_head": "441d0c1bb1d8d0823b6f24c31accf44e068509f2",
+    "fl1_i2_final_convergence_rejected_tree": "83f28d1f0dbb50f4ac0331b4c14cc046383eb6f7",
+    "fl1_i2_final_convergence_review_id": 4952516658,
+    "fl1_i2_final_convergence_thread_ids": [
+      "PRRT_kwDOSTBMB86Z0xo5",
+      "PRRT_kwDOSTBMB86Z0xo6",
+      "PRRT_kwDOSTBMB86Z0xo7",
+      "PRRT_kwDOSTBMB86Z0xo-",
+      "PRRT_kwDOSTBMB86Z0xpB",
+      "PRRT_kwDOSTBMB86Z0xpD",
+      "PRRT_kwDOSTBMB86Z0xpG"
+    ],
+    "fl1_i2_final_convergence_correction_authorized": true,
+    "fl1_i2_one_terminal_followup_review_authorized": true,
     "fl1_i2_contract_id": "scv2_fl1_i2_pre_real_hardening_contract_v1",
     "fl1_i2_public_schema": "violet.scv2-fl1-i2-public-summary.v1",
     "fl1_i2_delivery_gate_count": 14,
@@ -525,7 +563,7 @@
       "classification": "closed_in_fl1_i2_synthetic_implementation_evidence"
     }
   ],
-  "next_required_checkpoint": "one_authorized_followup_codex_review_then_exact_corrected_head_owner_reaudit_without_merge",
+  "next_required_checkpoint": "one_authorized_terminal_codex_review_then_exact_final_head_owner_audit_without_merge_or_i3",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -597,5 +635,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-17T23:20:09+08:00"
+  "updated_at": "2026-08-18T20:30:05+08:00"
 }

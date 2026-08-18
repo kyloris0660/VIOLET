@@ -84,7 +84,7 @@ owner decision cannot be synthesized by a contract.
 
 Current synthetic implementation projection:
 
-- `status=fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit`
+- `status=fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit`
 - `planning_authorized=true`
 - `planning_completed=true`
 - `planning_approved=true`
@@ -99,7 +99,7 @@ Current synthetic implementation projection:
 - `route_approved=false`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pending_fl1_i2_bounded_followup_review_and_owner_reaudit`
+- blocker: `pending_fl1_i2_terminal_review_and_owner_audit`
 
 Terminal review `4897012517` at the exact final HEAD produced 17 historical
 findings (13 P1, 4 P2). The complete use-before projection is:
@@ -126,16 +126,18 @@ findings (13 P1, 4 P2). The complete use-before projection is:
 
 The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
 only for its narrow synthetic foundation. I2 contract
-`scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at corrected frozen
-implementation evidence HEAD/tree `8a4801ad216c668ba74b2ed1ddc131de2bbad5de` /
-`7cb6a34f603fa70ef2e364ac9295df885b6061bb`. The owner-adjudicated
-`78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded. The
-contract reconstructs the 14 gate
+`scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at final
+convergence implementation evidence HEAD/tree
+`8052ca4fd60becbae3ce512b4ea5f270e9ee177d` /
+`c278143903da1f7703c4e015f626407f7e5d8236`. Exact-head review `4952516658`
+rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; its seven accepted findings
+are superseded while the prior ten-finding correction regressions remain.
+The contract reconstructs the 14 gate
 closures from fixed-name, no-follow private artifacts and trusted repository
 state; caller JSON cannot create a positive result. Its local receipt is not
 CI or owner authority. `target_met`, `safe_to_merge`, route, merge, I3, and
-every real-source/data authority remain false pending the authorized follow-up
-review and exact corrected-HEAD owner re-audit.
+every real-source/data authority remain false pending the authorized terminal
+review and exact final-HEAD owner audit.
 
 The I2 contract preserves these continuing boundaries:
 

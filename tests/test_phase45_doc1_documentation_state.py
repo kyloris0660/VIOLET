@@ -40,7 +40,9 @@ def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
     validate_state(state)
     validate_roadmaps(state)
     assert state["phase_id"] == "SCV2-FL1-I2"
-    assert state["current_status"] == "fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit"
+    assert state["current_status"] == (
+        "fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit"
+    )
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
     assert state["planning_approved"] is True
@@ -57,6 +59,11 @@ def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
         "78ccbdc69ee1bf0f51c297435b56e2be868b54e9"
     )
     assert state["protected_evidence"]["fl1_i2_bounded_correction_authorized"] is True
+    assert state["protected_evidence"]["fl1_i2_final_convergence_rejected_head"] == (
+        "441d0c1bb1d8d0823b6f24c31accf44e068509f2"
+    )
+    assert state["protected_evidence"]["fl1_i2_final_convergence_review_id"] == 4952516658
+    assert state["protected_evidence"]["fl1_i2_one_terminal_followup_review_authorized"] is True
 
 
 @pytest.mark.parametrize(

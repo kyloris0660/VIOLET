@@ -201,12 +201,11 @@ def test_approved_planning_commit_must_be_head_ancestor(
 @pytest.mark.parametrize(
     "path",
     [
-        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md",
         "backend/app/utils/cloud_files.py",
         "scripts/fl1_i1_inventory.py",
     ],
 )
-def test_projection_change_to_plan_or_runtime_path_fails_closed(path: str) -> None:
+def test_projection_change_to_runtime_path_fails_closed(path: str) -> None:
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="fl1_i2_governance_projection_path_invalid",
@@ -215,6 +214,10 @@ def test_projection_change_to_plan_or_runtime_path_fails_closed(path: str) -> No
 
 
 def test_governance_only_carry_forward_paths_pass() -> None:
+    assert (
+        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
+        in documentation_state.FL1_I2_PROJECTION_ALLOWLIST
+    )
     documentation_state._validate_fl1_i2_projection_paths(
         documentation_state.FL1_I2_PROJECTION_ALLOWLIST
     )
@@ -503,7 +506,7 @@ def test_terminal_review_use_before_register_is_complete() -> None:
 def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
     state = _state()
     assert state["active_blocker"]["code"] == (
-        "pending_fl1_i2_bounded_followup_review_and_owner_reaudit"
+        "pending_fl1_i2_terminal_review_and_owner_audit"
     )
     preconditions = state["next_phase_authorization"]["required_preconditions"]
     assert preconditions[0].startswith("PR #145 is merged")
@@ -547,8 +550,8 @@ def test_windows_same_handle_feasibility_checkpoint_is_exact() -> None:
         "open_itself_only_not_later_read_guarantee"
     )
     assert state["next_required_checkpoint"] == (
-        "one_authorized_followup_codex_review_then_exact_corrected_head_"
-        "owner_reaudit_without_merge"
+        "one_authorized_terminal_codex_review_then_exact_final_head_"
+        "owner_audit_without_merge_or_i3"
     )
 
 
@@ -736,6 +739,49 @@ def test_pr146_bounded_correction_binding_is_exact_and_immutable() -> None:
         documentation_state.validate_state(state)
 
 
+def test_pr146_final_convergence_binding_is_exact_and_immutable() -> None:
+    state = copy.deepcopy(_state())
+    decision = next(
+        decision
+        for decision in state["owner_decisions"]
+        if decision["id"]
+        == documentation_state.FL1_I2_FINAL_CONVERGENCE_DECISION_ID
+    )
+    assert decision["rejected_head"] == documentation_state.FL1_I2_FINAL_REJECTED_HEAD
+    assert decision["thread_ids"] == list(documentation_state.FL1_I2_FINAL_THREAD_IDS)
+    decision["one_terminal_followup_review_authorized"] = False
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_final_convergence_binding_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_canonical_plan_status_or_authority_contradiction_fails_closed(
+    tmp_path: Path,
+) -> None:
+    copied_root = _copy_docs_root(tmp_path)
+    plan = (
+        copied_root
+        / "docs"
+        / "plans"
+        / "phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
+    )
+    plan.write_text(
+        plan.read_text(encoding="utf-8").replace(
+            "implementation_authorized=true",
+            "implementation_authorized=false",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_canonical_plan_current_truth",
+    ):
+        documentation_state.validate_roadmaps(_state(), root=copied_root)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -747,6 +793,10 @@ def test_pr146_bounded_correction_binding_is_exact_and_immutable() -> None:
         ("fl1_i2_bounded_correction_review_id", 0),
         ("fl1_i2_bounded_correction_authorized", False),
         ("fl1_i2_one_followup_codex_review_authorized", False),
+        ("fl1_i2_final_convergence_rejected_head", "f" * 40),
+        ("fl1_i2_final_convergence_review_id", 0),
+        ("fl1_i2_final_convergence_correction_authorized", False),
+        ("fl1_i2_one_terminal_followup_review_authorized", False),
         ("machine_verifiable_ci", True),
         ("github_checks_observed", 1),
         ("ci_authority", True),

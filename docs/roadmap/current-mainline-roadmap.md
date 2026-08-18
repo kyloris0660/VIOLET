@@ -35,7 +35,7 @@ has frozen synthetic pre-real implementation evidence on branch
 source is `docs/state/current-phase.json`.
 
 ```text
-status=fl1_i2_pr146_bounded_correction_ready_for_owner_reaudit
+status=fl1_i2_pr146_final_convergence_correction_ready_for_terminal_owner_audit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -51,7 +51,7 @@ route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_bounded_followup_review_and_owner_reaudit
+active_blocker=pending_fl1_i2_terminal_review_and_owner_audit
 ```
 
 PR #144 terminal review `4897012517` covered exact final HEAD
@@ -59,15 +59,17 @@ PR #144 terminal review `4897012517` covered exact final HEAD
 4 P2). All threads remain historical audit records. Two documentation-governance
 findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
-`github_checks=0`, and CI authority remains false. Fourteen findings are closed
-at corrected frozen implementation evidence HEAD/tree
-`8a4801ad216c668ba74b2ed1ddc131de2bbad5de` /
-`7cb6a34f603fa70ef2e364ac9295df885b6061bb`. The rejected
-`78ccbdc69ee1bf0f51c297435b56e2be868b54e9` evidence is superseded.
+`github_checks=0`, and CI authority remains false. Fourteen findings and the
+final convergence corrections are closed at frozen implementation evidence
+HEAD/tree `8052ca4fd60becbae3ce512b4ea5f270e9ee177d` /
+`c278143903da1f7703c4e015f626407f7e5d8236`. The prior bounded correction
+review remains covered by its regressions. Exact-head review `4952516658`
+rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; its seven accepted findings
+are superseded by this additive correction evidence.
 Executable contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without
 accepting caller booleans. The result remains local operator evidence pending
-the one authorized follow-up review and owner re-audit, not CI, target,
+the one authorized terminal review and owner audit, not CI, target,
 safe-to-merge, merge, route, or real-source authority.
 Parent-observed child identity is
 kept as a local-evidence claim boundary, not described as tamper-resistant,
