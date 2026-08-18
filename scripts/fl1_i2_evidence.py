@@ -18,9 +18,9 @@ from scripts.fl1_i1_operation_gateway import (
 )
 
 
-MANIFEST_SCHEMA = "violet.scv2-fl1-i2-private-manifest.v2"
-LEDGER_SCHEMA = "violet.scv2-fl1-i2-private-operation-ledger.v2"
-WORKER_RESULTS_SCHEMA = "violet.scv2-fl1-i2-private-worker-results.v2"
+MANIFEST_SCHEMA = "violet.scv2-fl1-i2-private-manifest.v3"
+LEDGER_SCHEMA = "violet.scv2-fl1-i2-private-operation-ledger.v3"
+WORKER_RESULTS_SCHEMA = "violet.scv2-fl1-i2-private-worker-results.v3"
 
 
 class EvidenceError(RuntimeError):
@@ -72,6 +72,20 @@ class ManifestMember:
     private_name: str
     object_identity: Mapping[str, str]
     change_identity: Mapping[str, int]
+    component_chain: tuple[str, ...] = ()
+    parent_object_identity: Mapping[str, str] | None = None
+    parent_change_identity: Mapping[str, int] | None = None
+    attributes: int = 0
+    reparse_tag: int = 0
+    link_count: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.component_chain:
+            object.__setattr__(self, "component_chain", (self.private_name,))
+        if self.component_chain[-1] != self.private_name or any(not value for value in self.component_chain):
+            raise EvidenceError("manifest_component_chain_invalid")
+        if self.link_count != 1 or self.reparse_tag != 0:
+            raise EvidenceError("manifest_member_safety_invalid")
 
     def to_private_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +93,28 @@ class ManifestMember:
             "private_name": self.private_name,
             "object_identity": dict(self.object_identity),
             "change_identity": dict(self.change_identity),
+            "component_chain": list(self.component_chain),
+            "parent_object_identity": dict(self.parent_object_identity) if self.parent_object_identity is not None else None,
+            "parent_change_identity": dict(self.parent_change_identity) if self.parent_change_identity is not None else None,
+            "attributes": self.attributes,
+            "reparse_tag": self.reparse_tag,
+            "link_count": self.link_count,
+        }
+
+
+@dataclass(frozen=True)
+class ManifestDirectory:
+    component_chain: tuple[str, ...]
+    observation: Mapping[str, Any]
+    parent_object_identity: Mapping[str, str] | None
+    parent_change_identity: Mapping[str, int] | None
+
+    def to_private_dict(self) -> dict[str, Any]:
+        return {
+            "component_chain": list(self.component_chain),
+            "observation": dict(self.observation),
+            "parent_object_identity": dict(self.parent_object_identity) if self.parent_object_identity is not None else None,
+            "parent_change_identity": dict(self.parent_change_identity) if self.parent_change_identity is not None else None,
         }
 
 
@@ -87,7 +123,9 @@ class FixedCutManifest:
     run_id: str
     source_scope_fingerprint: str
     directory_observation: Mapping[str, Any]
+    directories: tuple[ManifestDirectory, ...]
     members: tuple[ManifestMember, ...]
+    snapshot_fingerprint: str
     manifest_fingerprint: str
 
     @classmethod
@@ -98,28 +136,56 @@ class FixedCutManifest:
         source_scope_fingerprint: str,
         directory_observation: Mapping[str, Any],
         members: Sequence[ManifestMember],
+        directories: Sequence[ManifestDirectory] = (),
+        snapshot_fingerprint: str | None = None,
     ) -> "FixedCutManifest":
         if not run_id or not source_scope_fingerprint or not directory_observation:
             raise EvidenceError("manifest_identity_invalid")
         ordered = tuple(sorted(members, key=lambda item: item.item_id))
+        ordered_directories = tuple(sorted(directories, key=lambda item: item.component_chain))
+        if ordered_directories:
+            if ordered_directories[0].component_chain != () or ordered_directories[0].observation != directory_observation:
+                raise EvidenceError("manifest_root_directory_invalid")
+            if len({item.component_chain for item in ordered_directories}) != len(ordered_directories):
+                raise EvidenceError("manifest_duplicate_directory_path")
         if len({item.item_id for item in ordered}) != len(ordered):
             raise EvidenceError("manifest_duplicate_item_id")
         if len({item.private_name for item in ordered}) != len(ordered):
-            raise EvidenceError("manifest_duplicate_private_name")
+            if len({item.component_chain for item in ordered}) != len(ordered):
+                raise EvidenceError("manifest_duplicate_private_name")
         if len({canonical_fingerprint(item.object_identity) for item in ordered}) != len(ordered):
             raise EvidenceError("manifest_duplicate_object_identity")
+        all_identities = [canonical_fingerprint(item.object_identity) for item in ordered]
+        all_identities.extend(
+            canonical_fingerprint(item.observation.get("object_identity")) for item in ordered_directories
+        )
+        if len(set(all_identities)) != len(all_identities):
+            raise EvidenceError("manifest_duplicate_object_identity")
+        resolved_snapshot = snapshot_fingerprint or canonical_fingerprint(
+            {
+                "directory_observation": directory_observation,
+                "directories": [item.to_private_dict() for item in ordered_directories],
+                "members": [item.to_private_dict() for item in ordered],
+            }
+        )
+        if len(resolved_snapshot) != 64 or any(value not in "0123456789abcdef" for value in resolved_snapshot):
+            raise EvidenceError("manifest_snapshot_fingerprint_invalid")
         core = {
             "schema_version": MANIFEST_SCHEMA,
             "run_id": run_id,
             "source_scope_fingerprint": source_scope_fingerprint,
             "directory_observation": dict(directory_observation),
+            "directories": [item.to_private_dict() for item in ordered_directories],
             "members": [item.to_private_dict() for item in ordered],
+            "snapshot_fingerprint": resolved_snapshot,
         }
         return cls(
             run_id,
             source_scope_fingerprint,
             dict(directory_observation),
+            ordered_directories,
             ordered,
+            core["snapshot_fingerprint"],
             canonical_fingerprint(core),
         )
 
@@ -129,7 +195,9 @@ class FixedCutManifest:
             "run_id": self.run_id,
             "source_scope_fingerprint": self.source_scope_fingerprint,
             "directory_observation": dict(self.directory_observation),
+            "directories": [item.to_private_dict() for item in self.directories],
             "members": [item.to_private_dict() for item in self.members],
+            "snapshot_fingerprint": self.snapshot_fingerprint,
             "manifest_fingerprint": self.manifest_fingerprint,
         }
 
@@ -140,9 +208,57 @@ class FailureBudget:
     max_operations: int
     max_bytes: int
     worker_deadline_seconds: float
+    max_directories: int = 1024
+    max_entries: int = 8192
+    max_metadata_observations: int = 16384
+    max_metadata_bytes: int = 8 * 1024 * 1024
+    max_content_opens: int = 4096
+    max_hash_operations: int = 4096
+    max_structure_validations: int = 4096
+    max_retries: int = 3
+    max_concurrent_workers: int = 1
+    max_run_seconds: float = 900.0
+    max_evidence_bytes: int = 64 * 1024 * 1024
+    max_external_cost_usd: int = 0
 
     def __post_init__(self) -> None:
-        if self.max_failures < 0 or self.max_operations <= 0 or self.max_bytes <= 0 or self.worker_deadline_seconds <= 0:
+        integer_fields = (
+            self.max_failures,
+            self.max_operations,
+            self.max_bytes,
+            self.max_directories,
+            self.max_entries,
+            self.max_metadata_observations,
+            self.max_metadata_bytes,
+            self.max_content_opens,
+            self.max_hash_operations,
+            self.max_structure_validations,
+            self.max_retries,
+            self.max_concurrent_workers,
+            self.max_evidence_bytes,
+            self.max_external_cost_usd,
+        )
+        if any(type(value) is not int for value in integer_fields) or any(
+            type(value) not in {int, float}
+            for value in (self.worker_deadline_seconds, self.max_run_seconds)
+        ):
+            raise EvidenceError("budget_invalid")
+        positive = (
+            self.max_operations,
+            self.max_bytes,
+            self.worker_deadline_seconds,
+            self.max_directories,
+            self.max_entries,
+            self.max_metadata_observations,
+            self.max_metadata_bytes,
+            self.max_content_opens,
+            self.max_hash_operations,
+            self.max_structure_validations,
+            self.max_concurrent_workers,
+            self.max_run_seconds,
+            self.max_evidence_bytes,
+        )
+        if self.max_failures < 0 or self.max_retries < 0 or min(positive) <= 0 or self.max_external_cost_usd != 0:
             raise EvidenceError("budget_invalid")
 
     def to_dict(self) -> dict[str, Any]:
@@ -151,6 +267,18 @@ class FailureBudget:
             "max_operations": self.max_operations,
             "max_bytes": self.max_bytes,
             "worker_deadline_seconds": self.worker_deadline_seconds,
+            "max_directories": self.max_directories,
+            "max_entries": self.max_entries,
+            "max_metadata_observations": self.max_metadata_observations,
+            "max_metadata_bytes": self.max_metadata_bytes,
+            "max_content_opens": self.max_content_opens,
+            "max_hash_operations": self.max_hash_operations,
+            "max_structure_validations": self.max_structure_validations,
+            "max_retries": self.max_retries,
+            "max_concurrent_workers": self.max_concurrent_workers,
+            "max_run_seconds": self.max_run_seconds,
+            "max_evidence_bytes": self.max_evidence_bytes,
+            "max_external_cost_usd": self.max_external_cost_usd,
         }
 
 
@@ -190,6 +318,7 @@ class OperationLedger:
     events: list[OperationEvent] = field(default_factory=list)
     committed_results: dict[str, dict[str, Any]] = field(default_factory=dict)
     item_dispositions: dict[str, ItemDisposition] = field(default_factory=dict)
+    run_started_at_ns: int = field(default_factory=time.time_ns)
 
     def _events(self, operation_id: str) -> list[OperationEvent]:
         return [event for event in self.events if event.operation_id == operation_id]
@@ -377,10 +506,10 @@ class OperationLedger:
             raise EvidenceError("operation_closure_conflict")
         for operation_id in operation_ids:
             events = self._events(operation_id)
-            if not events or events[0].state is not OperationState.INTENT:
+            if not operation_id or not events or events[0].state is not OperationState.INTENT:
                 raise EvidenceError("operation_intent_missing")
             first = events[0]
-            if first.bytes_reserved < 0:
+            if not first.item_id or not first.kind or first.attempt <= 0 or first.bytes_reserved < 0:
                 raise EvidenceError("operation_reserved_bytes_invalid")
             if any(
                 event.item_id != first.item_id
@@ -390,6 +519,19 @@ class OperationLedger:
                 for event in events
             ):
                 raise EvidenceError("operation_closure_conflict")
+            sequence = tuple(event.state for event in events)
+            valid_sequences = {
+                (OperationState.INTENT,),
+                (OperationState.INTENT, OperationState.STARTED),
+                (OperationState.INTENT, OperationState.RECOVERED),
+                (OperationState.INTENT, OperationState.STARTED, OperationState.COMPLETED),
+                (OperationState.INTENT, OperationState.STARTED, OperationState.FAILED),
+                (OperationState.INTENT, OperationState.STARTED, OperationState.INTERRUPTED),
+            }
+            if sequence not in valid_sequences:
+                raise EvidenceError("operation_state_sequence_invalid")
+            if any(events[index].timestamp_ns > events[index + 1].timestamp_ns for index in range(len(events) - 1)):
+                raise EvidenceError("operation_event_order_invalid")
             terminal = [event for event in events if event.state in TERMINAL_STATES]
             if len(terminal) > 1 or (terminal and events[-1] is not terminal[0]):
                 raise EvidenceError("operation_terminal_closure_not_unique")
@@ -413,6 +555,52 @@ class OperationLedger:
             ):
                 raise EvidenceError("operation_closure_conflict")
 
+    def run_counters(self) -> dict[str, int]:
+        counters = {
+            "directories_discovered": 0,
+            "entries_discovered": 0,
+            "metadata_observations": 0,
+            "metadata_bytes": 0,
+            "content_opens": 0,
+            "content_bytes": self.consumed_bytes,
+            "hash_operations": 0,
+            "structure_validations": 0,
+            "total_operations": self.operation_count,
+            "failed_operations": sum(event.state is OperationState.FAILED for event in self.events),
+            "interrupted_operations": sum(event.state is OperationState.INTERRUPTED for event in self.events),
+            "retry_operations": sum(event.state is OperationState.INTENT and event.attempt > 1 for event in self.events),
+            "maximum_concurrent_workers": 0,
+            "external_cost_usd": 0,
+        }
+        active = 0
+        for event in self.events:
+            if event.state is OperationState.STARTED:
+                active += 1
+                counters["maximum_concurrent_workers"] = max(counters["maximum_concurrent_workers"], active)
+            elif event.state in {OperationState.COMPLETED, OperationState.FAILED, OperationState.INTERRUPTED}:
+                active -= 1
+                if active < 0:
+                    raise EvidenceError("operation_concurrency_invalid")
+        if active:
+            raise EvidenceError("operation_concurrency_invalid")
+        for record in self.committed_results.values():
+            envelope = record.get("payload")
+            result = envelope.get("result") if isinstance(envelope, Mapping) else None
+            if not isinstance(result, Mapping):
+                continue
+            if record.get("kind") in {"list_directory", "final_snapshot"}:
+                usage = result.get("enumeration_usage")
+                if isinstance(usage, Mapping):
+                    counters["directories_discovered"] += int(usage.get("directories", 0))
+                    counters["entries_discovered"] += int(usage.get("entries", 0))
+                    counters["metadata_observations"] += int(usage.get("metadata_observations", 0))
+                    counters["metadata_bytes"] += int(usage.get("metadata_bytes", 0))
+            elif record.get("kind") == "combined_content" and record.get("status") == "completed":
+                counters["content_opens"] += 1
+                counters["hash_operations"] += 1
+                counters["structure_validations"] += 1
+        return counters
+
     def to_worker_projection(self) -> dict[str, Any]:
         self.validate()
         return {
@@ -431,6 +619,7 @@ class OperationLedger:
             "events": [event.to_dict() for event in self.events],
             "committed_results": {key: self.committed_results[key] for key in sorted(self.committed_results)},
             "item_dispositions": {key: value.value for key, value in sorted(self.item_dispositions.items())},
+            "run_started_at_ns": self.run_started_at_ns,
         }
 
     @classmethod
@@ -445,26 +634,38 @@ class OperationLedger:
             "events",
             "committed_results",
             "item_dispositions",
+            "run_started_at_ns",
         }
         if set(payload) != expected:
             raise EvidenceError("operation_ledger_invalid")
-        ledger = cls(str(payload["run_id"]), str(payload["manifest_fingerprint"]), str(payload["budget_fingerprint"]))
+        if type(payload["run_started_at_ns"]) is not int or payload["run_started_at_ns"] <= 0:
+            raise EvidenceError("operation_ledger_invalid")
+        ledger = cls(
+            str(payload["run_id"]),
+            str(payload["manifest_fingerprint"]),
+            str(payload["budget_fingerprint"]),
+            run_started_at_ns=payload["run_started_at_ns"],
+        )
         try:
-            ledger.events = [
-                OperationEvent(
-                    str(item["operation_id"]),
-                    str(item["item_id"]),
-                    str(item["kind"]),
-                    int(item["attempt"]),
-                    OperationState(item["state"]),
-                    int(item["timestamp_ns"]),
-                    str(item["safe_code"]),
-                    int(item["bytes_reserved"]),
-                    int(item["bytes_consumed"]),
-                    item["result_fingerprint"],
-                )
-                for item in payload["events"]
-            ]
+            event_keys = {
+                "operation_id", "item_id", "kind", "attempt", "state", "timestamp_ns",
+                "safe_code", "bytes_reserved", "bytes_consumed", "result_fingerprint",
+            }
+            ledger.events = []
+            for item in payload["events"]:
+                if not isinstance(item, Mapping) or set(item) != event_keys:
+                    raise TypeError
+                if any(type(item[key]) is not int for key in ("attempt", "timestamp_ns", "bytes_reserved", "bytes_consumed")):
+                    raise TypeError
+                if any(type(item[key]) is not str or not item[key] for key in ("operation_id", "item_id", "kind", "safe_code")):
+                    raise TypeError
+                if item["result_fingerprint"] is not None and type(item["result_fingerprint"]) is not str:
+                    raise TypeError
+                ledger.events.append(OperationEvent(
+                    item["operation_id"], item["item_id"], item["kind"], item["attempt"],
+                    OperationState(item["state"]), item["timestamp_ns"], item["safe_code"],
+                    item["bytes_reserved"], item["bytes_consumed"], item["result_fingerprint"],
+                ))
             ledger.committed_results = {str(key): dict(value) for key, value in payload["committed_results"].items()}
             ledger.item_dispositions = {str(key): ItemDisposition(value) for key, value in payload["item_dispositions"].items()}
         except (KeyError, TypeError, ValueError) as exc:

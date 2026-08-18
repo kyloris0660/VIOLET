@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import binascii
+import zlib
 
 import pytest
 
@@ -27,7 +28,7 @@ def _png() -> bytes:
         return len(data).to_bytes(4, "big") + kind + data + (binascii.crc32(kind + data) & 0xFFFFFFFF).to_bytes(4, "big")
 
     ihdr = b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
-    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", b"x") + chunk(b"IEND", b"")
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00")) + chunk(b"IEND", b"")
 
 
 def _payload(root: Path, source: Path, *, max_bytes: int | None = None) -> dict[str, object]:
@@ -36,15 +37,22 @@ def _payload(root: Path, source: Path, *, max_bytes: int | None = None) -> dict[
         member = next(item for item in backend.enumerate_directory(directory) if item.name == source.name)
         return {
             "root": str(root),
-            "member_name": source.name,
             "expected_root_observation": directory.observation.to_private_dict(),
-            "expected_member_object_identity": member.object_identity.to_private_dict(),
-            "expected_member_change_identity": member.change_identity.to_private_dict(),
+            "ancestor_members": [],
+            "member": {
+                "name": member.name,
+                "member_type": "file",
+                "object_identity": member.object_identity.to_private_dict(),
+                "change_identity": member.change_identity.to_private_dict(),
+                "attributes": member.attributes,
+                "reparse_tag": member.reparse_tag,
+                "link_count": member.link_count,
+            },
             "max_bytes": max_bytes if max_bytes is not None else max(1, member.change_identity.size),
             "max_depth": 100,
             "parser_deadline_monotonic": __import__("time").monotonic() + 5,
             "policy": _policy(),
-            "enumeration_budget": {"max_entries": 100, "max_pages": 100, "max_metadata_bytes": 100000},
+            "enumeration_budget": {"max_entries": 100, "max_pages": 100, "max_metadata_bytes": 100000, "max_directories": 20, "max_depth": 10},
         }
 
 
@@ -77,6 +85,17 @@ def test_blocking_worker_is_terminated_and_confirmed() -> None:
     assert result.safe_code == "worker_deadline_exceeded"
     assert result.started_persisted
     assert result.exit_confirmed
+
+
+def test_terminated_worker_reports_shared_run_wide_byte_progress() -> None:
+    result = WorkerController().run(
+        WorkerOperation.SYNTHETIC_BLOCK,
+        {"simulated_bytes_consumed": 37},
+        deadline_seconds=0.2,
+        persist_started=lambda: None,
+    )
+    assert result.status is WorkerStatus.INTERRUPTED
+    assert result.bytes_consumed == 37
 
 
 def test_budget_overflow_fails_without_private_value_projection(tmp_path: Path) -> None:
@@ -126,8 +145,8 @@ def test_combined_operation_rejects_manifest_identity_drift(tmp_path: Path) -> N
     source = root / "fixture.png"
     source.write_bytes(_png())
     payload = _payload(root, source)
-    payload["expected_member_object_identity"] = {"platform": "windows", "volume_id": "1", "file_id": "1"}
-    with pytest.raises(Exception, match="source_member_object_identity_drift"):
+    payload["member"]["object_identity"] = {"platform": "windows", "volume_id": "1", "file_id": "1"}  # type: ignore[index]
+    with pytest.raises(Exception, match="source_child_identity_mismatch"):
         _execute(WorkerOperation.COMBINED_CONTENT.value, payload)
 
 
@@ -149,3 +168,39 @@ def test_opened_pre_and_post_observations_are_all_policy_gated(tmp_path: Path, m
     result = _execute(WorkerOperation.COMBINED_CONTENT.value, _payload(root, source))
     assert result["media"]["valid"] is True
     assert len(observed) == 3
+
+
+def test_content_operation_does_not_reenumerate_the_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "direct-open"
+    root.mkdir()
+    source = root / "fixture.png"
+    source.write_bytes(_png())
+    payload = _payload(root, source)
+    backend_type = type(current_handle_backend())
+
+    def forbidden_enumeration(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("content operation must use the manifest chain")
+
+    monkeypatch.setattr(backend_type, "enumerate_directory", forbidden_enumeration)
+    result = _execute(WorkerOperation.COMBINED_CONTENT.value, payload)
+    assert result["media"]["valid"] is True
+
+
+def test_recursive_enumeration_uses_one_run_wide_directory_budget(tmp_path: Path) -> None:
+    root = tmp_path / "recursive-budget"
+    (root / "one" / "two").mkdir(parents=True)
+    with pytest.raises(Exception, match="directory_budget"):
+        _execute(
+            WorkerOperation.LIST_DIRECTORY.value,
+            {
+                "root": str(root),
+                "policy": _policy(),
+                "enumeration_budget": {
+                    "max_entries": 100,
+                    "max_pages": 100,
+                    "max_metadata_bytes": 100000,
+                    "max_directories": 1,
+                    "max_depth": 10,
+                },
+            },
+        )

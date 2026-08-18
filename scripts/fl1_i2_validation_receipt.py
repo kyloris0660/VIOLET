@@ -20,7 +20,7 @@ from scripts.trusted_git import (
 )
 
 
-RECEIPT_SCHEMA = "violet.scv2-fl1-i2-local-validation-receipt.v2"
+RECEIPT_SCHEMA = "violet.scv2-fl1-i2-local-validation-receipt.v3"
 CANONICAL_FOCUSED_TESTS = (
     "tests/test_trusted_git.py",
     "tests/test_scv2_fl1_i2_source_policy.py",
@@ -33,6 +33,47 @@ CANONICAL_FOCUSED_TESTS = (
     "tests/test_scv2_fl1_i2_validation_receipt.py",
     "tests/test_scv2_fl1_i2_contract.py",
 )
+SYSTEM_ENVIRONMENT_ALLOWLIST = (
+    "SystemRoot",
+    "WINDIR",
+    "COMSPEC",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "PROGRAMDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "PROGRAMW6432",
+    "USERPROFILE",
+    "HOME",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "OS",
+    "LANG",
+    "LC_ALL",
+)
+FORCED_VALIDATION_ENVIRONMENT = {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+}
+CONTROL_ENVIRONMENT_PREFIXES = ("pytest_", "coverage", "cov_core")
+CONTROL_ENVIRONMENT_NAMES = {
+    "pythonpath",
+    "pythonhome",
+    "pythonstartup",
+    "pythonbreakpoint",
+    "pythoninspect",
+    "pythonwarnings",
+    "pythonpycacheprefix",
+    "pythonplatlibdir",
+    "pythonuserbase",
+    "sitecustomize",
+}
+NON_CONTROL_PYTEST_ENVIRONMENT = {"pytest_current_test", "pytest_version"}
 
 
 class ReceiptError(RuntimeError):
@@ -52,6 +93,7 @@ class SameHeadValidationReceipt:
     git_tree: str
     trusted_git_fingerprint: str
     python_executable_fingerprint: str
+    execution_environment_policy_fingerprint: str
     config_fingerprint: str
     policy_fingerprint: str
     manifest_fingerprint: str
@@ -81,6 +123,7 @@ class SameHeadValidationReceipt:
             "git_tree": self.git_tree,
             "trusted_git_fingerprint": self.trusted_git_fingerprint,
             "python_executable_fingerprint": self.python_executable_fingerprint,
+            "execution_environment_policy_fingerprint": self.execution_environment_policy_fingerprint,
             "command_fingerprint": self.command_fingerprint,
             "exit_code": self.exit_code,
             "same_head_tree": self.same_head_tree,
@@ -109,6 +152,8 @@ class SameHeadValidationReceipt:
             raise ReceiptError("validation_receipt_invalid") from exc
         if receipt.command_fingerprint != _fingerprint(list(receipt.command_argv)):
             raise ReceiptError("validation_receipt_command_fingerprint_mismatch")
+        if receipt.execution_environment_policy_fingerprint != execution_environment_policy_fingerprint():
+            raise ReceiptError("validation_receipt_environment_policy_mismatch")
         validate_canonical_focused_command(receipt.command_argv, Path(receipt.command_argv[0]))
         if receipt.positive != (receipt.exit_code == 0 and receipt.same_head_tree and receipt.clean_before_after):
             raise ReceiptError("validation_receipt_positive_invalid")
@@ -117,6 +162,7 @@ class SameHeadValidationReceipt:
         for value in (
             receipt.trusted_git_fingerprint,
             receipt.python_executable_fingerprint,
+            receipt.execution_environment_policy_fingerprint,
             receipt.config_fingerprint,
             receipt.policy_fingerprint,
             receipt.manifest_fingerprint,
@@ -129,6 +175,47 @@ class SameHeadValidationReceipt:
             if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
                 raise ReceiptError("validation_receipt_fingerprint_invalid")
         return receipt
+
+
+def execution_environment_policy_payload() -> dict[str, Any]:
+    return {
+        "schema_version": "violet.scv2-fl1-i2-validation-environment-policy.v1",
+        "system_allowlist": list(SYSTEM_ENVIRONMENT_ALLOWLIST),
+        "forced": dict(sorted(FORCED_VALIDATION_ENVIRONMENT.items())),
+        "control_prefixes": list(CONTROL_ENVIRONMENT_PREFIXES),
+        "control_names": sorted(CONTROL_ENVIRONMENT_NAMES),
+        "plugin_autoload": False,
+        "python_isolated_argv": ["-B", "-I", "-s", "-m", "pytest"],
+    }
+
+
+def execution_environment_policy_fingerprint() -> str:
+    return _fingerprint(execution_environment_policy_payload())
+
+
+def canonical_validation_environment(caller: Mapping[str, str] | None = None) -> dict[str, str]:
+    source = dict(os.environ if caller is None else caller)
+    casefolded = {key.casefold(): (key, value) for key, value in source.items()}
+    forced_casefolded = {key.casefold(): value for key, value in FORCED_VALIDATION_ENVIRONMENT.items()}
+    hostile: list[str] = []
+    for folded, (_key, value) in casefolded.items():
+        if folded in NON_CONTROL_PYTEST_ENVIRONMENT:
+            continue
+        if folded in forced_casefolded and value == forced_casefolded[folded]:
+            continue
+        if folded in CONTROL_ENVIRONMENT_NAMES or any(folded.startswith(prefix) for prefix in CONTROL_ENVIRONMENT_PREFIXES):
+            hostile.append(folded)
+        elif folded.startswith("python") and folded not in forced_casefolded:
+            hostile.append(folded)
+    if hostile:
+        raise ReceiptError("validation_receipt_hostile_environment")
+    environment: dict[str, str] = {}
+    for canonical in SYSTEM_ENVIRONMENT_ALLOWLIST:
+        found = casefolded.get(canonical.casefold())
+        if found is not None:
+            environment[canonical] = found[1]
+    environment.update(FORCED_VALIDATION_ENVIRONMENT)
+    return environment
 
 
 def _fingerprint(payload: Any) -> str:
@@ -221,17 +308,7 @@ def create_same_head_receipt(
     except Exception:
         clean_before = False
     started = time.time_ns()
-    environment = {
-        key: value
-        for key, value in os.environ.items()
-        if key.casefold() != "pythonpath"
-    }
-    environment.update(
-        {
-            "PYTHONNOUSERSITE": "1",
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
-    )
+    environment = canonical_validation_environment()
     completed = _run_validation_command(command, repo_root=repo_root, environment=environment)
     ended = time.time_ns()
     after, after_git_fingerprint = trusted_git_snapshot(repo_root)
@@ -248,6 +325,7 @@ def create_same_head_receipt(
         git_tree=before.tree,
         trusted_git_fingerprint=git_fingerprint,
         python_executable_fingerprint=_python_fingerprint(approved_python),
+        execution_environment_policy_fingerprint=execution_environment_policy_fingerprint(),
         config_fingerprint=bindings["config"],
         policy_fingerprint=bindings["policy"],
         manifest_fingerprint=bindings["manifest"],

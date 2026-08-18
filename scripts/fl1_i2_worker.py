@@ -7,6 +7,7 @@ import json
 import multiprocessing
 import time
 import traceback
+from contextlib import ExitStack
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -16,10 +17,13 @@ from backend.app.services.source_ingestion_gate import SourceIngestionGate, Sour
 from backend.app.services.source_safety import (
     FileChangeIdentity,
     FileObjectIdentity,
+    HandleObservation,
     SourceSafetyPolicy,
 )
 from scripts.fl1_i2_source_backends import (
+    DirectoryMember,
     EnumerationBudget,
+    EnumerationUsage,
     SourceBackendError,
     current_handle_backend,
 )
@@ -35,6 +39,7 @@ class WorkerError(RuntimeError):
 
 class WorkerOperation(str, Enum):
     LIST_DIRECTORY = "list_directory"
+    FINAL_SNAPSHOT = "final_snapshot"
     COMBINED_CONTENT = "combined_content"
     SYNTHETIC_BLOCK = "synthetic_block"
 
@@ -60,32 +65,25 @@ class WorkerResult:
 def _member_payload(member: Any) -> dict[str, Any]:
     return {
         "name": member.name,
+        "member_type": member.member_type,
         "object_identity": member.object_identity.to_private_dict(),
         "change_identity": member.change_identity.to_private_dict(),
         "attributes": member.attributes,
         "reparse_tag": member.reparse_tag,
+        "link_count": member.link_count,
     }
 
 
 def _object_identity(payload: Mapping[str, Any]) -> FileObjectIdentity:
     try:
-        return FileObjectIdentity(
-            str(payload["platform"]),
-            str(payload["volume_id"]),
-            str(payload["file_id"]),
-        )
+        return FileObjectIdentity.from_private_dict(payload)
     except (KeyError, TypeError, ValueError) as exc:
         raise WorkerError("worker_expected_object_identity_invalid") from exc
 
 
 def _change_identity(payload: Mapping[str, Any]) -> FileChangeIdentity:
     try:
-        return FileChangeIdentity(
-            int(payload["change_time_ns"]),
-            int(payload["write_time_ns"]),
-            int(payload["size"]),
-            int(payload["allocation_size"]),
-        )
+        return FileChangeIdentity.from_private_dict(payload)
     except (KeyError, TypeError, ValueError) as exc:
         raise WorkerError("worker_expected_change_identity_invalid") from exc
 
@@ -99,32 +97,11 @@ def _enumeration_budget(payload: Mapping[str, Any]) -> EnumerationBudget:
             max_entries=int(raw["max_entries"]),
             max_pages=int(raw["max_pages"]),
             max_metadata_bytes=int(raw["max_metadata_bytes"]),
+            max_directories=int(raw["max_directories"]),
+            max_depth=int(raw["max_depth"]),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise WorkerError("worker_enumeration_budget_invalid") from exc
-
-
-def _select_member(
-    backend: Any,
-    directory: Any,
-    name: str,
-    expected_object: FileObjectIdentity,
-    expected_change: FileChangeIdentity,
-    budget: EnumerationBudget,
-) -> Any:
-    matches = [
-        member
-        for member in backend.enumerate_directory(directory, budget=budget)
-        if member.name == name
-    ]
-    if len(matches) != 1:
-        raise WorkerError("source_member_membership_changed")
-    member = matches[0]
-    if member.object_identity != expected_object:
-        raise WorkerError("source_member_object_identity_drift")
-    if member.change_identity != expected_change:
-        raise WorkerError("source_member_change_identity_drift")
-    return member
 
 
 def _gate_observation(observation: Any, policy: SourceSafetyPolicy) -> None:
@@ -137,12 +114,134 @@ def _gate_observation(observation: Any, policy: SourceSafetyPolicy) -> None:
         raise WorkerError(decision.reason)
 
 
+def _directory_observation_allowed(observation: HandleObservation) -> None:
+    if (
+        not observation.is_directory
+        or not observation.attributes_known
+        or not observation.no_follow
+        or not observation.identity_bound
+        or observation.reparse_point
+        or observation.cloud_availability.value != "available"
+    ):
+        raise WorkerError("source_directory_observation_rejected")
+
+
+def _recursive_snapshot(
+    backend: Any,
+    root: Any,
+    *,
+    budget: EnumerationBudget,
+    policy: SourceSafetyPolicy,
+) -> dict[str, Any]:
+    usage = EnumerationUsage()
+    directory_records: list[dict[str, Any]] = []
+    file_records: list[dict[str, Any]] = []
+    seen_objects: set[FileObjectIdentity] = set()
+    seen_paths: set[tuple[str, ...]] = set()
+
+    def visit(directory: Any, chain: tuple[str, ...], depth: int, parent: HandleObservation | None) -> None:
+        before = backend.observe(directory)
+        _directory_observation_allowed(before)
+        if before.object_identity in seen_objects or chain in seen_paths:
+            raise WorkerError("source_alias_identity_rejected")
+        seen_objects.add(before.object_identity)
+        seen_paths.add(chain)
+        directory_records.append(
+            {
+                "component_chain": list(chain),
+                "parent_object_identity": parent.object_identity.to_private_dict() if parent else None,
+                "parent_change_identity": parent.change_identity.to_private_dict() if parent else None,
+                "observation": before.to_private_dict(),
+            }
+        )
+        members = backend.enumerate_directory(
+            directory,
+            budget=budget,
+            usage=usage,
+            depth=depth,
+        )
+        for member in sorted(members, key=lambda value: (value.name.casefold(), value.name)):
+            child_chain = (*chain, member.name)
+            if member.object_identity in seen_objects or child_chain in seen_paths:
+                raise WorkerError("source_alias_identity_rejected")
+            if member.member_type == "directory":
+                with backend.open_discovered_directory(directory, member) as child_directory:
+                    visit(child_directory, child_chain, depth + 1, before)
+                continue
+            if member.member_type != "file":
+                raise WorkerError("source_member_type_invalid")
+            with backend.open_file_child(directory, member) as child:
+                observed = child.observation
+                _gate_observation(observed, policy)
+                if observed.object_identity in seen_objects:
+                    raise WorkerError("source_alias_identity_rejected")
+                seen_objects.add(observed.object_identity)
+                seen_paths.add(child_chain)
+                file_records.append(
+                    {
+                        **_member_payload(
+                            DirectoryMember(
+                                member.name,
+                                "file",
+                                observed.object_identity,
+                                observed.change_identity,
+                                member.attributes,
+                                member.reparse_tag,
+                                observed.link_count,
+                            )
+                        ),
+                        "component_chain": list(child_chain),
+                        "parent_object_identity": before.object_identity.to_private_dict(),
+                        "parent_change_identity": before.change_identity.to_private_dict(),
+                    }
+                )
+        after = backend.observe(directory)
+        if before.object_identity != after.object_identity or before.change_identity != after.change_identity:
+            raise WorkerError("source_directory_identity_drift")
+
+    visit(root, (), 0, None)
+    return {
+        "directory_observation": root.observation.to_private_dict(),
+        "directories": directory_records,
+        "members": file_records,
+        "enumeration_usage": usage.to_private_dict(),
+    }
+
+
+def _manifest_member(payload: Mapping[str, Any], *, member_type: str) -> DirectoryMember:
+    expected = {
+        "name",
+        "member_type",
+        "object_identity",
+        "change_identity",
+        "attributes",
+        "reparse_tag",
+        "link_count",
+    }
+    if set(payload) != expected or payload.get("member_type") != member_type:
+        raise WorkerError("worker_manifest_member_invalid")
+    if type(payload["name"]) is not str or type(payload["attributes"]) is not int:
+        raise WorkerError("worker_manifest_member_invalid")
+    if type(payload["reparse_tag"]) is not int or type(payload["link_count"]) is not int:
+        raise WorkerError("worker_manifest_member_invalid")
+    return DirectoryMember(
+        payload["name"],
+        member_type,
+        _object_identity(payload["object_identity"]),
+        _change_identity(payload["change_identity"]),
+        payload["attributes"],
+        payload["reparse_tag"],
+        payload["link_count"],
+    )
+
+
 class _DigestingChunks:
-    def __init__(self, chunks: Any, max_bytes: int) -> None:
+    def __init__(self, chunks: Any, max_bytes: int, progress_counter: Any | None = None) -> None:
         self._chunks = iter(chunks)
         self.max_bytes = max_bytes
         self.byte_count = 0
         self.digest = hashlib.sha256()
+        self._progress_counter = progress_counter
 
     def __iter__(self) -> "_DigestingChunks":
         return self
@@ -150,6 +249,9 @@ class _DigestingChunks:
     def __next__(self) -> bytes:
         chunk = next(self._chunks)
         self.byte_count += len(chunk)
+        if self._progress_counter is not None:
+            with self._progress_counter.get_lock():
+                self._progress_counter.value = self.byte_count
         if self.byte_count > self.max_bytes:
             raise WorkerError(
                 "worker_byte_budget_exceeded",
@@ -159,8 +261,16 @@ class _DigestingChunks:
         return chunk
 
 
-def _execute(operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+def _execute(
+    operation: str,
+    payload: Mapping[str, Any],
+    progress_counter: Any | None = None,
+) -> dict[str, Any]:
     if operation == WorkerOperation.SYNTHETIC_BLOCK.value:
+        simulated = int(payload.get("simulated_bytes_consumed", 0))
+        if progress_counter is not None and simulated:
+            with progress_counter.get_lock():
+                progress_counter.value = simulated
         multiprocessing.Event().wait(3600)
         raise AssertionError("unreachable")
     root = Path(str(payload["root"]))
@@ -168,37 +278,41 @@ def _execute(operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     policy = SourceSafetyPolicy.from_trusted_config(payload["policy"])
     enumeration_budget = _enumeration_budget(payload)
     with backend.open_directory(root) as directory:
-        if operation == WorkerOperation.LIST_DIRECTORY.value:
-            before = backend.observe(directory)
-            members = backend.enumerate_directory(directory, budget=enumeration_budget)
-            after = backend.observe(directory)
-            if before.object_identity != after.object_identity or before.change_identity != after.change_identity:
-                raise WorkerError("source_directory_identity_drift")
-            return {
-                "directory_observation": before.to_private_dict(),
-                "members": [_member_payload(member) for member in members],
-            }
+        if operation in {WorkerOperation.LIST_DIRECTORY.value, WorkerOperation.FINAL_SNAPSHOT.value}:
+            return _recursive_snapshot(
+                backend,
+                directory,
+                budget=enumeration_budget,
+                policy=policy,
+            )
         if operation != WorkerOperation.COMBINED_CONTENT.value:
             raise WorkerError("worker_operation_invalid")
         expected_root = payload["expected_root_observation"]
         if not isinstance(expected_root, Mapping):
             raise WorkerError("worker_expected_root_observation_invalid")
-        if directory.observation.object_identity != _object_identity(expected_root["object_identity"]):
+        try:
+            expected_root_observation = HandleObservation.from_private_dict(expected_root)
+        except ValueError as exc:
+            raise WorkerError("worker_expected_root_observation_invalid") from exc
+        _directory_observation_allowed(directory.observation)
+        if directory.observation.object_identity != expected_root_observation.object_identity:
             raise WorkerError("source_root_object_identity_drift")
-        if directory.observation.change_identity != _change_identity(expected_root["change_identity"]):
+        if directory.observation.change_identity != expected_root_observation.change_identity:
             raise WorkerError("source_root_change_identity_drift")
-        name = str(payload["member_name"])
-        expected_object = _object_identity(payload["expected_member_object_identity"])
-        expected_change = _change_identity(payload["expected_member_change_identity"])
-        member = _select_member(
-            backend,
-            directory,
-            name,
-            expected_object,
-            expected_change,
-            enumeration_budget,
-        )
-        with backend.open_child(directory, member) as child:
+        ancestors = payload.get("ancestor_members")
+        leaf_payload = payload.get("member")
+        if not isinstance(ancestors, list) or not isinstance(leaf_payload, Mapping):
+            raise WorkerError("worker_manifest_chain_invalid")
+        with ExitStack() as stack:
+            parent = directory
+            for raw_ancestor in ancestors:
+                if not isinstance(raw_ancestor, Mapping):
+                    raise WorkerError("worker_manifest_chain_invalid")
+                ancestor = _manifest_member(raw_ancestor, member_type="directory")
+                parent = stack.enter_context(backend.open_directory_child(parent, ancestor))
+                _directory_observation_allowed(parent.observation)
+            member = _manifest_member(leaf_payload, member_type="file")
+            child = stack.enter_context(backend.open_file_child(parent, member))
             opened = child.observation
             _gate_observation(opened, policy)
             before = backend.observe(child)
@@ -208,6 +322,7 @@ def _execute(operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
             max_bytes = int(payload["max_bytes"])
             if max_bytes <= 0:
                 raise WorkerError("worker_byte_budget_invalid")
+            expected_change = member.change_identity
             if max_bytes != max(1, expected_change.size):
                 raise WorkerError("worker_byte_reservation_mismatch")
             from scripts.fl1_i2_media_validation import validate_media_stream
@@ -219,6 +334,7 @@ def _execute(operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
                     max_bytes=max_bytes,
                 ),
                 max_bytes,
+                progress_counter,
             )
             try:
                 media = validate_media_stream(
@@ -254,14 +370,19 @@ def _execute(operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
             }
 
 
-def _worker_main(connection: Any, operation: str, payload: Mapping[str, Any]) -> None:
+def _worker_main(
+    connection: Any,
+    operation: str,
+    payload: Mapping[str, Any],
+    progress_counter: Any,
+) -> None:
     try:
         connection.send(("READY", None))
         message, _data = connection.recv()
         if message != "GO":
             connection.send(("FAILED", {"safe_code": "worker_go_protocol_invalid"}))
             return
-        result = _execute(operation, payload)
+        result = _execute(operation, payload, progress_counter)
         connection.send(("COMPLETED", result))
     except (SourceBackendError, WorkerError, MediaValidationError, ValueError, KeyError) as exc:
         connection.send(
@@ -304,26 +425,54 @@ class WorkerController:
         started_at = time.monotonic()
         context = multiprocessing.get_context("spawn")
         parent, child = context.Pipe(duplex=True)
-        process = context.Process(target=_worker_main, args=(child, operation.value, dict(payload)))
+        progress_counter = context.Value("Q", 0, lock=True)
+        process = context.Process(
+            target=_worker_main,
+            args=(child, operation.value, dict(payload), progress_counter),
+        )
         process.start()
         child.close()
         started_persisted = False
         try:
             if not parent.poll(min(self.ready_timeout_seconds, deadline_seconds)):
-                return self._terminate(process, started_at, started_persisted, "worker_ready_timeout")
+                return self._terminate(
+                    process,
+                    started_at,
+                    started_persisted,
+                    "worker_ready_timeout",
+                    progress_counter,
+                )
             message, _payload = parent.recv()
             if message != "READY":
-                return self._terminate(process, started_at, started_persisted, "worker_ready_protocol_invalid")
+                return self._terminate(
+                    process,
+                    started_at,
+                    started_persisted,
+                    "worker_ready_protocol_invalid",
+                    progress_counter,
+                )
             persist_started()
             started_persisted = True
             parent.send(("GO", None))
             remaining = deadline_seconds - (time.monotonic() - started_at)
             if remaining <= 0 or not parent.poll(remaining):
-                return self._terminate(process, started_at, started_persisted, "worker_deadline_exceeded")
+                return self._terminate(
+                    process,
+                    started_at,
+                    started_persisted,
+                    "worker_deadline_exceeded",
+                    progress_counter,
+                )
             message, result = parent.recv()
             process.join(self.exit_timeout_seconds)
             if process.is_alive():
-                return self._terminate(process, started_at, started_persisted, "worker_exit_unconfirmed")
+                return self._terminate(
+                    process,
+                    started_at,
+                    started_persisted,
+                    "worker_exit_unconfirmed",
+                    progress_counter,
+                )
             if message == "COMPLETED":
                 return WorkerResult(
                     WorkerStatus.COMPLETED,
@@ -344,14 +493,33 @@ class WorkerController:
                 int(result.get("bytes_consumed", 0)),
             )
         except (EOFError, OSError, WorkerError):
-            return self._terminate(process, started_at, started_persisted, "worker_channel_failed")
+            return self._terminate(
+                process,
+                started_at,
+                started_persisted,
+                "worker_channel_failed",
+                progress_counter,
+            )
         except BaseException:
-            self._terminate(process, started_at, started_persisted, "worker_parent_interrupted")
+            self._terminate(
+                process,
+                started_at,
+                started_persisted,
+                "worker_parent_interrupted",
+                progress_counter,
+            )
             raise
         finally:
             parent.close()
 
-    def _terminate(self, process: multiprocessing.Process, started_at: float, started_persisted: bool, code: str) -> WorkerResult:
+    def _terminate(
+        self,
+        process: multiprocessing.Process,
+        started_at: float,
+        started_persisted: bool,
+        code: str,
+        progress_counter: Any | None = None,
+    ) -> WorkerResult:
         if process.is_alive():
             process.terminate()
         process.join(self.exit_timeout_seconds)
@@ -359,6 +527,10 @@ class WorkerController:
             process.kill()
             process.join(self.exit_timeout_seconds)
         confirmed = not process.is_alive()
+        consumed = 0
+        if progress_counter is not None:
+            with progress_counter.get_lock():
+                consumed = int(progress_counter.value)
         return WorkerResult(
             WorkerStatus.INTERRUPTED if confirmed else WorkerStatus.BLOCKED,
             code if confirmed else "worker_termination_unconfirmed",
@@ -366,5 +538,5 @@ class WorkerController:
             started_persisted,
             confirmed,
             int((time.monotonic() - started_at) * 1000),
-            0,
+            consumed,
         )

@@ -31,10 +31,12 @@ class SourceBackendError(RuntimeError):
 @dataclass(frozen=True)
 class DirectoryMember:
     name: str
+    member_type: str
     object_identity: FileObjectIdentity
     change_identity: FileChangeIdentity
     attributes: int
     reparse_tag: int
+    link_count: int
 
 
 @dataclass(frozen=True)
@@ -42,10 +44,58 @@ class EnumerationBudget:
     max_entries: int = 4096
     max_pages: int = 1024
     max_metadata_bytes: int = 4 * 1024 * 1024
+    max_directories: int = 512
+    max_depth: int = 64
 
     def __post_init__(self) -> None:
-        if min(self.max_entries, self.max_pages, self.max_metadata_bytes) <= 0:
+        if min(
+            self.max_entries,
+            self.max_pages,
+            self.max_metadata_bytes,
+            self.max_directories,
+            self.max_depth,
+        ) <= 0:
             raise SourceBackendError("source_enumeration_budget_invalid")
+
+
+@dataclass
+class EnumerationUsage:
+    directories: int = 0
+    entries: int = 0
+    pages: int = 0
+    metadata_bytes: int = 0
+    metadata_observations: int = 0
+
+    def begin_directory(self, budget: EnumerationBudget, *, depth: int) -> None:
+        if depth > budget.max_depth:
+            raise SourceBackendError("source_enumeration_depth_budget_exceeded")
+        if self.directories >= budget.max_directories:
+            raise SourceBackendError("source_enumeration_directory_budget_exceeded")
+        self.directories += 1
+        self.metadata_observations += 1
+
+    def add_page(self, budget: EnumerationBudget) -> None:
+        if self.pages >= budget.max_pages:
+            raise SourceBackendError("source_enumeration_page_budget_exceeded")
+        self.pages += 1
+
+    def add_entry(self, budget: EnumerationBudget, metadata_bytes: int) -> None:
+        if self.entries >= budget.max_entries:
+            raise SourceBackendError("source_enumeration_entry_budget_exceeded")
+        if metadata_bytes < 0 or self.metadata_bytes + metadata_bytes > budget.max_metadata_bytes:
+            raise SourceBackendError("source_enumeration_metadata_budget_exceeded")
+        self.entries += 1
+        self.metadata_observations += 1
+        self.metadata_bytes += metadata_bytes
+
+    def to_private_dict(self) -> dict[str, int]:
+        return {
+            "directories": self.directories,
+            "entries": self.entries,
+            "pages": self.pages,
+            "metadata_bytes": self.metadata_bytes,
+            "metadata_observations": self.metadata_observations,
+        }
 
 
 @dataclass
@@ -75,11 +125,27 @@ class BaseHandleBackend:
         directory: OpenHandle,
         *,
         budget: EnumerationBudget | None = None,
+        usage: EnumerationUsage | None = None,
+        depth: int = 0,
     ) -> tuple[DirectoryMember, ...]:
         raise NotImplementedError
 
-    def open_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+    def open_file_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
         raise NotImplementedError
+
+    def open_directory_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        raise NotImplementedError
+
+    def open_discovered_directory(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        """Open a just-enumerated directory and bind its authoritative handle observation."""
+        return self.open_directory_child(directory, member)
+
+    def open_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        if member.member_type == "directory":
+            return self.open_directory_child(directory, member)
+        if member.member_type == "file":
+            return self.open_file_child(directory, member)
+        raise SourceBackendError("source_member_type_invalid")
 
     def observe(self, handle: OpenHandle) -> HandleObservation:
         raise NotImplementedError
@@ -175,8 +241,13 @@ class PosixHandleBackend(BaseHandleBackend):
         directory: OpenHandle,
         *,
         budget: EnumerationBudget | None = None,
+        usage: EnumerationUsage | None = None,
+        depth: int = 0,
     ) -> tuple[DirectoryMember, ...]:
         active_budget = budget or EnumerationBudget()
+        active_usage = usage or EnumerationUsage()
+        active_usage.begin_directory(active_budget, depth=depth)
+        active_usage.add_page(active_budget)
         before = self.observe(directory)
         try:
             iterator = os.scandir(directory.raw_handle)
@@ -187,26 +258,30 @@ class PosixHandleBackend(BaseHandleBackend):
         try:
             with iterator:
                 for entry in iterator:
-                    if len(records) >= active_budget.max_entries:
-                        raise SourceBackendError("source_enumeration_entry_budget_exceeded")
                     _validate_member_name(entry.name)
                     metadata = entry.stat(follow_symlinks=False)
                     if stat.S_ISLNK(metadata.st_mode):
                         raise SourceBackendError("source_reparse_point_rejected")
-                    if not stat.S_ISREG(metadata.st_mode):
+                    if stat.S_ISREG(metadata.st_mode):
+                        member_type = "file"
+                    elif stat.S_ISDIR(metadata.st_mode):
+                        member_type = "directory"
+                    else:
                         raise SourceBackendError("source_member_not_regular_file")
-                    if metadata.st_nlink != 1:
+                    if member_type == "file" and metadata.st_nlink != 1:
                         raise SourceBackendError("source_hard_link_rejected")
-                    metadata_bytes += len(entry.name.encode("utf-8", errors="strict")) + 128
-                    if metadata_bytes > active_budget.max_metadata_bytes:
-                        raise SourceBackendError("source_enumeration_metadata_budget_exceeded")
+                    record_bytes = len(entry.name.encode("utf-8", errors="strict")) + 128
+                    active_usage.add_entry(active_budget, record_bytes)
+                    metadata_bytes += record_bytes
                     records.append(
                         DirectoryMember(
                             entry.name,
+                            member_type,
                             self._identity(metadata),
                             self._change_identity(metadata),
                             metadata.st_mode,
                             0,
+                            metadata.st_nlink,
                         )
                     )
         except OSError as exc:
@@ -219,28 +294,54 @@ class PosixHandleBackend(BaseHandleBackend):
             raise SourceBackendError("source_alias_identity_rejected")
         return tuple(records)
 
-    def open_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+    def _open_relative(
+        self,
+        directory: OpenHandle,
+        member: DirectoryMember,
+        *,
+        directory_expected: bool,
+        allow_directory_change_refresh: bool = False,
+    ) -> OpenHandle:
         _validate_member_name(member.name)
+        if member.member_type != ("directory" if directory_expected else "file"):
+            raise SourceBackendError("source_member_type_invalid")
+        flags = os.O_RDONLY | os.O_NOFOLLOW
+        if directory_expected:
+            flags |= os.O_DIRECTORY
         try:
-            fd = os.open(member.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory.raw_handle)
+            fd = os.open(member.name, flags, dir_fd=directory.raw_handle)
         except OSError as exc:
             raise SourceBackendError("source_child_open_failed") from exc
         try:
             observation = self._observation(fd)
             if observation.object_identity != member.object_identity:
                 raise SourceBackendError("source_child_identity_mismatch")
-            if observation.change_identity != member.change_identity:
+            if observation.change_identity != member.change_identity and not (directory_expected and allow_directory_change_refresh):
                 raise SourceBackendError("source_child_change_identity_mismatch")
-            if observation.is_directory:
+            if observation.is_directory != directory_expected:
                 raise SourceBackendError("source_member_not_regular_file")
             if observation.reparse_point:
                 raise SourceBackendError("source_reparse_point_rejected")
-            if observation.link_count != 1:
+            if not directory_expected and observation.link_count != 1:
                 raise SourceBackendError("source_hard_link_rejected")
             return OpenHandle(fd, observation, self)
         except Exception:
             os.close(fd)
             raise
+
+    def open_file_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        return self._open_relative(directory, member, directory_expected=False)
+
+    def open_directory_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        return self._open_relative(directory, member, directory_expected=True)
+
+    def open_discovered_directory(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        return self._open_relative(
+            directory,
+            member,
+            directory_expected=True,
+            allow_directory_change_refresh=True,
+        )
 
     def observe(self, handle: OpenHandle) -> HandleObservation:
         return self._observation(handle.raw_handle)
@@ -517,6 +618,7 @@ class WindowsHandleBackend(BaseHandleBackend):
                 records.append(
                     DirectoryMember(
                         name,
+                        "directory" if int(record.FileAttributes) & FILE_ATTRIBUTE_DIRECTORY else "file",
                         FileObjectIdentity(
                             "windows",
                             "pending-volume",
@@ -530,6 +632,7 @@ class WindowsHandleBackend(BaseHandleBackend):
                         ),
                         int(record.FileAttributes),
                         int(record.ReparsePointTag),
+                        0,
                     )
                 )
             if record.NextEntryOffset == 0:
@@ -549,27 +652,28 @@ class WindowsHandleBackend(BaseHandleBackend):
         directory: OpenHandle,
         *,
         budget: EnumerationBudget | None = None,
+        usage: EnumerationUsage | None = None,
+        depth: int = 0,
     ) -> tuple[DirectoryMember, ...]:
         active_budget = budget or EnumerationBudget()
+        active_usage = usage or EnumerationUsage()
+        active_usage.begin_directory(active_budget, depth=depth)
         before = self.observe(directory)
         members: list[DirectoryMember] = []
-        pages = 0
-        metadata_bytes = 0
         page = self._page(directory.raw_handle, True)
         while page is not None:
-            pages += 1
-            if pages > active_budget.max_pages:
-                raise SourceBackendError("source_enumeration_page_budget_exceeded")
+            active_usage.add_page(active_budget)
             records, page_metadata_bytes = page
-            metadata_bytes += page_metadata_bytes
-            if metadata_bytes > active_budget.max_metadata_bytes:
-                raise SourceBackendError("source_enumeration_metadata_budget_exceeded")
-            if len(members) + len(records) > active_budget.max_entries:
-                raise SourceBackendError("source_enumeration_entry_budget_exceeded")
             for member in records:
+                name_bytes = len(member.name.encode("utf-16-le", errors="strict"))
+                active_usage.add_entry(
+                    active_budget,
+                    FILE_ID_EXTD_DIR_INFO.FileName.offset + name_bytes,
+                )
                 members.append(
                     DirectoryMember(
                         member.name,
+                        member.member_type,
                         FileObjectIdentity(
                             "windows",
                             before.object_identity.volume_id,
@@ -578,6 +682,7 @@ class WindowsHandleBackend(BaseHandleBackend):
                         member.change_identity,
                         member.attributes,
                         member.reparse_tag,
+                        member.link_count,
                     )
                 )
             page = self._page(directory.raw_handle, False)
@@ -586,8 +691,6 @@ class WindowsHandleBackend(BaseHandleBackend):
             raise SourceBackendError("source_directory_identity_drift")
         if any(member.attributes & FILE_ATTRIBUTE_REPARSE_POINT or member.reparse_tag for member in members):
             raise SourceBackendError("source_reparse_point_rejected")
-        if any(member.attributes & FILE_ATTRIBUTE_DIRECTORY for member in members):
-            raise SourceBackendError("source_member_not_regular_file")
         identities = [member.object_identity for member in members]
         if len(set(identities)) != len(identities):
             raise SourceBackendError("source_alias_identity_rejected")
@@ -595,17 +698,26 @@ class WindowsHandleBackend(BaseHandleBackend):
             raise SourceBackendError("source_name_collision_rejected")
         return tuple(members)
 
-    def open_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+    def _open_relative(
+        self,
+        directory: OpenHandle,
+        member: DirectoryMember,
+        *,
+        directory_expected: bool,
+        allow_directory_change_refresh: bool = False,
+    ) -> OpenHandle:
         _validate_member_name(member.name)
+        if member.member_type != ("directory" if directory_expected else "file"):
+            raise SourceBackendError("source_member_type_invalid")
         handle = self._nt_open(
             name=member.name,
             root_handle=directory.raw_handle,
-            desired_access=FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            desired_access=(FILE_LIST_DIRECTORY if directory_expected else FILE_READ_DATA) | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
             create_options=(
                 FILE_SYNCHRONOUS_IO_NONALERT
-                | FILE_NON_DIRECTORY_FILE
+                | (FILE_DIRECTORY_FILE if directory_expected else FILE_NON_DIRECTORY_FILE)
                 | FILE_OPEN_REPARSE_POINT
-                | FILE_OPEN_NO_RECALL
+                | (0 if directory_expected else FILE_OPEN_NO_RECALL)
             ),
             failure_code="source_child_open_failed",
         )
@@ -613,18 +725,32 @@ class WindowsHandleBackend(BaseHandleBackend):
             observation = self._observation(handle)
             if observation.object_identity != member.object_identity:
                 raise SourceBackendError("source_child_identity_mismatch")
-            if observation.change_identity != member.change_identity:
+            if observation.change_identity != member.change_identity and not (directory_expected and allow_directory_change_refresh):
                 raise SourceBackendError("source_child_change_identity_mismatch")
-            if observation.is_directory:
+            if observation.is_directory != directory_expected:
                 raise SourceBackendError("source_member_not_regular_file")
             if observation.reparse_point:
                 raise SourceBackendError("source_reparse_point_rejected")
-            if observation.link_count != 1:
+            if not directory_expected and observation.link_count != 1:
                 raise SourceBackendError("source_hard_link_rejected")
             return OpenHandle(handle, observation, self)
         except Exception:
             self.close_handle(handle)
             raise
+
+    def open_file_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        return self._open_relative(directory, member, directory_expected=False)
+
+    def open_directory_child(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        return self._open_relative(directory, member, directory_expected=True)
+
+    def open_discovered_directory(self, directory: OpenHandle, member: DirectoryMember) -> OpenHandle:
+        return self._open_relative(
+            directory,
+            member,
+            directory_expected=True,
+            allow_directory_change_refresh=True,
+        )
 
     def observe(self, handle: OpenHandle) -> HandleObservation:
         return self._observation(handle.raw_handle)

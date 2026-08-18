@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import binascii
 import time
+import zlib
 from dataclasses import dataclass
 from typing import Iterable, Iterator
 
@@ -147,6 +148,7 @@ def _jpeg(stream: _BoundedStream, max_depth: int) -> _Outcome:
             return _invalid("jpeg", "jpeg_soi_missing")
         depth = 0
         saw_sof = False
+        frame_components: set[int] = set()
         while True:
             if stream.read_byte() != 0xFF:
                 return _invalid("jpeg", "jpeg_marker_invalid", depth)
@@ -172,7 +174,13 @@ def _jpeg(stream: _BoundedStream, max_depth: int) -> _Outcome:
                     stream.skip(payload_length)
                     return _invalid("jpeg", "jpeg_frame_header_duplicate", depth)
                 header = stream.read_exact(payload_length)
-                if len(header) < 6 or int.from_bytes(header[1:3], "big") == 0 or int.from_bytes(header[3:5], "big") == 0 or header[5] == 0:
+                if len(header) < 9 or int.from_bytes(header[1:3], "big") == 0 or int.from_bytes(header[3:5], "big") == 0 or header[5] == 0:
+                    return _invalid("jpeg", "jpeg_frame_header_invalid", depth)
+                component_count = header[5]
+                if len(header) != 6 + 3 * component_count:
+                    return _invalid("jpeg", "jpeg_frame_header_invalid", depth)
+                frame_components = {header[6 + 3 * index] for index in range(component_count)}
+                if len(frame_components) != component_count:
                     return _invalid("jpeg", "jpeg_frame_header_invalid", depth)
                 saw_sof = True
                 continue
@@ -180,9 +188,16 @@ def _jpeg(stream: _BoundedStream, max_depth: int) -> _Outcome:
                 stream.skip(payload_length)
                 return _unsupported("jpeg", "jpeg_advanced_frame_unsupported", depth)
             if marker == 0xDA:
-                stream.skip(payload_length)
+                scan = stream.read_exact(payload_length)
                 if not saw_sof:
                     return _invalid("jpeg", "jpeg_frame_header_missing", depth)
+                if not scan:
+                    return _invalid("jpeg", "jpeg_scan_header_invalid", depth)
+                scan_components = scan[0]
+                if scan_components == 0 or len(scan) != 1 + 2 * scan_components + 3:
+                    return _invalid("jpeg", "jpeg_scan_header_invalid", depth)
+                if {scan[1 + 2 * index] for index in range(scan_components)} - frame_components:
+                    return _invalid("jpeg", "jpeg_scan_header_invalid", depth)
                 entropy_bytes = 0
                 while True:
                     value = stream.read_byte()
@@ -218,6 +233,21 @@ def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
         saw_idat = False
         idat_closed = False
         saw_plte = False
+        decompressor: zlib.decompressobj | None = None
+        expected_decoded = 0
+        decoded_bytes = 0
+        row_size = 0
+
+        def consume_decoded(data: bytes) -> bool:
+            nonlocal decoded_bytes
+            for value in data:
+                if row_size and decoded_bytes % row_size == 0 and value > 4:
+                    return False
+                decoded_bytes += 1
+                if decoded_bytes > expected_decoded:
+                    return False
+            return True
+
         while True:
             length = int.from_bytes(stream.read_exact(4), "big")
             kind = stream.read_exact(4)
@@ -233,6 +263,15 @@ def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
                 if len(first) < 32:
                     first.extend(block[: 32 - len(first)])
                 crc = binascii.crc32(block, crc)
+                if kind == b"IDAT":
+                    if decompressor is None:
+                        return _invalid("png", "png_idat_before_ihdr", depth)
+                    try:
+                        decoded = decompressor.decompress(block, max(0, expected_decoded - decoded_bytes + 1))
+                    except zlib.error:
+                        return _invalid("png", "png_zlib_invalid", depth)
+                    if not consume_decoded(decoded) or decompressor.unconsumed_tail:
+                        return _invalid("png", "png_decoded_size_invalid", depth)
             expected_crc = int.from_bytes(stream.read_exact(4), "big")
             if crc & 0xFFFFFFFF != expected_crc:
                 return _invalid("png", "png_crc_invalid", depth)
@@ -241,6 +280,27 @@ def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
                     return _invalid("png", "png_ihdr_invalid", depth)
                 if int.from_bytes(first[0:4], "big") == 0 or int.from_bytes(first[4:8], "big") == 0:
                     return _invalid("png", "png_dimensions_invalid", depth)
+                width = int.from_bytes(first[0:4], "big")
+                height = int.from_bytes(first[4:8], "big")
+                bit_depth = first[8]
+                color_type = first[9]
+                allowed = {
+                    0: ({1, 2, 4, 8, 16}, 1),
+                    2: ({8, 16}, 3),
+                    3: ({1, 2, 4, 8}, 1),
+                    4: ({8, 16}, 2),
+                    6: ({8, 16}, 4),
+                }
+                if color_type not in allowed or bit_depth not in allowed[color_type][0] or first[10:12] != b"\x00\x00" or first[12] != 0:
+                    if first[12] != 0:
+                        return _unsupported("png", "png_interlace_unsupported", depth)
+                    return _invalid("png", "png_ihdr_invalid", depth)
+                row_payload = (width * allowed[color_type][1] * bit_depth + 7) // 8
+                row_size = 1 + row_payload
+                expected_decoded = row_size * height
+                if expected_decoded <= 0 or expected_decoded > stream.max_bytes:
+                    return _invalid("png", "png_decoded_size_invalid", depth)
+                decompressor = zlib.decompressobj()
                 saw_ihdr = True
                 continue
             if kind == b"IHDR":
@@ -252,12 +312,21 @@ def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
             elif kind == b"IDAT":
                 if idat_closed or length == 0:
                     return _invalid("png", "png_idat_invalid", depth)
+                if not saw_ihdr or (color_type == 3 and not saw_plte):
+                    return _invalid("png", "png_idat_order_invalid", depth)
                 saw_idat = True
             elif saw_idat:
                 idat_closed = True
             if kind == b"IEND":
                 if length != 0 or not saw_ihdr or not saw_idat:
                     return _invalid("png", "png_iend_invalid", depth)
+                assert decompressor is not None
+                try:
+                    tail = decompressor.flush()
+                except zlib.error:
+                    return _invalid("png", "png_zlib_invalid", depth)
+                if not consume_decoded(tail) or not decompressor.eof or decompressor.unused_data or decoded_bytes != expected_decoded:
+                    return _invalid("png", "png_decoded_size_invalid", depth)
                 if not stream.at_eof():
                     return _invalid("png", "png_trailing_bytes", depth)
                 return _valid("png", depth)
@@ -267,13 +336,72 @@ def _png(stream: _BoundedStream, max_depth: int) -> _Outcome:
         return _invalid("png", "png_truncated", locals().get("depth", 0))
 
 
-def _gif_subblocks(stream: _BoundedStream) -> tuple[bool, int]:
+class _GifLzwValidator:
+    def __init__(self, minimum_code_size: int) -> None:
+        self.minimum = minimum_code_size
+        self.clear = 1 << minimum_code_size
+        self.end = self.clear + 1
+        self.code_size = minimum_code_size + 1
+        self.next_code = self.end + 1
+        self.bit_buffer = 0
+        self.bit_count = 0
+        self.saw_clear = False
+        self.saw_data = False
+        self.ended = False
+        self.previous = False
+        self.invalid = False
+
+    def feed(self, block: bytes) -> None:
+        if self.ended and any(block):
+            self.invalid = True
+            return
+        for value in block:
+            self.bit_buffer |= value << self.bit_count
+            self.bit_count += 8
+            while self.bit_count >= self.code_size and not self.ended:
+                code = self.bit_buffer & ((1 << self.code_size) - 1)
+                self.bit_buffer >>= self.code_size
+                self.bit_count -= self.code_size
+                if code == self.clear:
+                    self.code_size = self.minimum + 1
+                    self.next_code = self.end + 1
+                    self.saw_clear = True
+                    self.previous = False
+                    continue
+                if code == self.end:
+                    if not self.saw_clear or not self.saw_data:
+                        self.invalid = True
+                    self.ended = True
+                    continue
+                if not self.saw_clear or (not self.previous and code >= self.clear) or code > self.next_code:
+                    self.invalid = True
+                    return
+                self.saw_data = True
+                if self.previous and self.next_code < 4096:
+                    self.next_code += 1
+                    if self.next_code == (1 << self.code_size) and self.code_size < 12:
+                        self.code_size += 1
+                self.previous = True
+
+    @property
+    def valid(self) -> bool:
+        return self.ended and self.saw_clear and self.saw_data and not self.invalid
+
+
+def _gif_subblocks(stream: _BoundedStream, validator: _GifLzwValidator | None = None) -> tuple[bool, int]:
     payload_bytes = 0
     while True:
         size = stream.read_byte()
         if size == 0:
             return payload_bytes > 0, payload_bytes
-        stream.skip(size)
+        if validator is None:
+            stream.skip(size)
+        else:
+            remaining = size
+            while remaining:
+                block = stream.read_exact(min(remaining, stream.MATERIALIZE_LIMIT))
+                validator.feed(block)
+                remaining -= len(block)
         payload_bytes += size
 
 
@@ -317,8 +445,9 @@ def _gif(stream: _BoundedStream, max_depth: int) -> _Outcome:
             lzw_minimum = stream.read_byte()
             if lzw_minimum < 2 or lzw_minimum > 12:
                 return _invalid("gif", "gif_lzw_code_size_invalid", depth)
-            has_data, _length = _gif_subblocks(stream)
-            if not has_data:
+            validator = _GifLzwValidator(lzw_minimum)
+            has_data, _length = _gif_subblocks(stream, validator)
+            if not has_data or not validator.valid:
                 return _invalid("gif", "gif_image_data_missing", depth)
             saw_image = True
     except _Truncated:
@@ -336,6 +465,7 @@ def _webp(stream: _BoundedStream, max_depth: int) -> _Outcome:
         depth = 0
         image_chunks = 0
         advanced = False
+        unsupported_codec = False
         while stream.bytes_consumed < declared_total:
             if declared_total - stream.bytes_consumed < 8:
                 return _invalid("webp", "webp_chunk_truncated", depth)
@@ -349,21 +479,52 @@ def _webp(stream: _BoundedStream, max_depth: int) -> _Outcome:
             if overflow:
                 return overflow
             if kind in {b"VP8 ", b"VP8L"}:
-                if length == 0:
-                    return _invalid("webp", "webp_image_chunk_empty", depth)
+                if image_chunks:
+                    return _invalid("webp", "webp_image_chunk_duplicate", depth)
+                minimum = 10 if kind == b"VP8 " else 5
+                if length < minimum:
+                    return _invalid("webp", "webp_frame_header_invalid", depth)
+                header_bytes = stream.read_exact(minimum)
+                if kind == b"VP8 ":
+                    frame_tag = int.from_bytes(header_bytes[:3], "little")
+                    partition_length = (frame_tag >> 5) & 0x7FFFF
+                    width = int.from_bytes(header_bytes[6:8], "little") & 0x3FFF
+                    height = int.from_bytes(header_bytes[8:10], "little") & 0x3FFF
+                    if frame_tag & 1 or header_bytes[3:6] != b"\x9d\x01\x2a" or not width or not height:
+                        return _invalid("webp", "webp_vp8_frame_header_invalid", depth)
+                    if partition_length == 0 or partition_length > length - minimum:
+                        return _invalid("webp", "webp_vp8_partition_bounds_invalid", depth)
+                else:
+                    if header_bytes[0] != 0x2F:
+                        return _invalid("webp", "webp_vp8l_signature_invalid", depth)
+                    packed_header = int.from_bytes(header_bytes[1:5], "little")
+                    width = (packed_header & 0x3FFF) + 1
+                    height = ((packed_header >> 14) & 0x3FFF) + 1
+                    version = (packed_header >> 29) & 0x7
+                    if version != 0 or not width or not height:
+                        return _invalid("webp", "webp_vp8l_frame_header_invalid", depth)
+                    if length == minimum:
+                        return _invalid("webp", "webp_vp8l_image_data_missing", depth)
+                    unsupported_codec = True
+                stream.skip(length - minimum + (length & 1))
                 image_chunks += 1
             elif kind == b"VP8X":
                 if length != 10:
                     return _invalid("webp", "webp_vp8x_invalid", depth)
+                stream.skip(padded)
             elif kind in {b"ANIM", b"ANMF"}:
                 advanced = True
-            stream.skip(padded)
+                stream.skip(padded)
+            else:
+                stream.skip(padded)
         if stream.bytes_consumed != declared_total or not stream.at_eof():
             return _invalid("webp", "webp_riff_size_invalid", depth)
         if advanced:
             return _unsupported("webp", "webp_animation_unsupported", depth)
         if image_chunks != 1:
             return _invalid("webp", "webp_image_chunk_missing", depth)
+        if unsupported_codec:
+            return _unsupported("webp", "webp_vp8l_bitstream_unsupported", depth)
         return _valid("webp", depth)
     except _Truncated:
         return _invalid("webp", "webp_truncated", locals().get("depth", 0))
@@ -383,28 +544,93 @@ def _box_header(stream: _BoundedStream) -> tuple[int, bytes, int]:
     return size, kind, header
 
 
-def _avif_meta(stream: _BoundedStream, payload_length: int, max_depth: int, depth: int) -> tuple[set[bytes], int, _Outcome | None]:
+def _memory_boxes(payload: bytes) -> Iterator[tuple[bytes, bytes]]:
+    offset = 0
+    while offset < len(payload):
+        if len(payload) - offset < 8:
+            raise ValueError("avif_meta_child_truncated")
+        size = int.from_bytes(payload[offset : offset + 4], "big")
+        kind = payload[offset + 4 : offset + 8]
+        header = 8
+        if size == 1:
+            if len(payload) - offset < 16:
+                raise ValueError("avif_meta_child_truncated")
+            size = int.from_bytes(payload[offset + 8 : offset + 16], "big")
+            header = 16
+        if size < header or offset + size > len(payload):
+            raise ValueError("avif_meta_child_bounds_invalid")
+        yield kind, payload[offset + header : offset + size]
+        offset += size
+
+
+def _parse_avif_item_mapping(children: dict[bytes, bytes]) -> tuple[int, set[int], dict[int, tuple[int, int]]]:
+    pitm = children[b"pitm"]
+    if len(pitm) != 6 or pitm[:4] != b"\x00\x00\x00\x00":
+        raise ValueError("avif_pitm_invalid")
+    primary_item = int.from_bytes(pitm[4:6], "big")
+    if primary_item == 0:
+        raise ValueError("avif_pitm_invalid")
+
+    iinf = children[b"iinf"]
+    if len(iinf) < 6 or iinf[:4] != b"\x00\x00\x00\x00":
+        raise ValueError("avif_iinf_invalid")
+    entry_count = int.from_bytes(iinf[4:6], "big")
+    entries = list(_memory_boxes(iinf[6:]))
+    if entry_count != len(entries) or entry_count != 1 or entries[0][0] != b"infe":
+        raise ValueError("avif_iinf_invalid")
+    infe = entries[0][1]
+    if len(infe) < 13 or infe[:4] != b"\x02\x00\x00\x00":
+        raise ValueError("avif_infe_invalid")
+    item_id = int.from_bytes(infe[4:6], "big")
+    protection = int.from_bytes(infe[6:8], "big")
+    if item_id == 0 or protection != 0 or infe[8:12] != b"av01" or infe[-1:] != b"\x00":
+        raise ValueError("avif_infe_invalid")
+
+    iloc = children[b"iloc"]
+    if len(iloc) != 22 or iloc[:4] != b"\x00\x00\x00\x00" or iloc[4:6] != b"\x44\x00":
+        raise ValueError("avif_iloc_invalid")
+    if int.from_bytes(iloc[6:8], "big") != 1:
+        raise ValueError("avif_iloc_invalid")
+    located_item = int.from_bytes(iloc[8:10], "big")
+    data_reference = int.from_bytes(iloc[10:12], "big")
+    extent_count = int.from_bytes(iloc[12:14], "big")
+    extent_offset = int.from_bytes(iloc[14:18], "big")
+    extent_length = int.from_bytes(iloc[18:22], "big") if len(iloc) >= 22 else -1
+    # The exact supported v0 layout is 22 bytes; reject the 20-byte shell.
+    if len(iloc) != 22 or located_item == 0 or data_reference != 0 or extent_count != 1 or extent_length <= 0:
+        raise ValueError("avif_iloc_invalid")
+    return primary_item, {item_id}, {located_item: (extent_offset, extent_length)}
+
+
+def _avif_meta(
+    stream: _BoundedStream,
+    payload_length: int,
+    max_depth: int,
+    depth: int,
+) -> tuple[tuple[int, set[int], dict[int, tuple[int, int]]] | None, int, _Outcome | None]:
     if payload_length < 4:
-        return set(), depth, _invalid("avif", "avif_meta_truncated", depth)
-    stream.skip(4)
-    remaining = payload_length - 4
-    kinds: set[bytes] = set()
-    while remaining:
-        if remaining < 8:
-            return kinds, depth, _invalid("avif", "avif_meta_child_truncated", depth)
-        size, kind, header = _box_header(stream)
-        if size > remaining:
-            return kinds, depth, _invalid("avif", "avif_meta_child_bounds_invalid", depth)
-        depth += 1
-        overflow = _depth(depth, max_depth, "avif")
-        if overflow:
-            return kinds, depth, overflow
-        if kind in kinds and kind in {b"pitm", b"iloc", b"iinf"}:
-            return kinds, depth, _invalid("avif", "avif_mandatory_box_duplicate", depth)
-        kinds.add(kind)
-        stream.skip(size - header)
-        remaining -= size
-    return kinds, depth, None
+        return None, depth, _invalid("avif", "avif_meta_truncated", depth)
+    if payload_length > stream.MATERIALIZE_LIMIT:
+        return None, depth, _unsupported("avif", "avif_meta_too_large_unsupported", depth)
+    payload = stream.read_exact(payload_length)
+    if payload[:4] != b"\x00\x00\x00\x00":
+        return None, depth, _unsupported("avif", "avif_meta_version_unsupported", depth)
+    children: dict[bytes, bytes] = {}
+    try:
+        for kind, child_payload in _memory_boxes(payload[4:]):
+            depth += 1
+            overflow = _depth(depth, max_depth, "avif")
+            if overflow:
+                return None, depth, overflow
+            if kind in children and kind in {b"pitm", b"iloc", b"iinf"}:
+                return None, depth, _invalid("avif", "avif_mandatory_box_duplicate", depth)
+            children[kind] = child_payload
+        if not {b"pitm", b"iloc", b"iinf"}.issubset(children):
+            return None, depth, _invalid("avif", "avif_item_mapping_missing", depth)
+        mapping = _parse_avif_item_mapping(children)
+    except ValueError as exc:
+        return None, depth, _invalid("avif", str(exc), depth)
+    return mapping, depth, None
 
 
 def _avif(stream: _BoundedStream, max_depth: int) -> _Outcome:
@@ -413,7 +639,8 @@ def _avif(stream: _BoundedStream, max_depth: int) -> _Outcome:
         saw_ftyp = False
         saw_meta = False
         saw_mdat = False
-        meta_kinds: set[bytes] = set()
+        item_mapping: tuple[int, set[int], dict[int, tuple[int, int]]] | None = None
+        mdat_extent: tuple[int, int] | None = None
         while not stream.at_eof():
             size, kind, header = _box_header(stream)
             payload_length = size - header
@@ -434,13 +661,14 @@ def _avif(stream: _BoundedStream, max_depth: int) -> _Outcome:
             elif kind == b"meta":
                 if saw_meta:
                     return _invalid("avif", "avif_meta_duplicate", depth)
-                meta_kinds, depth, error = _avif_meta(stream, payload_length, max_depth, depth)
+                item_mapping, depth, error = _avif_meta(stream, payload_length, max_depth, depth)
                 if error:
                     return error
                 saw_meta = True
             elif kind == b"mdat":
                 if saw_mdat or payload_length == 0:
                     return _invalid("avif", "avif_mdat_invalid", depth)
+                mdat_extent = (stream.bytes_consumed, payload_length)
                 stream.skip(payload_length)
                 saw_mdat = True
             elif kind in {b"moov", b"trak", b"iref"}:
@@ -450,8 +678,11 @@ def _avif(stream: _BoundedStream, max_depth: int) -> _Outcome:
                 stream.skip(payload_length)
         if not saw_ftyp or not saw_meta or not saw_mdat:
             return _invalid("avif", "avif_required_box_missing", depth)
-        if not {b"pitm", b"iloc", b"iinf"}.issubset(meta_kinds):
+        if item_mapping is None or mdat_extent is None:
             return _invalid("avif", "avif_item_mapping_missing", depth)
+        primary, item_ids, locations = item_mapping
+        if primary not in item_ids or primary not in locations or locations[primary] != mdat_extent:
+            return _invalid("avif", "avif_item_mapping_inconsistent", depth)
         return _valid("avif", depth)
     except _Truncated:
         return _invalid("avif", "avif_truncated", locals().get("depth", 0))

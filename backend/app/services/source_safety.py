@@ -32,6 +32,14 @@ class FileObjectIdentity:
     def to_private_dict(self) -> dict[str, str]:
         return asdict(self)
 
+    @classmethod
+    def from_private_dict(cls, payload: Mapping[str, Any]) -> "FileObjectIdentity":
+        if not isinstance(payload, Mapping) or set(payload) != {"platform", "volume_id", "file_id"}:
+            raise ValueError("file_object_identity_schema_invalid")
+        if any(type(payload[key]) is not str or not payload[key] for key in payload):
+            raise ValueError("file_object_identity_schema_invalid")
+        return cls(payload["platform"], payload["volume_id"], payload["file_id"])
+
 
 @dataclass(frozen=True)
 class FileChangeIdentity:
@@ -46,6 +54,15 @@ class FileChangeIdentity:
 
     def to_private_dict(self) -> dict[str, int]:
         return asdict(self)
+
+    @classmethod
+    def from_private_dict(cls, payload: Mapping[str, Any]) -> "FileChangeIdentity":
+        expected = {"change_time_ns", "write_time_ns", "size", "allocation_size"}
+        if not isinstance(payload, Mapping) or set(payload) != expected:
+            raise ValueError("file_change_identity_schema_invalid")
+        if any(type(payload[key]) is not int for key in expected):
+            raise ValueError("file_change_identity_schema_invalid")
+        return cls(**{key: payload[key] for key in expected})
 
 
 @dataclass(frozen=True)
@@ -66,6 +83,55 @@ class HandleObservation:
         payload = asdict(self)
         payload["cloud_availability"] = self.cloud_availability.value
         return payload
+
+    @classmethod
+    def from_private_dict(cls, payload: Mapping[str, Any]) -> "HandleObservation":
+        expected = {
+            "object_identity",
+            "change_identity",
+            "cloud_availability",
+            "attributes_known",
+            "is_directory",
+            "reparse_point",
+            "reparse_tag",
+            "link_count",
+            "no_follow",
+            "identity_bound",
+            "no_recall_open_only",
+        }
+        if not isinstance(payload, Mapping) or set(payload) != expected:
+            raise ValueError("handle_observation_schema_invalid")
+        boolean_keys = {
+            "attributes_known",
+            "is_directory",
+            "reparse_point",
+            "no_follow",
+            "identity_bound",
+            "no_recall_open_only",
+        }
+        if any(type(payload[key]) is not bool for key in boolean_keys):
+            raise ValueError("handle_observation_schema_invalid")
+        if type(payload["reparse_tag"]) is not int or type(payload["link_count"]) is not int:
+            raise ValueError("handle_observation_schema_invalid")
+        if payload["reparse_tag"] < 0 or payload["link_count"] <= 0:
+            raise ValueError("handle_observation_schema_invalid")
+        try:
+            availability = CloudAvailability(payload["cloud_availability"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("handle_observation_schema_invalid") from exc
+        return cls(
+            object_identity=FileObjectIdentity.from_private_dict(payload["object_identity"]),
+            change_identity=FileChangeIdentity.from_private_dict(payload["change_identity"]),
+            cloud_availability=availability,
+            attributes_known=payload["attributes_known"],
+            is_directory=payload["is_directory"],
+            reparse_point=payload["reparse_point"],
+            reparse_tag=payload["reparse_tag"],
+            link_count=payload["link_count"],
+            no_follow=payload["no_follow"],
+            identity_bound=payload["identity_bound"],
+            no_recall_open_only=payload["no_recall_open_only"],
+        )
 
 
 @dataclass(frozen=True)

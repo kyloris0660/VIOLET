@@ -47,6 +47,21 @@ def test_current_backend_rejects_hard_link(tmp_path: Path) -> None:
             backend.enumerate_directory(directory)
 
 
+def test_recursive_backend_rejects_nested_hard_link(tmp_path: Path) -> None:
+    root = tmp_path / "nested-links"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    source = nested / "one.png"
+    source.write_bytes(b"synthetic")
+    os.link(source, nested / "two.png")
+    backend = current_handle_backend()
+    with backend.open_directory(root) as directory:
+        nested_member = next(member for member in backend.enumerate_directory(directory) if member.name == "nested")
+        with backend.open_discovered_directory(directory, nested_member) as child:
+            with pytest.raises(SourceBackendError, match="source_alias_identity_rejected"):
+                backend.enumerate_directory(child)
+
+
 def test_literal_backslash_member_name_is_never_treated_as_separator() -> None:
     from scripts.fl1_i2_source_backends import _validate_member_name
 
@@ -77,14 +92,18 @@ def test_enumeration_entry_budget_fails_before_unbounded_growth(tmp_path: Path) 
             )
 
 
-def test_non_regular_member_is_rejected(tmp_path: Path) -> None:
-    root = tmp_path / "non-regular"
+def test_directory_member_opens_relative_to_verified_parent(tmp_path: Path) -> None:
+    root = tmp_path / "nested"
     root.mkdir()
-    (root / "nested").mkdir()
+    nested = root / "child"
+    nested.mkdir()
     backend = current_handle_backend()
     with backend.open_directory(root) as directory:
-        with pytest.raises(SourceBackendError, match="not_regular|reparse"):
-            backend.enumerate_directory(directory)
+        member = next(item for item in backend.enumerate_directory(directory) if item.name == "child")
+        assert member.member_type == "directory"
+        with backend.open_discovered_directory(directory, member) as child:
+            assert child.observation.is_directory
+            assert child.observation.object_identity == member.object_identity
 
 
 def test_windows_directory_record_offsets_require_alignment_progress_and_bounds() -> None:

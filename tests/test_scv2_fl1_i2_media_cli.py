@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import time
+import zlib
 from pathlib import Path
 
 import pytest
@@ -32,16 +33,37 @@ def _jpeg() -> bytes:
 
 def _png() -> bytes:
     ihdr = b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
-    return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", ihdr) + _png_chunk(b"IDAT", b"x") + _png_chunk(b"IEND", b"")
+    return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", ihdr) + _png_chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00")) + _png_chunk(b"IEND", b"")
 
 
 def _gif() -> bytes:
-    return b"GIF89a\x01\x00\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x01\x00\x00\x3b"
+    return b"GIF89a\x01\x00\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b"
+
+
+def _webp_vp8() -> bytes:
+    frame = b"\x30\x00\x00\x9d\x01\x2a\x01\x00\x01\x00\x00"
+    chunk = b"VP8 " + len(frame).to_bytes(4, "little") + frame + b"\x00"
+    return b"RIFF" + (4 + len(chunk)).to_bytes(4, "little") + b"WEBP" + chunk
 
 
 def _avif() -> bytes:
     ftyp = (20).to_bytes(4, "big") + b"ftypavif\x00\x00\x00\x00avif"
-    children = b"".join((8).to_bytes(4, "big") + kind for kind in (b"pitm", b"iloc", b"iinf"))
+    pitm_payload = b"\x00\x00\x00\x00\x00\x01"
+    pitm = (8 + len(pitm_payload)).to_bytes(4, "big") + b"pitm" + pitm_payload
+    infe_payload = b"\x02\x00\x00\x00\x00\x01\x00\x00av01\x00"
+    infe = (8 + len(infe_payload)).to_bytes(4, "big") + b"infe" + infe_payload
+    iinf_payload = b"\x00\x00\x00\x00\x00\x01" + infe
+    iinf = (8 + len(iinf_payload)).to_bytes(4, "big") + b"iinf" + iinf_payload
+    placeholder_iloc = b"\x00" * 22
+    meta_size = 12 + len(pitm) + (8 + len(placeholder_iloc)) + len(iinf)
+    mdat_payload_offset = len(ftyp) + meta_size + 8
+    iloc_payload = (
+        b"\x00\x00\x00\x00\x44\x00\x00\x01\x00\x01\x00\x00\x00\x01"
+        + mdat_payload_offset.to_bytes(4, "big")
+        + (1).to_bytes(4, "big")
+    )
+    iloc = (8 + len(iloc_payload)).to_bytes(4, "big") + b"iloc" + iloc_payload
+    children = pitm + iloc + iinf
     meta = (12 + len(children)).to_bytes(4, "big") + b"meta\x00\x00\x00\x00" + children
     mdat = (9).to_bytes(4, "big") + b"mdatx"
     return ftyp + meta + mdat
@@ -53,7 +75,7 @@ def _avif() -> bytes:
         (_jpeg(), "jpeg"),
         (_png(), "png"),
         (_gif(), "gif"),
-        (b"RIFF" + (14).to_bytes(4, "little") + b"WEBP" + b"VP8L" + (2).to_bytes(4, "little") + b"xx", "webp"),
+        (_webp_vp8(), "webp"),
         (_avif(), "avif"),
     ],
 )
@@ -133,6 +155,53 @@ def test_byte_depth_and_time_budgets_fail_closed() -> None:
         validate_media_stream([b"x" * 11], max_bytes=10, max_depth=5, deadline_monotonic=_deadline())
     with pytest.raises(MediaValidationError, match="deadline"):
         validate_media_stream([b"x"], max_bytes=10, max_depth=5, deadline_monotonic=time.monotonic() - 1)
+
+
+def _webp_chunk(kind: bytes, payload: bytes) -> bytes:
+    chunk = kind + len(payload).to_bytes(4, "little") + payload + (b"\x00" if len(payload) & 1 else b"")
+    return b"RIFF" + (4 + len(chunk)).to_bytes(4, "little") + b"WEBP" + chunk
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        _webp_chunk(b"VP8 ", b"random-random"),
+        _webp_chunk(b"VP8L", b"xx"),
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00")
+        + _png_chunk(b"IDAT", b"random")
+        + _png_chunk(b"IEND", b""),
+        b"GIF89a\x01\x00\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x00\x00\x00\x3b",
+        _jpeg().replace(b"\xff\xda\x00\x08\x01\x01", b"\xff\xda\x00\x08\x01\x02"),
+    ],
+)
+def test_random_or_mutated_codec_payloads_never_validate(payload: bytes) -> None:
+    result = validate_media_stream([payload], max_bytes=4096, max_depth=50, deadline_monotonic=_deadline())
+    assert not result.valid
+    assert result.disposition in {"corrupt_media", "unsupported"}
+
+
+def test_well_formed_vp8l_header_is_explicitly_unsupported_without_full_bitstream_validation() -> None:
+    packed = (0).to_bytes(4, "little")
+    result = validate_media_stream(
+        [_webp_chunk(b"VP8L", b"\x2f" + packed + b"\x01")],
+        max_bytes=4096,
+        max_depth=20,
+        deadline_monotonic=_deadline(),
+    )
+    assert not result.valid
+    assert result.disposition == "unsupported"
+    assert result.safe_code == "webp_vp8l_bitstream_unsupported"
+
+
+def test_avif_item_extent_must_match_the_mdat_payload() -> None:
+    payload = bytearray(_avif())
+    iloc_kind = payload.index(b"iloc")
+    extent_offset = iloc_kind + 4 + 14
+    payload[extent_offset : extent_offset + 4] = (1).to_bytes(4, "big")
+    result = validate_media_stream([bytes(payload)], max_bytes=4096, max_depth=50, deadline_monotonic=_deadline())
+    assert not result.valid
+    assert result.safe_code == "avif_item_mapping_inconsistent"
 
 
 def test_cli_unknown_error_exposes_only_correlation_token() -> None:

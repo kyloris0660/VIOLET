@@ -8,6 +8,7 @@ import pytest
 
 from scripts.fl1_i2_validation_receipt import (
     ReceiptError,
+    canonical_validation_environment,
     canonical_focused_test_command,
     create_same_head_receipt,
     validate_canonical_focused_command,
@@ -108,3 +109,36 @@ def test_caller_cannot_supply_positive_or_head_fields(tmp_path: Path) -> None:
 def test_noncanonical_or_deselected_commands_cannot_issue_proof(command: tuple[str, ...]) -> None:
     with pytest.raises(ReceiptError, match="command_not_canonical|python_invalid"):
         validate_canonical_focused_command(command, Path(sys.executable))
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("PYTEST_ADDOPTS", "--collect-only"),
+        ("pytest_addopts", "-k nonexistent"),
+        ("PyTeSt_AdDoPtS", "--ignore=tests"),
+        ("PYTEST_PLUGINS", "hostile_plugin"),
+        ("pYtEsT_pLuGiNs", "hostile_plugin"),
+        ("PYTHONPATH", r"C:\hostile-import"),
+        ("Coverage_Process_Start", r"C:\hostile-coveragerc"),
+        ("COV_CORE_SOURCE", "hostile"),
+    ],
+)
+def test_hostile_test_or_import_environment_cannot_issue_positive_policy(name: str, value: str) -> None:
+    with pytest.raises(ReceiptError, match="hostile_environment"):
+        canonical_validation_environment({"SystemRoot": r"C:\Windows", name: value})
+
+
+def test_validation_environment_is_minimal_allowlisted_and_disables_plugin_autoload() -> None:
+    environment = canonical_validation_environment(
+        {
+            "SystemRoot": r"C:\Windows",
+            "TEMP": r"C:\Temp",
+            "PATH": r"C:\hostile-bin",
+            "VIOLET_UNRELATED": "not-inherited",
+        }
+    )
+    assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert "PATH" not in environment and "VIOLET_UNRELATED" not in environment

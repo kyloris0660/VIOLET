@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import sys
 import tempfile
@@ -26,6 +27,7 @@ from scripts.fl1_i2_evidence import (
     FailureBudget,
     FixedCutManifest,
     ItemDisposition,
+    ManifestDirectory,
     ManifestMember,
     OperationLedger,
     OperationState,
@@ -50,9 +52,22 @@ CANONICAL_POLICY = {
     "reject_recall_risk": True,
 }
 CANONICAL_ENUMERATION_BUDGET = {
-    "max_entries": 4096,
-    "max_pages": 1024,
-    "max_metadata_bytes": 4 * 1024 * 1024,
+    "max_entries": 8192,
+    "max_pages": 2048,
+    "max_metadata_bytes": 8 * 1024 * 1024,
+    "max_directories": 1024,
+    "max_depth": 64,
+}
+EXPECTED_FALSE_AUTHORITIES = {
+    "real_source": False,
+    "database": False,
+    "app_storage": False,
+    "import": False,
+    "classification_or_tagging": False,
+    "provider_or_llm": False,
+    "media_download": False,
+    "stable_replay": False,
+    "production": False,
 }
 
 
@@ -124,17 +139,7 @@ def create_synthetic_run_config(
         "policy": dict(CANONICAL_POLICY),
         "enumeration_budget": dict(CANONICAL_ENUMERATION_BUDGET),
         "budget": active_budget.to_dict(),
-        "authorities": {
-            "real_source": False,
-            "database": False,
-            "app_storage": False,
-            "import": False,
-            "classification_or_tagging": False,
-            "provider_or_llm": False,
-            "media_download": False,
-            "stable_replay": False,
-            "production": False,
-        },
+        "authorities": dict(EXPECTED_FALSE_AUTHORITIES),
     }
     EvidenceStore(evidence).write("private-run-config.json", config)
     return evidence / "private-run-config.json"
@@ -162,18 +167,12 @@ def _load_config(path: Path) -> tuple[dict[str, Any], Path, Path, FailureBudget]
     marker = load_private_json(source / MARKER_NAME)
     if marker.get("run_id") != payload["run_id"] or marker.get("mode") != "synthetic_new_temp_fixture":
         raise RunnerError("synthetic_fixture_marker_invalid")
-    expected_authorities = {
-        "real_source": False,
-        "database": False,
-        "app_storage": False,
-        "import": False,
-        "classification_or_tagging": False,
-        "provider_or_llm": False,
-        "media_download": False,
-        "stable_replay": False,
-        "production": False,
-    }
-    if payload["authorities"] != expected_authorities:
+    authorities = payload["authorities"]
+    if (
+        not isinstance(authorities, Mapping)
+        or set(authorities) != set(EXPECTED_FALSE_AUTHORITIES)
+        or any(type(authorities[key]) is not bool or authorities[key] is not False for key in EXPECTED_FALSE_AUTHORITIES)
+    ):
         raise RunnerError("synthetic_run_authority_escalation")
     if payload["policy"] != CANONICAL_POLICY or payload["enumeration_budget"] != CANONICAL_ENUMERATION_BUDGET:
         raise RunnerError("synthetic_run_policy_drift")
@@ -198,6 +197,19 @@ def _persist_ledger(
 ) -> None:
     store.write("private-operation-ledger.json", ledger.to_private_dict())
     _checkpoint(crash_injector, boundary)
+
+
+def _persist_and_verify_ledger(
+    store: EvidenceStore,
+    ledger: OperationLedger,
+    *,
+    crash_injector: Callable[[str], None] | None,
+    boundary: str,
+) -> None:
+    _persist_ledger(store, ledger, crash_injector=crash_injector, boundary=boundary)
+    rebuilt = OperationLedger.from_private_dict(store.read("private-operation-ledger.json"))
+    if rebuilt.to_private_dict() != ledger.to_private_dict():
+        raise RunnerError("operation_closure_conflict")
 
 
 def _persist_worker_projection(
@@ -285,18 +297,134 @@ def _manifest_from_private(raw: Mapping[str, Any]) -> FixedCutManifest:
             run_id=str(raw["run_id"]),
             source_scope_fingerprint=str(raw["source_scope_fingerprint"]),
             directory_observation=raw["directory_observation"],
+            directories=tuple(
+                ManifestDirectory(
+                    tuple(item["component_chain"]),
+                    item["observation"],
+                    item["parent_object_identity"],
+                    item["parent_change_identity"],
+                )
+                for item in raw["directories"]
+            ),
             members=tuple(
                 ManifestMember(
                     str(item["item_id"]),
                     str(item["private_name"]),
                     item["object_identity"],
                     item["change_identity"],
+                    tuple(item["component_chain"]),
+                    item["parent_object_identity"],
+                    item["parent_change_identity"],
+                    int(item["attributes"]),
+                    int(item["reparse_tag"]),
+                    int(item["link_count"]),
                 )
                 for item in raw["members"]
             ),
+            snapshot_fingerprint=str(raw["snapshot_fingerprint"]),
         )
     except (KeyError, TypeError, ValueError, EvidenceError) as exc:
         raise RunnerError("synthetic_resume_manifest_invalid") from exc
+
+
+def _snapshot_identity(payload: Mapping[str, Any]) -> dict[str, Any]:
+    expected = {"directory_observation", "directories", "members", "enumeration_usage"}
+    if set(payload) != expected:
+        raise RunnerError("synthetic_snapshot_invalid")
+    if not isinstance(payload["directories"], list) or not isinstance(payload["members"], list):
+        raise RunnerError("synthetic_snapshot_invalid")
+    return {
+        "directory_observation": payload["directory_observation"],
+        "directories": payload["directories"],
+        "members": payload["members"],
+    }
+
+
+def _remaining_enumeration_budget(config: Mapping[str, Any], ledger: OperationLedger) -> dict[str, int]:
+    counters = ledger.run_counters()
+    configured = config["enumeration_budget"]
+    remaining = {
+        "max_entries": int(configured["max_entries"]) - counters["entries_discovered"],
+        "max_pages": int(configured["max_pages"]) - sum(
+            int(record.get("payload", {}).get("result", {}).get("enumeration_usage", {}).get("pages", 0))
+            for record in ledger.committed_results.values()
+            if isinstance(record.get("payload"), Mapping)
+        ),
+        "max_metadata_bytes": int(configured["max_metadata_bytes"]) - counters["metadata_bytes"],
+        "max_directories": int(configured["max_directories"]) - counters["directories_discovered"],
+        "max_depth": int(configured["max_depth"]),
+    }
+    if min(remaining.values()) <= 0:
+        raise RunnerError("run_wide_enumeration_budget_exhausted")
+    return remaining
+
+
+def _validate_run_counters(ledger: OperationLedger, budget: FailureBudget) -> dict[str, int]:
+    counters = ledger.run_counters()
+    limits = {
+        "directories_discovered": budget.max_directories,
+        "entries_discovered": budget.max_entries,
+        "metadata_observations": budget.max_metadata_observations,
+        "metadata_bytes": budget.max_metadata_bytes,
+        "content_opens": budget.max_content_opens,
+        "content_bytes": budget.max_bytes,
+        "hash_operations": budget.max_hash_operations,
+        "structure_validations": budget.max_structure_validations,
+        "total_operations": budget.max_operations,
+        "failed_operations": budget.max_failures,
+        "retry_operations": budget.max_retries,
+        "maximum_concurrent_workers": budget.max_concurrent_workers,
+        "external_cost_usd": 0,
+    }
+    if any(counters[key] > maximum for key, maximum in limits.items()):
+        raise RunnerError("run_wide_budget_exhausted")
+    if counters["interrupted_operations"] > budget.max_failures:
+        raise RunnerError("run_wide_budget_exhausted")
+    if time.time_ns() - ledger.run_started_at_ns > int(budget.max_run_seconds * 1_000_000_000):
+        raise RunnerError("run_wide_deadline_exceeded")
+    return counters
+
+
+def _canonical_evidence_bytes(*payloads: Mapping[str, Any]) -> int:
+    return sum(
+        len(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8"))
+        for payload in payloads
+    )
+
+
+def _worker_member_payload(member: ManifestMember) -> dict[str, Any]:
+    return {
+        "name": member.private_name,
+        "member_type": "file",
+        "object_identity": dict(member.object_identity),
+        "change_identity": dict(member.change_identity),
+        "attributes": member.attributes,
+        "reparse_tag": member.reparse_tag,
+        "link_count": member.link_count,
+    }
+
+
+def _worker_ancestor_payloads(manifest: FixedCutManifest, member: ManifestMember) -> list[dict[str, Any]]:
+    by_chain = {directory.component_chain: directory for directory in manifest.directories}
+    payloads: list[dict[str, Any]] = []
+    for length in range(1, len(member.component_chain)):
+        chain = member.component_chain[:length]
+        directory = by_chain.get(chain)
+        if directory is None:
+            raise RunnerError("synthetic_manifest_ancestor_missing")
+        observation = directory.observation
+        payloads.append(
+            {
+                "name": chain[-1],
+                "member_type": "directory",
+                "object_identity": observation["object_identity"],
+                "change_identity": observation["change_identity"],
+                "attributes": 0,
+                "reparse_tag": observation["reparse_tag"],
+                "link_count": observation["link_count"],
+            }
+        )
+    return payloads
 
 
 def _disposition_from_result(record: Mapping[str, Any]) -> ItemDisposition:
@@ -411,17 +539,28 @@ def run_synthetic_hardening(
             listing_payload = listing.payload
         if not isinstance(listing_payload, Mapping):
             raise RunnerError("operation_closure_conflict")
+        snapshot_identity = _snapshot_identity(listing_payload)
         directory_observation = listing_payload["directory_observation"]
         scope_fingerprint = canonical_fingerprint(directory_observation)
+        manifest_directories = [
+            ManifestDirectory(
+                tuple(raw["component_chain"]),
+                raw["observation"],
+                raw["parent_object_identity"],
+                raw["parent_change_identity"],
+            )
+            for raw in listing_payload["directories"]
+        ]
         manifest_members: list[ManifestMember] = []
         for raw in listing_payload["members"]:
             name = str(raw["name"])
             if Path(name).suffix.casefold() not in ELIGIBLE_SUFFIXES:
                 continue
+            component_chain = tuple(str(value) for value in raw["component_chain"])
             item_id = canonical_fingerprint(
                 {
                     "scope": scope_fingerprint,
-                    "name": name,
+                    "component_chain": component_chain,
                     "object_identity": raw["object_identity"],
                     "change_identity": raw["change_identity"],
                 }
@@ -432,6 +571,12 @@ def run_synthetic_hardening(
                     name,
                     raw["object_identity"],
                     raw["change_identity"],
+                    component_chain,
+                    raw["parent_object_identity"],
+                    raw["parent_change_identity"],
+                    int(raw["attributes"]),
+                    int(raw["reparse_tag"]),
+                    int(raw["link_count"]),
                 )
             )
         manifest = FixedCutManifest.build(
@@ -439,6 +584,8 @@ def run_synthetic_hardening(
             source_scope_fingerprint=scope_fingerprint,
             directory_observation=directory_observation,
             members=manifest_members,
+            directories=manifest_directories,
+            snapshot_fingerprint=canonical_fingerprint(snapshot_identity),
         )
         ledger.manifest_fingerprint = manifest.manifest_fingerprint
         store.write("private-manifest.json", manifest.to_private_dict())
@@ -455,6 +602,12 @@ def run_synthetic_hardening(
             raise RunnerError("operation_closure_conflict")
         if prior:
             ledger.set_disposition(member.item_id, _disposition_from_result(prior[0]))
+            _persist_and_verify_ledger(
+                store,
+                ledger,
+                crash_injector=crash_injector,
+                boundary="after_reconstructed_disposition_ledger_commit",
+            )
             continue
         expected_size = int(member.change_identity["size"])
         reservation = max(1, expected_size)
@@ -475,10 +628,9 @@ def run_synthetic_hardening(
             WorkerOperation.COMBINED_CONTENT,
             {
                 "root": os.fspath(source),
-                "member_name": member.private_name,
                 "expected_root_observation": manifest.directory_observation,
-                "expected_member_object_identity": member.object_identity,
-                "expected_member_change_identity": member.change_identity,
+                "ancestor_members": _worker_ancestor_payloads(manifest, member),
+                "member": _worker_member_payload(member),
                 "max_bytes": reservation,
                 "max_depth": 1024,
                 "parser_deadline_monotonic": time.monotonic() + budget.worker_deadline_seconds,
@@ -494,8 +646,56 @@ def run_synthetic_hardening(
 
     if set(ledger.item_dispositions) != {member.item_id for member in manifest.members}:
         raise RunnerError("operation_closure_conflict")
+
+    prior_snapshots = [
+        record
+        for record in ledger.committed_results.values()
+        if record.get("kind") == WorkerOperation.FINAL_SNAPSHOT.value
+    ]
+    if len(prior_snapshots) > 1:
+        raise RunnerError("operation_closure_conflict")
+    if prior_snapshots:
+        final_record = prior_snapshots[0]
+        envelope = final_record.get("payload")
+        final_payload = envelope.get("result") if isinstance(envelope, Mapping) else None
+    else:
+        snapshot_operation = ledger.begin(
+            item_id="final-directory-snapshot",
+            kind=WorkerOperation.FINAL_SNAPSHOT.value,
+            attempt=1,
+            budget=budget,
+            bytes_reserved=0,
+        )
+        _persist_ledger(store, ledger, crash_injector=crash_injector, boundary="after_intent_ledger_commit")
+
+        def persist_snapshot_started(identifier: str = snapshot_operation) -> None:
+            ledger.mark_started(identifier)
+            _persist_ledger(store, ledger, crash_injector=crash_injector, boundary="after_started_ledger_commit")
+
+        final_result = controller.run(
+            WorkerOperation.FINAL_SNAPSHOT,
+            {
+                "root": os.fspath(source),
+                "policy": config["policy"],
+                "enumeration_budget": _remaining_enumeration_budget(config, ledger),
+            },
+            deadline_seconds=budget.worker_deadline_seconds,
+            persist_started=persist_snapshot_started,
+        )
+        _commit_worker_result(store, ledger, snapshot_operation, final_result, crash_injector=crash_injector)
+        if final_result.status is not WorkerStatus.COMPLETED or final_result.payload is None:
+            raise RunnerError("synthetic_final_snapshot_failed", public_code="worker_interrupted")
+        final_payload = final_result.payload
+    if not isinstance(final_payload, Mapping):
+        raise RunnerError("operation_closure_conflict")
+    if canonical_fingerprint(_snapshot_identity(final_payload)) != manifest.snapshot_fingerprint:
+        raise RunnerError("synthetic_final_snapshot_drift")
     worker_payload = _validate_or_rebuild_projection(store, ledger, evidence)
     ledger_payload = ledger.to_private_dict()
+    run_counters = _validate_run_counters(ledger, budget)
+    evidence_bytes = _canonical_evidence_bytes(config, manifest.to_private_dict(), ledger_payload, worker_payload)
+    if evidence_bytes > budget.max_evidence_bytes:
+        raise RunnerError("run_wide_evidence_disk_budget_exhausted")
     counts = {
         disposition.value: sum(value is disposition for value in ledger.item_dispositions.values())
         for disposition in ItemDisposition
@@ -517,6 +717,8 @@ def run_synthetic_hardening(
             "maximum_bytes": budget.max_bytes,
             "consumed_bytes": ledger.consumed_bytes,
             "remaining_bytes": ledger.remaining_bytes(budget),
+            "evidence_disk_bytes": evidence_bytes,
+            "counters": run_counters,
         },
         "evidence_bindings": {
             "config": config_fingerprint,
