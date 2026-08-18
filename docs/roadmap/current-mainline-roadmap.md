@@ -61,8 +61,8 @@ findings are closed by this planning PR: the checker binds the actual frozen I1
 evidence commit/tree and fails closed unless `machine_verifiable_ci=false`,
 `github_checks=0`, and CI authority remains false. Fourteen findings and the
 final convergence corrections are closed at frozen implementation evidence
-HEAD/tree `8052ca4fd60becbae3ce512b4ea5f270e9ee177d` /
-`c278143903da1f7703c4e015f626407f7e5d8236`. The prior bounded correction
+HEAD/tree `4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
+`e3dc5d6d6047b195964123396bf3b814665010b7`. The prior bounded correction
 review remains covered by its regressions. Exact-head review `4952516658`
 rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; its seven accepted findings
 are superseded by this additive correction evidence.

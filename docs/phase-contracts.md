@@ -128,8 +128,8 @@ The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
 only for its narrow synthetic foundation. I2 contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at final
 convergence implementation evidence HEAD/tree
-`8052ca4fd60becbae3ce512b4ea5f270e9ee177d` /
-`c278143903da1f7703c4e015f626407f7e5d8236`. Exact-head review `4952516658`
+`4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
+`e3dc5d6d6047b195964123396bf3b814665010b7`. Exact-head review `4952516658`
 rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; its seven accepted findings
 are superseded while the prior ten-finding correction regressions remain.
 The contract reconstructs the 14 gate

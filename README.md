@@ -39,8 +39,8 @@ owner-accepted `SCV2-FL1-I2` plan at merge commit
 `1913bd27517efc1a6007a202fc9650de4f20fab4`. The separately authorized
 synthetic pre-real hardening implementation has a final convergence correction
 frozen at implementation evidence HEAD/tree
-`8052ca4fd60becbae3ce512b4ea5f270e9ee177d` /
-`c278143903da1f7703c4e015f626407f7e5d8236`. Exact-head review `4952516658`
+`4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
+`e3dc5d6d6047b195964123396bf3b814665010b7`. Exact-head review `4952516658`
 rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`; the seven accepted findings
 are superseded by additive code and regression evidence. Contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives all 14 delivery gates
