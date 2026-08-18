@@ -154,6 +154,8 @@ FL1_I2_PRE_RECEIPT_EVIDENCE_HEAD = "46d38cff259823588863e6ef36dbd0ed886edf35"
 FL1_I2_PRE_RECEIPT_EVIDENCE_TREE = "6322959f96bb55ca5a5de133c07dd3e93172087f"
 FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_HEAD = "85407b8fd29652c5e2999c77552bf5d0ab2e1f14"
 FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_TREE = "1d2c1243b14cfcda893840ae40bebb0c543284cc"
+FL1_I2_POST_TERMINAL_PROJECTION_HEAD = "7b258e97c3267e933c370b2fd1a526216aabb721"
+FL1_I2_POST_TERMINAL_PROJECTION_TREE = "afd5eaf2e701aac174c482f82fb64fb3d319539d"
 FL1_I2_PRE_TERMINAL_EVIDENCE_HEAD = "4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5"
 FL1_I2_PRE_TERMINAL_EVIDENCE_TREE = "e3dc5d6d6047b195964123396bf3b814665010b7"
 FL1_I2_SUPERSEDED_EVIDENCE_HEAD = "78ccbdc69ee1bf0f51c297435b56e2be868b54e9"
@@ -748,6 +750,9 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         "fl1_i2_intermediate_post_terminal_projection_head": FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_HEAD,
         "fl1_i2_intermediate_post_terminal_projection_tree": FL1_I2_INTERMEDIATE_POST_TERMINAL_PROJECTION_TREE,
         "fl1_i2_intermediate_post_terminal_projection_status": "superseded_by_validation_temp_cleanup_correction",
+        "fl1_i2_post_terminal_governance_projection_head": FL1_I2_POST_TERMINAL_PROJECTION_HEAD,
+        "fl1_i2_post_terminal_governance_projection_tree": FL1_I2_POST_TERMINAL_PROJECTION_TREE,
+        "fl1_i2_post_terminal_governance_projection_frozen": True,
         "fl1_i2_superseded_evidence_head": FL1_I2_SUPERSEDED_EVIDENCE_HEAD,
         "fl1_i2_superseded_evidence_tree": FL1_I2_SUPERSEDED_EVIDENCE_TREE,
         "fl1_i2_superseded_evidence_reason": (
@@ -1035,6 +1040,26 @@ def _validate_fl1_i2_state(state: dict[str, Any]) -> None:
         }
     ]:
         raise DocumentationStateError("fl1_i2_post_terminal_projection_checkpoint_invalid")
+
+    current_projection_checkpoints = [
+        checkpoint
+        for checkpoint in state["completed_checkpoints"]
+        if isinstance(checkpoint, dict)
+        and checkpoint.get("id") == "fl1_i2_post_terminal_governance_projection"
+    ]
+    if current_projection_checkpoints != [
+        {
+            "id": "fl1_i2_post_terminal_governance_projection",
+            "result": (
+                "validated_post_terminal_correction_truth_projected_pending_"
+                "exact_head_owner_reaudit"
+            ),
+            "fingerprint": FL1_I2_POST_TERMINAL_PROJECTION_HEAD,
+        }
+    ]:
+        raise DocumentationStateError(
+            "fl1_i2_current_post_terminal_projection_checkpoint_invalid"
+        )
 
     expected_findings = [
         (1, "PRRT_kwDOSTBMB86X4OUS", "P1", "Scrub Git control variables before trusted invocations", "scripts/fl1_i1_runtime_context.py", "git_control_environment_sanitization", "must_close_during_i2_before_i2_completion_merge_or_i3"),
@@ -1786,6 +1811,11 @@ def validate_git_ancestry(
             "fl1_i2_intermediate_post_terminal_projection_head", ""
         )
     )
+    current_projection = str(
+        state.get("protected_evidence", {}).get(
+            "fl1_i2_post_terminal_governance_projection_head", ""
+        )
+    )
     expected_commit_trees: dict[str, str] = {}
     if state.get("phase_id") == "SCV2-FL1-I2":
         expected_commit_trees = {
@@ -1807,6 +1837,11 @@ def validate_git_ancestry(
             projection: str(
                 state["protected_evidence"][
                     "fl1_i2_intermediate_post_terminal_projection_tree"
+                ]
+            ),
+            current_projection: str(
+                state["protected_evidence"][
+                    "fl1_i2_post_terminal_governance_projection_tree"
                 ]
             ),
             base: FL1_I2_PLANNING_MERGE_TREE,
@@ -1843,6 +1878,13 @@ def validate_git_ancestry(
         if projection_check.returncode != 0:
             raise DocumentationStateError(
                 "fl1_i2_intermediate_post_terminal_projection_not_ancestor"
+            )
+        current_projection_check = _run_trusted_git(
+            ["merge-base", "--is-ancestor", current_projection, "HEAD"], root=root
+        )
+        if current_projection_check.returncode != 0:
+            raise DocumentationStateError(
+                "fl1_i2_post_terminal_projection_not_ancestor"
             )
 
     implementation_check = _run_trusted_git(
@@ -2056,6 +2098,7 @@ def render_handoff(state: dict[str, Any]) -> str:
         f"- Previous I1 implementation evidence HEAD/tree: `{state['protected_evidence']['previous_phase_implementation_evidence_head']}` / `{state['protected_evidence']['previous_phase_implementation_evidence_tree']}` (frozen: `true`; accepted scope: `{state['previous_phase_accepted_scope']}`).",
         f"- Current I2 post-terminal bounded-correction implementation evidence HEAD/tree: `{state['implementation_evidence_head']}` / `{state['protected_evidence']['fl1_i2_implementation_evidence_tree']}`; contract: `{state['protected_evidence']['fl1_i2_contract_id']}`; fourteen delivery gates are re-established only in this new synthetic evidence and remain pending exact-HEAD owner re-audit.",
         f"- Intermediate post-terminal governance projection HEAD/tree: `{state['protected_evidence']['fl1_i2_intermediate_post_terminal_projection_head']}` / `{state['protected_evidence']['fl1_i2_intermediate_post_terminal_projection_tree']}`; it was superseded after canonical receipt exposed and the implementation closed a task-owned Windows readonly cleanup gap.",
+        f"- Current post-terminal governance projection HEAD/tree: `{state['protected_evidence']['fl1_i2_post_terminal_governance_projection_head']}` / `{state['protected_evidence']['fl1_i2_post_terminal_governance_projection_tree']}`; the current HEAD is a governance-only exact-binding carry-forward.",
         f"- PR #146 correction history: review `{state['protected_evidence']['fl1_i2_bounded_correction_review_id']}` and its `{len(state['protected_evidence']['fl1_i2_bounded_correction_thread_ids'])}` findings remain regression-covered; review `{state['protected_evidence']['fl1_i2_final_convergence_review_id']}` and its `{len(state['protected_evidence']['fl1_i2_final_convergence_thread_ids'])}` findings remain regression-covered; terminal review `{state['protected_evidence']['fl1_i2_post_terminal_review_id']}` rejected `{state['protected_evidence']['fl1_i2_terminal_rejected_head']}` / `{state['protected_evidence']['fl1_i2_terminal_rejected_tree']}` with `{len(state['protected_evidence']['fl1_i2_post_terminal_findings'])}` accepted findings superseded by the new additive evidence; one post-terminal follow-up Codex review is authorized.",
         f"- Terminal review: `{state['previous_phase_terminal_review_id']}` at `{state['previous_phase_final_head']}`; findings: `{state['previous_phase_terminal_review_findings']}` (`P1={state['previous_phase_terminal_review_p1']}`, `P2={state['previous_phase_terminal_review_p2']}`); GitHub checks: `{state['previous_phase_github_checks']}`.",
         f"- Status: `{state['current_status']}`.",

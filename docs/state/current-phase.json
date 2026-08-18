@@ -180,6 +180,11 @@
       "id": "fl1_i2_intermediate_post_terminal_governance_projection",
       "result": "post_terminal_review_rejection_and_bounded_correction_truth_projected_pending_exact_head_owner_reaudit",
       "fingerprint": "85407b8fd29652c5e2999c77552bf5d0ab2e1f14"
+    },
+    {
+      "id": "fl1_i2_post_terminal_governance_projection",
+      "result": "validated_post_terminal_correction_truth_projected_pending_exact_head_owner_reaudit",
+      "fingerprint": "7b258e97c3267e933c370b2fd1a526216aabb721"
     }
   ],
   "active_blocker": {
@@ -393,6 +398,9 @@
     "fl1_i2_intermediate_post_terminal_projection_head": "85407b8fd29652c5e2999c77552bf5d0ab2e1f14",
     "fl1_i2_intermediate_post_terminal_projection_tree": "1d2c1243b14cfcda893840ae40bebb0c543284cc",
     "fl1_i2_intermediate_post_terminal_projection_status": "superseded_by_validation_temp_cleanup_correction",
+    "fl1_i2_post_terminal_governance_projection_head": "7b258e97c3267e933c370b2fd1a526216aabb721",
+    "fl1_i2_post_terminal_governance_projection_tree": "afd5eaf2e701aac174c482f82fb64fb3d319539d",
+    "fl1_i2_post_terminal_governance_projection_frozen": true,
     "fl1_i2_superseded_evidence_head": "78ccbdc69ee1bf0f51c297435b56e2be868b54e9",
     "fl1_i2_superseded_evidence_tree": "311b34f7c7fb5e5947b696598ded15dfd325e3f4",
     "fl1_i2_superseded_evidence_reason": "owner_adjudicated_pr146_review_findings_require_bounded_correction",
@@ -690,5 +698,5 @@
       ]
     }
   ],
-  "updated_at": "2026-08-18T23:48:00+08:00"
+  "updated_at": "2026-08-18T23:57:00+08:00"
 }

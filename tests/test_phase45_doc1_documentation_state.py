@@ -71,6 +71,12 @@ def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
     assert state["protected_evidence"]["fl1_i2_intermediate_post_terminal_projection_tree"] == (
         "1d2c1243b14cfcda893840ae40bebb0c543284cc"
     )
+    assert state["protected_evidence"]["fl1_i2_post_terminal_governance_projection_head"] == (
+        "7b258e97c3267e933c370b2fd1a526216aabb721"
+    )
+    assert state["protected_evidence"]["fl1_i2_post_terminal_governance_projection_tree"] == (
+        "afd5eaf2e701aac174c482f82fb64fb3d319539d"
+    )
     assert len(state["protected_evidence"]["fl1_i2_post_terminal_findings"]) == 9
     assert {
         finding["severity"]
