@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -45,7 +46,7 @@ from .pixiv_metadata_projection_service import (
 
 
 SYNTHETIC_FIXTURE_SCHEMA = "violet.scv2-px1-synthetic-pixiv-fixture.v1"
-VERTICAL_SLICE_RECEIPT_SCHEMA = "violet.scv2-px1-offline-operation-receipt.v1"
+VERTICAL_SLICE_RECEIPT_SCHEMA = "violet.scv2-px1-offline-operation-receipt.v2"
 PX1_CONTRACT_ID = "scv2_px1_pixiv_metadata_consolidation_contract_v1"
 PX1_AUTHORITY_MAP = {
     "px1_implementation_authorized": True,
@@ -277,6 +278,25 @@ def _require_task_owned_temp_workspace(workspace: Path) -> Path:
         raise PixivMetadataGateError("px1_workspace_not_task_owned_temporary") from exc
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
+
+
+def _require_task_owned_runtime_storage_environment() -> Path:
+    raw = os.environ.get("VIOLET_STORAGE_ROOT", "").strip()
+    if (
+        not raw
+        or os.environ.get("VIOLET_SKIP_DOTENV", "").strip() != "1"
+        or os.environ.get("VIOLET_ENV", "").strip().casefold() != "test"
+    ):
+        raise PixivMetadataGateError("px1_task_runtime_storage_environment_required")
+    storage = Path(raw).resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    try:
+        storage.relative_to(temp_root)
+    except ValueError as exc:
+        raise PixivMetadataGateError("px1_task_runtime_storage_not_temporary") from exc
+    if not storage.is_dir():
+        raise PixivMetadataGateError("px1_task_runtime_storage_unavailable")
+    return storage
 
 
 class _OfflineOperationGuard:
@@ -512,6 +532,7 @@ def run_synthetic_pixiv_vertical_slice(
 ) -> dict[str, Any]:
     """Run two isolated temp databases and return stable public-safe evidence."""
 
+    _require_task_owned_runtime_storage_environment()
     task_workspace = _require_task_owned_temp_workspace(workspace)
     selected_fixture = dict(fixture or repository_synthetic_pixiv_fixture())
     if selected_fixture.get("schema_version") != SYNTHETIC_FIXTURE_SCHEMA:
@@ -541,7 +562,8 @@ def run_synthetic_pixiv_vertical_slice(
         "task_owned_temporary_database_count": 2,
         "existing_database_read_count": 0,
         "existing_database_write_count": 0,
-        "app_storage_access_count": 0,
+        "existing_app_storage_access_count": 0,
+        "task_owned_temporary_runtime_storage_root_count": 1,
         "provider_network_activity_count": guard.provider_network_attempt_count,
         "media_network_activity_count": 0,
         "subprocess_activity_count": guard.subprocess_attempt_count,

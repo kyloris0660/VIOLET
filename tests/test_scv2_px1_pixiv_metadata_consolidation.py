@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -30,6 +33,18 @@ from app.services.pixiv_metadata_vertical_slice_service import (
 
 def _stdout(records: object) -> str:
     return json.dumps(records, ensure_ascii=False)
+
+
+@pytest.fixture(autouse=True)
+def px1_task_runtime_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage = tmp_path / "runtime-storage"
+    storage.mkdir()
+    monkeypatch.setenv("VIOLET_SKIP_DOTENV", "1")
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("VIOLET_STORAGE_ROOT", str(storage))
 
 
 def test_canonical_normalizer_is_order_and_duplicate_stable() -> None:
@@ -142,13 +157,14 @@ def test_single_command_vertical_slice_is_stable_public_and_offline(tmp_path: Pa
         "reversed_input_projection_fingerprint"
     ]
     assert first["operation_receipt"] == {
-        "schema_version": "violet.scv2-px1-offline-operation-receipt.v1",
+        "schema_version": "violet.scv2-px1-offline-operation-receipt.v2",
         "fixture_source": "repository_owned_new_synthetic_only",
         "temporary_workspace_enforced": True,
         "task_owned_temporary_database_count": 2,
         "existing_database_read_count": 0,
         "existing_database_write_count": 0,
-        "app_storage_access_count": 0,
+        "existing_app_storage_access_count": 0,
+        "task_owned_temporary_runtime_storage_root_count": 1,
         "provider_network_activity_count": 0,
         "media_network_activity_count": 0,
         "subprocess_activity_count": 0,
@@ -168,6 +184,39 @@ def test_single_command_vertical_slice_is_stable_public_and_offline(tmp_path: Pa
     assert "C:\\Private" not in text
     assert "raw_metadata_json" not in text
     assert "local_path" not in text
+
+
+def test_repository_cli_preserves_existing_app_storage_boundary() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    settings_path = repository_root / "data" / "settings.json"
+
+    def metadata() -> tuple[int, int] | None:
+        if not settings_path.exists():
+            return None
+        observed = settings_path.stat()
+        return observed.st_size, observed.st_mtime_ns
+
+    before = metadata()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            os.fspath(
+                repository_root
+                / "scripts"
+                / "run_scv2_px1_pixiv_metadata_vertical_slice.py"
+            ),
+        ],
+        cwd=repository_root,
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
+    assert completed.returncode == 0, completed.stderr.decode("utf-8", "replace")
+    summary = json.loads(completed.stdout.decode("utf-8"))
+    assert summary["synthetic_vertical_slice_verified"] is True
+    assert summary["operation_receipt"]["existing_app_storage_access_count"] == 0
+    assert metadata() == before
 
 
 def test_vertical_slice_covers_lifecycle_completeness_and_rejections(

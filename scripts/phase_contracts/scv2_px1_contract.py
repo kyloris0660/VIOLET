@@ -3,31 +3,16 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
-from typing import Any, Mapping
-
-from backend.app.services.pixiv_metadata_projection_service import (
-    PIXIV_AGGREGATE_SCHEMA,
-    PIXIV_PUBLIC_SUMMARY_SCHEMA,
-    PIXIV_SIGNAL_BUNDLE_SCHEMA,
-    assert_public_safe_projection,
-    canonical_fingerprint,
-    canonical_json_bytes,
-)
-from backend.app.services.pixiv_metadata_vertical_slice_service import (
-    PX1_AUTHORITY_MAP,
-    PX1_CONTRACT_ID,
-    PX1_EXECUTED_STAGES,
-    SYNTHETIC_FIXTURE_SCHEMA,
-    VERTICAL_SLICE_RECEIPT_SCHEMA,
-    repository_synthetic_pixiv_fixture,
-    run_synthetic_pixiv_vertical_slice,
-)
+from typing import Any, Iterator, Mapping
 from scripts.scv2_px1_validation_receipt import (
     EVIDENCE_ARTIFACT_NAMES,
     RECEIPT_NAME,
@@ -37,6 +22,93 @@ from scripts.scv2_px1_validation_receipt import (
 )
 
 from .contract_types import ContractCheckResult, PhaseContract
+
+
+PIXIV_AGGREGATE_SCHEMA = "violet.scv2-px1-pixiv-work-page-aggregate.v1"
+PIXIV_SIGNAL_BUNDLE_SCHEMA = "violet.scv2-px1-source-concept-signal-bundle.v1"
+PIXIV_PUBLIC_SUMMARY_SCHEMA = "violet.scv2-px1-pixiv-metadata-summary.v1"
+SYNTHETIC_FIXTURE_SCHEMA = "violet.scv2-px1-synthetic-pixiv-fixture.v1"
+VERTICAL_SLICE_RECEIPT_SCHEMA = "violet.scv2-px1-offline-operation-receipt.v2"
+PX1_CONTRACT_ID = "scv2_px1_pixiv_metadata_consolidation_contract_v1"
+PX1_EXECUTED_STAGES = (
+    "synthetic_fixture_creation",
+    "canonical_pixiv_normalization",
+    "source_metadata_persistence",
+    "canonical_work_page_aggregate",
+    "source_concept_signal_projection",
+    "deterministic_replay",
+    "public_safe_summary",
+)
+PX1_AUTHORITY_MAP = {
+    "px1_implementation_authorized": True,
+    "repository_read_authorized": True,
+    "synthetic_fixture_execution_authorized": True,
+    "task_owned_temporary_database_authorized": True,
+    "isolated_worktree_authorized": True,
+    "branch_commit_push_authorized": True,
+    "one_normal_pull_request_authorized": True,
+    "documentation_state_transition_authorized": True,
+    "merge_authorized": False,
+    "real_source_inventory_authorized": False,
+    "source_root_or_icloud_access_authorized": False,
+    "existing_database_access_authorized": False,
+    "app_storage_write_authorized": False,
+    "real_pixiv_or_gallery_dl_network_execution_authorized": False,
+    "provider_credentials_authorized": False,
+    "media_or_thumbnail_download_authorized": False,
+    "import_authorized": False,
+    "classification_or_tagging_execution_on_user_data_authorized": False,
+    "llm_or_external_model_authorized": False,
+    "server_browser_or_e2e_authorized": False,
+    "production_authorized": False,
+    "full_library_import_authorized": False,
+}
+_WINDOWS_PATH = re.compile(r"(?i)(?:^|[\s\"'])(?:[a-z]:[\\/]|\\\\)")
+_POSIX_PRIVATE_PATH = re.compile(
+    r"(?:^|[\s\"'])(?:/users/|/home/|/private/|/mnt/)", re.I
+)
+_SECRET_MARKER = re.compile(
+    r"(?i)(?:authorization\s*[:=]|set-cookie\s*[:=]|cookie\s*[:=]|"
+    r"bearer\s+\S+|api[_-]?key\s*[:=]|refresh[_-]?token\s*[:=]|"
+    r"access[_-]?token\s*[:=]|password\s*[:=])"
+)
+
+
+def canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def canonical_fingerprint(value: Any) -> str:
+    return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def assert_public_safe_projection(value: Any) -> None:
+    serialized = canonical_json_bytes(value).decode("utf-8")
+    lowered = serialized.casefold()
+    forbidden_keys = (
+        '"raw_metadata_json"',
+        '"raw_provider_payload"',
+        '"raw"',
+        '"source_url"',
+        '"local_path"',
+        '"filename"',
+        '"credential"',
+    )
+    if any(key in lowered for key in forbidden_keys):
+        raise Scv2Px1ContractError("px1_public_projection_forbidden_field")
+    if (
+        "\x00" in serialized
+        or _WINDOWS_PATH.search(serialized)
+        or _POSIX_PRIVATE_PATH.search(serialized)
+        or _SECRET_MARKER.search(serialized)
+    ):
+        raise Scv2Px1ContractError("px1_public_projection_private_text")
 
 
 EXPECTED_DISPOSITIONS = {
@@ -74,6 +146,40 @@ class Scv2Px1EvidencePaths:
         self.root = Path(root)
 
 
+@contextmanager
+def _task_runtime_environment() -> Iterator[None]:
+    keys = (
+        "VIOLET_SKIP_DOTENV",
+        "VIOLET_ENV",
+        "POSTGRES_DB",
+        "TEST_DATABASE_URL",
+        "VIOLET_STORAGE_ROOT",
+        "VIOLET_TEST_STORAGE_ROOT",
+    )
+    previous = {key: os.environ.get(key) for key in keys}
+    with tempfile.TemporaryDirectory(
+        prefix="violet-scv2-px1-contract-storage-"
+    ) as runtime_storage:
+        os.environ.update(
+            {
+                "VIOLET_SKIP_DOTENV": "1",
+                "VIOLET_ENV": "test",
+                "POSTGRES_DB": "scv2_px1_task_temp",
+                "TEST_DATABASE_URL": "",
+                "VIOLET_STORAGE_ROOT": runtime_storage,
+                "VIOLET_TEST_STORAGE_ROOT": runtime_storage,
+            }
+        )
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+
 def _lexically_confined_root(path: Path) -> Path:
     if not path.is_absolute():
         raise Scv2Px1ContractError("px1_evidence_root_not_absolute")
@@ -88,7 +194,7 @@ def _lexically_confined_root(path: Path) -> Path:
     except OSError as exc:
         raise Scv2Px1ContractError("px1_evidence_root_unavailable") from exc
     cursor = temp_root
-    for index, component in enumerate(relative.parts):
+    for component in relative.parts:
         cursor = cursor / component
         try:
             metadata = os.lstat(cursor)
@@ -300,7 +406,7 @@ def _validate_public_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
     zero_fields = (
         "existing_database_read_count",
         "existing_database_write_count",
-        "app_storage_access_count",
+        "existing_app_storage_access_count",
         "provider_network_activity_count",
         "media_network_activity_count",
         "subprocess_activity_count",
@@ -316,6 +422,7 @@ def _validate_public_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
         receipt.get("fixture_source") != "repository_owned_new_synthetic_only"
         or receipt.get("temporary_workspace_enforced") is not True
         or receipt.get("task_owned_temporary_database_count") != 2
+        or receipt.get("task_owned_temporary_runtime_storage_root_count") != 1
     ):
         raise Scv2Px1ContractError("px1_operation_receipt_scope_invalid")
     return {
@@ -353,8 +460,6 @@ def check_scv2_px1_contract(
         evidence = load_px1_evidence_artifacts(repository_context.scv2_px1_evidence)
         fixture = evidence["synthetic-fixture.json"]
         evidence_summary = evidence["public-summary.json"]
-        if fixture != repository_synthetic_pixiv_fixture():
-            raise Scv2Px1ContractError("px1_fixture_not_repository_canonical")
         if (
             not isinstance(fixture, Mapping)
             or fixture.get("schema_version") != SYNTHETIC_FIXTURE_SCHEMA
@@ -371,11 +476,21 @@ def check_scv2_px1_contract(
             raise Scv2Px1ContractError("px1_operation_receipt_artifact_mismatch")
         projection_details = _validate_public_projection(summary)
 
-        with tempfile.TemporaryDirectory(prefix="violet-scv2-px1-contract-") as workspace:
-            regenerated = run_synthetic_pixiv_vertical_slice(
-                workspace=Path(workspace),
-                fixture=fixture,
+        with _task_runtime_environment():
+            from backend.app.services.pixiv_metadata_vertical_slice_service import (
+                repository_synthetic_pixiv_fixture,
+                run_synthetic_pixiv_vertical_slice,
             )
+
+            if fixture != repository_synthetic_pixiv_fixture():
+                raise Scv2Px1ContractError("px1_fixture_not_repository_canonical")
+            with tempfile.TemporaryDirectory(
+                prefix="violet-scv2-px1-contract-"
+            ) as workspace:
+                regenerated = run_synthetic_pixiv_vertical_slice(
+                    workspace=Path(workspace),
+                    fixture=fixture,
+                )
         if regenerated != dict(summary):
             raise Scv2Px1ContractError("px1_independent_replay_projection_mismatch")
 

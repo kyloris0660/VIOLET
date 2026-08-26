@@ -81,7 +81,15 @@ def _evidence(tmp_path: Path) -> tuple[dict[str, object], Scv2Px1EvidencePaths]:
 
 
 @pytest.fixture(autouse=True)
-def repository_proof(monkeypatch: pytest.MonkeyPatch) -> None:
+def repository_proof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage = tmp_path / "runtime-storage"
+    storage.mkdir()
+    monkeypatch.setenv("VIOLET_SKIP_DOTENV", "1")
+    monkeypatch.setenv("VIOLET_ENV", "test")
+    monkeypatch.setenv("VIOLET_STORAGE_ROOT", str(storage))
     monkeypatch.setattr(
         scv2_px1_contract,
         "repository_identity_snapshot",

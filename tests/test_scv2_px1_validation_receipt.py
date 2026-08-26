@@ -69,6 +69,34 @@ def test_canonical_command_covers_px1_and_compatibility_suites() -> None:
     assert "tests/test_phase45_sc1_source_concept_resolver.py" in command
 
 
+def test_receipt_and_contract_imports_do_not_initialize_app_storage() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    settings_path = repository_root / "data" / "settings.json"
+
+    def metadata() -> tuple[int, int] | None:
+        if not settings_path.exists():
+            return None
+        observed = settings_path.stat()
+        return observed.st_size, observed.st_mtime_ns
+
+    before = metadata()
+    probe = (
+        "import sys;"
+        f"sys.path.insert(0,{str(repository_root)!r});"
+        "import scripts.scv2_px1_validation_receipt;"
+        "import scripts.phase_contracts.scv2_px1_contract"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-I", "-s", "-c", probe],
+        cwd=repository_root,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr.decode("utf-8", "replace")
+    assert metadata() == before
+
+
 def test_receipt_validates_exact_repository_command_and_evidence_bindings() -> None:
     receipt = _receipt()
     validate_receipt_payload(

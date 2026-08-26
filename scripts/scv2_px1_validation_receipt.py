@@ -16,11 +16,6 @@ import subprocess
 import sys
 from typing import Any, Mapping, Sequence
 
-from backend.app.services.pixiv_metadata_projection_service import (
-    canonical_fingerprint,
-    canonical_json_bytes,
-)
-from backend.app.services.pixiv_metadata_vertical_slice_service import PX1_CONTRACT_ID
 from scripts.fl1_i2_confinement import (
     ConfinementError,
     create_owned_validation_temp_root,
@@ -28,7 +23,7 @@ from scripts.fl1_i2_confinement import (
 )
 from scripts.fl1_i2_validation_receipt import (
     canonical_validation_environment,
-    execution_environment_policy_fingerprint,
+    execution_environment_policy_fingerprint as base_environment_policy_fingerprint,
 )
 from scripts.trusted_git import (
     assert_trusted_worktree_clean,
@@ -40,6 +35,7 @@ from scripts.trusted_git import (
 
 RECEIPT_SCHEMA = "violet.scv2-px1-local-validation-receipt.v1"
 RECEIPT_NAME = "local-validation-receipt.json"
+PX1_CONTRACT_ID = "scv2_px1_pixiv_metadata_consolidation_contract_v1"
 EVIDENCE_ARTIFACT_NAMES = (
     "synthetic-fixture.json",
     "aggregates.json",
@@ -61,6 +57,39 @@ MAX_RECEIPT_BYTES = 256 * 1024
 
 class Px1ValidationReceiptError(RuntimeError):
     pass
+
+
+def canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def canonical_fingerprint(value: Any) -> str:
+    return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def execution_environment_policy_fingerprint() -> str:
+    return canonical_fingerprint(
+        {
+            "schema_version": "violet.scv2-px1-validation-environment-policy.v1",
+            "base_i2_environment_policy_fingerprint": (
+                base_environment_policy_fingerprint()
+            ),
+            "dotenv_skipped": True,
+            "violet_environment": "test",
+            "test_database_name": "scv2_px1_task_temp",
+            "storage_root_policy": "validation_temp_root/runtime-storage",
+            "existing_app_storage_access": False,
+            "dynamic_loader_policy_due_gate": (
+                "FL1_I2_DYNAMIC_LOADER_ENVIRONMENT_POLICY"
+            ),
+        }
+    )
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -320,6 +349,17 @@ def create_same_head_validation_receipt(
     environment = canonical_validation_environment(
         trusted_git_executable=git.path,
         validation_temp_root=validation_temp.path,
+    )
+    runtime_storage = validation_temp.path / "runtime-storage"
+    environment.update(
+        {
+            "VIOLET_SKIP_DOTENV": "1",
+            "VIOLET_ENV": "test",
+            "POSTGRES_DB": "scv2_px1_task_temp",
+            "TEST_DATABASE_URL": "",
+            "VIOLET_STORAGE_ROOT": os.fspath(runtime_storage),
+            "VIOLET_TEST_STORAGE_ROOT": os.fspath(runtime_storage),
+        }
     )
     command = canonical_focused_test_command(approved_python)
     try:
