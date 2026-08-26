@@ -104,9 +104,7 @@ def _avif() -> bytes:
     [
         (_jpeg(), "jpeg"),
         (_png(), "png"),
-        (_gif(), "gif"),
         (_webp_vp8(), "webp"),
-        (_avif(), "avif"),
     ],
 )
 def test_supported_media_structures_validate_without_decode(payload: bytes, format_name: str) -> None:
@@ -150,7 +148,21 @@ def test_gif_lzw_minimum_code_size_boundaries_are_supported(minimum: int) -> Non
         max_depth=20,
         deadline_monotonic=_deadline(),
     )
-    assert result.valid
+    assert not result.valid
+    assert result.disposition == "unsupported"
+    assert result.safe_code == "gif_full_pixel_validation_unsupported"
+
+
+def test_gif_container_with_short_lzw_payload_is_never_content_verified() -> None:
+    result = validate_media_stream(
+        [_gif()],
+        max_bytes=4096,
+        max_depth=20,
+        deadline_monotonic=_deadline(),
+    )
+    assert not result.valid
+    assert result.disposition == "unsupported"
+    assert result.safe_code == "gif_full_pixel_validation_unsupported"
 
 
 @pytest.mark.parametrize("minimum", [9, 10, 11, 12])
@@ -279,6 +291,18 @@ def test_avif_item_extent_must_match_the_mdat_payload() -> None:
     result = validate_media_stream([bytes(payload)], max_bytes=4096, max_depth=50, deadline_monotonic=_deadline())
     assert not result.valid
     assert result.safe_code == "avif_item_mapping_inconsistent"
+
+
+def test_avif_container_mapping_never_claims_unvalidated_av1_payload() -> None:
+    result = validate_media_stream(
+        [_avif()],
+        max_bytes=4096,
+        max_depth=50,
+        deadline_monotonic=_deadline(),
+    )
+    assert not result.valid
+    assert result.disposition == "unsupported"
+    assert result.safe_code == "avif_av1_payload_validation_unsupported"
 
 
 def test_cli_unknown_error_exposes_only_correlation_token() -> None:

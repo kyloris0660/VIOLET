@@ -9,7 +9,7 @@ import stat
 import sys
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Callable
 
 
@@ -28,6 +28,13 @@ class SyntheticRoots:
     task_root: BoundDirectory
     source_root: BoundDirectory
     evidence_root: BoundDirectory
+
+
+@dataclass(frozen=True)
+class LexicalSyntheticRoots:
+    task_root: Path
+    source_root: Path
+    evidence_root: Path
 
 
 def _identity(metadata: os.stat_result) -> str:
@@ -49,6 +56,94 @@ def _within(candidate: Path, root: Path) -> bool:
         ) == os.path.normcase(os.fspath(root))
     except ValueError:
         return False
+
+
+def _lexical_absolute_local_path(path: Path) -> Path:
+    """Validate an absolute local path without observing the target path."""
+
+    raw = os.fspath(path)
+    if (
+        not raw
+        or "\x00" in raw
+        or any(ord(value) < 32 for value in raw)
+        or raw.startswith(("\\\\", "//"))
+    ):
+        raise ConfinementError("synthetic_path_lexical_invalid")
+    if os.name == "nt":
+        windows = PureWindowsPath(raw)
+        if not windows.is_absolute() or windows.drive.startswith(("\\\\", "//")):
+            raise ConfinementError("synthetic_path_lexical_invalid")
+        parts = windows.parts[1:]
+    else:
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            raise ConfinementError("synthetic_path_lexical_invalid")
+        parts = candidate.parts[1:]
+    if any(value in {".", ".."} for value in parts):
+        raise ConfinementError("synthetic_path_lexical_invalid")
+    return Path(os.path.abspath(raw))
+
+
+def lexically_confine_evidence_root(
+    evidence_root: Path,
+    *,
+    temp_provider: Callable[[], Path] | None = None,
+) -> Path:
+    """Prove an evidence root is below the trusted local temp root, without statting it."""
+
+    local_temp = os_local_temp_root(provider=temp_provider)
+    lexical = _lexical_absolute_local_path(evidence_root)
+    if lexical == local_temp.path or not _within(lexical, local_temp.path):
+        raise ConfinementError("synthetic_evidence_root_lexical_invalid")
+    return lexical
+
+
+def lexically_confine_config_path(
+    config_path: Path,
+    *,
+    expected_basename: str = "private-run-config.json",
+    temp_provider: Callable[[], Path] | None = None,
+) -> Path:
+    """Validate the CLI config location before any caller path is opened."""
+
+    lexical = _lexical_absolute_local_path(config_path)
+    if lexical.name != expected_basename:
+        raise ConfinementError("synthetic_config_lexical_invalid")
+    evidence = lexically_confine_evidence_root(
+        lexical.parent, temp_provider=temp_provider
+    )
+    if lexical.parent != evidence:
+        raise ConfinementError("synthetic_config_lexical_invalid")
+    return lexical
+
+
+def lexically_confine_synthetic_roots(
+    source_root: Path,
+    evidence_root: Path,
+    *,
+    temp_provider: Callable[[], Path] | None = None,
+) -> LexicalSyntheticRoots:
+    """Check confinement and overlap before touching either caller root."""
+
+    local_temp = os_local_temp_root(provider=temp_provider)
+    source = _lexical_absolute_local_path(source_root)
+    evidence = _lexical_absolute_local_path(evidence_root)
+    if (
+        source == local_temp.path
+        or evidence == local_temp.path
+        or not _within(source, local_temp.path)
+        or not _within(evidence, local_temp.path)
+    ):
+        raise ConfinementError("synthetic_roots_lexical_invalid")
+    try:
+        task = Path(os.path.commonpath((source, evidence)))
+    except ValueError as exc:
+        raise ConfinementError("synthetic_roots_overlap_or_escape") from exc
+    if task == local_temp.path or not _within(task, local_temp.path):
+        raise ConfinementError("synthetic_task_root_invalid")
+    if source == evidence or _within(source, evidence) or _within(evidence, source):
+        raise ConfinementError("synthetic_roots_overlap_or_escape")
+    return LexicalSyntheticRoots(task, source, evidence)
 
 
 def bind_directory(path: Path) -> BoundDirectory:
@@ -149,16 +244,12 @@ def verify_synthetic_roots(
     *,
     temp_provider: Callable[[], Path] | None = None,
 ) -> SyntheticRoots:
-    local_temp = os_local_temp_root(provider=temp_provider)
-    source = bind_directory(source_root)
-    evidence = bind_directory(evidence_root)
-    try:
-        common = Path(os.path.commonpath((source.path, evidence.path)))
-    except ValueError as exc:
-        raise ConfinementError("synthetic_roots_overlap_or_escape") from exc
-    task = bind_directory(common)
-    if task.path == local_temp.path or not _within(task.path, local_temp.path):
-        raise ConfinementError("synthetic_task_root_invalid")
+    lexical = lexically_confine_synthetic_roots(
+        source_root, evidence_root, temp_provider=temp_provider
+    )
+    source = bind_directory(lexical.source_root)
+    evidence = bind_directory(lexical.evidence_root)
+    task = bind_directory(lexical.task_root)
     if source.path == evidence.path or _within(source.path, evidence.path) or _within(
         evidence.path, source.path
     ):

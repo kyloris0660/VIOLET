@@ -4,7 +4,11 @@ import dataclasses
 
 import pytest
 
-from backend.app.services.source_ingestion_gate import SourceIngestionGate, SourceKind
+from backend.app.services.source_ingestion_gate import (
+    SourceIngestionGate,
+    SourceKind,
+    is_canonical_directory_observation,
+)
 from backend.app.services.source_safety import (
     CloudAvailability,
     FileChangeIdentity,
@@ -93,3 +97,39 @@ def test_policy_is_rederived_from_exact_trusted_shape() -> None:
 
 def test_i1_compatibility_uses_canonical_cloud_availability_enum() -> None:
     assert I1CloudAvailability is CloudAvailability
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"attributes_known": False},
+        {"no_follow": False},
+        {"identity_bound": False},
+        {"reparse_point": True},
+        {"cloud_availability": CloudAvailability.UNKNOWN},
+        {"cloud_availability": CloudAvailability.RECALL_RISK},
+    ],
+)
+def test_canonical_directory_predicate_fails_closed(
+    changes: dict[str, object],
+) -> None:
+    assert not is_canonical_directory_observation(
+        _observation(is_directory=True, **changes)
+    )
+
+
+def test_worker_and_contract_share_the_canonical_directory_predicate() -> None:
+    from scripts import fl1_i2_worker
+    from scripts.phase_contracts import fl1_i2_contract
+
+    assert is_canonical_directory_observation(
+        _observation(is_directory=True)
+    )
+    assert (
+        fl1_i2_worker.is_canonical_directory_observation
+        is is_canonical_directory_observation
+    )
+    assert (
+        fl1_i2_contract.is_canonical_directory_observation
+        is is_canonical_directory_observation
+    )

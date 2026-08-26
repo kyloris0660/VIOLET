@@ -28,6 +28,25 @@ CLOUD_POLICY_REQUIRED = "controlled_hydration_or_read_probe_or_backfill"
 STAGING_AUDIT_POLICY_REQUIRED = "passed_staging_audit_artifact"
 
 
+def is_canonical_directory_observation(observation: HandleObservation) -> bool:
+    """Return the single I2 directory-handle acceptance predicate.
+
+    Directory link counts are filesystem metadata rather than the file
+    hard-link policy: on POSIX a normal directory may have more than one link.
+    The predicate therefore binds only the properties needed to prove a
+    verified, no-follow, identity-bound, locally available directory handle.
+    """
+
+    return (
+        observation.is_directory
+        and observation.attributes_known
+        and observation.no_follow
+        and observation.identity_bound
+        and not observation.reparse_point
+        and observation.cloud_availability.value == "available"
+    )
+
+
 def cloud_block_reasons(state: CloudFileState | None) -> tuple[str, ...]:
     """Return structured cloud reasons for a Cloud Files metadata state."""
 

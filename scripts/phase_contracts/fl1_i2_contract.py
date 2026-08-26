@@ -24,7 +24,11 @@ from scripts.fl1_i2_evidence import (
     canonical_fingerprint,
     derive_snapshot_usage,
 )
-from scripts.fl1_i2_confinement import ConfinementError, verify_synthetic_roots
+from scripts.fl1_i2_confinement import (
+    ConfinementError,
+    lexically_confine_evidence_root,
+    verify_synthetic_roots,
+)
 from scripts.fl1_i2_runner import (
     CANONICAL_ENUMERATION_BUDGET,
     CANONICAL_POLICY,
@@ -41,7 +45,11 @@ from scripts.fl1_i2_validation_receipt import (
     validate_canonical_focused_command,
 )
 from scripts.fl1_i2_worker import WorkerOperation
-from backend.app.services.source_ingestion_gate import SourceIngestionGate, SourceKind
+from backend.app.services.source_ingestion_gate import (
+    SourceIngestionGate,
+    SourceKind,
+    is_canonical_directory_observation,
+)
 from backend.app.services.source_safety import HandleObservation, SourceSafetyPolicy
 from scripts.trusted_git import (
     assert_trusted_worktree_clean,
@@ -227,7 +235,7 @@ def _manifest(payload: Mapping[str, Any]) -> FixedCutManifest:
             ):
                 raise TypeError
             observation = HandleObservation.from_private_dict(item["observation"])
-            if not observation.is_directory or observation.reparse_point or not observation.no_follow or not observation.identity_bound:
+            if not is_canonical_directory_observation(observation):
                 raise TypeError
             if item["parent_object_identity"] is not None:
                 from backend.app.services.source_safety import FileChangeIdentity, FileObjectIdentity
@@ -268,6 +276,14 @@ def _manifest(payload: Mapping[str, Any]) -> FixedCutManifest:
         raise FL1I2ContractError("fl1_i2_manifest_invalid") from exc
     if rebuilt.to_private_dict() != dict(payload):
         raise FL1I2ContractError("fl1_i2_manifest_fingerprint_mismatch")
+    try:
+        root_observation = HandleObservation.from_private_dict(
+            rebuilt.directory_observation
+        )
+    except ValueError as exc:
+        raise FL1I2ContractError("fl1_i2_manifest_invalid") from exc
+    if not is_canonical_directory_observation(root_observation):
+        raise FL1I2ContractError("fl1_i2_directory_observation_rejected")
     by_chain = {directory.component_chain: directory for directory in rebuilt.directories}
     for directory in rebuilt.directories:
         if directory.component_chain == ():
@@ -636,7 +652,13 @@ def derive_canonical_public_projection(
     repo_root: Path,
     evidence_paths: FL1I2EvidencePaths,
 ) -> tuple[dict[str, Any], dict[str, bool]]:
-    evidence = _load(evidence_paths)
+    try:
+        confined_evidence = lexically_confine_evidence_root(evidence_paths.root)
+    except ConfinementError as exc:
+        raise FL1I2ContractError("fl1_i2_evidence_root_binding_invalid") from exc
+    if confined_evidence != evidence_paths.root:
+        raise FL1I2ContractError("fl1_i2_evidence_root_binding_invalid")
+    evidence = _load(FL1I2EvidencePaths(confined_evidence))
     config = evidence["config"]
     config_keys = {
         "schema_version", "run_id", "mode", "source_root", "evidence_root", "policy",

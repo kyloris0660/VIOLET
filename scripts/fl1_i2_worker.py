@@ -13,7 +13,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from backend.app.services.source_ingestion_gate import SourceIngestionGate, SourceKind
+from backend.app.services.source_ingestion_gate import (
+    SourceIngestionGate,
+    SourceKind,
+    is_canonical_directory_observation,
+)
 from backend.app.services.source_safety import (
     FileChangeIdentity,
     FileObjectIdentity,
@@ -115,14 +119,7 @@ def _gate_observation(observation: Any, policy: SourceSafetyPolicy) -> None:
 
 
 def _directory_observation_allowed(observation: HandleObservation) -> None:
-    if (
-        not observation.is_directory
-        or not observation.attributes_known
-        or not observation.no_follow
-        or not observation.identity_bound
-        or observation.reparse_point
-        or observation.cloud_availability.value != "available"
-    ):
+    if not is_canonical_directory_observation(observation):
         raise WorkerError("source_directory_observation_rejected")
 
 

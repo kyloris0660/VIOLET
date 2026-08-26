@@ -441,7 +441,9 @@ def _gif(stream: _BoundedStream, max_depth: int) -> _Outcome:
                     return _invalid("gif", "gif_image_data_missing", depth)
                 if not stream.at_eof():
                     return _invalid("gif", "gif_trailing_bytes", depth)
-                return _valid("gif", depth)
+                return _unsupported(
+                    "gif", "gif_full_pixel_validation_unsupported", depth
+                )
             depth += 1
             overflow = _depth(depth, max_depth, "gif")
             if overflow:
@@ -700,7 +702,9 @@ def _avif(stream: _BoundedStream, max_depth: int) -> _Outcome:
         primary, item_ids, locations = item_mapping
         if primary not in item_ids or primary not in locations or locations[primary] != mdat_extent:
             return _invalid("avif", "avif_item_mapping_inconsistent", depth)
-        return _valid("avif", depth)
+        return _unsupported(
+            "avif", "avif_av1_payload_validation_unsupported", depth
+        )
     except _Truncated:
         return _invalid("avif", "avif_truncated", locals().get("depth", 0))
     except MediaValidationError as exc:

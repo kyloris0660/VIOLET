@@ -167,22 +167,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.fl1_i2_evidence:
             from scripts.phase_contracts.fl1_i2_contract import FL1I2EvidencePaths
 
-            try:
-                evidence_root = Path(args.fl1_i2_evidence).resolve(strict=True)
-            except OSError as exc:
-                print(
-                    json.dumps(
-                        {
-                            "contract_id": args.contract,
-                            "passed": False,
-                            "error": "fl1_i2_evidence_root_unreadable",
-                        },
-                        indent=2,
-                        sort_keys=True,
-                    )
-                )
-                return 2
-            fl1_i2_evidence = FL1I2EvidencePaths(evidence_root)
+            # The I2 contract must perform lexical local-temp confinement before
+            # any caller-provided evidence path is resolved, stated, or opened.
+            fl1_i2_evidence = FL1I2EvidencePaths(Path(args.fl1_i2_evidence))
         repository_context = ContractRepositoryContext(
             repo_root=Path(args.repo_root).resolve(),
             expected_python=(

@@ -57,6 +57,11 @@ def test_failure_admission_uses_strict_less_than_maximum() -> None:
         ledger.begin(item_id="never-started", kind="combined_content", attempt=1, budget=budget)
 
 
+def test_failure_budget_rejects_zero_maximum() -> None:
+    with pytest.raises(EvidenceError, match="budget_invalid"):
+        _budget(0)
+
+
 def test_residual_intent_and_started_get_distinct_terminal_closure() -> None:
     ledger = OperationLedger("run", "manifest", "budget")
     intent = ledger.begin(item_id="intent", kind="list_directory", attempt=1, budget=_budget())

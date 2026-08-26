@@ -13,7 +13,11 @@ from scripts.fl1_i2_evidence import (
     OperationLedger,
     canonical_fingerprint,
 )
-from scripts.fl1_i2_runner import create_synthetic_run_config, run_synthetic_hardening
+from scripts.fl1_i2_runner import (
+    RunDeadline,
+    create_synthetic_run_config,
+    run_synthetic_hardening,
+)
 from scripts.fl1_i2_worker import (
     WorkerOperation,
     WorkerResult,
@@ -67,6 +71,56 @@ def test_runner_rejects_non_temp_or_authority_escalated_config(tmp_path: Path) -
         run_synthetic_hardening(config)
 
 
+def test_runner_rejects_unconfined_config_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import fl1_i2_runner
+
+    called = False
+
+    def forbidden_read(_path: Path) -> dict[str, object]:
+        nonlocal called
+        called = True
+        raise AssertionError("unconfined config was read")
+
+    monkeypatch.setattr(fl1_i2_runner, "load_private_json", forbidden_read)
+    with pytest.raises(Exception, match="config_location_invalid"):
+        run_synthetic_hardening(Path.cwd() / "private-run-config.json")
+    assert not called
+
+
+def test_runner_rejects_configured_target_lexically_before_target_stat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    evidence = tmp_path / "evidence"
+    source.mkdir()
+    evidence.mkdir()
+    config = create_synthetic_run_config(source_root=source, evidence_root=evidence)
+    payload = json.loads(config.read_text(encoding="utf-8"))
+    forbidden = Path.cwd() / "never-observe-real-source"
+    payload["source_root"] = str(forbidden)
+    config.write_text(json.dumps(payload), encoding="utf-8")
+
+    from scripts import fl1_i2_confinement
+
+    original = fl1_i2_confinement.os.lstat
+    observed: list[Path] = []
+
+    def spy(path: object, *args: object, **kwargs: object):
+        candidate = Path(path)  # type: ignore[arg-type]
+        observed.append(candidate)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(fl1_i2_confinement.os, "lstat", spy)
+    with pytest.raises(Exception, match="synthetic_roots_invalid"):
+        run_synthetic_hardening(config)
+    assert forbidden not in observed
+    assert all(forbidden not in candidate.parents for candidate in observed)
+
+
 def test_runner_rejects_weakened_policy_even_when_shape_is_valid(tmp_path: Path) -> None:
     source = tmp_path / "source"
     evidence = tmp_path / "evidence"
@@ -102,6 +156,118 @@ def test_resume_keeps_fixed_manifest_and_does_not_repeat_completed_operations(tm
     second = run_synthetic_hardening(config)
     assert second == first
     assert second["item_counts"]["manifest"] == 1
+
+
+def test_run_deadline_equality_blocks_admission(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import fl1_i2_runner
+
+    monkeypatch.setattr(fl1_i2_runner.time, "monotonic", lambda: 10.0)
+    with pytest.raises(Exception, match="run_wide_deadline_exceeded"):
+        RunDeadline(10.0).require_admission()
+
+
+def test_resume_does_not_reset_exhausted_run_deadline(tmp_path: Path) -> None:
+    source = tmp_path / "deadline-source"
+    evidence = tmp_path / "deadline-evidence"
+    source.mkdir()
+    evidence.mkdir()
+    budget = FailureBudget(1, 10, 1024, 5, max_run_seconds=1)
+    config = create_synthetic_run_config(
+        source_root=source,
+        evidence_root=evidence,
+        run_id="deadline-resume",
+        budget=budget,
+    )
+    ledger = OperationLedger(
+        "deadline-resume",
+        "pending_manifest",
+        canonical_fingerprint(budget.to_dict()),
+        run_started_at_ns=1,
+    )
+    EvidenceStore(evidence).write(
+        "private-operation-ledger.json", ledger.to_private_dict()
+    )
+    with pytest.raises(Exception, match="run_wide_deadline_exceeded"):
+        run_synthetic_hardening(config)
+    persisted = json.loads(
+        (evidence / "private-operation-ledger.json").read_text(encoding="utf-8")
+    )
+    assert persisted["events"] == []
+
+
+def test_exhausted_deadline_before_final_snapshot_creates_no_snapshot_intent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "deadline-final-source"
+    evidence = tmp_path / "deadline-final-evidence"
+    source.mkdir()
+    evidence.mkdir()
+    config = create_synthetic_run_config(
+        source_root=source,
+        evidence_root=evidence,
+        run_id="deadline-final",
+    )
+    original = RunDeadline.require_admission
+    calls = 0
+
+    def exhaust_before_final(self: RunDeadline) -> float:
+        nonlocal calls
+        calls += 1
+        if calls >= 3:
+            raise Exception("run_wide_deadline_exceeded")
+        return original(self)
+
+    monkeypatch.setattr(RunDeadline, "require_admission", exhaust_before_final)
+    with pytest.raises(Exception, match="run_wide_deadline_exceeded"):
+        run_synthetic_hardening(config)
+    ledger = json.loads(
+        (evidence / "private-operation-ledger.json").read_text(encoding="utf-8")
+    )
+    assert not any(
+        event["kind"] == "final_snapshot" for event in ledger["events"]
+    )
+
+
+def test_previous_content_worker_exhaustion_blocks_next_member_intent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "deadline-content-source"
+    evidence = tmp_path / "deadline-content-evidence"
+    source.mkdir()
+    evidence.mkdir()
+    (source / "first.png").write_bytes(_png())
+    (source / "second.png").write_bytes(_png())
+    config = create_synthetic_run_config(
+        source_root=source,
+        evidence_root=evidence,
+        run_id="deadline-content",
+    )
+    original = RunDeadline.require_admission
+    calls = 0
+
+    def exhaust_before_second_content(self: RunDeadline) -> float:
+        nonlocal calls
+        calls += 1
+        if calls >= 5:
+            raise Exception("run_wide_deadline_exceeded")
+        return original(self)
+
+    monkeypatch.setattr(
+        RunDeadline, "require_admission", exhaust_before_second_content
+    )
+    with pytest.raises(Exception, match="run_wide_deadline_exceeded"):
+        run_synthetic_hardening(config)
+    ledger = json.loads(
+        (evidence / "private-operation-ledger.json").read_text(encoding="utf-8")
+    )
+    content_intents = [
+        event
+        for event in ledger["events"]
+        if event["kind"] == "combined_content" and event["state"] == "intent"
+    ]
+    assert len(content_intents) == 1
 
 
 def test_residual_intent_is_recovered_before_new_operation_id(tmp_path: Path) -> None:

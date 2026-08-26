@@ -293,6 +293,53 @@ def test_contract_reapplies_policy_to_each_recorded_observation(
         derive_canonical_public_projection(repo_root=tmp_path, evidence_paths=paths)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("attributes_known", False),
+        ("no_follow", False),
+        ("identity_bound", False),
+        ("reparse_point", True),
+        ("cloud_availability", "unknown"),
+        ("cloud_availability", "recall_risk"),
+    ],
+)
+def test_contract_reapplies_shared_directory_predicate(
+    tmp_path: Path,
+    repository_proof: None,
+    field: str,
+    value: object,
+) -> None:
+    _summary, paths = _evidence(tmp_path)
+    manifest_path = paths.root / "private-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["directory_observation"][field] = value
+    manifest["directories"][0]["observation"][field] = value
+    _write(manifest_path, manifest)
+    with pytest.raises(FL1I2ContractError, match="directory|manifest"):
+        derive_canonical_public_projection(repo_root=tmp_path, evidence_paths=paths)
+
+
+def test_contract_rejects_unconfined_evidence_before_loading(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def forbidden_load(_paths: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("unconfined evidence was opened")
+
+    monkeypatch.setattr(fl1_i2_contract, "_load", forbidden_load)
+    with pytest.raises(FL1I2ContractError, match="evidence_root_binding_invalid"):
+        derive_canonical_public_projection(
+            repo_root=tmp_path,
+            evidence_paths=FL1I2EvidencePaths(Path.cwd()),
+        )
+    assert not called
+
+
 @pytest.mark.parametrize("mutation", ["missing", "extra", "wrong_type"])
 def test_handle_observation_reconstruction_requires_exact_schema(
     tmp_path: Path,

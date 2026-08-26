@@ -408,7 +408,7 @@ class FailureBudget:
             self.max_decoded_structure_bytes,
             self.max_synthetic_marker_bytes,
         )
-        if self.max_failures < 0 or self.max_retries < 0 or min(positive) <= 0 or self.max_external_cost_usd != 0:
+        if self.max_failures < 1 or self.max_retries < 0 or min(positive) <= 0 or self.max_external_cost_usd != 0:
             raise EvidenceError("budget_invalid")
 
     def to_dict(self) -> dict[str, Any]:

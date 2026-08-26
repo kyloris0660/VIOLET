@@ -9,6 +9,7 @@ import os
 import sys
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -23,6 +24,7 @@ from scripts.fl1_i2_cli import public_error_envelope, render_public_json
 from scripts.fl1_i2_confinement import (
     ConfinementError,
     bind_directory,
+    lexically_confine_config_path,
     os_local_temp_root,
     verify_synthetic_roots,
 )
@@ -81,6 +83,44 @@ class RunnerError(RuntimeError):
         super().__init__(code)
         self.code = code
         self.public_code = public_code
+
+
+@dataclass(frozen=True)
+class RunDeadline:
+    """One invocation-local monotonic view of the persisted run deadline."""
+
+    deadline_monotonic: float
+
+    @classmethod
+    def for_new_run(cls, budget: FailureBudget, *, monotonic_start: float) -> "RunDeadline":
+        return cls(monotonic_start + budget.max_run_seconds)
+
+    @classmethod
+    def for_resume(cls, ledger: OperationLedger, budget: FailureBudget) -> "RunDeadline":
+        elapsed_wall = max(0, time.time_ns() - ledger.run_started_at_ns) / 1_000_000_000
+        remaining = max(0.0, budget.max_run_seconds - elapsed_wall)
+        return cls(time.monotonic() + remaining)
+
+    def remaining_seconds(self) -> float:
+        return self.deadline_monotonic - time.monotonic()
+
+    def require_admission(self) -> float:
+        remaining = self.remaining_seconds()
+        if remaining <= 0:
+            raise RunnerError("run_wide_deadline_exceeded")
+        return remaining
+
+    def worker_timeout(self, maximum: float) -> float:
+        return min(maximum, self.require_admission())
+
+
+def _begin_operation_before_deadline(
+    ledger: OperationLedger,
+    deadline: RunDeadline,
+    **kwargs: Any,
+) -> str:
+    deadline.require_admission()
+    return ledger.begin(**kwargs)
 
 
 class SafeArgumentParser(argparse.ArgumentParser):
@@ -158,7 +198,11 @@ def create_synthetic_run_config(
 
 
 def _load_config(path: Path) -> tuple[dict[str, Any], Path, Path, FailureBudget]:
-    payload = load_private_json(path)
+    try:
+        config_path = lexically_confine_config_path(path)
+    except ConfinementError as exc:
+        raise RunnerError("synthetic_run_config_location_invalid") from exc
+    payload = load_private_json(config_path)
     expected = {
         "schema_version",
         "run_id",
@@ -199,7 +243,7 @@ def _load_config(path: Path) -> tuple[dict[str, Any], Path, Path, FailureBudget]
     if payload.get("confinement") != expected_confinement:
         raise RunnerError("synthetic_confinement_binding_invalid")
     try:
-        config_bound = Path(path)
+        config_bound = config_path
         if config_bound.parent != evidence or config_bound.name != "private-run-config.json":
             raise RunnerError("synthetic_run_config_location_invalid")
     except (OSError, ValueError) as exc:
@@ -608,6 +652,7 @@ def run_synthetic_hardening(
     ledger_path = evidence / "private-operation-ledger.json"
     manifest_path = evidence / "private-manifest.json"
     workers_path = evidence / "private-worker-results.json"
+    new_run_monotonic_start: float | None = None
 
     if workers_path.exists() and not ledger_path.exists():
         raise RunnerError("operation_closure_conflict")
@@ -619,7 +664,19 @@ def run_synthetic_hardening(
             _persist_ledger(store, ledger, crash_injector=crash_injector, boundary="after_recovery_ledger_commit")
         _validate_or_rebuild_projection(store, ledger, evidence)
     else:
-        ledger = OperationLedger(run_id, "pending_manifest", budget_fingerprint)
+        new_run_monotonic_start = time.monotonic()
+        ledger = OperationLedger(
+            run_id,
+            "pending_manifest",
+            budget_fingerprint,
+            run_started_at_ns=time.time_ns(),
+        )
+
+    deadline = (
+        RunDeadline.for_new_run(budget, monotonic_start=new_run_monotonic_start)
+        if new_run_monotonic_start is not None
+        else RunDeadline.for_resume(ledger, budget)
+    )
 
     if manifest_path.exists() or manifest_path.is_symlink():
         raw_manifest = store.read("private-manifest.json")
@@ -653,7 +710,9 @@ def run_synthetic_hardening(
             listing_envelope = listing_record.get("payload")
             listing_payload = listing_envelope.get("result") if isinstance(listing_envelope, Mapping) else None
         else:
-            discovery = ledger.begin(
+            discovery = _begin_operation_before_deadline(
+                ledger,
+                deadline,
                 item_id="directory-membership",
                 kind=WorkerOperation.LIST_DIRECTORY.value,
                 attempt=1 + sum(
@@ -669,6 +728,7 @@ def run_synthetic_hardening(
                 ledger.mark_started(discovery)
                 _persist_ledger(store, ledger, crash_injector=crash_injector, boundary="after_started_ledger_commit")
 
+            listing_timeout = deadline.worker_timeout(budget.worker_deadline_seconds)
             listing = controller.run(
                 WorkerOperation.LIST_DIRECTORY,
                 {
@@ -676,7 +736,7 @@ def run_synthetic_hardening(
                     "policy": config["policy"],
                     "enumeration_budget": config["enumeration_budget"],
                 },
-                deadline_seconds=budget.worker_deadline_seconds,
+                deadline_seconds=listing_timeout,
                 persist_started=persist_discovery_started,
             )
             _commit_worker_result(store, ledger, discovery, listing, crash_injector=crash_injector)
@@ -770,7 +830,9 @@ def run_synthetic_hardening(
         )
         if decoded_remaining <= 0:
             raise RunnerError("run_wide_decoded_structure_budget_exhausted")
-        operation_id = ledger.begin(
+        operation_id = _begin_operation_before_deadline(
+            ledger,
+            deadline,
             item_id=member.item_id,
             kind=WorkerOperation.COMBINED_CONTENT.value,
             attempt=1 + len(prior),
@@ -783,6 +845,7 @@ def run_synthetic_hardening(
             ledger.mark_started(identifier)
             _persist_ledger(store, ledger, crash_injector=crash_injector, boundary="after_started_ledger_commit")
 
+        content_timeout = deadline.worker_timeout(budget.worker_deadline_seconds)
         result = controller.run(
             WorkerOperation.COMBINED_CONTENT,
             {
@@ -793,11 +856,11 @@ def run_synthetic_hardening(
                 "max_bytes": reservation,
                 "max_decoded_structure_bytes": decoded_remaining,
                 "max_depth": 1024,
-                "parser_deadline_monotonic": time.monotonic() + budget.worker_deadline_seconds,
+                "parser_deadline_monotonic": time.monotonic() + content_timeout,
                 "policy": config["policy"],
                 "enumeration_budget": config["enumeration_budget"],
             },
-            deadline_seconds=budget.worker_deadline_seconds,
+            deadline_seconds=content_timeout,
             persist_started=persist_started,
         )
         _commit_worker_result(store, ledger, operation_id, result, crash_injector=crash_injector)
@@ -819,7 +882,9 @@ def run_synthetic_hardening(
         envelope = final_record.get("payload")
         final_payload = envelope.get("result") if isinstance(envelope, Mapping) else None
     else:
-        snapshot_operation = ledger.begin(
+        snapshot_operation = _begin_operation_before_deadline(
+            ledger,
+            deadline,
             item_id="final-directory-snapshot",
             kind=WorkerOperation.FINAL_SNAPSHOT.value,
             attempt=1,
@@ -832,6 +897,7 @@ def run_synthetic_hardening(
             ledger.mark_started(identifier)
             _persist_ledger(store, ledger, crash_injector=crash_injector, boundary="after_started_ledger_commit")
 
+        snapshot_timeout = deadline.worker_timeout(budget.worker_deadline_seconds)
         final_result = controller.run(
             WorkerOperation.FINAL_SNAPSHOT,
             {
@@ -839,7 +905,7 @@ def run_synthetic_hardening(
                 "policy": config["policy"],
                 "enumeration_budget": _remaining_enumeration_budget(config, ledger),
             },
-            deadline_seconds=budget.worker_deadline_seconds,
+            deadline_seconds=snapshot_timeout,
             persist_started=persist_snapshot_started,
         )
         _commit_worker_result(store, ledger, snapshot_operation, final_result, crash_injector=crash_injector)
