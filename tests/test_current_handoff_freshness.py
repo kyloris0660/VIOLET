@@ -39,7 +39,7 @@ def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> No
     assert state["phase_id"] == "SCV2-FL1-I2"
     assert state["pr_number"] == documentation_state.FL1_I2_PR_NUMBER
     assert state["branch"] == documentation_state.FL1_I2_BRANCH
-    assert state["accepted_mainline_base"] == documentation_state.FL1_I2_ACCEPTED_MAIN
+    assert state["accepted_mainline_base"] == documentation_state.FL1_I2_PLANNING_MERGE_COMMIT
     assert state["current_status"] == documentation_state.FL1_I2_STATUS
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
@@ -47,15 +47,16 @@ def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> No
     assert state["approved_planning_head"] == documentation_state.FL1_I2_APPROVED_PLANNING_HEAD
     assert state["approved_planning_tree"] == documentation_state.FL1_I2_APPROVED_PLANNING_TREE
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is True
+    assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
     boundary = state["planning_boundary"]
-    assert boundary["planning_only"] is True
-    assert boundary["owner_audit_pending"] is False
+    assert boundary["planning_only"] is False
+    assert boundary["owner_audit_pending"] is True
     assert boundary["owner_acceptance_valid"] is True
-    assert boundary["merge_authorized"] is True
-    assert boundary["implementation_authorized"] is False
-    assert boundary["implementation_started"] is False
+    assert boundary["merge_authorized"] is False
+    assert boundary["implementation_authorized"] is True
+    assert boundary["implementation_started"] is True
+    assert boundary["implementation_completed"] is True
     assert boundary["real_inventory_started"] is False
     assert boundary["real_source_inventory_authorized"] is False
     assert boundary["database_access_authorized"] is False
@@ -64,14 +65,14 @@ def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> No
     assert boundary["production_authorized"] is False
 
 
-def test_fl1_i2_pr_number_exact_binding_accepts_145() -> None:
+def test_fl1_i2_pr_number_exact_binding_accepts_146() -> None:
     state = copy.deepcopy(_state())
     state["pr_number"] = documentation_state.FL1_I2_PR_NUMBER
 
     documentation_state.validate_state(state)
 
 
-@pytest.mark.parametrize("pr_number", [None, 144, 146])
+@pytest.mark.parametrize("pr_number", [None, 145, 147])
 def test_fl1_i2_pr_number_exact_binding_fails_closed(
     pr_number: int | None,
 ) -> None:
@@ -96,7 +97,7 @@ def test_pr144_acceptance_merge_and_terminal_review_are_exact() -> None:
         "synthetic_and_new_temporary_fixture_foundation_only"
     )
     assert state["previous_phase_real_inventory_target_met"] is False
-    assert prior["merge_commit"] == documentation_state.FL1_I2_ACCEPTED_MAIN
+    assert prior["merge_commit"] == documentation_state.FL1_I1_MERGE_COMMIT
     assert prior["final_head"] == documentation_state.FL1_I2_PREVIOUS_FINAL_HEAD
     assert prior["final_tree"] == documentation_state.FL1_I2_PREVIOUS_FINAL_TREE
     assert prior["implementation_evidence_head"] == documentation_state.FL1_I2_PREVIOUS_EVIDENCE
@@ -182,7 +183,7 @@ def test_approved_planning_commit_must_be_head_ancestor(
             "merge-base",
             "--is-ancestor",
             documentation_state.FL1_I2_APPROVED_PLANNING_HEAD,
-            "HEAD",
+            documentation_state.FL1_I2_PLANNING_PROJECTION_HEAD,
         ]:
             return documentation_state.subprocess.CompletedProcess(
                 arguments, 1, stdout="", stderr=""
@@ -200,12 +201,11 @@ def test_approved_planning_commit_must_be_head_ancestor(
 @pytest.mark.parametrize(
     "path",
     [
-        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md",
         "backend/app/utils/cloud_files.py",
         "scripts/fl1_i1_inventory.py",
     ],
 )
-def test_projection_change_to_plan_or_runtime_path_fails_closed(path: str) -> None:
+def test_projection_change_to_runtime_path_fails_closed(path: str) -> None:
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="fl1_i2_governance_projection_path_invalid",
@@ -214,6 +214,10 @@ def test_projection_change_to_plan_or_runtime_path_fails_closed(path: str) -> No
 
 
 def test_governance_only_carry_forward_paths_pass() -> None:
+    assert (
+        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
+        in documentation_state.FL1_I2_PROJECTION_ALLOWLIST
+    )
     documentation_state._validate_fl1_i2_projection_paths(
         documentation_state.FL1_I2_PROJECTION_ALLOWLIST
     )
@@ -235,7 +239,7 @@ def test_owner_acceptance_carry_forward_uses_ancestry_not_head_parent(
         "merge-base",
         "--is-ancestor",
         documentation_state.FL1_I2_APPROVED_PLANNING_HEAD,
-        "HEAD",
+        documentation_state.FL1_I2_PLANNING_PROJECTION_HEAD,
     ) in calls
     assert not any(any(argument.startswith("HEAD^") for argument in call) for call in calls)
 
@@ -492,7 +496,7 @@ def test_terminal_review_use_before_register_is_complete() -> None:
     classifications = [finding["classification"] for finding in findings]
     assert classifications.count("closed_in_current_governance_pr") == 2
     assert classifications.count(
-        "must_close_during_i2_before_i2_completion_merge_or_i3"
+        "closed_in_fl1_i2_synthetic_implementation_evidence"
     ) == 14
     assert classifications.count(
         "claim_boundary_local_evidence_not_tamper_resistant_attestation"
@@ -501,10 +505,14 @@ def test_terminal_review_use_before_register_is_complete() -> None:
 
 def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
     state = _state()
-    assert state["active_blocker"]["code"] == "pending_pr145_expected_head_merge"
+    assert state["active_blocker"]["code"] == (
+        "pending_fl1_i2_final_direct_owner_merge_audit"
+    )
     preconditions = state["next_phase_authorization"]["required_preconditions"]
     assert preconditions[0].startswith("PR #145 is merged")
-    assert preconditions[1] == "I2 implementation is separately authorized"
+    assert preconditions[1] == (
+        "I2 implementation is separately authorized by the owner for this synthetic-only branch"
+    )
     assert "synthetic or adversarial newly created temporary fixtures" in preconditions[2]
     assert "all fourteen I2 delivery gates close" in preconditions[3]
     assert "I2 passes owner audit and merges" in preconditions[4]
@@ -518,6 +526,32 @@ def test_network_truth_separates_data_plane_from_governance_control_plane() -> N
     assert (
         protected["authorized_git_github_governance_control_plane_operations_occurred"]
         is True
+    )
+
+
+def test_windows_same_handle_feasibility_checkpoint_is_exact() -> None:
+    state = _state()
+    protected = state["protected_evidence"]
+    checkpoint = next(
+        item
+        for item in state["completed_checkpoints"]
+        if item["id"] == "fl1_i2_windows_same_handle_feasibility"
+    )
+    assert checkpoint == {
+        "id": "fl1_i2_windows_same_handle_feasibility",
+        "result": (
+            "pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback"
+        ),
+        "fingerprint": "windows_live_temp_file_id_extd_ntcreatefile_v1",
+    }
+    assert protected["windows_same_handle_feasibility_passed"] is True
+    assert protected["windows_same_handle_no_path_fallback"] is True
+    assert protected["file_open_no_recall_claim_scope"] == (
+        "open_itself_only_not_later_read_guarantee"
+    )
+    assert state["next_required_checkpoint"] == (
+        "direct_owner_exact_final_diff_merge_audit_without_automated_"
+        "rereview_merge_i3_or_px1"
     )
 
 
@@ -578,7 +612,7 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
         ("current_status", "fl1_i2_implementation_in_progress"),
         ("planning_approved", False),
         ("target_met", True),
-        ("safe_to_merge", False),
+        ("safe_to_merge", True),
         ("route_approved", True),
         ("manual_acceptance_status", "pending_fl1_i2_plan_owner_reaudit"),
     ],
@@ -598,10 +632,6 @@ def test_i2_owner_accepted_status_mutations_fail_closed(
 @pytest.mark.parametrize(
     "field",
     [
-        "implementation_authorized",
-        "implementation_started",
-        "implementation_completed",
-        "synthetic_ephemeral_test_fixture_authorized",
         "real_inventory_started",
         "real_source_inventory_authorized",
         "source_root_access_authorized",
@@ -623,6 +653,34 @@ def test_i2_owner_accepted_status_mutations_fail_closed(
 def test_i2_execution_authority_fails_closed(field: str) -> None:
     state = copy.deepcopy(_state())
     state["planning_boundary"][field] = True
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_boundary_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "implementation_authorized",
+        "implementation_started",
+        "synthetic_ephemeral_test_fixture_authorized",
+    ],
+)
+def test_i2_synthetic_implementation_authority_cannot_be_removed(field: str) -> None:
+    state = copy.deepcopy(_state())
+    state["planning_boundary"][field] = False
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_boundary_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_i2_completed_evidence_cannot_be_reverted() -> None:
+    state = copy.deepcopy(_state())
+    state["planning_boundary"]["implementation_completed"] = False
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="fl1_i2_boundary_invalid",
@@ -659,11 +717,86 @@ def test_exact_owner_acceptance_binding_is_immutable() -> None:
         documentation_state.validate_state(state)
 
 
+def test_pr146_bounded_correction_binding_is_exact_and_immutable() -> None:
+    state = copy.deepcopy(_state())
+    decision = next(
+        decision
+        for decision in state["owner_decisions"]
+        if decision["id"]
+        == documentation_state.FL1_I2_BOUNDED_CORRECTION_DECISION_ID
+    )
+    assert decision["superseded_head"] == (
+        documentation_state.FL1_I2_SUPERSEDED_EVIDENCE_HEAD
+    )
+    assert decision["thread_ids"] == list(
+        documentation_state.FL1_I2_BOUNDED_CORRECTION_THREAD_IDS
+    )
+    decision["one_followup_codex_review_authorized"] = False
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_bounded_correction_binding_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_pr146_final_convergence_binding_is_exact_and_immutable() -> None:
+    state = copy.deepcopy(_state())
+    decision = next(
+        decision
+        for decision in state["owner_decisions"]
+        if decision["id"]
+        == documentation_state.FL1_I2_FINAL_CONVERGENCE_DECISION_ID
+    )
+    assert decision["rejected_head"] == documentation_state.FL1_I2_FINAL_REJECTED_HEAD
+    assert decision["thread_ids"] == list(documentation_state.FL1_I2_FINAL_THREAD_IDS)
+    decision["one_terminal_followup_review_authorized"] = False
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_final_convergence_binding_invalid",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_canonical_plan_status_or_authority_contradiction_fails_closed(
+    tmp_path: Path,
+) -> None:
+    copied_root = _copy_docs_root(tmp_path)
+    plan = (
+        copied_root
+        / "docs"
+        / "plans"
+        / "phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
+    )
+    plan.write_text(
+        plan.read_text(encoding="utf-8").replace(
+            "implementation_authorized=true",
+            "implementation_authorized=false",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fl1_i2_canonical_plan_current_truth",
+    ):
+        documentation_state.validate_roadmaps(_state(), root=copied_root)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
         ("previous_phase_implementation_evidence_head", "f" * 40),
         ("previous_phase_implementation_evidence_tree", "f" * 40),
+        ("fl1_i2_implementation_evidence_head", "f" * 40),
+        ("fl1_i2_implementation_evidence_tree", "f" * 40),
+        ("fl1_i2_superseded_evidence_head", "f" * 40),
+        ("fl1_i2_bounded_correction_review_id", 0),
+        ("fl1_i2_bounded_correction_authorized", False),
+        ("fl1_i2_one_followup_codex_review_authorized", False),
+        ("fl1_i2_final_convergence_rejected_head", "f" * 40),
+        ("fl1_i2_final_convergence_review_id", 0),
+        ("fl1_i2_final_convergence_correction_authorized", False),
+        ("fl1_i2_one_terminal_followup_review_authorized", False),
         ("machine_verifiable_ci", True),
         ("github_checks_observed", 1),
         ("ci_authority", True),
@@ -725,4 +858,19 @@ def test_plan_contains_canonical_architecture_threat_model_and_full_route() -> N
         assert concept in plan
     assert "same verified, no-follow, identity-bound directory handle" in plan
     assert "path-based `os.scandir()` plus a post-check cannot close this gate" in plan
-    assert "FL1_I2_PLANNING_GOVERNANCE_PR_CORRECTED_READY_FOR_OWNER_REAUDIT" in plan
+    assert (
+        "SCV2_FL1_I2_PR146_FINAL_OWNER_ADJUDICATED_CORRECTION_READY_FOR_"
+        "DIRECT_OWNER_MERGE_AUDIT"
+    ) in plan
+
+
+def test_final_owner_adjudication_is_exact_and_forbids_rereview() -> None:
+    protected = _state()["protected_evidence"]
+    assert protected["fl1_i2_final_owner_review_id"] == 4963026941
+    assert protected["fl1_i2_final_owner_rejected_head"] == (
+        "d4478660df1f11b1c8d3ceba1af70f8635542a9d"
+    )
+    assert protected["fl1_i2_final_owner_required_fix_count"] == 4
+    assert protected["fl1_i2_final_owner_safe_downgrade_count"] == 2
+    assert protected["fl1_i2_final_owner_deferred_count"] == 2
+    assert protected["fl1_i2_additional_codex_review_authorized"] is False

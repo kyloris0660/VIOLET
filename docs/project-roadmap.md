@@ -28,20 +28,22 @@ Terminal review `4897012517` recorded 17 unresolved, non-outdated findings at
 the final HEAD (13 P1, 4 P2), and GitHub exposed zero checks. Zero checks is not
 a machine-verifiable CI pass.
 
-Current phase `SCV2-FL1-I2` is governance and route planning only:
+Current phase `SCV2-FL1-I2` has frozen synthetic pre-real hardening
+implementation evidence and awaits exact-HEAD owner audit:
 
 ```text
-current_status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge
+current_status=fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
 approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf
 approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
-merge_authorized=true
-implementation_authorized=false
-implementation_started=false
+merge_authorized=false
+implementation_authorized=true
+implementation_started=true
+implementation_completed=true
 target_met=false
-safe_to_merge=true
+safe_to_merge=false
 route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
@@ -55,7 +57,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_pr145_expected_head_merge
+active_blocker=pending_fl1_i2_final_direct_owner_merge_audit
 ```
 
 ## Accepted Mainline Sequence
@@ -66,6 +68,8 @@ active_blocker=pending_pr145_expected_head_merge
 4. SCV2-FL1-P1-R1 / PR #143.
 5. SCV2-FL1-I1 synthetic foundation / PR #144, owner-accepted and merged at
    `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
+6. SCV2-FL1-I2 accepted planning / PR #145, merged at
+   `1913bd27517efc1a6007a202fc9650de4f20fab4`.
 
 PR #142 remains closed, unmerged, and non-authoritative.
 
@@ -73,13 +77,19 @@ PR #142 remains closed, unmerged, and non-authoritative.
 
 ### I2 - Pre-real hardening
 
-Use only synthetic/adversarial temporary fixtures. Converge canonical source
-and Cloud policy, close the 14 implementation delivery gates before I2
-completion, target, safe-to-merge, merge, or I3, produce an executable contract
-and complete negative suite, then stop after merge pending real canary
-authorization. The gates are I2 deliverables; they are not outcomes required
-before exact-plan approval plus separate authorization permits synthetic-only
-I2 coding.
+Only synthetic/adversarial temporary fixtures were used. Canonical source and
+Cloud policy, all 14 implementation delivery gates, the negative suite, and
+executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
+final owner-adjudicated implementation evidence
+`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
+`9119d489800c0b40c5586a9aa4ceb89d34f93e5c`. Review `4963026941` rejected
+`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
+`113280a8697e6bef3cb9e4292a042c2d46b1f025`; its adjudication closes four
+required fixes, safely downgrades GIF and AVIF to explicit unsupported, and
+defers two environment-attestation items to exact future gates. The result
+stops at direct owner exact-final-diff audit without another automated review;
+`target_met`, `safe_to_merge`, merge authority, route approval, and every
+real-source/data authority remain false.
 
 The sequence is exact plan owner approval, separate I2 implementation
 authorization, synthetic-only closure of all 14 gates, I2 owner audit and
@@ -92,9 +102,9 @@ The owner accepted exact planning HEAD/tree
 `fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
 The governance projection closes P1 thread `PRRT_kwDOSTBMB86YRuq7` through an
 exact tree, ancestry, and governance-path carry-forward contract without
-changing this accepted plan. The only current blocker is the authorized PR
-#145 expected-head merge. Implementation and real-source authority remain
-false.
+changing this accepted plan. PR #145 is merged and its one-time merge authority
+is consumed. Synthetic implementation is authorized; real-source authority,
+safe-to-merge, and merge authority remain false.
 
 ### I3 - Bounded real-source inventory canary
 

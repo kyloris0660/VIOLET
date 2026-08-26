@@ -6,8 +6,9 @@ Phase 2.4 makes the Local Library Scan pipeline safe for large iCloud-synced dir
 > Phase 2.4 through Phase 3.8d. The merged SCV2-FL1-I1 synthetic foundation has
 > not yet been canonically integrated with that runtime scanner. Full-library
 > readiness depends on separately approved I2 hardening, I3 bounded canary, and
-> I4 read-only inventory stages. Nothing here claims I2 implementation exists or
-> authorizes a real source/iCloud scan, hydration, database use, or import.
+> I4 read-only inventory stages. Nothing here claims I2 source-safety
+> implementation or canonical runtime integration is complete, or authorizes a
+> real source/iCloud scan, hydration, database use, or import.
 > In particular, this historical path-based runtime description does not close
 > I2 finding #14. Future I2 directory membership must come from the same
 > verified, no-follow, identity-bound directory handle; identity-before/after is

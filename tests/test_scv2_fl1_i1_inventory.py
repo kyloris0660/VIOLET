@@ -682,7 +682,7 @@ def test_checkpoint_recovers_stale_split_projection(
     assert json.loads(resumed.stdout)["status"] == RunStatus.COMPLETE.value
 
 
-def test_i1_modules_have_no_database_network_provider_media_or_application_route_imports() -> None:
+def test_i1_modules_only_import_the_canonical_backend_value_module() -> None:
     forbidden_roots = {
         "backend",
         "requests",
@@ -705,10 +705,16 @@ def test_i1_modules_have_no_database_network_provider_media_or_application_route
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                imported.update(alias.name.split(".", 1)[0] for alias in node.names)
+                imported.update(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
-                imported.add(node.module.split(".", 1)[0])
-    assert imported.isdisjoint(forbidden_roots)
+                imported.add(node.module)
+    canonical_value_module = "backend.app.services.source_safety"
+    forbidden = {
+        name
+        for name in imported
+        if name.split(".", 1)[0] in forbidden_roots and name != canonical_value_module
+    }
+    assert forbidden == set()
 
 
 def test_contract_rebuilds_projection_and_rejects_counts_paths_unknown_fields_and_receipt_escalation(

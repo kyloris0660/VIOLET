@@ -1,7 +1,10 @@
-"""Windows Cloud Files metadata helpers.
+"""Legacy compatibility facade for Windows Cloud Files metadata helpers.
 
 These helpers intentionally inspect metadata only.  They never open file
 contents and therefore do not trigger Cloud Files hydration by themselves.
+New source-inventory code must consume canonical handle observations and ask
+``SourceIngestionGate`` for the policy decision instead of copying these flag
+checks.
 """
 
 from __future__ import annotations

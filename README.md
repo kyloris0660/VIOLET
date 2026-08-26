@@ -34,15 +34,29 @@ V.I.O.L.E.T. is a personal/local development project, not a production SaaS.
 The single current-route authority is `docs/state/current-phase.json`; the
 generated `docs/current-handoff.md` provides the short human-readable view.
 PR #144 merged the `SCV2-FL1-I1` inventory foundation, but the owner accepted
-it only for synthetic and newly created temporary fixtures. Current work is the
-`SCV2-FL1-I2` governance and planning route for real-source read-only inventory
-hardening and canary readiness. The owner accepted exact planning HEAD/tree
+it only for synthetic and newly created temporary fixtures. PR #145 merged the
+owner-accepted `SCV2-FL1-I2` plan at merge commit
+`1913bd27517efc1a6007a202fc9650de4f20fab4`. The separately authorized
+synthetic pre-real hardening implementation now has final owner-adjudicated
+implementation evidence frozen at HEAD/tree
+`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
+`9119d489800c0b40c5586a9aa4ceb89d34f93e5c`.
+Review `4963026941` rejected prior HEAD/tree
+`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
+`113280a8697e6bef3cb9e4292a042c2d46b1f025`. Its owner adjudication requires
+four engineering fixes, two safe downgrades (GIF/AVIF remain explicitly
+unsupported), and two nonblocking deferrals with exact future due gates.
+Contract
+`scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives all 14 delivery gates
+from confined private synthetic evidence. The owner accepted exact planning HEAD/tree
 `acb12c1db258fdef1d4f063b053d422e0d887abf` /
-`fc573c7646ad5edf10c32c7712de7f27ab058a2a`; planning is approved and PR #145
-is safe to merge only through its authorized expected-head merge. The 14 engineering findings are
-synthetic-only I2 implementation deliverables due before I2 completion, merge,
-or any I3/real-source use, not results required before separately authorized I2
-coding begins. I2 implementation, real source/iCloud access,
+`fc573c7646ad5edf10c32c7712de7f27ab058a2a`; planning remains approved, while
+the one-time planning merge authority is consumed. The 14 engineering findings
+are re-established only in the new corrected synthetic evidence. No additional
+automated review is authorized; direct exact-final-diff owner audit remains
+pending. Local evidence grants no `safe_to_merge`, merge,
+target, route, I3, or real-source authority. I2 execution remained restricted
+to adversarial newly created temporary fixtures. Real source/iCloud access,
 full-library inventory, database/app-storage access, import, classification,
 AI tagging, provider/LLM/media activity, UI/runtime execution, and production
 remain unauthorized.
@@ -158,10 +172,10 @@ not active onboarding material.
 
 ## Development Focus
 
-Current development focus is the FL1 read-only inventory safety route: converge
-the Cloud/source decision boundary, complete the authorized PR #145
-expected-head merge, obtain a separate implementation authorization, then close the 14 I2 delivery gates
-with only synthetic/adversarial temporary fixtures before any I3 use. I3 and I4
+Current development focus is the FL1 read-only inventory safety route: close G0,
+prove Windows same-handle feasibility, converge the Cloud/source decision
+boundary, and close the 14 I2 delivery gates with only synthetic/adversarial
+temporary fixtures before any I3 use. I3 and I4
 remain separately authorized inventory stages. The accepted SourceConcept work
 remains a separate
 evidence track; it is not Entity truth and does not authorize source, import,

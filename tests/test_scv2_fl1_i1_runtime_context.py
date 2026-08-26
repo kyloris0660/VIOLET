@@ -140,7 +140,9 @@ def test_repo_local_fake_git_executable_is_never_selected(
     trusted = resolve_trusted_git_executable(excluded_roots=(fixture.repo,))
     assert trusted.path != fake
     assert fixture.repo not in trusted.path.parents
-    with pytest.raises(RuntimeContextError, match="evidence_worktree_tracked_drift"):
+    with pytest.raises(
+        RuntimeContextError, match="evidence_worktree_behavior_affecting_untracked:1"
+    ):
         fixture.context()
 
 

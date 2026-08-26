@@ -457,9 +457,10 @@ def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
 
     assert "SCV2-FL1" in handoff
     if current_state["pr_number"] is None:
-        assert "Draft PR pending creation" in handoff
+        assert "PR pending creation" in handoff
     else:
-        assert f"Draft PR #{current_state['pr_number']}" in handoff
+        label = "Draft PR" if current_state["draft"] else "PR"
+        assert f"{label} #{current_state['pr_number']}" in handoff
     assert f"target_met={str(current_state['target_met']).lower()}" in handoff
     assert f"safe_to_merge={str(current_state['safe_to_merge']).lower()}" in handoff
     assert current_state["active_blocker"]["code"] in handoff

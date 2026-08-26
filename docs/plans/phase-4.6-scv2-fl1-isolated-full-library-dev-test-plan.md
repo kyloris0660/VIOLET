@@ -5,7 +5,24 @@
 This document is the canonical public-safe FL1 route plan. The current phase is
 `SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness`.
 Its status is
-`fl1_i2_planning_governance_pr_corrected_ready_for_owner_reaudit`.
+`fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit`.
+
+The accepted planning HEAD/tree remain immutable Git-history evidence at
+`acb12c1db258fdef1d4f063b053d422e0d887abf` /
+`fc573c7646ad5edf10c32c7712de7f27ab058a2a`. The separately authorized
+synthetic implementation has occurred in PR #146. Earlier exact-head review
+`4952516658` rejected `441d0c1bb1d8d0823b6f24c31accf44e068509f2`;
+its regression closure remains preserved. Terminal review `4961359578`
+rejected projection HEAD/tree
+`ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
+`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72` with nine accepted findings. The
+pre-terminal evidence is superseded and rejected; its established regressions
+remain. Review `4963026941` rejected later HEAD/tree
+`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
+`113280a8697e6bef3cb9e4292a042c2d46b1f025`. The final owner-adjudicated
+correction closes four required fixes, applies two safe downgrades, and records
+two nonblocking deferrals with exact due gates. No additional automated review
+is authorized; direct exact-final-diff owner audit is pending.
 
 PR #144 merged SCV2-FL1-I1 at merge commit
 `8955b95e91630d4c5e18e1e2ca252b19754c81d5`. The owner accepted its final
@@ -22,17 +39,24 @@ review `4897012517` recorded 17 findings at the final HEAD (13 P1, 4 P2).
 GitHub exposed zero checks; `github_checks=0` is not CI pass evidence and
 `machine_verifiable_ci=false` remains mandatory.
 
-Current authority is limited to governance, public-safe documentation, and the
-I2/I3/I4/E1/E2/V1 route plan. It does not authorize I2 implementation or any
-source/data/runtime operation:
+Current authority includes the completed synthetic-only I2 implementation and
+its public-safe governance projection. It does not authorize merge, I3, any
+real source/data operation, or production:
 
 ```text
 planning_authorized=true
 planning_completed=true
-planning_approved=false
+planning_approved=true
+implementation_evidence_head=9aab3e31f5223e0c689046b5c5c61f21268f840c
+implementation_evidence_tree=9119d489800c0b40c5586a9aa4ceb89d34f93e5c
+required_fix_count=4
+safe_downgrade_count=2
+deferred_count=2
+additional_codex_review_authorized=false
 merge_authorized=false
-implementation_authorized=false
-implementation_started=false
+implementation_authorized=true
+implementation_started=true
+implementation_completed=true
 target_met=false
 safe_to_merge=false
 route_approved=false
@@ -48,7 +72,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_plan_owner_audit
+active_blocker=pending_fl1_i2_final_direct_owner_merge_audit
 ```
 
 ## 2. Governing Principles
@@ -73,13 +97,16 @@ active_blocker=pending_fl1_i2_plan_owner_audit
    review operations are allowed and have occurred; they are not provider or
    data execution.
 
-I2 implementation may start only after the owner approves the exact I2 plan
-evidence and separately authorizes implementation restricted to synthetic and
+I2 implementation began only after the owner approved the exact I2 plan
+evidence and separately authorized work restricted to synthetic and
 adversarial newly created temporary fixtures. Real source/iCloud, DB,
-app-storage, import, provider/model/media, and production authority must all
-remain false. The 14 engineering findings are I2 implementation deliverables,
-not pre-existing results required before this separately authorized coding can
-begin.
+app-storage, import, provider/model/media, and production authority remain
+false. The 14 engineering findings are I2 implementation deliverables and are
+represented by the executable contract; local closure still requires terminal
+owner audit before any merge projection. Review `4963026941` adds no new phase:
+four required fixes close in final implementation evidence, AVIF and GIF are
+safely downgraded to explicit unsupported dispositions, and two environment
+attestation findings remain nonblocking only until their exact due gates.
 
 ## 3. PR #144 Terminal Review Use-Before Register
 
@@ -94,7 +121,7 @@ The 17 findings are preserved in full and classified for the next safe use.
 | 5 | P2 | Enforce the deadline around blocking file operations | Must close during I2 before I2 completion/merge or I3: potentially blocking open/read/hash/structure validation runs in a terminable worker. |
 | 6 | P1 | Bind the receipt to one unchanged HEAD | Must close during I2 before I2 completion/merge or I3: validation receipt binds identical pre/post execution HEAD. |
 | 7 | P1 | Re-derive the adapter policy during contract validation | Must close during I2 before I2 completion/merge or I3: adapter policy is reconstructed from trusted configuration. |
-| 8 | P2 | Stop at the configured failure maximum | Must close during I2 before I2 completion/merge or I3: correct the maximum-failure off-by-one boundary. |
+| 8 | P2 | Stop at the configured failure maximum | Closed in I2 evidence: admission stops at equality, and `max_failures` is schema-constrained to `>= 1` so zero cannot create a run that admits no operation. |
 | 9 | P1 | Pin the frozen remediation commit and tree | Closed in this governance PR: documentation checker uses a fixed trusted Git executable, explicit repository root, scrubbed `GIT_*` environment, disabled replace objects/hooks/fsmonitor/caller config, and pins the actual I1 evidence commit/tree. |
 | 10 | P1 | Reject CI authority in documentation state | Closed in this governance PR: checker requires `machine_verifiable_ci=false`, `github_checks=0`, and no CI authority. |
 | 11 | P1 | Include a change identity in file signatures | Must close during I2 before I2 completion/merge or I3: carry Windows file identity and change identity. |
@@ -102,7 +129,7 @@ The 17 findings are preserved in full and classified for the next safe use.
 | 13 | P1 | Confine private artifact reads as well as writes | Must close during I2 before I2 completion/merge or I3: private-artifact reads are no-follow and confined. |
 | 14 | P1 | Enumerate directories through a verified no-follow handle | Must close during I2 before I2 completion/merge or I3: enumerate every member from the same verified, no-follow, identity-bound directory handle. Identity-before/after is supplemental drift evidence only; path-based `os.scandir()` plus a post-check cannot close this gate. On Windows, implement a safe same-handle primitive or fail closed. |
 | 15 | P1 | Reconcile intents from ended failed invocations | Must close during I2 before I2 completion/merge or I3: recover residual INTENT records from terminated failed invocations. |
-| 16 | P2 | Validate media structure beyond boundary markers | Must close during I2 before I2 completion/merge or I3: bounded structural validation must exceed first/last marker checks. |
+| 16 | P2 | Validate media structure beyond boundary markers | Closed within the supported subset: JPEG/PNG and supported WebP forms use bounded structure validation; GIF and AVIF are explicit unsupported until full pixel/AV1 payload validation exists and are never projected as structure-valid. |
 | 17 | P2 | Handle runtime-context failures in scanner CLI | Must close during I2 before I2 completion/merge or I3: emit a stable privacy-safe JSON error envelope. |
 
 Findings 9 and 10 are governance closures, not retrospective code repairs.
@@ -360,56 +387,51 @@ manifest/config/HEAD drift, Cloud recall risk, deadline escape, receipt
 incompleteness, ledger collision/corruption, budget exhaustion, or privacy
 projection leakage. Bounded per-item failures may continue only when the
 approved contract explicitly permits them and the failure maximum is not
-crossed.
+crossed. `max_failures` must be an integer `>= 1`; zero is rejected by config
+schema, runner, and contract rather than becoming an ambiguous admission mode.
 
 ## 14. Executable Contracts And Validation
 
-The I2 planning PR changes no I1 executable and does not claim an I2 executable
-contract already exists. A later I2 implementation must register and test a
-contract that verifies the canonical decisions, all 14 delivery gates,
-protected/private evidence, lifecycle closure, budgets, public projection, and
-same-HEAD receipt semantics.
+PR #146 registers `scv2_fl1_i2_pre_real_hardening_contract_v1`. The contract
+reconstructs canonical decisions, all 14 delivery gates, protected/private
+evidence, lifecycle closure, budgets, public projection, and same-HEAD receipt
+semantics from confined synthetic artifacts; caller booleans grant no positive
+authority. Final evidence is local-operator evidence only.
 
-Validation for this governance/planning lifecycle is limited to:
+Validation for the final owner-adjudicated correction includes:
 
 1. approved repository-venv Python identity preflight when Python runs;
 2. `scripts/check_documentation_state.py --check`;
-3. focused documentation, generated-handoff, and governance tests;
-4. tracked JSON parsing;
-5. `git diff --check` and `git diff --cached --check`;
-6. changed-path, privacy/redaction, and forbidden-scope audits;
-7. clean intended tracked/staged state and local/remote branch equality.
+3. focused I2/G0/source-gate/I1 compatibility plus new owner-finding regressions;
+4. the canonical same-HEAD receipt and executable contract;
+5. one complete non-E2E run, reported truthfully with exact-base limitation;
+6. tracked JSON parsing and diff/privacy/secret/corruption checks;
+7. primary preservation and isolated worktree cleanliness.
 
-Raw full non-E2E, browser/E2E, server, DB, source/iCloud, model/provider/LLM,
-and media validation are not required and are not authorized for this PR.
+Browser/E2E, server, DB, real source/iCloud, model/provider/LLM, media download,
+I3/PX1, and production remain unauthorized.
 
 ## 15. Approval And Stop Boundaries
 
-The corrected current PR may be considered only for owner re-audit of the plan.
-It cannot
-claim `planning_approved`, `implementation_authorized`, `target_met`,
-`safe_to_merge`, or `route_approved`.
+Planning is already owner-approved and I2 synthetic implementation is complete.
+This correction may be considered only for direct owner audit of the exact final
+diff. It cannot claim `target_met`, `safe_to_merge`, merge authority, route
+approval, I3/PX1 start, or real-source authority.
 
-The acceptance lifecycle is fixed:
+The current stop lifecycle is fixed:
 
-1. present the corrected exact planning evidence commit/tree for owner
-   re-audit;
-2. only after acceptance and separate authorization, create one governance-only
-   projection commit that binds that exact evidence, records the owner decision,
-   and sets planning approval, safe-to-merge, and merge authorization while
-   implementation and real-source authority remain false;
-3. change no accepted plan content in that projection;
-4. only then permit an expected-head merge;
-5. require separate I2 implementation authorization, synthetic-only closure of
-   all 14 gates, I2 owner audit and merge, then the separate
-   `FL1_I3_REAL_SOURCE_SCOPE_GATE` before a bounded canary.
+1. freeze the corrected implementation evidence HEAD/tree;
+2. create at most one governance-only projection that records review
+   `4963026941` as 4 required fixes, 2 safe downgrades, and 2 exact-gate
+   deferrals;
+3. validate, push normally, and bind the PR body to both exact revisions;
+4. request no additional automated review and stop for direct owner audit;
+5. permit no merge without a later explicit expected-head owner decision;
+6. after any owner-authorized I2 merge, still stop until the separate
+   `FL1_I3_REAL_SOURCE_SCOPE_GATE` is authorized.
 
-This correction must not create that acceptance projection or set positive
-authority. After the corrected final HEAD is frozen, request exactly one
-replacement Codex review and stop. Do not repair its findings, request a third
-review, reply to or resolve threads, merge, start I2 implementation, or begin
-I3. The required owner checkpoint is:
+The required owner checkpoint is:
 
 ```text
-SCV2_FL1_I2_PLANNING_GOVERNANCE_PR_CORRECTED_READY_FOR_OWNER_REAUDIT
+SCV2_FL1_I2_PR146_FINAL_OWNER_ADJUDICATED_CORRECTION_READY_FOR_DIRECT_OWNER_MERGE_AUDIT
 ```

@@ -35,30 +35,85 @@ def test_current_handoff_is_current_route_focused() -> None:
     assert "17 findings" in handoff
 
 
-def test_fl1_i2_state_stops_before_implementation_and_real_inventory() -> None:
+def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
     state = load_state()
     validate_state(state)
     validate_roadmaps(state)
     assert state["phase_id"] == "SCV2-FL1-I2"
     assert state["current_status"] == (
-        "fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge"
+        "fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_"
+        "owner_merge_audit"
     )
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
     assert state["planning_approved"] is True
     assert state["target_met"] is False
-    assert state["safe_to_merge"] is True
+    assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
-    assert state["planning_boundary"]["implementation_authorized"] is False
+    assert state["planning_boundary"]["implementation_authorized"] is True
+    assert state["planning_boundary"]["implementation_started"] is True
+    assert state["planning_boundary"]["implementation_completed"] is True
+    assert state["planning_boundary"]["synthetic_ephemeral_test_fixture_authorized"] is True
     assert state["planning_boundary"]["real_inventory_started"] is False
     assert state["planning_boundary"]["real_source_inventory_authorized"] is False
+    assert state["protected_evidence"]["fl1_i2_superseded_evidence_head"] == (
+        "78ccbdc69ee1bf0f51c297435b56e2be868b54e9"
+    )
+    assert state["protected_evidence"]["fl1_i2_bounded_correction_authorized"] is True
+    assert state["protected_evidence"]["fl1_i2_final_convergence_rejected_head"] == (
+        "441d0c1bb1d8d0823b6f24c31accf44e068509f2"
+    )
+    assert state["protected_evidence"]["fl1_i2_final_convergence_review_id"] == 4952516658
+    assert state["protected_evidence"]["fl1_i2_one_terminal_followup_review_authorized"] is True
+    assert state["protected_evidence"]["fl1_i2_post_terminal_review_id"] == 4961359578
+    assert state["protected_evidence"]["fl1_i2_intermediate_post_terminal_projection_head"] == (
+        "85407b8fd29652c5e2999c77552bf5d0ab2e1f14"
+    )
+    assert state["protected_evidence"]["fl1_i2_intermediate_post_terminal_projection_tree"] == (
+        "1d2c1243b14cfcda893840ae40bebb0c543284cc"
+    )
+    assert state["protected_evidence"]["fl1_i2_post_terminal_governance_projection_head"] == (
+        "7b258e97c3267e933c370b2fd1a526216aabb721"
+    )
+    assert state["protected_evidence"]["fl1_i2_post_terminal_governance_projection_tree"] == (
+        "afd5eaf2e701aac174c482f82fb64fb3d319539d"
+    )
+    assert len(state["protected_evidence"]["fl1_i2_post_terminal_findings"]) == 9
+    assert {
+        finding["severity"]
+        for finding in state["protected_evidence"]["fl1_i2_post_terminal_findings"]
+    } == {"P1", "P2"}
+    assert state["protected_evidence"]["fl1_i2_final_owner_review_id"] == 4963026941
+    assert state["protected_evidence"]["fl1_i2_final_owner_required_fix_count"] == 4
+    assert state["protected_evidence"]["fl1_i2_final_owner_safe_downgrade_count"] == 2
+    assert state["protected_evidence"]["fl1_i2_final_owner_deferred_count"] == 2
+    assert state["protected_evidence"]["fl1_i2_additional_codex_review_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("fl1_i2_final_owner_review_id", 4963026940),
+        ("fl1_i2_final_owner_required_fix_count", 8),
+        ("fl1_i2_final_owner_safe_downgrade_count", 0),
+        ("fl1_i2_final_owner_deferred_count", 0),
+        ("fl1_i2_additional_codex_review_authorized", True),
+    ],
+)
+def test_final_owner_projection_mutation_fails_closed(
+    field: str, value: object
+) -> None:
+    state = copy.deepcopy(load_state())
+    state["protected_evidence"][field] = value
+    with pytest.raises(DocumentationStateError):
+        validate_state(state)
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
     [
         ("target_met", True),
-        ("safe_to_merge", False),
+        ("safe_to_merge", True),
         ("route_approved", True),
         ("planning_approved", False),
         ("manual_acceptance_status", "pending_fl1_i2_plan_owner_reaudit"),
@@ -74,7 +129,6 @@ def test_owner_accepted_state_mutation_fails_closed(field: str, value: object) -
 @pytest.mark.parametrize(
     "field",
     [
-        "implementation_authorized",
         "real_source_inventory_authorized",
         "source_root_access_authorized",
         "database_access_authorized",
@@ -101,7 +155,8 @@ def test_public_current_phase_and_updated_icloud_doc_are_redacted() -> None:
     assert "C:\\Users\\kyloris\\Pictures" not in icloud
     assert "<private-source-root>" in icloud
     assert "canonically integrated with that runtime scanner" in icloud
-    assert "Nothing here claims I2 implementation exists" in icloud
+    assert "Nothing here claims I2 source-safety" in icloud
+    assert "runtime integration is complete" in icloud
 
 
 def test_current_contract_names_review_gates_and_claim_boundary() -> None:
@@ -111,8 +166,11 @@ def test_current_contract_names_review_gates_and_claim_boundary() -> None:
     assert "14 gates" in contract
     assert "not tamper-resistant" in contract
     assert "machine_verifiable_ci=false" in contract
-    assert "must_close_during_i2_before_i2_completion_merge_or_i3" in contract
-    assert "same verified, no-follow, identity-bound directory handle" in contract
+    assert "closed_in_fl1_i2_synthetic_implementation_evidence" in json.dumps(
+        load_state(), ensure_ascii=False
+    )
+    assert "scv2_fl1_i2_pre_real_hardening_contract_v1" in contract
+    assert "FileIdExtdDirectory" in contract
     assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in contract
     assert "4907783329" in contract
     for gate in (

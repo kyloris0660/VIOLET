@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.cloud_files import CloudFileState, classify_cloud_file_state
+from .source_safety import HandleObservation, SourceDecision, SourceSafetyPolicy
 
 
 class SourceKind(str, Enum):
@@ -25,6 +26,25 @@ class SourceKind(str, Enum):
 
 CLOUD_POLICY_REQUIRED = "controlled_hydration_or_read_probe_or_backfill"
 STAGING_AUDIT_POLICY_REQUIRED = "passed_staging_audit_artifact"
+
+
+def is_canonical_directory_observation(observation: HandleObservation) -> bool:
+    """Return the single I2 directory-handle acceptance predicate.
+
+    Directory link counts are filesystem metadata rather than the file
+    hard-link policy: on POSIX a normal directory may have more than one link.
+    The predicate therefore binds only the properties needed to prove a
+    verified, no-follow, identity-bound, locally available directory handle.
+    """
+
+    return (
+        observation.is_directory
+        and observation.attributes_known
+        and observation.no_follow
+        and observation.identity_bound
+        and not observation.reparse_point
+        and observation.cloud_availability.value == "available"
+    )
 
 
 def cloud_block_reasons(state: CloudFileState | None) -> tuple[str, ...]:
@@ -100,6 +120,40 @@ class SourceIngestionGateResult:
 
 class SourceIngestionGate:
     """Central policy gate for source availability before ingestion reads."""
+
+    @staticmethod
+    def decide_observation(
+        *,
+        source_kind: SourceKind | str,
+        observation: HandleObservation,
+        policy: SourceSafetyPolicy,
+    ) -> SourceDecision:
+        """Make the canonical I2 source-safety decision from trusted inputs."""
+
+        kind = source_kind.value if isinstance(source_kind, SourceKind) else str(source_kind)
+        reason = "source_observation_accepted"
+        if kind not in policy.allowed_source_kinds:
+            reason = "source_kind_not_authorized"
+        elif policy.require_known_attributes and not observation.attributes_known:
+            reason = "source_attributes_unknown"
+        elif policy.require_no_follow and not observation.no_follow:
+            reason = "source_no_follow_unproven"
+        elif policy.require_identity_bound and not observation.identity_bound:
+            reason = "source_identity_unbound"
+        elif policy.reject_reparse_points and observation.reparse_point:
+            reason = "source_reparse_point_rejected"
+        elif policy.reject_multiple_links and observation.link_count != 1:
+            reason = "source_hard_link_rejected"
+        elif policy.reject_recall_risk and observation.cloud_availability.value != "available":
+            reason = "source_cloud_availability_rejected"
+        allowed = reason == "source_observation_accepted"
+        return SourceDecision(
+            allowed=allowed,
+            reason=reason,
+            source_kind=kind,
+            policy_version=policy.policy_version,
+            observation=observation,
+        )
 
     @staticmethod
     def evaluate_path_source(

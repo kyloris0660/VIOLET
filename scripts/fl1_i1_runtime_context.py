@@ -14,12 +14,19 @@ import json
 import os
 import re
 import stat
-import subprocess
 import sys
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path, PurePath
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+
+from scripts.trusted_git import (
+    TrustedGitError,
+    TrustedGitExecutable,
+    assert_trusted_worktree_clean as _assert_trusted_worktree_clean,
+    resolve_trusted_git_executable as _resolve_trusted_git_executable,
+    run_trusted_git_text,
+)
 
 
 RUNTIME_CONTEXT_SCHEMA_VERSION = "violet.scv2-fl1-i1-runtime-context.v2"
@@ -115,82 +122,18 @@ def _hmac_hex(key: bytes, purpose: str, value: str) -> str:
     return hmac.new(key, f"{purpose}\0{value}".encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-@dataclass(frozen=True)
-class TrustedGitExecutable:
-    path: Path
-    fingerprint: str
-
-    def to_public_dict(self) -> dict[str, Any]:
-        return {
-            "identity_source": "absolute_path_search_before_candidate_cwd",
-            "executable_fingerprint": self.fingerprint,
-            "absolute_path_emitted": False,
-            "repo_local": False,
-            "symlink_or_reparse": False,
-        }
-
-
-def _candidate_git_names() -> tuple[str, ...]:
-    return ("git.exe",) if os.name == "nt" else ("git",)
-
-
-def _trusted_git_install_roots() -> tuple[Path, ...]:
-    if os.name == "nt":
-        roots: list[Path] = []
-        for variable in ("ProgramFiles", "ProgramFiles(x86)"):
-            value = os.environ.get(variable)
-            if value and Path(value).is_absolute():
-                roots.append(Path(value) / "Git")
-        return tuple(roots)
-    return tuple(
-        Path(value)
-        for value in ("/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/opt/local/bin")
-    )
-
-
 def resolve_trusted_git_executable(
     *, excluded_roots: Sequence[Path] = (), path_value: str | None = None
 ) -> TrustedGitExecutable:
-    """Resolve Git without consulting cwd or a repo-local executable.
+    """Compatibility wrapper around the shared OS-backed Git resolver."""
 
-    Empty/relative PATH entries are ignored.  Exclusion is lexical and occurs
-    before any candidate lstat, so a forbidden repo/source root is not probed.
-    """
-
-    raw_path = os.environ.get("PATH", "") if path_value is None else path_value
-    excluded = tuple(Path(value) for value in excluded_roots)
-    trusted_install_roots = _trusted_git_install_roots()
-    for raw_entry in raw_path.split(os.pathsep):
-        if not raw_entry or raw_entry == ".":
-            continue
-        directory = Path(raw_entry)
-        if not directory.is_absolute():
-            continue
-        if any(_lexically_within(directory, root) for root in excluded):
-            continue
-        for name in _candidate_git_names():
-            candidate = Path(os.path.abspath(os.fspath(directory / name)))
-            if not any(_lexically_within(candidate, root) for root in trusted_install_roots):
-                continue
-            if any(_lexically_within(candidate, root) for root in excluded):
-                continue
-            try:
-                metadata = os.lstat(candidate)
-            except OSError:
-                continue
-            attributes = getattr(metadata, "st_file_attributes", 0)
-            if stat.S_ISLNK(metadata.st_mode) or (
-                attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-            ):
-                continue
-            if not stat.S_ISREG(metadata.st_mode) or not candidate.is_absolute():
-                continue
-            try:
-                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
-            except OSError:
-                continue
-            return TrustedGitExecutable(path=candidate, fingerprint=digest)
-    raise RuntimeContextError("trusted_git_executable_unavailable")
+    try:
+        return _resolve_trusted_git_executable(
+            excluded_roots=excluded_roots,
+            path_value=path_value,
+        )
+    except TrustedGitError as exc:
+        raise RuntimeContextError(str(exc)) from exc
 
 
 def run_trusted_git(
@@ -198,30 +141,20 @@ def run_trusted_git(
     repo_root: Path,
     *arguments: str,
 ) -> str:
-    completed = subprocess.run(
-        [os.fspath(git.path), *arguments],
-        cwd=repo_root,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        completed = run_trusted_git_text(repo_root, arguments, git=git)
+    except TrustedGitError as exc:
+        raise RuntimeContextError(str(exc)) from exc
     if completed.returncode != 0:
         raise RuntimeContextError("trusted_git_identity_failed")
-    try:
-        return completed.stdout.decode("utf-8", errors="strict").strip()
-    except UnicodeDecodeError as exc:
-        raise RuntimeContextError("trusted_git_identity_unreadable") from exc
+    return completed.stdout.strip()
 
 
 def assert_trusted_worktree_clean(git: TrustedGitExecutable, repo_root: Path) -> None:
-    status = run_trusted_git(
-        git,
-        repo_root,
-        "status",
-        "--porcelain=v2",
-        "--untracked-files=all",
-    )
-    if status:
-        raise RuntimeContextError("evidence_worktree_tracked_drift")
+    try:
+        _assert_trusted_worktree_clean(git, repo_root)
+    except TrustedGitError as exc:
+        raise RuntimeContextError(str(exc)) from exc
 
 
 def _normalize_executable(path: Path) -> str:

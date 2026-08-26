@@ -11,6 +11,7 @@ the only guard for pipeline-critical work.
 & "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json>
 & "$PY" scripts/check_phase_contract.py --contract <contract_id> --summary <summary.json> --explain
 & "$PY" scripts/check_phase_contract.py --contract scv2_fl1_isolated_full_library_dev_test_contract_v1 --summary <summary.json> --repo-root <trusted-repo> --expected-python "$PY" --runtime-ledger <private-ledger.json> --failure-budget-scenarios <private-failure-bundle.json> --reconciliation-scenarios <private-reconciliation-bundle.json>
+& "$PY" scripts/check_phase_contract.py --contract scv2_fl1_i2_pre_real_hardening_contract_v1 --summary <public-summary.json> --repo-root <trusted-repo> --fl1-i2-evidence <private-evidence-root>
 & "$PY" scripts/check_documentation_state.py --check
 & "$PY" scripts/check_documentation_state.py --check --implementation-evidence <trusted-squash-implementation-evidence.json>  # required only after squash removes PR ancestry
 ```
@@ -81,61 +82,66 @@ caller-injected configuration. It rejects a current state that asserts
 exposed zero checks, so it has no machine-verifiable CI PASS claim. Its direct
 owner decision cannot be synthesized by a contract.
 
-Current planning projection:
+Current synthetic implementation projection:
 
-- `status=fl1_i2_plan_owner_accepted_safe_to_merge_pending_expected_head_merge`
+- `status=fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit`
 - `planning_authorized=true`
 - `planning_completed=true`
 - `planning_approved=true`
 - `approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf`
 - `approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a`
-- `merge_authorized=true`
-- `implementation_authorized=false`
-- `implementation_started=false`
+- `merge_authorized=false`
+- `implementation_authorized=true`
+- `implementation_started=true`
+- `implementation_completed=true`
 - `target_met=false`
-- `safe_to_merge=true`
+- `safe_to_merge=false`
 - `route_approved=false`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pending_pr145_expected_head_merge`
+- blocker: `pending_fl1_i2_final_direct_owner_merge_audit`
 
 Terminal review `4897012517` at the exact final HEAD produced 17 historical
 findings (13 P1, 4 P2). The complete use-before projection is:
 
 | # | Finding | Contract projection |
 |---:|---|---|
-| 1 | Scrub Git control variables before trusted invocations | Must close during I2 before I2 completion/merge or I3 across runtime, receipt, and contract paths. The checker-only Git scrub does not close that overall delivery. |
+| 1 | Scrub Git control variables before trusted invocations | Closed: checker, runtime context, receipt, and I2 contract consume the shared trusted Git runner. |
 | 2 | Validate the parent-observed child identity | Claim boundary: local provenance only, not tamper-resistant or OS/kernel/TPM/remote/CI attestation. |
-| 3 | Recheck recall attributes before final resolution | Must close during I2 before I2 completion/merge or I3: final open/no-recall decision binds the same object and refreshed Cloud attributes. |
-| 4 | Allow interrupted attempts before corrupt-media closure | Must close during I2 before I2 completion/merge or I3: interruption and corrupt-media accounting remain distinct and reconcile exactly. |
-| 5 | Enforce the deadline around blocking file operations | Must close during I2 before I2 completion/merge or I3: open/read/hash/structure work runs in a parent-terminable worker. |
-| 6 | Bind the receipt to one unchanged HEAD | Must close during I2 before I2 completion/merge or I3: repository HEAD is identical before and after validation. |
-| 7 | Re-derive the adapter policy during contract validation | Must close during I2 before I2 completion/merge or I3: policy derives from trusted configuration, not caller claims. |
-| 8 | Stop at the configured failure maximum | Must close during I2 before I2 completion/merge or I3: maximum failure is fail-closed with no off-by-one attempt. |
+| 3 | Recheck recall attributes before final resolution | Closed: Cloud availability, file/change identity, and the policy decision are derived from the same verified child handle. |
+| 4 | Allow interrupted attempts before corrupt-media closure | Closed: operation terminal state and item disposition are independent and exactly reconciled. |
+| 5 | Enforce the deadline around blocking file operations | Closed: list/open/read/hash/parser operations run only in a parent-terminable child; unconfirmed exit blocks the run. |
+| 6 | Bind the receipt to one unchanged HEAD | Closed: trusted HEAD/tree are sampled before and after the command; drift prevents a positive receipt. |
+| 7 | Re-derive the adapter policy during contract validation | Closed: the exact canonical policy is rebuilt and fingerprinted from confined trusted configuration. |
+| 8 | Stop at the configured failure maximum | Closed: admission uses strict `< max`; equality prevents a new INTENT/STARTED operation, and schema plus contract require `max_failures >= 1`. |
 | 9 | Pin the frozen remediation commit and tree | Closed by the current documentation-governance checker. |
 | 10 | Reject CI authority in documentation state | Closed by the current documentation-governance checker. |
-| 11 | Include a change identity in file signatures | Must close during I2 before I2 completion/merge or I3: Windows file identity plus change identity. |
-| 12 | Reject hard-linked files that alias protected data | Must close during I2 before I2 completion/merge or I3: explicit hard-link/reparse/symlink/path-alias policy. |
-| 13 | Confine private artifact reads as well as writes | Must close during I2 before I2 completion/merge or I3: no-follow confined reads and writes. |
-| 14 | Enumerate directories through a verified no-follow handle | Must close during I2 before I2 completion/merge or I3: enumerate members from the same verified, no-follow, identity-bound directory handle. Identity-before/after is supplemental drift evidence only; path-based `os.scandir()` plus post-check is insufficient. Windows must implement a safe same-handle primitive or fail closed. |
-| 15 | Reconcile intents from ended failed invocations | Must close during I2 before I2 completion/merge or I3: residual INTENT closure after failed process termination. |
-| 16 | Validate media structure beyond boundary markers | Must close during I2 before I2 completion/merge or I3: bounded structural parsing beyond boundary markers. |
-| 17 | Handle runtime-context failures in scanner CLI | Must close during I2 before I2 completion/merge or I3: stable privacy-safe JSON error envelope. |
+| 11 | Include a change identity in file signatures | Closed: Windows volume/file ID is paired with change/write time, size, and allocation identity. |
+| 12 | Reject hard-linked files that alias protected data | Closed: duplicate identities, multiple links, reparse points, symlinks, and name aliases fail closed. |
+| 13 | Confine private artifact reads as well as writes | Closed: fixed-root reads and atomic writes reject no-follow/identity/type drift. |
+| 14 | Enumerate directories through a verified no-follow handle | Closed: Windows uses `FileIdExtdDirectory*Info` on the verified handle and POSIX uses fd-scandir; there is no path-scandir fallback. |
+| 15 | Reconcile intents from ended failed invocations | Closed: residual INTENT becomes RECOVERED, residual STARTED becomes INTERRUPTED, and retry gets a new operation ID. |
+| 16 | Validate media structure beyond boundary markers | Closed for the supported subset: bounded JPEG/PNG and supported WebP validation enforce byte/depth/time limits; GIF and AVIF are explicit unsupported until full pixel/AV1 payload validation exists. |
+| 17 | Handle runtime-context failures in scanner CLI | Closed: typed failures have stable redacted codes and unknown failures expose only a correlation token. |
 
 The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
-only for its narrow synthetic foundation. I2 currently has no implemented or
-registered executable contract. A later, separately authorized I2
-implementation must converge canonical Cloud/file-identity primitives,
-`SourceIngestionGate` policy, operation-gateway evidence, and CLI/runtime
-consumers; close all 14 gates with synthetic/adversarial temporary fixtures;
-and register a contract before any readiness claim. These 14 gates are
-classified
-`must_close_during_i2_before_i2_completion_merge_or_i3`: exact-plan owner
-approval and separate implementation authorization come first, and the gates
-then close during synthetic-only I2 before `implementation_completed`,
-`target_met`, `safe_to_merge`, merge, I3, or any real-source operation.
+only for its narrow synthetic foundation. I2 contract
+`scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at final
+owner-adjudicated implementation evidence HEAD/tree
+`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
+`9119d489800c0b40c5586a9aa4ceb89d34f93e5c`. Review `4963026941` rejected
+`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
+`113280a8697e6bef3cb9e4292a042c2d46b1f025`; its owner disposition is four
+required fixes, two explicit-unsupported safe downgrades, and two exact-gate
+deferrals, not eight engineering fixes.
+The contract reconstructs the 14 gate
+closures from fixed-name, no-follow private artifacts and trusted repository
+state; caller JSON cannot create a positive result. Its local receipt is not
+CI or owner authority. `target_met`, `safe_to_merge`, route, merge, I3, and
+every real-source/data authority remain false pending direct owner exact-final-
+diff audit. No additional automated review is authorized.
 
-The future contract must preserve these gates:
+The I2 contract preserves these continuing boundaries:
 
 - `REAL_OPERATION_GATEWAY_GATE`: no I3 or real listing/stat/attribute/read/hash
   until complete exact source scope and protected roots are separately
@@ -162,8 +168,10 @@ contract: trusted Git re-derives the accepted tree, proves that the accepted
 commit is an ancestor of either the projection HEAD or its later merge commit,
 and rejects every post-plan path outside the explicit governance allowlist.
 This binding cannot be replaced by caller JSON, environment variables, or a
-CLI authority flag. The only current blocker is the authorized PR #145
-expected-head merge; implementation and real-source authority remain false.
+CLI authority flag. PR #145 merged at
+`1913bd27517efc1a6007a202fc9650de4f20fab4`; G0 closes its five accepted
+post-merge governance-entry findings. Synthetic implementation authority is
+true, while real-source, safe-to-merge, and merge authority remain false.
 I4 full inventory, E1 isolated import, E2 local classification/tagging, and V1
 product validation are later independent routes. No current contract authorizes
 real source/iCloud access, DB/app-storage, import, classification/tagging,

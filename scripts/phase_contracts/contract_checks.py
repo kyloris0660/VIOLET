@@ -177,6 +177,7 @@ class ContractRepositoryContext:
     failure_budget_scenario_bundle: object | None = None
     reconciliation_scenario_bundle: object | None = None
     fl1_i1_evidence: object | None = None
+    fl1_i2_evidence: object | None = None
 
 
 def load_summary_file(path: str | Path) -> dict[str, Any]:
@@ -211,6 +212,16 @@ def check_phase_contract(
             from .fl1_i1_contract import check_fl1_i1_contract
 
             check_fl1_i1_contract(
+                contract,
+                summary,
+                result,
+                repository_context=repository_context,
+            )
+            continue
+        if check_name == "scv2_fl1_i2_pre_real_hardening":
+            from .fl1_i2_contract import check_fl1_i2_contract
+
+            check_fl1_i2_contract(
                 contract,
                 summary,
                 result,

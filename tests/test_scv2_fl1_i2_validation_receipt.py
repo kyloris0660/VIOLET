@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from scripts.fl1_i2_confinement import (
+    create_owned_validation_temp_root,
+    remove_owned_validation_temp_root,
+)
+from scripts.fl1_i2_validation_receipt import (
+    ReceiptError,
+    canonical_validation_environment,
+    canonical_focused_test_command,
+    create_same_head_receipt,
+    validate_canonical_focused_command,
+)
+from scripts.trusted_git import resolve_trusted_git_executable, trusted_git_environment
+
+
+def _bindings() -> dict[str, str]:
+    return {name: str(index) * 64 for index, name in enumerate(("config", "policy", "manifest", "ledger", "worker"), start=1)}
+
+
+def test_canonical_pytest_command_disables_repository_bytecode() -> None:
+    command = canonical_focused_test_command(Path(sys.executable))
+    assert command[1:6] == ("-B", "-I", "-s", "-m", "pytest")
+
+
+def test_owned_validation_temp_cleanup_handles_read_only_regular_files() -> None:
+    root = create_owned_validation_temp_root()
+    artifact = root.path / "readonly-object"
+    artifact.write_bytes(b"task-owned")
+    artifact.chmod(stat.S_IREAD)
+    try:
+        remove_owned_validation_temp_root(root)
+    finally:
+        if artifact.exists():
+            artifact.chmod(stat.S_IWRITE | stat.S_IREAD)
+            remove_owned_validation_temp_root(root)
+    assert not root.path.exists()
+
+
+def test_owned_validation_temp_cleanup_unlinks_alias_without_following() -> None:
+    root = create_owned_validation_temp_root()
+    target = root.path / "target"
+    target.mkdir()
+    alias = root.path / "alias"
+    try:
+        alias.symlink_to(target, target_is_directory=True)
+    except OSError:
+        remove_owned_validation_temp_root(root)
+        pytest.skip("directory symlink privilege unavailable")
+    remove_owned_validation_temp_root(root)
+    assert not root.path.exists()
+
+
+def _init_repo(path: Path) -> None:
+    git = resolve_trusted_git_executable(repo_root=path)
+    environment = trusted_git_environment()
+    subprocess.run([git.path, "init", "-q", path], check=True, env=environment)
+    subprocess.run([git.path, "-C", path, "config", "user.email", "synthetic@example.invalid"], check=True, env=environment)
+    subprocess.run([git.path, "-C", path, "config", "user.name", "Synthetic"], check=True, env=environment)
+    subprocess.run([git.path, "-C", path, "config", "core.autocrlf", "false"], check=True, env=environment)
+    (path / "tracked.txt").write_text("baseline\n", encoding="utf-8")
+    subprocess.run([git.path, "-C", path, "add", "tracked.txt"], check=True, env=environment)
+    subprocess.run([git.path, "-C", path, "commit", "-qm", "baseline"], check=True, env=environment)
+
+
+def test_same_head_receipt_binds_all_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    observed_environment: dict[str, str] = {}
+
+    def succeed(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        observed_environment.update(kwargs["environment"])  # type: ignore[arg-type]
+        return subprocess.CompletedProcess(args[0], 0, stdout=b"ok", stderr=b"")
+
+    monkeypatch.setattr(
+        "scripts.fl1_i2_validation_receipt._run_validation_command", succeed
+    )
+    receipt = create_same_head_receipt(
+        repo_root=repo,
+        evidence_root=evidence,
+        output_name="receipt.json",
+        run_id="synthetic-run",
+        bindings=_bindings(),
+        command=canonical_focused_test_command(Path(sys.executable)),
+    )
+    assert receipt.positive and receipt.same_head_tree and receipt.clean_before_after
+    assert receipt.to_public_dict()["private_bindings_redacted"] is True
+    validation_roots = {
+        observed_environment["TEMP"],
+        observed_environment["TMP"],
+        observed_environment["TMPDIR"],
+    }
+    assert len(validation_roots) == 1
+    validation_root = Path(next(iter(validation_roots)))
+    assert not validation_root.exists()
+    assert validation_root not in {repo, evidence}
+
+
+def test_head_or_tree_drift_never_issues_positive_receipt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    def drift(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        (repo / "tracked.txt").write_text("drift\n", encoding="utf-8")
+        return subprocess.CompletedProcess(args[0], 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("scripts.fl1_i2_validation_receipt._run_validation_command", drift)
+    with pytest.raises(ReceiptError, match="positive_not_issued"):
+        create_same_head_receipt(
+            repo_root=repo,
+            evidence_root=evidence,
+            output_name="receipt.json",
+            run_id="synthetic-run",
+            bindings=_bindings(),
+            command=canonical_focused_test_command(Path(sys.executable)),
+        )
+
+
+def test_caller_cannot_supply_positive_or_head_fields(tmp_path: Path) -> None:
+    with pytest.raises(TypeError):
+        create_same_head_receipt(  # type: ignore[call-arg]
+            repo_root=tmp_path,
+            evidence_root=tmp_path,
+            output_name="receipt.json",
+            run_id="run",
+            bindings=_bindings(),
+            command=(sys.executable, "-c", "pass"),
+            positive=True,
+            git_head="0" * 40,
+        )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ("true",),
+        ("echo", "tests/test_scv2_fl1_i2_contract.py"),
+        (*canonical_focused_test_command(Path(sys.executable)), "--collect-only"),
+        (*canonical_focused_test_command(Path(sys.executable)), "-k", "nothing"),
+        (*canonical_focused_test_command(Path(sys.executable)), "--ignore", "tests"),
+        (sys.executable, "-I", "-s", "-m", "pytest", "-q", "stuffed-tests/test_scv2_fl1_i2_contract.py"),
+    ],
+)
+def test_noncanonical_or_deselected_commands_cannot_issue_proof(command: tuple[str, ...]) -> None:
+    with pytest.raises(ReceiptError, match="command_not_canonical|python_invalid"):
+        validate_canonical_focused_command(command, Path(sys.executable))
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("PYTEST_ADDOPTS", "--collect-only"),
+        ("pytest_addopts", "-k nonexistent"),
+        ("PyTeSt_AdDoPtS", "--ignore=tests"),
+        ("PYTEST_PLUGINS", "hostile_plugin"),
+        ("pYtEsT_pLuGiNs", "hostile_plugin"),
+        ("PYTHONPATH", r"C:\hostile-import"),
+        ("Coverage_Process_Start", r"C:\hostile-coveragerc"),
+        ("COV_CORE_SOURCE", "hostile"),
+    ],
+)
+def test_hostile_test_or_import_environment_cannot_issue_positive_policy(name: str, value: str) -> None:
+    with pytest.raises(ReceiptError, match="hostile_environment"):
+        canonical_validation_environment({"SystemRoot": r"C:\Windows", name: value})
+
+
+def test_validation_environment_is_minimal_allowlisted_and_disables_plugin_autoload() -> None:
+    environment = canonical_validation_environment(
+        {
+            "SystemRoot": r"C:\Windows",
+            "TEMP": r"C:\Temp",
+            "PATH": r"C:\hostile-bin",
+            "VIOLET_UNRELATED": "not-inherited",
+        }
+    )
+    assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert "PATH" not in environment and "VIOLET_UNRELATED" not in environment
+    assert not {"TEMP", "TMP", "TMPDIR"}.intersection(environment)
+
+
+@pytest.mark.parametrize(
+    "hostile_name",
+    ["TEMP", "Temp", "TMP", "tmp", "TMPDIR", "tMpDiR"],
+)
+def test_hostile_temp_environment_cannot_redirect_validation_destination(
+    tmp_path: Path, hostile_name: str
+) -> None:
+    approved = tmp_path / "approved-validation-temp"
+    approved.mkdir()
+    environment = canonical_validation_environment(
+        {
+            "SystemRoot": r"C:\Windows",
+            hostile_name: r"\\hostile.invalid\share\redirect",
+        },
+        validation_temp_root=approved,
+    )
+    assert environment["TEMP"] == str(approved)
+    assert environment["TMP"] == str(approved)
+    assert environment["TMPDIR"] == str(approved)
+
+
+def test_validation_environment_constructs_path_only_from_trusted_git(
+    tmp_path: Path,
+) -> None:
+    trusted = tmp_path / "trusted" / "git.exe"
+    trusted.parent.mkdir()
+    trusted.write_bytes(b"trusted-test-executable")
+    environment = canonical_validation_environment(
+        {
+            "SystemRoot": r"C:\Windows",
+            "PATH": str(tmp_path / "hostile-bin"),
+        },
+        trusted_git_executable=trusted,
+    )
+    assert environment["PATH"].split(os.pathsep)[0] == str(trusted.parent.resolve())
+    assert "hostile-bin" not in environment["PATH"]
