@@ -40,6 +40,10 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from scripts import run_phase45_scv2_p0_controlled_medium_expansion_policy as p0  # noqa: E402
+from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
+    PixivMetadataGateError,
+    parse_gallery_dl_stdout,
+)
 
 PHASE = "4.5-PX1"
 PHASE_TITLE = "Bounded Pixiv Metadata Extraction and Exact-Duplicate Cleanup Dry-Run"
@@ -1545,43 +1549,46 @@ def normalize_gallery_dl_metadata(
     candidate: MediaCandidate,
     raw_stdout_path: Path | None,
 ) -> dict[str, Any] | None:
+    """Historical compatibility projection over the canonical normalizer.
+
+    Phase 4.5-PX1 remains historical orchestration. It no longer owns a second
+    provider normalizer and never falls back to an unrelated work/page.
+    """
+
     if not records:
         return None
-    preferred: Mapping[str, Any] = {}
-    for record in records:
-        record_id = str(record.get("id") or record.get("illust_id") or record.get("work_id") or "")
-        record_num = record.get("num", record.get("page_index", record.get("page")))
-        if record_id == candidate.primary_work_id and (record_num is None or int(record_num or 0) == candidate.primary_page_index):
-            preferred = record
-            break
-    if not preferred:
-        preferred = records[0]
-    work_id = str(preferred.get("id") or preferred.get("illust_id") or preferred.get("work_id") or candidate.primary_work_id or "")
-    page_index_raw = preferred.get("num", preferred.get("page_index", preferred.get("page", candidate.primary_page_index)))
     try:
-        page_index = int(page_index_raw or 0)
-    except (TypeError, ValueError):
-        page_index = candidate.primary_page_index
-    user = preferred.get("user") if isinstance(preferred.get("user"), Mapping) else {}
-    artist_name = (
-        preferred.get("user_name")
-        or preferred.get("artist")
-        or preferred.get("artist_name")
-        or preferred.get("author")
-        or user.get("name")
-        or user.get("account")
+        normalized_pages = parse_gallery_dl_stdout(
+            json.dumps(list(records), ensure_ascii=False, default=str),
+            str(candidate.primary_work_id or ""),
+        )
+    except (PixivMetadataGateError, TypeError, ValueError):
+        return None
+    selected = next(
+        (
+            page
+            for page in normalized_pages
+            if int(page["page_index"]) == int(candidate.primary_page_index)
+        ),
+        None,
     )
-    artist_id = preferred.get("user_id") or preferred.get("artist_id") or user.get("id")
-    artist_account = preferred.get("user_account") or preferred.get("artist_account") or user.get("account")
-    tags = _as_text_list(preferred.get("tags") or preferred.get("tag") or preferred.get("keywords"))
+    if selected is None:
+        return None
+    preferred = selected["raw"]
+    work_id = str(selected["work_id"])
+    page_index = int(selected["page_index"])
+    artist_name = selected.get("creator_name")
+    artist_id = selected.get("creator_id")
+    artist_account = selected.get("creator_account")
+    tags = list(selected.get("tags") or ())
     translated_tags = _as_text_list(preferred.get("translated_tags") or preferred.get("tag_translations"))
-    title = normalize_text(preferred.get("title"))
+    title = normalize_text(selected.get("title"))
     caption = normalize_text(preferred.get("caption") or preferred.get("description") or preferred.get("commentary"))
     return {
         "media_id": candidate.media_id,
         "work_id": work_id,
         "page_index": page_index,
-        "page_count": preferred.get("page_count") or preferred.get("count"),
+        "page_count": selected.get("page_count"),
         "title": title or None,
         "artist_name": normalize_text(artist_name) or None,
         "artist_id": str(artist_id) if artist_id not in (None, "") else None,

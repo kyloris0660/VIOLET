@@ -39,6 +39,7 @@ ROTATION_CONFIRMATION_ENV = "VIOLET_CREDENTIAL_ROTATION_CONFIRMED"
 MIN_REQUEST_SPACING_SECONDS = 2.0
 PERSISTENT_SPACING_STATE_VERSION = "pixiv_persistent_request_spacing_v1"
 MANIFEST_SCOPED_OUTCOME_KEY_VERSION = "pixiv_manifest_scoped_outcome_key_v1"
+PIXIV_METADATA_NORMALIZER_VERSION = "pixiv_gallery_dl_metadata_normalizer_v2"
 QUEUE_METADATA_KIND = "pixiv_ingestion_gate"
 COMPLETE_METADATA_KINDS = frozenset({
     "provider_metadata",
@@ -1053,6 +1054,137 @@ def _extract_payload_records(value: Any) -> list[dict[str, Any]]:
     return records
 
 
+def _gallery_dl_provider_marker(raw: Mapping[str, Any]) -> str | None:
+    """Return an explicit provider marker without guessing from display data."""
+
+    for key in ("provider", "extractor", "extractor_key", "category"):
+        marker = normalize_source_text(raw.get(key)).casefold()
+        if marker:
+            return marker
+    return None
+
+
+def _looks_like_gallery_dl_work_record(raw: Mapping[str, Any]) -> bool:
+    if any(key in raw for key in ("illust_id", "work_id", "pid")):
+        return True
+    return "id" in raw and any(
+        key in raw
+        for key in (
+            "num",
+            "page_index",
+            "page",
+            "page_count",
+            "title",
+            "tags",
+            "tag",
+            "user",
+            "user_id",
+            "artist_id",
+        )
+    )
+
+
+def _normalized_gallery_dl_page(
+    raw: Mapping[str, Any],
+    *,
+    expected_work_id: str,
+) -> dict[str, Any]:
+    marker = _gallery_dl_provider_marker(raw)
+    if marker is not None and "pixiv" not in marker:
+        raise PixivMetadataGateError("metadata_normalization_failed_unknown_provider")
+
+    page_index_raw = raw.get("num")
+    if page_index_raw is None:
+        page_index_raw = raw.get("page_index", raw.get("page", 0))
+    try:
+        page_index = int(page_index_raw or 0)
+    except (TypeError, ValueError) as exc:
+        raise PixivMetadataGateError(
+            "metadata_normalization_failed_page_index_invalid"
+        ) from exc
+    if page_index < 0:
+        raise PixivMetadataGateError("metadata_normalization_failed_page_index_invalid")
+
+    page_count_raw = raw.get("page_count", raw.get("count", raw.get("num_pages")))
+    page_count: int | None = None
+    if page_count_raw not in (None, ""):
+        try:
+            page_count = int(page_count_raw)
+        except (TypeError, ValueError) as exc:
+            raise PixivMetadataGateError(
+                "metadata_normalization_failed_page_count_invalid"
+            ) from exc
+        if page_count <= 0 or page_index >= page_count:
+            raise PixivMetadataGateError(
+                "metadata_normalization_failed_page_count_mismatch"
+            )
+
+    user = raw.get("user") if isinstance(raw.get("user"), Mapping) else {}
+    creator_id = raw.get("user_id") or raw.get("artist_id") or user.get("id")
+    creator_name = (
+        raw.get("user_name")
+        or raw.get("artist_name")
+        or raw.get("artist")
+        or user.get("name")
+    )
+    creator_account = (
+        raw.get("user_account") or raw.get("artist_account") or user.get("account")
+    )
+    profile_identity = raw.get("user_url") or raw.get("artist_profile_url")
+    profile_identity_source = "raw_provider_identity" if profile_identity else None
+    if not profile_identity and creator_id not in (None, ""):
+        profile_identity = f"https://www.pixiv.net/users/{creator_id}"
+        profile_identity_source = "derived_from_stable_creator_id"
+
+    tags_raw = raw.get("tags") or raw.get("tag") or []
+    if isinstance(tags_raw, Mapping):
+        tags_raw = list(tags_raw)
+    if isinstance(tags_raw, str):
+        tags_raw = [tags_raw]
+    tags: set[str] = set()
+    for item in tags_raw if isinstance(tags_raw, Sequence) else []:
+        tag = item.get("name") if isinstance(item, Mapping) else item
+        normalized_tag = normalize_source_text(tag)
+        if normalized_tag:
+            tags.add(normalized_tag)
+
+    return {
+        "normalizer_version": PIXIV_METADATA_NORMALIZER_VERSION,
+        "work_id": str(expected_work_id),
+        "page_index": page_index,
+        "page_count": page_count,
+        "title": normalize_source_text(raw.get("title")) or None,
+        "creator_id": str(creator_id) if creator_id not in (None, "") else None,
+        "creator_name": normalize_source_text(creator_name) or None,
+        "creator_account": normalize_source_text(creator_account) or None,
+        "creator_profile_identity": str(profile_identity) if profile_identity else None,
+        "creator_profile_identity_source": profile_identity_source,
+        "tags": tuple(sorted(tags, key=lambda value: (canonical_source_key(value), value))),
+        "raw": dict(raw),
+    }
+
+
+def _normalized_page_conflict_projection(page: Mapping[str, Any]) -> dict[str, Any]:
+    """Project only normalized business fields when detecting duplicate conflicts."""
+
+    return {
+        key: page.get(key)
+        for key in (
+            "normalizer_version",
+            "work_id",
+            "page_index",
+            "page_count",
+            "title",
+            "creator_id",
+            "creator_name",
+            "creator_account",
+            "creator_profile_identity",
+            "creator_profile_identity_source",
+            "tags",
+        )
+    }
+
+
 def parse_gallery_dl_stdout(stdout: str, expected_work_id: str) -> list[dict[str, Any]]:
     payloads: list[Any] = []
     stripped = stdout.strip()
@@ -1061,9 +1193,14 @@ def parse_gallery_dl_stdout(stdout: str, expected_work_id: str) -> list[dict[str
     try:
         payloads.append(json.loads(stripped))
     except json.JSONDecodeError:
-        for line in stdout.splitlines():
-            if line.strip():
-                payloads.append(json.loads(line))
+        try:
+            for line in stdout.splitlines():
+                if line.strip():
+                    payloads.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise PixivMetadataGateError(
+                "metadata_normalization_failed_malformed_json"
+            ) from exc
     records: list[dict[str, Any]] = []
     for payload in payloads:
         records.extend(_extract_payload_records(payload))
@@ -1079,62 +1216,57 @@ def parse_gallery_dl_stdout(stdout: str, expected_work_id: str) -> list[dict[str
             " ".join(error_messages), authentication_passed=True
         )
         raise GalleryDlReportedFailure(state, reason)
-    normalized: list[dict[str, Any]] = []
-    seen_pages: set[int] = set()
+    returned_work_ids = {
+        str(raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid"))
+        for raw in records
+        if _looks_like_gallery_dl_work_record(raw)
+        and (raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid"))
+    }
+    if returned_work_ids and returned_work_ids != {str(expected_work_id)}:
+        raise PixivMetadataGateError("provider_identity_mismatch")
+
+    pages_by_index: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for raw in records:
+        if not _looks_like_gallery_dl_work_record(raw):
+            continue
         work_id = raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid")
         if str(work_id or "") != str(expected_work_id):
             continue
-        page_index = raw.get("num")
-        if page_index is None:
-            page_index = raw.get("page_index", raw.get("page", 0))
-        page_index = int(page_index or 0)
-        if page_index in seen_pages:
-            continue
-        seen_pages.add(page_index)
-        user = raw.get("user") if isinstance(raw.get("user"), Mapping) else {}
-        creator_id = raw.get("user_id") or raw.get("artist_id") or user.get("id")
-        creator_name = raw.get("user_name") or raw.get("artist_name") or raw.get("artist") or user.get("name")
-        creator_account = raw.get("user_account") or raw.get("artist_account") or user.get("account")
-        profile_identity = raw.get("user_url") or raw.get("artist_profile_url")
-        profile_identity_source = "raw_provider_identity" if profile_identity else None
-        if not profile_identity and creator_id not in (None, ""):
-            profile_identity = f"https://www.pixiv.net/users/{creator_id}"
-            profile_identity_source = "derived_from_stable_creator_id"
-        tags_raw = raw.get("tags") or raw.get("tag") or []
-        if isinstance(tags_raw, Mapping):
-            tags_raw = list(tags_raw)
-        if isinstance(tags_raw, str):
-            tags_raw = [tags_raw]
-        tags = []
-        for item in tags_raw if isinstance(tags_raw, Sequence) else []:
-            tag = item.get("name") if isinstance(item, Mapping) else item
-            if normalize_source_text(tag):
-                tags.append(normalize_source_text(tag))
-        normalized.append(
-            {
-                "work_id": str(expected_work_id),
-                "page_index": page_index,
-                "title": normalize_source_text(raw.get("title")) or None,
-                "creator_id": str(creator_id) if creator_id not in (None, "") else None,
-                "creator_name": normalize_source_text(creator_name) or None,
-                "creator_account": normalize_source_text(creator_account) or None,
-                "creator_profile_identity": str(profile_identity) if profile_identity else None,
-                "creator_profile_identity_source": profile_identity_source,
-                "tags": tuple(dict.fromkeys(tags)),
-                "raw": raw,
-            }
-        )
-    if not normalized:
-        returned_work_ids = {
-            str(raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid"))
-            for raw in records
-            if raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid")
+        page = _normalized_gallery_dl_page(raw, expected_work_id=str(expected_work_id))
+        pages_by_index[int(page["page_index"])].append(page)
+
+    normalized: list[dict[str, Any]] = []
+    for page_index, candidates in sorted(pages_by_index.items()):
+        projections = {
+            json.dumps(
+                _normalized_page_conflict_projection(candidate),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            for candidate in candidates
         }
+        if len(projections) != 1:
+            raise PixivMetadataGateError(
+                "metadata_normalization_failed_conflicting_duplicate_page"
+            )
+        # Raw payload retention remains private. Choosing by canonical JSON makes
+        # duplicate replay independent from provider event ordering.
+        selected = min(
+            candidates,
+            key=lambda value: json.dumps(
+                value["raw"],
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
+        normalized.append(selected)
+    if not normalized:
         if returned_work_ids and str(expected_work_id) not in returned_work_ids:
             raise PixivMetadataGateError("provider_identity_mismatch")
         raise PixivMetadataGateError("metadata_normalization_failed_unsupported_shape")
-    return sorted(normalized, key=lambda item: int(item["page_index"]))
+    return normalized
 
 
 def classify_gallery_dl_route_viability(
@@ -1453,6 +1585,9 @@ def _persist_complete_queue_record(
     raw["creator_account"] = page.get("creator_account")
     raw["creator_profile_identity"] = page.get("creator_profile_identity")
     raw["creator_profile_identity_source"] = page.get("creator_profile_identity_source")
+    raw["_pixiv_metadata_normalizer_version"] = page.get(
+        "normalizer_version", PIXIV_METADATA_NORMALIZER_VERSION
+    )
     record.data_type_label = "authenticated_provider_metadata"
     record.title = page.get("title")
     record.artist_id = page.get("creator_id")
@@ -1461,6 +1596,9 @@ def _persist_complete_queue_record(
     record.provenance = {
         "source": "gallery_dl_authenticated_metadata",
         "parser_version": PARSER_VERSION,
+        "metadata_normalizer_version": page.get(
+            "normalizer_version", PIXIV_METADATA_NORMALIZER_VERSION
+        ),
         "stable_identity_key": {
             "provider": "pixiv",
             "work_id": str(work_id),

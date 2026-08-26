@@ -167,6 +167,34 @@ class SourceConceptSignalDraft:
 
 
 @dataclass(frozen=True)
+class SourceConceptSignalInput:
+    """Stable, database-neutral input for the existing SourceConcept semantics.
+
+    This seam is intentionally provider-neutral. Providers project their
+    canonical source observations into this shape; `_make_signal` remains the
+    sole constructor for resolver drafts.
+    """
+
+    origin_type: str
+    origin_key: str
+    provider: str | None
+    raw_value: str
+    display_value: str | None
+    canonical_value: str | None
+    role_hint: str
+    work_context_key: str | None
+    source_kind: str | None
+    trust_tier: str
+    confidence: float | None
+    status: str
+    evidence_payload: Mapping[str, Any] = field(default_factory=dict)
+    source_record_id: str | None = None
+    parenthetical_base: str | None = None
+    parenthetical_context: str | None = None
+    source_run_id: str | None = None
+
+
+@dataclass(frozen=True)
 class SourceConceptDraft:
     concept_key: str
     primary_display_name: str
@@ -986,6 +1014,74 @@ def _dedupe_signals(signals: Iterable[SourceConceptSignalDraft | None]) -> tuple
             continue
         by_key[signal.signal_key] = signal
     return tuple(by_key.values())
+
+
+def build_source_concept_signal_drafts(
+    inputs: Iterable[SourceConceptSignalInput],
+    *,
+    created_by_run_id: str | None = None,
+) -> tuple[SourceConceptSignalDraft, ...]:
+    """Build deterministic drafts without database identity or persistence.
+
+    The provider owns only the mapping into `SourceConceptSignalInput`. Signal
+    normalization, role constraints, popularity rejection, key construction,
+    and deduplication continue to use the existing resolver implementation.
+    """
+
+    ordered_inputs = sorted(
+        inputs,
+        key=lambda item: (
+            item.origin_type,
+            item.origin_key,
+            item.provider or "",
+            item.work_context_key or "",
+            item.role_hint,
+            item.raw_value,
+        ),
+    )
+    drafts: list[SourceConceptSignalDraft | None] = []
+    for item in ordered_inputs:
+        if not item.origin_type or not item.origin_key:
+            raise ValueError("source_concept_signal_input_identity_missing")
+        suffix = _stable_signal_suffix(
+            "source_concept_signal_input",
+            {
+                "origin_type": item.origin_type,
+                "origin_key": item.origin_key,
+                "provider": item.provider,
+                "work_context_key": item.work_context_key,
+                "role_hint": item.role_hint,
+                "source_kind": item.source_kind,
+                "raw_value": item.raw_value,
+            },
+        )
+        drafts.append(
+            _make_signal(
+                origin_type=item.origin_type,
+                origin_table=None,
+                origin_id=item.origin_key,
+                provider=item.provider,
+                media_id=None,
+                source_metadata_record_id=None,
+                source_record_id=item.source_record_id,
+                raw_value=item.raw_value,
+                display_value=item.display_value,
+                canonical_value=item.canonical_value,
+                role_hint=item.role_hint,
+                work_context_key=item.work_context_key,
+                parenthetical_base=item.parenthetical_base,
+                parenthetical_context=item.parenthetical_context,
+                source_kind=item.source_kind,
+                trust_tier=item.trust_tier,
+                confidence=item.confidence,
+                status=item.status,
+                evidence_payload=item.evidence_payload,
+                source_run_id=item.source_run_id,
+                created_by_run_id=created_by_run_id,
+                signal_suffix=suffix,
+            )
+        )
+    return tuple(sorted(_dedupe_signals(drafts), key=lambda item: item.signal_key))
 
 
 def _origin_container_scope_key_from_values(
