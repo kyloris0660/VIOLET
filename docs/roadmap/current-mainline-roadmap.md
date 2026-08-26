@@ -35,7 +35,7 @@ has frozen synthetic pre-real implementation evidence on branch
 source is `docs/state/current-phase.json`.
 
 ```text
-status=fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit
+status=fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -51,7 +51,7 @@ route_approved=false
 real_inventory_started=false
 real_source_inventory_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_post_terminal_exact_head_owner_reaudit
+active_blocker=pending_fl1_i2_final_direct_owner_merge_audit
 ```
 
 PR #144 terminal review `4897012517` covered exact final HEAD
@@ -66,13 +66,16 @@ review `4961359578` rejected the prior projection
 `9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72`; pre-terminal evidence
 `4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` /
 `e3dc5d6d6047b195964123396bf3b814665010b7` is superseded and rejected. The
-nine accepted findings and all 14 delivery gates are re-established only at
-new bounded-correction evidence `46bc25363531d9fb1fb3995d0eb361abab84a016` /
-`476bf43b0ed771e8be33a099997019ed2d8b61fc`.
+Review `4963026941` subsequently rejected `d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
+`113280a8697e6bef3cb9e4292a042c2d46b1f025`. Final owner-adjudicated evidence
+`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
+`9119d489800c0b40c5586a9aa4ceb89d34f93e5c` closes four required fixes,
+applies two explicit unsupported safe downgrades, and records two nonblocking
+deferrals with exact future due gates.
 Executable contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives this closure without
 accepting caller booleans. The result remains local operator evidence pending
-the one authorized post-terminal review and exact-HEAD owner re-audit, not CI, target,
+direct owner exact-final-diff audit without another automated review, not CI, target,
 safe-to-merge, merge, route, or real-source authority.
 Parent-observed child identity is
 kept as a local-evidence claim boundary, not described as tamper-resistant,

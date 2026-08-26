@@ -32,7 +32,7 @@ Current phase `SCV2-FL1-I2` has frozen synthetic pre-real hardening
 implementation evidence and awaits exact-HEAD owner audit:
 
 ```text
-current_status=fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit
+current_status=fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit
 planning_authorized=true
 planning_completed=true
 planning_approved=true
@@ -57,7 +57,7 @@ media_or_thumbnail_download_authorized=false
 stable_replay_authorized=false
 production_authorized=false
 projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_post_terminal_exact_head_owner_reaudit
+active_blocker=pending_fl1_i2_final_direct_owner_merge_audit
 ```
 
 ## Accepted Mainline Sequence
@@ -80,13 +80,14 @@ PR #142 remains closed, unmerged, and non-authoritative.
 Only synthetic/adversarial temporary fixtures were used. Canonical source and
 Cloud policy, all 14 implementation delivery gates, the negative suite, and
 executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
-post-terminal bounded-correction implementation evidence
-`46bc25363531d9fb1fb3995d0eb361abab84a016` /
-`476bf43b0ed771e8be33a099997019ed2d8b61fc`. Terminal review `4961359578`
-rejected projection `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
-`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72`; the pre-terminal evidence is
-superseded and rejected, while prior regression coverage remains preserved.
-The result stops at the authorized post-terminal review and exact-HEAD owner re-audit;
+final owner-adjudicated implementation evidence
+`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
+`9119d489800c0b40c5586a9aa4ceb89d34f93e5c`. Review `4963026941` rejected
+`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
+`113280a8697e6bef3cb9e4292a042c2d46b1f025`; its adjudication closes four
+required fixes, safely downgrades GIF and AVIF to explicit unsupported, and
+defers two environment-attestation items to exact future gates. The result
+stops at direct owner exact-final-diff audit without another automated review;
 `target_met`, `safe_to_merge`, merge authority, route approval, and every
 real-source/data authority remain false.
 

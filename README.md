@@ -37,24 +37,24 @@ PR #144 merged the `SCV2-FL1-I1` inventory foundation, but the owner accepted
 it only for synthetic and newly created temporary fixtures. PR #145 merged the
 owner-accepted `SCV2-FL1-I2` plan at merge commit
 `1913bd27517efc1a6007a202fc9650de4f20fab4`. The separately authorized
-synthetic pre-real hardening implementation now has a post-terminal bounded
-correction frozen at implementation evidence HEAD/tree
-`46bc25363531d9fb1fb3995d0eb361abab84a016` /
-`476bf43b0ed771e8be33a099997019ed2d8b61fc`. Canonical receipt validation
-also closed task-owned Windows readonly/alias cleanup without following links.
-Terminal review `4961359578`
-rejected the prior projection `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
-`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72` with nine accepted findings; the
-pre-terminal evidence `4fb6a6c9133c6c22d6e8d97cd800db25a8fed2a5` is superseded and rejected.
+synthetic pre-real hardening implementation now has final owner-adjudicated
+implementation evidence frozen at HEAD/tree
+`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
+`9119d489800c0b40c5586a9aa4ceb89d34f93e5c`.
+Review `4963026941` rejected prior HEAD/tree
+`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
+`113280a8697e6bef3cb9e4292a042c2d46b1f025`. Its owner adjudication requires
+four engineering fixes, two safe downgrades (GIF/AVIF remain explicitly
+unsupported), and two nonblocking deferrals with exact future due gates.
 Contract
 `scv2_fl1_i2_pre_real_hardening_contract_v1` re-derives all 14 delivery gates
 from confined private synthetic evidence. The owner accepted exact planning HEAD/tree
 `acb12c1db258fdef1d4f063b053d422e0d887abf` /
 `fc573c7646ad5edf10c32c7712de7f27ab058a2a`; planning remains approved, while
 the one-time planning merge authority is consumed. The 14 engineering findings
-are re-established only in the new corrected synthetic evidence, but one
-authorized post-terminal review and exact-HEAD owner re-audit remain pending. Local evidence
-grants no `safe_to_merge`, merge,
+are re-established only in the new corrected synthetic evidence. No additional
+automated review is authorized; direct exact-final-diff owner audit remains
+pending. Local evidence grants no `safe_to_merge`, merge,
 target, route, I3, or real-source authority. I2 execution remained restricted
 to adversarial newly created temporary fixtures. Real source/iCloud access,
 full-library inventory, database/app-storage access, import, classification,

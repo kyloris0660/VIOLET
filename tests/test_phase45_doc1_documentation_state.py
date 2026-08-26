@@ -41,7 +41,8 @@ def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
     validate_roadmaps(state)
     assert state["phase_id"] == "SCV2-FL1-I2"
     assert state["current_status"] == (
-        "fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit"
+        "fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_"
+        "owner_merge_audit"
     )
     assert state["planning_authorized"] is True
     assert state["planning_completed"] is True
@@ -82,6 +83,30 @@ def test_fl1_i2_state_authorizes_only_synthetic_implementation() -> None:
         finding["severity"]
         for finding in state["protected_evidence"]["fl1_i2_post_terminal_findings"]
     } == {"P1", "P2"}
+    assert state["protected_evidence"]["fl1_i2_final_owner_review_id"] == 4963026941
+    assert state["protected_evidence"]["fl1_i2_final_owner_required_fix_count"] == 4
+    assert state["protected_evidence"]["fl1_i2_final_owner_safe_downgrade_count"] == 2
+    assert state["protected_evidence"]["fl1_i2_final_owner_deferred_count"] == 2
+    assert state["protected_evidence"]["fl1_i2_additional_codex_review_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("fl1_i2_final_owner_review_id", 4963026940),
+        ("fl1_i2_final_owner_required_fix_count", 8),
+        ("fl1_i2_final_owner_safe_downgrade_count", 0),
+        ("fl1_i2_final_owner_deferred_count", 0),
+        ("fl1_i2_additional_codex_review_authorized", True),
+    ],
+)
+def test_final_owner_projection_mutation_fails_closed(
+    field: str, value: object
+) -> None:
+    state = copy.deepcopy(load_state())
+    state["protected_evidence"][field] = value
+    with pytest.raises(DocumentationStateError):
+        validate_state(state)
 
 
 @pytest.mark.parametrize(

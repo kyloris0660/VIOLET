@@ -84,7 +84,7 @@ owner decision cannot be synthesized by a contract.
 
 Current synthetic implementation projection:
 
-- `status=fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit`
+- `status=fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit`
 - `planning_authorized=true`
 - `planning_completed=true`
 - `planning_approved=true`
@@ -99,7 +99,7 @@ Current synthetic implementation projection:
 - `route_approved=false`
 - `real_inventory_started=false`
 - `real_source_inventory_authorized=false`
-- blocker: `pending_fl1_i2_post_terminal_exact_head_owner_reaudit`
+- blocker: `pending_fl1_i2_final_direct_owner_merge_audit`
 
 Terminal review `4897012517` at the exact final HEAD produced 17 historical
 findings (13 P1, 4 P2). The complete use-before projection is:
@@ -113,7 +113,7 @@ findings (13 P1, 4 P2). The complete use-before projection is:
 | 5 | Enforce the deadline around blocking file operations | Closed: list/open/read/hash/parser operations run only in a parent-terminable child; unconfirmed exit blocks the run. |
 | 6 | Bind the receipt to one unchanged HEAD | Closed: trusted HEAD/tree are sampled before and after the command; drift prevents a positive receipt. |
 | 7 | Re-derive the adapter policy during contract validation | Closed: the exact canonical policy is rebuilt and fingerprinted from confined trusted configuration. |
-| 8 | Stop at the configured failure maximum | Closed: admission uses strict `< max`; equality prevents a new INTENT/STARTED operation. |
+| 8 | Stop at the configured failure maximum | Closed: admission uses strict `< max`; equality prevents a new INTENT/STARTED operation, and schema plus contract require `max_failures >= 1`. |
 | 9 | Pin the frozen remediation commit and tree | Closed by the current documentation-governance checker. |
 | 10 | Reject CI authority in documentation state | Closed by the current documentation-governance checker. |
 | 11 | Include a change identity in file signatures | Closed: Windows volume/file ID is paired with change/write time, size, and allocation identity. |
@@ -121,24 +121,25 @@ findings (13 P1, 4 P2). The complete use-before projection is:
 | 13 | Confine private artifact reads as well as writes | Closed: fixed-root reads and atomic writes reject no-follow/identity/type drift. |
 | 14 | Enumerate directories through a verified no-follow handle | Closed: Windows uses `FileIdExtdDirectory*Info` on the verified handle and POSIX uses fd-scandir; there is no path-scandir fallback. |
 | 15 | Reconcile intents from ended failed invocations | Closed: residual INTENT becomes RECOVERED, residual STARTED becomes INTERRUPTED, and retry gets a new operation ID. |
-| 16 | Validate media structure beyond boundary markers | Closed: bounded JPEG/PNG/GIF/WebP/AVIF structure parsers enforce byte/depth/time limits without pixel decode. |
+| 16 | Validate media structure beyond boundary markers | Closed for the supported subset: bounded JPEG/PNG and supported WebP validation enforce byte/depth/time limits; GIF and AVIF are explicit unsupported until full pixel/AV1 payload validation exists. |
 | 17 | Handle runtime-context failures in scanner CLI | Closed: typed failures have stable redacted codes and unknown failures expose only a correlation token. |
 
 The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
 only for its narrow synthetic foundation. I2 contract
-`scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at post-terminal
-bounded-correction implementation evidence HEAD/tree
-`46bc25363531d9fb1fb3995d0eb361abab84a016` /
-`476bf43b0ed771e8be33a099997019ed2d8b61fc`. Terminal review `4961359578`
-rejected `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` /
-`9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72`; the pre-terminal evidence is
-superseded and rejected while its regression coverage remains.
+`scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at final
+owner-adjudicated implementation evidence HEAD/tree
+`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
+`9119d489800c0b40c5586a9aa4ceb89d34f93e5c`. Review `4963026941` rejected
+`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
+`113280a8697e6bef3cb9e4292a042c2d46b1f025`; its owner disposition is four
+required fixes, two explicit-unsupported safe downgrades, and two exact-gate
+deferrals, not eight engineering fixes.
 The contract reconstructs the 14 gate
 closures from fixed-name, no-follow private artifacts and trusted repository
 state; caller JSON cannot create a positive result. Its local receipt is not
 CI or owner authority. `target_met`, `safe_to_merge`, route, merge, I3, and
-every real-source/data authority remain false pending the authorized
-post-terminal review and exact final-HEAD owner re-audit.
+every real-source/data authority remain false pending direct owner exact-final-
+diff audit. No additional automated review is authorized.
 
 The I2 contract preserves these continuing boundaries:
 

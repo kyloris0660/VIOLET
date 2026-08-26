@@ -54,7 +54,7 @@ def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() 
     assert "safe_to_merge=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
-    assert "pending_fl1_i2_post_terminal_exact_head_owner_reaudit" in text
+    assert "pending_fl1_i2_final_direct_owner_merge_audit" in text
     assert "scv2_fl1_i2_pre_real_hardening_contract_v1" in text
     assert "FL1_I3_REAL_SOURCE_SCOPE_GATE" in text
     assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in text

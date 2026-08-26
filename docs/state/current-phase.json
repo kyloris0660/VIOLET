@@ -7,9 +7,9 @@
   "pr_number": 146,
   "draft": false,
   "accepted_mainline_base": "1913bd27517efc1a6007a202fc9650de4f20fab4",
-  "implementation_evidence_head": "46bc25363531d9fb1fb3995d0eb361abab84a016",
-  "implementation_evidence_status": "current_i2_post_terminal_bounded_correction_evidence_frozen_pending_owner_reaudit",
-  "current_status": "fl1_i2_pr146_post_terminal_bounded_correction_ready_for_exact_head_owner_reaudit",
+  "implementation_evidence_head": "9aab3e31f5223e0c689046b5c5c61f21268f840c",
+  "implementation_evidence_status": "current_i2_final_owner_adjudicated_evidence_frozen_pending_direct_owner_merge_audit",
+  "current_status": "fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -19,7 +19,7 @@
   "planning_approved": true,
   "approved_planning_head": "acb12c1db258fdef1d4f063b053d422e0d887abf",
   "approved_planning_tree": "fc573c7646ad5edf10c32c7712de7f27ab058a2a",
-  "manual_acceptance_status": "pending_fl1_i2_post_terminal_exact_head_owner_reaudit",
+  "manual_acceptance_status": "pending_fl1_i2_final_direct_owner_merge_audit",
   "next_phase_started": true,
   "previous_phase": "SCV2-FL1-I1",
   "previous_phase_status": "owner_accepted_and_merge_commit_merged",
@@ -173,8 +173,8 @@
     },
     {
       "id": "fl1_i2_synthetic_implementation_evidence",
-      "result": "post_terminal_bounded_correction_reestablishes_fourteen_delivery_gates_with_executable_contract_pending_owner_reaudit",
-      "fingerprint": "46bc25363531d9fb1fb3995d0eb361abab84a016"
+      "result": "final_owner_adjudicated_correction_closes_four_required_fixes_applies_two_safe_downgrades_and_records_two_exact_gate_deferrals",
+      "fingerprint": "9aab3e31f5223e0c689046b5c5c61f21268f840c"
     },
     {
       "id": "fl1_i2_intermediate_post_terminal_governance_projection",
@@ -185,12 +185,16 @@
       "id": "fl1_i2_post_terminal_governance_projection",
       "result": "validated_post_terminal_correction_truth_projected_pending_exact_head_owner_reaudit",
       "fingerprint": "7b258e97c3267e933c370b2fd1a526216aabb721"
+    },
+    {
+      "id": "fl1_i2_final_owner_adjudicated_governance_projection",
+      "result": "current_head_tree_derived_by_trusted_git_pending_direct_owner_merge_audit"
     }
   ],
   "active_blocker": {
-    "code": "pending_fl1_i2_post_terminal_exact_head_owner_reaudit",
-    "scope": "SCV2-FL1-I2 post-terminal bounded-correction evidence in PR #146; all merge, I3, real-source, and data-plane authority remains false",
-    "resolution": "After exact local validation and a normal push, request the one authorized post-terminal Codex review and stop for project-owner exact-HEAD re-audit. Any later safe-to-merge or merge authority requires a separate exact-head owner acceptance projection; this correction evidence grants neither."
+    "code": "pending_fl1_i2_final_direct_owner_merge_audit",
+    "scope": "SCV2-FL1-I2 final owner-adjudicated correction in PR #146; no additional automated review is authorized and all merge, I3/PX1, real-source, and data-plane authority remains false",
+    "resolution": "After exact local validation, normal push, and PR body exact-head binding, stop for the project owner's direct final diff and merge audit. This evidence grants neither safe-to-merge nor merge authority."
   },
   "owner_decisions": [
     {
@@ -314,14 +318,41 @@
       "merge_authorized": false,
       "i3_started": false,
       "real_source_inventory_authorized": false
+    },
+    {
+      "id": "owner_authorized_scv2_fl1_i2_pr146_final_owner_adjudicated_no_rereview_correction_20260826",
+      "decision": "SCV2_FL1_I2_PR146_FINAL_OWNER_ADJUDICATED_NO_REREVIEW_CORRECTION_AUTHORIZED",
+      "pr_number": 146,
+      "rejected_head": "d4478660df1f11b1c8d3ceba1af70f8635542a9d",
+      "rejected_tree": "113280a8697e6bef3cb9e4292a042c2d46b1f025",
+      "review_id": 4963026941,
+      "findings": [
+        {"thread_id": "PRRT_kwDOSTBMB86aLCo0", "severity": "P1", "owner_disposition": "accept_and_require_fix", "classification": "closed_in_final_owner_adjudicated_implementation_evidence"},
+        {"thread_id": "PRRT_kwDOSTBMB86aLCo6", "severity": "P1", "owner_disposition": "accept_and_require_fix", "classification": "closed_in_final_owner_adjudicated_implementation_evidence"},
+        {"thread_id": "PRRT_kwDOSTBMB86aLCpS", "severity": "P1", "owner_disposition": "accept_and_require_fix", "classification": "closed_in_final_owner_adjudicated_implementation_evidence"},
+        {"thread_id": "PRRT_kwDOSTBMB86aLCpZ", "severity": "P2", "owner_disposition": "accept_and_require_fix", "classification": "closed_in_final_owner_adjudicated_implementation_evidence"},
+        {"thread_id": "PRRT_kwDOSTBMB86aLCpA", "severity": "P2", "owner_disposition": "accept_and_require_safe_downgrade", "classification": "closed_by_avif_explicit_unsupported_projection"},
+        {"thread_id": "PRRT_kwDOSTBMB86aLCpL", "severity": "P2", "owner_disposition": "accept_and_require_safe_downgrade", "classification": "closed_by_gif_explicit_unsupported_projection"},
+        {"thread_id": "PRRT_kwDOSTBMB86aLCpE", "severity": "P1", "owner_disposition": "defer_with_exact_due_gate", "classification": "deferred_nonblocking_pre_posix_or_untrusted_environment_execution"},
+        {"thread_id": "PRRT_kwDOSTBMB86aLCpI", "severity": "P1", "owner_disposition": "defer_with_exact_due_gate", "classification": "deferred_nonblocking_pre_ci_or_tamper_resistant_receipt"}
+      ],
+      "required_fix_count": 4,
+      "safe_downgrade_count": 2,
+      "deferred_count": 2,
+      "same_branch_normal_push_authorized": true,
+      "additional_codex_review_authorized": false,
+      "merge_authorized": false,
+      "i3_started": false,
+      "px1_started": false,
+      "real_source_inventory_authorized": false
     }
   ],
   "authorized_operations": [
     "implement SCV2-FL1-I2 synthetic pre-real hardening only in the isolated clean linked worktree",
     "create and use only adversarial newly created temporary fixtures under task-owned temporary roots",
     "run repository-venv compile, documentation, focused, synthetic, compatibility, and full non-E2E validation",
-    "continue the existing implementation branch and PR #146 with bounded additive post-terminal correction only",
-    "perform authorized Git and GitHub governance control-plane operations required for remote synchronization, normal branch push, PR body update, and one post-terminal Codex review request"
+    "continue the existing implementation branch and PR #146 with the final owner-adjudicated no-rereview correction only",
+    "perform authorized Git and GitHub governance control-plane operations required for remote synchronization, normal branch push, and PR body exact-head update"
   ],
   "forbidden_operations": [
     "listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root",
@@ -331,7 +362,8 @@
     "Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation",
     "provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or external source/provider/model/media/data-plane network request",
     "Stable Replay import, reuse, replay, or authoritative evidence consumption",
-    "production, watcher, scheduler, background worker, UI runtime server, I3 canary, I4 inventory, E1, E2, V1, or later phase execution",
+    "production, watcher, scheduler, background worker, UI runtime server, I3 canary, PX1, I4 inventory, E1, E2, V1, or later phase execution",
+    "any additional Codex review request, reviewer request, review-thread reply, resolution, or reaction",
     "cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, any merge, removal of the isolated worktree or implementation branch, or any PR #145 thread reply, resolution, or reaction"
   ],
   "artifact_lifecycle": [
@@ -389,9 +421,12 @@
     "windows_same_handle_feasibility_scope": "os_created_temporary_directory_only",
     "windows_same_handle_no_path_fallback": true,
     "file_open_no_recall_claim_scope": "open_itself_only_not_later_read_guarantee",
-    "fl1_i2_implementation_evidence_head": "46bc25363531d9fb1fb3995d0eb361abab84a016",
-    "fl1_i2_implementation_evidence_tree": "476bf43b0ed771e8be33a099997019ed2d8b61fc",
+    "fl1_i2_implementation_evidence_head": "9aab3e31f5223e0c689046b5c5c61f21268f840c",
+    "fl1_i2_implementation_evidence_tree": "9119d489800c0b40c5586a9aa4ceb89d34f93e5c",
     "fl1_i2_implementation_evidence_frozen": true,
+    "fl1_i2_prior_post_terminal_evidence_head": "46bc25363531d9fb1fb3995d0eb361abab84a016",
+    "fl1_i2_prior_post_terminal_evidence_tree": "476bf43b0ed771e8be33a099997019ed2d8b61fc",
+    "fl1_i2_prior_post_terminal_evidence_status": "superseded_and_rejected_by_final_owner_review",
     "fl1_i2_pre_receipt_evidence_head": "46d38cff259823588863e6ef36dbd0ed886edf35",
     "fl1_i2_pre_receipt_evidence_tree": "6322959f96bb55ca5a5de133c07dd3e93172087f",
     "fl1_i2_pre_receipt_evidence_status": "superseded_by_validation_temp_cleanup_correction",
@@ -452,6 +487,26 @@
     ],
     "fl1_i2_post_terminal_bounded_correction_authorized": true,
     "fl1_i2_one_post_terminal_review_authorized": true,
+    "fl1_i2_final_owner_rejected_head": "d4478660df1f11b1c8d3ceba1af70f8635542a9d",
+    "fl1_i2_final_owner_rejected_tree": "113280a8697e6bef3cb9e4292a042c2d46b1f025",
+    "fl1_i2_final_owner_review_id": 4963026941,
+    "fl1_i2_final_owner_findings": [
+      {"thread_id": "PRRT_kwDOSTBMB86aLCo0", "severity": "P1", "owner_disposition": "accept_and_require_fix", "classification": "closed_in_final_owner_adjudicated_implementation_evidence"},
+      {"thread_id": "PRRT_kwDOSTBMB86aLCo6", "severity": "P1", "owner_disposition": "accept_and_require_fix", "classification": "closed_in_final_owner_adjudicated_implementation_evidence"},
+      {"thread_id": "PRRT_kwDOSTBMB86aLCpS", "severity": "P1", "owner_disposition": "accept_and_require_fix", "classification": "closed_in_final_owner_adjudicated_implementation_evidence"},
+      {"thread_id": "PRRT_kwDOSTBMB86aLCpZ", "severity": "P2", "owner_disposition": "accept_and_require_fix", "classification": "closed_in_final_owner_adjudicated_implementation_evidence"},
+      {"thread_id": "PRRT_kwDOSTBMB86aLCpA", "severity": "P2", "owner_disposition": "accept_and_require_safe_downgrade", "classification": "closed_by_avif_explicit_unsupported_projection"},
+      {"thread_id": "PRRT_kwDOSTBMB86aLCpL", "severity": "P2", "owner_disposition": "accept_and_require_safe_downgrade", "classification": "closed_by_gif_explicit_unsupported_projection"},
+      {"thread_id": "PRRT_kwDOSTBMB86aLCpE", "severity": "P1", "owner_disposition": "defer_with_exact_due_gate", "classification": "deferred_nonblocking_pre_posix_or_untrusted_environment_execution"},
+      {"thread_id": "PRRT_kwDOSTBMB86aLCpI", "severity": "P1", "owner_disposition": "defer_with_exact_due_gate", "classification": "deferred_nonblocking_pre_ci_or_tamper_resistant_receipt"}
+    ],
+    "fl1_i2_final_owner_required_fix_count": 4,
+    "fl1_i2_final_owner_safe_downgrade_count": 2,
+    "fl1_i2_final_owner_deferred_count": 2,
+    "fl1_i2_final_owner_correction_authorized": true,
+    "fl1_i2_additional_codex_review_authorized": false,
+    "fl1_i2_final_governance_projection_mode": "current_head_tree_derived_by_trusted_git",
+    "fl1_i2_final_governance_projection_parent_head": "9aab3e31f5223e0c689046b5c5c61f21268f840c",
     "fl1_i2_contract_id": "scv2_fl1_i2_pre_real_hardening_contract_v1",
     "fl1_i2_public_schema": "violet.scv2-fl1-i2-public-summary.v1",
     "fl1_i2_delivery_gate_count": 14,
@@ -626,7 +681,7 @@
       "classification": "closed_in_fl1_i2_synthetic_implementation_evidence"
     }
   ],
-  "next_required_checkpoint": "one_authorized_post_terminal_codex_review_then_exact_final_head_owner_reaudit_without_merge_or_i3",
+  "next_required_checkpoint": "direct_owner_exact_final_diff_merge_audit_without_automated_rereview_merge_i3_or_px1",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -665,10 +720,10 @@
     {
       "id": "FL1_I2_OWNER_AUDIT_AND_MERGE_GATE",
       "owner": "SCV2-FL1-I2 project owner",
-      "reason": "The pre-terminal evidence was rejected by review 4961359578. The fourteen delivery gates and executable contract are re-established only on the new frozen synthetic correction evidence, but local operator evidence is not owner acceptance, CI, safe-to-merge authority, or merge authority.",
+      "reason": "Review 4963026941 rejected d4478660df1f11b1c8d3ceba1af70f8635542a9d / 113280a8697e6bef3cb9e4292a042c2d46b1f025. The final owner-adjudicated implementation evidence closes four required fixes and applies two safe downgrades while two findings remain nonblocking only under exact due gates. Local operator evidence is not owner acceptance, CI, safe-to-merge authority, or merge authority.",
       "due_before": "any safe_to_merge or merge_authorized projection, merge, SCV2-FL1-I3, or real-source operation",
       "requirements": [
-        "audit the exact final PR #146 HEAD/tree, all current review findings, and the registered SCV2-FL1-I2 contract",
+        "audit the exact final PR #146 implementation evidence and governance projection HEAD/tree, review 4963026941 dispositions, and the registered SCV2-FL1-I2 contract without requesting another automated review",
         "issue any acceptance as a separate exact-head governance projection that keeps target_met and every real-source/data authority false",
         "grant safe-to-merge and expected-head merge authority explicitly if and only if the exact implementation evidence is accepted",
         "stop after merge until a separate FL1_I3_REAL_SOURCE_SCOPE_GATE is authorized"
@@ -696,7 +751,29 @@
         "do not present parent receipts as CI or tamper-resistant evidence",
         "do not expand a personal local inventory tool into forensic attestation without a separate need and design"
       ]
+    },
+    {
+      "id": "FL1_I2_DYNAMIC_LOADER_ENVIRONMENT_POLICY",
+      "owner": "future POSIX, remote-CI, or hostile-local-environment execution owner",
+      "reason": "Review 4963026941 thread PRRT_kwDOSTBMB86aLCpE was owner-deferred because the current receipt is Windows local-operator evidence and does not claim resistance to a malicious caller process.",
+      "due_before": "first POSIX real-source execution, first GitHub or remote-CI positive authority, or first claim of resistance to a hostile local environment",
+      "requirements": [
+        "define and test the dynamic-loader environment allowlist for the target platform",
+        "bind any positive remote execution authority to the exact environment policy",
+        "retain the current local-operator-only claim until this gate closes"
+      ]
+    },
+    {
+      "id": "FL1_I2_VENV_FULL_PYTHON_SUPPLY_CHAIN_BINDING",
+      "owner": "future CI or tamper-resistant environment-evidence owner",
+      "reason": "Review 4963026941 thread PRRT_kwDOSTBMB86aLCpI was owner-deferred because hashing every venv .py/.pyc is outside the trusted-owner-machine local-operator threat model.",
+      "due_before": "machine_verifiable_ci=true, any tamper-resistant or reproducible-environment claim, or execution outside the owner-trusted local venv",
+      "requirements": [
+        "retain current Python executable, venv, pyvenv.cfg, .pth, native-module, and control-file binding",
+        "design full Python package and source provenance before upgrading the evidence claim",
+        "do not present the current receipt as supply-chain or tamper-resistant attestation"
+      ]
     }
   ],
-  "updated_at": "2026-08-18T23:57:00+08:00"
+  "updated_at": "2026-08-26T16:30:00+08:00"
 }

@@ -506,7 +506,7 @@ def test_terminal_review_use_before_register_is_complete() -> None:
 def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
     state = _state()
     assert state["active_blocker"]["code"] == (
-        "pending_fl1_i2_post_terminal_exact_head_owner_reaudit"
+        "pending_fl1_i2_final_direct_owner_merge_audit"
     )
     preconditions = state["next_phase_authorization"]["required_preconditions"]
     assert preconditions[0].startswith("PR #145 is merged")
@@ -550,8 +550,8 @@ def test_windows_same_handle_feasibility_checkpoint_is_exact() -> None:
         "open_itself_only_not_later_read_guarantee"
     )
     assert state["next_required_checkpoint"] == (
-        "one_authorized_post_terminal_codex_review_then_exact_final_head_"
-        "owner_reaudit_without_merge_or_i3"
+        "direct_owner_exact_final_diff_merge_audit_without_automated_"
+        "rereview_merge_i3_or_px1"
     )
 
 
@@ -858,4 +858,19 @@ def test_plan_contains_canonical_architecture_threat_model_and_full_route() -> N
         assert concept in plan
     assert "same verified, no-follow, identity-bound directory handle" in plan
     assert "path-based `os.scandir()` plus a post-check cannot close this gate" in plan
-    assert "FL1_I2_PLANNING_GOVERNANCE_PR_CORRECTED_READY_FOR_OWNER_REAUDIT" in plan
+    assert (
+        "SCV2_FL1_I2_PR146_FINAL_OWNER_ADJUDICATED_CORRECTION_READY_FOR_"
+        "DIRECT_OWNER_MERGE_AUDIT"
+    ) in plan
+
+
+def test_final_owner_adjudication_is_exact_and_forbids_rereview() -> None:
+    protected = _state()["protected_evidence"]
+    assert protected["fl1_i2_final_owner_review_id"] == 4963026941
+    assert protected["fl1_i2_final_owner_rejected_head"] == (
+        "d4478660df1f11b1c8d3ceba1af70f8635542a9d"
+    )
+    assert protected["fl1_i2_final_owner_required_fix_count"] == 4
+    assert protected["fl1_i2_final_owner_safe_downgrade_count"] == 2
+    assert protected["fl1_i2_final_owner_deferred_count"] == 2
+    assert protected["fl1_i2_additional_codex_review_authorized"] is False
