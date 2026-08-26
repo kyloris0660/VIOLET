@@ -1,10 +1,11 @@
+"""Fail-closed freshness tests for the active SCV2-PX1 projection."""
+
 from __future__ import annotations
 
 import copy
 import json
-import os
+from pathlib import Path
 import shutil
-from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -12,590 +13,196 @@ from scripts import check_documentation_state as documentation_state
 
 
 ROOT = Path(__file__).resolve().parents[1]
+STATE_PATH = ROOT / "docs" / "state" / "current-phase.json"
 
 
 def _state() -> dict[str, object]:
-    return json.loads(
-        (ROOT / "docs" / "state" / "current-phase.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    return json.loads(STATE_PATH.read_text(encoding="utf-8"))
 
 
-def _copy_docs_root(tmp_path: Path) -> Path:
-    copied = tmp_path / "repo"
-    shutil.copytree(ROOT / "docs", copied / "docs")
-    (copied / "AGENTS.md").write_text(
-        (ROOT / "AGENTS.md").read_text(encoding="utf-8"), encoding="utf-8"
-    )
-    return copied
-
-
-def test_current_phase_schema_and_i2_owner_acceptance_boundary_are_exact() -> None:
+def test_current_phase_schema_identity_and_boundary_are_exact() -> None:
     state = _state()
-
     documentation_state.validate_state(state)
     assert state["schema_version"] == "violet.current-phase.v2"
-    assert state["phase_id"] == "SCV2-FL1-I2"
-    assert state["pr_number"] == documentation_state.FL1_I2_PR_NUMBER
-    assert state["branch"] == documentation_state.FL1_I2_BRANCH
-    assert state["accepted_mainline_base"] == documentation_state.FL1_I2_PLANNING_MERGE_COMMIT
-    assert state["current_status"] == documentation_state.FL1_I2_STATUS
-    assert state["planning_authorized"] is True
-    assert state["planning_completed"] is True
-    assert state["planning_approved"] is True
-    assert state["approved_planning_head"] == documentation_state.FL1_I2_APPROVED_PLANNING_HEAD
-    assert state["approved_planning_tree"] == documentation_state.FL1_I2_APPROVED_PLANNING_TREE
-    assert state["target_met"] is False
+    assert state["phase_id"] == "SCV2-PX1"
+    assert state["branch"] == "codex/scv2-px1-pixiv-metadata-consolidation"
+    assert state["accepted_mainline_base"] == (
+        "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc"
+    )
+    assert state["accepted_mainline_tree"] == (
+        "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71"
+    )
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
-    boundary = state["planning_boundary"]
-    assert boundary["planning_only"] is False
-    assert boundary["owner_audit_pending"] is True
-    assert boundary["owner_acceptance_valid"] is True
-    assert boundary["merge_authorized"] is False
-    assert boundary["implementation_authorized"] is True
-    assert boundary["implementation_started"] is True
-    assert boundary["implementation_completed"] is True
-    assert boundary["real_inventory_started"] is False
-    assert boundary["real_source_inventory_authorized"] is False
-    assert boundary["database_access_authorized"] is False
-    assert boundary["app_storage_write_authorized"] is False
-    assert boundary["provider_or_llm_authorized"] is False
-    assert boundary["production_authorized"] is False
-
-
-def test_fl1_i2_pr_number_exact_binding_accepts_146() -> None:
-    state = copy.deepcopy(_state())
-    state["pr_number"] = documentation_state.FL1_I2_PR_NUMBER
-
-    documentation_state.validate_state(state)
-
-
-@pytest.mark.parametrize("pr_number", [None, 145, 147])
-def test_fl1_i2_pr_number_exact_binding_fails_closed(
-    pr_number: int | None,
-) -> None:
-    state = copy.deepcopy(_state())
-    state["pr_number"] = pr_number
-
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_pr_number_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_pr144_acceptance_merge_and_terminal_review_are_exact() -> None:
-    state = _state()
-    prior = state["prior_phase_acceptance"]
-    upstream = state["upstream_pr_state"]
-
-    assert state["previous_phase"] == "SCV2-FL1-I1"
-    assert state["previous_phase_status"] == "owner_accepted_and_merge_commit_merged"
-    assert state["previous_phase_accepted_scope"] == (
-        "synthetic_and_new_temporary_fixture_foundation_only"
+    assert state["manual_acceptance_status"] == (
+        "pending_scv2_px1_exact_head_owner_audit"
     )
-    assert state["previous_phase_real_inventory_target_met"] is False
-    assert prior["merge_commit"] == documentation_state.FL1_I1_MERGE_COMMIT
-    assert prior["final_head"] == documentation_state.FL1_I2_PREVIOUS_FINAL_HEAD
-    assert prior["final_tree"] == documentation_state.FL1_I2_PREVIOUS_FINAL_TREE
-    assert prior["implementation_evidence_head"] == documentation_state.FL1_I2_PREVIOUS_EVIDENCE
-    assert prior["implementation_evidence_tree"] == documentation_state.FL1_I2_PREVIOUS_EVIDENCE_TREE
-    assert upstream["terminal_review_id"] == documentation_state.FL1_I2_TERMINAL_REVIEW_ID
-    assert upstream["terminal_review_finding_count"] == 17
-    assert upstream["terminal_review_p1_count"] == 13
-    assert upstream["terminal_review_p2_count"] == 4
-    assert upstream["terminal_review_resolved_count"] == 0
-    assert upstream["terminal_review_outdated_count"] == 0
-    assert upstream["github_checks"] == 0
 
 
-def test_live_git_objects_bind_frozen_i1_commit_and_tree_evidence() -> None:
+def test_live_git_binds_pr146_merge_and_px1_implementation_evidence() -> None:
     state = _state()
-    documentation_state.validate_git_ancestry(state)
-    commit = state["protected_evidence"]["previous_phase_implementation_evidence_head"]
-    expected_tree = state["protected_evidence"]["previous_phase_implementation_evidence_tree"]
-    result = documentation_state._run_trusted_git(
-        ["rev-parse", f"{commit}^{{tree}}"]
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == expected_tree
-
-
-def test_live_git_objects_bind_exact_owner_approved_i2_plan_and_tree() -> None:
-    state = _state()
-    documentation_state.validate_git_ancestry(state)
-    result = documentation_state._run_trusted_git(
-        ["rev-parse", f"{documentation_state.FL1_I2_APPROVED_PLANNING_HEAD}^{{tree}}"]
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == documentation_state.FL1_I2_APPROVED_PLANNING_TREE
-
-
-@pytest.mark.parametrize("approved_head", [None, "f" * 40])
-def test_missing_or_wrong_approved_planning_head_fails_closed(
-    approved_head: str | None,
-) -> None:
-    state = copy.deepcopy(_state())
-    state["approved_planning_head"] = approved_head
-    with pytest.raises(documentation_state.DocumentationStateError):
-        documentation_state.validate_state(state)
-
-
-def test_wrong_approved_planning_tree_fails_closed() -> None:
-    state = copy.deepcopy(_state())
-    state["approved_planning_tree"] = "f" * 40
-    with pytest.raises(documentation_state.DocumentationStateError):
-        documentation_state.validate_state(state)
-
-
-def test_approved_planning_tree_git_mismatch_fails_closed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    original = documentation_state._run_trusted_git
-
-    def mismatch(arguments: list[str], *, root: Path = ROOT):
-        if arguments == [
-            "rev-parse",
-            f"{documentation_state.FL1_I2_APPROVED_PLANNING_HEAD}^{{tree}}",
-        ]:
-            return documentation_state.subprocess.CompletedProcess(
-                arguments, 0, stdout="f" * 40 + "\n", stderr=""
-            )
-        return original(arguments, root=root)
-
-    monkeypatch.setattr(documentation_state, "_run_trusted_git", mismatch)
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_approved_planning_tree_mismatch",
-    ):
-        documentation_state.validate_git_ancestry(_state())
-
-
-def test_approved_planning_commit_must_be_head_ancestor(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    original = documentation_state._run_trusted_git
-
-    def nonancestor(arguments: list[str], *, root: Path = ROOT):
-        if arguments == [
-            "merge-base",
-            "--is-ancestor",
-            documentation_state.FL1_I2_APPROVED_PLANNING_HEAD,
-            documentation_state.FL1_I2_PLANNING_PROJECTION_HEAD,
-        ]:
-            return documentation_state.subprocess.CompletedProcess(
-                arguments, 1, stdout="", stderr=""
-            )
-        return original(arguments, root=root)
-
-    monkeypatch.setattr(documentation_state, "_run_trusted_git", nonancestor)
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_approved_planning_not_ancestor",
-    ):
-        documentation_state.validate_git_ancestry(_state())
+    documentation_state.validate_git_ancestry(state, root=ROOT)
+    assert documentation_state._trusted_git_value(
+        ROOT, "rev-parse", "914d746c3548241a99333393daa88caefd8b2337^{tree}"
+    ) == state["previous_phase_final_tree"]
+    assert documentation_state._trusted_git_value(
+        ROOT, "rev-parse", "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc^{tree}"
+    ) == state["accepted_mainline_tree"]
+    assert documentation_state._trusted_git_value(
+        ROOT, "rev-parse", f"{state['implementation_evidence_head']}^{{tree}}"
+    ) == state["implementation_evidence_tree"]
 
 
 @pytest.mark.parametrize(
-    "path",
+    ("field", "value"),
     [
-        "backend/app/utils/cloud_files.py",
-        "scripts/fl1_i1_inventory.py",
+        ("branch", "codex/wrong"),
+        ("accepted_mainline_base", "f" * 40),
+        ("accepted_mainline_tree", "f" * 40),
+        ("previous_phase_merge_commit", "f" * 40),
+        ("previous_phase_final_head", "f" * 40),
+        ("previous_phase_status", "pending_merge"),
     ],
 )
-def test_projection_change_to_runtime_path_fails_closed(path: str) -> None:
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_governance_projection_path_invalid",
-    ):
-        documentation_state._validate_fl1_i2_projection_paths([path])
-
-
-def test_governance_only_carry_forward_paths_pass() -> None:
-    assert (
-        "docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
-        in documentation_state.FL1_I2_PROJECTION_ALLOWLIST
-    )
-    documentation_state._validate_fl1_i2_projection_paths(
-        documentation_state.FL1_I2_PROJECTION_ALLOWLIST
-    )
-
-
-def test_owner_acceptance_carry_forward_uses_ancestry_not_head_parent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    original = documentation_state._run_trusted_git
-    calls: list[tuple[str, ...]] = []
-
-    def record(arguments: list[str], *, root: Path = ROOT):
-        calls.append(tuple(arguments))
-        return original(arguments, root=root)
-
-    monkeypatch.setattr(documentation_state, "_run_trusted_git", record)
-    documentation_state.validate_git_ancestry(_state())
-    assert (
-        "merge-base",
-        "--is-ancestor",
-        documentation_state.FL1_I2_APPROVED_PLANNING_HEAD,
-        documentation_state.FL1_I2_PLANNING_PROJECTION_HEAD,
-    ) in calls
-    assert not any(any(argument.startswith("HEAD^") for argument in call) for call in calls)
-
-
-def test_windows_git_candidates_use_os_roots_not_python_drive(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        documentation_state.sys,
-        "executable",
-        r"D:\venv\Scripts\python.exe",
-    )
-
-    candidates = documentation_state._trusted_git_candidates(
-        platform_name="nt",
-        windows_location_provider=lambda: (
-            (PureWindowsPath(r"c:\PROGRAM FILES\git"),),
-            (
-                PureWindowsPath(r"C:\Program Files"),
-                PureWindowsPath(r"C:\Program Files (x86)"),
-            ),
-        ),
-    )
-    rendered = tuple(str(candidate).casefold() for candidate in candidates)
-
-    assert all(isinstance(candidate, PureWindowsPath) for candidate in candidates)
-    assert all(candidate.drive.casefold() == "c:" for candidate in candidates)
-    assert (
-        str(PureWindowsPath(r"C:\Program Files\Git\cmd\git.exe")).casefold()
-        in rendered
-    )
-    assert (
-        str(PureWindowsPath(r"C:\Program Files\Git\bin\git.exe")).casefold()
-        in rendered
-    )
-    assert len(rendered) == len(set(rendered)) == 4
-    assert PureWindowsPath(r"D:\Program Files\Git\cmd\git.exe") not in candidates
-
-
-def test_windows_git_candidates_ignore_hostile_ordinary_environment(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    hostile = tmp_path / "hostile-git-root"
-    for variable in ("PATH", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
-        monkeypatch.setenv(variable, str(hostile))
-
-    candidates = documentation_state._trusted_git_candidates(
-        platform_name="nt",
-        windows_location_provider=lambda: (
-            (PureWindowsPath(r"C:\TrustedGit"),),
-            (PureWindowsPath(r"C:\TrustedProgramFiles"),),
-        ),
-    )
-
-    assert all(isinstance(candidate, PureWindowsPath) for candidate in candidates)
-    assert candidates == (
-        PureWindowsPath(r"C:\TrustedGit\cmd\git.exe"),
-        PureWindowsPath(r"C:\TrustedGit\bin\git.exe"),
-        PureWindowsPath(r"C:\TrustedProgramFiles\Git\cmd\git.exe"),
-        PureWindowsPath(r"C:\TrustedProgramFiles\Git\bin\git.exe"),
-    )
-    assert all(
-        str(hostile).casefold() not in str(candidate).casefold()
-        for candidate in candidates
-    )
-
-
-def test_windows_registry_discovery_reads_hklm_64_and_32_bit_views() -> None:
-    class FakeRegistry:
-        HKEY_LOCAL_MACHINE = object()
-        KEY_READ = 0x20019
-        KEY_WOW64_64KEY = 0x0100
-        KEY_WOW64_32KEY = 0x0200
-
-        def __init__(self) -> None:
-            self.closed: list[tuple[str, int]] = []
-            self.values = {
-                (r"SOFTWARE\GitForWindows", self.KEY_WOW64_64KEY, "InstallPath"): (
-                    r"C:\Program Files\Git"
-                ),
-                (
-                    r"SOFTWARE\Microsoft\Windows\CurrentVersion",
-                    self.KEY_WOW64_64KEY,
-                    "ProgramFilesDir",
-                ): r"C:\Program Files",
-                (
-                    r"SOFTWARE\Microsoft\Windows\CurrentVersion",
-                    self.KEY_WOW64_32KEY,
-                    "ProgramFilesDir (x86)",
-                ): r"C:\Program Files (x86)",
-            }
-
-        def OpenKey(
-            self,
-            hive: object,
-            key_path: str,
-            reserved: int,
-            access: int,
-        ) -> tuple[str, int]:
-            assert hive is self.HKEY_LOCAL_MACHINE
-            assert reserved == 0
-            view = access & (self.KEY_WOW64_64KEY | self.KEY_WOW64_32KEY)
-            if not any(
-                key == key_path and stored_view == view
-                for key, stored_view, _ in self.values
-            ):
-                raise FileNotFoundError(key_path)
-            return key_path, view
-
-        def QueryValueEx(
-            self,
-            handle: tuple[str, int],
-            value_name: str,
-        ) -> tuple[str, int]:
-            try:
-                value = self.values[(*handle, value_name)]
-            except KeyError as exc:
-                raise FileNotFoundError(value_name) from exc
-            return value, 1
-
-        def CloseKey(self, handle: tuple[str, int]) -> None:
-            self.closed.append(handle)
-
-    registry = FakeRegistry()
-    git_roots, program_files_roots = documentation_state._windows_system_git_roots(
-        registry=registry
-    )
-
-    assert git_roots == (Path(r"C:\Program Files\Git"),)
-    assert program_files_roots == (
-        Path(r"C:\Program Files"),
-        Path(r"C:\Program Files (x86)"),
-    )
-    assert {view for _, view in registry.closed} == {
-        registry.KEY_WOW64_64KEY,
-        registry.KEY_WOW64_32KEY,
-    }
-
-
-def test_windows_git_discovery_unavailable_fails_closed(tmp_path: Path) -> None:
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="trusted_git_executable_unavailable",
-    ):
-        documentation_state._trusted_git_executable(
-            root=tmp_path,
-            platform_name="nt",
-            windows_location_provider=lambda: ((), ()),
-        )
-
-
-def test_non_windows_git_candidates_remain_fixed() -> None:
-    def unexpected_windows_provider() -> tuple[tuple[Path, ...], tuple[Path, ...]]:
-        raise AssertionError("Windows location provider must not run")
-
-    assert documentation_state._trusted_git_candidates(
-        platform_name="posix",
-        windows_location_provider=unexpected_windows_provider,
-    ) == (
-        Path("/usr/bin/git"),
-        Path("/usr/local/bin/git"),
-        Path("/opt/homebrew/bin/git"),
-    )
-
-
-@pytest.mark.parametrize("variable", ["GIT_DIR", "GIT_WORK_TREE"])
-def test_trusted_git_proof_ignores_hostile_repository_redirection(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    variable: str,
-) -> None:
-    monkeypatch.setenv(variable, str(tmp_path / "hostile-not-a-repository"))
-    documentation_state.validate_git_ancestry(_state())
-
-
-def test_trusted_git_environment_scrubs_mixed_case_control_keys() -> None:
-    scrubbed = documentation_state._trusted_git_environment(
-        {
-            "Path": "trusted-path-value",
-            "gIt_DiR": "hostile",
-            "Git_Work_Tree": "hostile",
-            "GIT_CONFIG_COUNT": "1",
-        }
-    )
-    assert scrubbed["Path"] == "trusted-path-value"
-    assert "gIt_DiR" not in scrubbed
-    assert "Git_Work_Tree" not in scrubbed
-    assert scrubbed["GIT_NO_REPLACE_OBJECTS"] == "1"
-    assert scrubbed["GIT_CONFIG_NOSYSTEM"] == "1"
-    assert scrubbed["GIT_CONFIG_GLOBAL"] == os.devnull
-    assert scrubbed["GIT_CONFIG_SYSTEM"] == os.devnull
-    assert not any(
-        key.casefold().startswith("git_")
-        for key in scrubbed
-        if key not in {
-            "GIT_NO_REPLACE_OBJECTS",
-            "GIT_CONFIG_NOSYSTEM",
-            "GIT_CONFIG_GLOBAL",
-            "GIT_CONFIG_SYSTEM",
-            "GIT_OPTIONAL_LOCKS",
-            "GIT_TERMINAL_PROMPT",
-        }
-    )
-
-
-def test_injected_fsmonitor_config_is_not_executed(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    marker = tmp_path / "fsmonitor-executed"
-    if os.name == "nt":
-        monitor = tmp_path / "hostile-fsmonitor.cmd"
-        monitor.write_text(
-            f"@echo off\r\necho executed>\"{marker}\"\r\n",
-            encoding="utf-8",
-        )
-    else:
-        monitor = tmp_path / "hostile-fsmonitor.sh"
-        monitor.write_text(
-            f"#!/bin/sh\nprintf executed > '{marker}'\n",
-            encoding="utf-8",
-        )
-        monitor.chmod(0o700)
-    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
-    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.fsmonitor")
-    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(monitor))
-
-    result = documentation_state._run_trusted_git(
-        ["status", "--porcelain=v1", "--untracked-files=no"]
-    )
-
-    assert result.returncode == 0
-    assert not marker.exists()
-
-
-def test_frozen_i1_tree_mismatch_fails_closed() -> None:
+def test_baseline_identity_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
-    state["protected_evidence"]["previous_phase_implementation_evidence_tree"] = (
-        "f" * 40
+    state[field] = value
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="identity_or_baseline",
+    ):
+        documentation_state.validate_state(state)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("safe_to_merge", True),
+        ("route_approved", True),
+        ("next_phase_started", True),
+        ("planning_authorized", False),
+        ("planning_completed", False),
+        ("planning_approved", False),
+        ("manual_acceptance_status", "accepted"),
+    ],
+)
+def test_status_or_owner_authority_mutation_fails_closed(
+    field: str,
+    value: object,
+) -> None:
+    state = copy.deepcopy(_state())
+    state[field] = value
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="status_fields_conflict",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_target_met_requires_ready_status_and_verified_contract() -> None:
+    state = copy.deepcopy(_state())
+    state["target_met"] = True
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="status_fields_conflict",
+    ):
+        documentation_state.validate_state(state)
+
+    state = copy.deepcopy(_state())
+    state["current_status"] = documentation_state.SCV2_PX1_READY_STATUS
+    state["target_met"] = True
+    state["pipeline_contract"]["synthetic_vertical_slice_verified"] = True
+    state["pipeline_contract"]["deterministic_replay_verified"] = True
+    documentation_state.validate_state(state)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("contract_id", "caller_positive_contract"),
+        ("public_schema", "caller.schema"),
+        ("machine_verifiable_ci", True),
+        ("owner_authority_machine_verifiable", True),
+    ],
+)
+def test_contract_projection_mutation_fails_closed(field: str, value: object) -> None:
+    state = copy.deepcopy(_state())
+    state["pipeline_contract"][field] = value
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="contract_projection",
+    ):
+        documentation_state.validate_state(state)
+
+
+def test_fixed_px1_px2_px3_route_cannot_expand_or_start() -> None:
+    state = copy.deepcopy(_state())
+    state["upcoming_route"].append(
+        {"phase_id": "SCV2-PX4", "scope": "not authorized", "started": False}
     )
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="frozen_i1_evidence_tree_mismatch",
+        match="fixed_route",
     ):
-        documentation_state.validate_git_ancestry(state)
+        documentation_state.validate_state(state)
 
-
-def test_terminal_review_use_before_register_is_complete() -> None:
-    findings = _state()["terminal_review_findings"]
-    assert [finding["number"] for finding in findings] == list(range(1, 18))
-    assert sum(finding["severity"] == "P1" for finding in findings) == 13
-    assert sum(finding["severity"] == "P2" for finding in findings) == 4
-    classifications = [finding["classification"] for finding in findings]
-    assert classifications.count("closed_in_current_governance_pr") == 2
-    assert classifications.count(
-        "closed_in_fl1_i2_synthetic_implementation_evidence"
-    ) == 14
-    assert classifications.count(
-        "claim_boundary_local_evidence_not_tamper_resistant_attestation"
-    ) == 1
-
-
-def test_i2_and_i3_gates_are_strictly_sequenced() -> None:
-    state = _state()
-    assert state["active_blocker"]["code"] == (
-        "pending_fl1_i2_final_direct_owner_merge_audit"
-    )
-    preconditions = state["next_phase_authorization"]["required_preconditions"]
-    assert preconditions[0].startswith("PR #145 is merged")
-    assert preconditions[1] == (
-        "I2 implementation is separately authorized by the owner for this synthetic-only branch"
-    )
-    assert "synthetic or adversarial newly created temporary fixtures" in preconditions[2]
-    assert "all fourteen I2 delivery gates close" in preconditions[3]
-    assert "I2 passes owner audit and merges" in preconditions[4]
-    assert "FL1_I3_REAL_SOURCE_SCOPE_GATE" in preconditions[5]
-
-
-def test_network_truth_separates_data_plane_from_governance_control_plane() -> None:
-    protected = _state()["protected_evidence"]
-    assert "network_operation_count" not in protected
-    assert protected["external_data_plane_network_operation_count"] == 0
-    assert (
-        protected["authorized_git_github_governance_control_plane_operations_occurred"]
-        is True
-    )
-
-
-def test_windows_same_handle_feasibility_checkpoint_is_exact() -> None:
-    state = _state()
-    protected = state["protected_evidence"]
-    checkpoint = next(
-        item
-        for item in state["completed_checkpoints"]
-        if item["id"] == "fl1_i2_windows_same_handle_feasibility"
-    )
-    assert checkpoint == {
-        "id": "fl1_i2_windows_same_handle_feasibility",
-        "result": (
-            "pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback"
-        ),
-        "fingerprint": "windows_live_temp_file_id_extd_ntcreatefile_v1",
-    }
-    assert protected["windows_same_handle_feasibility_passed"] is True
-    assert protected["windows_same_handle_no_path_fallback"] is True
-    assert protected["file_open_no_recall_claim_scope"] == (
-        "open_itself_only_not_later_read_guarantee"
-    )
-    assert state["next_required_checkpoint"] == (
-        "direct_owner_exact_final_diff_merge_audit_without_automated_"
-        "rereview_merge_i3_or_px1"
-    )
+    state = copy.deepcopy(_state())
+    state["upcoming_route"][1]["started"] = True
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="fixed_route",
+    ):
+        documentation_state.validate_state(state)
 
 
 def test_handoff_is_exact_generated_projection() -> None:
     state = _state()
-    handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
-    assert handoff == documentation_state.render_handoff(state)
-    assert 55 <= len(handoff.splitlines()) <= 115
-    assert "SCV2-FL1-I2" in handoff
-    assert "All 17 findings remain historical audit records" in handoff
-    assert "machine_verifiable_ci=false" in handoff
-    assert documentation_state.FL1_I2_BLOCKER in handoff
+    actual = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
+    assert actual == documentation_state.render_handoff(state)
+    assert "SCV2-PX1" in actual
+    assert "PR #146 Merge Projection" in actual
+    assert "Deferred Debt And Exact Due Gates" in actual
+    assert "378" not in actual
+    assert state["protected_evidence"]["primary_user_untracked_name_digest_before"] not in actual
 
 
-def test_active_markers_and_remote_sync_policy_are_consistent() -> None:
+def test_active_markers_and_contract_commands_are_consistent() -> None:
     state = _state()
-    documentation_state.validate_roadmaps(state)
+    documentation_state.validate_roadmaps(state, root=ROOT)
     for relative in (
-        "docs/roadmap/current-mainline-roadmap.md",
         "docs/project-roadmap.md",
+        "docs/roadmap/current-mainline-roadmap.md",
         "docs/phase-contracts.md",
     ):
         text = (ROOT / relative).read_text(encoding="utf-8")
-        assert text.count("<!-- CURRENT_PHASE: SCV2-FL1-I2 -->") == 1
+        assert text.count("<!-- CURRENT_PHASE: SCV2-PX1 -->") == 1
+    contract = (ROOT / "docs" / "phase-contracts.md").read_text(
+        encoding="utf-8"
+    )
+    assert "run_scv2_px1_pixiv_metadata_vertical_slice.py" in contract
+    assert "create_scv2_px1_validation_receipt.py" in contract
+    assert "--px1-evidence" in contract
+    assert "phase-4.5-PX1 is" in contract
+    assert "historical" in contract
+
+
+def test_conflicting_current_marker_fails_closed(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    (docs / "roadmap").mkdir(parents=True)
     for relative in (
-        "AGENTS.md",
-        "docs/development/agent-runbook.md",
-        "docs/roadmap/current-mainline-roadmap.md",
-        "docs/project-roadmap.md",
+        Path("project-roadmap.md"),
+        Path("roadmap/current-mainline-roadmap.md"),
+        Path("phase-contracts.md"),
     ):
-        text = (ROOT / relative).read_text(encoding="utf-8")
-        assert "fast-forward" in text
-        assert "local-only" in text
-        assert "reset" in text
-        assert "untracked" in text
-
-
-def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
-    copied_root = _copy_docs_root(tmp_path)
-    roadmap = copied_root / "docs" / "project-roadmap.md"
-    roadmap.write_text(
-        roadmap.read_text(encoding="utf-8").replace(
-            "<!-- CURRENT_PHASE: SCV2-FL1-I2 -->",
-            "<!-- CURRENT_PHASE: SCV2-FL1-I1 -->",
+        source = ROOT / "docs" / relative
+        target = docs / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    target = docs / "project-roadmap.md"
+    target.write_text(
+        target.read_text(encoding="utf-8").replace(
+            "<!-- CURRENT_PHASE: SCV2-PX1 -->",
+            "<!-- CURRENT_PHASE: SCV2-PX2 -->",
         ),
         encoding="utf-8",
     )
@@ -603,274 +210,29 @@ def test_conflicting_current_roadmap_phase_fails_closed(tmp_path: Path) -> None:
         documentation_state.DocumentationStateError,
         match="current_phase_conflict",
     ):
-        documentation_state.validate_roadmaps(_state(), root=copied_root)
+        documentation_state.validate_roadmaps(_state(), root=tmp_path)
 
 
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("current_status", "fl1_i2_implementation_in_progress"),
-        ("planning_approved", False),
-        ("target_met", True),
-        ("safe_to_merge", True),
-        ("route_approved", True),
-        ("manual_acceptance_status", "pending_fl1_i2_plan_owner_reaudit"),
-    ],
-)
-def test_i2_owner_accepted_status_mutations_fail_closed(
-    field: str, value: object
-) -> None:
+def test_public_state_rejects_nul_and_private_path() -> None:
     state = copy.deepcopy(_state())
-    state[field] = value
+    state["route_scope"] = "synthetic\x00scope"
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="fl1_i2_status_fields_conflict",
+        match="redaction",
+    ):
+        documentation_state.validate_state(state)
+
+    state = copy.deepcopy(_state())
+    state["route_scope"] = "C:\\private\\fixture"
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="redaction",
     ):
         documentation_state.validate_state(state)
 
 
-@pytest.mark.parametrize(
-    "field",
-    [
-        "real_inventory_started",
-        "real_source_inventory_authorized",
-        "source_root_access_authorized",
-        "data_execution_authorized",
-        "database_access_authorized",
-        "database_data_execution_authorized",
-        "app_storage_write_authorized",
-        "import_authorized",
-        "classification_or_tagging_execution_authorized",
-        "provider_or_llm_authorized",
-        "provider_authorized",
-        "llm_authorized",
-        "media_or_thumbnail_download_authorized",
-        "media_authorized",
-        "stable_replay_authorized",
-        "production_authorized",
-    ],
-)
-def test_i2_execution_authority_fails_closed(field: str) -> None:
-    state = copy.deepcopy(_state())
-    state["planning_boundary"][field] = True
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_boundary_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-@pytest.mark.parametrize(
-    "field",
-    [
-        "implementation_authorized",
-        "implementation_started",
-        "synthetic_ephemeral_test_fixture_authorized",
-    ],
-)
-def test_i2_synthetic_implementation_authority_cannot_be_removed(field: str) -> None:
-    state = copy.deepcopy(_state())
-    state["planning_boundary"][field] = False
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_boundary_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_i2_completed_evidence_cannot_be_reverted() -> None:
-    state = copy.deepcopy(_state())
-    state["planning_boundary"]["implementation_completed"] = False
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_boundary_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_positive_merge_authority_without_exact_owner_binding_fails_closed() -> None:
-    state = copy.deepcopy(_state())
-    state["owner_decisions"] = [
-        decision
-        for decision in state["owner_decisions"]
-        if decision["id"] != documentation_state.FL1_I2_OWNER_DECISION_ID
-    ]
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_owner_acceptance_binding_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_exact_owner_acceptance_binding_is_immutable() -> None:
-    state = copy.deepcopy(_state())
-    decision = next(
-        decision
-        for decision in state["owner_decisions"]
-        if decision["id"] == documentation_state.FL1_I2_OWNER_DECISION_ID
-    )
-    decision["review_id"] = 0
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_owner_acceptance_binding_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_pr146_bounded_correction_binding_is_exact_and_immutable() -> None:
-    state = copy.deepcopy(_state())
-    decision = next(
-        decision
-        for decision in state["owner_decisions"]
-        if decision["id"]
-        == documentation_state.FL1_I2_BOUNDED_CORRECTION_DECISION_ID
-    )
-    assert decision["superseded_head"] == (
-        documentation_state.FL1_I2_SUPERSEDED_EVIDENCE_HEAD
-    )
-    assert decision["thread_ids"] == list(
-        documentation_state.FL1_I2_BOUNDED_CORRECTION_THREAD_IDS
-    )
-    decision["one_followup_codex_review_authorized"] = False
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_bounded_correction_binding_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_pr146_final_convergence_binding_is_exact_and_immutable() -> None:
-    state = copy.deepcopy(_state())
-    decision = next(
-        decision
-        for decision in state["owner_decisions"]
-        if decision["id"]
-        == documentation_state.FL1_I2_FINAL_CONVERGENCE_DECISION_ID
-    )
-    assert decision["rejected_head"] == documentation_state.FL1_I2_FINAL_REJECTED_HEAD
-    assert decision["thread_ids"] == list(documentation_state.FL1_I2_FINAL_THREAD_IDS)
-    decision["one_terminal_followup_review_authorized"] = False
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_final_convergence_binding_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_canonical_plan_status_or_authority_contradiction_fails_closed(
-    tmp_path: Path,
-) -> None:
-    copied_root = _copy_docs_root(tmp_path)
-    plan = (
-        copied_root
-        / "docs"
-        / "plans"
-        / "phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
-    )
-    plan.write_text(
-        plan.read_text(encoding="utf-8").replace(
-            "implementation_authorized=true",
-            "implementation_authorized=false",
-            1,
-        ),
-        encoding="utf-8",
-    )
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_canonical_plan_current_truth",
-    ):
-        documentation_state.validate_roadmaps(_state(), root=copied_root)
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("previous_phase_implementation_evidence_head", "f" * 40),
-        ("previous_phase_implementation_evidence_tree", "f" * 40),
-        ("fl1_i2_implementation_evidence_head", "f" * 40),
-        ("fl1_i2_implementation_evidence_tree", "f" * 40),
-        ("fl1_i2_superseded_evidence_head", "f" * 40),
-        ("fl1_i2_bounded_correction_review_id", 0),
-        ("fl1_i2_bounded_correction_authorized", False),
-        ("fl1_i2_one_followup_codex_review_authorized", False),
-        ("fl1_i2_final_convergence_rejected_head", "f" * 40),
-        ("fl1_i2_final_convergence_review_id", 0),
-        ("fl1_i2_final_convergence_correction_authorized", False),
-        ("fl1_i2_one_terminal_followup_review_authorized", False),
-        ("machine_verifiable_ci", True),
-        ("github_checks_observed", 1),
-        ("ci_authority", True),
-        ("preflight_remote_sync_is_contract_proof", True),
-    ],
-)
-def test_frozen_evidence_and_ci_boundary_fail_closed(field: str, value: object) -> None:
-    state = copy.deepcopy(_state())
-    state["protected_evidence"][field] = value
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_protected_evidence_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_terminal_finding_tamper_fails_closed() -> None:
-    state = copy.deepcopy(_state())
-    state["terminal_review_findings"][0]["classification"] = "closed"
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fl1_i2_terminal_review_findings_invalid",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_public_state_rejects_private_path() -> None:
-    state = copy.deepcopy(_state())
-    state["owner_decisions"].append(
-        {"id": "unsafe", "decision": "private C:\\Users\\person\\source"}
-    )
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="public_state_redaction_failure",
-    ):
-        documentation_state.validate_state(state)
-
-
-def test_plan_contains_canonical_architecture_threat_model_and_full_route() -> None:
-    plan = (
-        ROOT
-        / "docs"
-        / "plans"
-        / "phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md"
-    ).read_text(encoding="utf-8")
-    for concept in (
-        "Canonical Architecture Convergence",
-        "backend/app/utils/cloud_files.py",
-        "backend/app/services/source_ingestion_gate.py",
-        "legacy `scan_and_import(dry_run=True)`",
-        "OS or kernel compromise",
-        "SCV2-FL1-I2 - Pre-Real Hardening",
-        "SCV2-FL1-I3 - Bounded Real-Source Inventory Canary",
-        "SCV2-FL1-I4 - Full-Library Read-Only Inventory",
-        "SCV2-FL1-E1 - Isolated Import Rehearsal",
-        "SCV2-FL1-E2 - Local Classification And AI Tagging",
-        "SCV2-FL1-V1 - Product And Owner Validation",
-    ):
-        assert concept in plan
-    assert "same verified, no-follow, identity-bound directory handle" in plan
-    assert "path-based `os.scandir()` plus a post-check cannot close this gate" in plan
-    assert (
-        "SCV2_FL1_I2_PR146_FINAL_OWNER_ADJUDICATED_CORRECTION_READY_FOR_"
-        "DIRECT_OWNER_MERGE_AUDIT"
-    ) in plan
-
-
-def test_final_owner_adjudication_is_exact_and_forbids_rereview() -> None:
-    protected = _state()["protected_evidence"]
-    assert protected["fl1_i2_final_owner_review_id"] == 4963026941
-    assert protected["fl1_i2_final_owner_rejected_head"] == (
-        "d4478660df1f11b1c8d3ceba1af70f8635542a9d"
-    )
-    assert protected["fl1_i2_final_owner_required_fix_count"] == 4
-    assert protected["fl1_i2_final_owner_safe_downgrade_count"] == 2
-    assert protected["fl1_i2_final_owner_deferred_count"] == 2
-    assert protected["fl1_i2_additional_codex_review_authorized"] is False
+def test_documentation_checker_returns_current_phase_result() -> None:
+    result = documentation_state.check_documentation_state(root=ROOT)
+    assert result["passed"] is True
+    assert result["phase_id"] == "SCV2-PX1"
+    assert result["current_status"] == _state()["current_status"]
