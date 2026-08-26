@@ -82,7 +82,7 @@ def execution_environment_policy_fingerprint() -> str:
             ),
             "dotenv_skipped": True,
             "violet_environment": "test",
-            "test_database_name": "scv2_px1_task_temp",
+            "test_database_policy": "validation_temp_root/px1-validation.sqlite3",
             "storage_root_policy": "validation_temp_root/runtime-storage",
             "existing_app_storage_access": False,
             "dynamic_loader_policy_due_gate": (
@@ -90,6 +90,27 @@ def execution_environment_policy_fingerprint() -> str:
             ),
         }
     )
+
+
+def canonical_px1_validation_environment(
+    base_environment: Mapping[str, str],
+    *,
+    validation_temp_root: Path,
+) -> dict[str, str]:
+    environment = dict(base_environment)
+    runtime_storage = validation_temp_root / "runtime-storage"
+    validation_database = validation_temp_root / "px1-validation.sqlite3"
+    environment.update(
+        {
+            "VIOLET_SKIP_DOTENV": "1",
+            "VIOLET_ENV": "test",
+            "POSTGRES_DB": "scv2_px1_task_temp",
+            "TEST_DATABASE_URL": f"sqlite:///{validation_database.as_posix()}",
+            "VIOLET_STORAGE_ROOT": os.fspath(runtime_storage),
+            "VIOLET_TEST_STORAGE_ROOT": os.fspath(runtime_storage),
+        }
+    )
+    return environment
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -346,20 +367,12 @@ def create_same_head_validation_receipt(
         validation_temp = create_owned_validation_temp_root()
     except ConfinementError as exc:
         raise Px1ValidationReceiptError("px1_receipt_temp_root_unavailable") from exc
-    environment = canonical_validation_environment(
-        trusted_git_executable=git.path,
+    environment = canonical_px1_validation_environment(
+        canonical_validation_environment(
+            trusted_git_executable=git.path,
+            validation_temp_root=validation_temp.path,
+        ),
         validation_temp_root=validation_temp.path,
-    )
-    runtime_storage = validation_temp.path / "runtime-storage"
-    environment.update(
-        {
-            "VIOLET_SKIP_DOTENV": "1",
-            "VIOLET_ENV": "test",
-            "POSTGRES_DB": "scv2_px1_task_temp",
-            "TEST_DATABASE_URL": "",
-            "VIOLET_STORAGE_ROOT": os.fspath(runtime_storage),
-            "VIOLET_TEST_STORAGE_ROOT": os.fspath(runtime_storage),
-        }
     )
     command = canonical_focused_test_command(approved_python)
     try:

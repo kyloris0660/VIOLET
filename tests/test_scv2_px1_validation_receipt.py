@@ -13,6 +13,7 @@ from scripts.scv2_px1_validation_receipt import (
     Px1ValidationReceiptError,
     build_receipt_payload,
     canonical_focused_test_command,
+    canonical_px1_validation_environment,
     validate_canonical_focused_command,
     validate_receipt_payload,
 )
@@ -67,6 +68,25 @@ def test_canonical_command_covers_px1_and_compatibility_suites() -> None:
     assert "tests/test_scv2_px1_pixiv_metadata_consolidation.py" in command
     assert "tests/test_pixiv_metadata_ingestion_service.py" in command
     assert "tests/test_phase45_sc1_source_concept_resolver.py" in command
+
+
+def test_px1_validation_environment_uses_task_owned_sqlite_identity(
+    tmp_path: Path,
+) -> None:
+    base = {"PATH": "synthetic-path"}
+    environment = canonical_px1_validation_environment(
+        base,
+        validation_temp_root=tmp_path,
+    )
+
+    assert base == {"PATH": "synthetic-path"}
+    assert environment["VIOLET_ENV"] == "test"
+    assert environment["POSTGRES_DB"] == "scv2_px1_task_temp"
+    assert environment["TEST_DATABASE_URL"] == (
+        f"sqlite:///{(tmp_path / 'px1-validation.sqlite3').as_posix()}"
+    )
+    assert Path(environment["VIOLET_STORAGE_ROOT"]).parent == tmp_path
+    assert environment["VIOLET_TEST_STORAGE_ROOT"] == environment["VIOLET_STORAGE_ROOT"]
 
 
 def test_receipt_and_contract_imports_do_not_initialize_app_storage() -> None:
