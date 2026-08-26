@@ -42,7 +42,10 @@ def test_current_mainline_roadmap_persists_px1_boundary_and_fixed_route() -> Non
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "current_status=scv2_px1_implementation_in_progress" in text
+    assert (
+        "current_status=SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT"
+        in text
+    )
     assert "scv2_px1_pixiv_metadata_consolidation_contract_v1" in text
     assert "machine_verifiable_ci=false" in text
     state = json.loads(_read("docs/state/current-phase.json"))

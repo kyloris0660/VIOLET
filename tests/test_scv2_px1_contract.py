@@ -111,6 +111,10 @@ def test_contract_registered_and_rebuilds_aggregate_signal_and_receipt(
     summary, paths = _evidence(tmp_path)
     contract = get_contract("scv2_px1_pixiv_metadata_consolidation_contract_v1")
     assert contract.custom_checks == ("scv2_px1_pixiv_metadata_consolidation",)
+    assert all("python -B" in command for command in contract.required_validation_commands)
+    assert contract.required_validation_commands[-1] == (
+        "python -B -m pytest tests/ --ignore tests/e2e"
+    )
     result = check_phase_contract(
         contract.contract_id,
         summary,

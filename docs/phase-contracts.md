@@ -82,10 +82,10 @@ gates.
 
 Current PX1 projection:
 
-- `status=scv2_px1_implementation_in_progress`
+- `status=SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT`
 - `contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1`
 - `public_schema=violet.scv2-px1-pixiv-metadata-summary.v1`
-- `target_met=false`
+- `target_met=true`
 - `safe_to_merge=false`
 - `route_approved=false`
 - `owner_accepted=false`
@@ -116,9 +116,9 @@ The executable PX1 contract does not trust a caller's positive flag. It:
 The canonical local commands are:
 
 ```powershell
-& "$PY" scripts/run_scv2_px1_pixiv_metadata_vertical_slice.py --evidence-dir <task-owned-temp>
-& "$PY" scripts/create_scv2_px1_validation_receipt.py --evidence-dir <task-owned-temp>
-& "$PY" scripts/check_phase_contract.py --contract scv2_px1_pixiv_metadata_consolidation_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python "$PY" --px1-evidence <task-owned-temp>
+& "$PY" -B scripts/run_scv2_px1_pixiv_metadata_vertical_slice.py --evidence-dir <task-owned-temp>
+& "$PY" -B scripts/create_scv2_px1_validation_receipt.py --evidence-dir <task-owned-temp>
+& "$PY" -B scripts/check_phase_contract.py --contract scv2_px1_pixiv_metadata_consolidation_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python "$PY" --px1-evidence <task-owned-temp>
 ```
 
 PX1 allows exactly two newly created task-owned temporary SQLite databases

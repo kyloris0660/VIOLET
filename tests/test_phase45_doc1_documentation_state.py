@@ -50,8 +50,10 @@ def test_px1_state_and_active_docs_validate() -> None:
     assert state["previous_phase_status"] == (
         "owner_adjudicated_pr146_merged_with_deferred_due_gates_preserved"
     )
-    assert state["current_status"] == "scv2_px1_implementation_in_progress"
-    assert state["target_met"] is False
+    assert state["current_status"] == (
+        "SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT"
+    )
+    assert state["target_met"] is True
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
     assert state["next_phase_started"] is False

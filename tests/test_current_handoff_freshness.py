@@ -101,7 +101,7 @@ def test_status_or_owner_authority_mutation_fails_closed(
 
 def test_target_met_requires_ready_status_and_verified_contract() -> None:
     state = copy.deepcopy(_state())
-    state["target_met"] = True
+    state["current_status"] = documentation_state.SCV2_PX1_IN_PROGRESS_STATUS
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="status_fields_conflict",
@@ -109,11 +109,14 @@ def test_target_met_requires_ready_status_and_verified_contract() -> None:
         documentation_state.validate_state(state)
 
     state = copy.deepcopy(_state())
-    state["current_status"] = documentation_state.SCV2_PX1_READY_STATUS
-    state["target_met"] = True
-    state["pipeline_contract"]["synthetic_vertical_slice_verified"] = True
-    state["pipeline_contract"]["deterministic_replay_verified"] = True
-    documentation_state.validate_state(state)
+    state["pipeline_contract"]["synthetic_vertical_slice_verified"] = False
+    with pytest.raises(
+        documentation_state.DocumentationStateError,
+        match="contract_projection",
+    ):
+        documentation_state.validate_state(state)
+
+    documentation_state.validate_state(copy.deepcopy(_state()))
 
 
 @pytest.mark.parametrize(

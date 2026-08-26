@@ -5,15 +5,15 @@
 ## Current Facts
 
 - Phase: `SCV2-PX1` - Pixiv Metadata Consolidation and Offline Vertical Slice.
-- Repository / PR: `kyloris0660/VIOLET` / Draft PR pending creation.
+- Repository / PR: `kyloris0660/VIOLET` / normal PR #147.
 - Branch: `codex/scv2-px1-pixiv-metadata-consolidation`.
 - Accepted mainline HEAD/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
-- Implementation evidence HEAD/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`; status: `px1_entry_truth_before_implementation_checkpoint`.
-- Status: `scv2_px1_implementation_in_progress`.
-- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
+- Implementation evidence HEAD/tree: `59349c76ecd086b535ad7cb4c5e14236b9fb241c` / `260bedf1fddfc0c5329f0defc5fdb14f1e0d195b`; status: `same_head_local_receipt_and_contract_passed_with_carry_forward_limited_to_final_governance_and_test_projection`.
+- Status: `SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT`.
+- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
 - Manual acceptance: `pending_scv2_px1_exact_head_owner_audit`; `next_phase_started=false`.
 - Contract: `scv2_px1_pixiv_metadata_consolidation_contract_v1`; public schema: `violet.scv2-px1-pixiv-metadata-summary.v1`.
-- Synthetic vertical slice / deterministic replay verified: `false` / `false`.
+- Synthetic vertical slice / deterministic replay verified: `true` / `true`.
 - Contract evidence remains a local operator receipt; it is neither CI authority nor owner acceptance.
 
 ## PR #146 Merge Projection
@@ -51,6 +51,10 @@
 - `scv2_fl1_i2_pr146_merge_projection`: `accepted_head_is_merge_parent_and_accepted_tree_equals_merge_tree` - `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc`.
 - `scv2_px1_remote_sync_preflight`: `trusted_origin_main_exact_expected_merge_with_no_later_commits` - `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
 - `scv2_px1_governance_entry`: `implementation_authorized_synthetic_offline_only_route_entered_with_all_data_plane_authorities_false`.
+- `scv2_px1_vertical_slice_and_signal_projection`: `nine_deterministic_work_page_aggregates_and_fifteen_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions` - `7220f9f57fd577a0acc683cfaf8b7b74817fcdfa5cfb499a1d780c34d38bb077`.
+- `scv2_px1_same_head_receipt_and_contract`: `local_operator_receipt_passed_295_focused_tests_and_executable_contract_independently_rebuilt_fixture_aggregate_signal_and_authority_facts` - `59349c76ecd086b535ad7cb4c5e14236b9fb241c`.
+- `scv2_px1_full_non_e2e_compatibility`: `4100_passed_22_skipped_two_stale_current_route_assertions_corrected_and_targeted_2_passed_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main`.
+- `scv2_px1_normal_pr_created`: `pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge`.
 
 ## Allowed / Forbidden
 
@@ -59,7 +63,7 @@
 
 ## Next Action
 
-- Required checkpoint: `complete PX1 implementation and same-head executable evidence, then stop at exact normal-PR owner audit without merge or PX2`.
+- Required checkpoint: `project owner audits the exact Ready PR #147 head and either requests one bounded correction or separately authorizes merge; no merge or PX2 authority is implied`.
 
 ## Durable Links
 

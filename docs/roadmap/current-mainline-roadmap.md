@@ -24,10 +24,10 @@ were fixed or adjudicated away.
 ## Current Phase And Stop Boundary
 
 ```text
-current_status=scv2_px1_implementation_in_progress
+current_status=SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT
 contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1
 public_schema=violet.scv2-px1-pixiv-metadata-summary.v1
-target_met=false
+target_met=true
 safe_to_merge=false
 route_approved=false
 owner_accepted=false
@@ -70,7 +70,7 @@ Entity promotion, and provider-derived `media_tags` truth remain absent.
 ## Fixed Three-Phase Route
 
 1. `SCV2-PX1` — Pixiv metadata consolidation and runnable offline vertical
-   slice. In progress.
+   slice. Implementation complete and pending exact-head owner audit in PR #147.
 2. `SCV2-PX2` — deterministic Pixiv metadata clustering, identity, candidate
    grouping, and explanations. Not started.
 3. `SCV2-PX3` — persistence, API/UI, and bounded manual-acceptance canary. Not

@@ -455,7 +455,8 @@ def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     ).read_text(encoding="utf-8")
     workflow = (ROOT / "docs" / "test-workflow.md").read_text(encoding="utf-8")
 
-    assert "SCV2-FL1" in handoff
+    assert current_state["phase_id"] in handoff
+    assert "SCV2-PX1" in handoff
     if current_state["pr_number"] is None:
         assert "PR pending creation" in handoff
     else:
@@ -466,7 +467,7 @@ def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     assert current_state["active_blocker"]["code"] in handoff
     assert "Phase 4.5-SCV2-A1" in archived_roadmap
     assert "ChatGPT review pack" in workflow
-    assert "Entity, EntityAlias, confirmed assignment, user truth" in handoff
+    assert "provider metadata, SourceConcept, or model output as Entity truth" in roadmap
 
 
 def test_review_pack_policy_document_includes_required_categories() -> None:

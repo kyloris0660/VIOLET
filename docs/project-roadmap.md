@@ -24,10 +24,10 @@ future due gates remain in current state and handoff.
 Current projection:
 
 ```text
-current_status=scv2_px1_implementation_in_progress
+current_status=SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT
 contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1
 public_schema=violet.scv2-px1-pixiv-metadata-summary.v1
-target_met=false
+target_met=true
 safe_to_merge=false
 route_approved=false
 merge_authorized=false

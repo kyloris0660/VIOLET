@@ -4,15 +4,15 @@
   "phase_title": "Pixiv Metadata Consolidation and Offline Vertical Slice",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-px1-pixiv-metadata-consolidation",
-  "pr_number": null,
-  "draft": true,
+  "pr_number": 147,
+  "draft": false,
   "accepted_mainline_base": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
   "accepted_mainline_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
-  "implementation_evidence_head": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
-  "implementation_evidence_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
-  "implementation_evidence_status": "px1_entry_truth_before_implementation_checkpoint",
-  "current_status": "scv2_px1_implementation_in_progress",
-  "target_met": false,
+  "implementation_evidence_head": "59349c76ecd086b535ad7cb4c5e14236b9fb241c",
+  "implementation_evidence_tree": "260bedf1fddfc0c5329f0defc5fdb14f1e0d195b",
+  "implementation_evidence_status": "same_head_local_receipt_and_contract_passed_with_carry_forward_limited_to_final_governance_and_test_projection",
+  "current_status": "SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT",
+  "target_met": true,
   "safe_to_merge": false,
   "route_approved": false,
   "route_scope": "SCV2-PX1 repository-owned synthetic and offline Pixiv metadata consolidation only; no real provider, source, existing database, media, UI, import, or production execution",
@@ -42,8 +42,8 @@
   "pipeline_contract": {
     "contract_id": "scv2_px1_pixiv_metadata_consolidation_contract_v1",
     "public_schema": "violet.scv2-px1-pixiv-metadata-summary.v1",
-    "synthetic_vertical_slice_verified": false,
-    "deterministic_replay_verified": false,
+    "synthetic_vertical_slice_verified": true,
+    "deterministic_replay_verified": true,
     "machine_verifiable_ci": false,
     "owner_authority_machine_verifiable": false
   },
@@ -85,6 +85,24 @@
     {
       "id": "scv2_px1_governance_entry",
       "result": "implementation_authorized_synthetic_offline_only_route_entered_with_all_data_plane_authorities_false"
+    },
+    {
+      "id": "scv2_px1_vertical_slice_and_signal_projection",
+      "result": "nine_deterministic_work_page_aggregates_and_fifteen_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions",
+      "fingerprint": "7220f9f57fd577a0acc683cfaf8b7b74817fcdfa5cfb499a1d780c34d38bb077"
+    },
+    {
+      "id": "scv2_px1_same_head_receipt_and_contract",
+      "result": "local_operator_receipt_passed_295_focused_tests_and_executable_contract_independently_rebuilt_fixture_aggregate_signal_and_authority_facts",
+      "fingerprint": "59349c76ecd086b535ad7cb4c5e14236b9fb241c"
+    },
+    {
+      "id": "scv2_px1_full_non_e2e_compatibility",
+      "result": "4100_passed_22_skipped_two_stale_current_route_assertions_corrected_and_targeted_2_passed_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main"
+    },
+    {
+      "id": "scv2_px1_normal_pr_created",
+      "result": "pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge"
     }
   ],
   "active_blocker": {
@@ -141,6 +159,27 @@
       {"thread_id": "PRRT_kwDOSTBMB86ceze9", "comment_id": 3863329711, "title": "Reject negative byte accounting", "due_gate": "FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
       {"thread_id": "PRRT_kwDOSTBMB86cezfD", "comment_id": 3863329720, "title": "Prevent failed receipts from claiming completion", "due_gate": "FL1_I2_FAILED_RECEIPT_COMPLETION_GATE", "status": "deferred_exact_gate_not_closed_in_px1"}
     ],
+    "px1_fixture_fingerprint": "afb5659ea88ea6f526130cc2839d8c0632a1c79ea8d1afd11afef02ef6e6b585",
+    "px1_public_summary_fingerprint": "bd281d91363e349e73bb89dac974aa648440ae0ea48f27d34ff1a0a78b5777bb",
+    "px1_canonical_projection_fingerprint": "7220f9f57fd577a0acc683cfaf8b7b74817fcdfa5cfb499a1d780c34d38bb077",
+    "px1_aggregate_count": 9,
+    "px1_signal_count": 15,
+    "px1_name_only_identity_anchor_count": 0,
+    "px1_cross_context_union_count": 0,
+    "px1_local_receipt_head": "59349c76ecd086b535ad7cb4c5e14236b9fb241c",
+    "px1_local_receipt_tree": "260bedf1fddfc0c5329f0defc5fdb14f1e0d195b",
+    "px1_local_receipt_command_fingerprint": "ae22db3507b8226521bb9215fe075a73f39a83a90dd7ab5d6ae4eb1d704a918b",
+    "px1_local_receipt_stdout_fingerprint": "5666c3ec9b060a2bd706b6b3fa2d66f5a578393d64edb7183fb6d4fc78792b07",
+    "full_non_e2e_result": {
+      "passed": 4100,
+      "skipped": 22,
+      "failed": 3,
+      "warnings": 15,
+      "duration_seconds": 415.73,
+      "stale_current_route_assertions_corrected": 2,
+      "targeted_correction_tests_passed": 2,
+      "exact_base_missing_original_ai_execution_evidence_failures": 1
+    },
     "machine_verifiable_ci": false,
     "owner_accepted": false,
     "safe_to_merge": false,
@@ -154,7 +193,7 @@
     "primary_user_untracked_name_digest_before": "976193fefc88827a6f6f61709cdf949a80a3e7864f5eb34d6d2355e668e13995"
   },
   "public_state_boundary": "public_safe_synthetic_implementation_no_private_proof_payloads_or_paths",
-  "next_required_checkpoint": "complete PX1 implementation and same-head executable evidence, then stop at exact normal-PR owner audit without merge or PX2",
+  "next_required_checkpoint": "project owner audits the exact Ready PR #147 head and either requests one bounded correction or separately authorizes merge; no merge or PX2 authority is implied",
   "durable_links": [
     {"label": "Current mainline roadmap", "path": "docs/roadmap/current-mainline-roadmap.md"},
     {"label": "Project roadmap entrypoint", "path": "docs/project-roadmap.md"},
