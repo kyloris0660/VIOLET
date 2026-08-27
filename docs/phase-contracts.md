@@ -82,10 +82,10 @@ gates.
 
 Current PX1 projection:
 
-- `status=scv2_px1_implementation_in_progress`
+- `status=SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT`
 - `contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1`
 - `public_schema=violet.scv2-px1-pixiv-metadata-summary.v1`
-- `target_met=false`
+- `target_met=true`
 - `safe_to_merge=false`
 - `route_approved=false`
 - `owner_accepted=false`
@@ -94,7 +94,22 @@ Current PX1 projection:
 - `real_provider_authorized=false`
 - `full_import_authorized=false`
 - `production_authorized=false`
-- blocker: `scv2_px1_bounded_correction_in_progress`
+- blocker: `pending_scv2_px1_final_owner_merge_audit`
+
+Corrected implementation evidence is frozen at HEAD
+`ea97f0c3dcdc83d7d08eb3e31683a84001a08664`, tree
+`2e35fb0a98b5a6ee23c4685d3cd764d13c85c910`. Its positive local-operator
+receipt reran the canonical 360 focused tests with clean before/after identity.
+Only the fixed five-document governance allowlist may carry forward from this
+evidence checkpoint; any backend, runner, contract, test, configuration, or
+untracked behavior change invalidates completion.
+
+The reconstructed synthetic projection contains 14 work/page aggregates and
+40 SourceConcept-compatible signals. Canonical, replay, and reversed-input
+projections share fingerprint
+`c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1`.
+The PX2 consumer artifacts round-trip through canonical JSON with stable
+aggregate and signal-bundle fingerprints and exclude database row identity.
 
 The executable PX1 contract does not trust a caller's positive flag. It:
 
@@ -134,8 +149,8 @@ server/browser/E2E, SourceConcept materialization, Entity truth promotion,
 production, merge, and PX2.
 
 The near-term route is exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`.
-Safety checks are internal gates rather than new phases. `phase-4.5-PX1 is
-historical`; its report and runner remain historical evidence/compatibility
+Safety checks are internal gates rather than new phases. `phase-4.5-PX1` is
+historical; its report and runner remain historical evidence/compatibility
 and cannot become SCV2-PX1 production authority.
 
 PX2 consumes only canonical aggregate and signal-bundle artifacts for

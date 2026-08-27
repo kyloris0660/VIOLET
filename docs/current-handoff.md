@@ -8,12 +8,12 @@
 - Repository / PR: `kyloris0660/VIOLET` / normal PR #147.
 - Branch: `codex/scv2-px1-pixiv-metadata-consolidation`.
 - Accepted mainline HEAD/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
-- Implementation evidence HEAD/tree: `59349c76ecd086b535ad7cb4c5e14236b9fb241c` / `260bedf1fddfc0c5329f0defc5fdb14f1e0d195b`; status: `prior_px1_receipt_superseded_by_owner_adjudicated_bounded_correction_in_progress`.
-- Status: `scv2_px1_implementation_in_progress`.
-- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- Manual acceptance: `owner_adjudicated_bounded_correction_in_progress`; `next_phase_started=false`.
+- Implementation evidence HEAD/tree: `ea97f0c3dcdc83d7d08eb3e31683a84001a08664` / `2e35fb0a98b5a6ee23c4685d3cd764d13c85c910`; status: `corrected_same_head_receipt_positive_with_fixed_docs_only_carry_forward`.
+- Status: `SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT`.
+- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
+- Manual acceptance: `pending_scv2_px1_final_owner_merge_audit`; `next_phase_started=false`.
 - Contract: `scv2_px1_pixiv_metadata_consolidation_contract_v1`; public schema: `violet.scv2-px1-pixiv-metadata-summary.v1`.
-- Synthetic vertical slice / deterministic replay verified: `false` / `false`.
+- Synthetic vertical slice / deterministic replay verified: `true` / `true`.
 - Contract evidence remains a local operator receipt; it is neither CI authority nor owner acceptance.
 
 ## PR #146 Merge Projection
@@ -34,8 +34,8 @@
 
 ## Current Gate And Authority Boundary
 
-- Gate: `scv2_px1_bounded_correction_in_progress` (Owner-adjudicated bounded correction of PR #147 identity, replay, work consistency, public projection, PX2 consumer, and exact-evidence invariants).
-- Resolution: Complete the bounded correction on the existing branch, rerun the focused and full non-E2E suites, issue a corrected same-HEAD receipt, then project only fixed governance documents to the final owner merge audit checkpoint.
+- Gate: `pending_scv2_px1_final_owner_merge_audit` (Final owner merge audit of corrected PR #147 exact HEAD; automated evidence cannot grant owner acceptance, safe-to-merge, or merge authority).
+- Resolution: Owner audits the exact PR head and either issues a separate merge decision or identifies one final destructive, privacy, authority, data-integrity, deterministic-evidence, or current-functionality issue for adjudication.
 - `owner_accepted=false`; `safe_to_merge=false`; `merge_authorized=false`; `px2_started=false`.
 - `real_provider_authorized=false`; `real_source_authorized=false`; `full_import_authorized=false`; `production_authorized=false`.
 - External data-plane network, existing DB, real source, media download, and production operation counts: `0/0/0/0/0`.
@@ -51,9 +51,9 @@
 - `scv2_fl1_i2_pr146_merge_projection`: `accepted_head_is_merge_parent_and_accepted_tree_equals_merge_tree` - `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc`.
 - `scv2_px1_remote_sync_preflight`: `trusted_origin_main_exact_expected_merge_with_no_later_commits` - `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
 - `scv2_px1_governance_entry`: `implementation_authorized_synthetic_offline_only_route_entered_with_all_data_plane_authorities_false`.
-- `scv2_px1_vertical_slice_and_signal_projection`: `nine_deterministic_work_page_aggregates_and_fifteen_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions` - `7220f9f57fd577a0acc683cfaf8b7b74817fcdfa5cfb499a1d780c34d38bb077`.
-- `scv2_px1_same_head_receipt_and_contract`: `local_operator_receipt_passed_295_focused_tests_and_executable_contract_independently_rebuilt_fixture_aggregate_signal_and_authority_facts` - `59349c76ecd086b535ad7cb4c5e14236b9fb241c`.
-- `scv2_px1_full_non_e2e_compatibility`: `4100_passed_22_skipped_two_stale_current_route_assertions_corrected_and_targeted_2_passed_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main`.
+- `scv2_px1_vertical_slice_and_signal_projection`: `fourteen_deterministic_work_page_aggregates_and_forty_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions` - `c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1`.
+- `scv2_px1_same_head_receipt_and_contract`: `corrected_local_operator_receipt_passed_360_focused_tests_on_exact_implementation_head_and_executable_contract_independently_rebuilds_fixture_aggregate_signal_px2_consumer_and_authority_facts` - `ea97f0c3dcdc83d7d08eb3e31683a84001a08664`.
+- `scv2_px1_full_non_e2e_compatibility`: `4167_passed_22_skipped_two_failures_one_owner_superseded_creator_identity_assertion_corrected_with_125_targeted_tests_passed_and_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main`.
 - `scv2_px1_normal_pr_created`: `pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge`.
 
 ## Allowed / Forbidden
@@ -63,7 +63,7 @@
 
 ## Next Action
 
-- Required checkpoint: `finish the owner-adjudicated bounded correction, rerun exact-head synthetic and compatibility evidence, and stop at final owner merge audit without merge or PX2 authority`.
+- Required checkpoint: `final owner audit of the exact corrected PR head followed only by a separate merge decision or adjudication of one final destructive current-functionality issue; do not merge or start PX2 in this task`.
 
 ## Durable Links
 

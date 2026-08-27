@@ -24,10 +24,10 @@ were fixed or adjudicated away.
 ## Current Phase And Stop Boundary
 
 ```text
-current_status=scv2_px1_implementation_in_progress
+current_status=SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT
 contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1
 public_schema=violet.scv2-px1-pixiv-metadata-summary.v1
-target_met=false
+target_met=true
 safe_to_merge=false
 route_approved=false
 owner_accepted=false
@@ -37,7 +37,7 @@ real_provider_authorized=false
 full_import_authorized=false
 production_authorized=false
 machine_verifiable_ci=false
-active_blocker=scv2_px1_bounded_correction_in_progress
+active_blocker=pending_scv2_px1_final_owner_merge_audit
 ```
 
 PX1 is an actual implementation phase, but its data plane is restricted to new
@@ -70,8 +70,8 @@ Entity promotion, and provider-derived `media_tags` truth remain absent.
 ## Fixed Three-Phase Route
 
 1. `SCV2-PX1` — Pixiv metadata consolidation and runnable offline vertical
-   slice. The single owner-adjudicated bounded correction is in progress on
-   existing PR #147.
+   slice. The single owner-adjudicated bounded correction is complete on
+   existing PR #147 and stops at final owner merge audit.
 2. `SCV2-PX2` — deterministic clustering, identity, candidate explanation,
    ambiguous queue, controlled sample evaluation, and a persistable cluster
    result. Not started.
@@ -118,6 +118,14 @@ deterministic replay, executable contract re-derivation, privacy scans, tracked
 JSON parsing, diff checks, and one complete non-E2E suite. Server, browser,
 E2E, gallery-dl network, Pixiv network, real library, and production tests are
 forbidden.
+
+The corrected implementation checkpoint is HEAD
+`ea97f0c3dcdc83d7d08eb3e31683a84001a08664`, tree
+`2e35fb0a98b5a6ee23c4685d3cd764d13c85c910`. Its local receipt passed the
+canonical 360 focused tests with clean before/after identity. The synthetic
+projection contains 14 aggregates and 40 signals; canonical replay and reversed
+input share fingerprint
+`c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1`.
 
 ## Remote Sync Preflight Policy
 

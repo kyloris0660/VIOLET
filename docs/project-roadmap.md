@@ -24,24 +24,26 @@ future due gates remain in current state and handoff.
 Current projection:
 
 ```text
-current_status=scv2_px1_implementation_in_progress
+current_status=SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT
 contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1
 public_schema=violet.scv2-px1-pixiv-metadata-summary.v1
-target_met=false
+target_met=true
 safe_to_merge=false
 route_approved=false
 merge_authorized=false
 real_source_authorized=false
 real_provider_authorized=false
 production_authorized=false
-active_blocker=scv2_px1_bounded_correction_in_progress
+active_blocker=pending_scv2_px1_final_owner_merge_audit
 ```
 
 ## Fixed Near-Term Route
 
 1. `SCV2-PX1` — consolidate the existing Pixiv metadata ingestion, source
    metadata, deterministic work/page aggregate, and SourceConcept signal input
-   into one repository-owned offline synthetic vertical slice.
+   into one repository-owned offline synthetic vertical slice. Its single
+   owner-adjudicated bounded correction is complete on PR #147 and awaits only
+   final owner merge audit.
 2. `SCV2-PX2` — consume the PX1 artifacts for deterministic clustering,
    identity, candidate explanation, an ambiguous queue, controlled sample
    evaluation, and a persistable cluster result. PX2 is not started.
@@ -50,7 +52,7 @@ active_blocker=scv2_px1_bounded_correction_in_progress
    rollback, and the final full-library import checkpoint. PX3 is not started.
 
 Safety work is a gate inside these phases and does not create PX1A, PX1B,
-PX1-pre, or PX1-hardening phases. `phase-4.5-PX1 is historical`; its scripts and
+PX1-pre, or PX1-hardening phases. `phase-4.5-PX1` is historical; its scripts and
 reports remain historical orchestration/evidence and are not renamed or
 promoted into SCV2-PX1 authority.
 
@@ -77,6 +79,10 @@ server/browser/E2E validation, or production work.
   provider payload, user database identity, or database row ID.
 - The single-command runner creates only task-owned temporary databases and
   blocks network/subprocess activity inside the slice.
+- The corrected same-HEAD receipt binds implementation HEAD
+  `ea97f0c3dcdc83d7d08eb3e31683a84001a08664`, tree
+  `2e35fb0a98b5a6ee23c4685d3cd764d13c85c910`, and 360 canonical focused tests;
+  the vertical slice deterministically projects 14 aggregates and 40 signals.
 - Local receipt and contract evidence remain local operator evidence:
   `machine_verifiable_ci=false`, `owner_accepted=false`, and
   `safe_to_merge=false`.

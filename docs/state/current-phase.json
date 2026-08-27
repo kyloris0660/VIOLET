@@ -8,18 +8,18 @@
   "draft": false,
   "accepted_mainline_base": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
   "accepted_mainline_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
-  "implementation_evidence_head": "59349c76ecd086b535ad7cb4c5e14236b9fb241c",
-  "implementation_evidence_tree": "260bedf1fddfc0c5329f0defc5fdb14f1e0d195b",
-  "implementation_evidence_status": "prior_px1_receipt_superseded_by_owner_adjudicated_bounded_correction_in_progress",
-  "current_status": "scv2_px1_implementation_in_progress",
-  "target_met": false,
+  "implementation_evidence_head": "ea97f0c3dcdc83d7d08eb3e31683a84001a08664",
+  "implementation_evidence_tree": "2e35fb0a98b5a6ee23c4685d3cd764d13c85c910",
+  "implementation_evidence_status": "corrected_same_head_receipt_positive_with_fixed_docs_only_carry_forward",
+  "current_status": "SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT",
+  "target_met": true,
   "safe_to_merge": false,
   "route_approved": false,
   "route_scope": "SCV2-PX1 repository-owned synthetic and offline Pixiv metadata consolidation only; no real provider, source, existing database, media, UI, import, or production execution",
   "planning_authorized": true,
   "planning_completed": true,
   "planning_approved": true,
-  "manual_acceptance_status": "owner_adjudicated_bounded_correction_in_progress",
+  "manual_acceptance_status": "pending_scv2_px1_final_owner_merge_audit",
   "next_phase_started": false,
   "previous_phase": "SCV2-FL1-I2",
   "previous_phase_status": "owner_adjudicated_pr146_merged_with_deferred_due_gates_preserved",
@@ -42,9 +42,9 @@
   "pipeline_contract": {
     "contract_id": "scv2_px1_pixiv_metadata_consolidation_contract_v1",
     "public_schema": "violet.scv2-px1-pixiv-metadata-summary.v1",
-    "synthetic_vertical_slice_verified": false,
-    "deterministic_replay_verified": false,
-    "px2_consumer_contract_frozen": false,
+    "synthetic_vertical_slice_verified": true,
+    "deterministic_replay_verified": true,
+    "px2_consumer_contract_frozen": true,
     "machine_verifiable_ci": false,
     "owner_authority_machine_verifiable": false
   },
@@ -89,17 +89,17 @@
     },
     {
       "id": "scv2_px1_vertical_slice_and_signal_projection",
-      "result": "nine_deterministic_work_page_aggregates_and_fifteen_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions",
-      "fingerprint": "7220f9f57fd577a0acc683cfaf8b7b74817fcdfa5cfb499a1d780c34d38bb077"
+      "result": "fourteen_deterministic_work_page_aggregates_and_forty_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions",
+      "fingerprint": "c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1"
     },
     {
       "id": "scv2_px1_same_head_receipt_and_contract",
-      "result": "local_operator_receipt_passed_295_focused_tests_and_executable_contract_independently_rebuilt_fixture_aggregate_signal_and_authority_facts",
-      "fingerprint": "59349c76ecd086b535ad7cb4c5e14236b9fb241c"
+      "result": "corrected_local_operator_receipt_passed_360_focused_tests_on_exact_implementation_head_and_executable_contract_independently_rebuilds_fixture_aggregate_signal_px2_consumer_and_authority_facts",
+      "fingerprint": "ea97f0c3dcdc83d7d08eb3e31683a84001a08664"
     },
     {
       "id": "scv2_px1_full_non_e2e_compatibility",
-      "result": "4100_passed_22_skipped_two_stale_current_route_assertions_corrected_and_targeted_2_passed_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main"
+      "result": "4167_passed_22_skipped_two_failures_one_owner_superseded_creator_identity_assertion_corrected_with_125_targeted_tests_passed_and_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main"
     },
     {
       "id": "scv2_px1_normal_pr_created",
@@ -107,9 +107,9 @@
     }
   ],
   "active_blocker": {
-    "code": "scv2_px1_bounded_correction_in_progress",
-    "scope": "Owner-adjudicated bounded correction of PR #147 identity, replay, work consistency, public projection, PX2 consumer, and exact-evidence invariants",
-    "resolution": "Complete the bounded correction on the existing branch, rerun the focused and full non-E2E suites, issue a corrected same-HEAD receipt, then project only fixed governance documents to the final owner merge audit checkpoint."
+    "code": "pending_scv2_px1_final_owner_merge_audit",
+    "scope": "Final owner merge audit of corrected PR #147 exact HEAD; automated evidence cannot grant owner acceptance, safe-to-merge, or merge authority",
+    "resolution": "Owner audits the exact PR head and either issues a separate merge decision or identifies one final destructive, privacy, authority, data-integrity, deterministic-evidence, or current-functionality issue for adjudication."
   },
   "owner_decisions": [
     {
@@ -164,25 +164,38 @@
       {"thread_id": "PRRT_kwDOSTBMB86ceze9", "comment_id": 3863329711, "title": "Reject negative byte accounting", "due_gate": "FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
       {"thread_id": "PRRT_kwDOSTBMB86cezfD", "comment_id": 3863329720, "title": "Prevent failed receipts from claiming completion", "due_gate": "FL1_I2_FAILED_RECEIPT_COMPLETION_GATE", "status": "deferred_exact_gate_not_closed_in_px1"}
     ],
-    "px1_fixture_fingerprint": "afb5659ea88ea6f526130cc2839d8c0632a1c79ea8d1afd11afef02ef6e6b585",
-    "px1_public_summary_fingerprint": "bd281d91363e349e73bb89dac974aa648440ae0ea48f27d34ff1a0a78b5777bb",
-    "px1_canonical_projection_fingerprint": "7220f9f57fd577a0acc683cfaf8b7b74817fcdfa5cfb499a1d780c34d38bb077",
-    "px1_aggregate_count": 9,
-    "px1_signal_count": 15,
+    "pr147_initial_codex_reviewed_head": "2fbc1ed395b8bd653437d46cd960977094c44cfe",
+    "pr147_initial_review_finding_count": 11,
+    "pr147_owner_required_correction_count": 10,
+    "pr147_deferred_workspace_confinement_count": 1,
+    "pr147_deferred_workspace_confinement_gate": "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE",
+    "px1_fixture_fingerprint": "0ac84922e66c0bb61c0dd2265fc024d6473c559a3855354bfcf635fc438c3e48",
+    "px1_public_summary_fingerprint": "6a7b509b6f63215d59488b19fcd3718b1f53bbdae3d4a1a0f69e853e3c2de73d",
+    "px1_public_summary_artifact_fingerprint": "7db0ff7b246baf457da79777981cd08abfa750a6fa2391a310416e3d1b333138",
+    "px1_canonical_projection_fingerprint": "c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1",
+    "px1_aggregate_artifact_fingerprint": "228dbf4e6888ec6ab69ac25ce6022f37463f54da500f67f4317c48fc09feb0de",
+    "px1_signal_bundle_artifact_fingerprint": "89b623188fd97c50e815d37d248222fd2b1fba576c7a85d90f2bd2bbc893a741",
+    "px1_operation_receipt_artifact_fingerprint": "7f5a4d30499c8b4e806d1bc77fb398b18e553a8bd230549be7c6fab7919213e2",
+    "px1_aggregate_count": 14,
+    "px1_signal_bundle_count": 14,
+    "px1_signal_count": 40,
+    "px1_strong_identity_anchor_count": 18,
     "px1_name_only_identity_anchor_count": 0,
     "px1_cross_context_union_count": 0,
-    "px1_local_receipt_head": "59349c76ecd086b535ad7cb4c5e14236b9fb241c",
-    "px1_local_receipt_tree": "260bedf1fddfc0c5329f0defc5fdb14f1e0d195b",
-    "px1_local_receipt_command_fingerprint": "ae22db3507b8226521bb9215fe075a73f39a83a90dd7ab5d6ae4eb1d704a918b",
-    "px1_local_receipt_stdout_fingerprint": "5666c3ec9b060a2bd706b6b3fa2d66f5a578393d64edb7183fb6d4fc78792b07",
+    "px1_local_receipt_head": "ea97f0c3dcdc83d7d08eb3e31683a84001a08664",
+    "px1_local_receipt_tree": "2e35fb0a98b5a6ee23c4685d3cd764d13c85c910",
+    "px1_local_receipt_command_fingerprint": "18ab6d88d4ee9eae175d5df7f6642864aa373640689d76a7df16c875c2010190",
+    "px1_local_receipt_stdout_fingerprint": "cb67022cd06d3ef496a628d1eeabd24689df20e98b68a15359899fdd0e329b12",
+    "px1_local_receipt_positive": true,
+    "px1_local_receipt_clean_before_after": true,
     "full_non_e2e_result": {
-      "passed": 4100,
+      "passed": 4167,
       "skipped": 22,
-      "failed": 3,
+      "failed": 2,
       "warnings": 15,
-      "duration_seconds": 415.73,
-      "stale_current_route_assertions_corrected": 2,
-      "targeted_correction_tests_passed": 2,
+      "duration_seconds": 553.50,
+      "owner_superseded_creator_identity_assertions_corrected": 1,
+      "targeted_correction_tests_passed": 125,
       "exact_base_missing_original_ai_execution_evidence_failures": 1
     },
     "machine_verifiable_ci": false,
@@ -198,7 +211,7 @@
     "primary_user_untracked_name_digest_before": "976193fefc88827a6f6f61709cdf949a80a3e7864f5eb34d6d2355e668e13995"
   },
   "public_state_boundary": "public_safe_synthetic_implementation_no_private_proof_payloads_or_paths",
-  "next_required_checkpoint": "finish the owner-adjudicated bounded correction, rerun exact-head synthetic and compatibility evidence, and stop at final owner merge audit without merge or PX2 authority",
+  "next_required_checkpoint": "final owner audit of the exact corrected PR head followed only by a separate merge decision or adjudication of one final destructive current-functionality issue; do not merge or start PX2 in this task",
   "durable_links": [
     {"label": "Current mainline roadmap", "path": "docs/roadmap/current-mainline-roadmap.md"},
     {"label": "Project roadmap entrypoint", "path": "docs/project-roadmap.md"},
