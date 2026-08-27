@@ -227,6 +227,7 @@ def validate_px1_evidence_carry_forward(
             "--name-only",
             "-z",
             f"{evidence_head}..{current_head}",
+            "--",
         )
     )
     if include_worktree:
