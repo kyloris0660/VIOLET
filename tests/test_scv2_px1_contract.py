@@ -95,6 +95,16 @@ def repository_proof(
         "repository_identity_snapshot",
         lambda *_args, **_kwargs: _repository(),
     )
+    monkeypatch.setattr(
+        scv2_px1_contract,
+        "_load_current_px1_evidence_binding",
+        lambda *_args, **_kwargs: ("a" * 40, "b" * 40),
+    )
+    monkeypatch.setattr(
+        scv2_px1_contract,
+        "validate_px1_evidence_carry_forward",
+        lambda *_args, **_kwargs: {"changed_paths": [], "docs_only": True},
+    )
 
 
 def _context(paths: Scv2Px1EvidencePaths) -> ContractRepositoryContext:
@@ -121,7 +131,7 @@ def test_contract_registered_and_rebuilds_aggregate_signal_and_receipt(
         repository_context=_context(paths),
     )
     assert result.passed, result.to_dict()
-    assert result.details["scv2_px1_projection"]["aggregate_count"] == 9
+    assert result.details["scv2_px1_projection"]["aggregate_count"] == 14
     assert result.details["scv2_px1_repository_binding"]["git_head"] == "a" * 40
     assert result.target_met_claimed is True
     assert result.safe_to_merge_claimed is False
@@ -207,6 +217,78 @@ def test_replay_false_positive_cannot_survive_independent_execution(tmp_path: Pa
     )
     assert not result.passed
     assert any("independent_replay_projection_mismatch" in error.code for error in result.errors)
+
+
+def test_px2_consumer_descriptor_mutation_fails_closed(tmp_path: Path) -> None:
+    summary, paths = _evidence(tmp_path)
+    forged = copy.deepcopy(summary)
+    forged["px2_consumer_contract"]["aggregate_artifact_fingerprint"] = "0" * 64
+    unsigned = dict(forged)
+    unsigned.pop("canonical_fingerprint")
+    forged["canonical_fingerprint"] = canonical_fingerprint(unsigned)
+    _write(paths.root / "public-summary.json", forged)
+    _write_receipt(paths.root)
+    result = check_phase_contract(
+        "scv2_px1_pixiv_metadata_consolidation_contract_v1",
+        forged,
+        repository_context=_context(paths),
+    )
+    assert not result.passed
+    assert any("px1_px2_consumer_contract_invalid" in error.code for error in result.errors)
+
+
+def test_px2_consumer_row_identity_injection_fails_closed(tmp_path: Path) -> None:
+    summary, paths = _evidence(tmp_path)
+    forged = copy.deepcopy(summary)
+    forged["aggregates"][0]["media_id"] = 12345
+    aggregate_unsigned = dict(forged["aggregates"][0])
+    aggregate_unsigned.pop("canonical_fingerprint")
+    forged["aggregates"][0]["canonical_fingerprint"] = canonical_fingerprint(
+        aggregate_unsigned
+    )
+    forged["px2_consumer_contract"]["aggregate_artifact_fingerprint"] = (
+        canonical_fingerprint(forged["aggregates"])
+    )
+    unsigned = dict(forged)
+    unsigned.pop("canonical_fingerprint")
+    forged["canonical_fingerprint"] = canonical_fingerprint(unsigned)
+    _write(paths.root / "aggregates.json", forged["aggregates"])
+    _write(paths.root / "public-summary.json", forged)
+    _write_receipt(paths.root)
+    result = check_phase_contract(
+        "scv2_px1_pixiv_metadata_consolidation_contract_v1",
+        forged,
+        repository_context=_context(paths),
+    )
+    assert not result.passed
+    assert any("px1_px2_row_or_time_identity_present" in error.code for error in result.errors)
+
+
+def test_px2_signal_source_state_mutation_fails_closed(tmp_path: Path) -> None:
+    summary, paths = _evidence(tmp_path)
+    forged = copy.deepcopy(summary)
+    forged["signal_bundles"][0]["source_state"]["disposition"] = "synthetic_forged"
+    bundle_unsigned = dict(forged["signal_bundles"][0])
+    bundle_unsigned.pop("canonical_fingerprint")
+    forged["signal_bundles"][0]["canonical_fingerprint"] = canonical_fingerprint(
+        bundle_unsigned
+    )
+    forged["px2_consumer_contract"]["signal_bundle_artifact_fingerprint"] = (
+        canonical_fingerprint(forged["signal_bundles"])
+    )
+    unsigned = dict(forged)
+    unsigned.pop("canonical_fingerprint")
+    forged["canonical_fingerprint"] = canonical_fingerprint(unsigned)
+    _write(paths.root / "signal-bundles.json", forged["signal_bundles"])
+    _write(paths.root / "public-summary.json", forged)
+    _write_receipt(paths.root)
+    result = check_phase_contract(
+        "scv2_px1_pixiv_metadata_consolidation_contract_v1",
+        forged,
+        repository_context=_context(paths),
+    )
+    assert not result.passed
+    assert any("px1_signal_source_state_invalid" in error.code for error in result.errors)
 
 
 def test_missing_private_context_and_python_fail_closed() -> None:

@@ -10,16 +10,16 @@
   "accepted_mainline_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
   "implementation_evidence_head": "59349c76ecd086b535ad7cb4c5e14236b9fb241c",
   "implementation_evidence_tree": "260bedf1fddfc0c5329f0defc5fdb14f1e0d195b",
-  "implementation_evidence_status": "same_head_local_receipt_and_contract_passed_with_carry_forward_limited_to_final_governance_and_test_projection",
-  "current_status": "SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT",
-  "target_met": true,
+  "implementation_evidence_status": "prior_px1_receipt_superseded_by_owner_adjudicated_bounded_correction_in_progress",
+  "current_status": "scv2_px1_implementation_in_progress",
+  "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
   "route_scope": "SCV2-PX1 repository-owned synthetic and offline Pixiv metadata consolidation only; no real provider, source, existing database, media, UI, import, or production execution",
   "planning_authorized": true,
   "planning_completed": true,
   "planning_approved": true,
-  "manual_acceptance_status": "pending_scv2_px1_exact_head_owner_audit",
+  "manual_acceptance_status": "owner_adjudicated_bounded_correction_in_progress",
   "next_phase_started": false,
   "previous_phase": "SCV2-FL1-I2",
   "previous_phase_status": "owner_adjudicated_pr146_merged_with_deferred_due_gates_preserved",
@@ -42,8 +42,9 @@
   "pipeline_contract": {
     "contract_id": "scv2_px1_pixiv_metadata_consolidation_contract_v1",
     "public_schema": "violet.scv2-px1-pixiv-metadata-summary.v1",
-    "synthetic_vertical_slice_verified": true,
-    "deterministic_replay_verified": true,
+    "synthetic_vertical_slice_verified": false,
+    "deterministic_replay_verified": false,
+    "px2_consumer_contract_frozen": false,
     "machine_verifiable_ci": false,
     "owner_authority_machine_verifiable": false
   },
@@ -106,9 +107,9 @@
     }
   ],
   "active_blocker": {
-    "code": "pending_scv2_px1_owner_audit_and_merge_decision",
-    "scope": "SCV2-PX1 exact final PR HEAD/tree, executable contract, local receipt, and deferred due-gate mapping",
-    "resolution": "The project owner audits the exact normal PR head and either requests a bounded correction or separately authorizes merge; automation grants neither safe-to-merge nor merge authority."
+    "code": "scv2_px1_bounded_correction_in_progress",
+    "scope": "Owner-adjudicated bounded correction of PR #147 identity, replay, work consistency, public projection, PX2 consumer, and exact-evidence invariants",
+    "resolution": "Complete the bounded correction on the existing branch, rerun the focused and full non-E2E suites, issue a corrected same-HEAD receipt, then project only fixed governance documents to the final owner merge audit checkpoint."
   },
   "owner_decisions": [
     {
@@ -118,6 +119,10 @@
     {
       "id": "owner_fixed_near_term_pixiv_route_20260826",
       "decision": "The only near-term functional phases are SCV2-PX1, SCV2-PX2, and SCV2-PX3; safety checks remain internal gates and phase-4.5-PX1 remains historical."
+    },
+    {
+      "id": "owner_adjudicated_scv2_px1_bounded_correction_20260827",
+      "decision": "Perform exactly one bounded correction on existing PR #147 for current Pixiv identity, deterministic replay, work-level consistency, PX2 consumer, redaction, and exact-evidence correctness; defer hostile workspace confinement to SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE; do not merge, start PX2, create a phase, or repeat real provider work."
     }
   ],
   "authorized_operations": [
@@ -193,7 +198,7 @@
     "primary_user_untracked_name_digest_before": "976193fefc88827a6f6f61709cdf949a80a3e7864f5eb34d6d2355e668e13995"
   },
   "public_state_boundary": "public_safe_synthetic_implementation_no_private_proof_payloads_or_paths",
-  "next_required_checkpoint": "project owner audits the exact Ready PR #147 head and either requests one bounded correction or separately authorizes merge; no merge or PX2 authority is implied",
+  "next_required_checkpoint": "finish the owner-adjudicated bounded correction, rerun exact-head synthetic and compatibility evidence, and stop at final owner merge audit without merge or PX2 authority",
   "durable_links": [
     {"label": "Current mainline roadmap", "path": "docs/roadmap/current-mainline-roadmap.md"},
     {"label": "Project roadmap entrypoint", "path": "docs/project-roadmap.md"},
@@ -221,12 +226,13 @@
     {"id": "VALIDATION_RECEIPT_GATE", "owner": "PX1 and future phase owner", "reason": "Local same-head receipts do not grant CI, owner, or merge authority.", "due_before": "any machine-verifiable CI, owner acceptance, or merge claim", "requirements": ["bind the exact current HEAD/tree and approved Python", "keep machine-verifiable CI and owner authority false"]},
     {"id": "OWNER_AUTHORITY_GATE", "owner": "project owner", "reason": "Automated tests and contracts cannot synthesize owner acceptance, safe-to-merge, or merge authority.", "due_before": "merge or any owner-accepted projection", "requirements": ["audit the exact normal PR head", "issue any merge decision explicitly and separately"]},
     {"id": "POSIX_LEDGER_DURABILITY_GATE", "owner": "future POSIX durability owner", "reason": "No unsupported host power-loss or POSIX durability claim is made by PX1.", "due_before": "any cross-platform power-loss durability claim", "requirements": ["define the supported filesystem and flush boundary", "test crash recovery on the claimed platform"]},
-    {"id": "STABLE_REPLAY_GATE", "owner": "future real-data replay owner", "reason": "PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay.", "due_before": "any real-data Stable Replay consumption or authority", "requirements": ["bind exact real-data scope and immutable inputs", "obtain separate execution authority"]}
+    {"id": "STABLE_REPLAY_GATE", "owner": "future real-data replay owner", "reason": "PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay.", "due_before": "any real-data Stable Replay consumption or authority", "requirements": ["bind exact real-data scope and immutable inputs", "obtain separate execution authority"]},
+    {"id": "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE", "owner": "SCV2-PX3 real-path and evidence owner", "reason": "Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1.", "due_before": "caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production", "requirements": ["close dangling-symlink, workspace-component-swap, and fixed-name evidence symlink races with bounded cross-platform primitives", "handle SQLite URL-sensitive path characters including question mark and hash without authority ambiguity", "prove confinement for hostile caller-controlled workspace and evidence paths before any real-path or remote-CI authority"]}
   ],
   "upcoming_route": [
     {"phase_id": "SCV2-PX1", "scope": "Pixiv metadata consolidation and offline synthetic vertical slice", "started": true},
-    {"phase_id": "SCV2-PX2", "scope": "deterministic Pixiv metadata clustering, identity, and candidate explanation", "started": false},
-    {"phase_id": "SCV2-PX3", "scope": "persistence, API/UI integration, and bounded owner-acceptance canary", "started": false}
+    {"phase_id": "SCV2-PX2", "scope": "deterministic clustering, identity, candidate explanation, ambiguous queue, controlled sample evaluation, and persistable cluster result", "started": false},
+    {"phase_id": "SCV2-PX3", "scope": "real source/provider, necessary migration, persistence, API/UI, dry-run/apply, idempotency, backup/recovery, canary, rollback, and final full-library import checkpoint", "started": false}
   ],
   "artifact_lifecycle": [
     "durable_backend_aggregate_and_signal_projection",
@@ -234,5 +240,5 @@
     "task_owned_temporary_private_evidence",
     "public_safe_governance_projection"
   ],
-  "updated_at": "2026-08-26"
+  "updated_at": "2026-08-27"
 }

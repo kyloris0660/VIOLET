@@ -22,6 +22,7 @@ from app.services.pixiv_metadata_projection_service import (
     PixivMetadataProjectionError,
     build_canonical_pixiv_work_page_aggregate,
     canonical_fingerprint,
+    canonical_json_bytes,
     project_pixiv_aggregate_to_source_concept_signals,
 )
 from app.services.pixiv_metadata_vertical_slice_service import (
@@ -178,6 +179,28 @@ def test_single_command_vertical_slice_is_stable_public_and_offline(tmp_path: Pa
         "production_authorized": False,
     }
 
+    consumer = first["px2_consumer_contract"]
+    assert first["px2_consumer_contract_frozen"] is True
+    assert consumer["canonical_json_round_trip_stable"] is True
+    assert canonical_fingerprint(json.loads(canonical_json_bytes(first["aggregates"]))) == (
+        consumer["aggregate_artifact_fingerprint"]
+    )
+    assert canonical_fingerprint(
+        json.loads(canonical_json_bytes(first["signal_bundles"]))
+    ) == consumer["signal_bundle_artifact_fingerprint"]
+    consumer_text = canonical_json_bytes(
+        {"aggregates": first["aggregates"], "signal_bundles": first["signal_bundles"]}
+    ).decode("utf-8")
+    for forbidden in (
+        '"media_id"',
+        '"provider_record_key"',
+        '"source_metadata_record_id"',
+        '"created_at"',
+        '"updated_at"',
+        '"retrieved_at"',
+    ):
+        assert forbidden not in consumer_text
+
     text = json.dumps(first, ensure_ascii=False, sort_keys=True)
     assert "synthetic-secret-sentinel" not in text
     assert "synthetic-cookie-never-published" not in text
@@ -226,7 +249,7 @@ def test_vertical_slice_covers_lifecycle_completeness_and_rejections(
     aggregates = summary["aggregates"]
     assert all(item["schema_version"] == PIXIV_AGGREGATE_SCHEMA for item in aggregates)
     assert summary["disposition_counts"] == {
-        "complete": 3,
+        "complete": 8,
         "conflict": 1,
         "page_mismatch": 1,
         "retryable": 1,
@@ -255,6 +278,14 @@ def test_vertical_slice_covers_lifecycle_completeness_and_rejections(
     mismatch = by_key["pixiv:work:700000005:page:1"]
     assert mismatch["disposition"] == "page_mismatch"
     assert mismatch["creator"]["provider_creator_id"] is None
+    assert {
+        "pixiv:work:700000011:page:0",
+        "pixiv:work:700000011:page:1",
+        "pixiv:work:700000011:page:2",
+    } <= set(by_key)
+    assert by_key["pixiv:work:700000010:page:0"]["provenance"][
+        "normalizer_versions"
+    ] == ["legacy_unknown"]
 
 
 def test_creator_id_anchors_mutable_names_and_conflicts_never_name_union(
@@ -292,6 +323,14 @@ def test_creator_id_anchors_mutable_names_and_conflicts_never_name_union(
         for item in conflict["signals"]
         if item["role_hint"] == "artist"
     )
+
+    id_only = bundles["pixiv:work:700000009:page:0"]
+    assert id_only["strong_identity_anchor_count"] == 1
+    assert {
+        item["identity_anchor"]
+        for item in id_only["signals"]
+        if item["identity_anchor"]
+    } == {"provider-account:pixiv:800000009"}
 
 
 def test_work_page_context_prevents_cross_context_signal_union(tmp_path: Path) -> None:

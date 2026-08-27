@@ -36,14 +36,21 @@ def _creator_signal(
     )
 
 
-def test_placeholder_hidden_name_cannot_be_trusted_creator_alias() -> None:
+def test_placeholder_hidden_name_is_mutable_but_valid_pixiv_id_still_anchors() -> None:
     assert is_placeholder_creator_name("hidden") is True
     verdict = creator_identity_union_verdict(
         _creator_signal("hidden", stable_id="42"),
         _creator_signal("real-account", stable_id="42"),
     )
     assert verdict["policy_version"] == CREATOR_IDENTITY_POLICY_VERSION
-    assert verdict["identity_union_allowed"] is False
+    assert verdict["identity_union_allowed"] is True
+    assert verdict["reason_code"] == "shared_auditable_stable_creator_identity"
+
+    invalid = creator_identity_union_verdict(
+        _creator_signal("hidden", stable_id="creator-42"),
+        _creator_signal("hidden", stable_id="creator-42"),
+    )
+    assert invalid["identity_union_allowed"] is False
 
 
 def test_single_media_and_string_similarity_do_not_create_identity_union() -> None:

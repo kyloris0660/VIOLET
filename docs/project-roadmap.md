@@ -24,17 +24,17 @@ future due gates remain in current state and handoff.
 Current projection:
 
 ```text
-current_status=SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT
+current_status=scv2_px1_implementation_in_progress
 contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1
 public_schema=violet.scv2-px1-pixiv-metadata-summary.v1
-target_met=true
+target_met=false
 safe_to_merge=false
 route_approved=false
 merge_authorized=false
 real_source_authorized=false
 real_provider_authorized=false
 production_authorized=false
-active_blocker=pending_scv2_px1_owner_audit_and_merge_decision
+active_blocker=scv2_px1_bounded_correction_in_progress
 ```
 
 ## Fixed Near-Term Route
@@ -42,11 +42,12 @@ active_blocker=pending_scv2_px1_owner_audit_and_merge_decision
 1. `SCV2-PX1` — consolidate the existing Pixiv metadata ingestion, source
    metadata, deterministic work/page aggregate, and SourceConcept signal input
    into one repository-owned offline synthetic vertical slice.
-2. `SCV2-PX2` — consume the PX1 contract to implement deterministic Pixiv
-   metadata clustering, stable identity handling, and candidate-group
-   explanation. PX2 is not started.
-3. `SCV2-PX3` — integrate PX2 results with persistence, API/UI, and a bounded
-   owner-acceptance canary. PX3 is not started.
+2. `SCV2-PX2` — consume the PX1 artifacts for deterministic clustering,
+   identity, candidate explanation, an ambiguous queue, controlled sample
+   evaluation, and a persistable cluster result. PX2 is not started.
+3. `SCV2-PX3` — cover real source/provider, any necessary migration,
+   persistence, API/UI, dry-run/apply, idempotency, backup/recovery, canary,
+   rollback, and the final full-library import checkpoint. PX3 is not started.
 
 Safety work is a gate inside these phases and does not create PX1A, PX1B,
 PX1-pre, or PX1-hardening phases. `phase-4.5-PX1 is historical`; its scripts and
@@ -82,6 +83,10 @@ server/browser/E2E validation, or production work.
 - Deferred I2 findings remain due only at their exact real-source,
   positive-authority, POSIX, CI, or hostile-environment gates; they neither
   block synthetic PX1 nor become falsely closed.
+- Untrusted workspace confinement is explicitly deferred to
+  `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` before caller-supplied paths,
+  untrusted remote-CI evidence, existing DB/app-storage access, real-source
+  canary, or production; it does not create a new phase.
 
 ## Remote Sync Preflight Policy
 

@@ -33,6 +33,10 @@ from scripts.trusted_git import (
     windows_system_git_roots as _shared_windows_system_git_roots,
     windows_trusted_git_candidates as _shared_windows_trusted_git_candidates,
 )
+from scripts.scv2_px1_validation_receipt import (
+    Px1ValidationReceiptError,
+    validate_px1_evidence_carry_forward,
+)
 
 STATE_PATH = ROOT / "docs" / "state" / "current-phase.json"
 HANDOFF_PATH = ROOT / "docs" / "current-handoff.md"
@@ -333,9 +337,10 @@ SCV2_PX1_PR146_ACCEPTED_HEAD = "914d746c3548241a99333393daa88caefd8b2337"
 SCV2_PX1_PR146_FINAL_REVIEW_ID = 5031131564
 SCV2_PX1_CONTRACT_ID = "scv2_px1_pixiv_metadata_consolidation_contract_v1"
 SCV2_PX1_PUBLIC_SCHEMA = "violet.scv2-px1-pixiv-metadata-summary.v1"
-SCV2_PX1_BLOCKER = "pending_scv2_px1_owner_audit_and_merge_decision"
+SCV2_PX1_BLOCKER = "pending_scv2_px1_final_owner_merge_audit"
+SCV2_PX1_IN_PROGRESS_BLOCKER = "scv2_px1_bounded_correction_in_progress"
 SCV2_PX1_READY_STATUS = (
-    "SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT"
+    "SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT"
 )
 SCV2_PX1_IN_PROGRESS_STATUS = "scv2_px1_implementation_in_progress"
 SCV2_PX1_FINAL_REVIEW_DUE_GATES = {
@@ -361,6 +366,7 @@ SCV2_PX1_REQUIRED_DEFERRED_GATES = frozenset(
         "OWNER_AUTHORITY_GATE",
         "POSIX_LEDGER_DURABILITY_GATE",
         "STABLE_REPLAY_GATE",
+        "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE",
     }
 )
 SCV2_PX1_EXPECTED_AUTHORITIES = {
@@ -1579,7 +1585,11 @@ def _validate_scv2_px1_state(state: dict[str, Any], *, root: Path) -> None:
         or state.get("safe_to_merge") is not False
         or state.get("route_approved") is not False
         or state.get("manual_acceptance_status")
-        != "pending_scv2_px1_exact_head_owner_audit"
+        != (
+            "pending_scv2_px1_final_owner_merge_audit"
+            if ready
+            else "owner_adjudicated_bounded_correction_in_progress"
+        )
         or state.get("next_phase_started") is not False
         or state.get("planning_authorized") is not True
         or state.get("planning_completed") is not True
@@ -1594,12 +1604,14 @@ def _validate_scv2_px1_state(state: dict[str, Any], *, root: Path) -> None:
         "public_schema": SCV2_PX1_PUBLIC_SCHEMA,
         "synthetic_vertical_slice_verified": ready,
         "deterministic_replay_verified": ready,
+        "px2_consumer_contract_frozen": ready,
         "machine_verifiable_ci": False,
         "owner_authority_machine_verifiable": False,
     }:
         raise DocumentationStateError("scv2_px1_contract_projection_invalid")
     blocker = state.get("active_blocker")
-    if not isinstance(blocker, dict) or blocker.get("code") != SCV2_PX1_BLOCKER or not all(
+    expected_blocker = SCV2_PX1_BLOCKER if ready else SCV2_PX1_IN_PROGRESS_BLOCKER
+    if not isinstance(blocker, dict) or blocker.get("code") != expected_blocker or not all(
         blocker.get(key) for key in ("scope", "resolution")
     ):
         raise DocumentationStateError("scv2_px1_blocker_invalid")
@@ -1679,12 +1691,12 @@ def _validate_scv2_px1_state(state: dict[str, Any], *, root: Path) -> None:
         },
         {
             "phase_id": "SCV2-PX2",
-            "scope": "deterministic Pixiv metadata clustering, identity, and candidate explanation",
+            "scope": "deterministic clustering, identity, candidate explanation, ambiguous queue, controlled sample evaluation, and persistable cluster result",
             "started": False,
         },
         {
             "phase_id": "SCV2-PX3",
-            "scope": "persistence, API/UI integration, and bounded owner-acceptance canary",
+            "scope": "real source/provider, necessary migration, persistence, API/UI, dry-run/apply, idempotency, backup/recovery, canary, rollback, and final full-library import checkpoint",
             "started": False,
         },
     ]:
@@ -2259,6 +2271,15 @@ def _validate_scv2_px1_git_ancestry(state: dict[str, Any], *, root: Path) -> Non
         raise DocumentationStateError("scv2_px1_pr146_merge_parent_invalid")
     if _trusted_git_value(root, "rev-parse", "--abbrev-ref", "HEAD") != state["branch"]:
         raise DocumentationStateError("scv2_px1_branch_identity_invalid")
+    if state.get("current_status") == SCV2_PX1_READY_STATUS:
+        try:
+            validate_px1_evidence_carry_forward(
+                root,
+                evidence_head=str(state["implementation_evidence_head"]),
+                evidence_tree=str(state["implementation_evidence_tree"]),
+            )
+        except Px1ValidationReceiptError as exc:
+            raise DocumentationStateError(str(exc)) from exc
 
 
 def validate_git_ancestry(
@@ -2409,7 +2430,7 @@ def _validate_scv2_px1_roadmaps(state: dict[str, Any], *, root: Path) -> None:
     active_text = "\n".join(texts.values())
     required_truth = (
         state["current_status"],
-        SCV2_PX1_BLOCKER,
+        str(state["active_blocker"]["code"]),
         SCV2_PX1_CONTRACT_ID,
         SCV2_PX1_PUBLIC_SCHEMA,
         "SCV2-PX1",

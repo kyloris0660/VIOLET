@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import Any, Mapping, Sequence
@@ -27,7 +28,9 @@ from scripts.fl1_i2_validation_receipt import (
 )
 from scripts.trusted_git import (
     assert_trusted_worktree_clean,
+    decode_git_z_paths,
     resolve_trusted_git_executable,
+    run_trusted_git_bytes,
     run_trusted_git_text,
     verify_approved_python_runtime,
 )
@@ -49,10 +52,20 @@ CANONICAL_FOCUSED_TESTS = (
     "tests/test_phase45_px1_pixiv_metadata_dedup_dry_run.py",
     "tests/test_phase45_sc1_source_concept_resolver.py",
     "tests/test_scv2_px1_pixiv_metadata_consolidation.py",
+    "tests/test_scv2_px1_bounded_correction.py",
     "tests/test_scv2_px1_validation_receipt.py",
     "tests/test_scv2_px1_contract.py",
 )
 MAX_RECEIPT_BYTES = 256 * 1024
+PX1_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST = frozenset(
+    {
+        "docs/current-handoff.md",
+        "docs/phase-contracts.md",
+        "docs/project-roadmap.md",
+        "docs/roadmap/current-mainline-roadmap.md",
+        "docs/state/current-phase.json",
+    }
+)
 
 
 class Px1ValidationReceiptError(RuntimeError):
@@ -159,6 +172,89 @@ def _git_value(repo_root: Path, *arguments: str) -> str:
     if result.returncode:
         raise Px1ValidationReceiptError("px1_receipt_git_snapshot_failed")
     return result.stdout.strip()
+
+
+def _git_z_paths(repo_root: Path, *arguments: str) -> tuple[str, ...]:
+    git = resolve_trusted_git_executable(repo_root=repo_root)
+    result = run_trusted_git_bytes(repo_root, arguments, git=git)
+    if result.returncode:
+        raise Px1ValidationReceiptError("px1_evidence_carry_forward_git_failed")
+    try:
+        return decode_git_z_paths(result.stdout)
+    except Exception as exc:
+        raise Px1ValidationReceiptError(
+            "px1_evidence_carry_forward_git_output_invalid"
+        ) from exc
+
+
+def validate_px1_evidence_carry_forward(
+    repo_root: Path,
+    *,
+    evidence_head: str,
+    evidence_tree: str,
+    current_ref: str = "HEAD",
+    include_worktree: bool = True,
+) -> dict[str, Any]:
+    """Allow only the fixed PX1 governance projection after tested evidence.
+
+    Any backend, runner, contract, test, configuration, or untracked path after
+    the receipt invalidates completion. The worktree check makes the same rule
+    effective before the final governance commit as well as after it.
+    """
+
+    root = repo_root.resolve(strict=True)
+    if not re.fullmatch(r"[0-9a-f]{40}", str(evidence_head)) or not re.fullmatch(
+        r"[0-9a-f]{40}", str(evidence_tree)
+    ):
+        raise Px1ValidationReceiptError("px1_evidence_identity_invalid")
+    if _git_value(root, "rev-parse", f"{evidence_head}^{{tree}}") != evidence_tree:
+        raise Px1ValidationReceiptError("px1_evidence_tree_mismatch")
+    current_head = _git_value(root, "rev-parse", f"{current_ref}^{{commit}}")
+    current_tree = _git_value(root, "rev-parse", f"{current_ref}^{{tree}}")
+    git = resolve_trusted_git_executable(repo_root=root)
+    ancestor = run_trusted_git_text(
+        root,
+        ("merge-base", "--is-ancestor", evidence_head, current_head),
+        git=git,
+    )
+    if ancestor.returncode:
+        raise Px1ValidationReceiptError("px1_evidence_not_ancestor")
+
+    changed = set(
+        _git_z_paths(
+            root,
+            "diff",
+            "--name-only",
+            "-z",
+            f"{evidence_head}..{current_head}",
+        )
+    )
+    if include_worktree:
+        if current_ref != "HEAD":
+            raise Px1ValidationReceiptError(
+                "px1_evidence_worktree_requires_head_ref"
+            )
+        changed.update(_git_z_paths(root, "diff", "--name-only", "-z"))
+        changed.update(
+            _git_z_paths(root, "diff", "--cached", "--name-only", "-z")
+        )
+        changed.update(
+            _git_z_paths(root, "ls-files", "--others", "--exclude-standard", "-z")
+        )
+    disallowed = sorted(changed - PX1_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST)
+    if disallowed:
+        raise Px1ValidationReceiptError(
+            "px1_evidence_behavioral_carry_forward_invalid:"
+            + ",".join(disallowed)
+        )
+    return {
+        "evidence_head": evidence_head,
+        "evidence_tree": evidence_tree,
+        "current_head": current_head,
+        "current_tree": current_tree,
+        "changed_paths": sorted(changed),
+        "docs_only": True,
+    }
 
 
 def repository_identity_snapshot(

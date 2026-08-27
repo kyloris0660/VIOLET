@@ -42,10 +42,6 @@ def test_current_mainline_roadmap_persists_px1_boundary_and_fixed_route() -> Non
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert (
-        "current_status=SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT"
-        in text
-    )
     assert "scv2_px1_pixiv_metadata_consolidation_contract_v1" in text
     assert "machine_verifiable_ci=false" in text
     state = json.loads(_read("docs/state/current-phase.json"))
@@ -54,9 +50,11 @@ def test_current_mainline_roadmap_persists_px1_boundary_and_fixed_route() -> Non
     assert "safe_to_merge=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
-    assert "pending_scv2_px1_owner_audit_and_merge_decision" in text
+    assert state["active_blocker"]["code"] in text
     assert "phase-4.5-PX1 is historical" in text
     assert "Deferred Due-Gate Policy" in text
+    assert "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE" in text
+    assert "final full-library import checkpoint" in text
 
 
 def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:

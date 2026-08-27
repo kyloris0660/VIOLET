@@ -8,12 +8,12 @@
 - Repository / PR: `kyloris0660/VIOLET` / normal PR #147.
 - Branch: `codex/scv2-px1-pixiv-metadata-consolidation`.
 - Accepted mainline HEAD/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
-- Implementation evidence HEAD/tree: `59349c76ecd086b535ad7cb4c5e14236b9fb241c` / `260bedf1fddfc0c5329f0defc5fdb14f1e0d195b`; status: `same_head_local_receipt_and_contract_passed_with_carry_forward_limited_to_final_governance_and_test_projection`.
-- Status: `SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT`.
-- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
-- Manual acceptance: `pending_scv2_px1_exact_head_owner_audit`; `next_phase_started=false`.
+- Implementation evidence HEAD/tree: `59349c76ecd086b535ad7cb4c5e14236b9fb241c` / `260bedf1fddfc0c5329f0defc5fdb14f1e0d195b`; status: `prior_px1_receipt_superseded_by_owner_adjudicated_bounded_correction_in_progress`.
+- Status: `scv2_px1_implementation_in_progress`.
+- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
+- Manual acceptance: `owner_adjudicated_bounded_correction_in_progress`; `next_phase_started=false`.
 - Contract: `scv2_px1_pixiv_metadata_consolidation_contract_v1`; public schema: `violet.scv2-px1-pixiv-metadata-summary.v1`.
-- Synthetic vertical slice / deterministic replay verified: `true` / `true`.
+- Synthetic vertical slice / deterministic replay verified: `false` / `false`.
 - Contract evidence remains a local operator receipt; it is neither CI authority nor owner acceptance.
 
 ## PR #146 Merge Projection
@@ -34,8 +34,8 @@
 
 ## Current Gate And Authority Boundary
 
-- Gate: `pending_scv2_px1_owner_audit_and_merge_decision` (SCV2-PX1 exact final PR HEAD/tree, executable contract, local receipt, and deferred due-gate mapping).
-- Resolution: The project owner audits the exact normal PR head and either requests a bounded correction or separately authorizes merge; automation grants neither safe-to-merge nor merge authority.
+- Gate: `scv2_px1_bounded_correction_in_progress` (Owner-adjudicated bounded correction of PR #147 identity, replay, work consistency, public projection, PX2 consumer, and exact-evidence invariants).
+- Resolution: Complete the bounded correction on the existing branch, rerun the focused and full non-E2E suites, issue a corrected same-HEAD receipt, then project only fixed governance documents to the final owner merge audit checkpoint.
 - `owner_accepted=false`; `safe_to_merge=false`; `merge_authorized=false`; `px2_started=false`.
 - `real_provider_authorized=false`; `real_source_authorized=false`; `full_import_authorized=false`; `production_authorized=false`.
 - External data-plane network, existing DB, real source, media download, and production operation counts: `0/0/0/0/0`.
@@ -43,8 +43,8 @@
 ## Fixed Near-Term Route
 
 - `SCV2-PX1` - Pixiv metadata consolidation and offline synthetic vertical slice; started: `true`.
-- `SCV2-PX2` - deterministic Pixiv metadata clustering, identity, and candidate explanation; started: `false`.
-- `SCV2-PX3` - persistence, API/UI integration, and bounded owner-acceptance canary; started: `false`.
+- `SCV2-PX2` - deterministic clustering, identity, candidate explanation, ambiguous queue, controlled sample evaluation, and persistable cluster result; started: `false`.
+- `SCV2-PX3` - real source/provider, necessary migration, persistence, API/UI, dry-run/apply, idempotency, backup/recovery, canary, rollback, and final full-library import checkpoint; started: `false`.
 
 ## Completed Checkpoints
 
@@ -63,7 +63,7 @@
 
 ## Next Action
 
-- Required checkpoint: `project owner audits the exact Ready PR #147 head and either requests one bounded correction or separately authorizes merge; no merge or PX2 authority is implied`.
+- Required checkpoint: `finish the owner-adjudicated bounded correction, rerun exact-head synthetic and compatibility evidence, and stop at final owner merge audit without merge or PX2 authority`.
 
 ## Durable Links
 
@@ -95,5 +95,6 @@
 - `OWNER_AUTHORITY_GATE` - owner: project owner; due before: `merge or any owner-accepted projection`; Automated tests and contracts cannot synthesize owner acceptance, safe-to-merge, or merge authority. Requirements: audit the exact normal PR head; issue any merge decision explicitly and separately.
 - `POSIX_LEDGER_DURABILITY_GATE` - owner: future POSIX durability owner; due before: `any cross-platform power-loss durability claim`; No unsupported host power-loss or POSIX durability claim is made by PX1. Requirements: define the supported filesystem and flush boundary; test crash recovery on the claimed platform.
 - `STABLE_REPLAY_GATE` - owner: future real-data replay owner; due before: `any real-data Stable Replay consumption or authority`; PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay. Requirements: bind exact real-data scope and immutable inputs; obtain separate execution authority.
+- `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` - owner: SCV2-PX3 real-path and evidence owner; due before: `caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production`; Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1. Requirements: close dangling-symlink, workspace-component-swap, and fixed-name evidence symlink races with bounded cross-platform primitives; handle SQLite URL-sensitive path characters including question mark and hash without authority ambiguity; prove confinement for hostile caller-controlled workspace and evidence paths before any real-path or remote-CI authority.
 
-Updated: `2026-08-26`.
+Updated: `2026-08-27`.

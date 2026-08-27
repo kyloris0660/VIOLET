@@ -24,10 +24,10 @@ were fixed or adjudicated away.
 ## Current Phase And Stop Boundary
 
 ```text
-current_status=SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT
+current_status=scv2_px1_implementation_in_progress
 contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1
 public_schema=violet.scv2-px1-pixiv-metadata-summary.v1
-target_met=true
+target_met=false
 safe_to_merge=false
 route_approved=false
 owner_accepted=false
@@ -37,7 +37,7 @@ real_provider_authorized=false
 full_import_authorized=false
 production_authorized=false
 machine_verifiable_ci=false
-active_blocker=pending_scv2_px1_owner_audit_and_merge_decision
+active_blocker=scv2_px1_bounded_correction_in_progress
 ```
 
 PX1 is an actual implementation phase, but its data plane is restricted to new
@@ -70,11 +70,14 @@ Entity promotion, and provider-derived `media_tags` truth remain absent.
 ## Fixed Three-Phase Route
 
 1. `SCV2-PX1` — Pixiv metadata consolidation and runnable offline vertical
-   slice. Implementation complete and pending exact-head owner audit in PR #147.
-2. `SCV2-PX2` — deterministic Pixiv metadata clustering, identity, candidate
-   grouping, and explanations. Not started.
-3. `SCV2-PX3` — persistence, API/UI, and bounded manual-acceptance canary. Not
-   started.
+   slice. The single owner-adjudicated bounded correction is in progress on
+   existing PR #147.
+2. `SCV2-PX2` — deterministic clustering, identity, candidate explanation,
+   ambiguous queue, controlled sample evaluation, and a persistable cluster
+   result. Not started.
+3. `SCV2-PX3` — real source/provider, any necessary migration, persistence,
+   API/UI, dry-run/apply, idempotency, backup/recovery, canary, rollback, and
+   the final full-library import checkpoint. Not started.
 
 No other near-term functional phase is active. Safety checks remain internal
 gates. `phase-4.5-PX1 is historical`; the historical runner may retain a thin
@@ -97,6 +100,11 @@ PR #146 final-review findings stay attached to these future gates:
   environment claims;
 - real-source scope, owner authority, receipt, durability, identity-attestation,
   and real-data Stable Replay gates remain independently preserved.
+- hostile workspace confinement, including symlink/component-swap races,
+  fixed-name evidence symlinks, and SQLite URL-sensitive path characters, is
+  due at `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` before any caller-
+  supplied path, untrusted remote-CI evidence, existing DB/app-storage access,
+  real-source canary, or production use.
 
 None of these gates is a reason to access real data during PX1, and none is
 marked closed by synthetic PX1 evidence.

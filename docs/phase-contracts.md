@@ -82,10 +82,10 @@ gates.
 
 Current PX1 projection:
 
-- `status=SCV2_PX1_PIXIV_METADATA_CONSOLIDATION_READY_FOR_OWNER_AUDIT`
+- `status=scv2_px1_implementation_in_progress`
 - `contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1`
 - `public_schema=violet.scv2-px1-pixiv-metadata-summary.v1`
-- `target_met=true`
+- `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
 - `owner_accepted=false`
@@ -94,7 +94,7 @@ Current PX1 projection:
 - `real_provider_authorized=false`
 - `full_import_authorized=false`
 - `production_authorized=false`
-- blocker: `pending_scv2_px1_owner_audit_and_merge_decision`
+- blocker: `scv2_px1_bounded_correction_in_progress`
 
 The executable PX1 contract does not trust a caller's positive flag. It:
 
@@ -103,15 +103,20 @@ The executable PX1 contract does not trust a caller's positive flag. It:
 2. bounds and no-follow reads canonical fixture, aggregate, signal, operation
    receipt, public summary, and same-HEAD validation receipt artifacts;
 3. requires the approved repository Python and a clean trusted Git worktree;
-4. binds the receipt to the exact current HEAD/tree, trusted Git identity,
-   Python identity, canonical focused command, and evidence fingerprints;
+4. binds the receipt to the corrected implementation evidence HEAD/tree,
+   trusted Git identity, Python identity, canonical focused command, and
+   evidence fingerprints, then permits only a fixed tested docs-only
+   governance carry-forward to current HEAD;
 5. independently reruns the repository-owned synthetic fixture in a fresh
    temporary workspace and compares the exact public summary;
 6. recomputes aggregate fingerprints, disposition accounting, signal logical
    keys, name-only-anchor count, context separation, replay fingerprints, and
    all negative authority fields;
 7. scans the public projection for paths, filenames, credentials, secrets, raw
-   provider payloads, and database identities.
+   provider payloads, and database identities;
+8. rejects any backend, runner, contract, test, configuration, or untracked
+   behavior drift after evidence, including a change to
+   `PIXIV_AGGREGATE_VERSION`.
 
 The canonical local commands are:
 
@@ -132,6 +137,15 @@ The near-term route is exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`.
 Safety checks are internal gates rather than new phases. `phase-4.5-PX1 is
 historical`; its report and runner remain historical evidence/compatibility
 and cannot become SCV2-PX1 production authority.
+
+PX2 consumes only canonical aggregate and signal-bundle artifacts for
+deterministic clustering, identity, candidate explanation, an ambiguous queue,
+controlled sample evaluation, and a persistable cluster result. PX3 contains
+real source/provider work, any necessary migration, persistence, API/UI,
+dry-run/apply, idempotency, backup/recovery, canary, rollback, and the final
+full-library import checkpoint. The hostile-workspace cases deferred by the
+owner are bound to `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE`; this gate
+does not create another phase or block repository-owned synthetic PX1.
 
 ## Registered GOV3 Contracts
 

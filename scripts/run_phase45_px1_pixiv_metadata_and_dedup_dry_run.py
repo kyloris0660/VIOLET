@@ -42,7 +42,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from scripts import run_phase45_scv2_p0_controlled_medium_expansion_policy as p0  # noqa: E402
 from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
     PixivMetadataGateError,
-    parse_gallery_dl_stdout,
+    normalize_gallery_dl_records,
 )
 
 PHASE = "4.5-PX1"
@@ -1558,9 +1558,10 @@ def normalize_gallery_dl_metadata(
     if not records:
         return None
     try:
-        normalized_pages = parse_gallery_dl_stdout(
-            json.dumps(list(records), ensure_ascii=False, default=str),
+        normalized_pages = normalize_gallery_dl_records(
+            records,
             str(candidate.primary_work_id or ""),
+            provider_marker="pixiv",
         )
     except (PixivMetadataGateError, TypeError, ValueError):
         return None

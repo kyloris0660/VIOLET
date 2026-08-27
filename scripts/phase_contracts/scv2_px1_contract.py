@@ -18,6 +18,7 @@ from scripts.scv2_px1_validation_receipt import (
     RECEIPT_NAME,
     evidence_bindings,
     repository_identity_snapshot,
+    validate_px1_evidence_carry_forward,
     validate_receipt_payload,
 )
 
@@ -30,6 +31,7 @@ PIXIV_PUBLIC_SUMMARY_SCHEMA = "violet.scv2-px1-pixiv-metadata-summary.v1"
 SYNTHETIC_FIXTURE_SCHEMA = "violet.scv2-px1-synthetic-pixiv-fixture.v1"
 VERTICAL_SLICE_RECEIPT_SCHEMA = "violet.scv2-px1-offline-operation-receipt.v2"
 PX1_CONTRACT_ID = "scv2_px1_pixiv_metadata_consolidation_contract_v1"
+PX2_CONSUMER_CONTRACT_SCHEMA = "violet.scv2-px1-px2-consumer-contract.v1"
 PX1_EXECUTED_STAGES = (
     "synthetic_fixture_creation",
     "canonical_pixiv_normalization",
@@ -63,14 +65,14 @@ PX1_AUTHORITY_MAP = {
     "production_authorized": False,
     "full_library_import_authorized": False,
 }
-_WINDOWS_PATH = re.compile(r"(?i)(?:^|[\s\"'])(?:[a-z]:[\\/]|\\\\)")
-_POSIX_PRIVATE_PATH = re.compile(
-    r"(?:^|[\s\"'])(?:/users/|/home/|/private/|/mnt/)", re.I
-)
+_WINDOWS_PATH = re.compile(r"(?i)(?:^|[\s\"'=:(\[])(?:[a-z]:[\\/]|\\\\)")
+_POSIX_ABSOLUTE_PATH = re.compile(r"(?:^|[\s\"'=:(\[])/(?!/)")
+_FILE_URI = re.compile(r"(?i)\bfile:(?://|\\\\)")
 _SECRET_MARKER = re.compile(
     r"(?i)(?:authorization\s*[:=]|set-cookie\s*[:=]|cookie\s*[:=]|"
-    r"bearer\s+\S+|api[_-]?key\s*[:=]|refresh[_-]?token\s*[:=]|"
-    r"access[_-]?token\s*[:=]|password\s*[:=])"
+    r"bearer\s+\S+|api[_-]?key\s*[:=]|client[_-]?secret\s*[:=]|"
+    r"refresh[_-]?token\s*[:=]|access[_-]?token\s*[:=]|"
+    r"password\s*[:=]|credential(?:s)?\s*[:=]|secret\s*[:=])"
 )
 
 
@@ -99,20 +101,29 @@ def assert_public_safe_projection(value: Any) -> None:
         '"local_path"',
         '"filename"',
         '"credential"',
+        '"credentials"',
+        '"authorization"',
+        '"client_secret"',
+        '"password"',
+        '"cookie"',
+        '"access_token"',
+        '"refresh_token"',
     )
     if any(key in lowered for key in forbidden_keys):
         raise Scv2Px1ContractError("px1_public_projection_forbidden_field")
     if (
         "\x00" in serialized
+        or "\\u0000" in lowered
         or _WINDOWS_PATH.search(serialized)
-        or _POSIX_PRIVATE_PATH.search(serialized)
+        or _POSIX_ABSOLUTE_PATH.search(serialized)
+        or _FILE_URI.search(serialized)
         or _SECRET_MARKER.search(serialized)
     ):
         raise Scv2Px1ContractError("px1_public_projection_private_text")
 
 
 EXPECTED_DISPOSITIONS = {
-    "complete": 3,
+    "complete": 8,
     "conflict": 1,
     "page_mismatch": 1,
     "retryable": 1,
@@ -310,6 +321,23 @@ def _validate_embedded_fingerprint(payload: Mapping[str, Any], *, label: str) ->
         raise Scv2Px1ContractError(f"px1_{label}_fingerprint_invalid")
 
 
+def _load_current_px1_evidence_binding(repo_root: Path) -> tuple[str, str]:
+    state_path = repo_root / "docs" / "state" / "current-phase.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Scv2Px1ContractError("px1_current_state_unavailable") from exc
+    if state.get("phase_id") != "SCV2-PX1":
+        raise Scv2Px1ContractError("px1_current_state_phase_invalid")
+    head = str(state.get("implementation_evidence_head") or "")
+    tree = str(state.get("implementation_evidence_tree") or "")
+    if not re.fullmatch(r"[0-9a-f]{40}", head) or not re.fullmatch(
+        r"[0-9a-f]{40}", tree
+    ):
+        raise Scv2Px1ContractError("px1_current_state_evidence_invalid")
+    return head, tree
+
+
 def _validate_public_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
     if summary.get("schema_version") != PIXIV_PUBLIC_SUMMARY_SCHEMA:
         raise Scv2Px1ContractError("px1_public_schema_invalid")
@@ -329,6 +357,7 @@ def _validate_public_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
         "input_order_stable",
         "px1_implementation_completed",
         "px1_target_met",
+        "px2_consumer_contract_frozen",
         "target_met",
     )
     required_false = (
@@ -359,14 +388,59 @@ def _validate_public_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
     bundles = summary.get("signal_bundles")
     if not isinstance(aggregates, list) or not isinstance(bundles, list):
         raise Scv2Px1ContractError("px1_projection_shape_invalid")
-    if len(aggregates) != 9 or len(bundles) != len(aggregates):
+    if len(aggregates) != 14 or len(bundles) != len(aggregates):
         raise Scv2Px1ContractError("px1_projection_count_invalid")
+    consumer = summary.get("px2_consumer_contract")
+    if not isinstance(consumer, Mapping) or consumer != {
+        "schema_version": PX2_CONSUMER_CONTRACT_SCHEMA,
+        "aggregate_schema_version": PIXIV_AGGREGATE_SCHEMA,
+        "signal_bundle_schema_version": PIXIV_SIGNAL_BUNDLE_SCHEMA,
+        "aggregate_artifact_fingerprint": canonical_fingerprint(aggregates),
+        "signal_bundle_artifact_fingerprint": canonical_fingerprint(bundles),
+        "canonical_json_round_trip_stable": True,
+        "database_row_identity_excluded": True,
+        "runtime_order_identity_excluded": True,
+        "wall_clock_identity_excluded": True,
+        "cluster_materialization_performed": False,
+    }:
+        raise Scv2Px1ContractError("px1_px2_consumer_contract_invalid")
+    if (
+        canonical_fingerprint(json.loads(canonical_json_bytes(aggregates)))
+        != canonical_fingerprint(aggregates)
+        or canonical_fingerprint(json.loads(canonical_json_bytes(bundles)))
+        != canonical_fingerprint(bundles)
+    ):
+        raise Scv2Px1ContractError("px1_px2_canonical_round_trip_invalid")
+    consumer_serialized = canonical_json_bytes(
+        {"aggregates": aggregates, "signal_bundles": bundles}
+    ).decode("utf-8").casefold()
+    if any(
+        forbidden in consumer_serialized
+        for forbidden in (
+            '"media_id"',
+            '"provider_record_key"',
+            '"source_metadata_record_id"',
+            '"retrieved_at"',
+            '"created_at"',
+            '"updated_at"',
+        )
+    ):
+        raise Scv2Px1ContractError("px1_px2_row_or_time_identity_present")
     aggregate_keys: list[str] = []
+    aggregates_by_key: dict[str, Mapping[str, Any]] = {}
     for aggregate in aggregates:
         if not isinstance(aggregate, Mapping) or aggregate.get("schema_version") != PIXIV_AGGREGATE_SCHEMA:
             raise Scv2Px1ContractError("px1_aggregate_schema_invalid")
         _validate_embedded_fingerprint(aggregate, label="aggregate")
-        aggregate_keys.append(str(aggregate.get("stable_work_page_key")))
+        aggregate_key = str(aggregate.get("stable_work_page_key"))
+        aggregate_keys.append(aggregate_key)
+        aggregates_by_key[aggregate_key] = aggregate
+        if not isinstance(aggregate.get("provenance"), Mapping):
+            raise Scv2Px1ContractError("px1_aggregate_provenance_missing")
+        if not isinstance(aggregate.get("conflict_reasons"), list) or not isinstance(
+            aggregate.get("deferred_reasons"), list
+        ):
+            raise Scv2Px1ContractError("px1_aggregate_uncertainty_missing")
     if aggregate_keys != sorted(set(aggregate_keys)):
         raise Scv2Px1ContractError("px1_aggregate_logical_keys_invalid")
     derived_dispositions = dict(
@@ -374,6 +448,29 @@ def _validate_public_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
     )
     if derived_dispositions != EXPECTED_DISPOSITIONS or summary.get("disposition_counts") != derived_dispositions:
         raise Scv2Px1ContractError("px1_disposition_accounting_invalid")
+    if not any(
+        "legacy_unknown" in (item.get("provenance") or {}).get(
+            "normalizer_versions", []
+        )
+        and "legacy_unknown_provenance" in item.get("deferred_reasons", [])
+        for item in aggregates
+    ):
+        raise Scv2Px1ContractError("px1_legacy_provenance_projection_missing")
+    if not any(
+        (item.get("page_count_or_known_scope") or {}).get("page_count") == 3
+        and (item.get("page_count_or_known_scope") or {}).get(
+            "known_page_indexes"
+        )
+        == [0, 1, 2]
+        for item in aggregates
+    ):
+        raise Scv2Px1ContractError("px1_three_page_projection_missing")
+    database_counts = summary.get("database_counts")
+    if not isinstance(database_counts, Mapping) or (
+        database_counts.get("source_metadata_records") != 16
+        or database_counts.get("source_metadata_records") <= len(aggregates)
+    ):
+        raise Scv2Px1ContractError("px1_mixed_database_accounting_invalid")
 
     all_logical_keys: set[str] = set()
     signal_count = 0
@@ -392,6 +489,35 @@ def _validate_public_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
             raise Scv2Px1ContractError("px1_cross_context_signal_union")
         all_logical_keys.update(derived_keys)
         signal_count += len(signals)
+        aggregate = aggregates_by_key.get(str(bundle.get("stable_work_page_key")))
+        if aggregate is None or bundle.get("aggregate_fingerprint") != aggregate.get(
+            "canonical_fingerprint"
+        ):
+            raise Scv2Px1ContractError("px1_signal_aggregate_binding_invalid")
+        expected_source_state = {
+            "disposition": aggregate.get("disposition"),
+            "conflict_reasons": aggregate.get("conflict_reasons"),
+            "deferred_reasons": aggregate.get("deferred_reasons"),
+            "metadata_completeness": aggregate.get("metadata_completeness"),
+            "provenance": aggregate.get("provenance"),
+        }
+        if bundle.get("source_state") != expected_source_state:
+            raise Scv2Px1ContractError("px1_signal_source_state_invalid")
+        creator = aggregate.get("creator")
+        creator = creator if isinstance(creator, Mapping) else {}
+        creator_id = creator.get("provider_creator_id")
+        conflicting_creator_ids = creator.get("conflicting_provider_creator_ids") or []
+        anchors = {
+            str(signal.get("identity_anchor"))
+            for signal in signals
+            if signal.get("identity_anchor")
+        }
+        if creator_id and not conflicting_creator_ids and (
+            f"provider-account:pixiv:{creator_id}" not in anchors
+        ):
+            raise Scv2Px1ContractError("px1_valid_creator_anchor_missing")
+        if (not creator_id or conflicting_creator_ids) and anchors:
+            raise Scv2Px1ContractError("px1_invalid_or_conflicting_creator_anchor_present")
         if (
             bundle.get("name_only_identity_anchor_count") != 0
             or bundle.get("cross_context_union_count") != 0
@@ -503,10 +629,30 @@ def check_scv2_px1_contract(
             name: evidence[name] for name in EVIDENCE_ARTIFACT_NAMES
         }
         bindings = evidence_bindings(bound_payloads)
+        receipt = evidence[RECEIPT_NAME]
+        if not isinstance(receipt, Mapping):
+            raise Scv2Px1ContractError("px1_validation_receipt_invalid")
+        evidence_head, evidence_tree = _load_current_px1_evidence_binding(
+            repository_context.repo_root
+        )
+        if (
+            receipt.get("git_head") != evidence_head
+            or receipt.get("git_tree") != evidence_tree
+        ):
+            raise Scv2Px1ContractError("px1_receipt_current_state_binding_mismatch")
+        carry_forward = validate_px1_evidence_carry_forward(
+            repository_context.repo_root,
+            evidence_head=evidence_head,
+            evidence_tree=evidence_tree,
+        )
+        receipt_repository = dict(repository)
+        receipt_repository.update(
+            {"git_head": evidence_head, "git_tree": evidence_tree}
+        )
         validate_receipt_payload(
-            evidence[RECEIPT_NAME],
+            receipt,
             approved_python=approved_python,
-            expected_repository=repository,
+            expected_repository=receipt_repository,
             expected_bindings=bindings,
         )
     except Exception as exc:
@@ -516,6 +662,9 @@ def check_scv2_px1_contract(
     result.details["scv2_px1_repository_binding"] = {
         "git_head": repository["git_head"],
         "git_tree": repository["git_tree"],
+        "implementation_evidence_head": evidence_head,
+        "implementation_evidence_tree": evidence_tree,
+        "docs_only_carry_forward_paths": carry_forward["changed_paths"],
         "trusted_git_fingerprint": repository["trusted_git_fingerprint"],
         "approved_python_runtime_fingerprint": repository[
             "approved_python_runtime_fingerprint"

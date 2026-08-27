@@ -1012,6 +1012,9 @@ def _dedupe_signals(signals: Iterable[SourceConceptSignalDraft | None]) -> tuple
     for signal in signals:
         if signal is None:
             continue
+        existing = by_key.get(signal.signal_key)
+        if existing is not None and existing != signal:
+            raise ValueError("source_concept_signal_identity_conflict")
         by_key[signal.signal_key] = signal
     return tuple(by_key.values())
 

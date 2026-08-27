@@ -14,8 +14,13 @@ from scripts.scv2_px1_validation_receipt import (
     build_receipt_payload,
     canonical_focused_test_command,
     canonical_px1_validation_environment,
+    validate_px1_evidence_carry_forward,
     validate_canonical_focused_command,
     validate_receipt_payload,
+)
+from scripts.trusted_git import (
+    resolve_trusted_git_executable,
+    trusted_git_environment,
 )
 
 
@@ -162,4 +167,83 @@ def test_receipt_binding_mutation_fails_closed() -> None:
             approved_python=Path(sys.executable),
             expected_repository=_repository(),
             expected_bindings=changed,
+        )
+
+
+def test_exact_evidence_allows_fixed_docs_only_projection_but_rejects_behavior_mutation(
+    tmp_path: Path,
+) -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    git = resolve_trusted_git_executable(repo_root=repository_root)
+    repo = tmp_path / "evidence-carry-forward-repo"
+    repo.mkdir()
+    environment = trusted_git_environment()
+
+    def run(*arguments: str) -> subprocess.CompletedProcess[bytes]:
+        completed = subprocess.run(
+            [str(git.path), *arguments],
+            cwd=repo,
+            env=environment,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr.decode("utf-8", "replace")
+        return completed
+
+    run("init")
+    behavior = repo / "backend" / "app" / "services" / "pixiv_metadata_projection_service.py"
+    behavior.parent.mkdir(parents=True)
+    behavior.write_text('PIXIV_AGGREGATE_VERSION = "v1"\n', encoding="utf-8")
+    run("add", "--", behavior.relative_to(repo).as_posix())
+    run(
+        "-c",
+        "user.name=SCV2 PX1 Synthetic",
+        "-c",
+        "user.email=scv2-px1-synthetic.invalid",
+        "commit",
+        "-m",
+        "synthetic evidence head",
+    )
+    evidence_head = run("rev-parse", "HEAD^{commit}").stdout.decode().strip()
+    evidence_tree = run("rev-parse", "HEAD^{tree}").stdout.decode().strip()
+
+    handoff = repo / "docs" / "current-handoff.md"
+    handoff.parent.mkdir(parents=True)
+    handoff.write_text("Synthetic docs-only projection.\n", encoding="utf-8")
+    run("add", "--", handoff.relative_to(repo).as_posix())
+    run(
+        "-c",
+        "user.name=SCV2 PX1 Synthetic",
+        "-c",
+        "user.email=scv2-px1-synthetic.invalid",
+        "commit",
+        "-m",
+        "synthetic docs projection",
+    )
+    result = validate_px1_evidence_carry_forward(
+        repo,
+        evidence_head=evidence_head,
+        evidence_tree=evidence_tree,
+    )
+    assert result["changed_paths"] == ["docs/current-handoff.md"]
+
+    behavior.write_text('PIXIV_AGGREGATE_VERSION = "v2"\n', encoding="utf-8")
+    run("add", "--", behavior.relative_to(repo).as_posix())
+    run(
+        "-c",
+        "user.name=SCV2 PX1 Synthetic",
+        "-c",
+        "user.email=scv2-px1-synthetic.invalid",
+        "commit",
+        "-m",
+        "synthetic behavior mutation",
+    )
+    with pytest.raises(
+        Px1ValidationReceiptError,
+        match="px1_evidence_behavioral_carry_forward_invalid",
+    ):
+        validate_px1_evidence_carry_forward(
+            repo,
+            evidence_head=evidence_head,
+            evidence_tree=evidence_tree,
         )

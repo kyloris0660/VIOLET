@@ -17,12 +17,18 @@ from sqlalchemy.orm import Session
 
 from ..models import SourceMetadataRecord, SourceNameObservation, SourceTagObservation
 from .creator_identity_policy import stable_creator_identity_key
+from .pixiv_identity_policy import (
+    canonical_pixiv_creator_id,
+    canonical_pixiv_work_id,
+)
 from .pixiv_metadata_ingestion_service import (
+    PIXIV_LEGACY_NORMALIZER_VERSION,
     PIXIV_METADATA_NORMALIZER_VERSION,
     QUERY_VISIBLE_OBSERVATION_STATUSES,
     PixivMetadataState,
     is_pixiv_creator_observation_compatible_with_parent,
     is_trusted_complete_pixiv_metadata_record,
+    stable_pixiv_source_record_fingerprint,
 )
 from .source_concept_resolver_service import (
     SourceConceptSignalDraft,
@@ -37,14 +43,23 @@ from .source_metadata_registry_service import canonical_source_key, normalize_so
 PIXIV_AGGREGATE_SCHEMA = "violet.scv2-px1-pixiv-work-page-aggregate.v1"
 PIXIV_SIGNAL_BUNDLE_SCHEMA = "violet.scv2-px1-source-concept-signal-bundle.v1"
 PIXIV_PUBLIC_SUMMARY_SCHEMA = "violet.scv2-px1-pixiv-metadata-summary.v1"
-PIXIV_AGGREGATE_VERSION = "scv2_px1_pixiv_aggregate_v1"
+PIXIV_AGGREGATE_VERSION = "scv2_px1_pixiv_aggregate_v2"
+_CURRENT_V2_PROVENANCE_SOURCES = frozenset(
+    {
+        "gallery_dl_authenticated_metadata",
+        "compatible_complete_record_reuse",
+    }
+)
 
-_WINDOWS_PATH = re.compile(r"(?i)(?:^|[\s\"'])(?:[a-z]:[\\/]|\\\\)")
-_POSIX_PRIVATE_PATH = re.compile(r"(?:^|[\s\"'])(?:/users/|/home/|/private/|/mnt/)", re.I)
+_WINDOWS_PATH = re.compile(r"(?i)(?:^|[\s\"'=:(\[])(?:[a-z]:[\\/]|\\\\)")
+_POSIX_ABSOLUTE_PATH = re.compile(r"(?:^|[\s\"'=:(\[])/(?!/)")
+_FILE_URI = re.compile(r"(?i)\bfile:(?://|\\\\)")
+_HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 _SECRET_MARKER = re.compile(
     r"(?i)(?:authorization\s*[:=]|set-cookie\s*[:=]|cookie\s*[:=]|"
-    r"bearer\s+\S+|api[_-]?key\s*[:=]|refresh[_-]?token\s*[:=]|"
-    r"access[_-]?token\s*[:=]|password\s*[:=])"
+    r"bearer\s+\S+|api[_-]?key\s*[:=]|client[_-]?secret\s*[:=]|"
+    r"refresh[_-]?token\s*[:=]|access[_-]?token\s*[:=]|"
+    r"password\s*[:=]|credential(?:s)?\s*[:=]|secret\s*[:=])"
 )
 
 
@@ -67,14 +82,14 @@ def canonical_fingerprint(value: Any) -> str:
 
 
 def stable_pixiv_work_page_key(work_id: str, page_index: int) -> str:
-    work = str(work_id or "").strip()
-    if re.fullmatch(r"[1-9]\d{6,11}", work) is None:
+    work = canonical_pixiv_work_id(work_id)
+    if work is None:
         raise PixivMetadataProjectionError("pixiv_work_id_invalid")
     try:
         page = int(page_index)
     except (TypeError, ValueError) as exc:
         raise PixivMetadataProjectionError("pixiv_page_index_invalid") from exc
-    if page < 0:
+    if isinstance(page_index, bool) or page < 0 or str(page) != str(page_index):
         raise PixivMetadataProjectionError("pixiv_page_index_invalid")
     return f"pixiv:work:{work}:page:{page}"
 
@@ -97,7 +112,8 @@ def _safe_observation_text(value: Any) -> tuple[str | None, bool]:
     if (
         "\x00" in text
         or _WINDOWS_PATH.search(text)
-        or _POSIX_PRIVATE_PATH.search(text)
+        or _POSIX_ABSOLUTE_PATH.search(text)
+        or _FILE_URI.search(text)
         or _SECRET_MARKER.search(text)
     ):
         return None, True
@@ -117,13 +133,22 @@ def assert_public_safe_projection(value: Any) -> None:
         '"local_path"',
         '"filename"',
         '"credential"',
+        '"credentials"',
+        '"authorization"',
+        '"client_secret"',
+        '"password"',
+        '"cookie"',
+        '"access_token"',
+        '"refresh_token"',
     )
     if any(key in lowered for key in forbidden_keys):
         raise PixivMetadataProjectionError("public_projection_forbidden_field")
     if (
         "\x00" in serialized
+        or "\\u0000" in lowered
         or _WINDOWS_PATH.search(serialized)
-        or _POSIX_PRIVATE_PATH.search(serialized)
+        or _POSIX_ABSOLUTE_PATH.search(serialized)
+        or _FILE_URI.search(serialized)
         or _SECRET_MARKER.search(serialized)
     ):
         raise PixivMetadataProjectionError("public_projection_private_text")
@@ -131,40 +156,62 @@ def assert_public_safe_projection(value: Any) -> None:
 
 def _allowlisted_provenance(record: Any) -> dict[str, Any]:
     provenance = _mapping(record, "provenance")
+    raw = _mapping(record, "raw_metadata_json")
     stable = provenance.get("stable_identity_key")
     stable = stable if isinstance(stable, Mapping) else {}
+    raw_page_index = stable.get("page_index")
+    try:
+        stable_page_index = int(raw_page_index)
+    except (TypeError, ValueError):
+        stable_page_index = None
+    if (
+        isinstance(raw_page_index, bool)
+        or stable_page_index is None
+        or stable_page_index < 0
+        or str(stable_page_index) != str(raw_page_index)
+    ):
+        stable_page_index = None
+    source_record_fingerprint = stable_pixiv_source_record_fingerprint(record)
+    source, _ = _safe_observation_text(provenance.get("source"))
+    parser_version, _ = _safe_observation_text(provenance.get("parser_version"))
+    raw_normalizer_version = normalize_source_text(
+        raw.get("_pixiv_metadata_normalizer_version")
+    )
+    if not raw_normalizer_version:
+        normalizer_version = PIXIV_LEGACY_NORMALIZER_VERSION
+    elif raw_normalizer_version == PIXIV_METADATA_NORMALIZER_VERSION:
+        normalizer_version = PIXIV_METADATA_NORMALIZER_VERSION
+    else:
+        normalizer_version = "unsupported_unknown"
     return {
-        "source": normalize_source_text(provenance.get("source")) or None,
-        "parser_version": normalize_source_text(provenance.get("parser_version")) or None,
-        "metadata_normalizer_version": (
-            normalize_source_text(provenance.get("metadata_normalizer_version"))
-            or None
-        ),
+        "source": source,
+        "parser_version": parser_version,
+        "metadata_normalizer_version": normalizer_version,
         "stable_identity_key": {
             "provider": normalize_source_text(stable.get("provider")).casefold() or None,
-            "work_id": str(stable.get("work_id") or "") or None,
-            "page_index": (
-                int(stable["page_index"])
-                if stable.get("page_index") is not None
-                else None
-            ),
+            "work_id": canonical_pixiv_work_id(stable.get("work_id")),
+            "page_index": stable_page_index,
         },
         "source_record_fingerprint": (
-            str(provenance.get("source_record_fingerprint") or "") or None
+            source_record_fingerprint
+            if _HEX64.fullmatch(source_record_fingerprint)
+            else None
         ),
     }
 
 
-def _page_count(record: Any) -> int | None:
+def _page_count_details(record: Any) -> tuple[int | None, bool]:
     raw = _mapping(record, "raw_metadata_json")
     candidate = raw.get("page_count", raw.get("count", raw.get("num_pages")))
     if candidate in (None, ""):
-        return None
+        return None, False
+    if isinstance(candidate, bool):
+        return None, True
     try:
         count = int(candidate)
     except (TypeError, ValueError):
-        return None
-    return count if count > 0 else None
+        return None, True
+    return (count, False) if count > 0 else (None, True)
 
 
 def _record_business_projection(record: Any) -> dict[str, Any]:
@@ -178,21 +225,33 @@ def _record_business_projection(record: Any) -> dict[str, Any]:
     )
     title, title_redacted = _safe_observation_text(_value(record, "title"))
     artist_name, artist_redacted = _safe_observation_text(_value(record, "artist_name"))
+    raw_creator_id = _value(record, "artist_id")
+    creator_id = canonical_pixiv_creator_id(raw_creator_id)
+    creator_id_invalid = raw_creator_id not in (None, "") and creator_id is None
+    page_count, page_count_invalid = _page_count_details(record)
+    raw_normalizer_version = normalize_source_text(
+        raw.get("_pixiv_metadata_normalizer_version")
+    )
+    if not raw_normalizer_version:
+        normalizer_version = PIXIV_LEGACY_NORMALIZER_VERSION
+    elif raw_normalizer_version == PIXIV_METADATA_NORMALIZER_VERSION:
+        normalizer_version = PIXIV_METADATA_NORMALIZER_VERSION
+    else:
+        normalizer_version = "unsupported_unknown"
     return {
         "projection_version": PIXIV_AGGREGATE_VERSION,
-        "normalizer_version": (
-            normalize_source_text(raw.get("_pixiv_metadata_normalizer_version"))
-            or PIXIV_METADATA_NORMALIZER_VERSION
-        ),
+        "normalizer_version": normalizer_version,
         "provider": normalize_source_text(_value(record, "provider")).casefold(),
-        "work_id": str(_value(record, "source_work_id") or ""),
-        "page_index": _value(record, "source_page_index"),
-        "page_count": _page_count(record),
+        "work_id": canonical_pixiv_work_id(_value(record, "source_work_id")),
+        "page_index": int(_value(record, "source_page_index")),
+        "page_count": page_count,
+        "page_count_invalid": page_count_invalid,
         "metadata_kind": normalize_source_text(_value(record, "metadata_kind")),
         "data_type_label": normalize_source_text(_value(record, "data_type_label")),
         "status": normalize_source_text(_value(record, "status")),
         "title": title,
-        "provider_creator_id": str(_value(record, "artist_id") or "") or None,
+        "provider_creator_id": creator_id,
+        "provider_creator_id_invalid": creator_id_invalid,
         "creator_display_name": artist_name,
         "creator_account": account,
         "redacted_observation_count": sum(
@@ -259,12 +318,240 @@ _STATUS_REASON = {
 }
 
 
+def _provenance_identity_matches(projection: Mapping[str, Any]) -> bool:
+    provenance = projection.get("provenance")
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+    stable = provenance.get("stable_identity_key")
+    stable = stable if isinstance(stable, Mapping) else {}
+    return bool(
+        stable.get("provider") == "pixiv"
+        and stable.get("work_id") == projection.get("work_id")
+        and stable.get("page_index") == projection.get("page_index")
+    )
+
+
+def _select_authoritative_work_fact(
+    entries: Sequence[Mapping[str, Any]],
+    *,
+    field: str,
+    current_conflict_reason: str,
+    legacy_conflict_reason: str,
+    legacy_mismatch_reason: str,
+    conflict_reasons: set[str],
+    deferred_reasons: set[str],
+) -> tuple[Any, str]:
+    current_values = {
+        entry["projection"].get(field)
+        for entry in entries
+        if entry.get("authority") == "current_v2"
+        and entry["projection"].get(field) is not None
+    }
+    legacy_values = {
+        entry["projection"].get(field)
+        for entry in entries
+        if entry.get("authority") == "legacy_unknown"
+        and entry["projection"].get(field) is not None
+    }
+    if len(current_values) > 1:
+        conflict_reasons.add(current_conflict_reason)
+        return None, "conflict"
+    if len(current_values) == 1:
+        selected = next(iter(current_values))
+        if any(value != selected for value in legacy_values):
+            deferred_reasons.add(legacy_mismatch_reason)
+        return selected, "current_v2"
+    if len(legacy_values) > 1:
+        conflict_reasons.add(legacy_conflict_reason)
+        return None, "conflict"
+    if len(legacy_values) == 1:
+        return next(iter(legacy_values)), "legacy_unknown"
+    return None, "none"
+
+
+def derive_pixiv_work_consistency(records: Sequence[Any]) -> dict[str, Any]:
+    """Select deterministic work facts before any page-local aggregate exists."""
+
+    if not records:
+        raise PixivMetadataProjectionError("pixiv_source_records_missing")
+    entries: list[dict[str, Any]] = []
+    work_ids: set[str] = set()
+    page_indexes: set[int] = set()
+    conflict_reasons: set[str] = set()
+    deferred_reasons: set[str] = set()
+    for record in records:
+        if normalize_source_text(_value(record, "provider")).casefold() != "pixiv":
+            raise PixivMetadataProjectionError("pixiv_source_provider_invalid")
+        work_id = canonical_pixiv_work_id(_value(record, "source_work_id"))
+        if work_id is None:
+            raise PixivMetadataProjectionError("pixiv_work_id_invalid")
+        raw_page_index = _value(record, "source_page_index")
+        stable_pixiv_work_page_key(work_id, raw_page_index)
+        page_index = int(raw_page_index)
+        work_ids.add(work_id)
+        page_indexes.add(page_index)
+        projection = _record_business_projection(record)
+        trusted = is_trusted_complete_pixiv_metadata_record(record)
+        normalizer = projection["normalizer_version"]
+        provenance_matches = _provenance_identity_matches(projection)
+        provenance = projection["provenance"]
+        provenance_source = provenance.get("source")
+        parser_version = provenance.get("parser_version")
+        current_provenance_supported = bool(
+            provenance_source in _CURRENT_V2_PROVENANCE_SOURCES
+            and parser_version
+        )
+        if (
+            trusted
+            and normalizer == PIXIV_METADATA_NORMALIZER_VERSION
+            and provenance_matches
+            and current_provenance_supported
+        ):
+            authority = "current_v2"
+        elif trusted and normalizer == PIXIV_LEGACY_NORMALIZER_VERSION:
+            authority = "legacy_unknown"
+            deferred_reasons.add("legacy_unknown_provenance")
+        elif normalizer == PIXIV_METADATA_NORMALIZER_VERSION and projection.get(
+            "status"
+        ) in {
+            PixivMetadataState.COMPLETE.value,
+            "observed",
+            "active",
+            "accepted",
+        }:
+            authority = "incompatible_current_v2"
+            if not provenance_matches:
+                conflict_reasons.add(
+                    "current_v2_provenance_identity_incompatible"
+                )
+            if provenance_source not in _CURRENT_V2_PROVENANCE_SOURCES:
+                conflict_reasons.add("current_v2_provenance_source_incompatible")
+            if not parser_version:
+                conflict_reasons.add("current_v2_parser_provenance_missing")
+        elif trusted:
+            authority = "unsupported_trusted_provenance"
+            deferred_reasons.add("unsupported_normalizer_provenance")
+        else:
+            authority = "untrusted"
+        if projection.get("provider_creator_id_invalid"):
+            if authority in {"current_v2", "incompatible_current_v2"}:
+                conflict_reasons.add("invalid_trusted_provider_creator_id")
+            elif authority == "legacy_unknown":
+                deferred_reasons.add("invalid_legacy_provider_creator_id")
+            else:
+                deferred_reasons.add("invalid_untrusted_provider_creator_id")
+        if projection.get("page_count_invalid"):
+            if authority in {"current_v2", "incompatible_current_v2"}:
+                conflict_reasons.add("invalid_trusted_provider_page_count")
+            else:
+                deferred_reasons.add("invalid_untrusted_provider_page_count")
+        if authority == "untrusted" and (
+            projection.get("provider_creator_id") is not None
+            or projection.get("page_count") is not None
+        ):
+            deferred_reasons.add("untrusted_work_fact_ignored")
+        entries.append(
+            {
+                "projection": projection,
+                "trusted": trusted,
+                "authority": authority,
+            }
+        )
+    if len(work_ids) != 1:
+        raise PixivMetadataProjectionError("pixiv_work_scope_mixed")
+    work_id = next(iter(work_ids))
+    current_parser_versions = {
+        str(entry["projection"]["provenance"]["parser_version"])
+        for entry in entries
+        if entry["authority"] == "current_v2"
+        and entry["projection"]["provenance"].get("parser_version")
+    }
+    if len(current_parser_versions) > 1:
+        conflict_reasons.add("work_current_v2_parser_version_conflict")
+    creator_id, creator_source = _select_authoritative_work_fact(
+        entries,
+        field="provider_creator_id",
+        current_conflict_reason="work_conflicting_provider_creator_ids",
+        legacy_conflict_reason="work_conflicting_legacy_provider_creator_ids",
+        legacy_mismatch_reason="legacy_creator_id_conflict_ignored",
+        conflict_reasons=conflict_reasons,
+        deferred_reasons=deferred_reasons,
+    )
+    page_count, page_count_source = _select_authoritative_work_fact(
+        entries,
+        field="page_count",
+        current_conflict_reason="work_conflicting_provider_page_counts",
+        legacy_conflict_reason="work_conflicting_legacy_provider_page_counts",
+        legacy_mismatch_reason="legacy_page_count_conflict_ignored",
+        conflict_reasons=conflict_reasons,
+        deferred_reasons=deferred_reasons,
+    )
+    if page_count is not None and any(index >= int(page_count) for index in page_indexes):
+        conflict_reasons.add("work_page_index_out_of_provider_range")
+    if creator_source == "conflict":
+        creator_id = None
+    current_creator_candidates = sorted(
+        {
+            str(entry["projection"]["provider_creator_id"])
+            for entry in entries
+            if entry["authority"] == "current_v2"
+            and entry["projection"].get("provider_creator_id") is not None
+        }
+    )
+    legacy_creator_candidates = sorted(
+        {
+            str(entry["projection"]["provider_creator_id"])
+            for entry in entries
+            if entry["authority"] == "legacy_unknown"
+            and entry["projection"].get("provider_creator_id") is not None
+        }
+    )
+    authority_counts = Counter(str(entry["authority"]) for entry in entries)
+    normalizer_versions = sorted(
+        {str(entry["projection"]["normalizer_version"]) for entry in entries}
+    )
+    provenance_sources = sorted(
+        {
+            str(entry["projection"]["provenance"]["source"])
+            for entry in entries
+            if entry["projection"]["provenance"].get("source")
+        }
+    )
+    parser_versions = sorted(
+        {
+            str(entry["projection"]["provenance"]["parser_version"])
+            for entry in entries
+            if entry["projection"]["provenance"].get("parser_version")
+        }
+    )
+    return {
+        "work_id": work_id,
+        "known_page_indexes": sorted(page_indexes),
+        "provider_creator_id": creator_id,
+        "provider_creator_id_candidates": (
+            current_creator_candidates
+            if current_creator_candidates
+            else legacy_creator_candidates
+        ),
+        "provider_page_count": page_count,
+        "creator_identity_authority": creator_source,
+        "page_count_authority": page_count_source,
+        "normalizer_versions": normalizer_versions,
+        "provenance_sources": provenance_sources,
+        "parser_versions": parser_versions,
+        "record_authority_counts": dict(sorted(authority_counts.items())),
+        "provenance_compatible": not conflict_reasons,
+        "conflict_reasons": sorted(conflict_reasons),
+        "deferred_reasons": sorted(deferred_reasons),
+    }
+
+
 def build_canonical_pixiv_work_page_aggregate(
     records: Sequence[Any],
     *,
     name_observations: Sequence[Any] = (),
     tag_observations: Sequence[Any] = (),
     known_page_indexes: Sequence[int] = (),
+    work_consistency: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one canonical aggregate from existing source-layer rows.
 
@@ -274,6 +561,9 @@ def build_canonical_pixiv_work_page_aggregate(
 
     if not records:
         raise PixivMetadataProjectionError("pixiv_source_records_missing")
+    selected_work_consistency = dict(
+        work_consistency or derive_pixiv_work_consistency(records)
+    )
 
     record_entries: list[dict[str, Any]] = []
     work_pages: set[tuple[str, int]] = set()
@@ -307,11 +597,19 @@ def build_canonical_pixiv_work_page_aggregate(
     if len(work_pages) != 1:
         raise PixivMetadataProjectionError("pixiv_work_page_scope_mixed")
     work_id, page_index = next(iter(work_pages))
+    if selected_work_consistency.get("work_id") != work_id:
+        raise PixivMetadataProjectionError("pixiv_work_consistency_scope_mismatch")
     stable_key = stable_pixiv_work_page_key(work_id, page_index)
     entry_by_token = {entry["token"]: entry for entry in record_entries}
 
     conflict_reasons: set[str] = set()
     deferred_reasons: set[str] = set()
+    conflict_reasons.update(
+        str(value) for value in selected_work_consistency.get("conflict_reasons", ())
+    )
+    deferred_reasons.update(
+        str(value) for value in selected_work_consistency.get("deferred_reasons", ())
+    )
     redacted_count = sum(
         int(entry["projection"]["redacted_observation_count"])
         for entry in record_entries
@@ -332,15 +630,32 @@ def build_canonical_pixiv_work_page_aggregate(
             deferred_reasons.add(reason)
 
     trusted_entries = [entry for entry in record_entries if entry["trusted"]]
-    creator_ids = sorted(
+    selected_creator_id = canonical_pixiv_creator_id(
+        selected_work_consistency.get("provider_creator_id")
+    )
+    creator_candidates = sorted(
         {
-            str(entry["projection"]["provider_creator_id"])
-            for entry in trusted_entries
-            if entry["projection"]["provider_creator_id"]
+            str(value)
+            for value in selected_work_consistency.get(
+                "provider_creator_id_candidates", ()
+            )
+            if canonical_pixiv_creator_id(value) is not None
         }
     )
-    if len(creator_ids) > 1:
-        conflict_reasons.add("conflicting_provider_creator_ids")
+    creator_conflict = any(
+        reason
+        in {
+            "work_conflicting_provider_creator_ids",
+            "work_conflicting_legacy_provider_creator_ids",
+            "invalid_trusted_provider_creator_id",
+            "current_v2_provenance_identity_incompatible",
+            "current_v2_provenance_source_incompatible",
+            "current_v2_parser_provenance_missing",
+            "work_current_v2_parser_version_conflict",
+        }
+        for reason in conflict_reasons
+    )
+    creator_ids = [selected_creator_id] if selected_creator_id and not creator_conflict else []
 
     display_observations: list[dict[str, Any]] = []
     account_observations: list[dict[str, Any]] = []
@@ -349,7 +664,15 @@ def build_canonical_pixiv_work_page_aggregate(
 
     for entry in trusted_entries:
         source_fingerprint = entry["fingerprint"]
-        creator_id = entry["projection"]["provider_creator_id"]
+        entry_creator_id = entry["projection"]["provider_creator_id"]
+        if (
+            selected_creator_id
+            and entry_creator_id
+            and entry_creator_id != selected_creator_id
+        ):
+            deferred_reasons.add("non_authoritative_creator_observation_ignored")
+            continue
+        creator_id = selected_creator_id or entry_creator_id
         if entry["projection"]["creator_display_name"]:
             display_observations.append(
                 _observation_projection(
@@ -393,7 +716,15 @@ def build_canonical_pixiv_work_page_aggregate(
         if status not in QUERY_VISIBLE_OBSERVATION_STATUSES or not parent["trusted"]:
             deferred_reasons.add("untrusted_or_nonvisible_name_observation")
             continue
-        creator_id = parent["projection"]["provider_creator_id"]
+        parent_creator_id = parent["projection"]["provider_creator_id"]
+        if (
+            selected_creator_id
+            and parent_creator_id
+            and parent_creator_id != selected_creator_id
+        ):
+            deferred_reasons.add("non_authoritative_creator_observation_ignored")
+            continue
+        creator_id = selected_creator_id or parent_creator_id
         if source_field in {"pixiv_user_metadata", "pixiv_user_account"}:
             if not is_pixiv_creator_observation_compatible_with_parent(
                 observation, parent["record"]
@@ -465,18 +796,21 @@ def build_canonical_pixiv_work_page_aggregate(
     if len(title_values) > 1:
         conflict_reasons.add("conflicting_title_observations")
 
-    page_counts = sorted(
-        {
-            int(entry["projection"]["page_count"])
-            for entry in record_entries
-            if entry["projection"]["page_count"] is not None
-        }
-    )
-    if len(page_counts) > 1:
-        conflict_reasons.add("conflicting_page_count_observations")
-    known_scope = sorted({int(value) for value in known_page_indexes} | {page_index})
-    if any(value < 0 for value in known_scope):
-        raise PixivMetadataProjectionError("pixiv_known_page_scope_invalid")
+    selected_page_count = selected_work_consistency.get("provider_page_count")
+    page_counts = [int(selected_page_count)] if selected_page_count is not None else []
+    known_scope_values = list(known_page_indexes) + list(
+        selected_work_consistency.get("known_page_indexes", ())
+    ) + [page_index]
+    known_scope: list[int] = []
+    for value in known_scope_values:
+        try:
+            stable_pixiv_work_page_key(work_id, value)
+        except PixivMetadataProjectionError as exc:
+            raise PixivMetadataProjectionError(
+                "pixiv_known_page_scope_invalid"
+            ) from exc
+        known_scope.append(int(value))
+    known_scope = sorted(set(known_scope))
 
     if conflict_reasons:
         disposition = "conflict"
@@ -534,7 +868,9 @@ def build_canonical_pixiv_work_page_aggregate(
         "stable_work_page_key": stable_key,
         "creator": {
             "provider_creator_id": creator_ids[0] if len(creator_ids) == 1 else None,
-            "conflicting_provider_creator_ids": creator_ids if len(creator_ids) > 1 else [],
+            "conflicting_provider_creator_ids": (
+                creator_candidates if creator_conflict else []
+            ),
             "account_observations": account_observations,
             "display_name_observations": display_observations,
         },
@@ -552,6 +888,29 @@ def build_canonical_pixiv_work_page_aggregate(
                 for entry in record_entries
             }
         ),
+        "provenance": {
+            "normalizer_versions": list(
+                selected_work_consistency.get("normalizer_versions", ())
+            ),
+            "provenance_sources": list(
+                selected_work_consistency.get("provenance_sources", ())
+            ),
+            "parser_versions": list(
+                selected_work_consistency.get("parser_versions", ())
+            ),
+            "creator_identity_authority": selected_work_consistency.get(
+                "creator_identity_authority", "none"
+            ),
+            "page_count_authority": selected_work_consistency.get(
+                "page_count_authority", "none"
+            ),
+            "record_authority_counts": dict(
+                selected_work_consistency.get("record_authority_counts", {})
+            ),
+            "work_fact_compatible": not bool(
+                selected_work_consistency.get("conflict_reasons")
+            ),
+        },
         "metadata_completeness": completeness,
         "lifecycle": {
             "states": lifecycle_states,
@@ -611,10 +970,44 @@ def project_pixiv_aggregate_to_source_concept_signals(
     stable_key = str(aggregate["stable_work_page_key"])
     creator = aggregate.get("creator")
     creator = creator if isinstance(creator, Mapping) else {}
-    creator_id = str(creator.get("provider_creator_id") or "") or None
+    raw_creator_id = creator.get("provider_creator_id")
+    creator_id = canonical_pixiv_creator_id(raw_creator_id)
+    if raw_creator_id not in (None, "") and creator_id is None:
+        raise PixivMetadataProjectionError("pixiv_creator_id_invalid")
     creator_conflict = bool(creator.get("conflicting_provider_creator_ids"))
     context_key = stable_key
     inputs: list[SourceConceptSignalInput] = []
+
+    if creator_id and not creator_conflict:
+        anchor_value = f"Pixiv creator {creator_id}"
+        inputs.append(
+            SourceConceptSignalInput(
+                origin_type="pixiv_creator_identity_anchor",
+                origin_key=_signal_origin_key(
+                    stable_key, "creator_identity", creator_id
+                ),
+                provider="pixiv",
+                raw_value=anchor_value,
+                display_value=anchor_value,
+                canonical_value=f"pixiv_creator_{creator_id}",
+                role_hint="artist",
+                work_context_key=None,
+                source_kind="pixiv_stable_creator_identity",
+                trust_tier="strong",
+                confidence=1.0,
+                status="active",
+                evidence_payload={
+                    "stable_creator_id": creator_id,
+                    "observation_kind": "stable_creator_identity",
+                    "mutable_observation": False,
+                    "aggregate_fingerprint": supplied_fingerprint,
+                    "work_id": aggregate["work_id"],
+                    "page_index": aggregate["page_index"],
+                    "creator_conflict": False,
+                },
+                source_record_id=supplied_fingerprint,
+            )
+        )
 
     for field_name, observations in (
         ("display_name", creator.get("display_name_observations") or []),
@@ -627,7 +1020,11 @@ def project_pixiv_aggregate_to_source_concept_signals(
                 SourceConceptSignalInput(
                     origin_type="pixiv_creator_observation",
                     origin_key=_signal_origin_key(
-                        stable_key, field_name, observation.get("canonical_key"), stable_id
+                        stable_key,
+                        field_name,
+                        observation.get("canonical_key"),
+                        stable_id,
+                        observation.get("source_fingerprint"),
                     ),
                     provider="pixiv",
                     raw_value=value,
@@ -660,7 +1057,10 @@ def project_pixiv_aggregate_to_source_concept_signals(
             SourceConceptSignalInput(
                 origin_type="pixiv_title_observation",
                 origin_key=_signal_origin_key(
-                    stable_key, "title", observation.get("canonical_key")
+                    stable_key,
+                    "title",
+                    observation.get("canonical_key"),
+                    observation.get("source_fingerprint"),
                 ),
                 provider="pixiv",
                 raw_value=value,
@@ -696,6 +1096,7 @@ def project_pixiv_aggregate_to_source_concept_signals(
                     "tag",
                     observation.get("canonical_key"),
                     observation.get("source_category"),
+                    observation.get("source_fingerprint"),
                 ),
                 provider="pixiv",
                 raw_value=value,
@@ -727,6 +1128,15 @@ def project_pixiv_aggregate_to_source_concept_signals(
         "provider": "pixiv",
         "stable_work_page_key": stable_key,
         "aggregate_fingerprint": supplied_fingerprint,
+        "source_state": {
+            "disposition": aggregate.get("disposition"),
+            "conflict_reasons": list(aggregate.get("conflict_reasons") or ()),
+            "deferred_reasons": list(aggregate.get("deferred_reasons") or ()),
+            "metadata_completeness": dict(
+                aggregate.get("metadata_completeness") or {}
+            ),
+            "provenance": dict(aggregate.get("provenance") or {}),
+        },
         "signals": public_signals,
         "signal_count": len(public_signals),
         "logical_keys": sorted(signal["signal_key"] for signal in public_signals),
@@ -754,16 +1164,26 @@ def build_canonical_pixiv_aggregates_from_session(
 ) -> tuple[dict[str, Any], ...]:
     """Read Pixiv source rows and build aggregates without writing the session."""
 
-    records = (
+    queried_records = (
         session.query(SourceMetadataRecord)
         .filter(SourceMetadataRecord.provider == "pixiv")
         .all()
     )
+    records = [
+        record
+        for record in queried_records
+        if normalize_source_text(record.status)
+        != PixivMetadataState.NOT_APPLICABLE.value
+    ]
     grouped: dict[tuple[str, int], list[SourceMetadataRecord]] = defaultdict(list)
     for record in records:
         if not record.source_work_id or record.source_page_index is None:
             raise PixivMetadataProjectionError("pixiv_source_record_identity_incomplete")
-        grouped[(str(record.source_work_id), int(record.source_page_index))].append(record)
+        work_id = canonical_pixiv_work_id(record.source_work_id)
+        if work_id is None:
+            raise PixivMetadataProjectionError("pixiv_work_id_invalid")
+        stable_pixiv_work_page_key(work_id, record.source_page_index)
+        grouped[(work_id, int(record.source_page_index))].append(record)
 
     names_by_record: dict[int, list[SourceNameObservation]] = defaultdict(list)
     tags_by_record: dict[int, list[SourceTagObservation]] = defaultdict(list)
@@ -783,8 +1203,14 @@ def build_canonical_pixiv_aggregates_from_session(
             tags_by_record[int(observation.source_metadata_record_id)].append(observation)
 
     known_pages_by_work: dict[str, list[int]] = defaultdict(list)
+    rows_by_work: dict[str, list[SourceMetadataRecord]] = defaultdict(list)
     for work_id, page_index in grouped:
         known_pages_by_work[work_id].append(page_index)
+        rows_by_work[work_id].extend(grouped[(work_id, page_index)])
+    work_consistency_by_work = {
+        work_id: derive_pixiv_work_consistency(rows)
+        for work_id, rows in sorted(rows_by_work.items())
+    }
 
     aggregates: list[dict[str, Any]] = []
     for (work_id, page_index), rows in sorted(grouped.items()):
@@ -796,6 +1222,7 @@ def build_canonical_pixiv_aggregates_from_session(
                 name_observations=names,
                 tag_observations=tags,
                 known_page_indexes=known_pages_by_work[work_id],
+                work_consistency=work_consistency_by_work[work_id],
             )
         )
     return tuple(aggregates)

@@ -32,6 +32,11 @@ from ..models import (
 )
 from ..utils.cache import invalidate_source_metadata_search_cache
 from .pixiv_filename_prior_service import PARSER_VERSION, PixivFilenamePrior, distinct_work_pages, parse_approved_fields
+from .pixiv_identity_policy import (
+    canonical_pixiv_creator_id,
+    canonical_pixiv_work_id,
+    is_allowlisted_pixiv_provider_marker,
+)
 from .source_metadata_registry_service import canonical_source_key, normalize_source_text
 
 
@@ -40,6 +45,7 @@ MIN_REQUEST_SPACING_SECONDS = 2.0
 PERSISTENT_SPACING_STATE_VERSION = "pixiv_persistent_request_spacing_v1"
 MANIFEST_SCOPED_OUTCOME_KEY_VERSION = "pixiv_manifest_scoped_outcome_key_v1"
 PIXIV_METADATA_NORMALIZER_VERSION = "pixiv_gallery_dl_metadata_normalizer_v2"
+PIXIV_LEGACY_NORMALIZER_VERSION = "legacy_unknown"
 QUEUE_METADATA_KIND = "pixiv_ingestion_gate"
 COMPLETE_METADATA_KINDS = frozenset({
     "provider_metadata",
@@ -90,7 +96,6 @@ def stable_pixiv_source_record_fingerprint(
     """Return a cross-database reference fingerprint without a numeric row ID."""
 
     payload = {
-        "provider_record_key": _record_value(record, "provider_record_key"),
         "provider": _record_value(record, "provider"),
         "source_work_id": _record_value(record, "source_work_id"),
         "source_page_index": _record_value(record, "source_page_index"),
@@ -127,7 +132,8 @@ def is_trusted_complete_pixiv_metadata_record(
     metadata_kind = str(_record_value(record, "metadata_kind") or "").strip()
     data_type = str(_record_value(record, "data_type_label") or "").strip()
     status = str(_record_value(record, "status") or "").strip()
-    work_id = str(_record_value(record, "source_work_id") or "").strip()
+    raw_work_id = _record_value(record, "source_work_id")
+    work_id = canonical_pixiv_work_id(raw_work_id)
     page_index = _record_value(record, "source_page_index")
     raw = _record_value(record, "raw_metadata_json")
     provenance = _record_value(record, "provenance")
@@ -135,9 +141,9 @@ def is_trusted_complete_pixiv_metadata_record(
         provider != "pixiv"
         or metadata_kind not in COMPLETE_METADATA_KINDS
         or status not in CANONICAL_COMPLETE_STATUSES
-        or not work_id
+        or work_id is None
         or page_index is None
-        or int(page_index) < 0
+        or isinstance(page_index, bool)
         or not data_type
         or not isinstance(raw, Mapping)
         or not raw
@@ -145,15 +151,26 @@ def is_trusted_complete_pixiv_metadata_record(
         or not provenance
     ):
         return False
+    try:
+        canonical_page_index = int(page_index)
+    except (TypeError, ValueError):
+        return False
+    if canonical_page_index < 0 or str(canonical_page_index) != str(page_index):
+        return False
     if metadata_kind != QUEUE_METADATA_KIND:
         return True
     stable = provenance.get("stable_identity_key")
     stable = stable if isinstance(stable, Mapping) else {}
+    try:
+        stable_page_index = int(stable.get("page_index"))
+    except (TypeError, ValueError):
+        stable_page_index = -1
     stable_matches = bool(
         str(stable.get("provider") or "").casefold() == "pixiv"
         and str(stable.get("work_id") or "") == work_id
         and stable.get("page_index") is not None
-        and int(stable["page_index"]) == int(page_index)
+        and not isinstance(stable.get("page_index"), bool)
+        and stable_page_index == canonical_page_index
     )
     source = str(provenance.get("source") or "")
     if status != PixivMetadataState.COMPLETE.value or not stable_matches:
@@ -235,7 +252,7 @@ def manifest_scoped_outcome_key(
 
     fingerprint = str(phase_manifest_fingerprint or "").strip().casefold()
     provider_value = str(provider or "").strip().casefold()
-    work_value = str(work_id or "").strip()
+    work_value = canonical_pixiv_work_id(work_id)
     try:
         page_value = int(requested_page)
     except (TypeError, ValueError) as exc:
@@ -244,7 +261,7 @@ def manifest_scoped_outcome_key(
         raise PixivMetadataGateError("manifest_outcome_fingerprint_invalid")
     if provider_value != "pixiv":
         raise PixivMetadataGateError("manifest_outcome_provider_invalid")
-    if re.fullmatch(r"[1-9]\d{0,11}", work_value) is None:
+    if work_value is None:
         raise PixivMetadataGateError("manifest_outcome_work_id_invalid")
     if page_value < 0:
         raise PixivMetadataGateError("manifest_outcome_page_invalid")
@@ -343,7 +360,7 @@ class PersistentRequestSpacing:
         os.replace(temporary, self.state_path)
 
     def wait_before_request(self, work_id: str) -> None:
-        if re.fullmatch(r"[1-9]\d{0,11}", str(work_id or "")) is None:
+        if canonical_pixiv_work_id(work_id) is None:
             raise PixivMetadataGateError("persistent_spacing_work_id_invalid")
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         deadline = time.monotonic() + self.lock_timeout_seconds
@@ -1026,13 +1043,14 @@ def acquisition_work_lifecycle_counts(session: Session) -> dict[str, int]:
 
 
 def build_gallery_dl_metadata_command(entrypoint: Sequence[str], work_id: str) -> list[str]:
-    if not re.fullmatch(r"[1-9]\d{0,11}", str(work_id)):
+    canonical_work_id = canonical_pixiv_work_id(work_id)
+    if canonical_work_id is None:
         raise PixivMetadataGateError("invalid_canonical_pixiv_work_id")
     return [
         *entrypoint,
         "--dump-json",
         "--no-download",
-        f"https://www.pixiv.net/artworks/{work_id}",
+        f"https://www.pixiv.net/artworks/{canonical_work_id}",
     ]
 
 
@@ -1046,7 +1064,11 @@ def _extract_payload_records(value: Any) -> list[dict[str, Any]]:
                 records.extend(_extract_payload_records(nested))
     elif isinstance(value, (list, tuple)):
         # gallery-dl event rows commonly use [event_type, url, metadata].
-        if len(value) >= 3 and isinstance(value[-1], Mapping):
+        if (
+            len(value) >= 3
+            and not isinstance(value[0], (Mapping, list, tuple))
+            and isinstance(value[-1], Mapping)
+        ):
             records.append(dict(value[-1]))
         else:
             for nested in value:
@@ -1062,6 +1084,13 @@ def _gallery_dl_provider_marker(raw: Mapping[str, Any]) -> str | None:
         if marker:
             return marker
     return None
+
+
+def _first_present_value(*values: Any) -> tuple[Any, bool]:
+    for value in values:
+        if value not in (None, ""):
+            return value, True
+    return None, False
 
 
 def _looks_like_gallery_dl_work_record(raw: Mapping[str, Any]) -> bool:
@@ -1088,9 +1117,11 @@ def _normalized_gallery_dl_page(
     raw: Mapping[str, Any],
     *,
     expected_work_id: str,
+    route_provider_marker: str,
 ) -> dict[str, Any]:
-    marker = _gallery_dl_provider_marker(raw)
-    if marker is not None and "pixiv" not in marker:
+    explicit_marker = _gallery_dl_provider_marker(raw)
+    marker = explicit_marker or route_provider_marker
+    if not is_allowlisted_pixiv_provider_marker(marker):
         raise PixivMetadataGateError("metadata_normalization_failed_unknown_provider")
 
     page_index_raw = raw.get("num")
@@ -1120,7 +1151,14 @@ def _normalized_gallery_dl_page(
             )
 
     user = raw.get("user") if isinstance(raw.get("user"), Mapping) else {}
-    creator_id = raw.get("user_id") or raw.get("artist_id") or user.get("id")
+    creator_id_value, creator_id_present = _first_present_value(
+        raw.get("user_id"), raw.get("artist_id"), user.get("id")
+    )
+    creator_id = canonical_pixiv_creator_id(creator_id_value)
+    if creator_id_present and creator_id is None:
+        raise PixivMetadataGateError(
+            "metadata_normalization_failed_creator_id_invalid"
+        )
     creator_name = (
         raw.get("user_name")
         or raw.get("artist_name")
@@ -1132,7 +1170,7 @@ def _normalized_gallery_dl_page(
     )
     profile_identity = raw.get("user_url") or raw.get("artist_profile_url")
     profile_identity_source = "raw_provider_identity" if profile_identity else None
-    if not profile_identity and creator_id not in (None, ""):
+    if not profile_identity and creator_id is not None:
         profile_identity = f"https://www.pixiv.net/users/{creator_id}"
         profile_identity_source = "derived_from_stable_creator_id"
 
@@ -1154,7 +1192,7 @@ def _normalized_gallery_dl_page(
         "page_index": page_index,
         "page_count": page_count,
         "title": normalize_source_text(raw.get("title")) or None,
-        "creator_id": str(creator_id) if creator_id not in (None, "") else None,
+        "creator_id": creator_id,
         "creator_name": normalize_source_text(creator_name) or None,
         "creator_account": normalize_source_text(creator_account) or None,
         "creator_profile_identity": str(profile_identity) if profile_identity else None,
@@ -1185,54 +1223,41 @@ def _normalized_page_conflict_projection(page: Mapping[str, Any]) -> dict[str, A
     }
 
 
-def parse_gallery_dl_stdout(stdout: str, expected_work_id: str) -> list[dict[str, Any]]:
-    payloads: list[Any] = []
-    stripped = stdout.strip()
-    if not stripped:
-        raise PixivMetadataGateError("metadata_normalization_failed_empty_output")
-    try:
-        payloads.append(json.loads(stripped))
-    except json.JSONDecodeError:
-        try:
-            for line in stdout.splitlines():
-                if line.strip():
-                    payloads.append(json.loads(line))
-        except json.JSONDecodeError as exc:
-            raise PixivMetadataGateError(
-                "metadata_normalization_failed_malformed_json"
-            ) from exc
-    records: list[dict[str, Any]] = []
-    for payload in payloads:
-        records.extend(_extract_payload_records(payload))
-    error_messages: list[str] = []
-    for payload in payloads:
-        for value in _walk_payload_mappings(payload):
-            if "error" in value or "message" in value:
-                error_messages.extend(
-                    str(value.get(key) or "") for key in ("error", "message") if value.get(key)
-                )
-    if error_messages and not records:
-        state, reason = classify_gallery_dl_failure(
-            " ".join(error_messages), authentication_passed=True
-        )
-        raise GalleryDlReportedFailure(state, reason)
+def normalize_gallery_dl_records(
+    records: Sequence[Mapping[str, Any]],
+    expected_work_id: str,
+    *,
+    provider_marker: str = "pixiv",
+) -> list[dict[str, Any]]:
+    """Normalize already-decoded gallery-dl records through one authority."""
+
+    canonical_work_id = canonical_pixiv_work_id(expected_work_id)
+    if canonical_work_id is None:
+        raise PixivMetadataGateError("invalid_canonical_pixiv_work_id")
+    if not is_allowlisted_pixiv_provider_marker(provider_marker):
+        raise PixivMetadataGateError("metadata_normalization_failed_unknown_provider")
+    decoded_records = [dict(record) for record in records]
     returned_work_ids = {
         str(raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid"))
-        for raw in records
+        for raw in decoded_records
         if _looks_like_gallery_dl_work_record(raw)
         and (raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid"))
     }
-    if returned_work_ids and returned_work_ids != {str(expected_work_id)}:
+    if returned_work_ids and returned_work_ids != {canonical_work_id}:
         raise PixivMetadataGateError("provider_identity_mismatch")
 
     pages_by_index: dict[int, list[dict[str, Any]]] = defaultdict(list)
-    for raw in records:
+    for raw in decoded_records:
         if not _looks_like_gallery_dl_work_record(raw):
             continue
         work_id = raw.get("id") or raw.get("illust_id") or raw.get("work_id") or raw.get("pid")
-        if str(work_id or "") != str(expected_work_id):
+        if str(work_id or "") != canonical_work_id:
             continue
-        page = _normalized_gallery_dl_page(raw, expected_work_id=str(expected_work_id))
+        page = _normalized_gallery_dl_page(
+            raw,
+            expected_work_id=canonical_work_id,
+            route_provider_marker=provider_marker,
+        )
         pages_by_index[int(page["page_index"])].append(page)
 
     normalized: list[dict[str, Any]] = []
@@ -1263,10 +1288,55 @@ def parse_gallery_dl_stdout(stdout: str, expected_work_id: str) -> list[dict[str
         )
         normalized.append(selected)
     if not normalized:
-        if returned_work_ids and str(expected_work_id) not in returned_work_ids:
+        if returned_work_ids and canonical_work_id not in returned_work_ids:
             raise PixivMetadataGateError("provider_identity_mismatch")
         raise PixivMetadataGateError("metadata_normalization_failed_unsupported_shape")
     return normalized
+
+
+def parse_gallery_dl_stdout(
+    stdout: str,
+    expected_work_id: str,
+    *,
+    provider_marker: str = "pixiv",
+) -> list[dict[str, Any]]:
+    payloads: list[Any] = []
+    stripped = stdout.strip()
+    if not stripped:
+        raise PixivMetadataGateError("metadata_normalization_failed_empty_output")
+    try:
+        payloads.append(json.loads(stripped))
+    except json.JSONDecodeError:
+        try:
+            for line in stdout.splitlines():
+                if line.strip():
+                    payloads.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise PixivMetadataGateError(
+                "metadata_normalization_failed_malformed_json"
+            ) from exc
+    records: list[dict[str, Any]] = []
+    for payload in payloads:
+        records.extend(_extract_payload_records(payload))
+    error_messages: list[str] = []
+    for payload in payloads:
+        for value in _walk_payload_mappings(payload):
+            if "error" in value or "message" in value:
+                error_messages.extend(
+                    str(value.get(key) or "")
+                    for key in ("error", "message")
+                    if value.get(key)
+                )
+    if error_messages and not records:
+        state, reason = classify_gallery_dl_failure(
+            " ".join(error_messages), authentication_passed=True
+        )
+        raise GalleryDlReportedFailure(state, reason)
+    return normalize_gallery_dl_records(
+        records,
+        expected_work_id,
+        provider_marker=provider_marker,
+    )
 
 
 def classify_gallery_dl_route_viability(
@@ -1275,6 +1345,9 @@ def classify_gallery_dl_route_viability(
     """Classify route evidence without changing ordinary acquisition state."""
 
     started = time.monotonic()
+    canonical_work_id = canonical_pixiv_work_id(expected_work_id)
+    if canonical_work_id is None:
+        raise PixivMetadataGateError("invalid_canonical_pixiv_work_id")
     payloads: list[Any] = []
     parse_failed = False
     stripped = str(stdout or "").strip()
@@ -1290,19 +1363,27 @@ def classify_gallery_dl_route_viability(
     if not parse_failed:
         for payload in payloads:
             records.extend(_extract_payload_records(payload))
+    route_markers = {
+        marker
+        for payload in payloads
+        for value in _walk_payload_mappings(payload)
+        if (marker := _gallery_dl_provider_marker(value)) is not None
+    }
+    route_marker_is_pixiv = any(
+        is_allowlisted_pixiv_provider_marker(marker) for marker in route_markers
+    )
     matching_records: list[dict[str, Any]] = []
     mismatched_identity = False
     provider_is_pixiv = False
     for record in records:
         raw_work_id = record.get("id") or record.get("illust_id") or record.get("work_id") or record.get("pid")
-        record_is_pixiv = any(
-            "pixiv" in str(value or "").casefold()
-            for value in (
-                record.get("provider"), record.get("category"), record.get("extractor"),
-                record.get("extractor_key"), record.get("subcategory"),
-            )
+        explicit_marker = _gallery_dl_provider_marker(record)
+        record_is_pixiv = (
+            is_allowlisted_pixiv_provider_marker(explicit_marker)
+            if explicit_marker is not None
+            else route_marker_is_pixiv
         )
-        if str(raw_work_id or "") == str(expected_work_id):
+        if str(raw_work_id or "") == canonical_work_id:
             matching_records.append(record)
             provider_is_pixiv = provider_is_pixiv or record_is_pixiv
         elif raw_work_id not in (None, ""):
@@ -1318,7 +1399,7 @@ def classify_gallery_dl_route_viability(
             except (TypeError, ValueError):
                 pass
         return RouteViabilityAttempt(
-            str(expected_work_id), PixivRouteViabilityClass.ROUTE_VIABLE.value, True, True,
+            canonical_work_id, PixivRouteViabilityClass.ROUTE_VIABLE.value, True, True,
             len(page_indexes), "pixiv_matching_work_metadata_returned",
             round(time.monotonic() - started, 6),
         )
@@ -1352,7 +1433,7 @@ def classify_gallery_dl_route_viability(
         else:
             reason = "empty_or_unusable_provider_payload"
     return RouteViabilityAttempt(
-        str(expected_work_id), result_class, False,
+        canonical_work_id, result_class, False,
         bool(matching_records) and not mismatched_identity, 0, reason,
         round(time.monotonic() - started, 6),
     )
@@ -1581,27 +1662,37 @@ def _persist_complete_queue_record(
     work_id: str,
     page: Mapping[str, Any],
 ) -> None:
+    canonical_work_id = canonical_pixiv_work_id(work_id)
+    if canonical_work_id is None or canonical_work_id != str(record.source_work_id):
+        raise PixivMetadataGateError("provider_identity_mismatch")
+    raw_creator_id = page.get("creator_id")
+    creator_id = canonical_pixiv_creator_id(raw_creator_id)
+    if raw_creator_id not in (None, "") and creator_id is None:
+        raise PixivMetadataGateError("metadata_normalization_failed_creator_id_invalid")
+    normalizer_version = (
+        normalize_source_text(page.get("normalizer_version"))
+        or PIXIV_LEGACY_NORMALIZER_VERSION
+    )
     raw = dict(page["raw"])
     raw["creator_account"] = page.get("creator_account")
     raw["creator_profile_identity"] = page.get("creator_profile_identity")
     raw["creator_profile_identity_source"] = page.get("creator_profile_identity_source")
-    raw["_pixiv_metadata_normalizer_version"] = page.get(
-        "normalizer_version", PIXIV_METADATA_NORMALIZER_VERSION
-    )
+    if normalizer_version != PIXIV_LEGACY_NORMALIZER_VERSION:
+        raw["_pixiv_metadata_normalizer_version"] = normalizer_version
+    else:
+        raw.pop("_pixiv_metadata_normalizer_version", None)
     record.data_type_label = "authenticated_provider_metadata"
     record.title = page.get("title")
-    record.artist_id = page.get("creator_id")
+    record.artist_id = creator_id
     record.artist_name = page.get("creator_name")
     record.raw_metadata_json = raw
     record.provenance = {
         "source": "gallery_dl_authenticated_metadata",
         "parser_version": PARSER_VERSION,
-        "metadata_normalizer_version": page.get(
-            "normalizer_version", PIXIV_METADATA_NORMALIZER_VERSION
-        ),
+        "metadata_normalizer_version": normalizer_version,
         "stable_identity_key": {
             "provider": "pixiv",
-            "work_id": str(work_id),
+            "work_id": canonical_work_id,
             "page_index": int(record.source_page_index or 0),
         },
     }
@@ -1718,19 +1809,24 @@ def backfill_creator_source_observations(session: Session) -> dict[str, int]:
             continue
         raw = dict(record.raw_metadata_json or {})
         user = raw.get("user") if isinstance(raw.get("user"), Mapping) else {}
-        creator_id = record.artist_id or raw.get("user_id") or raw.get("artist_id") or user.get("id")
+        creator_id_value, creator_id_present = _first_present_value(
+            record.artist_id, raw.get("user_id"), raw.get("artist_id"), user.get("id")
+        )
+        creator_id = canonical_pixiv_creator_id(creator_id_value)
         creator_name = record.artist_name or raw.get("user_name") or raw.get("artist_name") or user.get("name")
         creator_account = raw.get("creator_account") or raw.get("user_account") or raw.get("artist_account") or user.get("account")
         raw_profile = raw.get("user_url") or raw.get("artist_profile_url") or user.get("profile_url")
         profile_identity = raw_profile or raw.get("creator_profile_identity")
         profile_source = "raw_provider_identity" if raw_profile else raw.get("creator_profile_identity_source")
-        if not profile_identity and creator_id not in (None, ""):
+        if not profile_identity and creator_id is not None:
             profile_identity = f"https://www.pixiv.net/users/{creator_id}"
             profile_source = "derived_from_stable_creator_id"
-        if creator_id not in (None, ""):
+        if creator_id is not None:
             counts["available_creator_id_count"] += 1
-            record.artist_id = str(creator_id)
+            record.artist_id = creator_id
             counts["normalized_creator_id_count"] += 1
+        elif creator_id_present:
+            counts["invalid_creator_id_count"] += 1
         if normalize_source_text(creator_name):
             counts["available_creator_name_count"] += 1
             record.artist_name = normalize_source_text(creator_name)

@@ -35,7 +35,9 @@ from .pixiv_metadata_ingestion_service import (
     queue_media_for_pixiv_metadata,
 )
 from .pixiv_metadata_projection_service import (
+    PIXIV_AGGREGATE_SCHEMA,
     PIXIV_PUBLIC_SUMMARY_SCHEMA,
+    PIXIV_SIGNAL_BUNDLE_SCHEMA,
     assert_public_safe_projection,
     build_canonical_pixiv_aggregates_from_session,
     canonical_fingerprint,
@@ -48,6 +50,7 @@ from .pixiv_metadata_projection_service import (
 SYNTHETIC_FIXTURE_SCHEMA = "violet.scv2-px1-synthetic-pixiv-fixture.v1"
 VERTICAL_SLICE_RECEIPT_SCHEMA = "violet.scv2-px1-offline-operation-receipt.v2"
 PX1_CONTRACT_ID = "scv2_px1_pixiv_metadata_consolidation_contract_v1"
+PX2_CONSUMER_CONTRACT_SCHEMA = "violet.scv2-px1-px2-consumer-contract.v1"
 PX1_AUTHORITY_MAP = {
     "px1_implementation_authorized": True,
     "repository_read_authorized": True,
@@ -243,6 +246,93 @@ def repository_synthetic_pixiv_fixture() -> dict[str, Any]:
                 }],
             },
             {
+                "case_id": "mixed_db_non_pixiv_row",
+                "kind": "not_applicable",
+                "media_id": 111,
+                "work_id": None,
+                "page_index": None,
+            },
+            {
+                "case_id": "creator_id_only",
+                "kind": "complete",
+                "media_id": 112,
+                "work_id": "700000009",
+                "page_index": 0,
+                "payload": [{
+                    "provider": "pixiv",
+                    "id": 700000009,
+                    "num": 0,
+                    "page_count": 1,
+                    "title": "Synthetic Numeric Anchor Only",
+                    "user": {"id": 800000009},
+                    "tags": ["synthetic_anchor_only"],
+                }],
+            },
+            {
+                "case_id": "legacy_unknown_provenance",
+                "kind": "legacy_complete",
+                "media_id": 113,
+                "work_id": "700000010",
+                "page_index": 0,
+                "payload": [{
+                    "provider": "pixiv",
+                    "id": 700000010,
+                    "num": 0,
+                    "page_count": 1,
+                    "title": "Synthetic Legacy Projection",
+                    "user": {"id": 800000010, "name": "Synthetic Legacy Creator"},
+                    "tags": ["synthetic_legacy"],
+                }],
+            },
+            {
+                "case_id": "three_page_first",
+                "kind": "complete",
+                "media_id": 114,
+                "work_id": "700000011",
+                "page_index": 0,
+                "payload": [{
+                    "provider": "pixiv",
+                    "id": 700000011,
+                    "num": 0,
+                    "page_count": 3,
+                    "title": "Synthetic Three Page Work",
+                    "user": {"id": 800000011, "name": "Synthetic Three Page Creator"},
+                    "tags": ["synthetic_three_page"],
+                }],
+            },
+            {
+                "case_id": "three_page_middle",
+                "kind": "complete",
+                "media_id": 115,
+                "work_id": "700000011",
+                "page_index": 1,
+                "payload": [{
+                    "provider": "pixiv",
+                    "id": 700000011,
+                    "num": 1,
+                    "page_count": 3,
+                    "title": "Synthetic Three Page Work",
+                    "user": {"id": 800000011, "name": "Synthetic Three Page Creator"},
+                    "tags": ["synthetic_three_page"],
+                }],
+            },
+            {
+                "case_id": "three_page_last",
+                "kind": "complete",
+                "media_id": 116,
+                "work_id": "700000011",
+                "page_index": 2,
+                "payload": [{
+                    "provider": "pixiv",
+                    "id": 700000011,
+                    "num": 2,
+                    "page_count": 3,
+                    "title": "Synthetic Three Page Work",
+                    "user": {"id": 800000011, "name": "Synthetic Three Page Creator"},
+                    "tags": ["synthetic_three_page"],
+                }],
+            },
+            {
                 "case_id": "malformed_json",
                 "kind": "rejected_payload",
                 "media_id": 109,
@@ -325,15 +415,20 @@ class _OfflineOperationGuard:
 
 
 def _queue_case(session: Session, case: Mapping[str, Any]) -> SourceMetadataRecord:
+    not_applicable = str(case.get("kind") or "") == "not_applicable"
     queue_media_for_pixiv_metadata(
         session,
         {
             "id": int(case["media_id"]),
             "filename": (
-                f"synthetic_{case['work_id']}_p{int(case['page_index'])}.png"
+                "synthetic_non_pixiv_fixture.png"
+                if not_applicable
+                else f"synthetic_{case['work_id']}_p{int(case['page_index'])}.png"
             ),
             "path": (
-                f"synthetic-fixture/{case['work_id']}_p{int(case['page_index'])}.png"
+                "synthetic-fixture/non-pixiv-fixture.png"
+                if not_applicable
+                else f"synthetic-fixture/{case['work_id']}_p{int(case['page_index'])}.png"
             ),
         },
     )
@@ -343,8 +438,6 @@ def _queue_case(session: Session, case: Mapping[str, Any]) -> SourceMetadataReco
         .filter(
             SourceMetadataRecord.provider == "pixiv",
             SourceMetadataRecord.media_id == int(case["media_id"]),
-            SourceMetadataRecord.source_work_id == str(case["work_id"]),
-            SourceMetadataRecord.source_page_index == int(case["page_index"]),
         )
         .one_or_none()
     )
@@ -367,8 +460,12 @@ def _apply_fixture_case(
     rejected_cases: list[dict[str, str]],
 ) -> None:
     kind = str(case["kind"])
+    if kind == "not_applicable":
+        if record.status != PixivMetadataState.NOT_APPLICABLE.value:
+            raise PixivMetadataGateError("px1_non_pixiv_case_not_excluded")
+        return
     work_id = str(case["work_id"])
-    if kind == "complete":
+    if kind in {"complete", "legacy_complete"}:
         pages = parse_gallery_dl_stdout(_payload_stdout(case), work_id)
         result = persist_page_local_work_disposition(
             session,
@@ -378,6 +475,13 @@ def _apply_fixture_case(
         )
         if result.missing_record_ids:
             raise PixivMetadataGateError("px1_complete_case_page_missing")
+        if kind == "legacy_complete":
+            raw = dict(record.raw_metadata_json or {})
+            raw.pop("_pixiv_metadata_normalizer_version", None)
+            provenance = dict(record.provenance or {})
+            provenance.pop("metadata_normalizer_version", None)
+            record.raw_metadata_json = raw
+            record.provenance = provenance
         return
     if kind == "state":
         mark_work_state(
@@ -555,6 +659,18 @@ def run_synthetic_pixiv_vertical_slice(
     input_order_stable = (
         first["projection_fingerprint"] == reversed_run["projection_fingerprint"]
     )
+    aggregate_artifact_fingerprint = canonical_fingerprint(first["aggregates"])
+    signal_artifact_fingerprint = canonical_fingerprint(first["signal_bundles"])
+    aggregate_round_trip_fingerprint = canonical_fingerprint(
+        json.loads(canonical_json_bytes(first["aggregates"]).decode("utf-8"))
+    )
+    signal_round_trip_fingerprint = canonical_fingerprint(
+        json.loads(canonical_json_bytes(first["signal_bundles"]).decode("utf-8"))
+    )
+    px2_round_trip_stable = bool(
+        aggregate_artifact_fingerprint == aggregate_round_trip_fingerprint
+        and signal_artifact_fingerprint == signal_round_trip_fingerprint
+    )
     receipt = {
         "schema_version": VERTICAL_SLICE_RECEIPT_SCHEMA,
         "fixture_source": "repository_owned_new_synthetic_only",
@@ -583,6 +699,18 @@ def run_synthetic_pixiv_vertical_slice(
         "executed_stages": list(PX1_EXECUTED_STAGES),
         "fixture_fingerprint": canonical_fingerprint(selected_fixture),
         "normalizer_version": PIXIV_METADATA_NORMALIZER_VERSION,
+        "px2_consumer_contract": {
+            "schema_version": PX2_CONSUMER_CONTRACT_SCHEMA,
+            "aggregate_schema_version": PIXIV_AGGREGATE_SCHEMA,
+            "signal_bundle_schema_version": PIXIV_SIGNAL_BUNDLE_SCHEMA,
+            "aggregate_artifact_fingerprint": aggregate_artifact_fingerprint,
+            "signal_bundle_artifact_fingerprint": signal_artifact_fingerprint,
+            "canonical_json_round_trip_stable": px2_round_trip_stable,
+            "database_row_identity_excluded": True,
+            "runtime_order_identity_excluded": True,
+            "wall_clock_identity_excluded": True,
+            "cluster_materialization_performed": False,
+        },
         "aggregates": first["aggregates"],
         "signal_bundles": first["signal_bundles"],
         "database_counts": first["database_counts"],
@@ -599,6 +727,7 @@ def run_synthetic_pixiv_vertical_slice(
         "synthetic_vertical_slice_verified": bool(
             first["replay_stable"]
             and input_order_stable
+            and px2_round_trip_stable
             and guard.provider_network_attempt_count == 0
             and guard.subprocess_attempt_count == 0
         ),
@@ -607,6 +736,7 @@ def run_synthetic_pixiv_vertical_slice(
         "authorities": dict(PX1_AUTHORITY_MAP),
         "px1_implementation_completed": True,
         "px1_target_met": True,
+        "px2_consumer_contract_frozen": True,
         "target_met": True,
         "owner_accepted": False,
         "safe_to_merge": False,

@@ -34,8 +34,12 @@ def test_current_phase_schema_identity_and_boundary_are_exact() -> None:
     )
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
+    ready = state["current_status"] == documentation_state.SCV2_PX1_READY_STATUS
+    assert state["target_met"] is ready
     assert state["manual_acceptance_status"] == (
-        "pending_scv2_px1_exact_head_owner_audit"
+        "pending_scv2_px1_final_owner_merge_audit"
+        if ready
+        else "owner_adjudicated_bounded_correction_in_progress"
     )
 
 
@@ -101,7 +105,7 @@ def test_status_or_owner_authority_mutation_fails_closed(
 
 def test_target_met_requires_ready_status_and_verified_contract() -> None:
     state = copy.deepcopy(_state())
-    state["current_status"] = documentation_state.SCV2_PX1_IN_PROGRESS_STATUS
+    state["target_met"] = not bool(state["target_met"])
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="status_fields_conflict",
@@ -109,7 +113,9 @@ def test_target_met_requires_ready_status_and_verified_contract() -> None:
         documentation_state.validate_state(state)
 
     state = copy.deepcopy(_state())
-    state["pipeline_contract"]["synthetic_vertical_slice_verified"] = False
+    state["pipeline_contract"]["synthetic_vertical_slice_verified"] = not bool(
+        state["pipeline_contract"]["synthetic_vertical_slice_verified"]
+    )
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="contract_projection",
@@ -126,6 +132,7 @@ def test_target_met_requires_ready_status_and_verified_contract() -> None:
         ("public_schema", "caller.schema"),
         ("machine_verifiable_ci", True),
         ("owner_authority_machine_verifiable", True),
+        ("px2_consumer_contract_frozen", "caller_claim"),
     ],
 )
 def test_contract_projection_mutation_fails_closed(field: str, value: object) -> None:
