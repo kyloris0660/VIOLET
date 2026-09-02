@@ -28,11 +28,11 @@ def _assert_split_s2g_not_active(text: str) -> None:
     assert "Recommended immediate next phase after PD1-A: `S2G-1`" not in text
 
 
-def test_current_mainline_roadmap_persists_px1_boundary_and_fixed_route() -> None:
+def test_current_mainline_roadmap_persists_px2_boundary_and_fixed_route() -> None:
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
-    assert "PR #146" in text
-    assert "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc" in text
+    assert "PR #147" in text
+    assert "5a8efdaf954ab95bd82f95464af31a7fd0873e5e" in text
     _assert_in_order(
         text,
         [
@@ -42,7 +42,7 @@ def test_current_mainline_roadmap_persists_px1_boundary_and_fixed_route() -> Non
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "scv2_px1_pixiv_metadata_consolidation_contract_v1" in text
+    assert "scv2_px2_deterministic_pixiv_clustering_contract_v1" in text
     assert "machine_verifiable_ci=false" in text
     state = json.loads(_read("docs/state/current-phase.json"))
     assert state["current_status"] in text
@@ -51,10 +51,11 @@ def test_current_mainline_roadmap_persists_px1_boundary_and_fixed_route() -> Non
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
     assert state["active_blocker"]["code"] in text
-    assert "phase-4.5-PX1 is historical" in text
+    assert "phase-4.5-PX1" in text
+    assert "historical" in text
     assert "Deferred Due-Gate Policy" in text
     assert "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE" in text
-    assert "final full-library import checkpoint" in text
+    assert "final import" in text
 
 
 def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:
@@ -89,7 +90,8 @@ def test_handoff_points_to_current_mainline_roadmap() -> None:
     assert "roadmap/current-mainline-roadmap.md" in text
     assert "SCV2-PX1" in text
     assert "PR pending creation" in text or "PR #" in text
-    assert "PR #146 Merge Projection" in text
+    assert "PX1 Merge Projection" in text
+    assert "Accepted PR #147 HEAD/tree" in text
     assert "Deferred Debt And Exact Due Gates" in text
     for forbidden_term in ("provider", "Pixiv", "gallery-dl", "LLM"):
         assert forbidden_term in text

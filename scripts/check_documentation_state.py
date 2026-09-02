@@ -1925,6 +1925,22 @@ def _validate_scv2_px2_state(state: dict[str, Any], *, root: Path) -> None:
     protected = state.get("protected_evidence")
     if not isinstance(protected, dict) or any(
         (
+            protected.get("pr146_accepted_head")
+            != SCV2_PX1_PR146_ACCEPTED_HEAD,
+            protected.get("pr146_accepted_tree")
+            != SCV2_PX1_ACCEPTED_MAIN_TREE,
+            protected.get("pr146_merge_commit") != SCV2_PX1_ACCEPTED_MAIN,
+            protected.get("pr146_merge_tree") != SCV2_PX1_ACCEPTED_MAIN_TREE,
+            protected.get("pr146_merged") is not True,
+            protected.get("pr146_final_owner_adjudication_review_id")
+            != 4963026941,
+            protected.get("pr146_final_review_id")
+            != SCV2_PX1_PR146_FINAL_REVIEW_ID,
+            protected.get("pr146_final_reviewed_head")
+            != SCV2_PX1_PR146_ACCEPTED_HEAD,
+            protected.get("pr146_final_review_finding_count") != 10,
+            protected.get("pr146_final_review_resolved_count") != 0,
+            protected.get("pr146_final_review_outdated_count") != 0,
             protected.get("pr147_accepted_head")
             != SCV2_PX2_PR147_ACCEPTED_HEAD,
             protected.get("pr147_accepted_tree")
@@ -1934,6 +1950,13 @@ def _validate_scv2_px2_state(state: dict[str, Any], *, root: Path) -> None:
             tuple(protected.get("pr147_merge_parents", ()))
             != SCV2_PX2_PR147_MERGE_PARENTS,
             protected.get("pr147_merged") is not True,
+            protected.get("pr147_final_reviewed_head")
+            != "557c6f26a85b708f9f386f975d0933be205c112c",
+            protected.get("pr147_final_review_accepted_finding_count") != 4,
+            protected.get("pr147_final_review_rejected_finding_count") != 1,
+            protected.get("pr147_deferred_workspace_confinement_count") != 1,
+            protected.get("pr147_deferred_workspace_confinement_gate")
+            != "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE",
             protected.get("px1_owner_accepted") is not True,
             protected.get("px1_merged") is not True,
             protected.get("px2_started") is not True,
@@ -1949,6 +1972,11 @@ def _validate_scv2_px2_state(state: dict[str, Any], *, root: Path) -> None:
             protected.get("real_source_activity") != 0,
             protected.get("llm_activity") != 0,
             protected.get("production_activity") != 0,
+            protected.get("machine_verifiable_ci") is not False,
+            protected.get("external_data_plane_network_operation_count") != 0,
+            protected.get("existing_database_access_operation_count") != 0,
+            protected.get("media_download_operation_count") != 0,
+            protected.get("production_operation_count") != 0,
         )
     ):
         raise DocumentationStateError("scv2_px2_protected_evidence_invalid")
@@ -1956,6 +1984,17 @@ def _validate_scv2_px2_state(state: dict[str, Any], *, root: Path) -> None:
         "pr147_merge_time"
     ]:
         raise DocumentationStateError("scv2_px2_merge_time_invalid")
+    findings = protected.get("pr146_final_review_deferred_findings")
+    if not isinstance(findings, list):
+        raise DocumentationStateError("scv2_px2_pr146_deferred_findings_invalid")
+    actual_due_map = {
+        str(item.get("thread_id")): str(item.get("due_gate"))
+        for item in findings
+        if isinstance(item, dict)
+        and item.get("status") == "deferred_exact_gate_not_closed_in_px1"
+    }
+    if actual_due_map != SCV2_PX1_FINAL_REVIEW_DUE_GATES:
+        raise DocumentationStateError("scv2_px2_pr146_due_gate_map_invalid")
 
     for key in (
         "completed_checkpoints",

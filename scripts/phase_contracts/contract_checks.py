@@ -179,6 +179,7 @@ class ContractRepositoryContext:
     fl1_i1_evidence: object | None = None
     fl1_i2_evidence: object | None = None
     scv2_px1_evidence: object | None = None
+    scv2_px2_evidence: object | None = None
 
 
 def load_summary_file(path: str | Path) -> dict[str, Any]:
@@ -233,6 +234,16 @@ def check_phase_contract(
             from .scv2_px1_contract import check_scv2_px1_contract
 
             check_scv2_px1_contract(
+                contract,
+                summary,
+                result,
+                repository_context=repository_context,
+            )
+            continue
+        if check_name == "scv2_px2_deterministic_pixiv_clustering":
+            from .scv2_px2_contract import check_scv2_px2_contract
+
+            check_scv2_px2_contract(
                 contract,
                 summary,
                 result,
