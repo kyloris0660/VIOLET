@@ -34,6 +34,11 @@ from ..utils.cache import invalidate_source_metadata_search_cache
 from .pixiv_filename_prior_service import PARSER_VERSION, PixivFilenamePrior, distinct_work_pages, parse_approved_fields
 from .pixiv_identity_policy import (
     canonical_pixiv_creator_id,
+    canonical_pixiv_page_count,
+    canonical_pixiv_page_domain,
+    canonical_pixiv_page_index,
+    canonical_pixiv_provider_marker,
+    canonical_pixiv_provider_marker_consensus,
     canonical_pixiv_work_id,
     is_allowlisted_pixiv_provider_marker,
 )
@@ -151,25 +156,17 @@ def is_trusted_complete_pixiv_metadata_record(
         or not provenance
     ):
         return False
-    try:
-        canonical_page_index = int(page_index)
-    except (TypeError, ValueError):
-        return False
-    if canonical_page_index < 0 or str(canonical_page_index) != str(page_index):
+    canonical_page_index = canonical_pixiv_page_index(page_index)
+    if canonical_page_index is None:
         return False
     if metadata_kind != QUEUE_METADATA_KIND:
         return True
     stable = provenance.get("stable_identity_key")
     stable = stable if isinstance(stable, Mapping) else {}
-    try:
-        stable_page_index = int(stable.get("page_index"))
-    except (TypeError, ValueError):
-        stable_page_index = -1
+    stable_page_index = canonical_pixiv_page_index(stable.get("page_index"))
     stable_matches = bool(
         str(stable.get("provider") or "").casefold() == "pixiv"
         and str(stable.get("work_id") or "") == work_id
-        and stable.get("page_index") is not None
-        and not isinstance(stable.get("page_index"), bool)
         and stable_page_index == canonical_page_index
     )
     source = str(provenance.get("source") or "")
@@ -227,8 +224,13 @@ def is_pixiv_creator_observation_compatible_with_parent(
         return False
     observation_page = _record_value(observation, "source_page_index")
     parent_page = _record_value(parent, "source_page_index")
-    if observation_page is not None and int(observation_page or 0) != int(parent_page or 0):
+    parent_page_index = canonical_pixiv_page_index(parent_page)
+    if parent_page_index is None:
         return False
+    if observation_page is not None:
+        observation_page_index = canonical_pixiv_page_index(observation_page)
+        if observation_page_index is None or observation_page_index != parent_page_index:
+            return False
     observation_media = _record_value(observation, "media_id")
     parent_media = _record_value(parent, "media_id")
     return not (
@@ -253,17 +255,14 @@ def manifest_scoped_outcome_key(
     fingerprint = str(phase_manifest_fingerprint or "").strip().casefold()
     provider_value = str(provider or "").strip().casefold()
     work_value = canonical_pixiv_work_id(work_id)
-    try:
-        page_value = int(requested_page)
-    except (TypeError, ValueError) as exc:
-        raise PixivMetadataGateError("manifest_outcome_page_invalid") from exc
+    page_value = canonical_pixiv_page_index(requested_page)
     if re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
         raise PixivMetadataGateError("manifest_outcome_fingerprint_invalid")
     if provider_value != "pixiv":
         raise PixivMetadataGateError("manifest_outcome_provider_invalid")
     if work_value is None:
         raise PixivMetadataGateError("manifest_outcome_work_id_invalid")
-    if page_value < 0:
+    if page_value is None:
         raise PixivMetadataGateError("manifest_outcome_page_invalid")
     payload = {
         "version": MANIFEST_SCOPED_OUTCOME_KEY_VERSION,
@@ -1076,14 +1075,26 @@ def _extract_payload_records(value: Any) -> list[dict[str, Any]]:
     return records
 
 
-def _gallery_dl_provider_marker(raw: Mapping[str, Any]) -> str | None:
-    """Return an explicit provider marker without guessing from display data."""
+def _gallery_dl_provider_markers(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Collect every non-empty explicit marker without display-name guessing."""
 
+    markers: dict[str, Any] = {}
     for key in ("provider", "extractor", "extractor_key", "category"):
-        marker = normalize_source_text(raw.get(key)).casefold()
-        if marker:
-            return marker
-    return None
+        if key not in raw:
+            continue
+        value = raw[key]
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        markers[key] = value
+    return markers
+
+
+def _gallery_dl_provider_marker(raw: Mapping[str, Any]) -> str | None:
+    """Return Pixiv only when every explicit marker reaches exact consensus."""
+
+    return canonical_pixiv_provider_marker_consensus(
+        _gallery_dl_provider_markers(raw)
+    )
 
 
 def _first_present_value(*values: Any) -> tuple[Any, bool]:
@@ -1119,33 +1130,46 @@ def _normalized_gallery_dl_page(
     expected_work_id: str,
     route_provider_marker: str,
 ) -> dict[str, Any]:
-    explicit_marker = _gallery_dl_provider_marker(raw)
-    marker = explicit_marker or route_provider_marker
-    if not is_allowlisted_pixiv_provider_marker(marker):
+    explicit_markers = _gallery_dl_provider_markers(raw)
+    explicit_marker = canonical_pixiv_provider_marker_consensus(explicit_markers)
+    route_marker = canonical_pixiv_provider_marker("provider", route_provider_marker)
+    if (
+        route_marker is None
+        or (explicit_markers and explicit_marker is None)
+        or (explicit_marker is not None and explicit_marker != route_marker)
+    ):
         raise PixivMetadataGateError("metadata_normalization_failed_unknown_provider")
 
-    page_index_raw = raw.get("num")
-    if page_index_raw is None:
-        page_index_raw = raw.get("page_index", raw.get("page", 0))
-    try:
-        page_index = int(page_index_raw or 0)
-    except (TypeError, ValueError) as exc:
-        raise PixivMetadataGateError(
-            "metadata_normalization_failed_page_index_invalid"
-        ) from exc
-    if page_index < 0:
+    page_index_present = False
+    page_index_raw: Any = None
+    for field in ("num", "page_index", "page"):
+        if field in raw:
+            page_index_raw = raw[field]
+            page_index_present = True
+            break
+    page_index = (
+        canonical_pixiv_page_index(page_index_raw) if page_index_present else 0
+    )
+    if page_index is None:
         raise PixivMetadataGateError("metadata_normalization_failed_page_index_invalid")
 
-    page_count_raw = raw.get("page_count", raw.get("count", raw.get("num_pages")))
+    page_count_present = False
+    page_count_raw: Any = None
+    for field in ("page_count", "count", "num_pages"):
+        if field in raw:
+            page_count_raw = raw[field]
+            page_count_present = True
+            break
     page_count: int | None = None
-    if page_count_raw not in (None, ""):
-        try:
-            page_count = int(page_count_raw)
-        except (TypeError, ValueError) as exc:
+    if page_count_present:
+        page_count = canonical_pixiv_page_count(page_count_raw)
+        if page_count is None:
             raise PixivMetadataGateError(
                 "metadata_normalization_failed_page_count_invalid"
-            ) from exc
-        if page_count <= 0 or page_index >= page_count:
+            )
+        if canonical_pixiv_page_domain(
+            page_index=page_index, page_count=page_count
+        ) is None:
             raise PixivMetadataGateError(
                 "metadata_normalization_failed_page_count_mismatch"
             )
@@ -1161,8 +1185,9 @@ def _normalized_gallery_dl_page(
         )
     creator_name = (
         raw.get("user_name")
-        or raw.get("artist_name")
         or raw.get("artist")
+        or raw.get("artist_name")
+        or raw.get("author")
         or user.get("name")
     )
     creator_account = (
@@ -1174,17 +1199,22 @@ def _normalized_gallery_dl_page(
         profile_identity = f"https://www.pixiv.net/users/{creator_id}"
         profile_identity_source = "derived_from_stable_creator_id"
 
-    tags_raw = raw.get("tags") or raw.get("tag") or []
-    if isinstance(tags_raw, Mapping):
-        tags_raw = list(tags_raw)
-    if isinstance(tags_raw, str):
-        tags_raw = [tags_raw]
     tags: set[str] = set()
-    for item in tags_raw if isinstance(tags_raw, Sequence) else []:
-        tag = item.get("name") if isinstance(item, Mapping) else item
-        normalized_tag = normalize_source_text(tag)
-        if normalized_tag:
-            tags.add(normalized_tag)
+    for field in ("tags", "tag", "keywords"):
+        tags_raw = raw.get(field)
+        if isinstance(tags_raw, Mapping):
+            tag_items: Sequence[Any] = list(tags_raw)
+        elif isinstance(tags_raw, str):
+            tag_items = [tags_raw]
+        elif isinstance(tags_raw, Sequence):
+            tag_items = tags_raw
+        else:
+            tag_items = ()
+        for item in tag_items:
+            tag = item.get("name") if isinstance(item, Mapping) else item
+            normalized_tag = normalize_source_text(tag)
+            if normalized_tag:
+                tags.add(normalized_tag)
 
     return {
         "normalizer_version": PIXIV_METADATA_NORMALIZER_VERSION,

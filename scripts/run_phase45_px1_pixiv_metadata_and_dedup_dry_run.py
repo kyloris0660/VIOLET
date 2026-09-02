@@ -1578,7 +1578,10 @@ def normalize_gallery_dl_metadata(
     preferred = selected["raw"]
     work_id = str(selected["work_id"])
     page_index = int(selected["page_index"])
-    artist_name = selected.get("creator_name")
+    # Historical reports displayed the account when no display name existed.
+    # Keep that presentation fallback here without turning a mutable account
+    # into canonical creator-name identity in the shared normalizer.
+    artist_name = selected.get("creator_name") or selected.get("creator_account")
     artist_id = selected.get("creator_id")
     artist_account = selected.get("creator_account")
     tags = list(selected.get("tags") or ())

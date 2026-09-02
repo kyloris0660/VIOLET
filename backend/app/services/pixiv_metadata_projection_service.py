@@ -19,6 +19,9 @@ from ..models import SourceMetadataRecord, SourceNameObservation, SourceTagObser
 from .creator_identity_policy import stable_creator_identity_key
 from .pixiv_identity_policy import (
     canonical_pixiv_creator_id,
+    canonical_pixiv_page_count,
+    canonical_pixiv_page_domain,
+    canonical_pixiv_page_index,
     canonical_pixiv_work_id,
 )
 from .pixiv_metadata_ingestion_service import (
@@ -85,12 +88,10 @@ def stable_pixiv_work_page_key(work_id: str, page_index: int) -> str:
     work = canonical_pixiv_work_id(work_id)
     if work is None:
         raise PixivMetadataProjectionError("pixiv_work_id_invalid")
-    try:
-        page = int(page_index)
-    except (TypeError, ValueError) as exc:
-        raise PixivMetadataProjectionError("pixiv_page_index_invalid") from exc
-    if isinstance(page_index, bool) or page < 0 or str(page) != str(page_index):
+    page_domain = canonical_pixiv_page_domain(page_index=page_index)
+    if page_domain is None:
         raise PixivMetadataProjectionError("pixiv_page_index_invalid")
+    page, _page_count = page_domain
     return f"pixiv:work:{work}:page:{page}"
 
 
@@ -123,35 +124,51 @@ def _safe_observation_text(value: Any) -> tuple[str | None, bool]:
 def assert_public_safe_projection(value: Any) -> None:
     """Reject a completed public projection containing private or raw material."""
 
-    serialized = canonical_json_bytes(value).decode("utf-8")
-    lowered = serialized.casefold()
-    forbidden_keys = (
-        '"raw_metadata_json"',
-        '"raw_provider_payload"',
-        '"raw"',
-        '"source_url"',
-        '"local_path"',
-        '"filename"',
-        '"credential"',
-        '"credentials"',
-        '"authorization"',
-        '"client_secret"',
-        '"password"',
-        '"cookie"',
-        '"access_token"',
-        '"refresh_token"',
+    canonical_json_bytes(value)
+    forbidden_keys = frozenset(
+        {
+            "raw_metadata_json",
+            "raw_provider_payload",
+            "raw",
+            "source_url",
+            "local_path",
+            "filename",
+            "credential",
+            "credentials",
+            "authorization",
+            "client_secret",
+            "password",
+            "cookie",
+            "access_token",
+            "refresh_token",
+        }
     )
-    if any(key in lowered for key in forbidden_keys):
-        raise PixivMetadataProjectionError("public_projection_forbidden_field")
-    if (
-        "\x00" in serialized
-        or "\\u0000" in lowered
-        or _WINDOWS_PATH.search(serialized)
-        or _POSIX_ABSOLUTE_PATH.search(serialized)
-        or _FILE_URI.search(serialized)
-        or _SECRET_MARKER.search(serialized)
-    ):
-        raise PixivMetadataProjectionError("public_projection_private_text")
+
+    def visit(item: Any) -> None:
+        if isinstance(item, Mapping):
+            for key, nested in item.items():
+                if isinstance(key, str) and key.casefold() in forbidden_keys:
+                    raise PixivMetadataProjectionError(
+                        "public_projection_forbidden_field"
+                    )
+                visit(nested)
+            return
+        if isinstance(item, (list, tuple)):
+            for nested in item:
+                visit(nested)
+            return
+        if not isinstance(item, str):
+            return
+        if (
+            "\x00" in item
+            or _WINDOWS_PATH.search(item)
+            or _POSIX_ABSOLUTE_PATH.search(item)
+            or _FILE_URI.search(item)
+            or _SECRET_MARKER.search(item)
+        ):
+            raise PixivMetadataProjectionError("public_projection_private_text")
+
+    visit(value)
 
 
 def _allowlisted_provenance(record: Any) -> dict[str, Any]:
@@ -159,18 +176,7 @@ def _allowlisted_provenance(record: Any) -> dict[str, Any]:
     raw = _mapping(record, "raw_metadata_json")
     stable = provenance.get("stable_identity_key")
     stable = stable if isinstance(stable, Mapping) else {}
-    raw_page_index = stable.get("page_index")
-    try:
-        stable_page_index = int(raw_page_index)
-    except (TypeError, ValueError):
-        stable_page_index = None
-    if (
-        isinstance(raw_page_index, bool)
-        or stable_page_index is None
-        or stable_page_index < 0
-        or str(stable_page_index) != str(raw_page_index)
-    ):
-        stable_page_index = None
+    stable_page_index = canonical_pixiv_page_index(stable.get("page_index"))
     source_record_fingerprint = stable_pixiv_source_record_fingerprint(record)
     source, _ = _safe_observation_text(provenance.get("source"))
     parser_version, _ = _safe_observation_text(provenance.get("parser_version"))
@@ -202,16 +208,22 @@ def _allowlisted_provenance(record: Any) -> dict[str, Any]:
 
 def _page_count_details(record: Any) -> tuple[int | None, bool]:
     raw = _mapping(record, "raw_metadata_json")
-    candidate = raw.get("page_count", raw.get("count", raw.get("num_pages")))
-    if candidate in (None, ""):
+    field = next(
+        (name for name in ("page_count", "count", "num_pages") if name in raw),
+        None,
+    )
+    if field is None:
         return None, False
-    if isinstance(candidate, bool):
+    candidate = raw[field]
+    page_count = canonical_pixiv_page_count(candidate)
+    page_index = canonical_pixiv_page_index(_value(record, "source_page_index"))
+    if page_count is None or page_index is None:
         return None, True
-    try:
-        count = int(candidate)
-    except (TypeError, ValueError):
+    if canonical_pixiv_page_domain(
+        page_index=page_index, page_count=page_count
+    ) is None:
         return None, True
-    return (count, False) if count > 0 else (None, True)
+    return page_count, False
 
 
 def _record_business_projection(record: Any) -> dict[str, Any]:
@@ -228,6 +240,9 @@ def _record_business_projection(record: Any) -> dict[str, Any]:
     raw_creator_id = _value(record, "artist_id")
     creator_id = canonical_pixiv_creator_id(raw_creator_id)
     creator_id_invalid = raw_creator_id not in (None, "") and creator_id is None
+    page_index = canonical_pixiv_page_index(_value(record, "source_page_index"))
+    if page_index is None:
+        raise PixivMetadataProjectionError("pixiv_page_index_invalid")
     page_count, page_count_invalid = _page_count_details(record)
     raw_normalizer_version = normalize_source_text(
         raw.get("_pixiv_metadata_normalizer_version")
@@ -243,7 +258,7 @@ def _record_business_projection(record: Any) -> dict[str, Any]:
         "normalizer_version": normalizer_version,
         "provider": normalize_source_text(_value(record, "provider")).casefold(),
         "work_id": canonical_pixiv_work_id(_value(record, "source_work_id")),
-        "page_index": int(_value(record, "source_page_index")),
+        "page_index": page_index,
         "page_count": page_count,
         "page_count_invalid": page_count_invalid,
         "metadata_kind": normalize_source_text(_value(record, "metadata_kind")),
@@ -386,7 +401,9 @@ def derive_pixiv_work_consistency(records: Sequence[Any]) -> dict[str, Any]:
             raise PixivMetadataProjectionError("pixiv_work_id_invalid")
         raw_page_index = _value(record, "source_page_index")
         stable_pixiv_work_page_key(work_id, raw_page_index)
-        page_index = int(raw_page_index)
+        page_index = canonical_pixiv_page_index(raw_page_index)
+        if page_index is None:  # stable_pixiv_work_page_key already rejects this.
+            raise PixivMetadataProjectionError("pixiv_page_index_invalid")
         work_ids.add(work_id)
         page_indexes.add(page_index)
         projection = _record_business_projection(record)
@@ -573,10 +590,11 @@ def build_canonical_pixiv_work_page_aggregate(
         if provider != "pixiv":
             raise PixivMetadataProjectionError("pixiv_source_provider_invalid")
         work_id = str(_value(record, "source_work_id") or "").strip()
-        try:
-            page_index = int(_value(record, "source_page_index"))
-        except (TypeError, ValueError) as exc:
-            raise PixivMetadataProjectionError("pixiv_page_index_invalid") from exc
+        page_index = canonical_pixiv_page_index(
+            _value(record, "source_page_index")
+        )
+        if page_index is None:
+            raise PixivMetadataProjectionError("pixiv_page_index_invalid")
         stable_pixiv_work_page_key(work_id, page_index)
         work_pages.add((work_id, page_index))
         projection = _record_business_projection(record)
@@ -1183,7 +1201,10 @@ def build_canonical_pixiv_aggregates_from_session(
         if work_id is None:
             raise PixivMetadataProjectionError("pixiv_work_id_invalid")
         stable_pixiv_work_page_key(work_id, record.source_page_index)
-        grouped[(work_id, int(record.source_page_index))].append(record)
+        page_index = canonical_pixiv_page_index(record.source_page_index)
+        if page_index is None:
+            raise PixivMetadataProjectionError("pixiv_page_index_invalid")
+        grouped[(work_id, page_index)].append(record)
 
     names_by_record: dict[int, list[SourceNameObservation]] = defaultdict(list)
     tags_by_record: dict[int, list[SourceTagObservation]] = defaultdict(list)

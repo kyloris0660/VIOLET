@@ -20,6 +20,10 @@ from app.models import (
 from app.services.creator_identity_policy import stable_creator_identity_key
 from app.services.pixiv_identity_policy import (
     canonical_pixiv_creator_id,
+    canonical_pixiv_page_count,
+    canonical_pixiv_page_domain,
+    canonical_pixiv_page_index,
+    canonical_pixiv_provider_marker_consensus,
     canonical_pixiv_work_id,
     is_allowlisted_pixiv_provider_marker,
 )
@@ -43,10 +47,12 @@ from app.services.pixiv_metadata_projection_service import (
     canonical_json_bytes,
     derive_pixiv_work_consistency,
     project_pixiv_aggregate_to_source_concept_signals,
+    stable_pixiv_work_page_key,
 )
 from app.services.source_concept_resolver_service import (
     SourceConceptSignalInput,
     build_source_concept_signal_drafts,
+    resolve_source_concepts,
 )
 from scripts import run_phase45_px1_pixiv_metadata_and_dedup_dry_run as legacy_px1
 
@@ -97,6 +103,116 @@ def test_pixiv_provider_markers_use_exact_allowlist() -> None:
             ),
             "700000020",
         )
+
+
+@pytest.mark.parametrize("value", [0, "0", 1, "1", 999999999999])
+def test_canonical_page_index_accepts_only_nonnegative_canonical_integers(
+    value: object,
+) -> None:
+    assert canonical_pixiv_page_index(value) == int(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "", True, False, -1, "-1", 1.0, 1.9, float("nan"), float("inf"), "1.0", "+1", " 1", "1 ", "01"],
+)
+def test_canonical_page_index_rejects_coercive_or_noncanonical_values(
+    value: object,
+) -> None:
+    assert canonical_pixiv_page_index(value) is None
+    with pytest.raises(PixivMetadataProjectionError, match="page_index_invalid"):
+        stable_pixiv_work_page_key("700000020", value)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("value", [1, "1", 2, "2"])
+def test_canonical_page_count_is_positive_and_bounds_page_index(value: object) -> None:
+    assert canonical_pixiv_page_count(value) == int(value)
+    assert canonical_pixiv_page_domain(page_index=0, page_count=value) == (
+        0,
+        int(value),
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "", True, False, 0, "0", -1, "-1", 1.0, 1.9, float("nan"), float("inf"), "01", " 1"],
+)
+def test_canonical_page_count_rejects_nonpositive_or_noncanonical_values(
+    value: object,
+) -> None:
+    assert canonical_pixiv_page_count(value) is None
+
+
+def test_page_domain_defaults_only_a_genuinely_missing_index() -> None:
+    assert canonical_pixiv_page_domain() == (0, None)
+    assert canonical_pixiv_page_domain(page_index=False) is None
+    assert canonical_pixiv_page_domain(page_index=None) is None
+    assert canonical_pixiv_page_domain(page_index=1, page_count=1) is None
+
+    page = normalize_gallery_dl_records(
+        [{"provider": "pixiv", "id": 700000020, "title": "missing page"}],
+        "700000020",
+    )[0]
+    assert page["page_index"] == 0
+    for explicit in (False, None, 1.9, "01"):
+        with pytest.raises(PixivMetadataGateError, match="page_index_invalid"):
+            normalize_gallery_dl_records(
+                [{"provider": "pixiv", "id": 700000020, "num": explicit}],
+                "700000020",
+            )
+
+
+@pytest.mark.parametrize("field", ["provider", "extractor", "extractor_key", "category"])
+def test_provider_marker_consensus_accepts_existing_exact_gallery_dl_forms(
+    field: str,
+) -> None:
+    record = {"id": 700000020, "num": 0, field: " PIXIV "}
+    assert normalize_gallery_dl_records([record], "700000020")[0][
+        "page_index"
+    ] == 0
+
+
+def test_provider_marker_consensus_rejects_unknown_or_conflicting_markers() -> None:
+    assert canonical_pixiv_provider_marker_consensus(
+        {
+            "provider": "pixiv",
+            "extractor": "PIXIV",
+            "extractor_key": "pixiv",
+            "category": "pixiv",
+        }
+    ) == "pixiv"
+    for markers in (
+        {"provider": "pixiv", "extractor": "fakepixiv"},
+        {"provider": "pixiv", "category": "not_pixiv"},
+        {"extractor_key": "PixivWorkExtractor"},
+        {"provider": "untrusted-pixiv-proxy"},
+    ):
+        with pytest.raises(PixivMetadataGateError, match="unknown_provider"):
+            normalize_gallery_dl_records(
+                [{"id": 700000020, "num": 0, **markers}], "700000020"
+            )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    [
+        ("num", True, "page_index_invalid"),
+        ("num", 1.9, "page_index_invalid"),
+        ("num", "01", "page_index_invalid"),
+        ("page_count", False, "page_count_invalid"),
+        ("page_count", 1.9, "page_count_invalid"),
+        ("page_count", "01", "page_count_invalid"),
+        ("page_count", 0, "page_count_invalid"),
+    ],
+)
+def test_normalizer_rejects_noncanonical_page_and_count_inputs(
+    field: str,
+    value: object,
+    reason: str,
+) -> None:
+    record = {"provider": "pixiv", "id": 700000020, "num": 0, field: value}
+    with pytest.raises(PixivMetadataGateError, match=reason):
+        normalize_gallery_dl_records([record], "700000020")
 
 
 @pytest.mark.parametrize("creator_id", [True, -1, "-1", "01", "name-only"])
@@ -214,6 +330,39 @@ def test_invalid_creator_id_is_explicit_conflict_and_name_does_not_anchor() -> N
     assert all(signal["identity_anchor"] is None for signal in bundle["signals"])
 
 
+@pytest.mark.parametrize("page_index", [False, 1.9, "01", " 1"])
+def test_aggregate_rejects_noncanonical_page_identity(page_index: object) -> None:
+    record = _source_record(token="invalid-page")
+    record["source_page_index"] = page_index
+    with pytest.raises(PixivMetadataProjectionError, match="page_index_invalid"):
+        build_canonical_pixiv_work_page_aggregate([record])
+
+
+@pytest.mark.parametrize("page_count", [False, 1.9, "01", 0])
+def test_projection_marks_noncanonical_page_count_as_conflict(page_count: object) -> None:
+    aggregate = build_canonical_pixiv_work_page_aggregate(
+        [_source_record(token="invalid-count", page_count=page_count)]
+    )
+    assert aggregate["disposition"] == "conflict"
+    assert "invalid_trusted_provider_page_count" in aggregate["conflict_reasons"]
+
+
+def test_projection_rejects_noncanonical_provenance_page_identity() -> None:
+    aggregate = build_canonical_pixiv_work_page_aggregate(
+        [
+            _source_record(
+                token="invalid-provenance-page", provenance_page_index=False
+            )
+        ]
+    )
+    assert aggregate["disposition"] == "conflict"
+    assert (
+        "current_v2_provenance_identity_incompatible"
+        in aggregate["conflict_reasons"]
+    )
+    assert aggregate["creator"]["provider_creator_id"] is None
+
+
 @pytest.mark.parametrize("page_count", [1, 2, 4])
 @pytest.mark.parametrize("reverse", [False, True])
 def test_historical_parser_compatibility_selects_every_requested_page_for_3_plus(
@@ -252,6 +401,80 @@ def test_historical_parser_compatibility_selects_every_requested_page_for_3_plus
         assert projected is not None
         assert projected["page_index"] == requested
         assert projected["title"] == f"Synthetic Page {requested}"
+
+
+def test_historical_aliases_remain_deterministic_across_three_pages() -> None:
+    records = [
+        {
+            "category": "pixiv",
+            "id": 700000041,
+            "num": 0,
+            "page_count": 3,
+            "author": "Legacy Display",
+            "keywords": ["legacy", "shared", "legacy"],
+        },
+        {
+            "extractor": "pixiv",
+            "id": 700000041,
+            "num": 1,
+            "page_count": 3,
+            "user_name": "Canonical Display",
+            "author": "Ignored Legacy Display",
+            "tags": ["canonical", "shared"],
+            "keywords": ["legacy", "shared"],
+        },
+        {
+            "provider": "pixiv",
+            "id": 700000041,
+            "num": 2,
+            "page_count": 3,
+            "user": {"account": "account_only"},
+            "keywords": ["account-tag"],
+        },
+    ]
+    records.append(dict(records[0]))
+    forward = normalize_gallery_dl_records(records, "700000041")
+    reverse = normalize_gallery_dl_records(list(reversed(records)), "700000041")
+    assert forward == reverse
+    assert [page["page_index"] for page in forward] == [0, 1, 2]
+    assert forward[0]["creator_name"] == "Legacy Display"
+    assert forward[0]["tags"] == ("legacy", "shared")
+    assert forward[1]["creator_name"] == "Canonical Display"
+    assert set(forward[1]["tags"]) == {"canonical", "legacy", "shared"}
+    assert forward[2]["creator_name"] is None
+    assert forward[2]["creator_account"] == "account_only"
+
+    for requested in range(3):
+        candidate = legacy_px1.MediaCandidate(
+            media_id=200 + requested,
+            filename=f"700000041_p{requested}.png",
+            content_class="anime",
+            pixiv_like=True,
+            pixiv_work_ids=("700000041",),
+            pixiv_page_indexes=(requested,),
+            pixiv_prior_reasons=("filename_pixiv_id_pattern",),
+        )
+        projected = legacy_px1.normalize_gallery_dl_metadata(
+            list(reversed(records)), candidate=candidate, raw_stdout_path=None
+        )
+        assert projected is not None
+        assert projected["page_index"] == requested
+    account_projection = legacy_px1.normalize_gallery_dl_metadata(
+        list(reversed(records)),
+        candidate=legacy_px1.MediaCandidate(
+            media_id=202,
+            filename="700000041_p2.png",
+            content_class="anime",
+            pixiv_like=True,
+            pixiv_work_ids=("700000041",),
+            pixiv_page_indexes=(2,),
+            pixiv_prior_reasons=("filename_pixiv_id_pattern",),
+        ),
+        raw_stdout_path=None,
+    )
+    assert account_projection is not None
+    assert account_projection["artist_name"] == "account_only"
+    assert account_projection["artist_account"] == "account_only"
 
 
 def _new_sqlite_session(database_path: Path):
@@ -661,6 +884,99 @@ def test_public_projection_rejects_bounded_private_path_uri_and_secret_markers(
 ) -> None:
     with pytest.raises(PixivMetadataProjectionError, match="private_text"):
         assert_public_safe_projection({"value": private_text})
+
+
+@pytest.mark.parametrize(
+    "ordinary_value",
+    ["raw", "filename", "cookie", "password", "credential", "authorization"],
+)
+def test_public_projection_allows_forbidden_field_words_as_values(
+    ordinary_value: str,
+) -> None:
+    assert_public_safe_projection(
+        {"title": ordinary_value, "nested": [{"tag_value": ordinary_value}]}
+    )
+
+
+@pytest.mark.parametrize("forbidden_key", ["raw", "RaW", "FILENAME", "Cookie", "PASSWORD"])
+def test_public_projection_rejects_nested_forbidden_mapping_keys(
+    forbidden_key: str,
+) -> None:
+    with pytest.raises(PixivMetadataProjectionError, match="forbidden_field"):
+        assert_public_safe_projection(
+            {"title": "ordinary", "nested": [{forbidden_key: "ordinary"}]}
+        )
+
+
+def _pixiv_artist_signal(
+    *, key: str, name: str, work_id: str, creator_id: str | None
+) -> SourceConceptSignalInput:
+    evidence = {"stable_creator_id": creator_id} if creator_id else {}
+    return SourceConceptSignalInput(
+        origin_type="pixiv_creator_observation",
+        origin_key=key,
+        provider="pixiv",
+        raw_value=name,
+        display_value=name,
+        canonical_value=name.casefold().replace(" ", "_"),
+        role_hint="artist",
+        work_context_key=f"pixiv:work:{work_id}",
+        source_kind="pixiv_creator",
+        trust_tier="medium",
+        confidence=0.8,
+        status="active",
+        evidence_payload=evidence,
+        source_record_id=f"pixiv:{work_id}:p0",
+    )
+
+
+def test_cross_work_same_name_artist_requires_stable_creator_identity() -> None:
+    unanchored = build_source_concept_signal_drafts(
+        (
+            _pixiv_artist_signal(
+                key="work-a", name="Same Artist", work_id="700000051", creator_id=None
+            ),
+            _pixiv_artist_signal(
+                key="work-b", name="Same Artist", work_id="700000052", creator_id=None
+            ),
+        )
+    )
+    unanchored_result = resolve_source_concepts(unanchored, run_id="px1-final-proof")
+    assert len(unanchored_result.concepts) == 2
+    creator_guards = [
+        edge
+        for edge in unanchored_result.edge_candidates
+        if edge.edge_type == "creator_identity_guard"
+    ]
+    assert creator_guards
+    assert all(edge.union_allowed is False for edge in creator_guards)
+    assert all(
+        edge.negative_reason_code == "creator_identity_strong_evidence_missing"
+        for edge in creator_guards
+    )
+
+    anchored = build_source_concept_signal_drafts(
+        (
+            _pixiv_artist_signal(
+                key="anchored-a",
+                name="Earlier Display",
+                work_id="700000053",
+                creator_id="800000051",
+            ),
+            _pixiv_artist_signal(
+                key="anchored-b",
+                name="Renamed Display",
+                work_id="700000054",
+                creator_id="800000051",
+            ),
+        )
+    )
+    anchored_result = resolve_source_concepts(anchored, run_id="px1-final-proof")
+    assert len(anchored_result.concepts) == 1
+    assert any(
+        edge.edge_type == "stable_identity_anchor" and edge.union_allowed
+        for edge in anchored_result.edge_candidates
+    )
 
 
 def test_unsafe_observations_are_redacted_before_public_projection() -> None:
