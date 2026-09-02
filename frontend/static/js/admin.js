@@ -27,6 +27,9 @@ class AdminPanel {
         this.dynamicSyncExecuteRequestStartedAt = null;
         this.dynamicSyncExecuteRequestTimer = null;
         this.dynamicSyncPageConfirmationState = 'idle';
+        this.pixivProductRuns = [];
+        this.pixivProductCurrent = null;
+        this.pixivProductPlan = null;
         window.adminPanel = this;
         this.init();
     }
@@ -49,6 +52,7 @@ class AdminPanel {
         this.setupSystemUpdate();
         this.setupStats();
         this.setupTabs();
+        this.setupPixivProductIntegration();
     }
 
     // Helper to escape HTML and prevent XSS
@@ -6966,6 +6970,227 @@ class AdminPanel {
         } catch (e) {
             resultDiv.innerHTML = `<span class="text-red-500">${t('admin.dev_tools.scan_failed', 'Scan failed')}: ${e.message || e}</span>`;
         }
+    }
+
+    setupPixivProductIntegration() {
+        const section = document.getElementById('pixiv-product-integration-section');
+        if (!section || section.dataset.initialized === 'true') return;
+        section.dataset.initialized = 'true';
+
+        document.getElementById('pixiv-product-refresh-btn')?.addEventListener('click', () => this.loadPixivProductStatus());
+        document.getElementById('pixiv-product-synthetic-dry-run-btn')?.addEventListener('click', () => this.runPixivProduct('synthetic', 'dry_run'));
+        document.getElementById('pixiv-product-synthetic-apply-btn')?.addEventListener('click', () => this.runPixivProduct('synthetic', 'apply'));
+        document.getElementById('pixiv-product-source-dry-run-btn')?.addEventListener('click', () => this.runPixivProduct('source', 'dry_run'));
+        document.getElementById('pixiv-product-source-apply-btn')?.addEventListener('click', () => this.runPixivProduct('source', 'apply'));
+        document.getElementById('pixiv-product-rollback-btn')?.addEventListener('click', () => this.rollbackPixivProduct());
+        document.getElementById('pixiv-product-run-select')?.addEventListener('change', (event) => {
+            if (event.target.value) this.loadPixivProductRun(event.target.value);
+        });
+        document.getElementById('pixiv-product-candidate-filter')?.addEventListener('change', () => this.renderPixivProductCandidates());
+        document.getElementById('pixiv-product-ambiguity-filter')?.addEventListener('change', () => this.renderPixivProductAmbiguities());
+        document.getElementById('pixiv-product-clusters-tbody')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-pixiv-cluster-index]');
+            if (button) this.showPixivProductCluster(Number(button.dataset.pixivClusterIndex));
+        });
+        this.loadPixivProductStatus();
+    }
+
+    showPixivProductMessage(message, kind = 'info') {
+        const target = document.getElementById('pixiv-product-message');
+        if (!target) return;
+        target.classList.remove('hidden', 'text-red-500', 'text-green-400', 'text-yellow-400');
+        target.classList.add(kind === 'error' ? 'text-red-500' : (kind === 'success' ? 'text-green-400' : 'text-yellow-400'));
+        target.textContent = message;
+    }
+
+    async loadPixivProductStatus() {
+        const boundary = document.getElementById('pixiv-product-boundary');
+        try {
+            const [status, runPayload] = await Promise.all([
+                app.apiCall('/api/admin/pixiv-product-integration/status'),
+                app.apiCall('/api/admin/pixiv-product-integration/runs'),
+            ]);
+            this.pixivProductRuns = Array.isArray(runPayload.runs) ? runPayload.runs : [];
+            if (boundary) {
+                boundary.textContent = `Read/dry-run: ${status.enabled ? 'enabled' : 'disabled'} · apply/rollback: ${status.apply_enabled ? 'enabled' : 'disabled'} · synthetic UI: ${status.synthetic_ui_enabled ? 'enabled' : 'disabled'} · real provider: disabled`;
+            }
+            const syntheticDry = document.getElementById('pixiv-product-synthetic-dry-run-btn');
+            const syntheticApply = document.getElementById('pixiv-product-synthetic-apply-btn');
+            const sourceDry = document.getElementById('pixiv-product-source-dry-run-btn');
+            const sourceApply = document.getElementById('pixiv-product-source-apply-btn');
+            if (syntheticDry) syntheticDry.disabled = !(status.enabled && status.synthetic_ui_enabled);
+            if (syntheticApply) syntheticApply.disabled = !(status.enabled && status.synthetic_ui_enabled && status.apply_enabled);
+            if (sourceDry) sourceDry.disabled = !status.enabled;
+            if (sourceApply) sourceApply.disabled = !(status.enabled && status.apply_enabled);
+            this.renderPixivProductRunOptions();
+            if (this.pixivProductRuns.length) {
+                await this.loadPixivProductRun(this.pixivProductRuns[0].run_key);
+            } else {
+                this.renderPixivProduct(null);
+            }
+        } catch (error) {
+            if (boundary) boundary.textContent = `Unavailable: ${error.message || error}`;
+            this.showPixivProductMessage(`加载 Pixiv 产品链路失败：${error.message || error}`, 'error');
+        }
+    }
+
+    renderPixivProductRunOptions() {
+        const select = document.getElementById('pixiv-product-run-select');
+        if (!select) return;
+        if (!this.pixivProductRuns.length) {
+            select.innerHTML = '<option value="">尚无 run</option>';
+            return;
+        }
+        select.innerHTML = this.pixivProductRuns.map((run) => {
+            const label = `${run.status} · ${run.source_mode} · ${run.run_key}`;
+            return `<option value="${this.escapeHtml(run.run_key)}">${this.escapeHtml(label)}</option>`;
+        }).join('');
+    }
+
+    async loadPixivProductRun(runKey) {
+        try {
+            const detail = await app.apiCall(`/api/admin/pixiv-product-integration/runs/${encodeURIComponent(runKey)}`);
+            this.pixivProductCurrent = detail;
+            const select = document.getElementById('pixiv-product-run-select');
+            if (select) select.value = runKey;
+            this.renderPixivProduct(detail);
+        } catch (error) {
+            this.showPixivProductMessage(`加载 run 失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async runPixivProduct(source, mode) {
+        const applying = mode === 'apply';
+        const synthetic = source === 'synthetic';
+        if (applying) {
+            const label = synthetic ? 'repository-owned synthetic data' : 'current persisted Pixiv metadata';
+            if (!window.confirm(`Apply SourceConcept product integration for ${label}?`)) return;
+        }
+        this.showPixivProductMessage(`${applying ? '应用' : '规划'}中…`);
+        const endpoint = synthetic
+            ? '/api/admin/pixiv-product-integration/synthetic/run'
+            : '/api/admin/pixiv-product-integration/source-metadata/run';
+        const confirmPhrase = applying
+            ? (synthetic ? 'APPLY_SYNTHETIC_PIXIV_PRODUCT' : 'APPLY_PIXIV_SOURCE_CONCEPTS')
+            : '';
+        try {
+            const result = await app.apiCall(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode, confirm: applying, confirm_phrase: confirmPhrase }),
+            });
+            this.pixivProductPlan = result;
+            this.renderPixivProduct(result);
+            this.showPixivProductMessage(
+                applying ? '应用完成；可查询产品投影与 provenance。' : 'Dry-run 完成；数据库未写入。',
+                'success',
+            );
+            if (applying) await this.loadPixivProductStatus();
+        } catch (error) {
+            this.showPixivProductMessage(`操作失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async rollbackPixivProduct() {
+        const run = this.pixivProductCurrent;
+        if (!run?.run_key || !run.rollback_available) return;
+        if (!window.confirm(`Rollback ${run.run_key}? Product audit rows will be retained.`)) return;
+        try {
+            await app.apiCall(`/api/admin/pixiv-product-integration/runs/${encodeURIComponent(run.run_key)}/rollback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    confirm: true,
+                    confirm_phrase: `ROLLBACK_PIXIV_PRODUCT:${run.run_key}`,
+                }),
+            });
+            this.showPixivProductMessage('回滚完成；审计投影保留。', 'success');
+            await this.loadPixivProductStatus();
+        } catch (error) {
+            this.showPixivProductMessage(`回滚失败：${error.message || error}`, 'error');
+        }
+    }
+
+    renderPixivProduct(data) {
+        const clusters = Array.isArray(data?.clusters) ? data.clusters : [];
+        const candidates = Array.isArray(data?.candidate_dispositions) ? data.candidate_dispositions : [];
+        const ambiguities = Array.isArray(data?.ambiguity_records) ? data.ambiguity_records : [];
+        const setText = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = String(value);
+        };
+        setText('pixiv-product-cluster-count', clusters.length || data?.counts?.cluster_count || 0);
+        setText('pixiv-product-candidate-count', candidates.length || data?.counts?.candidate_disposition_count || 0);
+        setText('pixiv-product-ambiguity-count', ambiguities.length || data?.counts?.ambiguity_record_count || 0);
+        setText('pixiv-product-run-status', data?.status || 'none');
+        const rollback = document.getElementById('pixiv-product-rollback-btn');
+        if (rollback) rollback.disabled = !(data?.status === 'active' && data?.rollback_available);
+        this.pixivProductCurrent = data;
+        this.renderPixivProductClusters();
+        this.renderPixivProductCandidates();
+        this.renderPixivProductAmbiguities();
+    }
+
+    renderPixivProductClusters() {
+        const tbody = document.getElementById('pixiv-product-clusters-tbody');
+        if (!tbody) return;
+        const clusters = Array.isArray(this.pixivProductCurrent?.clusters) ? this.pixivProductCurrent.clusters : [];
+        if (!clusters.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="p-3 text-secondary">暂无数据</td></tr>';
+            return;
+        }
+        tbody.innerHTML = clusters.map((cluster, index) => `<tr class="border-t">
+            <td class="p-2 font-bold">${this.escapeHtml(cluster.primary_display_name || cluster.display_name || cluster.cluster_key)}</td>
+            <td class="p-2">${this.escapeHtml(`${cluster.concept_type_hint || cluster.type} / ${cluster.status}`)}</td>
+            <td class="p-2">${Number(cluster.member_signal_keys?.length || cluster.member_signal_count || 0)}</td>
+            <td class="p-2"><button type="button" class="btn-dark px-2 py-1" data-pixiv-cluster-index="${index}">查看</button></td>
+        </tr>`).join('');
+        this.showPixivProductCluster(0);
+    }
+
+    showPixivProductCluster(index) {
+        const cluster = this.pixivProductCurrent?.clusters?.[index];
+        const target = document.getElementById('pixiv-product-cluster-detail');
+        if (!target || !cluster) return;
+        const detail = {
+            cluster_key: cluster.cluster_key,
+            member_signal_keys: cluster.member_signal_keys,
+            work_references: cluster.work_references,
+            page_references: cluster.page_references,
+            stable_identity_anchors: cluster.stable_identity_anchors,
+            aliases: cluster.aliases,
+            evidence_summary: cluster.evidence_summary,
+            provenance: cluster.provenance,
+        };
+        target.textContent = JSON.stringify(detail, null, 2);
+    }
+
+    renderPixivProductCandidates() {
+        const tbody = document.getElementById('pixiv-product-candidates-tbody');
+        if (!tbody) return;
+        const filter = document.getElementById('pixiv-product-candidate-filter')?.value || '';
+        const candidates = (this.pixivProductCurrent?.candidate_dispositions || [])
+            .filter((row) => !filter || row.disposition === filter)
+            .slice(0, 100);
+        tbody.innerHTML = candidates.length ? candidates.map((row) => `<tr class="border-t">
+            <td class="p-2 font-bold">${this.escapeHtml(row.disposition)}</td>
+            <td class="p-2">${this.escapeHtml(row.reason_code || '')}</td>
+            <td class="p-2 break-all" title="${this.escapeHtml(row.pair_key)}">${this.escapeHtml(row.pair_key.slice(0, 24))}…</td>
+        </tr>`).join('') : '<tr><td colspan="3" class="p-3 text-secondary">无匹配记录</td></tr>';
+    }
+
+    renderPixivProductAmbiguities() {
+        const tbody = document.getElementById('pixiv-product-ambiguity-tbody');
+        if (!tbody) return;
+        const filter = document.getElementById('pixiv-product-ambiguity-filter')?.value || '';
+        const records = (this.pixivProductCurrent?.ambiguity_records || [])
+            .filter((row) => !filter || row.record_kind === filter)
+            .slice(0, 100);
+        tbody.innerHTML = records.length ? records.map((row) => `<tr class="border-t">
+            <td class="p-2 font-bold">${this.escapeHtml(row.record_kind)}</td>
+            <td class="p-2">${this.escapeHtml(row.reason_code || '')}</td>
+            <td class="p-2 break-all">${this.escapeHtml((row.signal_keys || []).join(', ') || '—')}</td>
+        </tr>`).join('') : '<tr><td colspan="3" class="p-3 text-secondary">无匹配记录</td></tr>';
     }
 
     async cleanupMissingMedia(dryRun) {

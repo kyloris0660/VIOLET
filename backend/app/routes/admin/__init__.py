@@ -25,6 +25,7 @@ from .content_classification import router as _content_classification_router
 from .dev_tools import router as _dev_tools_router
 from .dynamic_library_sync import router as _dynamic_library_sync_router
 from .entities import router as _entities_router
+from .pixiv_product_integration import router as _pixiv_product_integration_router
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -44,3 +45,4 @@ router.include_router(_content_classification_router)
 router.include_router(_dynamic_library_sync_router)
 router.include_router(_dev_tools_router)
 router.include_router(_entities_router)
+router.include_router(_pixiv_product_integration_router)

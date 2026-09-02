@@ -1216,6 +1216,98 @@ class SourceConceptSearchIndex(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SourceConceptProductRun(Base):
+    """Versioned PX3 product projection for one deterministic resolver scope."""
+
+    __tablename__ = 'blombooru_source_concept_product_runs'
+    __table_args__ = (
+        UniqueConstraint('run_key', name='uq_source_concept_product_run_key'),
+        Index('ix_source_concept_product_run_scope_status', 'scope_key', 'status'),
+        Index('ix_source_concept_product_run_source_mode', 'source_mode'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_key = Column(String(255), nullable=False, index=True)
+    scope_key = Column(String(500), nullable=False, index=True)
+    source_mode = Column(String(100), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default='active', server_default='active', index=True)
+    resolver_run_id = Column(String(255), nullable=False, index=True)
+    resolver_version = Column(String(100), nullable=False)
+    policy_version = Column(String(100), nullable=False)
+    input_fingerprint = Column(String(64), nullable=False, index=True)
+    result_fingerprint = Column(String(64), nullable=False, index=True)
+    business_fingerprint = Column(String(64), nullable=False, index=True)
+    counts_json = Column(JSON, nullable=False)
+    invariants_json = Column(JSON, nullable=False)
+    operation_receipt_json = Column(JSON, nullable=False)
+    summary_json = Column(JSON, nullable=False)
+    rollback_guard_json = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SourceConceptProductCluster(Base):
+    __tablename__ = 'blombooru_source_concept_product_clusters'
+    __table_args__ = (
+        UniqueConstraint('product_run_id', 'cluster_key', name='uq_source_concept_product_cluster_run_key'),
+        Index('ix_source_concept_product_cluster_status_type', 'status', 'concept_type_hint'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_run_id = Column(Integer, ForeignKey('blombooru_source_concept_product_runs.id', ondelete='CASCADE'), nullable=False, index=True)
+    cluster_key = Column(String(900), nullable=False, index=True)
+    primary_display_name = Column(String(1000), nullable=False)
+    concept_type_hint = Column(String(100), nullable=False, index=True)
+    status = Column(String(50), nullable=False, index=True)
+    member_signal_keys_json = Column(JSON, nullable=False)
+    work_page_references_json = Column(JSON, nullable=False)
+    stable_identity_anchors_json = Column(JSON, nullable=False)
+    aliases_json = Column(JSON, nullable=False)
+    evidence_json = Column(JSON, nullable=False)
+    provenance_json = Column(JSON, nullable=False)
+    canonical_fingerprint = Column(String(64), nullable=False, index=True)
+
+
+class SourceConceptCandidateDisposition(Base):
+    __tablename__ = 'blombooru_source_concept_candidate_dispositions'
+    __table_args__ = (
+        UniqueConstraint('product_run_id', 'pair_key', name='uq_source_concept_candidate_run_pair'),
+        Index('ix_source_concept_candidate_disposition_reason', 'disposition', 'reason_code'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_run_id = Column(Integer, ForeignKey('blombooru_source_concept_product_runs.id', ondelete='CASCADE'), nullable=False, index=True)
+    pair_key = Column(String(900), nullable=False, index=True)
+    left_signal_key = Column(String(900), nullable=False, index=True)
+    right_signal_key = Column(String(900), nullable=False, index=True)
+    disposition = Column(String(50), nullable=False, index=True)
+    reason_code = Column(String(100), nullable=False, index=True)
+    negative_reason = Column(String(100), nullable=True, index=True)
+    evidence_refs_json = Column(JSON, nullable=False)
+    union_decision = Column(Boolean, nullable=False, default=False, server_default='false')
+    same_resolved_component = Column(Boolean, nullable=False, default=False, server_default='false')
+    canonical_fingerprint = Column(String(64), nullable=False, index=True)
+
+
+class SourceConceptAmbiguityRecord(Base):
+    __tablename__ = 'blombooru_source_concept_ambiguity_records'
+    __table_args__ = (
+        UniqueConstraint('product_run_id', 'record_key', name='uq_source_concept_ambiguity_run_key'),
+        Index('ix_source_concept_ambiguity_kind_reason', 'record_kind', 'reason_code'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_run_id = Column(Integer, ForeignKey('blombooru_source_concept_product_runs.id', ondelete='CASCADE'), nullable=False, index=True)
+    record_key = Column(String(900), nullable=False, index=True)
+    record_kind = Column(String(100), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default='deferred_nonblocking', server_default='deferred_nonblocking', index=True)
+    reason_code = Column(String(100), nullable=False, index=True)
+    signal_keys_json = Column(JSON, nullable=False)
+    evidence_refs_json = Column(JSON, nullable=False)
+    summary_json = Column(JSON, nullable=False)
+    canonical_fingerprint = Column(String(64), nullable=False, index=True)
+
+
 class SourceConceptFallbackSearchIndex(Base):
     """Versioned source-layer lookup for non-materialized evidence fallback.
 

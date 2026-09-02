@@ -214,6 +214,7 @@ def check_and_migrate_schema(engine):
         migrate_add_source_metadata_name_registry,
         migrate_add_source_name_candidate_extraction,
         migrate_add_source_concept_resolver_core,
+        migrate_add_source_concept_product_integration,
         migrate_add_source_concept_fallback_search_index,
         migrate_add_dynamic_library_sync_tables,
     ]
@@ -1231,6 +1232,110 @@ def migrate_add_source_concept_resolver_core(engine, inspector):
             "CREATE INDEX IF NOT EXISTS ix_source_concept_search_weight ON blombooru_source_concept_search_index(weight)",
         ]
         for statement in index_statements:
+            conn.execute(text(statement))
+        conn.commit()
+
+
+def migrate_add_source_concept_product_integration(engine, inspector):
+    """Add PX3 SourceConcept product projection and audit-ledger tables.
+
+    This migration is additive. It does not touch Entity truth, media tags,
+    provider caches, source files, or existing SourceConcept business rows.
+    """
+    from sqlalchemy import text
+
+    tables = set(inspector.get_table_names())
+    is_sqlite = engine.dialect.name == 'sqlite'
+    pk_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+    now_expr = 'CURRENT_TIMESTAMP' if is_sqlite else 'NOW()'
+    json_type = 'JSON'
+    bool_false = '0' if is_sqlite else 'FALSE'
+
+    with engine.connect() as conn:
+        if 'blombooru_source_concept_product_runs' not in tables:
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_product_runs (
+                    id {pk_type},
+                    run_key VARCHAR(255) NOT NULL,
+                    scope_key VARCHAR(500) NOT NULL,
+                    source_mode VARCHAR(100) NOT NULL,
+                    status VARCHAR(50) NOT NULL DEFAULT 'active',
+                    resolver_run_id VARCHAR(255) NOT NULL,
+                    resolver_version VARCHAR(100) NOT NULL,
+                    policy_version VARCHAR(100) NOT NULL,
+                    input_fingerprint VARCHAR(64) NOT NULL,
+                    result_fingerprint VARCHAR(64) NOT NULL,
+                    business_fingerprint VARCHAR(64) NOT NULL,
+                    counts_json {json_type} NOT NULL,
+                    invariants_json {json_type} NOT NULL,
+                    operation_receipt_json {json_type} NOT NULL,
+                    summary_json {json_type} NOT NULL,
+                    rollback_guard_json {json_type} NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT {now_expr},
+                    CONSTRAINT uq_source_concept_product_run_key UNIQUE (run_key)
+                )
+            """))
+        if 'blombooru_source_concept_product_clusters' not in tables:
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_product_clusters (
+                    id {pk_type},
+                    product_run_id INTEGER NOT NULL REFERENCES blombooru_source_concept_product_runs(id) ON DELETE CASCADE,
+                    cluster_key VARCHAR(900) NOT NULL,
+                    primary_display_name VARCHAR(1000) NOT NULL,
+                    concept_type_hint VARCHAR(100) NOT NULL,
+                    status VARCHAR(50) NOT NULL,
+                    member_signal_keys_json {json_type} NOT NULL,
+                    work_page_references_json {json_type} NOT NULL,
+                    stable_identity_anchors_json {json_type} NOT NULL,
+                    aliases_json {json_type} NOT NULL,
+                    evidence_json {json_type} NOT NULL,
+                    provenance_json {json_type} NOT NULL,
+                    canonical_fingerprint VARCHAR(64) NOT NULL,
+                    CONSTRAINT uq_source_concept_product_cluster_run_key UNIQUE (product_run_id, cluster_key)
+                )
+            """))
+        if 'blombooru_source_concept_candidate_dispositions' not in tables:
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_candidate_dispositions (
+                    id {pk_type},
+                    product_run_id INTEGER NOT NULL REFERENCES blombooru_source_concept_product_runs(id) ON DELETE CASCADE,
+                    pair_key VARCHAR(900) NOT NULL,
+                    left_signal_key VARCHAR(900) NOT NULL,
+                    right_signal_key VARCHAR(900) NOT NULL,
+                    disposition VARCHAR(50) NOT NULL,
+                    reason_code VARCHAR(100) NOT NULL,
+                    negative_reason VARCHAR(100),
+                    evidence_refs_json {json_type} NOT NULL,
+                    union_decision BOOLEAN NOT NULL DEFAULT {bool_false},
+                    same_resolved_component BOOLEAN NOT NULL DEFAULT {bool_false},
+                    canonical_fingerprint VARCHAR(64) NOT NULL,
+                    CONSTRAINT uq_source_concept_candidate_run_pair UNIQUE (product_run_id, pair_key)
+                )
+            """))
+        if 'blombooru_source_concept_ambiguity_records' not in tables:
+            conn.execute(text(f"""
+                CREATE TABLE blombooru_source_concept_ambiguity_records (
+                    id {pk_type},
+                    product_run_id INTEGER NOT NULL REFERENCES blombooru_source_concept_product_runs(id) ON DELETE CASCADE,
+                    record_key VARCHAR(900) NOT NULL,
+                    record_kind VARCHAR(100) NOT NULL,
+                    status VARCHAR(50) NOT NULL DEFAULT 'deferred_nonblocking',
+                    reason_code VARCHAR(100) NOT NULL,
+                    signal_keys_json {json_type} NOT NULL,
+                    evidence_refs_json {json_type} NOT NULL,
+                    summary_json {json_type} NOT NULL,
+                    canonical_fingerprint VARCHAR(64) NOT NULL,
+                    CONSTRAINT uq_source_concept_ambiguity_run_key UNIQUE (product_run_id, record_key)
+                )
+            """))
+        for statement in (
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_product_run_scope_status ON blombooru_source_concept_product_runs(scope_key, status)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_product_run_source_mode ON blombooru_source_concept_product_runs(source_mode)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_product_cluster_status_type ON blombooru_source_concept_product_clusters(status, concept_type_hint)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_candidate_disposition_reason ON blombooru_source_concept_candidate_dispositions(disposition, reason_code)",
+            "CREATE INDEX IF NOT EXISTS ix_source_concept_ambiguity_kind_reason ON blombooru_source_concept_ambiguity_records(record_kind, reason_code)",
+        ):
             conn.execute(text(statement))
         conn.commit()
 

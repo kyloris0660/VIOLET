@@ -881,6 +881,7 @@
                 <a href="#media-management" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.media_management.title">媒体管理</a>
                 <a href="#local-library-scan" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.local_library_scan.title">本地图库扫描</a>
                 <a href="#dynamic-library-sync-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.dynamic_library_sync.title">动态图库同步</a>
+                <a href="#pixiv-product-integration-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors">Pixiv 聚类产品链路</a>
                 <a href="#ai-tag-review-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tag_review.title">AI 标签审核</a>
                 <a href="#entity-metadata-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.entity_metadata.title">实体元数据</a>
                 <a href="#ai-tagging-jobs-section" class="px-2 py-1 border hover:bg-accent hover:text-white transition-colors" data-i18n="admin.ai_tagging_jobs.title">AI 打标任务</a>
@@ -1183,6 +1184,79 @@
             </div>
 
             <!-- Dynamic Library Sync Section -->
+            <div class="surface p-2 sm:p-6 border mb-4" id="pixiv-product-integration-section" data-testid="pixiv-product-integration">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-3 border-b">
+                    <div>
+                        <h2 class="text-base font-bold">Pixiv SourceConcept 产品链路</h2>
+                        <p class="text-xs text-secondary mt-1">查看 cluster 成员、provenance、候选决策与非阻塞冲突；写操作默认关闭。</p>
+                    </div>
+                    <button id="pixiv-product-refresh-btn" class="btn-dark text-xs px-3 py-1" type="button">刷新</button>
+                </div>
+
+                <div id="pixiv-product-boundary" class="bg p-3 border text-xs mb-3" data-testid="pixiv-product-boundary">
+                    正在读取执行边界…
+                </div>
+
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <button id="pixiv-product-synthetic-dry-run-btn" class="btn-dark text-xs px-3 py-2" type="button">合成 dry-run</button>
+                    <button id="pixiv-product-synthetic-apply-btn" class="btn-primary text-xs px-3 py-2" type="button">应用合成数据</button>
+                    <button id="pixiv-product-source-dry-run-btn" class="btn-dark text-xs px-3 py-2" type="button">当前 Pixiv metadata dry-run</button>
+                    <button id="pixiv-product-source-apply-btn" class="btn-danger text-xs px-3 py-2" type="button">应用当前 metadata</button>
+                    <button id="pixiv-product-rollback-btn" class="btn-danger text-xs px-3 py-2" type="button" disabled>回滚所选 run</button>
+                </div>
+
+                <div id="pixiv-product-message" class="hidden bg p-3 border text-xs mb-4" role="status"></div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4" id="pixiv-product-summary" data-testid="pixiv-product-summary">
+                    <div class="bg p-3 border"><div class="text-xs text-secondary">Clusters</div><div id="pixiv-product-cluster-count" class="text-lg font-bold">0</div></div>
+                    <div class="bg p-3 border"><div class="text-xs text-secondary">Candidates</div><div id="pixiv-product-candidate-count" class="text-lg font-bold">0</div></div>
+                    <div class="bg p-3 border"><div class="text-xs text-secondary">Ambiguous / Deferred</div><div id="pixiv-product-ambiguity-count" class="text-lg font-bold">0</div></div>
+                    <div class="bg p-3 border"><div class="text-xs text-secondary">Run status</div><div id="pixiv-product-run-status" class="text-sm font-bold">none</div></div>
+                </div>
+
+                <div class="bg p-3 border mb-4">
+                    <label for="pixiv-product-run-select" class="block text-xs font-bold mb-2">Persisted run</label>
+                    <select id="pixiv-product-run-select" class="w-full bg px-3 py-2 border text-xs" data-testid="pixiv-product-run-select">
+                        <option value="">尚无 run</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+                    <div class="bg p-3 border">
+                        <h3 class="text-sm font-bold mb-2">Clusters 与成员</h3>
+                        <div class="overflow-auto max-h-80">
+                            <table class="w-full text-xs">
+                                <thead><tr class="text-left"><th class="p-2">名称</th><th class="p-2">类型/状态</th><th class="p-2">成员</th><th class="p-2">详情</th></tr></thead>
+                                <tbody id="pixiv-product-clusters-tbody" data-testid="pixiv-product-clusters"><tr><td colspan="4" class="p-3 text-secondary">暂无数据</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <h3 class="text-sm font-bold mb-2">成员与 provenance</h3>
+                        <pre id="pixiv-product-cluster-detail" class="text-xs whitespace-pre-wrap break-all overflow-auto max-h-80" data-testid="pixiv-product-cluster-detail">选择一个 cluster 查看 member signals、work/page context、aliases、evidence 和 links。</pre>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div class="bg p-3 border">
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <h3 class="text-sm font-bold">Candidate dispositions</h3>
+                            <select id="pixiv-product-candidate-filter" class="bg px-2 py-1 border text-xs">
+                                <option value="">全部</option><option value="must_link">must_link</option><option value="cannot_link">cannot_link</option><option value="deferred_nonblocking">deferred_nonblocking</option>
+                            </select>
+                        </div>
+                        <div class="overflow-auto max-h-80"><table class="w-full text-xs"><thead><tr class="text-left"><th class="p-2">Disposition</th><th class="p-2">Reason</th><th class="p-2">Pair</th></tr></thead><tbody id="pixiv-product-candidates-tbody" data-testid="pixiv-product-candidates"><tr><td colspan="3" class="p-3 text-secondary">暂无数据</td></tr></tbody></table></div>
+                    </div>
+                    <div class="bg p-3 border">
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <h3 class="text-sm font-bold">Ambiguous / conflict ledger</h3>
+                            <select id="pixiv-product-ambiguity-filter" class="bg px-2 py-1 border text-xs"><option value="">全部</option><option value="deferred_candidate_pair">deferred pair</option><option value="ambiguous_link">ambiguous link</option><option value="merge_candidate">merge candidate</option><option value="context_conflict">context conflict</option><option value="source_state_deferral">source-state deferral</option></select>
+                        </div>
+                        <div class="overflow-auto max-h-80"><table class="w-full text-xs"><thead><tr class="text-left"><th class="p-2">Kind</th><th class="p-2">Reason</th><th class="p-2">Signals</th></tr></thead><tbody id="pixiv-product-ambiguity-tbody" data-testid="pixiv-product-ambiguity"><tr><td colspan="3" class="p-3 text-secondary">暂无数据</td></tr></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="surface p-2 sm:p-6 border mb-4" id="dynamic-library-sync-section">
                 <div class="flex items-center justify-between mb-4 pb-3 border-b">
                     <h2 class="text-base font-bold" data-i18n="admin.dynamic_library_sync.title">动态图库同步</h2>
