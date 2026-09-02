@@ -28,11 +28,11 @@ def _assert_split_s2g_not_active(text: str) -> None:
     assert "Recommended immediate next phase after PD1-A: `S2G-1`" not in text
 
 
-def test_current_mainline_roadmap_persists_px2_boundary_and_fixed_route() -> None:
+def test_current_mainline_roadmap_persists_px3_boundary_and_fixed_route() -> None:
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
-    assert "PR #147" in text
-    assert "5a8efdaf954ab95bd82f95464af31a7fd0873e5e" in text
+    assert "PR #148" in text
+    assert "421e2989d274e2dc4492d5bccc10720dcfbbaa4f" in text
     _assert_in_order(
         text,
         [
@@ -42,8 +42,7 @@ def test_current_mainline_roadmap_persists_px2_boundary_and_fixed_route() -> Non
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "scv2_px2_deterministic_pixiv_clustering_contract_v1" in text
-    assert "machine_verifiable_ci=false" in text
+    assert "scv2_px3_pixiv_product_integration_contract_v1" in text
     state = json.loads(_read("docs/state/current-phase.json"))
     assert state["current_status"] in text
     assert "route_approved=false" in text
@@ -55,7 +54,7 @@ def test_current_mainline_roadmap_persists_px2_boundary_and_fixed_route() -> Non
     assert "historical" in text
     assert "Deferred Due-Gate Policy" in text
     assert "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE" in text
-    assert "final import" in text
+    assert "1%-5% import canary" in text
 
 
 def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:
@@ -88,10 +87,10 @@ def test_handoff_points_to_current_mainline_roadmap() -> None:
     text = _read("docs/current-handoff.md")
 
     assert "roadmap/current-mainline-roadmap.md" in text
-    assert "SCV2-PX1" in text
+    assert "SCV2-PX3" in text
     assert "PR pending creation" in text or "PR #" in text
-    assert "PX1 Merge Projection" in text
-    assert "Accepted PR #147 HEAD/tree" in text
+    assert "PX2 Merge Projection" in text
+    assert "Accepted PR #148 HEAD/tree" in text
     assert "Deferred Debt And Exact Due Gates" in text
     for forbidden_term in ("provider", "Pixiv", "gallery-dl", "LLM"):
         assert forbidden_term in text

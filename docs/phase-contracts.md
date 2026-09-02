@@ -64,7 +64,72 @@ outside the automated contract.
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-PX2 -->
+<!-- CURRENT_PHASE: SCV2-PX3 -->
+
+PR #148 / SCV2-PX2 is owner accepted and merged at
+`421e2989d274e2dc4492d5bccc10720dcfbbaa4f`, tree
+`507a223a9156ff2f9944524303419e85891812fa`. Accepted PR HEAD
+`bf8055af61c3a5d32155701ed7110db692047dba` is the second merge parent and
+has the same tree; no parallel main commit was present. Status:
+`SCV2_PX2_MERGED`.
+
+Current PX3 projection:
+
+- `status=scv2_px3_product_integration_in_progress`
+- `contract_id=scv2_px3_pixiv_product_integration_contract_v1`
+- `public_schema=violet.scv2-px3-pixiv-product-integration-result.v1`
+- `px3_started=true`
+- `target_met=false`
+- `safe_to_merge=false`
+- `route_approved=false`
+- `px3_owner_accepted=false`
+- `px3_merge_authorized=false`
+- `real_pixiv_network_execution_authorized=false`
+- `existing_database_or_app_storage_mutation_authorized=false`
+- `production_authorized=false`
+- blocker: `scv2_px3_implementation_in_progress`
+
+The PX3 executable contract must independently regenerate repository-owned
+synthetic PX1 inputs, PX2 clusters/candidates/ambiguity, and the PX3 product
+projection. It must apply, replay, and roll back against a fresh task-owned
+temporary database; reconstruct persisted business content; exercise the read
+API and synthetic admin UI; and exact-compare evidence rather than trusting a
+caller `passed=true` field.
+
+The durable chain is:
+
+```text
+existing Pixiv route adapter (execution disabled)
+  -> PX1 canonical aggregate and signal projection
+  -> PX2 strict consumer and existing SourceConcept resolver
+  -> versioned PX3 public-safe integration result
+  -> dry-run/apply/replay/rollback product service
+  -> SourceConcept-owned run, candidate, ambiguity, and provenance persistence
+  -> read API and operable admin UI
+```
+
+The eventual canonical commands are:
+
+```powershell
+& "$PY" -B scripts/run_scv2_px3_pixiv_product_integration.py --evidence-dir <task-owned-temp>
+& "$PY" -B scripts/check_phase_contract.py --contract scv2_px3_pixiv_product_integration_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python "$PY" --px3-evidence <task-owned-temp>
+```
+
+Repository migration code and synthetic local server/browser E2E are
+authorized. Real Pixiv network execution, provider credentials, real
+source/iCloud access, existing database/app-storage mutation, user-data import,
+production, full-library import, and PX3 merge remain unauthorized. Controlled
+provider smoke, existing-DB backup/restore canary, and 1%-5% import canary are
+owner gates inside PX3, not a new phase.
+
+The route remains exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`. No PX2.1,
+hardening phase, or fourth phase exists. phase-4.5-PX1 is historical; its
+artifacts remain compatibility evidence. `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE`
+remains due before caller-controlled paths, untrusted evidence, existing DB,
+real-source canary, or production, and does not block repository-owned
+synthetic temporary paths.
+
+The following PX2 record is retained as historical input to PX3.
 
 PR #147 / SCV2-PX1 is owner accepted and merged at
 `5a8efdaf954ab95bd82f95464af31a7fd0873e5e`, tree
@@ -74,7 +139,7 @@ has the same tree. The first parent is
 `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc`; no parallel main commit was
 present. Status: `SCV2_PX1_MERGED`.
 
-Current PX2 projection:
+Historical final PX2 projection (superseded by the PR #148 merge above):
 
 - `status=SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT`
 - `contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1`

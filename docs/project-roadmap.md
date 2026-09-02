@@ -9,158 +9,75 @@ treating provider metadata, SourceConcept, or model output as Entity truth.
 
 ## Current Active Roadmap
 
-<!-- CURRENT_PHASE: SCV2-PX2 -->
+<!-- CURRENT_PHASE: SCV2-PX3 -->
 
 The only machine-readable current-route truth is
 `docs/state/current-phase.json`.
 
-PR #147 / `SCV2-PX1` is owner accepted and merged at
-`5a8efdaf954ab95bd82f95464af31a7fd0873e5e`. Its second parent is accepted
-PR HEAD `15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a`, and both accepted and merge
-trees are `480d6a548e6276afeccf49ec75a73d7389b995fe`. No parallel main commit was
-present. Status: `SCV2_PX1_MERGED`.
+PR #148 / `SCV2-PX2` is owner accepted and merged at
+`421e2989d274e2dc4492d5bccc10720dcfbbaa4f`. Its second parent is accepted
+PR HEAD `bf8055af61c3a5d32155701ed7110db692047dba`; accepted and merge trees are
+`507a223a9156ff2f9944524303419e85891812fa`. No parallel main commit was
+present. Status: `SCV2_PX2_MERGED`.
 
 Current projection:
 
 ```text
-current_status=SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT
-contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1
-public_schema=violet.scv2-px2-pixiv-source-concept-cluster-result.v1
-pr=148
-implementation_evidence_head=9ee1d96004daa843544b977ed3ae607c51299f9b
-implementation_evidence_tree=743e63a6f7f2931393db860600bedd20ffaeae8e
-px2_started=true
-target_met=true
+current_status=scv2_px3_product_integration_in_progress
+contract_id=scv2_px3_pixiv_product_integration_contract_v1
+public_schema=violet.scv2-px3-pixiv-product-integration-result.v1
+px3_started=true
+target_met=false
 safe_to_merge=false
 route_approved=false
-px2_owner_accepted=false
-px2_merge_authorized=false
-real_source_authorized=false
-real_provider_authorized=false
-existing_database_authorized=false
-migration_authorized=false
+px3_owner_accepted=false
+px3_merge_authorized=false
+real_pixiv_network_execution_authorized=false
+existing_database_or_app_storage_mutation_authorized=false
 production_authorized=false
-active_blocker=pending_scv2_px2_owner_merge_audit
+active_blocker=scv2_px3_implementation_in_progress
 ```
 
-## Fixed Near-Term Route
+## Fixed Route
 
-1. `SCV2-PX1` — merged. Its frozen work/page aggregate and signal consumer
-   contract are the only Pixiv input authority for PX2.
-2. `SCV2-PX2` — delivered in normal PR #148 and pending owner merge audit. It
-   consumes PX1 artifacts, reconstructs role-aware Pixiv contexts, calls the
-   existing deterministic SourceConcept resolver, accounts for every candidate
-   disposition, builds a nonblocking ambiguous ledger, and proves a persistable
-   public-safe result in task-owned temporary SQLite.
-3. `SCV2-PX3` — not started. Real source/provider, any necessary migration,
-   production persistence, API/UI, canary, rollback, and final import remain
-   behind separate authority gates.
+1. `SCV2-PX1` — merged canonical Pixiv metadata ingestion/projection.
+2. `SCV2-PX2` — merged deterministic SourceConcept clustering and persistence.
+3. `SCV2-PX3` — started final product integration: durable product run facts,
+   dry-run/apply/rollback, API/UI, and controlled canary entrypoints.
 
-Safety work remains a gate inside these phases and does not create PX1A,
-PX1-hardening, PX2-pre, or a fourth phase. `phase-4.5-PX1 is historical`; its
-scripts and reports remain historical compatibility evidence.
+PX3 reuses the existing provider metadata adapter, PX1 aggregate/signal contract,
+PX2 clustering service, SourceConcept resolver, graph policy, models, persistence
+seam, API router, admin page, import boundaries, and feature flags. It must not
+create a second parser, resolver, graph engine, candidate registry, or storage
+system.
 
-## PX2 Boundary
+Repository migration code and task-owned temporary database validation are
+authorized. Synthetic local server/browser E2E is authorized. Real Pixiv
+network or credentials, real source/iCloud access, existing database/app storage
+mutation, user-data import, production, full-library import, and PX3 merge are
+not authorized.
 
-PX2 reuses the PX1 aggregate and signal bundle contract,
-`SourceConceptSignalInput` / `SourceConceptSignalDraft`,
-`resolve_source_concepts`, existing blocking/context/creator guards,
-candidate edges, cannot-link-aware union-find, SourceConcept drafts, aliases,
-evidence, links, search-index drafts, and existing persistence models/seam.
-It does not create a second parser, resolver, graph engine, candidate registry,
-review workflow, migration, or persistence layer.
+The real provider path may be connected to the integration seam but cannot run
+in this task. Controlled provider smoke, existing-DB canary with backup/restore,
+and 1%-5% import canary are explicit owner gates within PX3, not a PX4.
 
-Stable Pixiv creator ID is provider-global artist identity. Account and display
-name are mutable observations; name-only artists do not union. Work-level tags
-share `pixiv:work:{work_id}` context across pages, while page-specific facts
-retain `pixiv:work:{work_id}:page:{page_index}` context. Different works do not
-merge character, person, or name-only signals without stable or previously
-approved alias evidence.
-
-Conflict, page mismatch, retryable, terminal, and unsupported inputs remain
-explainable but cannot synthesize active identity. Every actual candidate pair
-is recorded as `must_link`, `cannot_link`, or `deferred_nonblocking`; only
-policy-passing active edges may union. Ambiguity remains queryable and
-persistent without blocking unambiguous clusters.
-
-The exact implementation evidence HEAD/tree is
-`9ee1d96004daa843544b977ed3ae607c51299f9b` /
-`743e63a6f7f2931393db860600bedd20ffaeae8e`. Its public and business
-fingerprints are `3f400c773ce11c1a108806798b3a36c15709d61ed7d8a8e645feed0f713fcf24`
-and `6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a`.
-Fourteen PX1 bundles contribute 40 signals to 20 concepts. All 59 candidate
-pairs are accounted as 52 `must_link`, 4 `cannot_link`, and 3
-`deferred_nonblocking`; the ambiguous ledger has 29 records. All 15 compact
-acceptance scenarios, deterministic replay, and temporary persistence
-idempotence pass.
-
-The same-head receipt passed 576 focused tests and the executable contract
-passed with zero errors or warnings after independently reconstructing the
-repository-owned PX1 vertical slice and exact-comparing it with evidence. The
-operation receipt distinguishes generated PX1 inputs (two temporary databases)
-from direct summary consumption (zero). The one final non-E2E run reported 4296
-passed, 22 skipped, 3 failed, and 15 warnings; two pre-carry-forward docs binding
-failures are closed by the final governance projection and the remaining failure
-is the accepted historical `missing_original_ai_execution_evidence` limitation.
-There is no PX2 functional regression. Hosted CI is not inferred locally.
-
-Source-state ledger permission now uses the same effective status/trust policy
-as signal reconstruction. The provider-neutral alias approval predicate admits
-approved/confirmed/manual or existing no-review authoritative provenance and
-rejects unapproved needs-review, rejected, and superseded candidates. All five
-requested PR #148 threads were replied to once and resolved; the strict clean
-isolated-worktree receipt boundary remains unchanged.
-
-## Durable Safety And Evidence Boundaries
-
-- PX2 reads repository-owned synthetic PX1 artifacts and writes only
-  task-owned temporary SQLite through existing SourceConcept-owned tables.
-- The versioned result excludes row IDs, timestamps as identity, private paths,
-  filenames, raw payloads, credentials, and secrets.
-- Network/provider, real source, existing database/app storage, migration,
-  media, user-data import/tagging, LLM, server/browser/E2E, and production
-  activity remain zero and unauthorized.
-- `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` and all inherited exact due
-  gates remain unresolved. They do not block repository-owned synthetic PX2.
-- The existing `FL1_I3_REAL_SOURCE_SCOPE_GATE` and `STABLE_REPLAY_GATE` carry
-  five findings created after PR #147 had already merged: work-ID and
-  creator-ID alias consensus, legacy provenance identity compatibility,
-  invalid provider-marker consensus in route fallback, and current
-  normalizer-version propagation. They are due before any real provider,
-  existing-data, canary, or production path.
-- Local tests and contract evidence cannot synthesize owner acceptance, merge
-  authority, hosted CI, or production readiness.
-
-The same one-time post-merge adjudication rejected retained SQLite byte binding
-as a current contract requirement because retained databases are not verdict
-inputs and both contracts regenerate their public result in fresh temporary
-databases. It also confirmed that PR #148 closes aggregate stable-key mismatch
-at the strict PX2 consumer boundary. The seven late threads are resolved; the
-original hostile-workspace thread is intentionally the only unresolved PR #147
-thread.
-
-## Remote Sync Preflight Policy
-
-Fetch and authenticate the trusted remote before comparing a protected base.
-A safe clean base that is only behind may fast-forward with `--ff-only`.
-Divergence, unsafe local-only commits, tracked drift, behavior-affecting
-untracked code/configuration, or any need for reset, rebase, force, overwrite,
-or deletion remains fail closed. Preserve unrelated user artifacts.
+Safety work remains a gate inside the three phases. No PX2.1, hardening phase,
+or fourth planning phase exists. `phase-4.5-PX1 is historical`; its artifacts
+are compatibility evidence only.
 
 ## Documentation Map
 
-- `docs/state/current-phase.json` — only current-route fact source.
+- `docs/state/current-phase.json` — current-route fact source.
 - `docs/current-handoff.md` — generated public-safe projection.
-- `docs/roadmap/current-mainline-roadmap.md` — active PX1/PX2/PX3 route.
-- `docs/phase-contracts.md` — executable contract boundary.
-- `docs/pixiv-metadata-ingestion-and-promotion-policy.md` — frozen input policy.
+- `docs/roadmap/current-mainline-roadmap.md` — current implementation route.
+- `docs/phase-contracts.md` — executable evidence boundary.
+- `docs/pixiv-metadata-ingestion-and-promotion-policy.md` — Pixiv input policy.
 - `docs/source-concept-tag-search-semantics.md` — resolver semantics.
 - `docs/development/agent-runbook.md` — operating procedure.
 - `docs/test-workflow.md` — validation workflow.
-- `docs/roadmap/archive/` — historical roadmaps.
 
 ## Governance
 
-PX2 ends at normal PR #148 and exact-head owner merge audit. PX2 is not
-owner accepted, is not safe to merge, has no merge authority, and does not
-start PX3.
+PX3 stops at a normal Ready PR for owner acceptance and controlled canary
+decisions. Local evidence cannot grant owner acceptance, hosted CI, real-data
+authority, production readiness, or merge authority.
