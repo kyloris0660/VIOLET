@@ -63,7 +63,7 @@ from .source_name_candidate_extraction_service import (
 )
 from ..utils.cache import invalidate_source_concept_search_cache
 
-RESOLVER_VERSION = "source_concept_resolver_core_v6_stable_signal_identity"
+RESOLVER_VERSION = "source_concept_resolver_core_v7_alias_union_approval"
 SIGNAL_IDENTITY_VERSION = "source_concept_signal_identity_v2"
 SOURCE_CONCEPT_SCHEMA_VERSION = "source_concept_schema_v1"
 LLM_CACHE_POLICY_VERSION = "source_concept_llm_adjudication_cache_v1"
@@ -1484,13 +1484,29 @@ def build_source_concept_signals(
         )
 
     for row in db.query(SourceNameAliasCandidate).all():
-        status = "needs_review" if row.requires_review else source_status_to_concept_status(row.status)
+        alias_status = normalize_source_text(row.status).casefold()
+        if alias_status in REJECTED_INPUT_STATUSES or alias_status == "rejected_candidate":
+            status = "rejected"
+        else:
+            status = (
+                "needs_review"
+                if row.requires_review
+                else source_status_to_concept_status(row.status)
+            )
         trust = "medium" if status != "rejected" else "rejected"
+        stored_evidence = (
+            dict(row.evidence_payload)
+            if isinstance(row.evidence_payload, Mapping)
+            else {}
+        )
         edge_payload = {
+            **stored_evidence,
             "relation_type": row.relation_type,
             "evidence_source": row.evidence_source,
             "source_name_key": row.source_name_key,
             "target_name_key": row.target_name_key,
+            "alias_candidate_status": alias_status,
+            "alias_candidate_requires_review": bool(row.requires_review),
         }
         alias_identity = {
             "source_name_key": row.source_name_key,
@@ -2145,12 +2161,47 @@ def _alias_relation_is_same_concept(signal: SourceConceptSignalDraft) -> bool:
     }
 
 
+def source_alias_union_is_approved(signal: SourceConceptSignalDraft) -> bool:
+    """Return whether one provider-neutral alias record may define union scope.
+
+    Persisted approval/review fields and explicit confirmation provenance are
+    authoritative. A relation label by itself remains only a candidate.
+    """
+
+    if signal.origin_type != "source_alias_candidate":
+        return False
+    payload = signal.evidence_payload or {}
+    candidate_status = normalize_source_text(
+        payload.get("alias_candidate_status") or signal.status
+    ).casefold()
+    if (
+        candidate_status in REJECTED_INPUT_STATUSES
+        or candidate_status == "rejected_candidate"
+        or signal.status == "rejected"
+        or signal.trust_tier == "rejected"
+    ):
+        return False
+    if candidate_status in {"approved", "accepted", "confirmed"}:
+        return True
+    if any(
+        payload.get(key) is True
+        for key in (
+            "manual_confirmation",
+            "manually_confirmed",
+            "stable_alias_approved",
+        )
+    ):
+        return True
+    return bool(
+        payload.get("alias_candidate_requires_review") is False
+        and normalize_source_text(payload.get("evidence_source"))
+    )
+
+
 def _alias_component_lookup(signals: Sequence[SourceConceptSignalDraft]) -> dict[str, str]:
     uf = UnionFind()
     for signal in signals:
-        if signal.origin_type != "source_alias_candidate":
-            continue
-        if signal.status == "rejected" or signal.trust_tier == "rejected":
+        if not source_alias_union_is_approved(signal):
             continue
         if not _alias_relation_is_same_concept(signal):
             continue

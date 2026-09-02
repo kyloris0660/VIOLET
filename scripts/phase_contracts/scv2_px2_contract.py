@@ -442,6 +442,52 @@ def _validate_public_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
         != disposition_counts["deferred_nonblocking"]
     ):
         raise Scv2Px2ContractError("px2_ambiguous_ledger_invalid")
+    source_state_deferrals = _require_list(
+        ledger.get("source_state_deferrals"), "source_state_deferrals"
+    )
+    clustered_keys = set(member_keys)
+    inactive_source_state_keys: set[str] = set()
+    for row in source_state_deferrals:
+        if not isinstance(row, Mapping):
+            raise Scv2Px2ContractError("px2_source_state_ledger_invalid")
+        signal_keys = row.get("signal_keys")
+        if (
+            set(row)
+            != {
+                "stable_work_page_key",
+                "disposition",
+                "conflict_reasons",
+                "deferred_reasons",
+                "signal_keys",
+                "active_identity_allowed",
+            }
+            or not isinstance(signal_keys, list)
+            or signal_keys != sorted(set(signal_keys))
+            or not isinstance(row.get("active_identity_allowed"), bool)
+        ):
+            raise Scv2Px2ContractError("px2_source_state_ledger_invalid")
+        active_in_resolution = bool(signal_keys) and set(signal_keys).issubset(
+            clustered_keys
+        )
+        if row["active_identity_allowed"] is not active_in_resolution:
+            raise Scv2Px2ContractError(
+                "px2_source_state_active_identity_mismatch"
+            )
+        if row.get("disposition") != "complete":
+            if row["active_identity_allowed"] is not False:
+                raise Scv2Px2ContractError(
+                    "px2_noncomplete_source_state_active_identity"
+                )
+            inactive_source_state_keys.update(str(key) for key in signal_keys)
+    if any(
+        row.get("union_decision") is True
+        and (
+            row.get("left_signal_key") in inactive_source_state_keys
+            or row.get("right_signal_key") in inactive_source_state_keys
+        )
+        for row in candidates
+    ):
+        raise Scv2Px2ContractError("px2_source_state_candidate_union_mismatch")
 
     persistence = _require_mapping(
         summary.get("persistence_proof"), "persistence_proof"
@@ -581,18 +627,21 @@ def check_scv2_px2_contract(
         with _task_runtime_environment():
             projection_details = _validate_public_projection(summary)
             from backend.app.services.pixiv_metadata_clustering_service import (
-                run_synthetic_pixiv_metadata_clustering,
+                run_repository_synthetic_pixiv_metadata_clustering,
             )
 
             with tempfile.TemporaryDirectory(
                 prefix="violet-scv2-px2-contract-"
             ) as workspace:
-                regenerated = run_synthetic_pixiv_metadata_clustering(
-                    workspace=Path(workspace),
-                    px1_summary=_require_mapping(
-                        evidence["px1-consumer-summary.json"], "px1_evidence"
-                    ),
+                regenerated_px1, regenerated = (
+                    run_repository_synthetic_pixiv_metadata_clustering(
+                        workspace=Path(workspace),
+                    )
                 )
+        if regenerated_px1 != evidence["px1-consumer-summary.json"]:
+            raise Scv2Px2ContractError(
+                "px2_repository_px1_fixture_projection_mismatch"
+            )
         if regenerated != dict(summary):
             raise Scv2Px2ContractError("px2_independent_replay_projection_mismatch")
 

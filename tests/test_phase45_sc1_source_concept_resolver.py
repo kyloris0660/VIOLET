@@ -56,6 +56,7 @@ from app.services.source_concept_resolver_service import (  # noqa: E402
     run_source_concept_resolution,
     select_llm_adjudication_edges,
     persist_source_concept_resolution,
+    source_alias_union_is_approved,
 )
 from scripts.run_phase45_sc1_source_concept_resolver import (
     build_readiness_check,
@@ -391,6 +392,19 @@ def test_adapter_builds_multi_source_signals_and_medium_ai_distinction():
     assert "source_alias_candidate" in origins
     assert "provider_structured_field" in origins
     assert any(signal.origin_type == "ai_model_tag" and signal.trust_tier == "medium_ai" for signal in signals)
+    alias_signals = [
+        signal for signal in signals if signal.origin_type == "source_alias_candidate"
+    ]
+    assert alias_signals
+    assert {
+        signal.evidence_payload["alias_candidate_status"]
+        for signal in alias_signals
+    } == {"candidate"}
+    assert all(
+        signal.evidence_payload["alias_candidate_requires_review"] is True
+        for signal in alias_signals
+    )
+    assert not any(source_alias_union_is_approved(signal) for signal in alias_signals)
 
 
 def _stable_signal_projection_with_local_ids(offset: int) -> tuple[tuple[str, ...], ...]:
@@ -645,7 +659,7 @@ def test_general_parenthetical_media_tag_does_not_promote_to_active_character():
     assert all(item.search_key != "blue_hair" for item in result.search_index)
 
 
-def test_alias_edge_links_multilingual_sources_without_entity_truth():
+def test_unapproved_alias_candidate_does_not_link_multilingual_sources():
     _engine, session = _db()
     f7a_run_id = _seed_multi_source_case(session)
     result, _inventory, persistence = run_source_concept_resolution(
@@ -655,21 +669,21 @@ def test_alias_edge_links_multilingual_sources_without_entity_truth():
         apply=True,
     )
 
-    concept = next(
-        concept
-        for concept in result.concepts
-        if {"f7a_candidate", "source_assertion", "normal_media_tag"}.issubset(
+    assert not any(
+        {"f7a_candidate", "source_assertion", "normal_media_tag"}.issubset(
             concept.evidence_summary["origin_counts"].keys()
         )
+        for concept in result.concepts
     )
-    assert concept.status == "active"
-    assert concept.evidence_summary["work_context_key"] == "genshin_impact"
     assert all(
         "source_alias_candidate" not in candidate.evidence_summary["origin_counts"]
         for candidate in result.concepts
         if candidate.status == "active"
     )
-    assert any(edge.edge_type == "unknown_role_review" and not edge.union_allowed for edge in result.edge_candidates)
+    assert not any(
+        edge.edge_type == "alias_candidate_edge" and edge.union_allowed
+        for edge in result.edge_candidates
+    )
     assert persistence["forbidden_truth_table_write_count"] == 0
 
 
@@ -1448,7 +1462,7 @@ def test_alias_component_union_links_a_b_and_a_c_in_one_component():
         trust="medium",
         status="needs_review",
         source_kind="alias_edge_source",
-        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "b"},
+        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "b", "alias_candidate_status": "confirmed"},
     )
     alias_ab_target = _signal(
         "alias:ab:target",
@@ -1458,7 +1472,7 @@ def test_alias_component_union_links_a_b_and_a_c_in_one_component():
         trust="medium",
         status="needs_review",
         source_kind="alias_edge_target",
-        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "b"},
+        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "b", "alias_candidate_status": "confirmed"},
     )
     alias_ac_source = _signal(
         "alias:ac:source",
@@ -1468,7 +1482,7 @@ def test_alias_component_union_links_a_b_and_a_c_in_one_component():
         trust="medium",
         status="needs_review",
         source_kind="alias_edge_source",
-        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "c"},
+        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "c", "alias_candidate_status": "confirmed"},
     )
     alias_ac_target = _signal(
         "alias:ac:target",
@@ -1478,7 +1492,7 @@ def test_alias_component_union_links_a_b_and_a_c_in_one_component():
         trust="medium",
         status="needs_review",
         source_kind="alias_edge_target",
-        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "c"},
+        payload={"relation_type": "same_source_concept", "source_name_key": "a", "target_name_key": "c", "alias_candidate_status": "confirmed"},
     )
     signals = [
         _signal("normal:a", "A", work_context_key="work"),
@@ -1507,7 +1521,7 @@ def test_alias_edge_same_context_can_link():
         role="unknown",
         trust="medium",
         status="needs_review",
-        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex"},
+        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex", "alias_candidate_status": "approved"},
     )
     signals = [
         _signal("left", "alexandria", work_context_key="work_a"),
@@ -1526,6 +1540,83 @@ def test_alias_edge_same_context_can_link():
     assert any(edge.edge_type == "alias_candidate_edge" and edge.status == "active" for edge in result.edge_candidates)
 
 
+def test_unapproved_alias_edge_same_context_does_not_link():
+    alias = _signal(
+        "alias:edge:unapproved",
+        "Alex alias",
+        origin_type="source_alias_candidate",
+        role="unknown",
+        trust="medium",
+        status="needs_review",
+        payload={
+            "relation_type": "same_source_concept",
+            "source_name_key": "alexandria",
+            "target_name_key": "alex",
+            "alias_candidate_status": "candidate",
+            "alias_candidate_requires_review": True,
+            "evidence_source": "fixture_candidate",
+        },
+    )
+    signals = [
+        _signal("left", "alexandria", work_context_key="work_a"),
+        _signal("right", "alex", work_context_key="work_a"),
+        alias,
+    ]
+
+    result = resolve_source_concepts(signals, run_id="sc1-test")
+
+    assert not any(
+        {"alexandria", "alex"}.issubset(
+            {signal.canonical_key for signal in concept.signals}
+        )
+        for concept in result.concepts
+    )
+    assert not any(
+        edge.edge_type == "alias_candidate_edge" and edge.union_allowed
+        for edge in result.edge_candidates
+    )
+
+
+def test_alias_union_approval_predicate_respects_governance_precedence():
+    def alias(payload: dict, *, status: str = "needs_review", trust: str = "medium"):
+        return _signal(
+            f"alias:{len(payload)}:{status}:{trust}",
+            "Alias evidence",
+            origin_type="source_alias_candidate",
+            role="unknown",
+            trust=trust,
+            status=status,
+            payload=payload,
+        )
+
+    candidate = alias(
+        {
+            "alias_candidate_status": "candidate",
+            "alias_candidate_requires_review": True,
+            "evidence_source": "fixture_candidate",
+        }
+    )
+    approved = alias({"alias_candidate_status": "approved"})
+    stable_provenance = alias(
+        {
+            "alias_candidate_status": "candidate",
+            "alias_candidate_requires_review": False,
+            "evidence_source": "curated_mapping",
+        }
+    )
+    rejected = alias(
+        {
+            "alias_candidate_status": "superseded",
+            "manual_confirmation": True,
+        }
+    )
+
+    assert source_alias_union_is_approved(candidate) is False
+    assert source_alias_union_is_approved(approved) is True
+    assert source_alias_union_is_approved(stable_provenance) is True
+    assert source_alias_union_is_approved(rejected) is False
+
+
 def test_alias_edge_conflicting_contexts_is_blocked():
     alias = _signal(
         "alias:edge",
@@ -1534,7 +1625,7 @@ def test_alias_edge_conflicting_contexts_is_blocked():
         role="unknown",
         trust="medium",
         status="needs_review",
-        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex"},
+        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex", "alias_candidate_status": "approved"},
     )
     signals = [
         _signal("left", "alexandria", work_context_key="work_a"),
@@ -1561,7 +1652,7 @@ def test_broad_alias_reused_across_works_does_not_overmerge():
         role="unknown",
         trust="medium",
         status="needs_review",
-        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex"},
+        payload={"relation_type": "same_source_concept", "source_name_key": "alexandria", "target_name_key": "alex", "alias_candidate_status": "approved"},
     )
     signals = [
         _signal("a:1", "alexandria", work_context_key="work_a"),

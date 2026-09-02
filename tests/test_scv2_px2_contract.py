@@ -13,16 +13,12 @@ import sys
 import pytest
 
 from app.services.pixiv_metadata_clustering_service import (
-    run_synthetic_pixiv_metadata_clustering,
+    run_repository_synthetic_pixiv_metadata_clustering,
     write_pixiv_clustering_evidence,
 )
 from app.services.pixiv_metadata_projection_service import (
     canonical_fingerprint,
     canonical_json_bytes,
-)
-from app.services.pixiv_metadata_vertical_slice_service import (
-    repository_synthetic_pixiv_fixture,
-    run_synthetic_pixiv_vertical_slice,
 )
 from scripts.check_phase_contract import build_parser
 from scripts.phase_contracts import ContractRepositoryContext, check_phase_contract, get_contract
@@ -99,13 +95,8 @@ def base_evidence(tmp_path_factory: pytest.TempPathFactory) -> Path:
         }
     )
     try:
-        px1 = run_synthetic_pixiv_vertical_slice(
+        px1, summary = run_repository_synthetic_pixiv_metadata_clustering(
             workspace=root,
-            fixture=repository_synthetic_pixiv_fixture(),
-        )
-        summary = run_synthetic_pixiv_metadata_clustering(
-            workspace=root,
-            px1_summary=px1,
         )
         write_pixiv_clustering_evidence(root, px1_summary=px1, result=summary)
         _write_receipt(root)
@@ -193,6 +184,9 @@ def test_contract_registered_and_rebuilds_real_px1_resolver_and_persistence(
     assert result.target_met_claimed is True
     assert result.safe_to_merge_claimed is False
     assert result.route_approved is False
+    assert summary["operation_receipt"][
+        "px1_input_generation_temporary_database_count"
+    ] == 2
 
 
 def test_fixed_evidence_loader_requires_exact_canonical_member_set(
@@ -310,6 +304,89 @@ def test_px1_input_mutation_is_rejected_by_independent_reconstruction(
         repository_context=_context(paths),
     )
     assert not result.passed
+
+
+def test_coordinated_px1_bundle_and_fingerprint_mutation_cannot_replace_repository_truth(
+    tmp_path: Path, base_evidence: Path
+) -> None:
+    summary, paths = _evidence(tmp_path, base_evidence)
+    px1 = json.loads(
+        (paths.root / "px1-consumer-summary.json").read_text(encoding="utf-8")
+    )
+    bundle = px1["signal_bundles"][0]
+    bundle["signals"][0]["confidence"] = 0.123456
+    bundle_unsigned = dict(bundle)
+    bundle_unsigned.pop("canonical_fingerprint")
+    bundle["canonical_fingerprint"] = canonical_fingerprint(bundle_unsigned)
+    signal_bundle_fingerprint = canonical_fingerprint(
+        sorted(px1["signal_bundles"], key=lambda row: row["stable_work_page_key"])
+    )
+    px1["px2_consumer_contract"][
+        "signal_bundle_artifact_fingerprint"
+    ] = signal_bundle_fingerprint
+    px1_unsigned = dict(px1)
+    px1_unsigned.pop("canonical_fingerprint")
+    px1["canonical_fingerprint"] = canonical_fingerprint(px1_unsigned)
+    _write(paths.root / "px1-consumer-summary.json", px1)
+
+    forged = copy.deepcopy(summary)
+    px1_inputs = forged["px1_inputs"]
+    px1_inputs["signal_bundle_artifact_fingerprint"] = signal_bundle_fingerprint
+    px1_inputs["consumer_input_fingerprint"] = canonical_fingerprint(
+        {
+            "consumer_schema": px1_inputs["consumer_contract_schema"],
+            "aggregate_artifact_fingerprint": px1_inputs[
+                "aggregate_artifact_fingerprint"
+            ],
+            "signal_bundle_artifact_fingerprint": signal_bundle_fingerprint,
+        }
+    )
+    _rewrite_public(paths.root, forged)
+
+    result = check_phase_contract(
+        "scv2_px2_deterministic_pixiv_clustering_contract_v1",
+        forged,
+        repository_context=_context(paths),
+    )
+
+    assert not result.passed
+    assert any(
+        "px2_repository_px1_fixture_projection_mismatch" in error.code
+        for error in result.errors
+    ), result.to_dict()
+
+
+def test_source_state_ledger_cannot_deny_an_actively_resolved_complete_bundle(
+    tmp_path: Path, base_evidence: Path
+) -> None:
+    summary, paths = _evidence(tmp_path, base_evidence)
+    forged = copy.deepcopy(summary)
+    source_state_rows = forged["ambiguous_ledger"]["source_state_deferrals"]
+    complete_row = next(
+        row
+        for row in source_state_rows
+        if row["disposition"] == "complete" and row["active_identity_allowed"]
+    )
+    complete_row["active_identity_allowed"] = False
+    ledger_unsigned = dict(forged["ambiguous_ledger"])
+    ledger_unsigned.pop("canonical_fingerprint")
+    forged["ambiguous_ledger"]["canonical_fingerprint"] = canonical_fingerprint(
+        ledger_unsigned
+    )
+    _write(paths.root / "ambiguous-ledger.json", forged["ambiguous_ledger"])
+    _rewrite_public(paths.root, forged)
+
+    result = check_phase_contract(
+        "scv2_px2_deterministic_pixiv_clustering_contract_v1",
+        forged,
+        repository_context=_context(paths),
+    )
+
+    assert not result.passed
+    assert any(
+        "px2_source_state_active_identity_mismatch" in error.code
+        for error in result.errors
+    ), result.to_dict()
 
 
 def test_missing_private_context_and_python_fail_closed() -> None:

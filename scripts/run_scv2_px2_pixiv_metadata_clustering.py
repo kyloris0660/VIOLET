@@ -57,21 +57,12 @@ def _task_runtime_environment() -> Iterator[None]:
 
 def _run(workspace: Path, *, retain_evidence: bool) -> dict[str, object]:
     from app.services.pixiv_metadata_clustering_service import (
-        run_synthetic_pixiv_metadata_clustering,
+        run_repository_synthetic_pixiv_metadata_clustering,
         write_pixiv_clustering_evidence,
     )
-    from app.services.pixiv_metadata_vertical_slice_service import (
-        repository_synthetic_pixiv_fixture,
-        run_synthetic_pixiv_vertical_slice,
-    )
 
-    px1_summary = run_synthetic_pixiv_vertical_slice(
+    px1_summary, result = run_repository_synthetic_pixiv_metadata_clustering(
         workspace=workspace,
-        fixture=repository_synthetic_pixiv_fixture(),
-    )
-    result = run_synthetic_pixiv_metadata_clustering(
-        workspace=workspace,
-        px1_summary=px1_summary,
     )
     if retain_evidence:
         write_pixiv_clustering_evidence(

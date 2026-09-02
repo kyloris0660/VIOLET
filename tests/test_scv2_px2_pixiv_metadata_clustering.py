@@ -275,6 +275,11 @@ def test_noncomplete_source_states_are_explained_and_not_active(px2_fixture) -> 
         if cluster["status"] == "active"
         for key in cluster["member_signal_keys"]
     }
+    resolved_keys = {
+        key
+        for cluster in run.clusters
+        for key in cluster["member_signal_keys"]
+    }
     assert deferred_signal_keys
     assert deferred_signal_keys.isdisjoint(active_keys)
     assert len(run.consumer.source_state_deferrals) == 8
@@ -283,9 +288,35 @@ def test_noncomplete_source_states_are_explained_and_not_active(px2_fixture) -> 
         for row in run.consumer.source_state_deferrals
         if row["disposition"] != "complete"
     } == {"conflict", "page_mismatch", "retryable", "terminal", "unsupported"}
-    assert all(
-        row["active_identity_allowed"] is False
+    noncomplete_rows = [
+        row
         for row in run.consumer.source_state_deferrals
+        if row["disposition"] != "complete"
+    ]
+    complete_deferred_rows = [
+        row
+        for row in run.consumer.source_state_deferrals
+        if row["disposition"] == "complete"
+    ]
+    assert noncomplete_rows
+    assert complete_deferred_rows
+    assert all(row["active_identity_allowed"] is False for row in noncomplete_rows)
+    assert all(
+        row["active_identity_allowed"] is True for row in complete_deferred_rows
+    )
+    assert all(
+        set(row["signal_keys"]).issubset(resolved_keys)
+        for row in complete_deferred_rows
+    )
+    assert any(
+        set(row["signal_keys"]).intersection(active_keys)
+        for row in complete_deferred_rows
+    )
+    assert all(
+        not row["union_decision"]
+        for row in run.candidate_records
+        if row["left_signal_key"] in deferred_signal_keys
+        or row["right_signal_key"] in deferred_signal_keys
     )
 
 
@@ -295,7 +326,7 @@ def test_public_result_and_persistence_proof_close_required_invariants(px2_fixtu
     assert result["contract_id"] == PX2_CONTRACT_ID
     assert result["cluster_count"] == 20
     assert result["acceptance_matrix_passed"] is True
-    assert len(result["acceptance_matrix"]) == 13
+    assert len(result["acceptance_matrix"]) == 15
     assert result["persistence_proof"]["schema_version"] == PX2_PERSISTENCE_PROOF_SCHEMA
     assert result["persistence_proof"]["temporary_persistence_idempotent"] is True
     assert result["persistence_proof"]["database_row_id_variation_observed"] is True
@@ -487,6 +518,15 @@ def test_full_px1_summary_schema_and_fingerprint_are_strict(px2_fixture) -> None
 
 def test_no_authority_expansion_or_external_activity(px2_fixture) -> None:
     result = px2_fixture["result"]
+    assert result["operation_receipt"]["fixture_source"] == (
+        "provided_px1_consumer_summary"
+    )
+    assert (
+        result["operation_receipt"][
+            "px1_input_generation_temporary_database_count"
+        ]
+        == 0
+    )
     assert result["px1_owner_accepted"] is True
     assert result["px1_merged"] is True
     assert result["px2_started"] is True

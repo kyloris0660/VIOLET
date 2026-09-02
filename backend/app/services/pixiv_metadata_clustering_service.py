@@ -388,6 +388,21 @@ def _policy_context(
     return stable_pixiv_work_page_key(work_id, page_index), "pixiv_page_specific_fact"
 
 
+def _effective_signal_policy(
+    *,
+    status: str,
+    trust_tier: str,
+    source_disposition: str,
+) -> tuple[str, str, bool]:
+    effective_status = status if source_disposition == "complete" else "rejected"
+    effective_trust = trust_tier if source_disposition == "complete" else "rejected"
+    return (
+        effective_status,
+        effective_trust,
+        effective_status != "rejected" and effective_trust != "rejected",
+    )
+
+
 def _reconstruct_signal(
     signal: Mapping[str, Any],
     *,
@@ -514,8 +529,13 @@ def _reconstruct_signal(
         page_index=page_index,
     )
     source_disposition = str(source_state.get("disposition"))
-    effective_status = draft.status if source_disposition == "complete" else "rejected"
-    effective_trust = draft.trust_tier if source_disposition == "complete" else "rejected"
+    effective_status, effective_trust, _active_identity_allowed = (
+        _effective_signal_policy(
+            status=draft.status,
+            trust_tier=draft.trust_tier,
+            source_disposition=source_disposition,
+        )
+    )
     return replace(
         draft,
         signal_key=signal_key,
@@ -691,6 +711,14 @@ def validate_px1_consumer_artifacts(
             or source_state.get("conflict_reasons")
             or source_state.get("deferred_reasons")
         ):
+            active_identity_allowed = any(
+                _effective_signal_policy(
+                    status=signal.status,
+                    trust_tier=signal.trust_tier,
+                    source_disposition=disposition,
+                )[2]
+                for signal in reconstructed
+            )
             source_state_deferrals.append(
                 {
                     "stable_work_page_key": stable_key,
@@ -702,7 +730,7 @@ def validate_px1_consumer_artifacts(
                         str(value) for value in source_state.get("deferred_reasons", ())
                     ),
                     "signal_keys": list(keys),
-                    "active_identity_allowed": False,
+                    "active_identity_allowed": active_identity_allowed,
                 }
             )
     return ValidatedPixivConsumer(
@@ -1675,6 +1703,27 @@ def _acceptance_matrix(
         alias_base,
         run_id="scv2-px2:alias-without-evidence",
     )
+    alias_unapproved = _probe_result(
+        (
+            *alias_base,
+            _context_probe_input(
+                "alias-unapproved-evidence",
+                "Synthetic unapproved alias evidence",
+                role="character",
+                context="pixiv:work:940000001",
+                origin_type="source_alias_candidate",
+                payload={
+                    "relation_type": "same_concept",
+                    "source_name_key": "synthetic_canonical_hero",
+                    "target_name_key": "合成英雄",
+                    "alias_candidate_status": "candidate",
+                    "alias_candidate_requires_review": True,
+                    "evidence_source": "synthetic_candidate",
+                },
+            ),
+        ),
+        run_id="scv2-px2:alias-unapproved-evidence",
+    )
     alias_with = _probe_result(
         (
             *alias_base,
@@ -1706,6 +1755,15 @@ def _acceptance_matrix(
     alias_with_concepts = {
         concept.concept_key
         for concept in alias_with.concepts
+        if any(
+            signal.display_value
+            in {"Synthetic Canonical Hero", "合成英雄"}
+            for signal in concept.signals
+        )
+    }
+    alias_unapproved_concepts = {
+        concept.concept_key
+        for concept in alias_unapproved.concepts
         if any(
             signal.display_value
             in {"Synthetic Canonical Hero", "合成英雄"}
@@ -1824,9 +1882,16 @@ def _acceptance_matrix(
             and len(character_concepts) == 2,
         },
         {
-            "scenario": "stable_alias_evidence_not_string_similarity",
-            "passed": len(alias_without_concepts) == 2
-            and len(alias_with_concepts) == 1,
+            "scenario": "no_alias_evidence_does_not_union",
+            "passed": len(alias_without_concepts) == 2,
+        },
+        {
+            "scenario": "unapproved_alias_candidate_does_not_union",
+            "passed": len(alias_unapproved_concepts) == 2,
+        },
+        {
+            "scenario": "approved_stable_alias_evidence_unions",
+            "passed": len(alias_with_concepts) == 1,
         },
         {
             "scenario": "duplicate_reverse_and_replay_deterministic",
@@ -1876,6 +1941,7 @@ def build_public_cluster_result(
     *,
     persistence_proof: Mapping[str, Any],
     deterministic_replay: bool,
+    px1_input_generation_temporary_database_count: int,
 ) -> dict[str, Any]:
     invariants = {
         **dict(run.invariants),
@@ -1893,9 +1959,15 @@ def build_public_cluster_result(
     )
     operation_receipt = {
         "schema_version": PX2_OPERATION_RECEIPT_SCHEMA,
-        "fixture_source": "repository_owned_px1_synthetic_contract",
+        "fixture_source": (
+            "repository_owned_px1_synthetic_contract"
+            if px1_input_generation_temporary_database_count
+            else "provided_px1_consumer_summary"
+        ),
         "task_owned_temporary_workspace_enforced": True,
-        "px1_input_generation_temporary_database_count": 2,
+        "px1_input_generation_temporary_database_count": (
+            px1_input_generation_temporary_database_count
+        ),
         "source_concept_temporary_database_count": 2,
         "existing_database_or_app_storage_activity": 0,
         "provider_network_activity": 0,
@@ -1974,22 +2046,19 @@ def build_public_cluster_result(
     return result
 
 
-def run_synthetic_pixiv_metadata_clustering(
+def _execute_synthetic_pixiv_metadata_clustering(
     *,
     workspace: Path,
-    px1_summary: Mapping[str, Any] | None = None,
+    px1_summary: Mapping[str, Any],
+    px1_input_generation_temporary_database_count: int,
 ) -> dict[str, Any]:
-    """Execute the repository-owned PX1-to-PX2 vertical slice."""
-
     root = _require_task_owned_temp_workspace(workspace)
+    generated_database_count = _require_exact_int(
+        px1_input_generation_temporary_database_count,
+        "px1_input_generation_temporary_database_count",
+    )
     with _OfflineOperationGuard() as guard:
-        selected_px1 = dict(
-            px1_summary
-            or run_synthetic_pixiv_vertical_slice(
-                workspace=root,
-                fixture=repository_synthetic_pixiv_fixture(),
-            )
-        )
+        selected_px1 = dict(px1_summary)
         consumer = consume_px1_public_summary(selected_px1)
         run = build_pixiv_clustering(consumer)
         reversed_consumer = validate_px1_consumer_artifacts(
@@ -2016,6 +2085,9 @@ def run_synthetic_pixiv_metadata_clustering(
             run,
             persistence_proof=persistence,
             deterministic_replay=deterministic_replay,
+            px1_input_generation_temporary_database_count=(
+                generated_database_count
+            ),
         )
     if guard.provider_network_attempt_count or guard.subprocess_attempt_count:
         raise PixivMetadataClusteringError("px2_offline_operation_guard_failed")
@@ -2056,6 +2128,53 @@ def run_synthetic_pixiv_metadata_clustering(
             "px2_acceptance_invariant_failed:" + ",".join(sorted(set(failures)))
         )
     return result
+
+
+def run_repository_synthetic_pixiv_metadata_clustering(
+    *,
+    workspace: Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Generate canonical PX1 inputs and execute the PX2 vertical slice."""
+
+    root = _require_task_owned_temp_workspace(workspace)
+    px1_summary = run_synthetic_pixiv_vertical_slice(
+        workspace=root,
+        fixture=repository_synthetic_pixiv_fixture(),
+    )
+    px1_receipt = _require_mapping(
+        px1_summary.get("operation_receipt"),
+        "px1_operation_receipt",
+    )
+    generated_database_count = _require_exact_int(
+        px1_receipt.get("task_owned_temporary_database_count"),
+        "px1_generated_temporary_database_count",
+    )
+    result = _execute_synthetic_pixiv_metadata_clustering(
+        workspace=root,
+        px1_summary=px1_summary,
+        px1_input_generation_temporary_database_count=generated_database_count,
+    )
+    return px1_summary, result
+
+
+def run_synthetic_pixiv_metadata_clustering(
+    *,
+    workspace: Path,
+    px1_summary: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Execute PX2, recording whether this call generated its PX1 inputs."""
+
+    root = _require_task_owned_temp_workspace(workspace)
+    if px1_summary is None:
+        _generated_px1, result = run_repository_synthetic_pixiv_metadata_clustering(
+            workspace=root,
+        )
+        return result
+    return _execute_synthetic_pixiv_metadata_clustering(
+        workspace=root,
+        px1_summary=px1_summary,
+        px1_input_generation_temporary_database_count=0,
+    )
 
 
 def write_pixiv_clustering_evidence(
