@@ -23,11 +23,14 @@ present. Status: `SCV2_PX1_MERGED`.
 Current projection:
 
 ```text
-current_status=scv2_px2_implementation_in_progress
+current_status=SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT
 contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1
 public_schema=violet.scv2-px2-pixiv-source-concept-cluster-result.v1
+pr=148
+implementation_evidence_head=c62d45d58431be0adf09c18bb7f4b203f93ca978
+implementation_evidence_tree=d4314b11d2b64b3578935902f547b685cd3682d5
 px2_started=true
-target_met=false
+target_met=true
 safe_to_merge=false
 route_approved=false
 px2_owner_accepted=false
@@ -37,17 +40,18 @@ real_provider_authorized=false
 existing_database_authorized=false
 migration_authorized=false
 production_authorized=false
-active_blocker=scv2_px2_implementation_in_progress
+active_blocker=pending_scv2_px2_owner_merge_audit
 ```
 
 ## Fixed Near-Term Route
 
 1. `SCV2-PX1` — merged. Its frozen work/page aggregate and signal consumer
    contract are the only Pixiv input authority for PX2.
-2. `SCV2-PX2` — started. Consume PX1 artifacts, reconstruct role-aware Pixiv
-   contexts, call the existing deterministic SourceConcept resolver, account
-   for every candidate disposition, build a nonblocking ambiguous ledger, and
-   prove a persistable public-safe result in task-owned temporary SQLite.
+2. `SCV2-PX2` — delivered in normal PR #148 and pending owner merge audit. It
+   consumes PX1 artifacts, reconstructs role-aware Pixiv contexts, calls the
+   existing deterministic SourceConcept resolver, accounts for every candidate
+   disposition, builds a nonblocking ambiguous ledger, and proves a persistable
+   public-safe result in task-owned temporary SQLite.
 3. `SCV2-PX3` — not started. Real source/provider, any necessary migration,
    production persistence, API/UI, canary, rollback, and final import remain
    behind separate authority gates.
@@ -78,6 +82,23 @@ explainable but cannot synthesize active identity. Every actual candidate pair
 is recorded as `must_link`, `cannot_link`, or `deferred_nonblocking`; only
 policy-passing active edges may union. Ambiguity remains queryable and
 persistent without blocking unambiguous clusters.
+
+The exact implementation evidence HEAD/tree is
+`c62d45d58431be0adf09c18bb7f4b203f93ca978` /
+`d4314b11d2b64b3578935902f547b685cd3682d5`. Its public and business
+fingerprints are `1547adcc3dc1b20e7fe3e2a67af43a0238538b59fbd00fc6b6bb84496a58fea6`
+and `269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548`.
+Fourteen PX1 bundles contribute 40 signals to 20 concepts. All 59 candidate
+pairs are accounted as 52 `must_link`, 4 `cannot_link`, and 3
+`deferred_nonblocking`; the ambiguous ledger has 29 records. All 13 compact
+acceptance scenarios, deterministic replay, and temporary persistence
+idempotence pass.
+
+The same-head receipt passed 572 focused tests and the executable contract
+passed with zero errors or warnings. The one final non-E2E run reported 4294
+passed, 22 skipped, 1 failed, and 15 warnings; the sole failure is the accepted
+historical `missing_original_ai_execution_evidence` limitation rather than a
+PX2 regression. Hosted CI is not inferred from local evidence.
 
 ## Durable Safety And Evidence Boundaries
 
@@ -115,6 +136,6 @@ or deletion remains fail closed. Preserve unrelated user artifacts.
 
 ## Governance
 
-PX2 ends at one normal Ready PR and exact-head owner merge audit. PX2 is not
+PX2 ends at normal PR #148 and exact-head owner merge audit. PX2 is not
 owner accepted, is not safe to merge, has no merge authority, and does not
 start PX3.

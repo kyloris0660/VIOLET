@@ -5,13 +5,13 @@
 ## Current Facts
 
 - Phase: `SCV2-PX2` - Deterministic Pixiv SourceConcept Clustering.
-- Repository / PR: `kyloris0660/VIOLET` / Draft PR pending creation.
+- Repository / PR: `kyloris0660/VIOLET` / normal PR #148.
 - Branch: `codex/scv2-px2-deterministic-pixiv-clustering`.
 - Accepted mainline HEAD/tree: `5a8efdaf954ab95bd82f95464af31a7fd0873e5e` / `480d6a548e6276afeccf49ec75a73d7389b995fe`.
-- Implementation evidence HEAD/tree: `5a8efdaf954ab95bd82f95464af31a7fd0873e5e` / `480d6a548e6276afeccf49ec75a73d7389b995fe`; status: `px2_started_no_implementation_evidence_yet`.
-- Status: `scv2_px2_implementation_in_progress`.
-- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- Manual acceptance: `px2_synthetic_implementation_in_progress`; `next_phase_started=false`.
+- Implementation evidence HEAD/tree: `c62d45d58431be0adf09c18bb7f4b203f93ca978` / `d4314b11d2b64b3578935902f547b685cd3682d5`; status: `same_head_local_receipt_and_executable_contract_passed_with_final_non_e2e_historical_private_evidence_limitation_only`.
+- Status: `SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT`.
+- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
+- Manual acceptance: `pending_scv2_px2_owner_merge_audit`; `next_phase_started=false`.
 - Contract: `scv2_px2_deterministic_pixiv_clustering_contract_v1`; public schema: `violet.scv2-px2-pixiv-source-concept-cluster-result.v1`.
 - Contract evidence remains local synthetic/operator evidence; it is neither CI nor PX2 owner acceptance.
 
@@ -33,8 +33,8 @@
 
 ## Current Gate And Authority Boundary
 
-- Gate: `scv2_px2_implementation_in_progress` (Implement and verify the repository-owned synthetic PX2 clustering, candidate ledger, public result, and task-owned temporary persistence without expanding data-plane authority).
-- Resolution: Complete the executable PX2 contract and final exact-head evidence, create one normal Ready PR, and stop for owner merge audit without merging PX2.
+- Gate: `pending_scv2_px2_owner_merge_audit` (PR #148 is a normal Ready candidate bound to exact synthetic PX2 implementation evidence; PX2 owner acceptance and merge remain false).
+- Resolution: Owner audits the exact PR #148 head and independently decides whether to authorize a later merge; this task must not merge PX2 or start PX3.
 - `px2_started=true`; `px2_owner_accepted=false`; `px2_safe_to_merge=false`; `px2_merge_authorized=false`; `px3_started=false`.
 - `real_provider_authorized=false`; `real_source_authorized=false`; `existing_database_authorized=false`; `migration_authorized=false`; `full_import_authorized=false`; `production_authorized=false`.
 - Existing DB/app-storage, provider network, real source, LLM, and production activity counts: `0/0/0/0/0`.
@@ -57,6 +57,10 @@
 - `scv2_px1_normal_pr_created`: `pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge`.
 - `scv2_px1_pr147_expected_head_merge`: `owner_accepted_head_is_second_merge_parent_merge_tree_equals_accepted_tree_and_origin_main_has_no_parallel_commit` - `5a8efdaf954ab95bd82f95464af31a7fd0873e5e`.
 - `scv2_px2_governance_entry`: `px2_synthetic_implementation_started_from_verified_pr147_merge_with_all_real_data_migration_model_ui_and_production_authorities_false` - `480d6a548e6276afeccf49ec75a73d7389b995fe`.
+- `scv2_px2_deterministic_clustering_vertical_slice`: `fourteen_px1_bundles_and_forty_signals_resolved_to_twenty_concepts_with_all_fifty_nine_candidate_pairs_accounted_and_nonblocking_ambiguous_ledger_persisted` - `269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548`.
+- `scv2_px2_same_head_receipt_and_contract`: `five_hundred_seventy_two_canonical_focused_tests_passed_on_exact_implementation_head_and_contract_independently_rebuilt_px1_consumer_resolver_candidate_ledger_persistence_and_authority_facts` - `c62d45d58431be0adf09c18bb7f4b203f93ca978`.
+- `scv2_px2_final_full_non_e2e_compatibility`: `4294_passed_22_skipped_one_historical_missing_original_ai_execution_evidence_failure_15_warnings_without_px2_regression`.
+- `scv2_px2_pr148_draft_created`: `normal_pr148_created_as_draft_at_exact_implementation_head_pending_final_docs_only_projection_and_single_ready_transition`.
 
 ## Allowed / Forbidden
 
@@ -65,7 +69,7 @@
 
 ## Next Action
 
-- Required checkpoint: `implement and validate the synthetic SCV2-PX2 deterministic clustering contract, create one normal Ready PR bound to exact evidence, and stop for owner merge audit without merging PX2`.
+- Required checkpoint: `owner audits the exact normal Ready PR #148 head and decides separately whether to authorize PX2 merge; PX2 merge and PX3 remain outside this task`.
 
 ## Durable Links
 

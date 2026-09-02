@@ -76,11 +76,14 @@ present. Status: `SCV2_PX1_MERGED`.
 
 Current PX2 projection:
 
-- `status=scv2_px2_implementation_in_progress`
+- `status=SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT`
 - `contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1`
 - `public_schema=violet.scv2-px2-pixiv-source-concept-cluster-result.v1`
+- `pr=148`
+- `implementation_evidence_head=c62d45d58431be0adf09c18bb7f4b203f93ca978`
+- `implementation_evidence_tree=d4314b11d2b64b3578935902f547b685cd3682d5`
 - `px2_started=true`
-- `target_met=false`
+- `target_met=true`
 - `safe_to_merge=false`
 - `route_approved=false`
 - `px2_owner_accepted=false`
@@ -92,7 +95,7 @@ Current PX2 projection:
 - `migration_authorized=false`
 - `full_import_authorized=false`
 - `production_authorized=false`
-- blocker: `scv2_px2_implementation_in_progress`
+- blocker: `pending_scv2_px2_owner_merge_audit`
 
 The PX2 executable contract must independently reconstruct the critical facts
 from repository-owned PX1 fixtures and artifacts, canonical signal input,
@@ -129,12 +132,32 @@ links, search-index drafts, models, and persistence seam. It does not create a
 second clustering engine, resolver, candidate registry, LLM workflow,
 migration, or persistence layer.
 
-The canonical local command is planned as:
+The canonical local commands are:
 
 ```powershell
 & "$PY" -B scripts/run_scv2_px2_pixiv_metadata_clustering.py --evidence-dir <task-owned-temp>
+& "$PY" -B scripts/create_scv2_px2_validation_receipt.py --evidence-dir <task-owned-temp>
 & "$PY" -B scripts/check_phase_contract.py --contract scv2_px2_deterministic_pixiv_clustering_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python "$PY" --px2-evidence <task-owned-temp>
 ```
+
+Exact implementation evidence is bound to
+`c62d45d58431be0adf09c18bb7f4b203f93ca978`, tree
+`d4314b11d2b64b3578935902f547b685cd3682d5`, public summary fingerprint
+`1547adcc3dc1b20e7fe3e2a67af43a0238538b59fbd00fc6b6bb84496a58fea6`,
+and business projection fingerprint
+`269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548`.
+The reconstructed evidence contains 14 aggregates/bundles, 40 signals, 20
+concepts, and all 59 candidate pairs: 52 `must_link`, 4 `cannot_link`, and 3
+`deferred_nonblocking`. The ambiguous ledger contains 29 records, all 13
+acceptance scenarios pass, and deterministic replay plus temporary persistence
+idempotence are true.
+
+The exact-head local receipt passed 572 focused tests with clean before/after
+proof. The executable contract passed with zero errors and zero warnings. The
+single final non-E2E run at the implementation HEAD reported 4294 passed, 22
+skipped, 1 failed, and 15 warnings in 507.75 seconds. The sole failure is the
+authorized historical `missing_original_ai_execution_evidence` limitation;
+there is no PX2 functional regression, and hosted CI is not claimed.
 
 PX2 permits only repository-owned synthetic inputs and newly created
 task-owned temporary SQLite through existing SourceConcept-owned tables. It

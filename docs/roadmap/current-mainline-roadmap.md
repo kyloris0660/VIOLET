@@ -24,12 +24,17 @@ squashed, rebased, force-pushed, or followed by a direct main push.
 ## Current Phase And Stop Boundary
 
 ```text
-current_status=scv2_px2_implementation_in_progress
+current_status=SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT
 contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1
 public_schema=violet.scv2-px2-pixiv-source-concept-cluster-result.v1
+pr=148
+implementation_evidence_head=c62d45d58431be0adf09c18bb7f4b203f93ca978
+implementation_evidence_tree=d4314b11d2b64b3578935902f547b685cd3682d5
+public_summary_fingerprint=1547adcc3dc1b20e7fe3e2a67af43a0238538b59fbd00fc6b6bb84496a58fea6
+business_projection_fingerprint=269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548
 px2_started=true
 px2_owner_accepted=false
-target_met=false
+target_met=true
 safe_to_merge=false
 route_approved=false
 px2_merge_authorized=false
@@ -41,7 +46,7 @@ migration_authorized=false
 full_import_authorized=false
 production_authorized=false
 machine_verifiable_ci=false
-active_blocker=scv2_px2_implementation_in_progress
+active_blocker=pending_scv2_px2_owner_merge_audit
 ```
 
 PX2 is restricted to repository-owned synthetic PX1 artifacts and task-owned
@@ -86,7 +91,8 @@ persistent without blocking deterministic clusters.
 
 1. `SCV2-PX1` — owner accepted and merged.
 2. `SCV2-PX2` — deterministic clustering, candidate explanation, ambiguous
-   ledger, temporary persistence/replay, and a persistable result. Started.
+   ledger, temporary persistence/replay, and a persistable result. Delivered in
+   normal PR #148 and pending owner merge audit.
 3. `SCV2-PX3` — real source/provider, necessary migration, production
    persistence, API/UI, canary, rollback, and final import. Not started.
 
@@ -111,6 +117,23 @@ tests, deterministic replay, tracked JSON, documentation state, diff and
 public-safety scans, plus one complete non-E2E suite at final runtime-code HEAD.
 Server/browser/E2E, real provider, real source, existing database, migration,
 LLM, full import, and production execution remain forbidden.
+
+Exact implementation evidence at `c62d45d58431be0adf09c18bb7f4b203f93ca978`
+and tree `d4314b11d2b64b3578935902f547b685cd3682d5` records 14 PX1
+aggregates/bundles, 40 canonical signals, 20 concepts, and all 59 candidate
+pairs: 52 `must_link`, 4 `cannot_link`, and 3 `deferred_nonblocking`. The
+nonblocking ambiguous ledger contains 29 records and all 13 compact acceptance
+scenarios pass. The same-head receipt passed 572 focused tests with clean
+before/after proof; the executable contract passed with zero errors and zero
+warnings. Deterministic replay and task-owned temporary persistence idempotence
+are true, while existing DB/app storage, provider network, real-source, LLM,
+and production activity are zero.
+
+The one authorized final non-E2E run reported 4294 passed, 22 skipped, 1
+failed, and 15 warnings in 507.75 seconds. Its sole failure was the exact
+historical `missing_original_ai_execution_evidence` private-evidence limitation;
+no evidence was copied or synthesized, and it is not a PX2 functional
+regression. Hosted CI remains separate and is not claimed by local evidence.
 
 ## Remote Sync Preflight Policy
 
