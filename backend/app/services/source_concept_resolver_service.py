@@ -5066,6 +5066,7 @@ def persist_source_concept_resolution(
     inventory: Mapping[str, Any] | None = None,
     input_scope: Mapping[str, Any] | None = None,
     run_label: str = "phase_4_5_sc1_source_concept_resolver_core",
+    commit: bool = True,
 ) -> dict[str, Any]:
     before_allowed = table_counts(db, SOURCE_CONCEPT_ALLOWED_WRITE_TABLES)
     before_forbidden = table_counts(db, FORBIDDEN_TRUTH_TABLES)
@@ -5574,8 +5575,11 @@ def persist_source_concept_resolution(
         "stale_supersede_scope_violation_count": 0,
     }
     run_row.no_truth_write_proof_json = proof
-    db.commit()
-    invalidate_source_concept_search_cache()
+    if commit:
+        db.commit()
+        invalidate_source_concept_search_cache()
+    else:
+        db.flush()
     return {"apply": True, "run_db_id": run_row.id, **proof}
 
 

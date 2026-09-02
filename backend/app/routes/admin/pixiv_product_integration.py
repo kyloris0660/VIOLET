@@ -7,7 +7,7 @@ import tempfile
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictInt
 from sqlalchemy.orm import Session
 
 from ...auth import require_admin_mode
@@ -18,6 +18,12 @@ from ...services.pixiv_metadata_vertical_slice_service import (
     repository_synthetic_pixiv_fixture,
     run_synthetic_pixiv_vertical_slice,
 )
+from ...services.pixiv_metadata_clustering_service import (
+    PixivMetadataClusteringError,
+)
+from ...services.pixiv_metadata_projection_service import (
+    PixivMetadataProjectionError,
+)
 from ...services.pixiv_product_integration_service import (
     PixivProductIntegrationError,
     apply_pixiv_product_plan,
@@ -26,6 +32,7 @@ from ...services.pixiv_product_integration_service import (
     get_pixiv_product_run,
     list_pixiv_product_runs,
     rollback_pixiv_product_run,
+    select_existing_pixiv_canary_work_ids,
 )
 
 
@@ -36,6 +43,7 @@ class ProductRunRequest(BaseModel):
     mode: Literal["dry_run", "apply"] = "dry_run"
     confirm: bool = False
     confirm_phrase: str = ""
+    canary_percent: StrictInt | None = None
 
 
 class ProductRollbackRequest(BaseModel):
@@ -110,18 +118,39 @@ async def run_source_metadata_product_integration(
 
     _require_product_enabled()
     _require_apply(request, "APPLY_PIXIV_SOURCE_CONCEPTS")
+    if request.canary_percent is None:
+        raise HTTPException(
+            status_code=400,
+            detail="px3_existing_source_requires_bounded_canary",
+        )
     try:
-        clustering = build_clustering_from_source_metadata_session(db)
+        selection = select_existing_pixiv_canary_work_ids(
+            db, percentage=request.canary_percent
+        )
+        clustering = build_clustering_from_source_metadata_session(
+            db,
+            work_ids=selection["selected_work_ids"],
+        )
         if not clustering.consumer.aggregates:
             raise PixivProductIntegrationError("px3_no_pixiv_source_metadata")
+        scope_key = (
+            "pixiv:existing-source-metadata:"
+            f"canary:{selection['percentage']}:"
+            f"{selection['canonical_fingerprint'][:16]}"
+        )
         return apply_pixiv_product_plan(
             db,
             clustering,
-            scope_key="pixiv:existing-source-metadata",
+            scope_key=scope_key,
             source_mode="existing_source_metadata",
             apply=request.mode == "apply",
+            input_selection=selection,
         )
-    except PixivProductIntegrationError as exc:
+    except (
+        PixivMetadataClusteringError,
+        PixivMetadataProjectionError,
+        PixivProductIntegrationError,
+    ) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
@@ -136,6 +165,8 @@ async def run_synthetic_product_integration(
     _require_product_enabled()
     if not settings.SCV2_PX3_SYNTHETIC_UI_ENABLED:
         raise HTTPException(status_code=403, detail="px3_synthetic_ui_disabled")
+    if request.canary_percent is not None:
+        raise HTTPException(status_code=400, detail="px3_canary_only_for_existing_source")
     _require_apply(request, "APPLY_SYNTHETIC_PIXIV_PRODUCT")
     try:
         with tempfile.TemporaryDirectory(prefix="violet-px3-ui-") as temporary:
@@ -151,7 +182,11 @@ async def run_synthetic_product_integration(
             source_mode="repository_synthetic",
             apply=request.mode == "apply",
         )
-    except PixivProductIntegrationError as exc:
+    except (
+        PixivMetadataClusteringError,
+        PixivMetadataProjectionError,
+        PixivProductIntegrationError,
+    ) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 

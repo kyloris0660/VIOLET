@@ -198,3 +198,35 @@ def test_independent_feature_flags_fail_closed(api_client, monkeypatch) -> None:
     )
     assert synthetic_disabled.status_code == 403
     assert synthetic_disabled.json()["detail"] == "px3_synthetic_ui_disabled"
+
+
+def test_canary_percentage_is_strict_and_not_accepted_by_synthetic_route(
+    api_client,
+) -> None:
+    client, _session = api_client
+    unbounded = client.post(
+        "/api/admin/pixiv-product-integration/source-metadata/run",
+        json={"mode": "dry_run"},
+    )
+    assert unbounded.status_code == 400
+    assert (
+        unbounded.json()["detail"]
+        == "px3_existing_source_requires_bounded_canary"
+    )
+    bool_percent = client.post(
+        "/api/admin/pixiv-product-integration/source-metadata/run",
+        json={"mode": "dry_run", "canary_percent": True},
+    )
+    assert bool_percent.status_code == 422
+    above_bound = client.post(
+        "/api/admin/pixiv-product-integration/source-metadata/run",
+        json={"mode": "dry_run", "canary_percent": 6},
+    )
+    assert above_bound.status_code == 409
+    assert above_bound.json()["detail"] == "px3_canary_percentage_invalid"
+    synthetic = client.post(
+        "/api/admin/pixiv-product-integration/synthetic/run",
+        json={"mode": "dry_run", "canary_percent": 1},
+    )
+    assert synthetic.status_code == 400
+    assert synthetic.json()["detail"] == "px3_canary_only_for_existing_source"

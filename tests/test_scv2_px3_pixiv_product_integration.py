@@ -26,16 +26,26 @@ from app.database import (  # noqa: E402
     migrate_add_source_concept_resolver_core,
 )
 from app.models import (  # noqa: E402
+    SourceConcept,
     SourceConceptCandidateDisposition,
     SourceConceptProductRun,
+    SourceConceptResolutionRun,
+    SourceConceptSignal,
+    SourceMetadataRecord,
 )
+from app.services import pixiv_product_integration_service as product_service  # noqa: E402
 from app.services.pixiv_metadata_clustering_service import (  # noqa: E402
     build_pixiv_clustering,
     consume_px1_public_summary,
 )
 from app.services.pixiv_metadata_projection_service import (  # noqa: E402
+    PixivMetadataProjectionError,
     assert_public_safe_projection,
+    build_canonical_pixiv_aggregates_from_session,
     canonical_fingerprint,
+)
+from app.services.pixiv_metadata_ingestion_service import (  # noqa: E402
+    PIXIV_METADATA_NORMALIZER_VERSION,
 )
 from app.services.pixiv_metadata_vertical_slice_service import (  # noqa: E402
     repository_synthetic_pixiv_fixture,
@@ -47,11 +57,13 @@ from app.services.pixiv_product_integration_service import (  # noqa: E402
     PX3_PUBLIC_SCHEMA,
     PixivProductIntegrationError,
     apply_pixiv_product_plan,
+    build_clustering_from_source_metadata_session,
     build_pixiv_product_plan,
     get_pixiv_product_run,
     list_pixiv_product_runs,
     prove_task_owned_product_persistence,
     rollback_pixiv_product_run,
+    select_existing_pixiv_canary_work_ids,
 )
 from app.services.source_concept_resolver_service import (  # noqa: E402
     build_source_concept_input_scope,
@@ -224,6 +236,42 @@ def test_replay_detects_persisted_candidate_drift(
         engine.dispose()
 
 
+def test_apply_rolls_back_core_and_product_rows_as_one_transaction(
+    tmp_path: Path,
+    px3_clustering,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine, db = _session(tmp_path)
+
+    def fail_product_projection(*_args, **_kwargs) -> None:
+        raise PixivProductIntegrationError("synthetic_product_projection_failure")
+
+    monkeypatch.setattr(
+        product_service,
+        "_upsert_product_projection",
+        fail_product_projection,
+    )
+    try:
+        with pytest.raises(
+            PixivProductIntegrationError,
+            match="synthetic_product_projection_failure",
+        ):
+            apply_pixiv_product_plan(
+                db,
+                px3_clustering,
+                scope_key="pixiv:repository-synthetic",
+                source_mode="repository_synthetic",
+                apply=True,
+            )
+        assert db.query(SourceConceptProductRun).count() == 0
+        assert db.query(SourceConceptResolutionRun).count() == 0
+        assert db.query(SourceConceptSignal).count() == 0
+        assert db.query(SourceConcept).count() == 0
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_rollback_refuses_preexisting_core_scope(
     tmp_path: Path, px3_clustering
 ) -> None:
@@ -342,3 +390,181 @@ def test_coordinated_projection_mutation_changes_product_identity(px3_clustering
         }
     )
     assert mutated["canonical_fingerprint"] != plan["canonical_fingerprint"]
+
+
+def test_existing_source_canary_selection_is_stable_bounded_and_row_id_neutral(
+    tmp_path: Path,
+) -> None:
+    def selection(database_name: str, *, reversed_input: bool):
+        engine = create_engine(
+            f"sqlite:///{(tmp_path / database_name).as_posix()}"
+        )
+        Base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)()
+        try:
+            work_ids = [str(900_000_000 + index) for index in range(100)]
+            if reversed_input:
+                work_ids.reverse()
+            for index, work_id in enumerate(work_ids):
+                session.add(
+                    SourceMetadataRecord(
+                        id=(10_000 + index if reversed_input else index + 1),
+                        provider="pixiv",
+                        provider_record_key=f"pixiv:{work_id}:0",
+                        source_work_id=work_id,
+                        source_page_index=0,
+                        metadata_kind="provider_metadata",
+                        data_type_label="fixture_or_mock",
+                        status="complete",
+                    )
+                )
+            session.commit()
+            return select_existing_pixiv_canary_work_ids(session, percentage=5)
+        finally:
+            session.close()
+            engine.dispose()
+
+    forward = selection("forward.sqlite3", reversed_input=False)
+    reversed_rows = selection("reversed.sqlite3", reversed_input=True)
+    assert forward == reversed_rows
+    assert forward["eligible_work_count"] == 100
+    assert forward["selected_work_count"] == 5
+    assert len(set(forward["selected_work_ids"])) == 5
+    with pytest.raises(PixivProductIntegrationError, match="percentage_invalid"):
+        select_existing_pixiv_canary_work_ids(object(), percentage=False)
+    with pytest.raises(PixivProductIntegrationError, match="percentage_invalid"):
+        select_existing_pixiv_canary_work_ids(object(), percentage=6)
+
+
+def test_existing_source_canary_rejects_noncanonical_work_identity(
+    tmp_path: Path,
+) -> None:
+    engine, session = _session(tmp_path)
+    try:
+        session.add(
+            SourceMetadataRecord(
+                provider="pixiv",
+                provider_record_key="pixiv:invalid:0",
+                source_work_id="0900000000",
+                source_page_index=0,
+                metadata_kind="provider_metadata",
+                data_type_label="fixture_or_mock",
+                status="complete",
+            )
+        )
+        session.commit()
+        with pytest.raises(
+            PixivProductIntegrationError,
+            match="canary_source_work_id_invalid",
+        ):
+            select_existing_pixiv_canary_work_ids(session, percentage=1)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_existing_source_canary_filter_consumes_only_selected_canonical_work(
+    tmp_path: Path,
+) -> None:
+    engine, session = _session(tmp_path)
+    try:
+        for work_id in ("910000001", "910000002"):
+            session.add(
+                SourceMetadataRecord(
+                    provider="pixiv",
+                    provider_record_key=f"pixiv:{work_id}:0",
+                    source_work_id=work_id,
+                    source_page_index=0,
+                    metadata_kind="provider_metadata",
+                    data_type_label="authenticated_provider_metadata",
+                    status="observed",
+                    title=f"Synthetic work {work_id}",
+                    artist_id="920000001",
+                    raw_metadata_json={
+                        "id": int(work_id),
+                        "num": 0,
+                        "page_count": 1,
+                        "_pixiv_metadata_normalizer_version": (
+                            PIXIV_METADATA_NORMALIZER_VERSION
+                        ),
+                    },
+                    provenance={
+                        "source": "gallery_dl_authenticated_metadata",
+                        "parser_version": "synthetic_parser_v1",
+                        "stable_identity_key": {
+                            "provider": "pixiv",
+                            "work_id": work_id,
+                            "page_index": 0,
+                        },
+                    },
+                )
+            )
+        session.commit()
+        aggregates = build_canonical_pixiv_aggregates_from_session(
+            session,
+            work_ids=["910000002"],
+        )
+        assert [row["stable_work_page_key"] for row in aggregates] == [
+            "pixiv:work:910000002:page:0"
+        ]
+        with pytest.raises(
+            PixivMetadataProjectionError,
+            match="pixiv_work_filter_invalid",
+        ):
+            build_canonical_pixiv_aggregates_from_session(
+                session,
+                work_ids=["0910000002"],
+            )
+        selection = select_existing_pixiv_canary_work_ids(
+            session,
+            percentage=1,
+        )
+        clustering = build_clustering_from_source_metadata_session(
+            session,
+            work_ids=selection["selected_work_ids"],
+        )
+        scope_key = (
+            "pixiv:existing-source-metadata:"
+            f"canary:1:{selection['canonical_fingerprint'][:16]}"
+        )
+        applied = apply_pixiv_product_plan(
+            session,
+            clustering,
+            scope_key=scope_key,
+            source_mode="existing_source_metadata",
+            apply=True,
+            input_selection=selection,
+        )
+        detail = get_pixiv_product_run(session, applied["run_key"])
+        assert applied["input_selection"] == selection
+        assert (
+            applied["operation_receipt"][
+                "existing_database_or_app_storage_activity"
+            ]
+            == 1
+        )
+        assert applied["operation_receipt"]["provider_network_activity"] == 0
+        assert detail is not None
+        assert detail["input_selection"] == selection
+        assert detail["summary"]["input_selection"] == selection
+
+        forged_selection = dict(selection)
+        forged_selection["selected_work_ids"] = ["999999999"]
+        forged_unsigned = dict(forged_selection)
+        forged_unsigned.pop("canonical_fingerprint")
+        forged_selection["canonical_fingerprint"] = canonical_fingerprint(
+            forged_unsigned
+        )
+        with pytest.raises(
+            PixivProductIntegrationError,
+            match="canary_selection_run_mismatch",
+        ):
+            build_pixiv_product_plan(
+                clustering,
+                scope_key=scope_key,
+                source_mode="existing_source_metadata",
+                input_selection=forged_selection,
+            )
+    finally:
+        session.close()
+        engine.dispose()

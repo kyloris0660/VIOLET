@@ -12,7 +12,7 @@ from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 import re
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -31,7 +31,10 @@ from ..models import (
     SourceConceptSearchIndex,
     SourceConceptSignal,
     SourceConceptSignalLink,
+    SourceMetadataRecord,
 )
+from ..utils.cache import invalidate_source_concept_search_cache
+from .pixiv_identity_policy import canonical_pixiv_work_id
 from .pixiv_metadata_clustering_service import (
     PX2_CANDIDATE_POLICY_VERSION,
     PX2_CONTEXT_POLICY_VERSION,
@@ -66,6 +69,14 @@ PX3_PUBLIC_SCHEMA = "violet.scv2-px3-pixiv-product-integration-result.v1"
 PX3_POLICY_VERSION = "scv2_px3_pixiv_product_projection_v1"
 PX3_PERSISTENCE_SCHEMA = "violet.scv2-px3-product-persistence-proof.v1"
 PX3_OPERATION_RECEIPT_SCHEMA = "violet.scv2-px3-operation-receipt.v1"
+PX3_EXECUTED_STAGES = (
+    "px1_px2_repository_reconstruction",
+    "product_projection",
+    "source_concept_owned_persistence",
+    "dry_run_apply_replay_rollback",
+    "queryable_api_and_ui",
+    "public_safe_result",
+)
 PX3_ALLOWED_PRODUCT_TABLES = (
     "blombooru_source_concept_product_runs",
     "blombooru_source_concept_product_clusters",
@@ -97,6 +108,67 @@ def _canonical_scope_key(value: str) -> str:
     if scope != value or _SCOPE_KEY.fullmatch(scope) is None:
         raise PixivProductIntegrationError("px3_scope_key_invalid")
     return scope
+
+
+def _validated_input_selection(
+    run: PixivClusteringRun,
+    selection: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if selection is None:
+        return None
+    payload = dict(selection)
+    supplied_fingerprint = payload.pop("canonical_fingerprint", None)
+    percentage = payload.get("percentage")
+    eligible_count = payload.get("eligible_work_count")
+    selected_count = payload.get("selected_work_count")
+    selected_work_ids = payload.get("selected_work_ids")
+    if (
+        selection.get("schema_version")
+        != "violet.scv2-px3-existing-pixiv-canary-selection.v1"
+        or supplied_fingerprint != canonical_fingerprint(payload)
+        or isinstance(percentage, bool)
+        or not isinstance(percentage, int)
+        or not 1 <= percentage <= 5
+        or isinstance(eligible_count, bool)
+        or not isinstance(eligible_count, int)
+        or eligible_count < 0
+        or isinstance(selected_count, bool)
+        or not isinstance(selected_count, int)
+        or not isinstance(selected_work_ids, list)
+    ):
+        raise PixivProductIntegrationError("px3_canary_selection_invalid")
+    canonical_work_ids = [
+        canonical_pixiv_work_id(value) for value in selected_work_ids
+    ]
+    if any(value is None for value in canonical_work_ids):
+        raise PixivProductIntegrationError("px3_canary_selection_invalid")
+    expected_order = sorted(
+        {str(value) for value in canonical_work_ids},
+        key=lambda value: canonical_fingerprint(
+            {"provider": "pixiv", "work_id": value}
+        ),
+    )
+    expected_selected_count = (
+        max(1, (eligible_count * percentage + 99) // 100)
+        if eligible_count
+        else 0
+    )
+    aggregate_work_ids = {
+        str(aggregate.get("work_id"))
+        for aggregate in run.consumer.aggregates
+        if isinstance(aggregate, Mapping) and aggregate.get("work_id")
+    }
+    if (
+        selected_work_ids != expected_order
+        or selected_count != len(expected_order)
+        or selected_count != expected_selected_count
+        or eligible_count < selected_count
+        or aggregate_work_ids != set(expected_order)
+    ):
+        raise PixivProductIntegrationError("px3_canary_selection_run_mismatch")
+    result = dict(selection)
+    assert_public_safe_projection(result)
+    return result
 
 
 def _cluster_projection(cluster: Mapping[str, Any]) -> dict[str, Any]:
@@ -203,6 +275,7 @@ def _product_business_projection(
     *,
     scope_key: str,
     source_mode: str,
+    input_selection: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if source_mode not in {"repository_synthetic", "existing_source_metadata"}:
         raise PixivProductIntegrationError("px3_source_mode_invalid")
@@ -238,6 +311,11 @@ def _product_business_projection(
         "candidate_dispositions": list(candidates),
         "ambiguity_records": list(ambiguities),
     }
+    validated_selection = _validated_input_selection(run, input_selection)
+    if validated_selection is not None:
+        if source_mode != "existing_source_metadata":
+            raise PixivProductIntegrationError("px3_canary_selection_source_invalid")
+        projection["input_selection"] = validated_selection
     assert_public_safe_projection(projection)
     return projection
 
@@ -247,11 +325,13 @@ def build_pixiv_product_plan(
     *,
     scope_key: str,
     source_mode: str,
+    input_selection: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     business = _product_business_projection(
         run,
         scope_key=scope_key,
         source_mode=source_mode,
+        input_selection=input_selection,
     )
     result_fingerprint = canonical_fingerprint(business)
     counts = {
@@ -281,6 +361,7 @@ def build_pixiv_product_plan(
         "scope_key": business["scope_key"],
         "source_mode": source_mode,
         "status": "planned",
+        "executed_stages": list(PX3_EXECUTED_STAGES),
         "applied": False,
         "rolled_back": False,
         "idempotent_replay": False,
@@ -290,6 +371,8 @@ def build_pixiv_product_plan(
         ],
         "product_result_fingerprint": result_fingerprint,
         "resolver_version": RESOLVER_VERSION,
+        "context_policy_version": PX2_CONTEXT_POLICY_VERSION,
+        "candidate_policy_version": PX2_CANDIDATE_POLICY_VERSION,
         "product_policy_version": PX3_POLICY_VERSION,
         "counts": counts,
         "clusters": business["clusters"],
@@ -314,15 +397,67 @@ def build_pixiv_product_plan(
         },
         "authorities": dict(PX3_AUTHORITY_MAP),
     }
+    if "input_selection" in business:
+        plan["input_selection"] = business["input_selection"]
     plan["canonical_fingerprint"] = canonical_fingerprint(plan)
     assert_public_safe_projection(plan)
     return plan
 
 
-def build_clustering_from_source_metadata_session(session: Session) -> PixivClusteringRun:
+def select_existing_pixiv_canary_work_ids(
+    session: Session, *, percentage: int
+) -> dict[str, Any]:
+    """Choose a stable 1%-5% work sample without inspecting raw payloads."""
+
+    if (
+        isinstance(percentage, bool)
+        or not isinstance(percentage, int)
+        or not 1 <= percentage <= 5
+    ):
+        raise PixivProductIntegrationError("px3_canary_percentage_invalid")
+    raw_work_ids = (
+        session.query(SourceMetadataRecord.source_work_id)
+        .filter(
+            SourceMetadataRecord.provider == "pixiv",
+            SourceMetadataRecord.source_work_id.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+    canonical_work_ids = [
+        canonical_pixiv_work_id(value) for (value,) in raw_work_ids
+    ]
+    if any(value is None for value in canonical_work_ids):
+        raise PixivProductIntegrationError("px3_canary_source_work_id_invalid")
+    work_ids = sorted(
+        {str(value) for value in canonical_work_ids},
+        key=lambda value: canonical_fingerprint(
+            {"provider": "pixiv", "work_id": value}
+        ),
+    )
+    selected_count = (
+        max(1, (len(work_ids) * percentage + 99) // 100) if work_ids else 0
+    )
+    selected = work_ids[:selected_count]
+    selection = {
+        "schema_version": "violet.scv2-px3-existing-pixiv-canary-selection.v1",
+        "percentage": percentage,
+        "eligible_work_count": len(work_ids),
+        "selected_work_count": len(selected),
+        "selected_work_ids": selected,
+    }
+    selection["canonical_fingerprint"] = canonical_fingerprint(selection)
+    return selection
+
+
+def build_clustering_from_source_metadata_session(
+    session: Session, *, work_ids: Iterable[str] | None = None
+) -> PixivClusteringRun:
     """Connect existing SourceMetadata projection to PX2 without provider I/O."""
 
-    aggregates = list(build_canonical_pixiv_aggregates_from_session(session))
+    aggregates = list(
+        build_canonical_pixiv_aggregates_from_session(session, work_ids=work_ids)
+    )
     bundles = [
         project_pixiv_aggregate_to_source_concept_signals(aggregate)
         for aggregate in aggregates
@@ -561,7 +696,7 @@ def _stored_product_projection(
         .order_by(SourceConceptAmbiguityRecord.record_key)
         .all()
     ]
-    return {
+    projection = {
         "scope_key": row.scope_key,
         "source_mode": row.source_mode,
         "px1_input_fingerprint": row.input_fingerprint,
@@ -574,6 +709,10 @@ def _stored_product_projection(
         "candidate_dispositions": candidates,
         "ambiguity_records": ambiguities,
     }
+    input_selection = (row.summary_json or {}).get("input_selection")
+    if input_selection is not None:
+        projection["input_selection"] = input_selection
+    return projection
 
 
 def _upsert_product_projection(
@@ -654,11 +793,13 @@ def apply_pixiv_product_plan(
     scope_key: str,
     source_mode: str,
     apply: bool,
+    input_selection: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     plan = build_pixiv_product_plan(
         run,
         scope_key=scope_key,
         source_mode=source_mode,
+        input_selection=input_selection,
     )
     if not apply:
         return plan
@@ -666,6 +807,7 @@ def apply_pixiv_product_plan(
         run,
         scope_key=scope_key,
         source_mode=source_mode,
+        input_selection=input_selection,
     )
     existing = (
         session.query(SourceConceptProductRun)
@@ -719,81 +861,92 @@ def apply_pixiv_product_plan(
             "px3_scope_key": scope_key,
         },
     )
-    persistence = persist_source_concept_resolution(
-        session,
-        enriched,
-        apply=True,
-        input_scope=build_source_concept_input_scope(
-            enriched.signals,
-            source_run_ids=[enriched.run_id],
-        ),
-        run_label="scv2_px3_pixiv_product_integration",
-    )
-    if persistence.get("forbidden_truth_table_write_count") != 0:
-        raise PixivProductIntegrationError("px3_forbidden_truth_write_detected")
-    core = _core_business_snapshot(session, run)
-    rollback_available = preexisting_count == 0
-    counts = {
-        "product_run_count": 1,
-        "cluster_count": len(business["clusters"]),
-        "candidate_disposition_count": len(business["candidate_dispositions"]),
-        "ambiguity_record_count": len(business["ambiguity_records"]),
-    }
-    receipt = {
-        "schema_version": PX3_OPERATION_RECEIPT_SCHEMA,
-        "mode": "apply",
-        "scope_key": scope_key,
-        "source_mode": source_mode,
-        "forbidden_truth_table_write_count": 0,
-        "provider_network_activity": 0,
-        "credential_activity": 0,
-        "real_source_activity": 0,
-        "existing_database_or_app_storage_activity": (
-            0 if source_mode == "repository_synthetic" else 1
-        ),
-        "user_data_import_activity": 0,
-        "production_activity": 0,
-    }
-    if existing is None:
-        existing = SourceConceptProductRun(run_key=plan["run_key"])
-        session.add(existing)
-    existing.scope_key = scope_key
-    existing.source_mode = source_mode
-    existing.status = "active"
-    existing.resolver_run_id = run.resolution.run_id
-    existing.resolver_version = RESOLVER_VERSION
-    existing.policy_version = PX3_POLICY_VERSION
-    existing.input_fingerprint = run.consumer.input_fingerprint
-    existing.result_fingerprint = plan["product_result_fingerprint"]
-    existing.business_fingerprint = run.business_projection_fingerprint
-    existing.counts_json = counts
-    existing.invariants_json = plan["invariants"]
-    existing.operation_receipt_json = receipt
-    existing.summary_json = {
-        "counts": plan["counts"],
-        "execution_boundary": plan["execution_boundary"],
-    }
-    existing.rollback_guard_json = {
-        "rollback_available": rollback_available,
-        "preexisting_core_business_row_count": preexisting_count,
-        "core_business_fingerprint": core["canonical_fingerprint"],
-    }
-    session.flush()
-    _upsert_product_projection(session, product_run=existing, business=business)
-    for stale in (
-        session.query(SourceConceptProductRun)
-        .filter(
-            SourceConceptProductRun.scope_key == scope_key,
-            SourceConceptProductRun.id != existing.id,
-            SourceConceptProductRun.status == "active",
+    try:
+        persistence = persist_source_concept_resolution(
+            session,
+            enriched,
+            apply=True,
+            input_scope=build_source_concept_input_scope(
+                enriched.signals,
+                source_run_ids=[enriched.run_id],
+            ),
+            run_label="scv2_px3_pixiv_product_integration",
+            commit=False,
         )
-        .all()
-    ):
-        stale.status = "superseded"
-    session.commit()
-    stored = _stored_product_projection(session, existing)
-    if canonical_fingerprint(stored) != plan["product_result_fingerprint"]:
-        raise PixivProductIntegrationError("px3_product_projection_persist_mismatch")
+        if persistence.get("forbidden_truth_table_write_count") != 0:
+            raise PixivProductIntegrationError("px3_forbidden_truth_write_detected")
+        core = _core_business_snapshot(session, run)
+        rollback_available = preexisting_count == 0
+        counts = {
+            "product_run_count": 1,
+            "cluster_count": len(business["clusters"]),
+            "candidate_disposition_count": len(business["candidate_dispositions"]),
+            "ambiguity_record_count": len(business["ambiguity_records"]),
+        }
+        receipt = {
+            "schema_version": PX3_OPERATION_RECEIPT_SCHEMA,
+            "receipt_scope": "single_api_apply_invocation",
+            "mode": "apply",
+            "scope_key": scope_key,
+            "source_mode": source_mode,
+            "forbidden_truth_table_write_count": 0,
+            "provider_network_activity": 0,
+            "credential_activity": 0,
+            "real_source_activity": 0,
+            "existing_database_or_app_storage_activity": (
+                0 if source_mode == "repository_synthetic" else 1
+            ),
+            "user_data_import_activity": 0,
+            "production_activity": 0,
+        }
+        if existing is None:
+            existing = SourceConceptProductRun(run_key=plan["run_key"])
+            session.add(existing)
+        existing.scope_key = scope_key
+        existing.source_mode = source_mode
+        existing.status = "active"
+        existing.resolver_run_id = run.resolution.run_id
+        existing.resolver_version = RESOLVER_VERSION
+        existing.policy_version = PX3_POLICY_VERSION
+        existing.input_fingerprint = run.consumer.input_fingerprint
+        existing.result_fingerprint = plan["product_result_fingerprint"]
+        existing.business_fingerprint = run.business_projection_fingerprint
+        existing.counts_json = counts
+        existing.invariants_json = plan["invariants"]
+        existing.operation_receipt_json = receipt
+        existing.summary_json = {
+            "counts": plan["counts"],
+            "execution_boundary": plan["execution_boundary"],
+            "input_selection": plan.get("input_selection"),
+        }
+        existing.rollback_guard_json = {
+            "rollback_available": rollback_available,
+            "preexisting_core_business_row_count": preexisting_count,
+            "core_business_fingerprint": core["canonical_fingerprint"],
+        }
+        session.flush()
+        _upsert_product_projection(session, product_run=existing, business=business)
+        for stale in (
+            session.query(SourceConceptProductRun)
+            .filter(
+                SourceConceptProductRun.scope_key == scope_key,
+                SourceConceptProductRun.id != existing.id,
+                SourceConceptProductRun.status == "active",
+            )
+            .all()
+        ):
+            stale.status = "superseded"
+        session.flush()
+        stored = _stored_product_projection(session, existing)
+        if canonical_fingerprint(stored) != plan["product_result_fingerprint"]:
+            raise PixivProductIntegrationError(
+                "px3_product_projection_persist_mismatch"
+            )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    invalidate_source_concept_search_cache()
     applied = dict(plan)
     applied.update(
         {
@@ -934,6 +1087,7 @@ def _serialize_product_run(row: SourceConceptProductRun) -> dict[str, Any]:
         "rollback_available": bool(
             (row.rollback_guard_json or {}).get("rollback_available")
         ),
+        "input_selection": (row.summary_json or {}).get("input_selection"),
     }
 
 
@@ -1101,6 +1255,7 @@ def build_public_px3_result(
         "persistence_proof": dict(persistence_proof),
         "operation_receipt": {
             "schema_version": PX3_OPERATION_RECEIPT_SCHEMA,
+            "receipt_scope": "repository_owned_cli_invocation",
             "px1_input_generation_temporary_database_count": 2,
             "px2_proof_temporary_database_count": 2,
             "px3_product_temporary_database_count": 1,
@@ -1120,6 +1275,7 @@ def build_public_px3_result(
         "px3_started": True,
         "px3_implementation_completed": target_met,
         "px3_target_met": target_met,
+        "target_met": target_met,
         "px3_owner_accepted": False,
         "px3_safe_to_merge": False,
         "px3_merge_authorized": False,

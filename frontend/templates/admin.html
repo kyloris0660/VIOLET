@@ -1183,7 +1183,7 @@
                 </div>
             </div>
 
-            <!-- Dynamic Library Sync Section -->
+            <!-- SCV2-PX3 Pixiv product integration -->
             <div class="surface p-2 sm:p-6 border mb-4" id="pixiv-product-integration-section" data-testid="pixiv-product-integration">
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-3 border-b">
                     <div>
@@ -1197,11 +1197,16 @@
                     正在读取执行边界…
                 </div>
 
-                <div class="flex flex-wrap gap-2 mb-4">
+                <div class="flex flex-wrap items-end gap-2 mb-4">
                     <button id="pixiv-product-synthetic-dry-run-btn" class="btn-dark text-xs px-3 py-2" type="button">合成 dry-run</button>
                     <button id="pixiv-product-synthetic-apply-btn" class="btn-primary text-xs px-3 py-2" type="button">应用合成数据</button>
-                    <button id="pixiv-product-source-dry-run-btn" class="btn-dark text-xs px-3 py-2" type="button">当前 Pixiv metadata dry-run</button>
-                    <button id="pixiv-product-source-apply-btn" class="btn-danger text-xs px-3 py-2" type="button">应用当前 metadata</button>
+                    <label class="text-xs">Existing metadata canary
+                        <select id="pixiv-product-canary-percent" class="block bg px-2 py-2 border text-xs mt-1" aria-label="Existing metadata canary percentage">
+                            <option value="1">1%</option><option value="2">2%</option><option value="3">3%</option><option value="4">4%</option><option value="5">5%</option>
+                        </select>
+                    </label>
+                    <button id="pixiv-product-source-dry-run-btn" class="btn-dark text-xs px-3 py-2" type="button">Canary dry-run</button>
+                    <button id="pixiv-product-source-apply-btn" class="btn-danger text-xs px-3 py-2" type="button">应用 canary</button>
                     <button id="pixiv-product-rollback-btn" class="btn-danger text-xs px-3 py-2" type="button" disabled>回滚所选 run</button>
                 </div>
 

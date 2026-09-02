@@ -7073,11 +7073,19 @@ class AdminPanel {
         const confirmPhrase = applying
             ? (synthetic ? 'APPLY_SYNTHETIC_PIXIV_PRODUCT' : 'APPLY_PIXIV_SOURCE_CONCEPTS')
             : '';
+        const canaryPercent = synthetic
+            ? null
+            : Number(document.getElementById('pixiv-product-canary-percent')?.value || 1);
         try {
             const result = await app.apiCall(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode, confirm: applying, confirm_phrase: confirmPhrase }),
+                body: JSON.stringify({
+                    mode,
+                    confirm: applying,
+                    confirm_phrase: confirmPhrase,
+                    ...(synthetic ? {} : { canary_percent: canaryPercent }),
+                }),
             });
             this.pixivProductPlan = result;
             this.renderPixivProduct(result);
