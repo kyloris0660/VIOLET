@@ -5,11 +5,11 @@
 ## Current Facts
 
 - Phase: `SCV2-PX3` - Pixiv Product Integration.
-- Repository / PR: `kyloris0660/VIOLET` / PR pending creation.
+- Repository / PR: `kyloris0660/VIOLET` / PR #149.
 - Branch: `codex/scv2-px3-pixiv-product-integration`.
-- Status: `scv2_px3_product_integration_in_progress`.
-- Implementation evidence HEAD/tree: `421e2989d274e2dc4492d5bccc10720dcfbbaa4f` / `507a223a9156ff2f9944524303419e85891812fa`.
-- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
+- Status: `SCV2_PX3_PIXIV_PRODUCT_INTEGRATION_READY_FOR_OWNER_ACCEPTANCE_AND_CONTROLLED_CANARY`.
+- Implementation evidence HEAD/tree: `389ab3994bb81ca772ce491dac88eb1d8b292d3d` / `2bed89386dc89b1231ee30198d447c5d6af23643`.
+- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
 - `px3_started=true`; `px3_owner_accepted=false`; `px3_merge_authorized=false`.
 
 ## PX2 Merge Projection
@@ -34,19 +34,19 @@
 - Contract: `scv2_px3_pixiv_product_integration_contract_v1`.
 - Public schema: `violet.scv2-px3-pixiv-product-integration-result.v1`.
 - Repository gap map completed: `true`.
-- PX1/PX2 reused: `false`.
-- Product persistence verified: `false`.
-- Dry-run/apply/rollback verified: `false`.
-- API/UI verified: `false`.
-- Synthetic browser E2E verified: `false`.
-- Controlled canary entrypoints verified: `false`.
+- PX1/PX2 reused: `true`.
+- Product persistence verified: `true`.
+- Dry-run/apply/rollback verified: `true`.
+- API/UI verified: `true`.
+- Synthetic browser E2E verified: `true`.
+- Controlled canary entrypoints verified: `true`.
 - Hosted CI and owner authority remain separate and are not synthesized by local evidence.
 
 ## Current Gate And Authority
 
-- Gate: `scv2_px3_implementation_in_progress`.
-- Scope: Final PX3 product integration is authorized only for repository code, synthetic fixtures, task-owned temporary databases, and a synthetic local server/browser
-- Resolution: Complete the single PX3 implementation and executable contract, create one normal Ready PR, and stop for owner acceptance and separately controlled canary execution.
+- Gate: `pending_scv2_px3_owner_acceptance_and_controlled_canary`.
+- Scope: PX3 implementation is complete in normal PR #149; owner acceptance, controlled real-provider and existing-database canaries, production, and merge remain outside local evidence authority
+- Resolution: Owner audits the exact Ready PR head, then separately authorizes any bounded provider smoke, backup-gated existing-database canary, 1%-5% import canary, or merge.
 - `repository_migration_code_authorized=true`; migrations may be tested only on task-owned temporary databases.
 - `synthetic_local_server_browser_e2e_authorized=true`.
 - `real_pixiv_network_execution_authorized=false`; real gallery-dl execution is likewise forbidden.
@@ -74,10 +74,14 @@
 - `scv2_px1_post_merge_late_review_adjudication`: `seven_threads_created_after_pr147_merge_once_adjudicated_five_real_path_findings_bound_to_px3_one_retained_database_binding_finding_rejected_by_independent_replay_one_stable_aggregate_key_finding_closed_at_px2_consumer_boundary_and_only_original_workspace_thread_remains_unresolved` - `5a8efdaf954ab95bd82f95464af31a7fd0873e5e`.
 - `scv2_px2_pr148_expected_head_merge`: `owner_authorized_head_is_second_merge_parent_merge_tree_equals_accepted_tree_and_origin_main_has_no_parallel_commit` - `421e2989d274e2dc4492d5bccc10720dcfbbaa4f`.
 - `scv2_px3_repository_gap_map_and_governance_entry`: `existing_ingestion_px2_resolver_sourceconcept_persistence_api_frontend_import_and_feature_flag_seams_mapped_and_final_phase_started_with_real_data_plane_authorities_false` - `507a223a9156ff2f9944524303419e85891812fa`.
+- `scv2_px3_product_integration_vertical_slice`: `frozen_SCV2-PX1_and_SCV2-PX2_chain_reused_twenty_clusters_fifty_nine_candidate_dispositions_and_twenty_nine_ambiguity_records_projected_through_atomic_sourceconcept_owned_product_persistence_read_api_and_operable_admin_ui` - `f1ba10194cd72232b4b8bb2ee24e7fe421d0a18115ac3d4918dc1e8af72ce020`.
+- `scv2_px3_same_head_receipt_and_contract`: `canonical_focused_validation_passed_on_exact_implementation_head_clean_before_after_and_contract_independently_rebuilt_px1_px2_product_persistence_api_and_authority_facts_with_zero_errors_or_warnings` - `389ab3994bb81ca772ce491dac88eb1d8b292d3d`.
+- `scv2_px3_full_non_e2e_and_synthetic_browser_acceptance`: `4337_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_assertions_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_limitation_while_real_browser_dry_run_apply_detail_filter_rollback_reapply_completed_with_zero_final_console_errors`.
+- `scv2_px3_pr149_ready`: `normal_pr149_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_governance_projection_without_merge`.
 
 ## Next Action
 
-- Required checkpoint: `complete one PX3 product integration PR with synthetic browser and temporary-database evidence, then stop for owner acceptance and separately controlled canary execution`.
+- Required checkpoint: `owner audit of exact normal Ready PR #149 followed only by separately authorized controlled provider, existing-database, and 1%-5% import canary gates`.
 
 ## Durable Links
 
@@ -111,4 +115,4 @@
 - `STABLE_REPLAY_GATE` - due before `any real-data Stable Replay consumption or authority`; PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay.
 - `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` - due before `caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production`; Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1.
 
-Updated: `2026-09-02`.
+Updated: `2026-09-03`.

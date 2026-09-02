@@ -23,11 +23,14 @@ present. Status: `SCV2_PX2_MERGED`.
 Current projection:
 
 ```text
-current_status=scv2_px3_product_integration_in_progress
+current_status=SCV2_PX3_PIXIV_PRODUCT_INTEGRATION_READY_FOR_OWNER_ACCEPTANCE_AND_CONTROLLED_CANARY
 contract_id=scv2_px3_pixiv_product_integration_contract_v1
 public_schema=violet.scv2-px3-pixiv-product-integration-result.v1
+pr=149
+implementation_evidence_head=389ab3994bb81ca772ce491dac88eb1d8b292d3d
+implementation_evidence_tree=2bed89386dc89b1231ee30198d447c5d6af23643
 px3_started=true
-target_met=false
+target_met=true
 safe_to_merge=false
 route_approved=false
 px3_owner_accepted=false
@@ -35,15 +38,16 @@ px3_merge_authorized=false
 real_pixiv_network_execution_authorized=false
 existing_database_or_app_storage_mutation_authorized=false
 production_authorized=false
-active_blocker=scv2_px3_implementation_in_progress
+active_blocker=pending_scv2_px3_owner_acceptance_and_controlled_canary
 ```
 
 ## Fixed Route
 
 1. `SCV2-PX1` — merged canonical Pixiv metadata ingestion/projection.
 2. `SCV2-PX2` — merged deterministic SourceConcept clustering and persistence.
-3. `SCV2-PX3` — started final product integration: durable product run facts,
-   dry-run/apply/rollback, API/UI, and controlled canary entrypoints.
+3. `SCV2-PX3` — implementation complete in normal Ready PR #149: durable
+   product run facts, dry-run/apply/rollback, API/UI, and controlled canary
+   entrypoints.
 
 PX3 reuses the existing provider metadata adapter, PX1 aggregate/signal contract,
 PX2 clustering service, SourceConcept resolver, graph policy, models, persistence
@@ -60,6 +64,20 @@ not authorized.
 The real provider path may be connected to the integration seam but cannot run
 in this task. Controlled provider smoke, existing-DB canary with backup/restore,
 and 1%-5% import canary are explicit owner gates within PX3, not a PX4.
+
+The exact implementation evidence contains 20 clusters, 34 member signals, 59
+candidate dispositions (`52 must_link`, `4 cannot_link`, `3
+deferred_nonblocking`), and 29 queryable ambiguity records. Apply/replay is
+idempotent, rollback/reapply is verified, and only SourceConcept-owned product
+tables are added in a task-owned temporary SQLite database. The executable
+contract passed with zero errors or warnings on implementation HEAD
+`389ab3994bb81ca772ce491dac88eb1d8b292d3d`.
+
+The synthetic browser exercised dry-run, apply, cluster/member/provenance
+detail, cannot-link and context-conflict filters, rollback, and reapply against
+the real local API/UI. Its final clean run had zero console errors. No real
+provider, credential, source, existing database, user import, LLM, or
+production activity occurred.
 
 Safety work remains a gate inside the three phases. No PX2.1, hardening phase,
 or fourth planning phase exists. `phase-4.5-PX1 is historical`; its artifacts
@@ -78,6 +96,6 @@ are compatibility evidence only.
 
 ## Governance
 
-PX3 stops at a normal Ready PR for owner acceptance and controlled canary
+PX3 stops at normal Ready PR #149 for owner acceptance and controlled canary
 decisions. Local evidence cannot grant owner acceptance, hosted CI, real-data
 authority, production readiness, or merge authority.

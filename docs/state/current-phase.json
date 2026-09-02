@@ -4,22 +4,22 @@
   "phase_title": "Pixiv Product Integration",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-px3-pixiv-product-integration",
-  "pr_number": null,
-  "draft": true,
+  "pr_number": 149,
+  "draft": false,
   "accepted_mainline_base": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
   "accepted_mainline_tree": "507a223a9156ff2f9944524303419e85891812fa",
-  "implementation_evidence_head": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
-  "implementation_evidence_tree": "507a223a9156ff2f9944524303419e85891812fa",
-  "implementation_evidence_status": "repository_gap_map_complete_and_px3_product_integration_in_progress",
-  "current_status": "scv2_px3_product_integration_in_progress",
-  "target_met": false,
+  "implementation_evidence_head": "389ab3994bb81ca772ce491dac88eb1d8b292d3d",
+  "implementation_evidence_tree": "2bed89386dc89b1231ee30198d447c5d6af23643",
+  "implementation_evidence_status": "same_head_receipt_and_executable_contract_passed_ready_for_owner_acceptance_and_controlled_canary",
+  "current_status": "SCV2_PX3_PIXIV_PRODUCT_INTEGRATION_READY_FOR_OWNER_ACCEPTANCE_AND_CONTROLLED_CANARY",
+  "target_met": true,
   "safe_to_merge": false,
   "route_approved": false,
   "route_scope": "SCV2-PX3 final product integration using repository-owned synthetic Pixiv data, task-owned temporary databases, and a synthetic local server/browser only; real provider network, credentials, source, existing database, user import, production, and PX3 merge remain forbidden",
   "planning_authorized": true,
   "planning_completed": true,
   "planning_approved": true,
-  "manual_acceptance_status": "px3_product_integration_in_progress",
+  "manual_acceptance_status": "pending_scv2_px3_owner_acceptance_and_controlled_canary",
   "next_phase_started": false,
   "previous_phase": "SCV2-PX2",
   "previous_phase_status": "owner_accepted_pr148_merged_with_exact_tree_preserved",
@@ -43,13 +43,13 @@
     "contract_id": "scv2_px3_pixiv_product_integration_contract_v1",
     "public_schema": "violet.scv2-px3-pixiv-product-integration-result.v1",
     "repository_gap_map_completed": true,
-    "px1_px2_reused": false,
-    "product_persistence_verified": false,
-    "dry_run_apply_rollback_verified": false,
-    "api_ui_verified": false,
-    "provider_adapter_wired_without_execution": false,
-    "synthetic_browser_e2e_verified": false,
-    "controlled_canary_entrypoints_verified": false,
+    "px1_px2_reused": true,
+    "product_persistence_verified": true,
+    "dry_run_apply_rollback_verified": true,
+    "api_ui_verified": true,
+    "provider_adapter_wired_without_execution": true,
+    "synthetic_browser_e2e_verified": true,
+    "controlled_canary_entrypoints_verified": true,
     "machine_verifiable_ci": false,
     "owner_authority_machine_verifiable": false
   },
@@ -156,12 +156,30 @@
       "id": "scv2_px3_repository_gap_map_and_governance_entry",
       "result": "existing_ingestion_px2_resolver_sourceconcept_persistence_api_frontend_import_and_feature_flag_seams_mapped_and_final_phase_started_with_real_data_plane_authorities_false",
       "fingerprint": "507a223a9156ff2f9944524303419e85891812fa"
+    },
+    {
+      "id": "scv2_px3_product_integration_vertical_slice",
+      "result": "frozen_SCV2-PX1_and_SCV2-PX2_chain_reused_twenty_clusters_fifty_nine_candidate_dispositions_and_twenty_nine_ambiguity_records_projected_through_atomic_sourceconcept_owned_product_persistence_read_api_and_operable_admin_ui",
+      "fingerprint": "f1ba10194cd72232b4b8bb2ee24e7fe421d0a18115ac3d4918dc1e8af72ce020"
+    },
+    {
+      "id": "scv2_px3_same_head_receipt_and_contract",
+      "result": "canonical_focused_validation_passed_on_exact_implementation_head_clean_before_after_and_contract_independently_rebuilt_px1_px2_product_persistence_api_and_authority_facts_with_zero_errors_or_warnings",
+      "fingerprint": "389ab3994bb81ca772ce491dac88eb1d8b292d3d"
+    },
+    {
+      "id": "scv2_px3_full_non_e2e_and_synthetic_browser_acceptance",
+      "result": "4337_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_assertions_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_limitation_while_real_browser_dry_run_apply_detail_filter_rollback_reapply_completed_with_zero_final_console_errors"
+    },
+    {
+      "id": "scv2_px3_pr149_ready",
+      "result": "normal_pr149_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_governance_projection_without_merge"
     }
   ],
   "active_blocker": {
-    "code": "scv2_px3_implementation_in_progress",
-    "scope": "Final PX3 product integration is authorized only for repository code, synthetic fixtures, task-owned temporary databases, and a synthetic local server/browser",
-    "resolution": "Complete the single PX3 implementation and executable contract, create one normal Ready PR, and stop for owner acceptance and separately controlled canary execution."
+    "code": "pending_scv2_px3_owner_acceptance_and_controlled_canary",
+    "scope": "PX3 implementation is complete in normal PR #149; owner acceptance, controlled real-provider and existing-database canaries, production, and merge remain outside local evidence authority",
+    "resolution": "Owner audits the exact Ready PR head, then separately authorizes any bounded provider smoke, backup-gated existing-database canary, 1%-5% import canary, or merge."
   },
   "owner_decisions": [
     {
@@ -245,8 +263,8 @@
     "px2_safe_to_merge": true,
     "px2_merge_authorized": true,
     "px3_started": true,
-    "px3_implementation_completed": false,
-    "product_integration_verified": false,
+    "px3_implementation_completed": true,
+    "product_integration_verified": true,
     "px3_owner_accepted": false,
     "px3_safe_to_merge": false,
     "px3_merge_authorized": false,
@@ -378,6 +396,52 @@
       "targeted_final_correction_tests_passed": 433,
       "exact_base_missing_original_ai_execution_evidence_failures": 1
     },
+    "px3_pr_number": 149,
+    "px3_implementation_evidence_head": "389ab3994bb81ca772ce491dac88eb1d8b292d3d",
+    "px3_implementation_evidence_tree": "2bed89386dc89b1231ee30198d447c5d6af23643",
+    "px3_public_summary_artifact_fingerprint": "1182cfdd5682ece2d95d2f455c4d22e8fc017e262f6595f20c5c539decddfbfb",
+    "px3_public_summary_fingerprint": "0afd1722d54444710fd80e4446d205a7ebe596e8fc9ce86e38da2c22195bdf59",
+    "px3_product_result_fingerprint": "f1ba10194cd72232b4b8bb2ee24e7fe421d0a18115ac3d4918dc1e8af72ce020",
+    "px3_persistence_proof_artifact_fingerprint": "c389a67c5175845ab61ec619ad15689f298c2c4c9bd855df2ca8451c0191b95f",
+    "px3_persistence_fingerprint": "f0041e3d49e300919b008a4f8a355807699741d35984813676799079f529164a",
+    "px3_cluster_count": 20,
+    "px3_member_signal_count": 34,
+    "px3_candidate_disposition_count": 59,
+    "px3_must_link_count": 52,
+    "px3_cannot_link_count": 4,
+    "px3_deferred_nonblocking_count": 3,
+    "px3_ambiguity_record_count": 29,
+    "px3_local_receipt_head": "389ab3994bb81ca772ce491dac88eb1d8b292d3d",
+    "px3_local_receipt_tree": "2bed89386dc89b1231ee30198d447c5d6af23643",
+    "px3_local_receipt_command_fingerprint": "b0e86eb459415ddc15b013809d60b8163421c5d2f6d6a7675227762ba862fb27",
+    "px3_local_receipt_stdout_fingerprint": "d3a6f0e7b7e41cb5520666b9a7f409295ec49e775ff8f414b19caedde3889744",
+    "px3_local_receipt_positive": true,
+    "px3_local_receipt_clean_before_after": true,
+    "px3_contract_passed": true,
+    "px3_contract_error_count": 0,
+    "px3_contract_warning_count": 0,
+    "px3_focused_tests_passed": 723,
+    "px3_final_full_non_e2e_result": {
+      "passed": 4337,
+      "skipped": 22,
+      "failed": 3,
+      "warnings": 15,
+      "duration_seconds": 493.36,
+      "pre_carry_forward_documentation_binding_failure_count": 2,
+      "documentation_binding_failures_closed_by_final_projection": true,
+      "exact_failure": "missing_original_ai_execution_evidence",
+      "accepted_historical_private_evidence_limitation": true,
+      "px3_functional_regression_count": 0
+    },
+    "px3_synthetic_browser_acceptance": {
+      "cluster_count": 20,
+      "candidate_disposition_count": 59,
+      "ambiguity_record_count": 29,
+      "cannot_link_filter_count": 4,
+      "context_conflict_filter_count": 1,
+      "dry_run_apply_detail_filter_rollback_reapply_verified": true,
+      "final_console_error_count": 0
+    },
     "machine_verifiable_ci": false,
     "external_data_plane_network_operation_count": 0,
     "existing_database_access_operation_count": 0,
@@ -388,7 +452,7 @@
     "primary_user_untracked_name_digest_before": "976193fefc88827a6f6f61709cdf949a80a3e7864f5eb34d6d2355e668e13995"
   },
   "public_state_boundary": "public_safe_product_integration_no_real_data_private_paths_credentials_or_raw_payloads",
-  "next_required_checkpoint": "complete one PX3 product integration PR with synthetic browser and temporary-database evidence, then stop for owner acceptance and separately controlled canary execution",
+  "next_required_checkpoint": "owner audit of exact normal Ready PR #149 followed only by separately authorized controlled provider, existing-database, and 1%-5% import canary gates",
   "durable_links": [
     {"label": "Current mainline roadmap", "path": "docs/roadmap/current-mainline-roadmap.md"},
     {"label": "Project roadmap entrypoint", "path": "docs/project-roadmap.md"},
@@ -422,7 +486,7 @@
   "upcoming_route": [
     {"phase_id": "SCV2-PX1", "scope": "Pixiv metadata consolidation and offline synthetic vertical slice", "started": true, "completed": true, "merged": true},
     {"phase_id": "SCV2-PX2", "scope": "deterministic Pixiv SourceConcept clustering, candidate explanation, ambiguous ledger, and persistable cluster result", "started": true, "completed": true, "merged": true},
-    {"phase_id": "SCV2-PX3", "scope": "final Pixiv product persistence, API/UI, controlled execution boundaries, canary entrypoints, and owner acceptance checkpoint", "started": true, "completed": false}
+    {"phase_id": "SCV2-PX3", "scope": "final Pixiv product persistence, API/UI, controlled execution boundaries, canary entrypoints, and owner acceptance checkpoint", "started": true, "completed": true}
   ],
   "artifact_lifecycle": [
     "frozen_px1_aggregate_and_signal_consumer",
@@ -432,5 +496,5 @@
     "read_only_product_api_and_operable_admin_ui",
     "controlled_canary_and_rollback_boundary"
   ],
-  "updated_at": "2026-09-02"
+  "updated_at": "2026-09-03"
 }
