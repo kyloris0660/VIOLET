@@ -111,8 +111,22 @@ PX2 regression. Hosted CI is not inferred from local evidence.
   activity remain zero and unauthorized.
 - `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` and all inherited exact due
   gates remain unresolved. They do not block repository-owned synthetic PX2.
+- The existing `FL1_I3_REAL_SOURCE_SCOPE_GATE` and `STABLE_REPLAY_GATE` carry
+  five findings created after PR #147 had already merged: work-ID and
+  creator-ID alias consensus, legacy provenance identity compatibility,
+  invalid provider-marker consensus in route fallback, and current
+  normalizer-version propagation. They are due before any real provider,
+  existing-data, canary, or production path.
 - Local tests and contract evidence cannot synthesize owner acceptance, merge
   authority, hosted CI, or production readiness.
+
+The same one-time post-merge adjudication rejected retained SQLite byte binding
+as a current contract requirement because retained databases are not verdict
+inputs and both contracts regenerate their public result in fresh temporary
+databases. It also confirmed that PR #148 closes aggregate stable-key mismatch
+at the strict PX2 consumer boundary. The seven late threads are resolved; the
+original hostile-workspace thread is intentionally the only unresolved PR #147
+thread.
 
 ## Remote Sync Preflight Policy
 

@@ -141,8 +141,13 @@
       "result": "4294_passed_22_skipped_one_historical_missing_original_ai_execution_evidence_failure_15_warnings_without_px2_regression"
     },
     {
-      "id": "scv2_px2_pr148_draft_created",
-      "result": "normal_pr148_created_as_draft_at_exact_implementation_head_pending_final_docs_only_projection_and_single_ready_transition"
+      "id": "scv2_px2_pr148_ready",
+      "result": "normal_pr148_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_docs_projection_without_merge"
+    },
+    {
+      "id": "scv2_px1_post_merge_late_review_adjudication",
+      "result": "seven_threads_created_after_pr147_merge_once_adjudicated_five_real_path_findings_bound_to_px3_one_retained_database_binding_finding_rejected_by_independent_replay_one_stable_aggregate_key_finding_closed_at_px2_consumer_boundary_and_only_original_workspace_thread_remains_unresolved",
+      "fingerprint": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e"
     }
   ],
   "active_blocker": {
@@ -195,6 +200,17 @@
     ],
     "pr147_merge_time": "2026-09-02T11:50:19Z",
     "pr147_merged": true,
+    "pr147_post_merge_review_created_at": "2026-09-02T11:58:07Z",
+    "pr147_post_merge_review_finding_count": 7,
+    "pr147_post_merge_review_adjudication": {
+      "px3_real_input_due_count": 5,
+      "independent_replay_false_positive_count": 1,
+      "px2_consumer_boundary_closed_count": 1,
+      "replied_once_and_resolved_count": 7,
+      "remaining_unresolved_count": 1,
+      "remaining_unresolved_thread_id": "PRRT_kwDOSTBMB86chkPF",
+      "remaining_unresolved_gate": "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE"
+    },
     "px1_owner_accepted": true,
     "px1_merged": true,
     "px2_started": true,

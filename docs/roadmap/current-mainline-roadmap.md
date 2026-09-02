@@ -108,6 +108,21 @@ Hostile workspace confinement remains due at
 untrusted remote-CI evidence, existing DB/app-storage, real-source canary, or
 production. These do not block repository-owned synthetic PX2.
 
+Seven automated review threads were created eight minutes after PR #147 had
+already merged and were adjudicated once without reopening a review loop. Five
+real-path findings are now direct PX3 inputs under the existing
+`FL1_I3_REAL_SOURCE_SCOPE_GATE` and `STABLE_REPLAY_GATE`: work-ID alias
+consensus, creator-ID alias consensus, legacy stable-provenance compatibility,
+invalid-versus-absent provider marker handling, and current normalizer-version
+propagation. They are due before real provider, existing-data, canary, or
+production execution and are unreachable in repository-owned synthetic PX2. The retained-database
+binding finding was rejected because neither PX1 nor PX2 treats retained DB
+bytes as verdict input: each contract independently regenerates the result in
+fresh task-owned databases. The aggregate stable-key finding is closed at the
+PX2 consumer boundary by recomputation plus a rebound-fingerprint mutation
+test. All seven late threads were replied to and resolved; the original hostile
+workspace thread remains the sole unresolved PR #147 thread as required.
+
 ## Validation Route
 
 PX2 validation uses the approved repository Python and includes changed Python

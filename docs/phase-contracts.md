@@ -159,6 +159,20 @@ skipped, 1 failed, and 15 warnings in 507.75 seconds. The sole failure is the
 authorized historical `missing_original_ai_execution_evidence` limitation;
 there is no PX2 functional regression, and hosted CI is not claimed.
 
+Seven review threads were created after PR #147 had already merged and received
+one bounded adjudication. The aggregate stable-key finding is enforced by the
+PX2 consumer's independent recomputation and rebound-fingerprint mutation
+test. The retained-database binding premise is rejected because retained SQLite
+files are non-authoritative debugging artifacts; the PX1 and PX2 contracts
+regenerate the complete verdict in fresh task-owned databases and compare the
+result to bound canonical artifacts. Five findings require raw provider,
+route-canary, acquisition-diagnostic, or historical existing-record inputs and
+are bound as PX3 direct inputs under the existing
+`FL1_I3_REAL_SOURCE_SCOPE_GATE` and `STABLE_REPLAY_GATE` before any such route.
+They do not broaden PX2 authority. The original
+`SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` thread remains intentionally
+unresolved; all seven late threads are replied to and resolved.
+
 PX2 permits only repository-owned synthetic inputs and newly created
 task-owned temporary SQLite through existing SourceConcept-owned tables. It
 prohibits existing database/app storage, real Pixiv/gallery-dl/provider
