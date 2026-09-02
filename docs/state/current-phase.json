@@ -1,55 +1,60 @@
 {
   "schema_version": "violet.current-phase.v2",
-  "phase_id": "SCV2-PX1",
-  "phase_title": "Pixiv Metadata Consolidation and Offline Vertical Slice",
+  "phase_id": "SCV2-PX2",
+  "phase_title": "Deterministic Pixiv SourceConcept Clustering",
   "repository": "kyloris0660/VIOLET",
-  "branch": "codex/scv2-px1-pixiv-metadata-consolidation",
-  "pr_number": 147,
-  "draft": false,
-  "accepted_mainline_base": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
-  "accepted_mainline_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
-  "implementation_evidence_head": "782360c04da475cac98f928038f34c5a337c814f",
-  "implementation_evidence_tree": "1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3",
-  "implementation_evidence_status": "final_correction_same_head_receipt_positive_with_fixed_docs_only_carry_forward",
-  "current_status": "SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT",
-  "target_met": true,
+  "branch": "codex/scv2-px2-deterministic-pixiv-clustering",
+  "pr_number": null,
+  "draft": true,
+  "accepted_mainline_base": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
+  "accepted_mainline_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
+  "implementation_evidence_head": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
+  "implementation_evidence_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
+  "implementation_evidence_status": "px2_started_no_implementation_evidence_yet",
+  "current_status": "scv2_px2_implementation_in_progress",
+  "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
-  "route_scope": "SCV2-PX1 repository-owned synthetic and offline Pixiv metadata consolidation only; no real provider, source, existing database, media, UI, import, or production execution",
+  "route_scope": "SCV2-PX2 repository-owned synthetic deterministic Pixiv SourceConcept clustering and task-owned temporary persistence only; no real provider, source, existing database, migration, media, UI, import, or production execution",
   "planning_authorized": true,
   "planning_completed": true,
   "planning_approved": true,
-  "manual_acceptance_status": "pending_scv2_px1_final_owner_merge_audit",
+  "manual_acceptance_status": "px2_synthetic_implementation_in_progress",
   "next_phase_started": false,
-  "previous_phase": "SCV2-FL1-I2",
-  "previous_phase_status": "owner_adjudicated_pr146_merged_with_deferred_due_gates_preserved",
-  "previous_phase_pr_number": 146,
-  "previous_phase_merge_commit": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
-  "previous_phase_merge_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
-  "previous_phase_final_head": "914d746c3548241a99333393daa88caefd8b2337",
-  "previous_phase_final_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
+  "previous_phase": "SCV2-PX1",
+  "previous_phase_status": "owner_accepted_pr147_merged_with_exact_tree_preserved",
+  "previous_phase_pr_number": 147,
+  "previous_phase_merge_commit": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
+  "previous_phase_merge_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
+  "previous_phase_final_head": "15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a",
+  "previous_phase_final_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
   "repository_sync_preflight": {
     "trusted_remote": "origin",
     "fetched": true,
-    "pr146_merged": true,
+    "pr147_merged": true,
     "accepted_pr_head_is_merge_ancestor": true,
     "accepted_pr_tree_matches_merge_tree": true,
-    "origin_main_head": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
-    "origin_main_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
+    "origin_main_head": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
+    "origin_main_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
     "post_merge_commit_audit_count": 0,
     "classification": "exact_expected_merge_is_current_origin_main"
   },
   "pipeline_contract": {
-    "contract_id": "scv2_px1_pixiv_metadata_consolidation_contract_v1",
-    "public_schema": "violet.scv2-px1-pixiv-metadata-summary.v1",
-    "synthetic_vertical_slice_verified": true,
-    "deterministic_replay_verified": true,
-    "px2_consumer_contract_frozen": true,
+    "contract_id": "scv2_px2_deterministic_pixiv_clustering_contract_v1",
+    "public_schema": "violet.scv2-px2-pixiv-source-concept-cluster-result.v1",
+    "px1_consumer_validation_verified": false,
+    "existing_resolver_reused": false,
+    "candidate_accounting_verified": false,
+    "ambiguous_ledger_verified": false,
+    "deterministic_replay_verified": false,
+    "temporary_persistence_idempotent": false,
+    "persistable_cluster_result_verified": false,
     "machine_verifiable_ci": false,
     "owner_authority_machine_verifiable": false
   },
   "authorities": {
-    "px1_implementation_authorized": true,
+    "px2_start_authorized": true,
+    "px2_synthetic_implementation_authorized": true,
     "repository_read_authorized": true,
     "synthetic_fixture_execution_authorized": true,
     "task_owned_temporary_database_authorized": true,
@@ -57,7 +62,7 @@
     "branch_commit_push_authorized": true,
     "one_normal_pull_request_authorized": true,
     "documentation_state_transition_authorized": true,
-    "merge_authorized": false,
+    "px2_merge_authorized": false,
     "real_source_inventory_authorized": false,
     "source_root_or_icloud_access_authorized": false,
     "existing_database_access_authorized": false,
@@ -65,6 +70,7 @@
     "real_pixiv_or_gallery_dl_network_execution_authorized": false,
     "provider_credentials_authorized": false,
     "media_or_thumbnail_download_authorized": false,
+    "migration_authorized": false,
     "import_authorized": false,
     "classification_or_tagging_execution_on_user_data_authorized": false,
     "llm_or_external_model_authorized": false,
@@ -109,12 +115,22 @@
     {
       "id": "scv2_px1_normal_pr_created",
       "result": "pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge"
+    },
+    {
+      "id": "scv2_px1_pr147_expected_head_merge",
+      "result": "owner_accepted_head_is_second_merge_parent_merge_tree_equals_accepted_tree_and_origin_main_has_no_parallel_commit",
+      "fingerprint": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e"
+    },
+    {
+      "id": "scv2_px2_governance_entry",
+      "result": "px2_synthetic_implementation_started_from_verified_pr147_merge_with_all_real_data_migration_model_ui_and_production_authorities_false",
+      "fingerprint": "480d6a548e6276afeccf49ec75a73d7389b995fe"
     }
   ],
   "active_blocker": {
-    "code": "pending_scv2_px1_final_owner_merge_audit",
-    "scope": "Final owner merge audit of corrected PR #147 exact HEAD; automated evidence cannot grant owner acceptance, safe-to-merge, or merge authority",
-    "resolution": "Owner audits the exact PR head and either issues a separate merge decision or identifies one final destructive, privacy, authority, data-integrity, deterministic-evidence, or current-functionality issue for adjudication."
+    "code": "scv2_px2_implementation_in_progress",
+    "scope": "Implement and verify the repository-owned synthetic PX2 clustering, candidate ledger, public result, and task-owned temporary persistence without expanding data-plane authority",
+    "resolution": "Complete the executable PX2 contract and final exact-head evidence, create one normal Ready PR, and stop for owner merge audit without merging PX2."
   },
   "owner_decisions": [
     {
@@ -136,12 +152,10 @@
   ],
   "authorized_operations": [
     "read repository files and trusted Git or GitHub control-plane state",
-    "implement and test the PX1 durable backend projection in the isolated worktree",
+    "consume frozen PX1 aggregates and signal bundles through strict public contract validation",
+    "reuse and minimally extend the existing SourceConcept resolver and persistence seams for deterministic synthetic PX2",
     "create new repository-owned synthetic fixtures and task-owned temporary SQLite databases",
-    "commit and normally push the feature branch and create one normal pull request",
-    "reply to and resolve the five exact-head PR #147 review threads",
-    "consume one expected-head protected merge-commit authority for PR #147 after the complete local gate passes",
-    "start synthetic SCV2-PX2 from the verified merge and create one normal Ready pull request without merging it",
+    "commit and normally push the PX2 feature branch and create one normal Ready pull request",
     "update current governance state and public-safe documentation"
   ],
   "forbidden_operations": [
@@ -149,10 +163,35 @@
     "real source or iCloud access, inventory, listing, stat, open, read, hash, or mutation",
     "existing database or app-storage access or write",
     "real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download",
-    "import, classification or tagging on user data, SourceConcept materialization, Entity truth promotion, or full-library work",
+    "import, classification or tagging on user data, production SourceConcept materialization, Entity truth promotion, or full-library work",
     "LLM or external model, server, browser, E2E, PX2 merge, PX3, or production execution"
   ],
   "protected_evidence": {
+    "pr147_accepted_head": "15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a",
+    "pr147_accepted_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
+    "pr147_merge_commit": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
+    "pr147_merge_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
+    "pr147_merge_parents": [
+      "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
+      "15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a"
+    ],
+    "pr147_merge_time": "2026-09-02T11:50:19Z",
+    "pr147_merged": true,
+    "px1_owner_accepted": true,
+    "px1_merged": true,
+    "px2_started": true,
+    "px2_implementation_completed": false,
+    "deterministic_clustering_verified": false,
+    "persistable_cluster_result_verified": false,
+    "px2_owner_accepted": false,
+    "px2_safe_to_merge": false,
+    "px2_merge_authorized": false,
+    "px3_started": false,
+    "existing_db_or_app_storage_activity": 0,
+    "provider_network_activity": 0,
+    "real_source_activity": 0,
+    "llm_activity": 0,
+    "production_activity": 0,
     "pr146_accepted_head": "914d746c3548241a99333393daa88caefd8b2337",
     "pr146_accepted_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
     "pr146_merge_commit": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
@@ -217,9 +256,6 @@
       "exact_base_missing_original_ai_execution_evidence_failures": 1
     },
     "machine_verifiable_ci": false,
-    "owner_accepted": false,
-    "safe_to_merge": false,
-    "merge_authorized": false,
     "external_data_plane_network_operation_count": 0,
     "existing_database_access_operation_count": 0,
     "real_source_operation_count": 0,
@@ -229,7 +265,7 @@
     "primary_user_untracked_name_digest_before": "976193fefc88827a6f6f61709cdf949a80a3e7864f5eb34d6d2355e668e13995"
   },
   "public_state_boundary": "public_safe_synthetic_implementation_no_private_proof_payloads_or_paths",
-  "next_required_checkpoint": "close the five exact-head PR #147 review threads, refresh the complete expected-head merge gate, consume the single merge-commit authority only if every current-functionality and evidence gate passes, verify the merge, and then start synthetic SCV2-PX2 without merging PX2",
+  "next_required_checkpoint": "implement and validate the synthetic SCV2-PX2 deterministic clustering contract, create one normal Ready PR bound to exact evidence, and stop for owner merge audit without merging PX2",
   "durable_links": [
     {"label": "Current mainline roadmap", "path": "docs/roadmap/current-mainline-roadmap.md"},
     {"label": "Project roadmap entrypoint", "path": "docs/project-roadmap.md"},
@@ -261,15 +297,16 @@
     {"id": "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE", "owner": "SCV2-PX3 real-path and evidence owner", "reason": "Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1.", "due_before": "caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production", "requirements": ["close dangling-symlink, workspace-component-swap, and fixed-name evidence symlink races with bounded cross-platform primitives", "handle SQLite URL-sensitive path characters including question mark and hash without authority ambiguity", "prove confinement for hostile caller-controlled workspace and evidence paths before any real-path or remote-CI authority"]}
   ],
   "upcoming_route": [
-    {"phase_id": "SCV2-PX1", "scope": "Pixiv metadata consolidation and offline synthetic vertical slice", "started": true},
-    {"phase_id": "SCV2-PX2", "scope": "deterministic clustering, identity, candidate explanation, ambiguous queue, controlled sample evaluation, and persistable cluster result", "started": false},
-    {"phase_id": "SCV2-PX3", "scope": "real source/provider, necessary migration, persistence, API/UI, dry-run/apply, idempotency, backup/recovery, canary, rollback, and final full-library import checkpoint", "started": false}
+    {"phase_id": "SCV2-PX1", "scope": "Pixiv metadata consolidation and offline synthetic vertical slice", "started": true, "completed": true, "merged": true},
+    {"phase_id": "SCV2-PX2", "scope": "deterministic Pixiv SourceConcept clustering, candidate explanation, ambiguous ledger, and persistable cluster result", "started": true},
+    {"phase_id": "SCV2-PX3", "scope": "real source/provider, necessary migration, production persistence, API/UI, canary, rollback, and final import checkpoint", "started": false}
   ],
   "artifact_lifecycle": [
-    "durable_backend_aggregate_and_signal_projection",
-    "thin_repository_owned_offline_runner",
-    "task_owned_temporary_private_evidence",
-    "public_safe_governance_projection"
+    "frozen_px1_aggregate_and_signal_consumer",
+    "existing_sourceconcept_resolver",
+    "deterministic_candidate_and_ambiguous_projection",
+    "task_owned_temporary_sourceconcept_persistence",
+    "public_safe_cluster_result"
   ],
   "updated_at": "2026-09-02"
 }

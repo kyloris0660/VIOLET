@@ -394,6 +394,61 @@ SCV2_PX1_EXPECTED_AUTHORITIES = {
     "full_library_import_authorized": False,
 }
 
+SCV2_PX2_BRANCH = "codex/scv2-px2-deterministic-pixiv-clustering"
+SCV2_PX2_ACCEPTED_MAIN = "5a8efdaf954ab95bd82f95464af31a7fd0873e5e"
+SCV2_PX2_ACCEPTED_MAIN_TREE = "480d6a548e6276afeccf49ec75a73d7389b995fe"
+SCV2_PX2_PR147_ACCEPTED_HEAD = "15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a"
+SCV2_PX2_PR147_ACCEPTED_TREE = "480d6a548e6276afeccf49ec75a73d7389b995fe"
+SCV2_PX2_PR147_MERGE_PARENTS = (
+    "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
+    SCV2_PX2_PR147_ACCEPTED_HEAD,
+)
+SCV2_PX2_CONTRACT_ID = "scv2_px2_deterministic_pixiv_clustering_contract_v1"
+SCV2_PX2_PUBLIC_SCHEMA = (
+    "violet.scv2-px2-pixiv-source-concept-cluster-result.v1"
+)
+SCV2_PX2_IN_PROGRESS_STATUS = "scv2_px2_implementation_in_progress"
+SCV2_PX2_READY_STATUS = (
+    "SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT"
+)
+SCV2_PX2_IN_PROGRESS_BLOCKER = "scv2_px2_implementation_in_progress"
+SCV2_PX2_READY_BLOCKER = "pending_scv2_px2_owner_merge_audit"
+SCV2_PX2_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST = frozenset(
+    {
+        "docs/current-handoff.md",
+        "docs/phase-contracts.md",
+        "docs/project-roadmap.md",
+        "docs/roadmap/current-mainline-roadmap.md",
+        "docs/state/current-phase.json",
+    }
+)
+SCV2_PX2_EXPECTED_AUTHORITIES = {
+    "px2_start_authorized": True,
+    "px2_synthetic_implementation_authorized": True,
+    "repository_read_authorized": True,
+    "synthetic_fixture_execution_authorized": True,
+    "task_owned_temporary_database_authorized": True,
+    "isolated_worktree_authorized": True,
+    "branch_commit_push_authorized": True,
+    "one_normal_pull_request_authorized": True,
+    "documentation_state_transition_authorized": True,
+    "px2_merge_authorized": False,
+    "real_source_inventory_authorized": False,
+    "source_root_or_icloud_access_authorized": False,
+    "existing_database_access_authorized": False,
+    "app_storage_write_authorized": False,
+    "real_pixiv_or_gallery_dl_network_execution_authorized": False,
+    "provider_credentials_authorized": False,
+    "media_or_thumbnail_download_authorized": False,
+    "migration_authorized": False,
+    "import_authorized": False,
+    "classification_or_tagging_execution_on_user_data_authorized": False,
+    "llm_or_external_model_authorized": False,
+    "server_browser_or_e2e_authorized": False,
+    "production_authorized": False,
+    "full_library_import_authorized": False,
+}
+
 
 class DocumentationStateError(ValueError):
     """Raised when current public documentation state is inconsistent."""
@@ -1728,9 +1783,271 @@ def _validate_scv2_px1_state(state: dict[str, Any], *, root: Path) -> None:
             )
 
 
+def _validate_scv2_px2_state(state: dict[str, Any], *, root: Path) -> None:
+    required = {
+        "schema_version",
+        "phase_id",
+        "phase_title",
+        "repository",
+        "branch",
+        "pr_number",
+        "draft",
+        "accepted_mainline_base",
+        "accepted_mainline_tree",
+        "implementation_evidence_head",
+        "implementation_evidence_tree",
+        "implementation_evidence_status",
+        "current_status",
+        "target_met",
+        "safe_to_merge",
+        "route_approved",
+        "route_scope",
+        "planning_authorized",
+        "planning_completed",
+        "planning_approved",
+        "manual_acceptance_status",
+        "next_phase_started",
+        "previous_phase",
+        "previous_phase_status",
+        "previous_phase_pr_number",
+        "previous_phase_merge_commit",
+        "previous_phase_merge_tree",
+        "previous_phase_final_head",
+        "previous_phase_final_tree",
+        "repository_sync_preflight",
+        "pipeline_contract",
+        "authorities",
+        "completed_checkpoints",
+        "active_blocker",
+        "owner_decisions",
+        "authorized_operations",
+        "forbidden_operations",
+        "protected_evidence",
+        "public_state_boundary",
+        "next_required_checkpoint",
+        "durable_links",
+        "deferred_debt",
+        "upcoming_route",
+        "artifact_lifecycle",
+        "updated_at",
+    }
+    missing = sorted(required - state.keys())
+    if missing:
+        raise DocumentationStateError(f"missing_fields:{','.join(missing)}")
+    if (
+        state.get("schema_version") != SCHEMA_VERSION
+        or state.get("phase_id") != "SCV2-PX2"
+        or state.get("phase_title")
+        != "Deterministic Pixiv SourceConcept Clustering"
+        or state.get("repository") != "kyloris0660/VIOLET"
+        or state.get("branch") != SCV2_PX2_BRANCH
+        or state.get("accepted_mainline_base") != SCV2_PX2_ACCEPTED_MAIN
+        or state.get("accepted_mainline_tree") != SCV2_PX2_ACCEPTED_MAIN_TREE
+        or state.get("previous_phase") != "SCV2-PX1"
+        or state.get("previous_phase_status")
+        != "owner_accepted_pr147_merged_with_exact_tree_preserved"
+        or state.get("previous_phase_pr_number") != 147
+        or state.get("previous_phase_merge_commit") != SCV2_PX2_ACCEPTED_MAIN
+        or state.get("previous_phase_merge_tree") != SCV2_PX2_ACCEPTED_MAIN_TREE
+        or state.get("previous_phase_final_head")
+        != SCV2_PX2_PR147_ACCEPTED_HEAD
+        or state.get("previous_phase_final_tree")
+        != SCV2_PX2_PR147_ACCEPTED_TREE
+    ):
+        raise DocumentationStateError("scv2_px2_identity_or_baseline_invalid")
+    if not HEX40.fullmatch(
+        str(state.get("implementation_evidence_head"))
+    ) or not HEX40.fullmatch(str(state.get("implementation_evidence_tree"))):
+        raise DocumentationStateError("scv2_px2_implementation_identity_invalid")
+    if not isinstance(state.get("implementation_evidence_status"), str) or not state[
+        "implementation_evidence_status"
+    ]:
+        raise DocumentationStateError("scv2_px2_implementation_status_invalid")
+    if state.get("pr_number") is not None and (
+        isinstance(state.get("pr_number"), bool)
+        or not isinstance(state.get("pr_number"), int)
+        or state["pr_number"] <= 0
+    ):
+        raise DocumentationStateError("pr_number_invalid")
+    if not isinstance(state.get("draft"), bool):
+        raise DocumentationStateError("draft_must_be_boolean")
+
+    status = state.get("current_status")
+    if status not in {SCV2_PX2_IN_PROGRESS_STATUS, SCV2_PX2_READY_STATUS}:
+        raise DocumentationStateError("scv2_px2_status_invalid")
+    ready = status == SCV2_PX2_READY_STATUS
+    expected_manual = (
+        "pending_scv2_px2_owner_merge_audit"
+        if ready
+        else "px2_synthetic_implementation_in_progress"
+    )
+    if (
+        state.get("target_met") is not ready
+        or state.get("safe_to_merge") is not False
+        or state.get("route_approved") is not False
+        or state.get("manual_acceptance_status") != expected_manual
+        or state.get("next_phase_started") is not False
+        or state.get("planning_authorized") is not True
+        or state.get("planning_completed") is not True
+        or state.get("planning_approved") is not True
+        or (ready and (state.get("pr_number") is None or state.get("draft") is not False))
+    ):
+        raise DocumentationStateError("scv2_px2_status_fields_conflict")
+    if state.get("authorities") != SCV2_PX2_EXPECTED_AUTHORITIES:
+        raise DocumentationStateError("scv2_px2_authority_map_invalid")
+    contract = state.get("pipeline_contract")
+    expected_contract = {
+        "contract_id": SCV2_PX2_CONTRACT_ID,
+        "public_schema": SCV2_PX2_PUBLIC_SCHEMA,
+        "px1_consumer_validation_verified": ready,
+        "existing_resolver_reused": ready,
+        "candidate_accounting_verified": ready,
+        "ambiguous_ledger_verified": ready,
+        "deterministic_replay_verified": ready,
+        "temporary_persistence_idempotent": ready,
+        "persistable_cluster_result_verified": ready,
+        "machine_verifiable_ci": False,
+        "owner_authority_machine_verifiable": False,
+    }
+    if not isinstance(contract, dict) or contract != expected_contract:
+        raise DocumentationStateError("scv2_px2_contract_projection_invalid")
+    blocker = state.get("active_blocker")
+    expected_blocker = (
+        SCV2_PX2_READY_BLOCKER if ready else SCV2_PX2_IN_PROGRESS_BLOCKER
+    )
+    if (
+        not isinstance(blocker, dict)
+        or blocker.get("code") != expected_blocker
+        or not all(blocker.get(key) for key in ("scope", "resolution"))
+    ):
+        raise DocumentationStateError("scv2_px2_blocker_invalid")
+
+    protected = state.get("protected_evidence")
+    if not isinstance(protected, dict) or any(
+        (
+            protected.get("pr147_accepted_head")
+            != SCV2_PX2_PR147_ACCEPTED_HEAD,
+            protected.get("pr147_accepted_tree")
+            != SCV2_PX2_PR147_ACCEPTED_TREE,
+            protected.get("pr147_merge_commit") != SCV2_PX2_ACCEPTED_MAIN,
+            protected.get("pr147_merge_tree") != SCV2_PX2_ACCEPTED_MAIN_TREE,
+            tuple(protected.get("pr147_merge_parents", ()))
+            != SCV2_PX2_PR147_MERGE_PARENTS,
+            protected.get("pr147_merged") is not True,
+            protected.get("px1_owner_accepted") is not True,
+            protected.get("px1_merged") is not True,
+            protected.get("px2_started") is not True,
+            protected.get("px2_implementation_completed") is not ready,
+            protected.get("deterministic_clustering_verified") is not ready,
+            protected.get("persistable_cluster_result_verified") is not ready,
+            protected.get("px2_owner_accepted") is not False,
+            protected.get("px2_safe_to_merge") is not False,
+            protected.get("px2_merge_authorized") is not False,
+            protected.get("px3_started") is not False,
+            protected.get("existing_db_or_app_storage_activity") != 0,
+            protected.get("provider_network_activity") != 0,
+            protected.get("real_source_activity") != 0,
+            protected.get("llm_activity") != 0,
+            protected.get("production_activity") != 0,
+        )
+    ):
+        raise DocumentationStateError("scv2_px2_protected_evidence_invalid")
+    if not isinstance(protected.get("pr147_merge_time"), str) or not protected[
+        "pr147_merge_time"
+    ]:
+        raise DocumentationStateError("scv2_px2_merge_time_invalid")
+
+    for key in (
+        "completed_checkpoints",
+        "owner_decisions",
+        "authorized_operations",
+        "forbidden_operations",
+        "durable_links",
+        "deferred_debt",
+    ):
+        _require_list(state, key)
+    for checkpoint in state["completed_checkpoints"]:
+        if (
+            not isinstance(checkpoint, dict)
+            or not checkpoint.get("id")
+            or not checkpoint.get("result")
+        ):
+            raise DocumentationStateError("completed_checkpoint_invalid")
+    for decision in state["owner_decisions"]:
+        if (
+            not isinstance(decision, dict)
+            or not decision.get("id")
+            or not decision.get("decision")
+        ):
+            raise DocumentationStateError("owner_decision_invalid")
+    debt_ids = {
+        str(debt.get("id"))
+        for debt in state["deferred_debt"]
+        if isinstance(debt, dict)
+        and debt.get("owner")
+        and debt.get("reason")
+        and debt.get("due_before")
+        and isinstance(debt.get("requirements"), list)
+        and debt["requirements"]
+    }
+    if debt_ids != SCV2_PX1_REQUIRED_DEFERRED_GATES:
+        raise DocumentationStateError("scv2_px2_deferred_due_gate_set_invalid")
+    if state.get("upcoming_route") != [
+        {
+            "phase_id": "SCV2-PX1",
+            "scope": "Pixiv metadata consolidation and offline synthetic vertical slice",
+            "started": True,
+            "completed": True,
+            "merged": True,
+        },
+        {
+            "phase_id": "SCV2-PX2",
+            "scope": "deterministic Pixiv SourceConcept clustering, candidate explanation, ambiguous ledger, and persistable cluster result",
+            "started": True,
+        },
+        {
+            "phase_id": "SCV2-PX3",
+            "scope": "real source/provider, necessary migration, production persistence, API/UI, canary, rollback, and final import checkpoint",
+            "started": False,
+        },
+    ]:
+        raise DocumentationStateError("scv2_px2_fixed_route_invalid")
+    if state.get("artifact_lifecycle") != [
+        "frozen_px1_aggregate_and_signal_consumer",
+        "existing_sourceconcept_resolver",
+        "deterministic_candidate_and_ambiguous_projection",
+        "task_owned_temporary_sourceconcept_persistence",
+        "public_safe_cluster_result",
+    ]:
+        raise DocumentationStateError("scv2_px2_artifact_lifecycle_invalid")
+    if state.get("public_state_boundary") != (
+        "public_safe_synthetic_implementation_no_private_proof_payloads_or_paths"
+    ):
+        raise DocumentationStateError("public_state_boundary_invalid")
+    for link in state["durable_links"]:
+        if not isinstance(link, dict) or not link.get("label") or not link.get(
+            "path"
+        ):
+            raise DocumentationStateError("durable_link_invalid")
+        target = (root / str(link["path"])).resolve()
+        if root.resolve() not in target.parents or not target.is_file():
+            raise DocumentationStateError(f"durable_link_missing:{link.get('path')}")
+    serialized = json.dumps(state, ensure_ascii=False, sort_keys=True)
+    if "\\u0000" in serialized:
+        raise DocumentationStateError("public_state_redaction_failure:nul")
+    for pattern in PUBLIC_FORBIDDEN:
+        if pattern.search(serialized):
+            raise DocumentationStateError(
+                f"public_state_redaction_failure:{pattern.pattern}"
+            )
+
+
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
     if state.get("phase_id") == "SCV2-PX1":
         _validate_scv2_px1_state(state, root=root)
+        return
+    if state.get("phase_id") == "SCV2-PX2":
+        _validate_scv2_px2_state(state, root=root)
         return
     missing = sorted(REQUIRED_FIELDS - state.keys())
     if missing:
@@ -2282,6 +2599,65 @@ def _validate_scv2_px1_git_ancestry(state: dict[str, Any], *, root: Path) -> Non
             raise DocumentationStateError(str(exc)) from exc
 
 
+def _validate_scv2_px2_git_ancestry(state: dict[str, Any], *, root: Path) -> None:
+    expected_trees = {
+        SCV2_PX2_ACCEPTED_MAIN: SCV2_PX2_ACCEPTED_MAIN_TREE,
+        SCV2_PX2_PR147_ACCEPTED_HEAD: SCV2_PX2_PR147_ACCEPTED_TREE,
+        str(state["implementation_evidence_head"]): str(
+            state["implementation_evidence_tree"]
+        ),
+    }
+    for commit, tree in expected_trees.items():
+        if _trusted_git_value(root, "rev-parse", f"{commit}^{{tree}}") != tree:
+            raise DocumentationStateError("scv2_px2_trusted_tree_mismatch")
+    for ancestor, descendant in (
+        (SCV2_PX2_PR147_ACCEPTED_HEAD, SCV2_PX2_ACCEPTED_MAIN),
+        (SCV2_PX2_ACCEPTED_MAIN, "HEAD"),
+        (str(state["implementation_evidence_head"]), "HEAD"),
+    ):
+        result = _run_trusted_git(
+            ["merge-base", "--is-ancestor", ancestor, descendant], root=root
+        )
+        if result.returncode != 0:
+            raise DocumentationStateError("scv2_px2_trusted_ancestry_invalid")
+    parents = tuple(
+        _trusted_git_value(
+            root, "show", "-s", "--format=%P", SCV2_PX2_ACCEPTED_MAIN
+        ).split()
+    )
+    if parents != SCV2_PX2_PR147_MERGE_PARENTS:
+        raise DocumentationStateError("scv2_px2_pr147_merge_parent_invalid")
+    if (
+        _trusted_git_value(root, "rev-parse", "--abbrev-ref", "HEAD")
+        != state["branch"]
+    ):
+        raise DocumentationStateError("scv2_px2_branch_identity_invalid")
+    if state.get("current_status") == SCV2_PX2_READY_STATUS:
+        paths = _trusted_git_changed_paths(
+            [
+                "diff",
+                "--no-ext-diff",
+                "--no-renames",
+                "--name-only",
+                "-z",
+                str(state["implementation_evidence_head"]),
+                "HEAD",
+                "--",
+            ],
+            root=root,
+            error_code="scv2_px2_evidence_carry_forward_diff_unavailable",
+        )
+        unexpected = sorted(
+            path
+            for path in paths
+            if path not in SCV2_PX2_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST
+        )
+        if unexpected:
+            raise DocumentationStateError(
+                "scv2_px2_evidence_behavior_drift:" + ",".join(unexpected)
+            )
+
+
 def validate_git_ancestry(
     state: dict[str, Any],
     *,
@@ -2290,6 +2666,9 @@ def validate_git_ancestry(
 ) -> None:
     if state.get("phase_id") == "SCV2-PX1":
         _validate_scv2_px1_git_ancestry(state, root=root)
+        return
+    if state.get("phase_id") == "SCV2-PX2":
+        _validate_scv2_px2_git_ancestry(state, root=root)
         return
     base = str(state["accepted_mainline_base"])
     implementation = str(state["implementation_evidence_head"])
@@ -2454,9 +2833,60 @@ def _validate_scv2_px1_roadmaps(state: dict[str, Any], *, root: Path) -> None:
         raise DocumentationStateError("scv2_px1_contract_documentation_missing")
 
 
+def _validate_scv2_px2_roadmaps(state: dict[str, Any], *, root: Path) -> None:
+    marker = "<!-- CURRENT_PHASE: SCV2-PX2 -->"
+    paths = (
+        Path("docs/roadmap/current-mainline-roadmap.md"),
+        Path("docs/project-roadmap.md"),
+        Path("docs/phase-contracts.md"),
+    )
+    texts: dict[Path, str] = {}
+    for relative in paths:
+        text = (root / relative).read_text(encoding="utf-8")
+        markers = re.findall(r"<!-- CURRENT_PHASE: ([A-Z0-9-]+) -->", text)
+        if markers != ["SCV2-PX2"] or text.count(marker) != 1:
+            raise DocumentationStateError(
+                f"current_phase_conflict:{relative.as_posix()}"
+            )
+        texts[relative] = text
+    active_text = "\n".join(texts.values())
+    required_truth = (
+        state["current_status"],
+        str(state["active_blocker"]["code"]),
+        SCV2_PX2_CONTRACT_ID,
+        SCV2_PX2_PUBLIC_SCHEMA,
+        SCV2_PX2_PR147_ACCEPTED_HEAD,
+        SCV2_PX2_ACCEPTED_MAIN,
+        "SCV2_PX1_MERGED",
+        "SCV2-PX2",
+        "SCV2-PX3",
+        "px2_started=true",
+        "px2_merge_authorized=false",
+        "real_source_authorized=false",
+        "existing_database_authorized=false",
+        "production_authorized=false",
+    )
+    if any(value not in active_text for value in required_truth):
+        raise DocumentationStateError("scv2_px2_active_route_truth_missing")
+    if "phase-4.5-PX1 is historical" not in active_text:
+        raise DocumentationStateError("scv2_px2_historical_name_boundary_missing")
+    if state.get("current_status") == SCV2_PX2_READY_STATUS:
+        contract_text = texts[Path("docs/phase-contracts.md")]
+        if (
+            "run_scv2_px2_pixiv_metadata_clustering.py" not in contract_text
+            or "--px2-evidence" not in contract_text
+        ):
+            raise DocumentationStateError(
+                "scv2_px2_contract_documentation_missing"
+            )
+
+
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
     if state.get("phase_id") == "SCV2-PX1":
         _validate_scv2_px1_roadmaps(state, root=root)
+        return
+    if state.get("phase_id") == "SCV2-PX2":
+        _validate_scv2_px2_roadmaps(state, root=root)
         return
     marker = f"<!-- CURRENT_PHASE: {state['phase_id']} -->"
     for relative in (
@@ -2704,11 +3134,106 @@ def _render_scv2_px1_handoff(state: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _render_scv2_px2_handoff(state: dict[str, Any]) -> str:
+    blocker = state["active_blocker"]
+    protected = state["protected_evidence"]
+    if state["pr_number"] is None:
+        pr_label = "Draft PR pending creation"
+    elif state["draft"]:
+        pr_label = f"Draft PR #{state['pr_number']}"
+    else:
+        pr_label = f"normal PR #{state['pr_number']}"
+    lines = [
+        "# Current Handoff - V.I.O.L.E.T.",
+        "",
+        "> Generated from `docs/state/current-phase.json`; this file is not the fact source.",
+        "",
+        "## Current Facts",
+        "",
+        f"- Phase: `SCV2-PX2` - {state['phase_title']}.",
+        f"- Repository / PR: `{state['repository']}` / {pr_label}.",
+        f"- Branch: `{state['branch']}`.",
+        f"- Accepted mainline HEAD/tree: `{state['accepted_mainline_base']}` / `{state['accepted_mainline_tree']}`.",
+        f"- Implementation evidence HEAD/tree: `{state['implementation_evidence_head']}` / `{state['implementation_evidence_tree']}`; status: `{state['implementation_evidence_status']}`.",
+        f"- Status: `{state['current_status']}`.",
+        f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved={str(state['route_approved']).lower()}`.",
+        f"- Manual acceptance: `{state['manual_acceptance_status']}`; `next_phase_started={str(state['next_phase_started']).lower()}`.",
+        f"- Contract: `{state['pipeline_contract']['contract_id']}`; public schema: `{state['pipeline_contract']['public_schema']}`.",
+        "- Contract evidence remains local synthetic/operator evidence; it is neither CI nor PX2 owner acceptance.",
+        "",
+        "## PX1 Merge Projection",
+        "",
+        f"- Accepted PR #147 HEAD/tree: `{protected['pr147_accepted_head']}` / `{protected['pr147_accepted_tree']}`.",
+        f"- Merge commit/tree: `{protected['pr147_merge_commit']}` / `{protected['pr147_merge_tree']}`; time: `{protected['pr147_merge_time']}`.",
+        f"- Merge parents: `{' / '.join(protected['pr147_merge_parents'])}`.",
+        "- `SCV2_PX1_MERGED`; `px1_owner_accepted=true`; `px1_merged=true`.",
+        "",
+        "## PX2 Product Slice",
+        "",
+        "- Consume the frozen PX1 aggregate and signal-bundle contract with strict schema, logical-key, and fingerprint validation.",
+        "- Reconstruct role-aware Pixiv work/page contexts and call the existing deterministic SourceConcept resolver and graph policy.",
+        "- Project every actual candidate as must_link, cannot_link, or deferred_nonblocking, with a nonblocking ambiguous ledger.",
+        "- Apply and replay through existing SourceConcept models only in task-owned temporary SQLite; no migration or existing database access.",
+        "- Emit one versioned, deterministic, public-safe persistable cluster result without database row IDs, paths, payloads, credentials, filenames, or wall-clock identity.",
+        "- Historical phase-4.5-PX1 is historical compatibility evidence, not PX2 authority.",
+        "",
+        "## Current Gate And Authority Boundary",
+        "",
+        f"- Gate: `{blocker['code']}` ({blocker['scope']}).",
+        f"- Resolution: {blocker['resolution']}",
+        "- `px2_started=true`; `px2_owner_accepted=false`; `px2_safe_to_merge=false`; `px2_merge_authorized=false`; `px3_started=false`.",
+        "- `real_provider_authorized=false`; `real_source_authorized=false`; `existing_database_authorized=false`; `migration_authorized=false`; `full_import_authorized=false`; `production_authorized=false`.",
+        f"- Existing DB/app-storage, provider network, real source, LLM, and production activity counts: `{protected['existing_db_or_app_storage_activity']}/{protected['provider_network_activity']}/{protected['real_source_activity']}/{protected['llm_activity']}/{protected['production_activity']}`.",
+        "",
+        "## Fixed Near-Term Route",
+        "",
+    ]
+    for route in state["upcoming_route"]:
+        lines.append(
+            f"- `{route['phase_id']}` - {route['scope']}; started: `{str(route['started']).lower()}`."
+        )
+    lines.extend(["", "## Completed Checkpoints", ""])
+    for checkpoint in state["completed_checkpoints"]:
+        suffix = (
+            f" - `{checkpoint['fingerprint']}`"
+            if checkpoint.get("fingerprint")
+            else ""
+        )
+        lines.append(f"- `{checkpoint['id']}`: `{checkpoint['result']}`{suffix}.")
+    lines.extend(
+        [
+            "",
+            "## Allowed / Forbidden",
+            "",
+            "- Allowed: " + "; ".join(map(str, state["authorized_operations"])) + ".",
+            "- Forbidden: " + "; ".join(map(str, state["forbidden_operations"])) + ".",
+            "",
+            "## Next Action",
+            "",
+            f"- Required checkpoint: `{state['next_required_checkpoint']}`.",
+            "",
+            "## Durable Links",
+            "",
+        ]
+    )
+    lines.extend(f"- {_link_for_handoff(link)}" for link in state["durable_links"])
+    lines.extend(["", "## Deferred Debt And Exact Due Gates", ""])
+    for debt in state["deferred_debt"]:
+        requirements = "; ".join(debt["requirements"])
+        lines.append(
+            f"- `{debt['id']}` - owner: {debt['owner']}; due before: `{debt['due_before']}`; {debt['reason']} Requirements: {requirements}."
+        )
+    lines.extend(["", f"Updated: `{state['updated_at']}`.", ""])
+    return "\n".join(lines)
+
+
 def render_handoff(state: dict[str, Any]) -> str:
     """Render the complete public-safe I2 planning handoff."""
 
     if state.get("phase_id") == "SCV2-PX1":
         return _render_scv2_px1_handoff(state)
+    if state.get("phase_id") == "SCV2-PX2":
+        return _render_scv2_px2_handoff(state)
 
     blocker = state["active_blocker"]
     boundary = state["planning_boundary"]
@@ -2808,7 +3333,9 @@ def check_handoff(state: dict[str, Any], *, path: Path = HANDOFF_PATH) -> None:
     if actual != expected:
         raise DocumentationStateError("generated_handoff_drift")
     line_count = len(actual.splitlines())
-    maximum = 180 if state.get("phase_id") == "SCV2-PX1" else 115
+    maximum = (
+        180 if state.get("phase_id") in {"SCV2-PX1", "SCV2-PX2"} else 115
+    )
     if not 55 <= line_count <= maximum:
         raise DocumentationStateError(f"handoff_line_count_out_of_range:{line_count}")
 
