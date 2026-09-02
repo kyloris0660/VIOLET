@@ -28,10 +28,10 @@ current_status=SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUD
 contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1
 public_schema=violet.scv2-px2-pixiv-source-concept-cluster-result.v1
 pr=148
-implementation_evidence_head=c62d45d58431be0adf09c18bb7f4b203f93ca978
-implementation_evidence_tree=d4314b11d2b64b3578935902f547b685cd3682d5
-public_summary_fingerprint=1547adcc3dc1b20e7fe3e2a67af43a0238538b59fbd00fc6b6bb84496a58fea6
-business_projection_fingerprint=269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548
+implementation_evidence_head=9ee1d96004daa843544b977ed3ae607c51299f9b
+implementation_evidence_tree=743e63a6f7f2931393db860600bedd20ffaeae8e
+public_summary_fingerprint=3f400c773ce11c1a108806798b3a36c15709d61ed7d8a8e645feed0f713fcf24
+business_projection_fingerprint=6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a
 px2_started=true
 px2_owner_accepted=false
 target_met=true
@@ -133,22 +133,35 @@ public-safety scans, plus one complete non-E2E suite at final runtime-code HEAD.
 Server/browser/E2E, real provider, real source, existing database, migration,
 LLM, full import, and production execution remain forbidden.
 
-Exact implementation evidence at `c62d45d58431be0adf09c18bb7f4b203f93ca978`
-and tree `d4314b11d2b64b3578935902f547b685cd3682d5` records 14 PX1
+Exact implementation evidence at `9ee1d96004daa843544b977ed3ae607c51299f9b`
+and tree `743e63a6f7f2931393db860600bedd20ffaeae8e` records 14 PX1
 aggregates/bundles, 40 canonical signals, 20 concepts, and all 59 candidate
 pairs: 52 `must_link`, 4 `cannot_link`, and 3 `deferred_nonblocking`. The
-nonblocking ambiguous ledger contains 29 records and all 13 compact acceptance
-scenarios pass. The same-head receipt passed 572 focused tests with clean
+nonblocking ambiguous ledger contains 29 records and all 15 compact acceptance
+scenarios pass. The same-head receipt passed 576 focused tests with clean
 before/after proof; the executable contract passed with zero errors and zero
 warnings. Deterministic replay and task-owned temporary persistence idempotence
 are true, while existing DB/app storage, provider network, real-source, LLM,
 and production activity are zero.
 
-The one authorized final non-E2E run reported 4294 passed, 22 skipped, 1
-failed, and 15 warnings in 507.75 seconds. Its sole failure was the exact
-historical `missing_original_ai_execution_evidence` private-evidence limitation;
-no evidence was copied or synthesized, and it is not a PX2 functional
-regression. Hosted CI remains separate and is not claimed by local evidence.
+The contract now independently executes the repository PX1 vertical slice and
+exact-compares the regenerated summary, aggregates, bundles, and fingerprints
+with evidence; a fully rebound coordinated bundle mutation is rejected. The
+operation receipt records the actual input-generation path. Source-state ledger
+permission shares signal reconstruction policy, and one provider-neutral alias
+approval predicate prevents unapproved needs-review/rejected/superseded alias
+components while retaining approved/confirmed/manual and existing no-review
+authoritative behavior.
+
+The one authorized final non-E2E run reported 4296 passed, 22 skipped, 3
+failed, and 15 warnings in 463.11 seconds. Two failures were pre-carry-forward
+documentation binding checks closed by the final five-file projection; the
+remaining failure was the exact historical
+`missing_original_ai_execution_evidence` private-evidence limitation. No
+evidence was copied or synthesized, and there is no PX2 functional regression.
+Hosted CI remains separate and is not claimed by local evidence. All five
+requested PR #148 review threads received one reply and are resolved; the
+strict clean isolated-worktree receipt boundary remains unchanged.
 
 ## Remote Sync Preflight Policy
 

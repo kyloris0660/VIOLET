@@ -27,8 +27,8 @@ current_status=SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUD
 contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1
 public_schema=violet.scv2-px2-pixiv-source-concept-cluster-result.v1
 pr=148
-implementation_evidence_head=c62d45d58431be0adf09c18bb7f4b203f93ca978
-implementation_evidence_tree=d4314b11d2b64b3578935902f547b685cd3682d5
+implementation_evidence_head=9ee1d96004daa843544b977ed3ae607c51299f9b
+implementation_evidence_tree=743e63a6f7f2931393db860600bedd20ffaeae8e
 px2_started=true
 target_met=true
 safe_to_merge=false
@@ -84,21 +84,32 @@ policy-passing active edges may union. Ambiguity remains queryable and
 persistent without blocking unambiguous clusters.
 
 The exact implementation evidence HEAD/tree is
-`c62d45d58431be0adf09c18bb7f4b203f93ca978` /
-`d4314b11d2b64b3578935902f547b685cd3682d5`. Its public and business
-fingerprints are `1547adcc3dc1b20e7fe3e2a67af43a0238538b59fbd00fc6b6bb84496a58fea6`
-and `269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548`.
+`9ee1d96004daa843544b977ed3ae607c51299f9b` /
+`743e63a6f7f2931393db860600bedd20ffaeae8e`. Its public and business
+fingerprints are `3f400c773ce11c1a108806798b3a36c15709d61ed7d8a8e645feed0f713fcf24`
+and `6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a`.
 Fourteen PX1 bundles contribute 40 signals to 20 concepts. All 59 candidate
 pairs are accounted as 52 `must_link`, 4 `cannot_link`, and 3
-`deferred_nonblocking`; the ambiguous ledger has 29 records. All 13 compact
+`deferred_nonblocking`; the ambiguous ledger has 29 records. All 15 compact
 acceptance scenarios, deterministic replay, and temporary persistence
 idempotence pass.
 
-The same-head receipt passed 572 focused tests and the executable contract
-passed with zero errors or warnings. The one final non-E2E run reported 4294
-passed, 22 skipped, 1 failed, and 15 warnings; the sole failure is the accepted
-historical `missing_original_ai_execution_evidence` limitation rather than a
-PX2 regression. Hosted CI is not inferred from local evidence.
+The same-head receipt passed 576 focused tests and the executable contract
+passed with zero errors or warnings after independently reconstructing the
+repository-owned PX1 vertical slice and exact-comparing it with evidence. The
+operation receipt distinguishes generated PX1 inputs (two temporary databases)
+from direct summary consumption (zero). The one final non-E2E run reported 4296
+passed, 22 skipped, 3 failed, and 15 warnings; two pre-carry-forward docs binding
+failures are closed by the final governance projection and the remaining failure
+is the accepted historical `missing_original_ai_execution_evidence` limitation.
+There is no PX2 functional regression. Hosted CI is not inferred locally.
+
+Source-state ledger permission now uses the same effective status/trust policy
+as signal reconstruction. The provider-neutral alias approval predicate admits
+approved/confirmed/manual or existing no-review authoritative provenance and
+rejects unapproved needs-review, rejected, and superseded candidates. All five
+requested PR #148 threads were replied to once and resolved; the strict clean
+isolated-worktree receipt boundary remains unchanged.
 
 ## Durable Safety And Evidence Boundaries
 

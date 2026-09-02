@@ -80,8 +80,8 @@ Current PX2 projection:
 - `contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1`
 - `public_schema=violet.scv2-px2-pixiv-source-concept-cluster-result.v1`
 - `pr=148`
-- `implementation_evidence_head=c62d45d58431be0adf09c18bb7f4b203f93ca978`
-- `implementation_evidence_tree=d4314b11d2b64b3578935902f547b685cd3682d5`
+- `implementation_evidence_head=9ee1d96004daa843544b977ed3ae607c51299f9b`
+- `implementation_evidence_tree=743e63a6f7f2931393db860600bedd20ffaeae8e`
 - `px2_started=true`
 - `target_met=true`
 - `safe_to_merge=false`
@@ -132,6 +132,18 @@ links, search-index drafts, models, and persistence seam. It does not create a
 second clustering engine, resolver, candidate registry, LLM workflow,
 migration, or persistence layer.
 
+The contract independently invokes the repository-owned PX1 fixture and
+vertical slice, reconstructs the canonical PX1 summary, aggregates, bundles,
+and fingerprints, and exact-compares them with the bound evidence before PX2
+replay. A coordinated bundle mutation remains rejected even when its embedded,
+artifact, consumer, and public fingerprints are all recomputed. The operation
+receipt records two PX1 databases only when the current call generated PX1;
+direct summary consumption records zero. Source-state ledger permission shares
+the reconstruction effective-status/effective-trust rule. Alias components use
+one provider-neutral approval predicate: approved/confirmed/manual or existing
+no-review authoritative provenance may union, while unapproved needs-review,
+rejected, and superseded aliases may not.
+
 The canonical local commands are:
 
 ```powershell
@@ -141,23 +153,32 @@ The canonical local commands are:
 ```
 
 Exact implementation evidence is bound to
-`c62d45d58431be0adf09c18bb7f4b203f93ca978`, tree
-`d4314b11d2b64b3578935902f547b685cd3682d5`, public summary fingerprint
-`1547adcc3dc1b20e7fe3e2a67af43a0238538b59fbd00fc6b6bb84496a58fea6`,
+`9ee1d96004daa843544b977ed3ae607c51299f9b`, tree
+`743e63a6f7f2931393db860600bedd20ffaeae8e`, public summary fingerprint
+`3f400c773ce11c1a108806798b3a36c15709d61ed7d8a8e645feed0f713fcf24`,
 and business projection fingerprint
-`269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548`.
+`6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a`.
 The reconstructed evidence contains 14 aggregates/bundles, 40 signals, 20
 concepts, and all 59 candidate pairs: 52 `must_link`, 4 `cannot_link`, and 3
-`deferred_nonblocking`. The ambiguous ledger contains 29 records, all 13
+`deferred_nonblocking`. The ambiguous ledger contains 29 records, all 15
 acceptance scenarios pass, and deterministic replay plus temporary persistence
 idempotence are true.
 
-The exact-head local receipt passed 572 focused tests with clean before/after
+The exact-head local receipt passed 576 focused tests with clean before/after
 proof. The executable contract passed with zero errors and zero warnings. The
-single final non-E2E run at the implementation HEAD reported 4294 passed, 22
-skipped, 1 failed, and 15 warnings in 507.75 seconds. The sole failure is the
-authorized historical `missing_original_ai_execution_evidence` limitation;
-there is no PX2 functional regression, and hosted CI is not claimed.
+single final non-E2E run at the implementation HEAD reported 4296 passed, 22
+skipped, 3 failed, and 15 warnings in 463.11 seconds. Two failures were the
+expected pre-carry-forward documentation binding checks and are closed by this
+five-file final projection; the remaining failure is the authorized historical
+`missing_original_ai_execution_evidence` limitation. There is no PX2 functional
+regression, and hosted CI is not claimed.
+
+The five requested PR #148 review threads received one reply each and are
+resolved. Three bounded root causes are closed; the proposed behavior-neutral
+untracked-file exception was rejected, so same-HEAD evidence still requires a
+clean task-owned isolated worktree. The current owner instruction separately
+supplies one conditional expected-head merge authority; the executable contract
+does not synthesize that authority.
 
 Seven review threads were created after PR #147 had already merged and received
 one bounded adjudication. The aggregate stable-key finding is enforced by the
@@ -178,7 +199,7 @@ task-owned temporary SQLite through existing SourceConcept-owned tables. It
 prohibits existing database/app storage, real Pixiv/gallery-dl/provider
 execution, credentials, source/iCloud access, migration, media download,
 import/tagging on user data, LLM/model, server/browser/E2E, production, PX2
-merge, and PX3.
+merge authority synthesis, and premature PX3 execution.
 
 The route remains exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`. Safety
 checks are internal gates rather than new phases. phase-4.5-PX1 is historical;

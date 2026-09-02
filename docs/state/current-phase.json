@@ -8,9 +8,9 @@
   "draft": false,
   "accepted_mainline_base": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
   "accepted_mainline_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
-  "implementation_evidence_head": "c62d45d58431be0adf09c18bb7f4b203f93ca978",
-  "implementation_evidence_tree": "d4314b11d2b64b3578935902f547b685cd3682d5",
-  "implementation_evidence_status": "same_head_local_receipt_and_executable_contract_passed_with_final_non_e2e_historical_private_evidence_limitation_only",
+  "implementation_evidence_head": "9ee1d96004daa843544b977ed3ae607c51299f9b",
+  "implementation_evidence_tree": "743e63a6f7f2931393db860600bedd20ffaeae8e",
+  "implementation_evidence_status": "final_review_correction_same_head_receipt_and_repository_rederived_executable_contract_passed_with_no_px2_functional_regression",
   "current_status": "SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT",
   "target_met": true,
   "safe_to_merge": false,
@@ -129,16 +129,21 @@
     {
       "id": "scv2_px2_deterministic_clustering_vertical_slice",
       "result": "fourteen_px1_bundles_and_forty_signals_resolved_to_twenty_concepts_with_all_fifty_nine_candidate_pairs_accounted_and_nonblocking_ambiguous_ledger_persisted",
-      "fingerprint": "269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548"
+      "fingerprint": "6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a"
     },
     {
       "id": "scv2_px2_same_head_receipt_and_contract",
-      "result": "five_hundred_seventy_two_canonical_focused_tests_passed_on_exact_implementation_head_and_contract_independently_rebuilt_px1_consumer_resolver_candidate_ledger_persistence_and_authority_facts",
-      "fingerprint": "c62d45d58431be0adf09c18bb7f4b203f93ca978"
+      "result": "five_hundred_seventy_six_canonical_focused_tests_passed_on_exact_implementation_head_and_contract_independently_rebuilt_repository_px1_fixture_consumer_resolver_candidate_ledger_persistence_and_authority_facts",
+      "fingerprint": "9ee1d96004daa843544b977ed3ae607c51299f9b"
     },
     {
       "id": "scv2_px2_final_full_non_e2e_compatibility",
-      "result": "4294_passed_22_skipped_one_historical_missing_original_ai_execution_evidence_failure_15_warnings_without_px2_regression"
+      "result": "4296_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_binding_checks_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_failure_15_warnings_without_px2_functional_regression"
+    },
+    {
+      "id": "scv2_px2_final_review_correction",
+      "result": "repository_owned_px1_evidence_rederived_operation_receipt_actual_path_counted_source_state_ledger_matches_effective_resolution_and_only_approved_or_stably_authoritative_aliases_can_union_five_threads_replied_once_and_resolved",
+      "fingerprint": "9ee1d96004daa843544b977ed3ae607c51299f9b"
     },
     {
       "id": "scv2_px2_pr148_ready",
@@ -152,8 +157,8 @@
   ],
   "active_blocker": {
     "code": "pending_scv2_px2_owner_merge_audit",
-    "scope": "PR #148 is a normal Ready candidate bound to exact synthetic PX2 implementation evidence; PX2 owner acceptance and merge remain false",
-    "resolution": "Owner audits the exact PR #148 head and independently decides whether to authorize a later merge; this task must not merge PX2 or start PX3."
+    "scope": "PR #148 is a normal Ready candidate bound to corrected exact synthetic PX2 implementation evidence; the repository contract itself grants no owner or merge authority",
+    "resolution": "Apply the current owner instruction as one external conditional expected-head merge gate after local, remote, PR, thread, cleanliness, contract, and mergeability facts are refreshed; then enter PX3 only from the verified merge."
   },
   "owner_decisions": [
     {
@@ -171,6 +176,10 @@
     {
       "id": "owner_authorized_scv2_px1_final_correction_merge_and_px2_20260902",
       "decision": "Close the four accepted exact-head PX1 findings, disprove the unreachable artist finding with an exact regression, reply to and resolve those five threads, consume one expected-head merge-commit authority for PR #147 after all gates pass, then start and implement synthetic SCV2-PX2 from the verified merge; PX2 merge and all real data-plane authorities remain false."
+    },
+    {
+      "id": "owner_authorized_scv2_px2_final_correction_merge_and_px3_20260902",
+      "decision": "Close exactly the PX1 evidence binding and operation receipt, source-state ledger, and alias approval root causes on PR #148; retain the strict clean isolated-worktree receipt boundary; after all substantive gates pass consume one exact-head merge-commit authority for PR #148, then implement the final SCV2-PX3 product integration in a new isolated branch without real provider, credential, source, existing-database, user-import, production, or PX3 merge authority."
     }
   ],
   "authorized_operations": [
@@ -179,6 +188,8 @@
     "reuse and minimally extend the existing SourceConcept resolver and persistence seams for deterministic synthetic PX2",
     "create new repository-owned synthetic fixtures and task-owned temporary SQLite databases",
     "commit and normally push the PX2 feature branch and create one normal Ready pull request",
+    "consume one owner-issued conditional expected-head merge commit for PR #148 after every substantive gate passes",
+    "after verified PR #148 merge, start the final SCV2-PX3 branch under bounded synthetic and task-owned temporary execution authority",
     "update current governance state and public-safe documentation"
   ],
   "forbidden_operations": [
@@ -187,7 +198,7 @@
     "existing database or app-storage access or write",
     "real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download",
     "import, classification or tagging on user data, production SourceConcept materialization, Entity truth promotion, or full-library work",
-    "LLM or external model, server, browser, E2E, PX2 merge, PX3, or production execution"
+    "LLM or external model, real-data server/browser/E2E, any non-expected-head PX2 merge, PX3 merge, or production execution"
   ],
   "protected_evidence": {
     "pr147_accepted_head": "15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a",
@@ -226,10 +237,11 @@
     "real_source_activity": 0,
     "llm_activity": 0,
     "production_activity": 0,
-    "px2_implementation_evidence_head": "c62d45d58431be0adf09c18bb7f4b203f93ca978",
-    "px2_implementation_evidence_tree": "d4314b11d2b64b3578935902f547b685cd3682d5",
-    "px2_public_summary_fingerprint": "1547adcc3dc1b20e7fe3e2a67af43a0238538b59fbd00fc6b6bb84496a58fea6",
-    "px2_business_projection_fingerprint": "269a1d37ee8fbcb9c9cf86eb71e1163cdd18c478f9cce706458d5ba49dbd3548",
+    "px2_implementation_evidence_head": "9ee1d96004daa843544b977ed3ae607c51299f9b",
+    "px2_implementation_evidence_tree": "743e63a6f7f2931393db860600bedd20ffaeae8e",
+    "px2_public_summary_fingerprint": "3f400c773ce11c1a108806798b3a36c15709d61ed7d8a8e645feed0f713fcf24",
+    "px2_public_summary_artifact_fingerprint": "17152ef889d465014a659a517830b65056be08bc98d47af56241e6a1cf6f9fb1",
+    "px2_business_projection_fingerprint": "6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a",
     "px2_aggregate_count": 14,
     "px2_signal_bundle_count": 14,
     "px2_signal_count": 40,
@@ -239,11 +251,12 @@
     "px2_cannot_link_count": 4,
     "px2_deferred_nonblocking_count": 3,
     "px2_ambiguous_ledger_record_count": 29,
-    "px2_local_receipt_head": "c62d45d58431be0adf09c18bb7f4b203f93ca978",
-    "px2_local_receipt_tree": "d4314b11d2b64b3578935902f547b685cd3682d5",
+    "px2_acceptance_scenario_count": 15,
+    "px2_local_receipt_head": "9ee1d96004daa843544b977ed3ae607c51299f9b",
+    "px2_local_receipt_tree": "743e63a6f7f2931393db860600bedd20ffaeae8e",
     "px2_local_receipt_command_fingerprint": "4f4adaa0908cc8e6f7d4ef800a340ef5820a6199f2cb9156ef5848f42ab72d40",
-    "px2_local_receipt_stdout_fingerprint": "821b518a77ff898cc988a76c84d71f9ca32522776f60602340896500b0a3440e",
-    "px2_local_receipt_focused_tests_passed": 572,
+    "px2_local_receipt_stdout_fingerprint": "22ab5565ac28b5dfb71ca86f965a0344c096849ac2cff6a6b15fd837970f0718",
+    "px2_local_receipt_focused_tests_passed": 576,
     "px2_local_receipt_positive": true,
     "px2_local_receipt_clean_before_after": true,
     "px2_contract_passed": true,
@@ -260,13 +273,28 @@
       "historical_private_evidence_failure": 1
     },
     "px2_final_full_non_e2e_result": {
-      "passed": 4294,
+      "passed": 4296,
       "skipped": 22,
-      "failed": 1,
+      "failed": 3,
       "warnings": 15,
-      "duration_seconds": 507.75,
+      "duration_seconds": 463.11,
       "exact_failure": "missing_original_ai_execution_evidence",
+      "pre_carry_forward_documentation_binding_failure_count": 2,
+      "documentation_binding_failures_closed_by_final_projection": true,
+      "px2_functional_regression_count": 0,
       "accepted_historical_private_evidence_limitation": true
+    },
+    "px2_final_review_correction": {
+      "accepted_root_cause_count": 3,
+      "rejected_hardening_count": 1,
+      "review_thread_reply_count": 5,
+      "review_thread_resolved_count": 5,
+      "repository_px1_fixture_exact_comparison": true,
+      "coordinated_fingerprint_mutation_rejected": true,
+      "operation_receipt_actual_execution_path_counted": true,
+      "source_state_ledger_resolution_consistent": true,
+      "provider_neutral_alias_union_approval_enforced": true,
+      "strict_clean_isolated_worktree_receipt_preserved": true
     },
     "px2_pr_number": 148,
     "pr146_accepted_head": "914d746c3548241a99333393daa88caefd8b2337",
