@@ -8,7 +8,7 @@
 - Repository / PR: `kyloris0660/VIOLET` / normal PR #147.
 - Branch: `codex/scv2-px1-pixiv-metadata-consolidation`.
 - Accepted mainline HEAD/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
-- Implementation evidence HEAD/tree: `ea97f0c3dcdc83d7d08eb3e31683a84001a08664` / `2e35fb0a98b5a6ee23c4685d3cd764d13c85c910`; status: `corrected_same_head_receipt_positive_with_fixed_docs_only_carry_forward`.
+- Implementation evidence HEAD/tree: `782360c04da475cac98f928038f34c5a337c814f` / `1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`; status: `final_correction_same_head_receipt_positive_with_fixed_docs_only_carry_forward`.
 - Status: `SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT`.
 - `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
 - Manual acceptance: `pending_scv2_px1_final_owner_merge_audit`; `next_phase_started=false`.
@@ -52,18 +52,19 @@
 - `scv2_px1_remote_sync_preflight`: `trusted_origin_main_exact_expected_merge_with_no_later_commits` - `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
 - `scv2_px1_governance_entry`: `implementation_authorized_synthetic_offline_only_route_entered_with_all_data_plane_authorities_false`.
 - `scv2_px1_vertical_slice_and_signal_projection`: `fourteen_deterministic_work_page_aggregates_and_forty_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions` - `c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1`.
-- `scv2_px1_same_head_receipt_and_contract`: `corrected_local_operator_receipt_passed_360_focused_tests_on_exact_implementation_head_and_executable_contract_independently_rebuilds_fixture_aggregate_signal_px2_consumer_and_authority_facts` - `ea97f0c3dcdc83d7d08eb3e31683a84001a08664`.
-- `scv2_px1_full_non_e2e_compatibility`: `4167_passed_22_skipped_two_failures_one_owner_superseded_creator_identity_assertion_corrected_with_125_targeted_tests_passed_and_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main`.
+- `scv2_px1_same_head_receipt_and_contract`: `final_correction_local_operator_receipt_passed_433_focused_tests_on_exact_implementation_head_and_executable_contract_independently_rebuilds_fixture_aggregate_signal_px2_consumer_and_authority_facts` - `782360c04da475cac98f928038f34c5a337c814f`.
+- `scv2_px1_full_non_e2e_compatibility`: `4238_passed_22_skipped_four_raw_failures_two_detached_validation_worktree_branch_identity_checks_one_docs_only_historical_phrase_assertion_closed_by_final_projection_and_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main`.
+- `scv2_px1_final_exact_head_review_correction`: `four_accepted_metadata_input_and_compatibility_findings_closed_and_same_name_cross_work_artist_finding_disproved_by_exact_early_guard_regression_without_clustering_policy_change` - `782360c04da475cac98f928038f34c5a337c814f`.
 - `scv2_px1_normal_pr_created`: `pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge`.
 
 ## Allowed / Forbidden
 
-- Allowed: read repository files and trusted Git or GitHub control-plane state; implement and test the PX1 durable backend projection in the isolated worktree; create new repository-owned synthetic fixtures and task-owned temporary SQLite databases; commit and normally push the feature branch and create one normal pull request; update current governance state and public-safe documentation.
-- Forbidden: merge or direct main push, force-push, rebase, reset, stash, clean, or overwrite; real source or iCloud access, inventory, listing, stat, open, read, hash, or mutation; existing database or app-storage access or write; real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download; import, classification or tagging on user data, SourceConcept materialization, Entity truth promotion, or full-library work; LLM or external model, server, browser, E2E, PX2, PX3, or production execution.
+- Allowed: read repository files and trusted Git or GitHub control-plane state; implement and test the PX1 durable backend projection in the isolated worktree; create new repository-owned synthetic fixtures and task-owned temporary SQLite databases; commit and normally push the feature branch and create one normal pull request; reply to and resolve the five exact-head PR #147 review threads; consume one expected-head protected merge-commit authority for PR #147 after the complete local gate passes; start synthetic SCV2-PX2 from the verified merge and create one normal Ready pull request without merging it; update current governance state and public-safe documentation.
+- Forbidden: direct main push, squash merge, rebase merge, force-push, auto-merge, reset, stash, clean, or overwrite; real source or iCloud access, inventory, listing, stat, open, read, hash, or mutation; existing database or app-storage access or write; real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download; import, classification or tagging on user data, SourceConcept materialization, Entity truth promotion, or full-library work; LLM or external model, server, browser, E2E, PX2 merge, PX3, or production execution.
 
 ## Next Action
 
-- Required checkpoint: `final owner audit of the exact corrected PR head followed only by a separate merge decision or adjudication of one final destructive current-functionality issue; do not merge or start PX2 in this task`.
+- Required checkpoint: `close the five exact-head PR #147 review threads, refresh the complete expected-head merge gate, consume the single merge-commit authority only if every current-functionality and evidence gate passes, verify the merge, and then start synthetic SCV2-PX2 without merging PX2`.
 
 ## Durable Links
 
@@ -97,4 +98,4 @@
 - `STABLE_REPLAY_GATE` - owner: future real-data replay owner; due before: `any real-data Stable Replay consumption or authority`; PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay. Requirements: bind exact real-data scope and immutable inputs; obtain separate execution authority.
 - `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` - owner: SCV2-PX3 real-path and evidence owner; due before: `caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production`; Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1. Requirements: close dangling-symlink, workspace-component-swap, and fixed-name evidence symlink races with bounded cross-platform primitives; handle SQLite URL-sensitive path characters including question mark and hash without authority ambiguity; prove confinement for hostile caller-controlled workspace and evidence paths before any real-path or remote-CI authority.
 
-Updated: `2026-08-27`.
+Updated: `2026-09-02`.

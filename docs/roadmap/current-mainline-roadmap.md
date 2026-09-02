@@ -120,12 +120,22 @@ E2E, gallery-dl network, Pixiv network, real library, and production tests are
 forbidden.
 
 The corrected implementation checkpoint is HEAD
-`ea97f0c3dcdc83d7d08eb3e31683a84001a08664`, tree
-`2e35fb0a98b5a6ee23c4685d3cd764d13c85c910`. Its local receipt passed the
-canonical 360 focused tests with clean before/after identity. The synthetic
+`782360c04da475cac98f928038f34c5a337c814f`, tree
+`1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`. Its local receipt passed the
+canonical 433 focused tests with clean before/after identity. The synthetic
 projection contains 14 aggregates and 40 signals; canonical replay and reversed
 input share fingerprint
 `c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1`.
+
+The final correction closes canonical page identity, recursive public
+projection key/value separation, all-marker provider consensus, and historical
+`author`/`keywords` compatibility. An exact cross-work regression proves that
+same-name Pixiv artist signals without stable creator IDs hit the existing
+non-union creator guard, while the same stable creator ID still unions across
+name changes. The complete non-E2E run recorded 4238 passed, 22 skipped, and
+four raw failures; three were validation-worktree/docs projection conditions
+closed by targeted checks, while the sole remaining substantive failure is the
+exact-base `missing_original_ai_execution_evidence` limitation.
 
 ## Remote Sync Preflight Policy
 

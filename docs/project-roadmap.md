@@ -79,10 +79,19 @@ server/browser/E2E validation, or production work.
   provider payload, user database identity, or database row ID.
 - The single-command runner creates only task-owned temporary databases and
   blocks network/subprocess activity inside the slice.
-- The corrected same-HEAD receipt binds implementation HEAD
-  `ea97f0c3dcdc83d7d08eb3e31683a84001a08664`, tree
-  `2e35fb0a98b5a6ee23c4685d3cd764d13c85c910`, and 360 canonical focused tests;
+- The final-correction same-HEAD receipt binds implementation HEAD
+  `782360c04da475cac98f928038f34c5a337c814f`, tree
+  `1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`, and 433 canonical focused tests;
   the vertical slice deterministically projects 14 aggregates and 40 signals.
+- The four accepted final-review findings are closed at the canonical page
+  domain, public projection, provider-marker consensus, and historical alias
+  seams. The rejected same-name artist finding is covered by an exact
+  cross-work no-stable-ID non-union regression and the positive same-stable-ID
+  rename case; no clustering policy was rewritten.
+- The one complete non-E2E run reported 4238 passed, 22 skipped, and four raw
+  failures: two detached-validation-worktree branch-identity checks, one
+  docs-only historical-phrase assertion closed by this projection, and the
+  exact-base `missing_original_ai_execution_evidence` private-evidence limit.
 - Local receipt and contract evidence remain local operator evidence:
   `machine_verifiable_ci=false`, `owner_accepted=false`, and
   `safe_to_merge=false`.

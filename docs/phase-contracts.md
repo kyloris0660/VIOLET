@@ -97,12 +97,21 @@ Current PX1 projection:
 - blocker: `pending_scv2_px1_final_owner_merge_audit`
 
 Corrected implementation evidence is frozen at HEAD
-`ea97f0c3dcdc83d7d08eb3e31683a84001a08664`, tree
-`2e35fb0a98b5a6ee23c4685d3cd764d13c85c910`. Its positive local-operator
-receipt reran the canonical 360 focused tests with clean before/after identity.
+`782360c04da475cac98f928038f34c5a337c814f`, tree
+`1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`. Its positive local-operator
+receipt reran the canonical 433 focused tests with clean before/after identity.
 Only the fixed five-document governance allowlist may carry forward from this
 evidence checkpoint; any backend, runner, contract, test, configuration, or
 untracked behavior change invalidates completion.
+
+The final exact-head correction rejects non-canonical page/count identity,
+requires consensus across every populated provider marker, restores the
+historical `author` and `keywords` aliases through the canonical normalizer,
+and separates forbidden mapping keys from otherwise legal string values in
+the public projection. The alleged same-name artist union is disproved by an
+exact cross-work regression: without stable creator identity the existing
+early creator guard emits a non-union verdict, while matching stable Pixiv
+creator IDs continue to union across name changes.
 
 The reconstructed synthetic projection contains 14 work/page aggregates and
 40 SourceConcept-compatible signals. Canonical, replay, and reversed-input
@@ -149,7 +158,7 @@ server/browser/E2E, SourceConcept materialization, Entity truth promotion,
 production, merge, and PX2.
 
 The near-term route is exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`.
-Safety checks are internal gates rather than new phases. `phase-4.5-PX1` is
+Safety checks are internal gates rather than new phases. phase-4.5-PX1 is
 historical; its report and runner remain historical evidence/compatibility
 and cannot become SCV2-PX1 production authority.
 
