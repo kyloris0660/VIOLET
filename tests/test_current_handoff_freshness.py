@@ -1,4 +1,4 @@
-"""Fail-closed freshness tests for the active SCV2-PX1 projection."""
+"""Fail-closed freshness tests for the active SCV2-PX2 projection."""
 
 from __future__ import annotations
 
@@ -24,34 +24,35 @@ def test_current_phase_schema_identity_and_boundary_are_exact() -> None:
     state = _state()
     documentation_state.validate_state(state)
     assert state["schema_version"] == "violet.current-phase.v2"
-    assert state["phase_id"] == "SCV2-PX1"
-    assert state["branch"] == "codex/scv2-px1-pixiv-metadata-consolidation"
-    assert state["accepted_mainline_base"] == (
-        "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc"
-    )
-    assert state["accepted_mainline_tree"] == (
-        "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71"
-    )
+    assert state["phase_id"] == "SCV2-PX2"
+    assert state["branch"] == documentation_state.SCV2_PX2_BRANCH
+    assert state["accepted_mainline_base"] == documentation_state.SCV2_PX2_ACCEPTED_MAIN
+    assert state["accepted_mainline_tree"] == documentation_state.SCV2_PX2_ACCEPTED_MAIN_TREE
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
-    ready = state["current_status"] == documentation_state.SCV2_PX1_READY_STATUS
+    ready = state["current_status"] == documentation_state.SCV2_PX2_READY_STATUS
     assert state["target_met"] is ready
     assert state["manual_acceptance_status"] == (
-        "pending_scv2_px1_final_owner_merge_audit"
+        "pending_scv2_px2_owner_merge_audit"
         if ready
-        else "owner_adjudicated_bounded_correction_in_progress"
+        else "px2_synthetic_implementation_in_progress"
     )
 
 
-def test_live_git_binds_pr146_merge_and_px1_implementation_evidence() -> None:
+def test_live_git_binds_pr147_merge_and_px2_implementation_evidence() -> None:
     state = _state()
     documentation_state.validate_git_ancestry(state, root=ROOT)
     assert documentation_state._trusted_git_value(
-        ROOT, "rev-parse", "914d746c3548241a99333393daa88caefd8b2337^{tree}"
+        ROOT, "rev-parse", f"{documentation_state.SCV2_PX2_PR147_ACCEPTED_HEAD}^{{tree}}"
     ) == state["previous_phase_final_tree"]
     assert documentation_state._trusted_git_value(
-        ROOT, "rev-parse", "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc^{tree}"
+        ROOT, "rev-parse", f"{documentation_state.SCV2_PX2_ACCEPTED_MAIN}^{{tree}}"
     ) == state["accepted_mainline_tree"]
+    assert tuple(
+        documentation_state._trusted_git_value(
+            ROOT, "show", "-s", "--format=%P", documentation_state.SCV2_PX2_ACCEPTED_MAIN
+        ).split()
+    ) == documentation_state.SCV2_PX2_PR147_MERGE_PARENTS
     assert documentation_state._trusted_git_value(
         ROOT, "rev-parse", f"{state['implementation_evidence_head']}^{{tree}}"
     ) == state["implementation_evidence_tree"]
@@ -71,10 +72,7 @@ def test_live_git_binds_pr146_merge_and_px1_implementation_evidence() -> None:
 def test_baseline_identity_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
     state[field] = value
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="identity_or_baseline",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="identity_or_baseline"):
         documentation_state.validate_state(state)
 
 
@@ -90,39 +88,25 @@ def test_baseline_identity_mutation_fails_closed(field: str, value: object) -> N
         ("manual_acceptance_status", "accepted"),
     ],
 )
-def test_status_or_owner_authority_mutation_fails_closed(
-    field: str,
-    value: object,
-) -> None:
+def test_status_or_owner_authority_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
     state[field] = value
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="status_fields_conflict",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="status_fields_conflict"):
         documentation_state.validate_state(state)
 
 
-def test_target_met_requires_ready_status_and_verified_contract() -> None:
+def test_target_met_and_contract_flags_track_ready_status() -> None:
     state = copy.deepcopy(_state())
     state["target_met"] = not bool(state["target_met"])
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="status_fields_conflict",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="status_fields_conflict"):
         documentation_state.validate_state(state)
 
     state = copy.deepcopy(_state())
-    state["pipeline_contract"]["synthetic_vertical_slice_verified"] = not bool(
-        state["pipeline_contract"]["synthetic_vertical_slice_verified"]
+    state["pipeline_contract"]["deterministic_replay_verified"] = not bool(
+        state["pipeline_contract"]["deterministic_replay_verified"]
     )
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="contract_projection",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="contract_projection"):
         documentation_state.validate_state(state)
-
-    documentation_state.validate_state(copy.deepcopy(_state()))
 
 
 @pytest.mark.parametrize(
@@ -132,36 +116,43 @@ def test_target_met_requires_ready_status_and_verified_contract() -> None:
         ("public_schema", "caller.schema"),
         ("machine_verifiable_ci", True),
         ("owner_authority_machine_verifiable", True),
-        ("px2_consumer_contract_frozen", "caller_claim"),
     ],
 )
 def test_contract_projection_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
     state["pipeline_contract"][field] = value
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="contract_projection",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="contract_projection"):
         documentation_state.validate_state(state)
 
 
-def test_fixed_px1_px2_px3_route_cannot_expand_or_start() -> None:
+def test_authority_and_protected_evidence_mutations_fail_closed() -> None:
+    state = copy.deepcopy(_state())
+    state["authorities"]["px2_merge_authorized"] = True
+    with pytest.raises(documentation_state.DocumentationStateError, match="authority_map"):
+        documentation_state.validate_state(state)
+
+    state = copy.deepcopy(_state())
+    state["protected_evidence"]["px1_merged"] = False
+    with pytest.raises(documentation_state.DocumentationStateError, match="protected_evidence"):
+        documentation_state.validate_state(state)
+
+    state = copy.deepcopy(_state())
+    state["protected_evidence"]["provider_network_activity"] = 1
+    with pytest.raises(documentation_state.DocumentationStateError, match="protected_evidence"):
+        documentation_state.validate_state(state)
+
+
+def test_fixed_px1_px2_px3_route_cannot_expand_or_start_px3() -> None:
     state = copy.deepcopy(_state())
     state["upcoming_route"].append(
         {"phase_id": "SCV2-PX4", "scope": "not authorized", "started": False}
     )
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fixed_route",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="fixed_route"):
         documentation_state.validate_state(state)
 
     state = copy.deepcopy(_state())
-    state["upcoming_route"][1]["started"] = True
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="fixed_route",
-    ):
+    state["upcoming_route"][2]["started"] = True
+    with pytest.raises(documentation_state.DocumentationStateError, match="fixed_route"):
         documentation_state.validate_state(state)
 
 
@@ -169,8 +160,8 @@ def test_handoff_is_exact_generated_projection() -> None:
     state = _state()
     actual = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     assert actual == documentation_state.render_handoff(state)
-    assert "SCV2-PX1" in actual
-    assert "PR #146 Merge Projection" in actual
+    assert "SCV2-PX2" in actual
+    assert "PX1 Merge Projection" in actual
     assert "Deferred Debt And Exact Due Gates" in actual
     assert "378" not in actual
     assert state["protected_evidence"]["primary_user_untracked_name_digest_before"] not in actual
@@ -185,15 +176,11 @@ def test_active_markers_and_contract_commands_are_consistent() -> None:
         "docs/phase-contracts.md",
     ):
         text = (ROOT / relative).read_text(encoding="utf-8")
-        assert text.count("<!-- CURRENT_PHASE: SCV2-PX1 -->") == 1
-    contract = (ROOT / "docs" / "phase-contracts.md").read_text(
-        encoding="utf-8"
-    )
-    assert "run_scv2_px1_pixiv_metadata_vertical_slice.py" in contract
-    assert "create_scv2_px1_validation_receipt.py" in contract
-    assert "--px1-evidence" in contract
-    assert "phase-4.5-PX1 is" in contract
-    assert "historical" in contract
+        assert text.count("<!-- CURRENT_PHASE: SCV2-PX2 -->") == 1
+    contract = (ROOT / "docs" / "phase-contracts.md").read_text(encoding="utf-8")
+    assert "run_scv2_px2_pixiv_metadata_clustering.py" in contract
+    assert "--px2-evidence" in contract
+    assert "phase-4.5-PX1 is historical" in contract
 
 
 def test_conflicting_current_marker_fails_closed(tmp_path: Path) -> None:
@@ -211,38 +198,29 @@ def test_conflicting_current_marker_fails_closed(tmp_path: Path) -> None:
     target = docs / "project-roadmap.md"
     target.write_text(
         target.read_text(encoding="utf-8").replace(
-            "<!-- CURRENT_PHASE: SCV2-PX1 -->",
             "<!-- CURRENT_PHASE: SCV2-PX2 -->",
+            "<!-- CURRENT_PHASE: SCV2-PX1 -->",
         ),
         encoding="utf-8",
     )
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="current_phase_conflict",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="current_phase_conflict"):
         documentation_state.validate_roadmaps(_state(), root=tmp_path)
 
 
 def test_public_state_rejects_nul_and_private_path() -> None:
     state = copy.deepcopy(_state())
     state["route_scope"] = "synthetic\x00scope"
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="redaction",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="redaction"):
         documentation_state.validate_state(state)
 
     state = copy.deepcopy(_state())
     state["route_scope"] = "C:\\private\\fixture"
-    with pytest.raises(
-        documentation_state.DocumentationStateError,
-        match="redaction",
-    ):
+    with pytest.raises(documentation_state.DocumentationStateError, match="redaction"):
         documentation_state.validate_state(state)
 
 
 def test_documentation_checker_returns_current_phase_result() -> None:
     result = documentation_state.check_documentation_state(root=ROOT)
     assert result["passed"] is True
-    assert result["phase_id"] == "SCV2-PX1"
+    assert result["phase_id"] == "SCV2-PX2"
     assert result["current_status"] == _state()["current_status"]

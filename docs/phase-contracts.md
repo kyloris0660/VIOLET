@@ -64,112 +64,151 @@ outside the automated contract.
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-PX1 -->
+<!-- CURRENT_PHASE: SCV2-PX2 -->
 
-PR #146 / SCV2-FL1-I2 is merged at
-`8a825bcdd12f76d1c2c396b7039bd9e326cd63dc`. Accepted PR HEAD
-`914d746c3548241a99333393daa88caefd8b2337` is a merge parent and both
-objects have tree `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
-This corrects the former pending-merge current projection without rewriting
-historical I2 facts.
+PR #147 / SCV2-PX1 is owner accepted and merged at
+`5a8efdaf954ab95bd82f95464af31a7fd0873e5e`, tree
+`480d6a548e6276afeccf49ec75a73d7389b995fe`. Accepted PR HEAD
+`15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a` is the second merge parent and
+has the same tree. The first parent is
+`8a825bcdd12f76d1c2c396b7039bd9e326cd63dc`; no parallel main commit was
+present. Status: `SCV2_PX1_MERGED`.
 
-Final PR #146 review `5031131564` recorded ten unresolved, non-outdated
-findings. They remain explicit future due gates in
-`docs/state/current-phase.json`; neither the merge nor synthetic PX1 marks
-them closed. The earlier owner-adjudicated dynamic-loader and whole-venv
-bindings also remain deferred to their original POSIX/CI/hostile-environment
-gates.
+Current PX2 projection:
 
-Current PX1 projection:
-
-- `status=SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT`
-- `contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1`
-- `public_schema=violet.scv2-px1-pixiv-metadata-summary.v1`
+- `status=SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT`
+- `contract_id=scv2_px2_deterministic_pixiv_clustering_contract_v1`
+- `public_schema=violet.scv2-px2-pixiv-source-concept-cluster-result.v1`
+- `pr=148`
+- `implementation_evidence_head=9ee1d96004daa843544b977ed3ae607c51299f9b`
+- `implementation_evidence_tree=743e63a6f7f2931393db860600bedd20ffaeae8e`
+- `px2_started=true`
 - `target_met=true`
 - `safe_to_merge=false`
 - `route_approved=false`
-- `owner_accepted=false`
-- `merge_authorized=false`
+- `px2_owner_accepted=false`
+- `px2_merge_authorized=false`
+- `px3_started=false`
 - `real_source_authorized=false`
 - `real_provider_authorized=false`
+- `existing_database_authorized=false`
+- `migration_authorized=false`
 - `full_import_authorized=false`
 - `production_authorized=false`
-- blocker: `pending_scv2_px1_final_owner_merge_audit`
+- blocker: `pending_scv2_px2_owner_merge_audit`
 
-Corrected implementation evidence is frozen at HEAD
-`782360c04da475cac98f928038f34c5a337c814f`, tree
-`1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`. Its positive local-operator
-receipt reran the canonical 433 focused tests with clean before/after identity.
-Only the fixed five-document governance allowlist may carry forward from this
-evidence checkpoint; any backend, runner, contract, test, configuration, or
-untracked behavior change invalidates completion.
+The PX2 executable contract must independently reconstruct the critical facts
+from repository-owned PX1 fixtures and artifacts, canonical signal input,
+existing resolver output, complete candidate dispositions, the nonblocking
+ambiguous ledger, task-owned temporary persistence/replay, and the final
+receipt. A caller's `passed=true`, caller totals, or caller fingerprints cannot
+grant completion.
 
-The final exact-head correction rejects non-canonical page/count identity,
-requires consensus across every populated provider marker, restores the
-historical `author` and `keywords` aliases through the canonical normalizer,
-and separates forbidden mapping keys from otherwise legal string values in
-the public projection. The alleged same-name artist union is disproved by an
-exact cross-work regression: without stable creator identity the existing
-early creator guard emits a non-union verdict, while matching stable Pixiv
-creator IDs continue to union across name changes.
+The durable chain is:
 
-The reconstructed synthetic projection contains 14 work/page aggregates and
-40 SourceConcept-compatible signals. Canonical, replay, and reversed-input
-projections share fingerprint
-`c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1`.
-The PX2 consumer artifacts round-trip through canonical JSON with stable
-aggregate and signal-bundle fingerprints and exclude database row identity.
+```text
+PX1 consumer contract
+  -> strict schema/fingerprint/logical-key validation
+  -> canonical SourceConcept signal reconstruction
+  -> role-aware Pixiv work/page context projection
+  -> existing resolve_source_concepts graph policy
+  -> complete must_link/cannot_link/deferred_nonblocking dispositions
+  -> deterministic clusters and nonblocking ambiguous ledger
+  -> existing SourceConcept models in task-owned temporary SQLite
+  -> versioned public-safe persistable result and receipt
+```
 
-The executable PX1 contract does not trust a caller's positive flag. It:
+The contract must prove all input bundles and actual candidate pairs are
+accounted for; no unexplained signal loss, multi-stable-creator component,
+name-only artist union, cannot-link/deferred union, or cross-role union exists;
+replay and reversed input are deterministic; temporary persistence is
+idempotent; and existing DB/app storage, provider network, real source, LLM,
+and production activity remain zero.
 
-1. lexically confines a fixed-name evidence root beneath task-owned OS
-   temporary storage before resolving or reading it;
-2. bounds and no-follow reads canonical fixture, aggregate, signal, operation
-   receipt, public summary, and same-HEAD validation receipt artifacts;
-3. requires the approved repository Python and a clean trusted Git worktree;
-4. binds the receipt to the corrected implementation evidence HEAD/tree,
-   trusted Git identity, Python identity, canonical focused command, and
-   evidence fingerprints, then permits only a fixed tested docs-only
-   governance carry-forward to current HEAD;
-5. independently reruns the repository-owned synthetic fixture in a fresh
-   temporary workspace and compares the exact public summary;
-6. recomputes aggregate fingerprints, disposition accounting, signal logical
-   keys, name-only-anchor count, context separation, replay fingerprints, and
-   all negative authority fields;
-7. scans the public projection for paths, filenames, credentials, secrets, raw
-   provider payloads, and database identities;
-8. rejects any backend, runner, contract, test, configuration, or untracked
-   behavior drift after evidence, including a change to
-   `PIXIV_AGGREGATE_VERSION`.
+PX2 reuses `SourceConceptSignalInput`, `SourceConceptSignalDraft`,
+`resolve_source_concepts`, existing blocking/context/creator guards, candidate
+edges, cannot-link-aware union-find, SourceConcept drafts, aliases, evidence,
+links, search-index drafts, models, and persistence seam. It does not create a
+second clustering engine, resolver, candidate registry, LLM workflow,
+migration, or persistence layer.
+
+The contract independently invokes the repository-owned PX1 fixture and
+vertical slice, reconstructs the canonical PX1 summary, aggregates, bundles,
+and fingerprints, and exact-compares them with the bound evidence before PX2
+replay. A coordinated bundle mutation remains rejected even when its embedded,
+artifact, consumer, and public fingerprints are all recomputed. The operation
+receipt records two PX1 databases only when the current call generated PX1;
+direct summary consumption records zero. Source-state ledger permission shares
+the reconstruction effective-status/effective-trust rule. Alias components use
+one provider-neutral approval predicate: approved/confirmed/manual or existing
+no-review authoritative provenance may union, while unapproved needs-review,
+rejected, and superseded aliases may not.
 
 The canonical local commands are:
 
 ```powershell
-& "$PY" -B scripts/run_scv2_px1_pixiv_metadata_vertical_slice.py --evidence-dir <task-owned-temp>
-& "$PY" -B scripts/create_scv2_px1_validation_receipt.py --evidence-dir <task-owned-temp>
-& "$PY" -B scripts/check_phase_contract.py --contract scv2_px1_pixiv_metadata_consolidation_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python "$PY" --px1-evidence <task-owned-temp>
+& "$PY" -B scripts/run_scv2_px2_pixiv_metadata_clustering.py --evidence-dir <task-owned-temp>
+& "$PY" -B scripts/create_scv2_px2_validation_receipt.py --evidence-dir <task-owned-temp>
+& "$PY" -B scripts/check_phase_contract.py --contract scv2_px2_deterministic_pixiv_clustering_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python "$PY" --px2-evidence <task-owned-temp>
 ```
 
-PX1 allows exactly two newly created task-owned temporary SQLite databases
-using existing source-layer tables. It prohibits existing database/app-storage
-access, real Pixiv/gallery-dl/provider execution, credentials, source/iCloud
-access, media download, import, classification/tagging on user data, LLM/model,
-server/browser/E2E, SourceConcept materialization, Entity truth promotion,
-production, merge, and PX2.
+Exact implementation evidence is bound to
+`9ee1d96004daa843544b977ed3ae607c51299f9b`, tree
+`743e63a6f7f2931393db860600bedd20ffaeae8e`, public summary fingerprint
+`3f400c773ce11c1a108806798b3a36c15709d61ed7d8a8e645feed0f713fcf24`,
+and business projection fingerprint
+`6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a`.
+The reconstructed evidence contains 14 aggregates/bundles, 40 signals, 20
+concepts, and all 59 candidate pairs: 52 `must_link`, 4 `cannot_link`, and 3
+`deferred_nonblocking`. The ambiguous ledger contains 29 records, all 15
+acceptance scenarios pass, and deterministic replay plus temporary persistence
+idempotence are true.
 
-The near-term route is exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`.
-Safety checks are internal gates rather than new phases. phase-4.5-PX1 is
-historical; its report and runner remain historical evidence/compatibility
-and cannot become SCV2-PX1 production authority.
+The exact-head local receipt passed 576 focused tests with clean before/after
+proof. The executable contract passed with zero errors and zero warnings. The
+single final non-E2E run at the implementation HEAD reported 4296 passed, 22
+skipped, 3 failed, and 15 warnings in 463.11 seconds. Two failures were the
+expected pre-carry-forward documentation binding checks and are closed by this
+five-file final projection; the remaining failure is the authorized historical
+`missing_original_ai_execution_evidence` limitation. There is no PX2 functional
+regression, and hosted CI is not claimed.
 
-PX2 consumes only canonical aggregate and signal-bundle artifacts for
-deterministic clustering, identity, candidate explanation, an ambiguous queue,
-controlled sample evaluation, and a persistable cluster result. PX3 contains
-real source/provider work, any necessary migration, persistence, API/UI,
-dry-run/apply, idempotency, backup/recovery, canary, rollback, and the final
-full-library import checkpoint. The hostile-workspace cases deferred by the
-owner are bound to `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE`; this gate
-does not create another phase or block repository-owned synthetic PX1.
+The five requested PR #148 review threads received one reply each and are
+resolved. Three bounded root causes are closed; the proposed behavior-neutral
+untracked-file exception was rejected, so same-HEAD evidence still requires a
+clean task-owned isolated worktree. The current owner instruction separately
+supplies one conditional expected-head merge authority; the executable contract
+does not synthesize that authority.
+
+Seven review threads were created after PR #147 had already merged and received
+one bounded adjudication. The aggregate stable-key finding is enforced by the
+PX2 consumer's independent recomputation and rebound-fingerprint mutation
+test. The retained-database binding premise is rejected because retained SQLite
+files are non-authoritative debugging artifacts; the PX1 and PX2 contracts
+regenerate the complete verdict in fresh task-owned databases and compare the
+result to bound canonical artifacts. Five findings require raw provider,
+route-canary, acquisition-diagnostic, or historical existing-record inputs and
+are bound as PX3 direct inputs under the existing
+`FL1_I3_REAL_SOURCE_SCOPE_GATE` and `STABLE_REPLAY_GATE` before any such route.
+They do not broaden PX2 authority. The original
+`SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` thread remains intentionally
+unresolved; all seven late threads are replied to and resolved.
+
+PX2 permits only repository-owned synthetic inputs and newly created
+task-owned temporary SQLite through existing SourceConcept-owned tables. It
+prohibits existing database/app storage, real Pixiv/gallery-dl/provider
+execution, credentials, source/iCloud access, migration, media download,
+import/tagging on user data, LLM/model, server/browser/E2E, production, PX2
+merge authority synthesis, and premature PX3 execution.
+
+The route remains exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`. Safety
+checks are internal gates rather than new phases. phase-4.5-PX1 is historical;
+its report and runner remain historical compatibility evidence. All inherited
+exact due gates remain unresolved. In particular,
+`SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` is due only before
+caller-supplied paths, untrusted remote-CI evidence, existing DB/app storage,
+real-source canary, or production and does not block repository-owned
+synthetic PX2.
 
 ## Registered GOV3 Contracts
 

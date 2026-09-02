@@ -4,47 +4,46 @@
 
 ## Current Facts
 
-- Phase: `SCV2-PX1` - Pixiv Metadata Consolidation and Offline Vertical Slice.
-- Repository / PR: `kyloris0660/VIOLET` / normal PR #147.
-- Branch: `codex/scv2-px1-pixiv-metadata-consolidation`.
-- Accepted mainline HEAD/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
-- Implementation evidence HEAD/tree: `782360c04da475cac98f928038f34c5a337c814f` / `1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`; status: `final_correction_same_head_receipt_positive_with_fixed_docs_only_carry_forward`.
-- Status: `SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT`.
+- Phase: `SCV2-PX2` - Deterministic Pixiv SourceConcept Clustering.
+- Repository / PR: `kyloris0660/VIOLET` / normal PR #148.
+- Branch: `codex/scv2-px2-deterministic-pixiv-clustering`.
+- Accepted mainline HEAD/tree: `5a8efdaf954ab95bd82f95464af31a7fd0873e5e` / `480d6a548e6276afeccf49ec75a73d7389b995fe`.
+- Implementation evidence HEAD/tree: `9ee1d96004daa843544b977ed3ae607c51299f9b` / `743e63a6f7f2931393db860600bedd20ffaeae8e`; status: `final_review_correction_same_head_receipt_and_repository_rederived_executable_contract_passed_with_no_px2_functional_regression`.
+- Status: `SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT`.
 - `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
-- Manual acceptance: `pending_scv2_px1_final_owner_merge_audit`; `next_phase_started=false`.
-- Contract: `scv2_px1_pixiv_metadata_consolidation_contract_v1`; public schema: `violet.scv2-px1-pixiv-metadata-summary.v1`.
-- Synthetic vertical slice / deterministic replay verified: `true` / `true`.
-- Contract evidence remains a local operator receipt; it is neither CI authority nor owner acceptance.
+- Manual acceptance: `pending_scv2_px2_owner_merge_audit`; `next_phase_started=false`.
+- Contract: `scv2_px2_deterministic_pixiv_clustering_contract_v1`; public schema: `violet.scv2-px2-pixiv-source-concept-cluster-result.v1`.
+- Contract evidence remains local synthetic/operator evidence; it is neither CI nor PX2 owner acceptance.
 
-## PR #146 Merge Projection
+## PX1 Merge Projection
 
-- Accepted PR HEAD/tree: `914d746c3548241a99333393daa88caefd8b2337` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
-- Merge commit/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`; merged: `true`.
-- Final review `5031131564` covered `914d746c3548241a99333393daa88caefd8b2337` and recorded `10` unresolved, non-outdated findings.
-- Merge does not silently close those findings; every finding remains attached to its exact future due gate below.
+- Accepted PR #147 HEAD/tree: `15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a` / `480d6a548e6276afeccf49ec75a73d7389b995fe`.
+- Merge commit/tree: `5a8efdaf954ab95bd82f95464af31a7fd0873e5e` / `480d6a548e6276afeccf49ec75a73d7389b995fe`; time: `2026-09-02T11:50:19Z`.
+- Merge parents: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc / 15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a`.
+- `SCV2_PX1_MERGED`; `px1_owner_accepted=true`; `px1_merged=true`.
 
-## PX1 Product Slice
+## PX2 Product Slice
 
-- Synthetic Pixiv/gallery-dl metadata enters the existing canonical normalization and lifecycle authority.
-- Existing SourceMetadataRecord, SourceNameObservation, SourceTagObservation, and provenance models remain the only source-layer persistence seam.
-- A deterministic Pixiv work/page aggregate exposes stable creator ID as identity and names, title, and tags only as mutable observations.
-- The aggregate projects into the existing SourceConcept signal semantics without cluster materialization or Entity promotion.
-- The repository-owned runner uses exactly two task-owned temporary SQLite databases and performs no provider, source-root, app-storage, media, or production activity.
-- Historical `phase-4.5-PX1` orchestration remains historical compatibility evidence; it is not the SCV2-PX1 authority.
+- Consume the frozen PX1 aggregate and signal-bundle contract with strict schema, logical-key, and fingerprint validation.
+- Reconstruct role-aware Pixiv work/page contexts and call the existing deterministic SourceConcept resolver and graph policy.
+- Project every actual candidate as must_link, cannot_link, or deferred_nonblocking, with a nonblocking ambiguous ledger.
+- Apply and replay through existing SourceConcept models only in task-owned temporary SQLite; no migration or existing database access.
+- Emit one versioned, deterministic, public-safe persistable cluster result without database row IDs, paths, payloads, credentials, filenames, or wall-clock identity.
+- Historical phase-4.5-PX1 is historical compatibility evidence, not PX2 authority.
 
 ## Current Gate And Authority Boundary
 
-- Gate: `pending_scv2_px1_final_owner_merge_audit` (Final owner merge audit of corrected PR #147 exact HEAD; automated evidence cannot grant owner acceptance, safe-to-merge, or merge authority).
-- Resolution: Owner audits the exact PR head and either issues a separate merge decision or identifies one final destructive, privacy, authority, data-integrity, deterministic-evidence, or current-functionality issue for adjudication.
-- `owner_accepted=false`; `safe_to_merge=false`; `merge_authorized=false`; `px2_started=false`.
-- `real_provider_authorized=false`; `real_source_authorized=false`; `full_import_authorized=false`; `production_authorized=false`.
-- External data-plane network, existing DB, real source, media download, and production operation counts: `0/0/0/0/0`.
+- Gate: `pending_scv2_px2_owner_merge_audit` (PR #148 is a normal Ready candidate bound to corrected exact synthetic PX2 implementation evidence; the repository contract itself grants no owner or merge authority).
+- Resolution: Apply the current owner instruction as one external conditional expected-head merge gate after local, remote, PR, thread, cleanliness, contract, and mergeability facts are refreshed; then enter PX3 only from the verified merge.
+- `px2_started=true`; `px2_owner_accepted=false`; `px2_safe_to_merge=false`; `px2_merge_authorized=false`; `px3_started=false`.
+- `real_provider_authorized=false`; `real_source_authorized=false`; `existing_database_authorized=false`; `migration_authorized=false`; `full_import_authorized=false`; `production_authorized=false`.
+- Existing DB/app-storage, provider network, real source, LLM, and production activity counts: `0/0/0/0/0`.
 
 ## Fixed Near-Term Route
 
 - `SCV2-PX1` - Pixiv metadata consolidation and offline synthetic vertical slice; started: `true`.
-- `SCV2-PX2` - deterministic clustering, identity, candidate explanation, ambiguous queue, controlled sample evaluation, and persistable cluster result; started: `false`.
-- `SCV2-PX3` - real source/provider, necessary migration, persistence, API/UI, dry-run/apply, idempotency, backup/recovery, canary, rollback, and final full-library import checkpoint; started: `false`.
+- `SCV2-PX2` - deterministic Pixiv SourceConcept clustering, candidate explanation, ambiguous ledger, and persistable cluster result; started: `true`.
+- `SCV2-PX3` - real source/provider, necessary migration, production persistence, API/UI, canary, rollback, and final import checkpoint; started: `false`.
 
 ## Completed Checkpoints
 
@@ -56,15 +55,23 @@
 - `scv2_px1_full_non_e2e_compatibility`: `4238_passed_22_skipped_four_raw_failures_two_detached_validation_worktree_branch_identity_checks_one_docs_only_historical_phrase_assertion_closed_by_final_projection_and_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main`.
 - `scv2_px1_final_exact_head_review_correction`: `four_accepted_metadata_input_and_compatibility_findings_closed_and_same_name_cross_work_artist_finding_disproved_by_exact_early_guard_regression_without_clustering_policy_change` - `782360c04da475cac98f928038f34c5a337c814f`.
 - `scv2_px1_normal_pr_created`: `pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge`.
+- `scv2_px1_pr147_expected_head_merge`: `owner_accepted_head_is_second_merge_parent_merge_tree_equals_accepted_tree_and_origin_main_has_no_parallel_commit` - `5a8efdaf954ab95bd82f95464af31a7fd0873e5e`.
+- `scv2_px2_governance_entry`: `px2_synthetic_implementation_started_from_verified_pr147_merge_with_all_real_data_migration_model_ui_and_production_authorities_false` - `480d6a548e6276afeccf49ec75a73d7389b995fe`.
+- `scv2_px2_deterministic_clustering_vertical_slice`: `fourteen_px1_bundles_and_forty_signals_resolved_to_twenty_concepts_with_all_fifty_nine_candidate_pairs_accounted_and_nonblocking_ambiguous_ledger_persisted` - `6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a`.
+- `scv2_px2_same_head_receipt_and_contract`: `five_hundred_seventy_six_canonical_focused_tests_passed_on_exact_implementation_head_and_contract_independently_rebuilt_repository_px1_fixture_consumer_resolver_candidate_ledger_persistence_and_authority_facts` - `9ee1d96004daa843544b977ed3ae607c51299f9b`.
+- `scv2_px2_final_full_non_e2e_compatibility`: `4296_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_binding_checks_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_failure_15_warnings_without_px2_functional_regression`.
+- `scv2_px2_final_review_correction`: `repository_owned_px1_evidence_rederived_operation_receipt_actual_path_counted_source_state_ledger_matches_effective_resolution_and_only_approved_or_stably_authoritative_aliases_can_union_five_threads_replied_once_and_resolved` - `9ee1d96004daa843544b977ed3ae607c51299f9b`.
+- `scv2_px2_pr148_ready`: `normal_pr148_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_docs_projection_without_merge`.
+- `scv2_px1_post_merge_late_review_adjudication`: `seven_threads_created_after_pr147_merge_once_adjudicated_five_real_path_findings_bound_to_px3_one_retained_database_binding_finding_rejected_by_independent_replay_one_stable_aggregate_key_finding_closed_at_px2_consumer_boundary_and_only_original_workspace_thread_remains_unresolved` - `5a8efdaf954ab95bd82f95464af31a7fd0873e5e`.
 
 ## Allowed / Forbidden
 
-- Allowed: read repository files and trusted Git or GitHub control-plane state; implement and test the PX1 durable backend projection in the isolated worktree; create new repository-owned synthetic fixtures and task-owned temporary SQLite databases; commit and normally push the feature branch and create one normal pull request; reply to and resolve the five exact-head PR #147 review threads; consume one expected-head protected merge-commit authority for PR #147 after the complete local gate passes; start synthetic SCV2-PX2 from the verified merge and create one normal Ready pull request without merging it; update current governance state and public-safe documentation.
-- Forbidden: direct main push, squash merge, rebase merge, force-push, auto-merge, reset, stash, clean, or overwrite; real source or iCloud access, inventory, listing, stat, open, read, hash, or mutation; existing database or app-storage access or write; real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download; import, classification or tagging on user data, SourceConcept materialization, Entity truth promotion, or full-library work; LLM or external model, server, browser, E2E, PX2 merge, PX3, or production execution.
+- Allowed: read repository files and trusted Git or GitHub control-plane state; consume frozen PX1 aggregates and signal bundles through strict public contract validation; reuse and minimally extend the existing SourceConcept resolver and persistence seams for deterministic synthetic PX2; create new repository-owned synthetic fixtures and task-owned temporary SQLite databases; commit and normally push the PX2 feature branch and create one normal Ready pull request; consume one owner-issued conditional expected-head merge commit for PR #148 after every substantive gate passes; after verified PR #148 merge, start the final SCV2-PX3 branch under bounded synthetic and task-owned temporary execution authority; update current governance state and public-safe documentation.
+- Forbidden: direct main push, squash merge, rebase merge, force-push, auto-merge, reset, stash, clean, or overwrite; real source or iCloud access, inventory, listing, stat, open, read, hash, or mutation; existing database or app-storage access or write; real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download; import, classification or tagging on user data, production SourceConcept materialization, Entity truth promotion, or full-library work; LLM or external model, real-data server/browser/E2E, any non-expected-head PX2 merge, PX3 merge, or production execution.
 
 ## Next Action
 
-- Required checkpoint: `close the five exact-head PR #147 review threads, refresh the complete expected-head merge gate, consume the single merge-commit authority only if every current-functionality and evidence gate passes, verify the merge, and then start synthetic SCV2-PX2 without merging PX2`.
+- Required checkpoint: `owner audits the exact normal Ready PR #148 head and decides separately whether to authorize PX2 merge; PX2 merge and PX3 remain outside this task`.
 
 ## Durable Links
 

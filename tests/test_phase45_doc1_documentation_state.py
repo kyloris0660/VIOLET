@@ -1,4 +1,4 @@
-"""Current documentation-state tests for the SCV2-PX1 route."""
+"""Current documentation-state tests for the SCV2-PX2 route."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ import pytest
 
 from scripts.check_documentation_state import (
     DocumentationStateError,
-    SCV2_PX1_IN_PROGRESS_STATUS,
-    SCV2_PX1_READY_STATUS,
     SCV2_PX1_FINAL_REVIEW_DUE_GATES,
     SCV2_PX1_REQUIRED_DEFERRED_GATES,
+    SCV2_PX2_IN_PROGRESS_STATUS,
+    SCV2_PX2_READY_STATUS,
     load_state,
     render_handoff,
     validate_roadmaps,
@@ -28,7 +28,7 @@ def _state() -> dict[str, object]:
     return load_state(ROOT / "docs" / "state" / "current-phase.json")
 
 
-def test_current_handoff_is_exact_px1_projection() -> None:
+def test_current_handoff_is_exact_px2_projection() -> None:
     state = _state()
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     assert handoff == render_handoff(state)
@@ -37,27 +37,27 @@ def test_current_handoff_is_exact_px1_projection() -> None:
     assert "SCV2-PX2" in handoff
     assert "SCV2-PX3" in handoff
     assert state["active_blocker"]["code"] in handoff
-    assert "phase-4.5-PX1` orchestration remains historical" in handoff
-    assert "owner_accepted=false" in handoff
-    assert "safe_to_merge=false" in handoff
-    assert "merge_authorized=false" in handoff
+    assert "Historical phase-4.5-PX1 is historical compatibility evidence" in handoff
+    assert "px2_owner_accepted=false" in handoff
+    assert "px2_safe_to_merge=false" in handoff
+    assert "px2_merge_authorized=false" in handoff
 
 
-def test_px1_state_and_active_docs_validate() -> None:
+def test_px2_state_and_active_docs_validate() -> None:
     state = _state()
     validate_state(state)
     validate_roadmaps(state)
-    assert state["phase_id"] == "SCV2-PX1"
-    assert state["previous_phase"] == "SCV2-FL1-I2"
+    assert state["phase_id"] == "SCV2-PX2"
+    assert state["previous_phase"] == "SCV2-PX1"
     assert state["previous_phase_status"] == (
-        "owner_adjudicated_pr146_merged_with_deferred_due_gates_preserved"
+        "owner_accepted_pr147_merged_with_exact_tree_preserved"
     )
     assert state["current_status"] in {
-        SCV2_PX1_IN_PROGRESS_STATUS,
-        SCV2_PX1_READY_STATUS,
+        SCV2_PX2_IN_PROGRESS_STATUS,
+        SCV2_PX2_READY_STATUS,
     }
     assert state["target_met"] is (
-        state["current_status"] == SCV2_PX1_READY_STATUS
+        state["current_status"] == SCV2_PX2_READY_STATUS
     )
     assert state["safe_to_merge"] is False
     assert state["route_approved"] is False
@@ -95,9 +95,9 @@ def test_pr146_merge_and_final_review_debt_are_exact() -> None:
         ("pr146_final_review_finding_count", 9),
         ("pr146_final_review_resolved_count", 1),
         ("machine_verifiable_ci", True),
-        ("owner_accepted", True),
-        ("safe_to_merge", True),
-        ("merge_authorized", True),
+        ("px2_owner_accepted", True),
+        ("px2_safe_to_merge", True),
+        ("px2_merge_authorized", True),
         ("external_data_plane_network_operation_count", 1),
         ("existing_database_access_operation_count", 1),
     ],
@@ -112,7 +112,7 @@ def test_protected_evidence_mutation_fails_closed(field: str, value: object) -> 
 @pytest.mark.parametrize(
     "field",
     [
-        "merge_authorized",
+        "px2_merge_authorized",
         "real_source_inventory_authorized",
         "source_root_or_icloud_access_authorized",
         "existing_database_access_authorized",
@@ -148,7 +148,7 @@ def test_due_gate_set_cannot_be_omitted_or_relabelled() -> None:
     state["protected_evidence"]["pr146_final_review_deferred_findings"][0][
         "due_gate"
     ] = "PX1_FALSE_CLOSURE"
-    with pytest.raises(DocumentationStateError, match="due_gate_map"):
+    with pytest.raises(DocumentationStateError, match="pr146_due_gate_map"):
         validate_state(state)
 
 
