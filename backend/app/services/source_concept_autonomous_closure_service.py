@@ -159,6 +159,44 @@ def build_candidate_pair_manifest(
     return manifest
 
 
+def build_complete_candidate_pair_manifest(
+    edges: Sequence[SourceConceptEdgeDraft],
+) -> tuple[CandidatePair, ...]:
+    """Project every resolver candidate pair without LLM eligibility filtering.
+
+    PX2 needs complete deterministic accounting, including hard negatives and
+    weak/review-only edges that the historical autonomous LLM selector
+    intentionally excludes.  Pair identity and edge projection continue to use
+    this module's established canonical helpers; this function does not perform
+    resolution or union operations.
+    """
+
+    grouped: dict[str, list[SourceConceptEdgeDraft]] = defaultdict(list)
+    for edge in edges:
+        grouped[pair_id_for(edge.left_signal_key, edge.right_signal_key)].append(
+            edge
+        )
+
+    manifest: list[CandidatePair] = []
+    for pair_id, pair_edges in sorted(grouped.items()):
+        representative = max(
+            pair_edges,
+            key=lambda edge: (
+                edge.negative_reason_code is not None,
+                edge.status == "active" and edge.union_allowed,
+                float(edge.weight),
+                edge.edge_key,
+            ),
+        )
+        candidate = _candidate_from_edge(representative)
+        if candidate.pair_id != pair_id:
+            raise AutonomousClosureError(
+                "complete_candidate_manifest_pair_identity_mismatch"
+            )
+        manifest.append(candidate)
+    return tuple(manifest)
+
+
 def signal_identity_payload(signal: SourceConceptSignalDraft) -> dict[str, str]:
     return {
         "signal_key": str(signal.signal_key),
