@@ -4,98 +4,98 @@
 
 ## Current Facts
 
-- Phase: `SCV2-FL1-I2` - Real-source Read-only Inventory Hardening and Canary Readiness.
-- Repository / PR: `kyloris0660/VIOLET` / PR #146.
-- Branch: `codex/scv2-fl1-i2-synthetic-pre-real-hardening`.
-- Accepted mainline base: `1913bd27517efc1a6007a202fc9650de4f20fab4`.
-- Previous phase: `SCV2-FL1-I1` / PR #144; status: `owner_accepted_and_merge_commit_merged`.
-- Previous final HEAD/tree: `2f8d5f8ce6cde9759c530de71d4ddd1893481656` / `8930a21bdbac037702f92bcb75bd9b8a3632a073`; merge commit: `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
-- Previous I1 implementation evidence HEAD/tree: `6992e7f1e5a45857111d15da1ad0274e49008a99` / `6ff185defb150c3751c7433ef635c00a200c44bf` (frozen: `true`; accepted scope: `synthetic_and_new_temporary_fixture_foundation_only`).
-- Current I2 final owner-adjudicated implementation evidence HEAD/tree: `9aab3e31f5223e0c689046b5c5c61f21268f840c` / `9119d489800c0b40c5586a9aa4ceb89d34f93e5c`; contract: `scv2_fl1_i2_pre_real_hardening_contract_v1`; fourteen delivery gates are represented only by this synthetic local-operator evidence and remain pending direct owner audit.
-- Intermediate post-terminal governance projection HEAD/tree: `85407b8fd29652c5e2999c77552bf5d0ab2e1f14` / `1d2c1243b14cfcda893840ae40bebb0c543284cc`; it was superseded after canonical receipt exposed and the implementation closed a task-owned Windows readonly cleanup gap.
-- Current post-terminal governance projection HEAD/tree: `7b258e97c3267e933c370b2fd1a526216aabb721` / `afd5eaf2e701aac174c482f82fb64fb3d319539d`; the current HEAD is a governance-only exact-binding carry-forward.
-- PR #146 correction history: review `4952182962` and its `10` findings remain regression-covered; review `4952516658` and its `7` findings remain regression-covered; terminal review `4961359578` rejected `ef828853a0f8b748aeb228b1e10ec317cafa9f5d` / `9cc1670dcddb1ff24f1afcfc4cded91a9fc9ae72` with `9` accepted findings superseded by later additive evidence.
-- Final owner review `4963026941` rejected `d4478660df1f11b1c8d3ceba1af70f8635542a9d` / `113280a8697e6bef3cb9e4292a042c2d46b1f025`: required fixes `4`, safe downgrades `2`, exact-gate deferrals `2`; `additional_codex_review_authorized=false`.
-- Terminal review: `4897012517` at `2f8d5f8ce6cde9759c530de71d4ddd1893481656`; findings: `17` (`P1=13`, `P2=4`); GitHub checks: `0`.
-- Status: `fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit`.
-- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- Planning: `authorized=true`, `completed=true`, `approved=true`; `manual_acceptance_status=pending_fl1_i2_final_direct_owner_merge_audit`.
-- Owner-approved planning HEAD/tree: `acb12c1db258fdef1d4f063b053d422e0d887abf` / `fc573c7646ad5edf10c32c7712de7f27ab058a2a`.
-- Owner evidence: PR `#145`, review `4907783329`, thread `PRRT_kwDOSTBMB86YRuq7`, comment `3759240785`; the P1 exact-revision finding closes in this governance projection binding.
-- Planning owner acceptance / current implementation merge authorization: `true/false`.
-- I2 implementation / real-source authorization: `true/false`; route scope: `SCV2-FL1-I2 synthetic pre-real hardening implementation using only adversarial newly created temporary fixtures; no real-source execution`.
+- Phase: `SCV2-PX1` - Pixiv Metadata Consolidation and Offline Vertical Slice.
+- Repository / PR: `kyloris0660/VIOLET` / normal PR #147.
+- Branch: `codex/scv2-px1-pixiv-metadata-consolidation`.
+- Accepted mainline HEAD/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
+- Implementation evidence HEAD/tree: `782360c04da475cac98f928038f34c5a337c814f` / `1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`; status: `final_correction_same_head_receipt_positive_with_fixed_docs_only_carry_forward`.
+- Status: `SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT`.
+- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
+- Manual acceptance: `pending_scv2_px1_final_owner_merge_audit`; `next_phase_started=false`.
+- Contract: `scv2_px1_pixiv_metadata_consolidation_contract_v1`; public schema: `violet.scv2-px1-pixiv-metadata-summary.v1`.
+- Synthetic vertical slice / deterministic replay verified: `true` / `true`.
+- Contract evidence remains a local operator receipt; it is neither CI authority nor owner acceptance.
+
+## PR #146 Merge Projection
+
+- Accepted PR HEAD/tree: `914d746c3548241a99333393daa88caefd8b2337` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
+- Merge commit/tree: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc` / `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`; merged: `true`.
+- Final review `5031131564` covered `914d746c3548241a99333393daa88caefd8b2337` and recorded `10` unresolved, non-outdated findings.
+- Merge does not silently close those findings; every finding remains attached to its exact future due gate below.
+
+## PX1 Product Slice
+
+- Synthetic Pixiv/gallery-dl metadata enters the existing canonical normalization and lifecycle authority.
+- Existing SourceMetadataRecord, SourceNameObservation, SourceTagObservation, and provenance models remain the only source-layer persistence seam.
+- A deterministic Pixiv work/page aggregate exposes stable creator ID as identity and names, title, and tags only as mutable observations.
+- The aggregate projects into the existing SourceConcept signal semantics without cluster materialization or Entity promotion.
+- The repository-owned runner uses exactly two task-owned temporary SQLite databases and performs no provider, source-root, app-storage, media, or production activity.
+- Historical `phase-4.5-PX1` orchestration remains historical compatibility evidence; it is not the SCV2-PX1 authority.
+
+## Current Gate And Authority Boundary
+
+- Gate: `pending_scv2_px1_final_owner_merge_audit` (Final owner merge audit of corrected PR #147 exact HEAD; automated evidence cannot grant owner acceptance, safe-to-merge, or merge authority).
+- Resolution: Owner audits the exact PR head and either issues a separate merge decision or identifies one final destructive, privacy, authority, data-integrity, deterministic-evidence, or current-functionality issue for adjudication.
+- `owner_accepted=false`; `safe_to_merge=false`; `merge_authorized=false`; `px2_started=false`.
+- `real_provider_authorized=false`; `real_source_authorized=false`; `full_import_authorized=false`; `production_authorized=false`.
+- External data-plane network, existing DB, real source, media download, and production operation counts: `0/0/0/0/0`.
+
+## Fixed Near-Term Route
+
+- `SCV2-PX1` - Pixiv metadata consolidation and offline synthetic vertical slice; started: `true`.
+- `SCV2-PX2` - deterministic clustering, identity, candidate explanation, ambiguous queue, controlled sample evaluation, and persistable cluster result; started: `false`.
+- `SCV2-PX3` - real source/provider, necessary migration, persistence, API/UI, dry-run/apply, idempotency, backup/recovery, canary, rollback, and final full-library import checkpoint; started: `false`.
 
 ## Completed Checkpoints
 
-- `fl1_i1_pr144_terminal_owner_acceptance_and_merge_commit`: `accepted_as_synthetic_foundation_with_use_before_gates` - `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
-- `fl1_i1_terminal_review_use_before_classification`: `17_findings_preserved_as_two_governance_closures_fourteen_i2_use_before_gates_and_one_claim_boundary` - `2f8d5f8ce6cde9759c530de71d4ddd1893481656`.
-- `fl1_i2_full_route_plan`: `governance_and_route_planning_complete_owner_accepted_exact_evidence`.
-- `fl1_i2_remote_sync_preflight`: `self_healed_by_fast_forward` - `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
-- `fl1_i2_exact_plan_owner_acceptance`: `owner_accepted_exact_planning_head_tree_pending_expected_head_merge` - `acb12c1db258fdef1d4f063b053d422e0d887abf`.
-- `fl1_i2_g0_post_merge_governance_entry_gate`: `five_post_merge_p1_findings_closed_in_shared_git_state_and_history_guards` - `1913bd27517efc1a6007a202fc9650de4f20fab4`.
-- `fl1_i2_windows_same_handle_feasibility`: `pass_on_windows_live_new_temporary_directory_with_no_path_traversal_fallback` - `windows_live_temp_file_id_extd_ntcreatefile_v1`.
-- `fl1_i2_synthetic_implementation_evidence`: `final_owner_adjudicated_correction_closes_four_required_fixes_applies_two_safe_downgrades_and_records_two_exact_gate_deferrals` - `9aab3e31f5223e0c689046b5c5c61f21268f840c`.
-- `fl1_i2_intermediate_post_terminal_governance_projection`: `post_terminal_review_rejection_and_bounded_correction_truth_projected_pending_exact_head_owner_reaudit` - `85407b8fd29652c5e2999c77552bf5d0ab2e1f14`.
-- `fl1_i2_post_terminal_governance_projection`: `validated_post_terminal_correction_truth_projected_pending_exact_head_owner_reaudit` - `7b258e97c3267e933c370b2fd1a526216aabb721`.
-- `fl1_i2_final_owner_adjudicated_governance_projection`: `current_head_tree_derived_by_trusted_git_pending_direct_owner_merge_audit`.
-
-## PR #144 Terminal Review Use-Before Classification
-
-All 17 findings remain historical audit records. No PR #144 thread was replied to, resolved, or reopened.
-
-- #1 [P1] Scrub Git control variables before trusted invocations - `git_control_environment_sanitization`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #2 [P1] Validate the parent-observed child identity - `parent_observed_child_identity_claim_boundary`; `claim_boundary_local_evidence_not_tamper_resistant_attestation`.
-- #3 [P1] Recheck recall attributes before final resolution - `cloud_attribute_and_final_open_object_consistency`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #4 [P1] Allow interrupted attempts before corrupt-media closure - `interrupted_attempt_corrupt_media_accounting`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #5 [P2] Enforce the deadline around blocking file operations - `interruptible_blocking_file_operations`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #6 [P1] Bind the receipt to one unchanged HEAD - `validation_receipt_same_head_before_after`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #7 [P1] Re-derive the adapter policy during contract validation - `adapter_policy_rederived_from_trusted_config`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #8 [P2] Stop at the configured failure maximum - `failure_maximum_stop_boundary`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #9 [P1] Pin the frozen remediation commit and tree - `frozen_i1_evidence_commit_tree_binding`; `closed_in_current_governance_pr`.
-- #10 [P1] Reject CI authority in documentation state - `documentation_ci_authority_fail_closed`; `closed_in_current_governance_pr`.
-- #11 [P1] Include a change identity in file signatures - `windows_file_identity_and_change_identity`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #12 [P1] Reject hard-linked files that alias protected data - `hard_link_reparse_and_alias_policy`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #13 [P1] Confine private artifact reads as well as writes - `task_owned_nofollow_private_artifact_reads`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #14 [P1] Enumerate directories through a verified no-follow handle - `handle_based_directory_enumeration`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #15 [P1] Reconcile intents from ended failed invocations - `ended_failed_invocation_intent_recovery`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #16 [P2] Validate media structure beyond boundary markers - `bounded_media_structure_validation`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-- #17 [P2] Handle runtime-context failures in the scanner CLI - `privacy_safe_cli_runtime_context_error_envelope`; `closed_in_fl1_i2_synthetic_implementation_evidence`.
-
-## Current Gate And Boundary
-
-- Gate: `pending_fl1_i2_final_direct_owner_merge_audit` (SCV2-FL1-I2 final owner-adjudicated correction in PR #146; no additional automated review is authorized and all merge, I3/PX1, real-source, and data-plane authority remains false).
-- Resolution: After exact local validation, normal push, and PR body exact-head binding, stop for the project owner's direct final diff and merge audit. This evidence grants neither safe-to-merge nor merge authority.
-- Planning only: `false`; implementation/data/production authorization: `true/false/false`.
-- Existing database/real inventory/provider-or-LLM/media authorization: `false/false/false/false`; projected external cost: `$0`.
-- Public evidence boundary: `trust_level=local_operator_receipt`, `machine_verifiable_ci=false`, `github_checks=0`.
-- Network truth: external source/provider/model/media data-plane operations = `0`; authorized Git/GitHub governance control-plane operations occurred = `true`.
-- Parent-observed child identity remains local provenance, not OS/kernel/TPM/remote/CI or tamper-resistant attestation.
+- `scv2_fl1_i2_pr146_merge_projection`: `accepted_head_is_merge_parent_and_accepted_tree_equals_merge_tree` - `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc`.
+- `scv2_px1_remote_sync_preflight`: `trusted_origin_main_exact_expected_merge_with_no_later_commits` - `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
+- `scv2_px1_governance_entry`: `implementation_authorized_synthetic_offline_only_route_entered_with_all_data_plane_authorities_false`.
+- `scv2_px1_vertical_slice_and_signal_projection`: `fourteen_deterministic_work_page_aggregates_and_forty_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions` - `c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1`.
+- `scv2_px1_same_head_receipt_and_contract`: `final_correction_local_operator_receipt_passed_433_focused_tests_on_exact_implementation_head_and_executable_contract_independently_rebuilds_fixture_aggregate_signal_px2_consumer_and_authority_facts` - `782360c04da475cac98f928038f34c5a337c814f`.
+- `scv2_px1_full_non_e2e_compatibility`: `4238_passed_22_skipped_four_raw_failures_two_detached_validation_worktree_branch_identity_checks_one_docs_only_historical_phrase_assertion_closed_by_final_projection_and_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main`.
+- `scv2_px1_final_exact_head_review_correction`: `four_accepted_metadata_input_and_compatibility_findings_closed_and_same_name_cross_work_artist_finding_disproved_by_exact_early_guard_regression_without_clustering_policy_change` - `782360c04da475cac98f928038f34c5a337c814f`.
+- `scv2_px1_normal_pr_created`: `pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge`.
 
 ## Allowed / Forbidden
 
-- Allowed: implement SCV2-FL1-I2 synthetic pre-real hardening only in the isolated clean linked worktree; create and use only adversarial newly created temporary fixtures under task-owned temporary roots; run repository-venv compile, documentation, focused, synthetic, compatibility, and full non-E2E validation; continue the existing implementation branch and PR #146 with the final owner-adjudicated no-rereview correction only; perform authorized Git and GitHub governance control-plane operations required for remote synchronization, normal branch push, and PR body exact-head update.
-- Forbidden: listing, stat, attribute observation, opening, reading, hashing, hydrating, copying, moving, renaming, deleting, or mutating any real source or iCloud root; existing or production database connection, creation, comparison, migration, import, mutation, replay, derivation, cleanup, reset, truncate, drop, or repair; app-managed storage or staging storage creation, access, comparison, or write; import, classification, AI tagging, localization, graph, search, or background worker execution; Entity, EntityAlias, confirmed assignment, user truth, source truth, candidate, assignment, or provider-derived media_tags mutation; provider, Pixiv, gallery-dl, reverse search, LLM, model download, media, thumbnail, or external source/provider/model/media/data-plane network request; Stable Replay import, reuse, replay, or authoritative evidence consumption; production, watcher, scheduler, background worker, UI runtime server, I3 canary, PX1, I4 inventory, E1, E2, V1, or later phase execution; any additional Codex review request, reviewer request, review-thread reply, resolution, or reaction; cleanup, delete, move, rename, stash, reset, rebase, force-push, direct main push, any merge, removal of the isolated worktree or implementation branch, or any PR #145 thread reply, resolution, or reaction.
+- Allowed: read repository files and trusted Git or GitHub control-plane state; implement and test the PX1 durable backend projection in the isolated worktree; create new repository-owned synthetic fixtures and task-owned temporary SQLite databases; commit and normally push the feature branch and create one normal pull request; reply to and resolve the five exact-head PR #147 review threads; consume one expected-head protected merge-commit authority for PR #147 after the complete local gate passes; start synthetic SCV2-PX2 from the verified merge and create one normal Ready pull request without merging it; update current governance state and public-safe documentation.
+- Forbidden: direct main push, squash merge, rebase merge, force-push, auto-merge, reset, stash, clean, or overwrite; real source or iCloud access, inventory, listing, stat, open, read, hash, or mutation; existing database or app-storage access or write; real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download; import, classification or tagging on user data, SourceConcept materialization, Entity truth promotion, or full-library work; LLM or external model, server, browser, E2E, PX2 merge, PX3, or production execution.
 
 ## Next Action
 
-- Required checkpoint: `direct_owner_exact_final_diff_merge_audit_without_automated_rereview_merge_i3_or_px1`.
+- Required checkpoint: `close the five exact-head PR #147 review threads, refresh the complete expected-head merge gate, consume the single merge-commit authority only if every current-functionality and evidence gate passes, verify the merge, and then start synthetic SCV2-PX2 without merging PX2`.
 
 ## Durable Links
 
 - [Current mainline roadmap](roadmap/current-mainline-roadmap.md)
 - [Project roadmap entrypoint](project-roadmap.md)
-- [FL1 isolated Dev/Test plan](plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md)
+- [Pixiv metadata ingestion and promotion policy](pixiv-metadata-ingestion-and-promotion-policy.md)
+- [SourceConcept tag and search semantics](source-concept-tag-search-semantics.md)
 - [Phase contracts](phase-contracts.md)
-- [DOC-GOV-02 closeout](governance/doc-gov-02-closeout.md)
-- [Historical roadmap through SV1B](roadmap/archive/project-roadmap-through-scv2-sv1b.md)
 - [Detailed agent runbook](development/agent-runbook.md)
 - [Test workflow](test-workflow.md)
 
-## Deferred Debt
+## Deferred Debt And Exact Due Gates
 
-- `FL1_I2_OWNER_AUDIT_AND_MERGE_GATE` - owner: SCV2-FL1-I2 project owner; due before: `any safe_to_merge or merge_authorized projection, merge, SCV2-FL1-I3, or real-source operation`; Review 4963026941 rejected d4478660df1f11b1c8d3ceba1af70f8635542a9d / 113280a8697e6bef3cb9e4292a042c2d46b1f025. The final owner-adjudicated implementation evidence closes four required fixes and applies two safe downgrades while two findings remain nonblocking only under exact due gates. Local operator evidence is not owner acceptance, CI, safe-to-merge authority, or merge authority. Requirements: audit the exact final PR #146 implementation evidence and governance projection HEAD/tree, review 4963026941 dispositions, and the registered SCV2-FL1-I2 contract without requesting another automated review; issue any acceptance as a separate exact-head governance projection that keeps target_met and every real-source/data authority false; grant safe-to-merge and expected-head merge authority explicitly if and only if the exact implementation evidence is accepted; stop after merge until a separate FL1_I3_REAL_SOURCE_SCOPE_GATE is authorized.
-- `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized SCV2-FL1-I3 canary owner; due before: `any real source or iCloud listing, stat, attribute observation, open, read, hash, or structure validation`; No exact private source identity, protected-root registry, budgets, no-hydration policy, stop conditions, or canary authorization exists. Requirements: bind exact private source identity and finite scope; approve complete protected roots and public redaction boundary; approve enumeration, time, disk, read, hash, failure, and sample budgets; defer every recall-risk object without hydration and stop on structural identity or evidence drift.
-- `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future threat-model owner only if malicious same-account process resistance becomes a product requirement; due before: `any claim upgrades local invocation provenance to adversarial tamper resistance`; Parent-observed child identity is useful local operator evidence but is not OS, kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep current claims limited to local operator provenance; do not present parent receipts as CI or tamper-resistant evidence; do not expand a personal local inventory tool into forensic attestation without a separate need and design.
-- `FL1_I2_DYNAMIC_LOADER_ENVIRONMENT_POLICY` - owner: future POSIX, remote-CI, or hostile-local-environment execution owner; due before: `first POSIX real-source execution, first GitHub or remote-CI positive authority, or first claim of resistance to a hostile local environment`; Review 4963026941 thread PRRT_kwDOSTBMB86aLCpE was owner-deferred because the current receipt is Windows local-operator evidence and does not claim resistance to a malicious caller process. Requirements: define and test the dynamic-loader environment allowlist for the target platform; bind any positive remote execution authority to the exact environment policy; retain the current local-operator-only claim until this gate closes.
-- `FL1_I2_VENV_FULL_PYTHON_SUPPLY_CHAIN_BINDING` - owner: future CI or tamper-resistant environment-evidence owner; due before: `machine_verifiable_ci=true, any tamper-resistant or reproducible-environment claim, or execution outside the owner-trusted local venv`; Review 4963026941 thread PRRT_kwDOSTBMB86aLCpI was owner-deferred because hashing every venv .py/.pyc is outside the trusted-owner-machine local-operator threat model. Requirements: retain current Python executable, venv, pyvenv.cfg, .pth, native-module, and control-file binding; design full Python package and source provenance before upgrading the evidence claim; do not present the current receipt as supply-chain or tamper-resistant attestation.
-Updated: `2026-08-26T16:30:00+08:00`.
+- `FL1_I2_LISTED_MEMBER_VALIDATION_GATE` - owner: future real-source inventory owner; due before: `real source or iCloud enumeration or any I2 positive inventory authority`; PR #146 final review requires every listed member to be validated before suffix filtering; PX1 never enumerates a real source. Requirements: validate and account for every listed member before eligibility filtering; preserve unsupported and rejected member dispositions.
+- `FL1_I2_EVENT_TIME_LOWER_BOUND_GATE` - owner: future I2 receipt-reuse owner; due before: `I2 target, safe, route, machine-verifiable, or validation-receipt reuse`; PR #146 final review found that evidence timestamps need a lower bound tied to run start; PX1 uses no I2 real-operation receipt. Requirements: bind all event timestamps to a validated run interval; reject pre-run events before positive projection.
+- `FL1_I2_JPEG_CONTENT_AUTHORITY_GATE` - owner: future real-source content-validation owner; due before: `any real-source JPEG content_verified claim`; Boundary-marker parsing does not by itself grant JPEG codec/content authority. Requirements: add bounded codec-level JPEG validation; otherwise retain an explicit unsupported or uncertain disposition.
+- `FL1_I2_VP8_CONTENT_AUTHORITY_GATE` - owner: future real-source content-validation owner; due before: `any real-source VP8 content_verified claim`; Container checks do not by themselves grant VP8 payload/content authority. Requirements: add bounded VP8 payload validation; otherwise retain an explicit unsupported or uncertain disposition.
+- `FL1_I2_INITIAL_ENUMERATION_BUDGET_GATE` - owner: future real-source inventory owner; due before: `first real source directory listing`; Initial enumeration must obey the same finite budgets as later pages. Requirements: apply entry, page, byte, depth, and deadline budgets from the first listing call; fail closed before an unbounded initial result.
+- `FL1_I2_OPERATION_ADMISSION_CAP_GATE` - owner: future real-source operation-gateway owner; due before: `first real open, read, hash, structure validation, or retry`; Open, hash, validation, and retry caps must be enforced at admission rather than only after execution. Requirements: reserve every finite operation budget before dispatch; reject equality and overflow without recording a started operation.
+- `FL1_I2_EVIDENCE_PREPARSE_BUDGET_GATE` - owner: future untrusted-evidence or CI owner; due before: `untrusted or real evidence ingestion, remote CI authority, or I2 positive authority reuse`; Evidence files must be size-bounded before JSON parsing to avoid a deterministic contract false positive or resource exhaustion. Requirements: perform no-follow regular-file and byte-budget checks before decode; bind the exact bounded bytes to the reconstructed projection.
+- `FL1_I2_MAX_DEPTH_REDERIVATION_GATE` - owner: future real-source inventory contract owner; due before: `real enumeration or any I2 positive inventory authority`; Maximum traversal depth must be re-derived from member evidence rather than trusted as a caller total. Requirements: recompute maximum depth from bound member chains; reject caller-reported depth mismatches.
+- `FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE` - owner: future I2 budget-closure owner; due before: `I2 budget closure, positive authority, or validation-receipt reuse`; Negative byte totals must be rejected before they can reduce or satisfy a budget. Requirements: enforce exact nonnegative integer byte counters; recompute aggregate byte use from evidence.
+- `FL1_I2_FAILED_RECEIPT_COMPLETION_GATE` - owner: future I2 receipt/finalizer owner; due before: `I2 evidence_complete, target, safe, route, or finalizer reuse`; A failed local receipt must never allow evidence_complete or phase-completion claims. Requirements: derive completion only from a positive same-head receipt; make every failed or missing receipt force the public completion projection false.
+- `FL1_I2_DYNAMIC_LOADER_ENVIRONMENT_POLICY` - owner: future POSIX, remote-CI, or hostile-local-environment execution owner; due before: `first POSIX real-source execution, remote-CI positive authority, or hostile-local-environment resistance claim`; Owner-adjudicated PR #146 debt keeps dynamic-loader environment scrubbing outside the Windows local-operator threat model. Requirements: define and test the target-platform dynamic-loader allowlist; retain local-operator-only receipt claims until then.
+- `FL1_I2_VENV_FULL_PYTHON_SUPPLY_CHAIN_BINDING` - owner: future CI or tamper-resistant environment-evidence owner; due before: `machine-verifiable CI, reproducible-environment, tamper-resistant, or untrusted-venv claim`; Owner-adjudicated PR #146 debt defers whole-venv Python hashing outside the trusted owner-machine model. Requirements: bind full Python package and source provenance; do not upgrade the current local receipt to supply-chain attestation.
+- `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized real-source canary owner; due before: `any real source or iCloud listing, stat, observation, open, read, hash, or validation`; No private real-source scope, protected-root registry, budgets, no-hydration policy, or canary authority exists. Requirements: bind exact private source identity and finite scope; approve protected roots, budgets, no-hydration policy, and stop conditions.
+- `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future hostile-local threat-model owner; due before: `any adversarial tamper-resistance claim`; Parent-observed child identity remains local provenance, not kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep claims limited to local operator provenance; design separate attestation only if the product requires it.
+- `VALIDATION_RECEIPT_GATE` - owner: PX1 and future phase owner; due before: `any machine-verifiable CI, owner acceptance, or merge claim`; Local same-head receipts do not grant CI, owner, or merge authority. Requirements: bind the exact current HEAD/tree and approved Python; keep machine-verifiable CI and owner authority false.
+- `OWNER_AUTHORITY_GATE` - owner: project owner; due before: `merge or any owner-accepted projection`; Automated tests and contracts cannot synthesize owner acceptance, safe-to-merge, or merge authority. Requirements: audit the exact normal PR head; issue any merge decision explicitly and separately.
+- `POSIX_LEDGER_DURABILITY_GATE` - owner: future POSIX durability owner; due before: `any cross-platform power-loss durability claim`; No unsupported host power-loss or POSIX durability claim is made by PX1. Requirements: define the supported filesystem and flush boundary; test crash recovery on the claimed platform.
+- `STABLE_REPLAY_GATE` - owner: future real-data replay owner; due before: `any real-data Stable Replay consumption or authority`; PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay. Requirements: bind exact real-data scope and immutable inputs; obtain separate execution authority.
+- `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` - owner: SCV2-PX3 real-path and evidence owner; due before: `caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production`; Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1. Requirements: close dangling-symlink, workspace-component-swap, and fixed-name evidence symlink races with bounded cross-platform primitives; handle SQLite URL-sensitive path characters including question mark and hash without authority ambiguity; prove confinement for hostile caller-controlled workspace and evidence paths before any real-path or remote-CI authority.
+
+Updated: `2026-09-02`.

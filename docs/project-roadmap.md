@@ -3,185 +3,131 @@
 ## Project Vision
 
 V.I.O.L.E.T. is a personal, local-first anime and illustration library. It
-combines safe ingestion, local classification and AI tagging, Danbooru-style
-retrieval, Chinese display localization, and provenance-preserving source
-evidence without treating weak AI or provider signals as user truth.
+combines safe ingestion, local classification, Danbooru-style retrieval,
+Chinese display localization, and provenance-preserving source evidence without
+treating provider metadata, SourceConcept, or model output as Entity truth.
 
 ## Current Active Roadmap
 
-<!-- CURRENT_PHASE: SCV2-FL1-I2 -->
+<!-- CURRENT_PHASE: SCV2-PX1 -->
 
-The authoritative current state is `docs/state/current-phase.json`.
+The only machine-readable current-route truth is
+`docs/state/current-phase.json`.
 
-PR #144 merged at `8955b95e91630d4c5e18e1e2ca252b19754c81d5` after owner
-acceptance of SCV2-FL1-I1 strictly as a synthetic and newly created
-temporary-fixture inventory foundation. The accepted final HEAD/tree are
-`2f8d5f8ce6cde9759c530de71d4ddd1893481656` /
-`8930a21bdbac037702f92bcb75bd9b8a3632a073`; frozen implementation
-evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
-`6ff185defb150c3751c7433ef635c00a200c44bf`.
+PR #146 / `SCV2-FL1-I2` is merged at
+`8a825bcdd12f76d1c2c396b7039bd9e326cd63dc`; its merge tree equals accepted PR
+HEAD `914d746c3548241a99333393daa88caefd8b2337` tree
+`9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`. Merge closes the old phase status
+but does not silently close its final unresolved review findings. Their exact
+future due gates remain in current state and handoff.
 
-That acceptance is deliberately narrow. It does not prove a real iCloud or
-source inventory, import, DB/app-storage behavior, classification, AI tagging,
-provider/LLM use, media download, UI/runtime behavior, or production readiness.
-Terminal review `4897012517` recorded 17 unresolved, non-outdated findings at
-the final HEAD (13 P1, 4 P2), and GitHub exposed zero checks. Zero checks is not
-a machine-verifiable CI pass.
-
-Current phase `SCV2-FL1-I2` has frozen synthetic pre-real hardening
-implementation evidence and awaits exact-HEAD owner audit:
+Current projection:
 
 ```text
-current_status=fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit
-planning_authorized=true
-planning_completed=true
-planning_approved=true
-approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf
-approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a
-merge_authorized=false
-implementation_authorized=true
-implementation_started=true
-implementation_completed=true
-target_met=false
+current_status=SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT
+contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1
+public_schema=violet.scv2-px1-pixiv-metadata-summary.v1
+target_met=true
 safe_to_merge=false
 route_approved=false
-real_inventory_started=false
-real_source_inventory_authorized=false
-source_root_access_authorized=false
-database_access_authorized=false
-app_storage_write_authorized=false
-import_authorized=false
-classification_or_tagging_execution_authorized=false
-provider_or_llm_authorized=false
-media_or_thumbnail_download_authorized=false
-stable_replay_authorized=false
+merge_authorized=false
+real_source_authorized=false
+real_provider_authorized=false
 production_authorized=false
-projected_external_cost_usd=0
-active_blocker=pending_fl1_i2_final_direct_owner_merge_audit
+active_blocker=pending_scv2_px1_final_owner_merge_audit
 ```
 
-## Accepted Mainline Sequence
+## Fixed Near-Term Route
 
-1. R1R through SCV2-SV1B / PRs #132-#139.
-2. SCV2-FL1 planning / PR #140.
-3. SCV2-FL1-P1 / PR #141.
-4. SCV2-FL1-P1-R1 / PR #143.
-5. SCV2-FL1-I1 synthetic foundation / PR #144, owner-accepted and merged at
-   `8955b95e91630d4c5e18e1e2ca252b19754c81d5`.
-6. SCV2-FL1-I2 accepted planning / PR #145, merged at
-   `1913bd27517efc1a6007a202fc9650de4f20fab4`.
+1. `SCV2-PX1` — consolidate the existing Pixiv metadata ingestion, source
+   metadata, deterministic work/page aggregate, and SourceConcept signal input
+   into one repository-owned offline synthetic vertical slice. Its single
+   owner-adjudicated bounded correction is complete on PR #147 and awaits only
+   final owner merge audit.
+2. `SCV2-PX2` — consume the PX1 artifacts for deterministic clustering,
+   identity, candidate explanation, an ambiguous queue, controlled sample
+   evaluation, and a persistable cluster result. PX2 is not started.
+3. `SCV2-PX3` — cover real source/provider, any necessary migration,
+   persistence, API/UI, dry-run/apply, idempotency, backup/recovery, canary,
+   rollback, and the final full-library import checkpoint. PX3 is not started.
 
-PR #142 remains closed, unmerged, and non-authoritative.
+Safety work is a gate inside these phases and does not create PX1A, PX1B,
+PX1-pre, or PX1-hardening phases. `phase-4.5-PX1` is historical; its scripts and
+reports remain historical orchestration/evidence and are not renamed or
+promoted into SCV2-PX1 authority.
 
-## FL1 Route
+## PX1 Boundary
 
-### I2 - Pre-real hardening
+PX1 reuses the existing Pixiv filename prior, gallery-dl metadata-only design,
+canonical ingestion lifecycle, provider cache semantics, source-layer models,
+and SourceConcept resolver semantics. It adds only the durable deterministic
+aggregate/signal seam, a thin offline runner, synthetic tests, and executable
+evidence needed for PX2.
 
-Only synthetic/adversarial temporary fixtures were used. Canonical source and
-Cloud policy, all 14 implementation delivery gates, the negative suite, and
-executable contract `scv2_fl1_i2_pre_real_hardening_contract_v1` are frozen at
-final owner-adjudicated implementation evidence
-`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
-`9119d489800c0b40c5586a9aa4ceb89d34f93e5c`. Review `4963026941` rejected
-`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
-`113280a8697e6bef3cb9e4292a042c2d46b1f025`; its adjudication closes four
-required fixes, safely downgrades GIF and AVIF to explicit unsupported, and
-defers two environment-attestation items to exact future gates. The result
-stops at direct owner exact-final-diff audit without another automated review;
-`target_met`, `safe_to_merge`, merge authority, route approval, and every
-real-source/data authority remain false.
+PX1 does not implement clustering, persistent cluster materialization, Entity
+promotion, UI, migrations, real provider acquisition, real source inventory,
+media download, import, user-data classification/tagging, model execution,
+server/browser/E2E validation, or production work.
 
-The sequence is exact plan owner approval, separate I2 implementation
-authorization, synthetic-only closure of all 14 gates, I2 owner audit and
-merge, separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`, then bounded canary. I3's
-private source identity, protected roots, budgets, no-hydration policy, and stop
-conditions do not gate synthetic I2 implementation.
+## Durable Safety And Evidence Boundaries
 
-The owner accepted exact planning HEAD/tree
-`acb12c1db258fdef1d4f063b053d422e0d887abf` /
-`fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
-The governance projection closes P1 thread `PRRT_kwDOSTBMB86YRuq7` through an
-exact tree, ancestry, and governance-path carry-forward contract without
-changing this accepted plan. PR #145 is merged and its one-time merge authority
-is consumed. Synthetic implementation is authorized; real-source authority,
-safe-to-merge, and merge authority remain false.
-
-### I3 - Bounded real-source inventory canary
-
-Require a separate exact private source scope, protected-root registry,
-budgets, no-hydration policy, and stop conditions. Perform bounded metadata-only
-enumeration, stop for owner audit, then—only if separately authorized—hash and
-structurally validate a small stratified AVAILABLE/HYDRATED sample. Recall-risk
-objects always defer. Source mutation, DB, app-storage, and import remain zero.
-
-### I4 - Full-library read-only inventory
-
-Freeze manifest membership. Enumerate the full scope but hash only safely
-available objects. Report discovered, metadata, hash, and structure-validation
-coverage separately; record recall-risk, unsupported, corrupt, unreadable, and
-missing dispositions explicitly. Delta files join a later run. Produce
-capacity/time/failure/staging evidence, an E1 route decision, and a privacy-safe
-review pack whose result remains provisional until owner audit.
-
-### E1 - Isolated import rehearsal
-
-Use a fresh isolated test DB/storage and staging-first copy/hash verification
-with atomic finalization. Consume only I4 content-verified eligible membership
-and reconcile on stable/content fingerprints, never path or DB row ID. All
-writes require separate authorization; production and accepted evidence stores
-remain read-only.
-
-### E2 - Local classification and AI tagging
-
-Begin only after import closure. Use offline/cache-only models, explicit
-anime/unknown eligibility, separate general/meta and proper-noun evidence, weak
-AI proper-noun authority, disabled translation/provider/LLM routes, and
-independent ledgers, budgets, and recovery.
-
-### V1 - Product and owner validation
-
-Validate search/filter/media-detail/gallery lifecycle, scale, duplicate,
-cloud-deferred, corrupt, and resume scenarios in a controlled real browser,
-plus a manifest-bound owner sample. V1 ends at an owner decision about a
-separate production plan; it cannot imply production import, watcher, or sync.
-
-## Durable Boundaries
-
-- No real source/iCloud path may be listed, stated, observed, opened, read, or
-  hashed in I2 planning or implementation.
-- No existing or production DB/app-storage access, import, mutation, replay,
-  provider, LLM, media, model download, server, or production execution.
-- Public artifacts contain no private roots, paths, filenames, contents, or
-  content fingerprints.
-- Local receipts remain `local_operator_receipt`; parent-observed child
-  identity is not tamper-resistant or OS/TPM/CI attestation.
-- I1 terminal threads remain historical: no reply, resolve, reopen, or repair
-  loop is implied by this route.
+- Stable Pixiv creator ID is an identity anchor; account and display names are
+  mutable observations and cannot merge creators on their own.
+- Title and tags remain work/page-context-bound signals. Missing or conflicting
+  metadata is explicit and never silently unioned.
+- Public projections contain no private path, filename, credential, raw
+  provider payload, user database identity, or database row ID.
+- The single-command runner creates only task-owned temporary databases and
+  blocks network/subprocess activity inside the slice.
+- The final-correction same-HEAD receipt binds implementation HEAD
+  `782360c04da475cac98f928038f34c5a337c814f`, tree
+  `1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`, and 433 canonical focused tests;
+  the vertical slice deterministically projects 14 aggregates and 40 signals.
+- The four accepted final-review findings are closed at the canonical page
+  domain, public projection, provider-marker consensus, and historical alias
+  seams. The rejected same-name artist finding is covered by an exact
+  cross-work no-stable-ID non-union regression and the positive same-stable-ID
+  rename case; no clustering policy was rewritten.
+- The one complete non-E2E run reported 4238 passed, 22 skipped, and four raw
+  failures: two detached-validation-worktree branch-identity checks, one
+  docs-only historical-phrase assertion closed by this projection, and the
+  exact-base `missing_original_ai_execution_evidence` private-evidence limit.
+- Local receipt and contract evidence remain local operator evidence:
+  `machine_verifiable_ci=false`, `owner_accepted=false`, and
+  `safe_to_merge=false`.
+- Deferred I2 findings remain due only at their exact real-source,
+  positive-authority, POSIX, CI, or hostile-environment gates; they neither
+  block synthetic PX1 nor become falsely closed.
+- Untrusted workspace confinement is explicitly deferred to
+  `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` before caller-supplied paths,
+  untrusted remote-CI evidence, existing DB/app-storage access, real-source
+  canary, or production; it does not create a new phase.
 
 ## Remote Sync Preflight Policy
 
-Fetch the trusted remote before comparing bases. A safe local base that is only
-behind and has no local-only commit may be fast-forwarded with `--ff-only`.
+Fetch and authenticate the trusted remote before comparing a protected base.
+A clean local base that is only behind may be fast-forwarded with `--ff-only`.
 Divergence, unsafe local-only commits, tracked drift, behavior-affecting
-untracked code/configuration, failed fast-forward, or any need for reset,
-rebase, force, rewrite, overwrite, or deletion remains fail closed. Preserve
-unrelated untracked and ignored user artifacts.
+untracked code/configuration, or any need for reset, rebase, force, overwrite,
+or deletion remains fail closed. Preserve unrelated untracked and ignored user
+artifacts.
 
 ## Documentation Map
 
-- Current route: `docs/state/current-phase.json`
-- Generated handoff: `docs/current-handoff.md`
-- Current mainline detail: `docs/roadmap/current-mainline-roadmap.md`
-- FL1 plan: `docs/plans/phase-4.6-scv2-fl1-isolated-full-library-dev-test-plan.md`
-- Executable contract boundary: `docs/phase-contracts.md`
-- Historical roadmap through SV1B:
-  `docs/roadmap/archive/project-roadmap-through-scv2-sv1b.md`
-- Detailed agent runbook: `docs/development/agent-runbook.md`
-- Test workflow: `docs/test-workflow.md`
+- `docs/state/current-phase.json` — only current-route fact source.
+- `docs/current-handoff.md` — generated public-safe projection.
+- `docs/roadmap/current-mainline-roadmap.md` — active PX1/PX2/PX3 route.
+- `docs/phase-contracts.md` — executable contract boundary.
+- `docs/pixiv-metadata-ingestion-and-promotion-policy.md` — existing Pixiv
+  ingestion/promotion policy.
+- `docs/source-concept-tag-search-semantics.md` — existing SourceConcept signal
+  and search semantics.
+- `docs/roadmap/archive/` — historical roadmaps.
+- `docs/development/agent-runbook.md` — operating procedure.
 
 ## Governance
 
-Current facts change in `docs/state/current-phase.json` first. Active roadmaps
-and the generated handoff must agree with its phase marker. Historical reports
-and archives preserve captured semantics and are not rewritten when the active
-route advances.
+Every completion claim must bind an executable phase contract to exact
+repository evidence. Automated checks cannot synthesize owner acceptance or
+merge authority. PX1 ends at one normal PR and exact-head owner audit; it never
+merges or starts PX2 without a new owner decision.

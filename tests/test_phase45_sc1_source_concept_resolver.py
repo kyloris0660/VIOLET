@@ -1951,7 +1951,7 @@ def test_artist_same_surface_without_stable_identity_remains_independent():
 
 
 def test_artist_same_provider_stable_id_may_union_different_names():
-    payload = {"stable_creator_id": "creator-42"}
+    payload = {"stable_creator_id": "42"}
     left = _signal(
         "left",
         "display artist",

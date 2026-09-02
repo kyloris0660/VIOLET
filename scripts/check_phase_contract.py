@@ -54,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--fl1-i2-evidence",
         help="Confined directory containing the complete fixed-name FL1-I2 evidence bundle.",
     )
+    parser.add_argument(
+        "--px1-evidence",
+        help="Confined task-owned temporary directory containing the fixed-name SCV2-PX1 evidence bundle.",
+    )
     parser.add_argument("--list-contracts", action="store_true", help="List registered contracts as JSON and exit.")
     parser.add_argument("--explain", action="store_true", help="Include contract metadata in output.")
     return parser
@@ -127,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         or args.reconciliation_scenarios
         or args.fl1_i1_evidence
         or args.fl1_i2_evidence
+        or args.px1_evidence
     ):
         if not args.repo_root:
             parser.error("private evidence options require --repo-root")
@@ -170,6 +175,13 @@ def main(argv: list[str] | None = None) -> int:
             # The I2 contract must perform lexical local-temp confinement before
             # any caller-provided evidence path is resolved, stated, or opened.
             fl1_i2_evidence = FL1I2EvidencePaths(Path(args.fl1_i2_evidence))
+        scv2_px1_evidence = None
+        if args.px1_evidence:
+            from scripts.phase_contracts.scv2_px1_contract import Scv2Px1EvidencePaths
+
+            # The PX1 contract performs lexical local-temp confinement before
+            # resolving, stating, or opening the caller-provided path.
+            scv2_px1_evidence = Scv2Px1EvidencePaths(Path(args.px1_evidence))
         repository_context = ContractRepositoryContext(
             repo_root=Path(args.repo_root).resolve(),
             expected_python=(
@@ -180,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
             reconciliation_scenario_bundle=reconciliation_scenarios,
             fl1_i1_evidence=fl1_i1_evidence,
             fl1_i2_evidence=fl1_i2_evidence,
+            scv2_px1_evidence=scv2_px1_evidence,
         )
 
     result = check_phase_contract(

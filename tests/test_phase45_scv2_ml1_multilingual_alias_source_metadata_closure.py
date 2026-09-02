@@ -960,6 +960,9 @@ def test_active_blockers_cannot_hide_later_known_gaps() -> None:
 def test_durable_documents_encode_corrected_search_semantics() -> None:
     policy = (ROOT / "docs/source-concept-tag-search-semantics.md").read_text(encoding="utf-8")
     handoff = (ROOT / "docs/current-handoff.md").read_text(encoding="utf-8")
+    current_state = json.loads(
+        (ROOT / "docs/state/current-phase.json").read_text(encoding="utf-8")
+    )
     roadmap = (ROOT / "docs/roadmap/current-mainline-roadmap.md").read_text(encoding="utf-8")
     archived_roadmap = (
         ROOT / "docs/roadmap/archive/project-roadmap-through-scv2-sv1b.md"
@@ -971,7 +974,9 @@ def test_durable_documents_encode_corrected_search_semantics() -> None:
     assert "Search-result union combines media sets" in combined
     assert "It is not identity union" in combined
     assert "media-level AND intersection" in combined
-    assert "SCV2-FL1" in handoff and "SCV2-ML1" in roadmap
+    assert current_state["phase_id"] in handoff
+    assert "SCV2-PX1" in handoff and "SCV2-PX2" in roadmap
+    assert "isolated ML1 database" in archived_roadmap
     assert "Interpretation erratum" in report
     erratum = summary["search_semantics_interpretation_erratum"]
     assert erratum["old_interpretation_superseded"] is True

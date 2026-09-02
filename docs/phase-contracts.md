@@ -64,120 +64,112 @@ outside the automated contract.
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: SCV2-FL1-I2 -->
+<!-- CURRENT_PHASE: SCV2-PX1 -->
 
-PR #144 was owner-accepted and merge-commit merged at exact main
-`8955b95e91630d4c5e18e1e2ca252b19754c81d5`. Its final HEAD/tree are
-`2f8d5f8ce6cde9759c530de71d4ddd1893481656` /
-`8930a21bdbac037702f92bcb75bd9b8a3632a073`; the frozen implementation
-evidence/tree are `6992e7f1e5a45857111d15da1ad0274e49008a99` /
-`6ff185defb150c3751c7433ef635c00a200c44bf`. The acceptance scope is only a
-synthetic and newly created temporary-fixture foundation.
+PR #146 / SCV2-FL1-I2 is merged at
+`8a825bcdd12f76d1c2c396b7039bd9e326cd63dc`. Accepted PR HEAD
+`914d746c3548241a99333393daa88caefd8b2337` is a merge parent and both
+objects have tree `9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71`.
+This corrects the former pending-merge current projection without rewriting
+historical I2 facts.
 
-The documentation checker pins all four identities through a fixed trusted Git
-executable and explicit repository root after case-insensitively scrubbing
-inherited `GIT_*` controls, disabling replace objects, hooks, fsmonitor, and
-caller-injected configuration. It rejects a current state that asserts
-`machine_verifiable_ci=true`, nonzero `github_checks`, or CI authority. PR #144
-exposed zero checks, so it has no machine-verifiable CI PASS claim. Its direct
-owner decision cannot be synthesized by a contract.
+Final PR #146 review `5031131564` recorded ten unresolved, non-outdated
+findings. They remain explicit future due gates in
+`docs/state/current-phase.json`; neither the merge nor synthetic PX1 marks
+them closed. The earlier owner-adjudicated dynamic-loader and whole-venv
+bindings also remain deferred to their original POSIX/CI/hostile-environment
+gates.
 
-Current synthetic implementation projection:
+Current PX1 projection:
 
-- `status=fl1_i2_pr146_final_owner_adjudicated_correction_ready_for_direct_owner_merge_audit`
-- `planning_authorized=true`
-- `planning_completed=true`
-- `planning_approved=true`
-- `approved_planning_head=acb12c1db258fdef1d4f063b053d422e0d887abf`
-- `approved_planning_tree=fc573c7646ad5edf10c32c7712de7f27ab058a2a`
-- `merge_authorized=false`
-- `implementation_authorized=true`
-- `implementation_started=true`
-- `implementation_completed=true`
-- `target_met=false`
+- `status=SCV2_PX1_BOUNDED_CORRECTION_READY_FOR_FINAL_OWNER_MERGE_AUDIT`
+- `contract_id=scv2_px1_pixiv_metadata_consolidation_contract_v1`
+- `public_schema=violet.scv2-px1-pixiv-metadata-summary.v1`
+- `target_met=true`
 - `safe_to_merge=false`
 - `route_approved=false`
-- `real_inventory_started=false`
-- `real_source_inventory_authorized=false`
-- blocker: `pending_fl1_i2_final_direct_owner_merge_audit`
+- `owner_accepted=false`
+- `merge_authorized=false`
+- `real_source_authorized=false`
+- `real_provider_authorized=false`
+- `full_import_authorized=false`
+- `production_authorized=false`
+- blocker: `pending_scv2_px1_final_owner_merge_audit`
 
-Terminal review `4897012517` at the exact final HEAD produced 17 historical
-findings (13 P1, 4 P2). The complete use-before projection is:
+Corrected implementation evidence is frozen at HEAD
+`782360c04da475cac98f928038f34c5a337c814f`, tree
+`1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3`. Its positive local-operator
+receipt reran the canonical 433 focused tests with clean before/after identity.
+Only the fixed five-document governance allowlist may carry forward from this
+evidence checkpoint; any backend, runner, contract, test, configuration, or
+untracked behavior change invalidates completion.
 
-| # | Finding | Contract projection |
-|---:|---|---|
-| 1 | Scrub Git control variables before trusted invocations | Closed: checker, runtime context, receipt, and I2 contract consume the shared trusted Git runner. |
-| 2 | Validate the parent-observed child identity | Claim boundary: local provenance only, not tamper-resistant or OS/kernel/TPM/remote/CI attestation. |
-| 3 | Recheck recall attributes before final resolution | Closed: Cloud availability, file/change identity, and the policy decision are derived from the same verified child handle. |
-| 4 | Allow interrupted attempts before corrupt-media closure | Closed: operation terminal state and item disposition are independent and exactly reconciled. |
-| 5 | Enforce the deadline around blocking file operations | Closed: list/open/read/hash/parser operations run only in a parent-terminable child; unconfirmed exit blocks the run. |
-| 6 | Bind the receipt to one unchanged HEAD | Closed: trusted HEAD/tree are sampled before and after the command; drift prevents a positive receipt. |
-| 7 | Re-derive the adapter policy during contract validation | Closed: the exact canonical policy is rebuilt and fingerprinted from confined trusted configuration. |
-| 8 | Stop at the configured failure maximum | Closed: admission uses strict `< max`; equality prevents a new INTENT/STARTED operation, and schema plus contract require `max_failures >= 1`. |
-| 9 | Pin the frozen remediation commit and tree | Closed by the current documentation-governance checker. |
-| 10 | Reject CI authority in documentation state | Closed by the current documentation-governance checker. |
-| 11 | Include a change identity in file signatures | Closed: Windows volume/file ID is paired with change/write time, size, and allocation identity. |
-| 12 | Reject hard-linked files that alias protected data | Closed: duplicate identities, multiple links, reparse points, symlinks, and name aliases fail closed. |
-| 13 | Confine private artifact reads as well as writes | Closed: fixed-root reads and atomic writes reject no-follow/identity/type drift. |
-| 14 | Enumerate directories through a verified no-follow handle | Closed: Windows uses `FileIdExtdDirectory*Info` on the verified handle and POSIX uses fd-scandir; there is no path-scandir fallback. |
-| 15 | Reconcile intents from ended failed invocations | Closed: residual INTENT becomes RECOVERED, residual STARTED becomes INTERRUPTED, and retry gets a new operation ID. |
-| 16 | Validate media structure beyond boundary markers | Closed for the supported subset: bounded JPEG/PNG and supported WebP validation enforce byte/depth/time limits; GIF and AVIF are explicit unsupported until full pixel/AV1 payload validation exists. |
-| 17 | Handle runtime-context failures in scanner CLI | Closed: typed failures have stable redacted codes and unknown failures expose only a correlation token. |
+The final exact-head correction rejects non-canonical page/count identity,
+requires consensus across every populated provider marker, restores the
+historical `author` and `keywords` aliases through the canonical normalizer,
+and separates forbidden mapping keys from otherwise legal string values in
+the public projection. The alleged same-name artist union is disproved by an
+exact cross-work regression: without stable creator identity the existing
+early creator guard emits a non-union verdict, while matching stable Pixiv
+creator IDs continue to union across name changes.
 
-The I1 contract `scv2_fl1_i1_read_only_inventory_contract_v1` remains accepted
-only for its narrow synthetic foundation. I2 contract
-`scv2_fl1_i2_pre_real_hardening_contract_v1` is registered at final
-owner-adjudicated implementation evidence HEAD/tree
-`9aab3e31f5223e0c689046b5c5c61f21268f840c` /
-`9119d489800c0b40c5586a9aa4ceb89d34f93e5c`. Review `4963026941` rejected
-`d4478660df1f11b1c8d3ceba1af70f8635542a9d` /
-`113280a8697e6bef3cb9e4292a042c2d46b1f025`; its owner disposition is four
-required fixes, two explicit-unsupported safe downgrades, and two exact-gate
-deferrals, not eight engineering fixes.
-The contract reconstructs the 14 gate
-closures from fixed-name, no-follow private artifacts and trusted repository
-state; caller JSON cannot create a positive result. Its local receipt is not
-CI or owner authority. `target_met`, `safe_to_merge`, route, merge, I3, and
-every real-source/data authority remain false pending direct owner exact-final-
-diff audit. No additional automated review is authorized.
+The reconstructed synthetic projection contains 14 work/page aggregates and
+40 SourceConcept-compatible signals. Canonical, replay, and reversed-input
+projections share fingerprint
+`c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1`.
+The PX2 consumer artifacts round-trip through canonical JSON with stable
+aggregate and signal-bundle fingerprints and exclude database row identity.
 
-The I2 contract preserves these continuing boundaries:
+The executable PX1 contract does not trust a caller's positive flag. It:
 
-- `REAL_OPERATION_GATEWAY_GATE`: no I3 or real listing/stat/attribute/read/hash
-  until complete exact source scope and protected roots are separately
-  authorized; that I3 scope is not a condition for starting authorized
-  synthetic-only I2 implementation.
-- `VALIDATION_RECEIPT_GATE`: local evidence remains
-  `trust_level=local_operator_receipt` and `machine_verifiable_ci=false`.
-- `OWNER_AUTHORITY_GATE`: direct owner approval remains external to automation.
-- `POSIX_LEDGER_DURABILITY_GATE`: no unsupported host power-loss durability
-  claim.
-- `STABLE_REPLAY_GATE`: no replay evidence is consumed or authorized.
+1. lexically confines a fixed-name evidence root beneath task-owned OS
+   temporary storage before resolving or reading it;
+2. bounds and no-follow reads canonical fixture, aggregate, signal, operation
+   receipt, public summary, and same-HEAD validation receipt artifacts;
+3. requires the approved repository Python and a clean trusted Git worktree;
+4. binds the receipt to the corrected implementation evidence HEAD/tree,
+   trusted Git identity, Python identity, canonical focused command, and
+   evidence fingerprints, then permits only a fixed tested docs-only
+   governance carry-forward to current HEAD;
+5. independently reruns the repository-owned synthetic fixture in a fresh
+   temporary workspace and compares the exact public summary;
+6. recomputes aggregate fingerprints, disposition accounting, signal logical
+   keys, name-only-anchor count, context separation, replay fingerprints, and
+   all negative authority fields;
+7. scans the public projection for paths, filenames, credentials, secrets, raw
+   provider payloads, and database identities;
+8. rejects any backend, runner, contract, test, configuration, or untracked
+   behavior drift after evidence, including a change to
+   `PIXIV_AGGREGATE_VERSION`.
 
-The fixed order is plan owner approval, separate I2 implementation
-authorization, synthetic-only closure of all 14 gates, I2 owner audit and
-merge, separate `FL1_I3_REAL_SOURCE_SCOPE_GATE`, then bounded canary. I3
-requires an exact private source identity, protected-root registry, budgets,
-Cloud/no-hydration policy, and stop conditions.
+The canonical local commands are:
 
-The owner accepted exact planning HEAD/tree
-`acb12c1db258fdef1d4f063b053d422e0d887abf` /
-`fc573c7646ad5edf10c32c7712de7f27ab058a2a` under review `4907783329`.
-P1 thread `PRRT_kwDOSTBMB86YRuq7` is closed in the owner-acceptance projection
-contract: trusted Git re-derives the accepted tree, proves that the accepted
-commit is an ancestor of either the projection HEAD or its later merge commit,
-and rejects every post-plan path outside the explicit governance allowlist.
-This binding cannot be replaced by caller JSON, environment variables, or a
-CLI authority flag. PR #145 merged at
-`1913bd27517efc1a6007a202fc9650de4f20fab4`; G0 closes its five accepted
-post-merge governance-entry findings. Synthetic implementation authority is
-true, while real-source, safe-to-merge, and merge authority remain false.
-I4 full inventory, E1 isolated import, E2 local classification/tagging, and V1
-product validation are later independent routes. No current contract authorizes
-real source/iCloud access, DB/app-storage, import, classification/tagging,
-provider/LLM/media or external data-plane network, Stable Replay, UI/server, or
-production execution. Authorized Git/GitHub governance control-plane operations
-are allowed and have occurred; they are not provider/data execution.
+```powershell
+& "$PY" -B scripts/run_scv2_px1_pixiv_metadata_vertical_slice.py --evidence-dir <task-owned-temp>
+& "$PY" -B scripts/create_scv2_px1_validation_receipt.py --evidence-dir <task-owned-temp>
+& "$PY" -B scripts/check_phase_contract.py --contract scv2_px1_pixiv_metadata_consolidation_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python "$PY" --px1-evidence <task-owned-temp>
+```
+
+PX1 allows exactly two newly created task-owned temporary SQLite databases
+using existing source-layer tables. It prohibits existing database/app-storage
+access, real Pixiv/gallery-dl/provider execution, credentials, source/iCloud
+access, media download, import, classification/tagging on user data, LLM/model,
+server/browser/E2E, SourceConcept materialization, Entity truth promotion,
+production, merge, and PX2.
+
+The near-term route is exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`.
+Safety checks are internal gates rather than new phases. phase-4.5-PX1 is
+historical; its report and runner remain historical evidence/compatibility
+and cannot become SCV2-PX1 production authority.
+
+PX2 consumes only canonical aggregate and signal-bundle artifacts for
+deterministic clustering, identity, candidate explanation, an ambiguous queue,
+controlled sample evaluation, and a persistable cluster result. PX3 contains
+real source/provider work, any necessary migration, persistence, API/UI,
+dry-run/apply, idempotency, backup/recovery, canary, rollback, and the final
+full-library import checkpoint. The hostile-workspace cases deferred by the
+owner are bound to `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE`; this gate
+does not create another phase or block repository-owned synthetic PX1.
 
 ## Registered GOV3 Contracts
 

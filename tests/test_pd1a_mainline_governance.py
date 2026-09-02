@@ -28,37 +28,33 @@ def _assert_split_s2g_not_active(text: str) -> None:
     assert "Recommended immediate next phase after PD1-A: `S2G-1`" not in text
 
 
-def test_current_mainline_roadmap_persists_accepted_sequence_and_fl1_boundary() -> None:
+def test_current_mainline_roadmap_persists_px1_boundary_and_fixed_route() -> None:
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
-    assert "PRs #132-#139" in text
+    assert "PR #146" in text
+    assert "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc" in text
     _assert_in_order(
         text,
         [
-            "1. R1R through SCV2-SV1B merged in PRs #132-#139",
-            "2. SCV2-FL1 planning merged in PR #140",
-            "3. SCV2-FL1-P1 merged in PR #141",
-            "4. SCV2-FL1-P1-R1 was owner-accepted",
-            "5. SCV2-FL1-I1 was owner-accepted",
-            "6. SCV2-FL1-I2 planning was owner-accepted",
+            "1. `SCV2-PX1`",
+            "2. `SCV2-PX2`",
+            "3. `SCV2-PX3`",
         ],
     )
     _assert_split_s2g_not_active(text)
-    assert "SCV2-FL1-I2: Real-source Read-only Inventory Hardening and Canary Readiness" in text
-    assert "PR #144 terminal review `4897012517`" in text
+    assert "scv2_px1_pixiv_metadata_consolidation_contract_v1" in text
     assert "machine_verifiable_ci=false" in text
     state = json.loads(_read("docs/state/current-phase.json"))
     assert state["current_status"] in text
     assert "route_approved=false" in text
-    assert "planning_approved=true" in text
     assert "safe_to_merge=false" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
-    assert "pending_fl1_i2_final_direct_owner_merge_audit" in text
-    assert "scv2_fl1_i2_pre_real_hardening_contract_v1" in text
-    assert "FL1_I3_REAL_SOURCE_SCOPE_GATE" in text
-    assert "acb12c1db258fdef1d4f063b053d422e0d887abf" in text
-    assert "data-plane network operations remain zero" in text
+    assert state["active_blocker"]["code"] in text
+    assert "phase-4.5-PX1 is historical" in text
+    assert "Deferred Due-Gate Policy" in text
+    assert "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE" in text
+    assert "final full-library import checkpoint" in text
 
 
 def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:
@@ -91,9 +87,10 @@ def test_handoff_points_to_current_mainline_roadmap() -> None:
     text = _read("docs/current-handoff.md")
 
     assert "roadmap/current-mainline-roadmap.md" in text
-    assert "SCV2-FL1" in text
+    assert "SCV2-PX1" in text
     assert "PR pending creation" in text or "PR #" in text
-    assert "All 17 findings remain historical audit records" in text
+    assert "PR #146 Merge Projection" in text
+    assert "Deferred Debt And Exact Due Gates" in text
     for forbidden_term in ("provider", "Pixiv", "gallery-dl", "LLM"):
         assert forbidden_term in text
     assert "Current phase | `S3A-M2-R" not in text
