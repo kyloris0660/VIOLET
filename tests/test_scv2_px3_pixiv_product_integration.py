@@ -459,7 +459,7 @@ def test_existing_source_canary_rejects_noncanonical_work_identity(
         selection = select_existing_pixiv_canary_work_ids(session, percentage=1)
         assert selection['selected_work_ids'] == []
         assert selection['eligible_work_count'] == 0
-        assert selection['excluded_source_record_count'] == 1
+        assert 'excluded_source_record_count' not in selection
     finally:
         session.close()
         engine.dispose()

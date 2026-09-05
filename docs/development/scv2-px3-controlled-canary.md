@@ -108,6 +108,14 @@ fixes exclude unverified inputs, keep rejected signals rejected, and restore
 canonical Python ordering before fingerprint validation. No PX1/PX2 identity is
 changed, no source metadata is rewritten, and no second resolver is introduced.
 
+The unsolicited PR #150 feedback at its initial head was also boundedly accepted:
+3939783011 removes unrelated queue diagnostics from selection identity;
+3939783010 validates the rollback response and runtime isolation/grants directly;
+3939783013 checks unique before/after Media sets against actual persisted binding
+Media; 3939783014 requires exact identity and AND search result sets. Mutation
+regressions cover each case. The prior completed private rehearsal is preserved;
+the same five works are revalidated with fresh fingerprints after the identity fix.
+
 The registered `scv2_px3_pixiv_product_integration_contract_v1` retains synthetic
 reconstruction and a same-HEAD focused receipt. Its restored-copy checkpoint also
 runs `scripts/check_scv2_px3_restored_canary.py --evidence-dir <private-task-dir>

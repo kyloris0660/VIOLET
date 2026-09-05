@@ -442,8 +442,6 @@ def select_existing_pixiv_canary_work_ids(
         "eligible_work_count": len(work_ids),
         "selected_work_count": len(selected),
         "selected_work_ids": selected,
-        "eligible_source_record_count": len(eligible),
-        "excluded_source_record_count": len(records) - len(eligible),
     }
     selection["canonical_fingerprint"] = canonical_fingerprint(selection)
     return selection

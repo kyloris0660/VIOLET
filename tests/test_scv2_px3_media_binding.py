@@ -149,6 +149,13 @@ def test_actual_dry_run_plan_generator_and_different_selection_boundary(bound_db
     applied = client.post(endpoint, json=request)
     assert applied.status_code == 200, applied.text
     count = bound_db.query(SourceConceptProductMediaBinding).count()
+    bound_db.add(SourceMetadataRecord(provider='pixiv', provider_record_key='unrelated:pending',
+        source_work_id='999999999', source_page_index=0, status='metadata_pending'))
+    bound_db.commit()
+    unchanged = client.post(endpoint, json={'mode': 'dry_run', 'canary_percent': 1}).json()
+    assert unchanged['selection_fingerprint'] == first['selection_fingerprint']
+    assert unchanged['product_result_fingerprint'] == first['product_result_fingerprint']
+    assert client.post(endpoint, json=request).json()['idempotent_replay']
     other = client.post(endpoint, json={'mode': 'dry_run', 'canary_percent': 2}).json()
     assert other['selection_fingerprint'] != first['selection_fingerprint']
     rejected = client.post(endpoint, json=accepted_apply_request(other, canary_percent=2))
@@ -230,7 +237,7 @@ def test_canary_eligibility_excludes_nonpixiv_queue_and_pending_metadata(bound_d
     after = service.select_existing_pixiv_canary_work_ids(bound_db, percentage=1)
     assert after['selected_work_ids'] == before['selected_work_ids']
     assert after['eligible_work_count'] == before['eligible_work_count'] == 3
-    assert after['excluded_source_record_count'] == 3
+    assert after == before  # Unrelated queue diagnostics are not selection identity.
 
 
 def test_persisted_projection_is_independent_of_database_collation(bound_db, monkeypatch):

@@ -58,12 +58,22 @@ def validate_observations(data):
     before = data['copy-baseline-probes-private.json']
     after = data['copy-after-probes-private.json']
     require(len(before) == len(after) == plan['media_binding']['planned_media_binding_count'], 'media_probe_count_mismatch')
+    before_ids = [p['media_id'] for p in before]
+    after_ids = [p['media_id'] for p in after]
+    require(len(set(before_ids)) == len(before_ids) and len(set(after_ids)) == len(after_ids)
+            and set(before_ids) == set(after_ids) == set(fresh['bound_media_ids']), 'media_probe_set_mismatch')
+    prior_by_media = {p['media_id']: p for p in before}
     delta = 0
-    for prior, current in zip(before, after):
+    for current in after:
         media = current['media_id']
-        require(prior['media_id'] == media and media in current['search'] and media in current['identity'], 'sourceconcept_recall_missing')
-        expected = set(prior['search']) | {p['media_id'] for p in after if p['creator_id'] == current['creator_id']}
+        prior = prior_by_media[media]
+        creator_media = {p['media_id'] for p in after if p['creator_id'] == current['creator_id']}
+        require(media in current['search'] and media in current['identity'], 'sourceconcept_recall_missing')
+        expected = set(prior['search']) | creator_media
         require(set(current['search']) == expected, 'sourceconcept_search_false_positive')
+        require(set(current['identity']) == set(prior['identity']) | creator_media, 'identity_search_false_positive')
+        and_media = {p['media_id'] for p in after if p['and_query'] == current['and_query']}
+        require(set(current['and_search']) == set(prior['and_search']) | and_media, 'and_search_false_positive')
         require(media in current['and_search'] and any(c.get('local_media_support') for c in current['detail']), 'and_search_or_detail_missing')
         delta += media not in prior['search']
     require(delta > 0, 'no_sourceconcept_specific_recall_delta')
@@ -71,6 +81,13 @@ def validate_observations(data):
     migration = data['copy-migration-private.json']
     require(rolled['snapshots'] == migration['base_snapshot'] and rolled['search_detail_equals_baseline'] is True
             and rolled['binding_rows'] == rolled['active_runs'] == 0, 'rollback_baseline_mismatch')
+    rollback = data['copy-rollback-private.json']
+    require(rollback['rolled_back'] is True and rollback['status'] == 'rolled_back'
+            and rollback['run_key'] == apply['run_key'] == plan['run_key']
+            and rollback['deleted_core_rows']['media_bindings'] == count
+            and rollback['deleted_core_rows']['resolution_runs'] == 1
+            and rollback['product_audit_rows_retained'] is True
+            and rollback['forbidden_truth_table_write_count'] == 0, 'rollback_response_invalid')
     require(data['copy-repeated-rollback-private.json']['idempotent_replay'] is True, 'repeated_rollback_failed')
     require(data['copy-other-selection-rejected-private.json']['reason'] == 'px3_other_active_selection_requires_rollback'
             and fresh['active_runs'] == 1, 'selection_accumulation')
@@ -80,6 +97,21 @@ def validate_observations(data):
             and browser['original_media_network_requests'] == 0 and not browser['page_errors'], 'browser_gate_failed')
     require(fresh['frozen_metadata_and_truth_unchanged'] is True and fresh['runtime_metadata_writes_denied'] is True,
             'frozen_input_boundary_failed')
+    isolation = data['copy-runtime-isolation-private.json']
+    require(isolation['copy_oid'] == fresh['database_oid'] == data['copy-restore-private.json']['database_oid']
+            and isolation['copy_oid'] != data['original-backup-private.json']['source_identity']['database_oid']
+            and all(isolation[key] is True for key in ('source_metadata_refresh_denied', 'truth_write_denied',
+                'single_process', 'original_database_connection_config_absent'))
+            and all(isolation[key] is False for key in ('redis_enabled', 'background_jobs', 'original_media_access')),
+            'runtime_isolation_invalid')
+    storage = Path(isolation['runtime_storage_root'])
+    task = Path(isolation['task_directory'])
+    require(storage.is_absolute() and task.is_absolute() and storage != task and storage.is_relative_to(task),
+            'runtime_storage_boundary_invalid')
+    allowed = {'blombooru_source_concepts'} | {'blombooru_source_concept_' + suffix for suffix in (
+        'aliases', 'signals', 'evidence', 'search_index', 'signal_links', 'resolution_runs',
+        'product_runs', 'product_clusters', 'candidate_dispositions', 'ambiguity_records', 'product_media_bindings')}
+    require(set(isolation['writable_tables']) <= allowed and isolation['writable_tables'], 'runtime_write_grants_invalid')
     return {'passed': True, 'contract_id': CONTRACT_ID, 'scope': 'restored_postgresql_metadata_canary',
             'eligible_work_count': selection['eligible_work_count'], 'selected_work_count': selected,
             'media_count': len(after), 'binding_count': count, 'original_database_apply_authorized': False}
