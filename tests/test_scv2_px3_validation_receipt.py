@@ -125,11 +125,12 @@ def test_receipt_mutations_fail_closed(field: str, value: object, error: str) ->
         )
 
 
-def test_docs_only_carry_forward_is_exactly_five_governance_paths() -> None:
+def test_docs_only_carry_forward_is_exactly_six_governance_paths() -> None:
     assert PX3_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST == {
         "docs/current-handoff.md",
         "docs/phase-contracts.md",
         "docs/project-roadmap.md",
         "docs/roadmap/current-mainline-roadmap.md",
         "docs/state/current-phase.json",
+        "docs/development/scv2-px3-controlled-canary.md",
     }

@@ -52,6 +52,7 @@ CANONICAL_FOCUSED_TESTS = (
     "tests/test_scv2_px3_controlled_canary.py",
     "tests/test_scv2_px3_restored_canary.py",
     "tests/test_phase45_doc1_documentation_state.py",
+    "tests/test_current_handoff_freshness.py",
     "tests/test_pd1a_mainline_governance.py",
 )
 PX3_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST = frozenset(

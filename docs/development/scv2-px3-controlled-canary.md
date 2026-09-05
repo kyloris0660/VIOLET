@@ -50,7 +50,7 @@ not authorize normal startup, schema migration or apply against the original.
    identity mismatch, raw-secret exposure, or request-accounting drift.
 3. `PX3_EXISTING_DATABASE_CANARY_GATE`: call the PX3 source-metadata endpoint in
    dry-run mode with `canary_percent` from 1 through 5. Selection is stable by
-   Pixiv work identity, is bound into the scope key and fingerprint, and does
+   Pixiv work identity, is bound into the scope key and fingerprint, and
    uses the existing complete/trust and local binding provenance checks. Pending,
    non-Pixiv and unverifiable receipt records are excluded. Legacy gallery-dl
    payloads are validated through the existing pure normalizer without rewriting

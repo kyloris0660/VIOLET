@@ -25,17 +25,18 @@ def test_current_phase_schema_identity_and_boundary_are_exact() -> None:
     documentation_state.validate_state(state)
     assert state["schema_version"] == "violet.current-phase.v2"
     assert state["phase_id"] == "SCV2-PX3"
-    assert state["branch"] == documentation_state.SCV2_PX3_BRANCH
+    restored = bool(state.get('restored_canary'))
+    assert state["branch"] == (documentation_state.SCV2_PX3_RESTORE_BRANCH if restored else documentation_state.SCV2_PX3_BRANCH)
     assert state["accepted_mainline_base"] == documentation_state.SCV2_PX3_ACCEPTED_MAIN
     assert state["accepted_mainline_tree"] == documentation_state.SCV2_PX3_ACCEPTED_MAIN_TREE
-    assert state["safe_to_merge"] is False
+    assert state["safe_to_merge"] is (state.get('restored_canary', {}).get('followup_merge_authorized', False) or state['current_status'] == documentation_state.SCV2_PX3_CLOSURE_READY_STATUS)
     assert state["route_approved"] is False
-    ready = state["current_status"] == documentation_state.SCV2_PX3_READY_STATUS
+    ready = state["current_status"] != documentation_state.SCV2_PX3_IN_PROGRESS_STATUS
     assert state["target_met"] is ready
     assert state["manual_acceptance_status"] == (
-        "pending_scv2_px3_owner_acceptance_and_controlled_canary"
-        if ready
-        else "px3_product_integration_in_progress"
+        'owner_accepted_final_bounded_product_closure' if restored or state['current_status'] in {
+            documentation_state.SCV2_PX3_CLOSURE_READY_STATUS, documentation_state.SCV2_PX3_MERGED_STATUS}
+        else ('pending_scv2_px3_owner_acceptance_and_controlled_canary' if ready else 'px3_product_integration_in_progress')
     )
 
 
@@ -103,7 +104,7 @@ def test_status_or_owner_authority_mutation_fails_closed(
     field: str, value: object
 ) -> None:
     state = copy.deepcopy(_state())
-    state[field] = value
+    state[field] = not state[field] if isinstance(value, bool) else value
     with pytest.raises(
         documentation_state.DocumentationStateError,
         match="status_fields_conflict",

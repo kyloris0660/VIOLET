@@ -38,6 +38,7 @@ active_blocker=restored_database_canary_execution_in_progress
 The fixed route contains only SCV2-PX1, SCV2-PX2 and SCV2-PX3. This final
 bounded correction uses one normal follow-up PR after merged PR #149; no PX3.1, PX4 or hardening phase is created.
 phase-4.5-PX1 is historical compatibility evidence.
+Never treat provider metadata, SourceConcept, or model output as Entity truth.
 
 PX1 database-neutral aggregates/signals remain unchanged. PX2 accepts the existing resolver's explicitly rejected popularity/meta signals without promoting them.
 PX3 binds verified work/page/provider provenance to every matching current
