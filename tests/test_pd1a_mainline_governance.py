@@ -46,7 +46,7 @@ def test_current_mainline_roadmap_persists_px3_boundary_and_fixed_route() -> Non
     state = json.loads(_read("docs/state/current-phase.json"))
     assert state["current_status"] in text
     assert "route_approved=false" in text
-    assert "safe_to_merge=false" in text
+    assert f"safe_to_merge={str(state['safe_to_merge']).lower()}" in text
     assert "production" in text.casefold()
     assert "Stop Boundary" in text
     assert state["active_blocker"]["code"] in text

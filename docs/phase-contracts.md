@@ -92,6 +92,12 @@ production_authorized=false
 active_blocker=scv2_px3_implementation_in_progress
 ```
 
+## Stop Boundary
+
+1. `SCV2-PX1` — accepted and merged canonical metadata input.
+2. `SCV2-PX2` — accepted and merged deterministic clustering.
+3. `SCV2-PX3` — final product integration and controlled canary owner checkpoint.
+
 The fixed route contains only SCV2-PX1, SCV2-PX2 and SCV2-PX3. This final
 bounded correction stays on PR #149; no PX3.1, PX4 or hardening phase is created.
 phase-4.5-PX1 is historical compatibility evidence.
@@ -132,6 +138,10 @@ gallery search/media detail acceptance -> replay/rollback checks.
 Every real provider, credential, existing DB/storage, source/iCloud, user import,
 production and full-library execution remains unauthorized.
 
+## Deferred Due-Gate Policy
+
+The previously defined 1%-5% import canary gate stays inside PX3; its first
+authorized apply, if the owner grants it later, must use 1%.
 `SCV2_PX3_MULTIWORKER_APPLY_GATE` is deferred until before multiple workers,
 multiple owners or concurrent apply; `run.py` uses the default single worker.
 `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` keeps its existing exact due
