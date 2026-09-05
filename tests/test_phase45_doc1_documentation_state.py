@@ -1,4 +1,4 @@
-"""Current documentation-state tests for the SCV2-PX2 route."""
+"""Current documentation-state tests for the final SCV2-PX3 route."""
 
 from __future__ import annotations
 
@@ -10,10 +10,11 @@ import pytest
 
 from scripts.check_documentation_state import (
     DocumentationStateError,
-    SCV2_PX1_FINAL_REVIEW_DUE_GATES,
     SCV2_PX1_REQUIRED_DEFERRED_GATES,
-    SCV2_PX2_IN_PROGRESS_STATUS,
-    SCV2_PX2_READY_STATUS,
+    SCV2_PX3_IN_PROGRESS_STATUS,
+    SCV2_PX3_READY_STATUS,
+    SCV2_PX3_CLOSURE_READY_STATUS,
+    SCV2_PX3_MERGED_STATUS,
     load_state,
     render_handoff,
     validate_roadmaps,
@@ -28,83 +29,79 @@ def _state() -> dict[str, object]:
     return load_state(ROOT / "docs" / "state" / "current-phase.json")
 
 
-def test_current_handoff_is_exact_px2_projection() -> None:
+def test_current_handoff_is_exact_px3_projection() -> None:
     state = _state()
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     assert handoff == render_handoff(state)
     assert 55 <= len(handoff.splitlines()) <= 180
-    assert "SCV2-PX1" in handoff
-    assert "SCV2-PX2" in handoff
+    assert "PX2 Merge Projection" in handoff
+    assert "SCV2_PX2_MERGED" in handoff
     assert "SCV2-PX3" in handoff
     assert state["active_blocker"]["code"] in handoff
     assert "Historical phase-4.5-PX1 is historical compatibility evidence" in handoff
-    assert "px2_owner_accepted=false" in handoff
-    assert "px2_safe_to_merge=false" in handoff
-    assert "px2_merge_authorized=false" in handoff
+    assert f"px3_owner_accepted={str(state['protected_evidence']['px3_owner_accepted']).lower()}" in handoff
+    assert f"px3_merge_authorized={str(state['authorities']['px3_merge_authorized']).lower()}" in handoff
 
 
-def test_px2_state_and_active_docs_validate() -> None:
+def test_px3_state_and_active_docs_validate() -> None:
     state = _state()
     validate_state(state)
     validate_roadmaps(state)
-    assert state["phase_id"] == "SCV2-PX2"
-    assert state["previous_phase"] == "SCV2-PX1"
+    assert state["phase_id"] == "SCV2-PX3"
+    assert state["previous_phase"] == "SCV2-PX2"
     assert state["previous_phase_status"] == (
-        "owner_accepted_pr147_merged_with_exact_tree_preserved"
+        "owner_accepted_pr148_merged_with_exact_tree_preserved"
     )
     assert state["current_status"] in {
-        SCV2_PX2_IN_PROGRESS_STATUS,
-        SCV2_PX2_READY_STATUS,
+        SCV2_PX3_IN_PROGRESS_STATUS,
+        SCV2_PX3_READY_STATUS,
+        SCV2_PX3_CLOSURE_READY_STATUS,
+        SCV2_PX3_MERGED_STATUS,
     }
-    assert state["target_met"] is (
-        state["current_status"] == SCV2_PX2_READY_STATUS
-    )
-    assert state["safe_to_merge"] is False
+    ready = state["current_status"] != SCV2_PX3_IN_PROGRESS_STATUS
+    assert state["target_met"] is ready
+    assert state["safe_to_merge"] is (state['current_status'] == SCV2_PX3_CLOSURE_READY_STATUS)
     assert state["route_approved"] is False
     assert state["next_phase_started"] is False
 
 
-def test_pr146_merge_and_final_review_debt_are_exact() -> None:
+def test_pr148_merge_identity_is_exact() -> None:
     protected = _state()["protected_evidence"]
-    assert protected["pr146_accepted_head"] == (
-        "914d746c3548241a99333393daa88caefd8b2337"
+    assert protected["pr148_accepted_head"] == (
+        "bf8055af61c3a5d32155701ed7110db692047dba"
     )
-    assert protected["pr146_accepted_tree"] == (
-        "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71"
+    assert protected["pr148_accepted_tree"] == (
+        "507a223a9156ff2f9944524303419e85891812fa"
     )
-    assert protected["pr146_merge_commit"] == (
-        "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc"
+    assert protected["pr148_merge_commit"] == (
+        "421e2989d274e2dc4492d5bccc10720dcfbbaa4f"
     )
-    assert protected["pr146_merge_tree"] == protected["pr146_accepted_tree"]
-    assert protected["pr146_merged"] is True
-    assert protected["pr146_final_review_id"] == 5031131564
-    assert protected["pr146_final_review_finding_count"] == 10
-    assert protected["pr146_final_review_resolved_count"] == 0
-    assert protected["pr146_final_review_outdated_count"] == 0
-    assert {
-        item["thread_id"]: item["due_gate"]
-        for item in protected["pr146_final_review_deferred_findings"]
-    } == SCV2_PX1_FINAL_REVIEW_DUE_GATES
+    assert protected["pr148_merge_tree"] == protected["pr148_accepted_tree"]
+    assert protected["pr148_merge_parents"] == [
+        "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
+        "bf8055af61c3a5d32155701ed7110db692047dba",
+    ]
+    assert protected["pr148_merged"] is True
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("pr146_merged", False),
-        ("pr146_final_review_id", 0),
-        ("pr146_final_review_finding_count", 9),
-        ("pr146_final_review_resolved_count", 1),
-        ("machine_verifiable_ci", True),
-        ("px2_owner_accepted", True),
-        ("px2_safe_to_merge", True),
-        ("px2_merge_authorized", True),
-        ("external_data_plane_network_operation_count", 1),
-        ("existing_database_access_operation_count", 1),
+        ("pr148_merged", False),
+        ("pr148_accepted_head", "f" * 40),
+        ("px2_owner_accepted", False),
+        ("px2_merged", False),
+        ("px3_started", False),
+        ("px3_owner_accepted", True),
+        ("px3_safe_to_merge", True),
+        ("px3_merge_authorized", True),
+        ("provider_network_activity", 1),
+        ("existing_db_or_app_storage_activity", 1),
     ],
 )
 def test_protected_evidence_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
-    state["protected_evidence"][field] = value
+    state["protected_evidence"][field] = (not state['protected_evidence'][field]) if isinstance(value, bool) else value
     with pytest.raises(DocumentationStateError, match="protected_evidence"):
         validate_state(state)
 
@@ -112,43 +109,57 @@ def test_protected_evidence_mutation_fails_closed(field: str, value: object) -> 
 @pytest.mark.parametrize(
     "field",
     [
-        "px2_merge_authorized",
-        "real_source_inventory_authorized",
-        "source_root_or_icloud_access_authorized",
-        "existing_database_access_authorized",
-        "app_storage_write_authorized",
-        "real_pixiv_or_gallery_dl_network_execution_authorized",
+        "px3_merge_authorized",
+        "real_pixiv_network_execution_authorized",
         "provider_credentials_authorized",
-        "media_or_thumbnail_download_authorized",
-        "import_authorized",
-        "classification_or_tagging_execution_on_user_data_authorized",
-        "llm_or_external_model_authorized",
-        "server_browser_or_e2e_authorized",
+        "real_source_or_icloud_access_authorized",
+        "existing_database_or_app_storage_mutation_authorized",
+        "user_data_import_authorized",
         "production_authorized",
         "full_library_import_authorized",
     ],
 )
 def test_forbidden_authority_mutation_fails_closed(field: str) -> None:
     state = copy.deepcopy(_state())
-    state["authorities"][field] = True
+    state["authorities"][field] = not state['authorities'][field]
     with pytest.raises(DocumentationStateError, match="authority_map"):
         validate_state(state)
 
 
-def test_due_gate_set_cannot_be_omitted_or_relabelled() -> None:
+def test_due_gate_set_cannot_be_omitted() -> None:
     state = copy.deepcopy(_state())
     assert {item["id"] for item in state["deferred_debt"]} == (
-        SCV2_PX1_REQUIRED_DEFERRED_GATES
+        SCV2_PX1_REQUIRED_DEFERRED_GATES | ({'SCV2_PX3_MULTIWORKER_APPLY_GATE'} if state['current_status'] in {SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS} else set())
     )
     state["deferred_debt"].pop()
     with pytest.raises(DocumentationStateError, match="deferred_due_gate_set"):
         validate_state(state)
 
+
+@pytest.mark.parametrize('field', [
+    'media_binding_contract_passed', 'accepted_plan_exact_match_passed',
+    'actual_search_and_detail_passed', 'rollback_ownership_and_cache_passed',
+    'synthetic_edge_browser_passed', 'backup_restore_before_normal_startup_stop_recorded',
+])
+def test_final_product_closure_cannot_omit_independent_gate(field):
     state = copy.deepcopy(_state())
-    state["protected_evidence"]["pr146_final_review_deferred_findings"][0][
-        "due_gate"
-    ] = "PX1_FALSE_CLOSURE"
-    with pytest.raises(DocumentationStateError, match="pr146_due_gate_map"):
+    state.update(current_status=SCV2_PX3_CLOSURE_READY_STATUS, target_met=True, safe_to_merge=True,
+                 manual_acceptance_status='owner_accepted_final_bounded_product_closure',
+                 px3_target_met=True, px3_owner_accepted=True, px3_merged=False,
+                 three_phase_implementation_route_completed=False,
+                 conditional_expected_head_merge_authorized=True)
+    state['authorities']['px3_merge_authorized'] = True
+    for key in ('controlled_canary_authorized', 'real_pixiv_network_execution_authorized',
+                'provider_credentials_authorized', 'existing_database_or_app_storage_access_authorized',
+                'real_source_or_icloud_access_authorized', 'user_data_import_authorized',
+                'production_authorized', 'full_library_import_authorized'):
+        state[key] = False
+    state['closure_verification'] = {key: True for key in (
+        'media_binding_contract_passed', 'accepted_plan_exact_match_passed',
+        'actual_search_and_detail_passed', 'rollback_ownership_and_cache_passed',
+        'synthetic_edge_browser_passed', 'backup_restore_before_normal_startup_stop_recorded')}
+    state['closure_verification'][field] = False
+    with pytest.raises(DocumentationStateError, match='closure_evidence_missing'):
         validate_state(state)
 
 

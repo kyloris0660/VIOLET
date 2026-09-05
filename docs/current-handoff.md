@@ -4,46 +4,57 @@
 
 ## Current Facts
 
-- Phase: `SCV2-PX2` - Deterministic Pixiv SourceConcept Clustering.
-- Repository / PR: `kyloris0660/VIOLET` / normal PR #148.
-- Branch: `codex/scv2-px2-deterministic-pixiv-clustering`.
-- Accepted mainline HEAD/tree: `5a8efdaf954ab95bd82f95464af31a7fd0873e5e` / `480d6a548e6276afeccf49ec75a73d7389b995fe`.
-- Implementation evidence HEAD/tree: `9ee1d96004daa843544b977ed3ae607c51299f9b` / `743e63a6f7f2931393db860600bedd20ffaeae8e`; status: `final_review_correction_same_head_receipt_and_repository_rederived_executable_contract_passed_with_no_px2_functional_regression`.
-- Status: `SCV2_PX2_DETERMINISTIC_PIXIV_CLUSTERING_READY_FOR_OWNER_MERGE_AUDIT`.
-- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
-- Manual acceptance: `pending_scv2_px2_owner_merge_audit`; `next_phase_started=false`.
-- Contract: `scv2_px2_deterministic_pixiv_clustering_contract_v1`; public schema: `violet.scv2-px2-pixiv-source-concept-cluster-result.v1`.
-- Contract evidence remains local synthetic/operator evidence; it is neither CI nor PX2 owner acceptance.
+- Phase: `SCV2-PX3` - Pixiv Product Integration.
+- Repository / PR: `kyloris0660/VIOLET` / PR #149.
+- Branch: `codex/scv2-px3-pixiv-product-integration`.
+- Status: `SCV2_PX3_FINAL_PRODUCT_CLOSURE_ACCEPTED_PENDING_EXPECTED_HEAD_MERGE`.
+- Implementation evidence HEAD/tree: `ce5a11f75f13965652cb6f9179bbde45526c6e18` / `81f961be8d86016afdfb7c7a25a9b87698dd43c6`.
+- `target_met=true`; `safe_to_merge=true`; `route_approved=false`.
+- `px3_started=true`; `px3_owner_accepted=true`; `px3_merge_authorized=true`.
 
-## PX1 Merge Projection
+## PX2 Merge Projection
 
-- Accepted PR #147 HEAD/tree: `15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a` / `480d6a548e6276afeccf49ec75a73d7389b995fe`.
-- Merge commit/tree: `5a8efdaf954ab95bd82f95464af31a7fd0873e5e` / `480d6a548e6276afeccf49ec75a73d7389b995fe`; time: `2026-09-02T11:50:19Z`.
-- Merge parents: `8a825bcdd12f76d1c2c396b7039bd9e326cd63dc / 15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a`.
-- `SCV2_PX1_MERGED`; `px1_owner_accepted=true`; `px1_merged=true`.
+- Accepted PR #148 HEAD/tree: `bf8055af61c3a5d32155701ed7110db692047dba` / `507a223a9156ff2f9944524303419e85891812fa`.
+- Merge commit/tree: `421e2989d274e2dc4492d5bccc10720dcfbbaa4f` / `507a223a9156ff2f9944524303419e85891812fa`.
+- Merge parents: `5a8efdaf954ab95bd82f95464af31a7fd0873e5e,bf8055af61c3a5d32155701ed7110db692047dba`.
+- Merge time: `2026-09-02T15:06:43Z`.
+- `SCV2_PX2_MERGED`; accepted tree equals merge tree; no parallel main commit was present.
 
-## PX2 Product Slice
+## Final Product Route
 
-- Consume the frozen PX1 aggregate and signal-bundle contract with strict schema, logical-key, and fingerprint validation.
-- Reconstruct role-aware Pixiv work/page contexts and call the existing deterministic SourceConcept resolver and graph policy.
-- Project every actual candidate as must_link, cannot_link, or deferred_nonblocking, with a nonblocking ambiguous ledger.
-- Apply and replay through existing SourceConcept models only in task-owned temporary SQLite; no migration or existing database access.
-- Emit one versioned, deterministic, public-safe persistable cluster result without database row IDs, paths, payloads, credentials, filenames, or wall-clock identity.
-- Historical phase-4.5-PX1 is historical compatibility evidence, not PX2 authority.
+- PX1 repository-owned Pixiv aggregate/signal contract remains the input authority.
+- PX2 existing SourceConcept resolver, graph policy, candidate dispositions, ambiguity ledger, and persistence seam are reused.
+- PX3 adds product-owned run persistence, dry-run/apply/rollback, read APIs, and an operable admin UI.
+- The real provider adapter is wired but real network, credentials, source, and user-data execution remain disabled.
+- Controlled provider smoke, existing-database canary, backup/restore, and 1%-5% import remain owner gates inside PX3.
+- Historical phase-4.5-PX1 is historical compatibility evidence, not current authority.
 
-## Current Gate And Authority Boundary
+## Executable Contract
 
-- Gate: `pending_scv2_px2_owner_merge_audit` (PR #148 is a normal Ready candidate bound to corrected exact synthetic PX2 implementation evidence; the repository contract itself grants no owner or merge authority).
-- Resolution: Apply the current owner instruction as one external conditional expected-head merge gate after local, remote, PR, thread, cleanliness, contract, and mergeability facts are refreshed; then enter PX3 only from the verified merge.
-- `px2_started=true`; `px2_owner_accepted=false`; `px2_safe_to_merge=false`; `px2_merge_authorized=false`; `px3_started=false`.
-- `real_provider_authorized=false`; `real_source_authorized=false`; `existing_database_authorized=false`; `migration_authorized=false`; `full_import_authorized=false`; `production_authorized=false`.
-- Existing DB/app-storage, provider network, real source, LLM, and production activity counts: `0/0/0/0/0`.
+- Contract: `scv2_px3_pixiv_product_integration_contract_v1`.
+- Public schema: `violet.scv2-px3-pixiv-product-integration-result.v1`.
+- Repository gap map completed: `true`.
+- PX1/PX2 reused: `true`.
+- Product persistence verified: `true`.
+- Dry-run/apply/rollback verified: `true`.
+- API/UI verified: `true`.
+- Synthetic browser E2E verified: `true`.
+- Controlled canary entrypoints verified: `true`.
+- Hosted CI and owner authority remain separate and are not synthesized by local evidence.
 
-## Fixed Near-Term Route
+## Current Gate And Authority
 
-- `SCV2-PX1` - Pixiv metadata consolidation and offline synthetic vertical slice; started: `true`.
-- `SCV2-PX2` - deterministic Pixiv SourceConcept clustering, candidate explanation, ambiguous ledger, and persistable cluster result; started: `true`.
-- `SCV2-PX3` - real source/provider, necessary migration, production persistence, API/UI, canary, rollback, and final import checkpoint; started: `false`.
+- Gate: `expected_head_merge_pending`.
+- Scope: One owner-authorized expected-head PR149 merge commit
+- Resolution: Verify final local remote PR HEAD, clean worktree and audited base, merge once, then stop before every real data-plane operation.
+- `repository_migration_code_authorized=true`; migrations may be tested only on task-owned temporary databases.
+- `synthetic_local_server_browser_e2e_authorized=true`.
+- STOP: normal startup executes Base.metadata.create_all() and schema migration. Back up and successfully restore before the first normal startup against any existing database.
+- Next owner authorization only: backup/restore -> 1-5 work metadata-only provider smoke -> existing DB read-only dry-run -> accept exact selection/result fingerprints -> 1% apply canary -> gallery search/media detail acceptance -> replay/rollback checks.
+- `real_pixiv_network_execution_authorized=false`; real gallery-dl execution is likewise forbidden.
+- `existing_database_or_app_storage_mutation_authorized=false`.
+- `real_source_or_icloud_access_authorized=false`; `provider_credentials_authorized=false`.
+- `user_data_import_authorized=false`; LLM execution is forbidden; `production_authorized=false`; `full_library_import_authorized=false`.
 
 ## Completed Checkpoints
 
@@ -63,15 +74,17 @@
 - `scv2_px2_final_review_correction`: `repository_owned_px1_evidence_rederived_operation_receipt_actual_path_counted_source_state_ledger_matches_effective_resolution_and_only_approved_or_stably_authoritative_aliases_can_union_five_threads_replied_once_and_resolved` - `9ee1d96004daa843544b977ed3ae607c51299f9b`.
 - `scv2_px2_pr148_ready`: `normal_pr148_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_docs_projection_without_merge`.
 - `scv2_px1_post_merge_late_review_adjudication`: `seven_threads_created_after_pr147_merge_once_adjudicated_five_real_path_findings_bound_to_px3_one_retained_database_binding_finding_rejected_by_independent_replay_one_stable_aggregate_key_finding_closed_at_px2_consumer_boundary_and_only_original_workspace_thread_remains_unresolved` - `5a8efdaf954ab95bd82f95464af31a7fd0873e5e`.
-
-## Allowed / Forbidden
-
-- Allowed: read repository files and trusted Git or GitHub control-plane state; consume frozen PX1 aggregates and signal bundles through strict public contract validation; reuse and minimally extend the existing SourceConcept resolver and persistence seams for deterministic synthetic PX2; create new repository-owned synthetic fixtures and task-owned temporary SQLite databases; commit and normally push the PX2 feature branch and create one normal Ready pull request; consume one owner-issued conditional expected-head merge commit for PR #148 after every substantive gate passes; after verified PR #148 merge, start the final SCV2-PX3 branch under bounded synthetic and task-owned temporary execution authority; update current governance state and public-safe documentation.
-- Forbidden: direct main push, squash merge, rebase merge, force-push, auto-merge, reset, stash, clean, or overwrite; real source or iCloud access, inventory, listing, stat, open, read, hash, or mutation; existing database or app-storage access or write; real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download; import, classification or tagging on user data, production SourceConcept materialization, Entity truth promotion, or full-library work; LLM or external model, real-data server/browser/E2E, any non-expected-head PX2 merge, PX3 merge, or production execution.
+- `scv2_px2_pr148_expected_head_merge`: `owner_authorized_head_is_second_merge_parent_merge_tree_equals_accepted_tree_and_origin_main_has_no_parallel_commit` - `421e2989d274e2dc4492d5bccc10720dcfbbaa4f`.
+- `scv2_px3_repository_gap_map_and_governance_entry`: `existing_ingestion_px2_resolver_sourceconcept_persistence_api_frontend_import_and_feature_flag_seams_mapped_and_final_phase_started_with_real_data_plane_authorities_false` - `507a223a9156ff2f9944524303419e85891812fa`.
+- `scv2_px3_product_integration_vertical_slice`: `frozen_SCV2-PX1_and_SCV2-PX2_chain_reused_twenty_clusters_fifty_nine_candidate_dispositions_and_twenty_nine_ambiguity_records_projected_through_atomic_sourceconcept_owned_product_persistence_read_api_and_operable_admin_ui` - `f1ba10194cd72232b4b8bb2ee24e7fe421d0a18115ac3d4918dc1e8af72ce020`.
+- `scv2_px3_same_head_receipt_and_contract`: `canonical_focused_validation_passed_on_exact_implementation_head_clean_before_after_and_contract_independently_rebuilt_px1_px2_product_persistence_api_and_authority_facts_with_zero_errors_or_warnings` - `389ab3994bb81ca772ce491dac88eb1d8b292d3d`.
+- `scv2_px3_full_non_e2e_and_synthetic_browser_acceptance`: `4337_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_assertions_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_limitation_while_real_browser_dry_run_apply_detail_filter_rollback_reapply_completed_with_zero_final_console_errors`.
+- `scv2_px3_pr149_ready`: `normal_pr149_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_governance_projection_without_merge`.
+- `scv2_px3_final_local_media_product_closure`: `actual_gallery_search_media_detail_duplicate_support_row_id_neutrality_exact_plan_apply_replay_rollback_reapply_verified_by_independent_contract_and_real_edge_browser` - `ce5a11f75f13965652cb6f9179bbde45526c6e18`.
 
 ## Next Action
 
-- Required checkpoint: `owner audits the exact normal Ready PR #148 head and decides separately whether to authorize PX2 merge; PX2 merge and PX3 remain outside this task`.
+- Required checkpoint: `one expected-head merge commit, then separately authorized backup/restore and controlled canary only`.
 
 ## Durable Links
 
@@ -85,24 +98,25 @@
 
 ## Deferred Debt And Exact Due Gates
 
-- `FL1_I2_LISTED_MEMBER_VALIDATION_GATE` - owner: future real-source inventory owner; due before: `real source or iCloud enumeration or any I2 positive inventory authority`; PR #146 final review requires every listed member to be validated before suffix filtering; PX1 never enumerates a real source. Requirements: validate and account for every listed member before eligibility filtering; preserve unsupported and rejected member dispositions.
-- `FL1_I2_EVENT_TIME_LOWER_BOUND_GATE` - owner: future I2 receipt-reuse owner; due before: `I2 target, safe, route, machine-verifiable, or validation-receipt reuse`; PR #146 final review found that evidence timestamps need a lower bound tied to run start; PX1 uses no I2 real-operation receipt. Requirements: bind all event timestamps to a validated run interval; reject pre-run events before positive projection.
-- `FL1_I2_JPEG_CONTENT_AUTHORITY_GATE` - owner: future real-source content-validation owner; due before: `any real-source JPEG content_verified claim`; Boundary-marker parsing does not by itself grant JPEG codec/content authority. Requirements: add bounded codec-level JPEG validation; otherwise retain an explicit unsupported or uncertain disposition.
-- `FL1_I2_VP8_CONTENT_AUTHORITY_GATE` - owner: future real-source content-validation owner; due before: `any real-source VP8 content_verified claim`; Container checks do not by themselves grant VP8 payload/content authority. Requirements: add bounded VP8 payload validation; otherwise retain an explicit unsupported or uncertain disposition.
-- `FL1_I2_INITIAL_ENUMERATION_BUDGET_GATE` - owner: future real-source inventory owner; due before: `first real source directory listing`; Initial enumeration must obey the same finite budgets as later pages. Requirements: apply entry, page, byte, depth, and deadline budgets from the first listing call; fail closed before an unbounded initial result.
-- `FL1_I2_OPERATION_ADMISSION_CAP_GATE` - owner: future real-source operation-gateway owner; due before: `first real open, read, hash, structure validation, or retry`; Open, hash, validation, and retry caps must be enforced at admission rather than only after execution. Requirements: reserve every finite operation budget before dispatch; reject equality and overflow without recording a started operation.
-- `FL1_I2_EVIDENCE_PREPARSE_BUDGET_GATE` - owner: future untrusted-evidence or CI owner; due before: `untrusted or real evidence ingestion, remote CI authority, or I2 positive authority reuse`; Evidence files must be size-bounded before JSON parsing to avoid a deterministic contract false positive or resource exhaustion. Requirements: perform no-follow regular-file and byte-budget checks before decode; bind the exact bounded bytes to the reconstructed projection.
-- `FL1_I2_MAX_DEPTH_REDERIVATION_GATE` - owner: future real-source inventory contract owner; due before: `real enumeration or any I2 positive inventory authority`; Maximum traversal depth must be re-derived from member evidence rather than trusted as a caller total. Requirements: recompute maximum depth from bound member chains; reject caller-reported depth mismatches.
-- `FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE` - owner: future I2 budget-closure owner; due before: `I2 budget closure, positive authority, or validation-receipt reuse`; Negative byte totals must be rejected before they can reduce or satisfy a budget. Requirements: enforce exact nonnegative integer byte counters; recompute aggregate byte use from evidence.
-- `FL1_I2_FAILED_RECEIPT_COMPLETION_GATE` - owner: future I2 receipt/finalizer owner; due before: `I2 evidence_complete, target, safe, route, or finalizer reuse`; A failed local receipt must never allow evidence_complete or phase-completion claims. Requirements: derive completion only from a positive same-head receipt; make every failed or missing receipt force the public completion projection false.
-- `FL1_I2_DYNAMIC_LOADER_ENVIRONMENT_POLICY` - owner: future POSIX, remote-CI, or hostile-local-environment execution owner; due before: `first POSIX real-source execution, remote-CI positive authority, or hostile-local-environment resistance claim`; Owner-adjudicated PR #146 debt keeps dynamic-loader environment scrubbing outside the Windows local-operator threat model. Requirements: define and test the target-platform dynamic-loader allowlist; retain local-operator-only receipt claims until then.
-- `FL1_I2_VENV_FULL_PYTHON_SUPPLY_CHAIN_BINDING` - owner: future CI or tamper-resistant environment-evidence owner; due before: `machine-verifiable CI, reproducible-environment, tamper-resistant, or untrusted-venv claim`; Owner-adjudicated PR #146 debt defers whole-venv Python hashing outside the trusted owner-machine model. Requirements: bind full Python package and source provenance; do not upgrade the current local receipt to supply-chain attestation.
-- `FL1_I3_REAL_SOURCE_SCOPE_GATE` - owner: future separately authorized real-source canary owner; due before: `any real source or iCloud listing, stat, observation, open, read, hash, or validation`; No private real-source scope, protected-root registry, budgets, no-hydration policy, or canary authority exists. Requirements: bind exact private source identity and finite scope; approve protected roots, budgets, no-hydration policy, and stop conditions.
-- `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - owner: future hostile-local threat-model owner; due before: `any adversarial tamper-resistance claim`; Parent-observed child identity remains local provenance, not kernel, TPM, remote, CI, or tamper-resistant attestation. Requirements: keep claims limited to local operator provenance; design separate attestation only if the product requires it.
-- `VALIDATION_RECEIPT_GATE` - owner: PX1 and future phase owner; due before: `any machine-verifiable CI, owner acceptance, or merge claim`; Local same-head receipts do not grant CI, owner, or merge authority. Requirements: bind the exact current HEAD/tree and approved Python; keep machine-verifiable CI and owner authority false.
-- `OWNER_AUTHORITY_GATE` - owner: project owner; due before: `merge or any owner-accepted projection`; Automated tests and contracts cannot synthesize owner acceptance, safe-to-merge, or merge authority. Requirements: audit the exact normal PR head; issue any merge decision explicitly and separately.
-- `POSIX_LEDGER_DURABILITY_GATE` - owner: future POSIX durability owner; due before: `any cross-platform power-loss durability claim`; No unsupported host power-loss or POSIX durability claim is made by PX1. Requirements: define the supported filesystem and flush boundary; test crash recovery on the claimed platform.
-- `STABLE_REPLAY_GATE` - owner: future real-data replay owner; due before: `any real-data Stable Replay consumption or authority`; PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay. Requirements: bind exact real-data scope and immutable inputs; obtain separate execution authority.
-- `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` - owner: SCV2-PX3 real-path and evidence owner; due before: `caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production`; Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1. Requirements: close dangling-symlink, workspace-component-swap, and fixed-name evidence symlink races with bounded cross-platform primitives; handle SQLite URL-sensitive path characters including question mark and hash without authority ambiguity; prove confinement for hostile caller-controlled workspace and evidence paths before any real-path or remote-CI authority.
+- `FL1_I2_LISTED_MEMBER_VALIDATION_GATE` - due before `real source or iCloud enumeration or any I2 positive inventory authority`; PR #146 final review requires every listed member to be validated before suffix filtering; PX1 never enumerates a real source.
+- `FL1_I2_EVENT_TIME_LOWER_BOUND_GATE` - due before `I2 target, safe, route, machine-verifiable, or validation-receipt reuse`; PR #146 final review found that evidence timestamps need a lower bound tied to run start; PX1 uses no I2 real-operation receipt.
+- `FL1_I2_JPEG_CONTENT_AUTHORITY_GATE` - due before `any real-source JPEG content_verified claim`; Boundary-marker parsing does not by itself grant JPEG codec/content authority.
+- `FL1_I2_VP8_CONTENT_AUTHORITY_GATE` - due before `any real-source VP8 content_verified claim`; Container checks do not by themselves grant VP8 payload/content authority.
+- `FL1_I2_INITIAL_ENUMERATION_BUDGET_GATE` - due before `first real source directory listing`; Initial enumeration must obey the same finite budgets as later pages.
+- `FL1_I2_OPERATION_ADMISSION_CAP_GATE` - due before `first real open, read, hash, structure validation, or retry`; Open, hash, validation, and retry caps must be enforced at admission rather than only after execution.
+- `FL1_I2_EVIDENCE_PREPARSE_BUDGET_GATE` - due before `untrusted or real evidence ingestion, remote CI authority, or I2 positive authority reuse`; Evidence files must be size-bounded before JSON parsing to avoid a deterministic contract false positive or resource exhaustion.
+- `FL1_I2_MAX_DEPTH_REDERIVATION_GATE` - due before `real enumeration or any I2 positive inventory authority`; Maximum traversal depth must be re-derived from member evidence rather than trusted as a caller total.
+- `FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE` - due before `I2 budget closure, positive authority, or validation-receipt reuse`; Negative byte totals must be rejected before they can reduce or satisfy a budget.
+- `FL1_I2_FAILED_RECEIPT_COMPLETION_GATE` - due before `I2 evidence_complete, target, safe, route, or finalizer reuse`; A failed local receipt must never allow evidence_complete or phase-completion claims.
+- `FL1_I2_DYNAMIC_LOADER_ENVIRONMENT_POLICY` - due before `first POSIX real-source execution, remote-CI positive authority, or hostile-local-environment resistance claim`; Owner-adjudicated PR #146 debt keeps dynamic-loader environment scrubbing outside the Windows local-operator threat model.
+- `FL1_I2_VENV_FULL_PYTHON_SUPPLY_CHAIN_BINDING` - due before `machine-verifiable CI, reproducible-environment, tamper-resistant, or untrusted-venv claim`; Owner-adjudicated PR #146 debt defers whole-venv Python hashing outside the trusted owner-machine model.
+- `FL1_I3_REAL_SOURCE_SCOPE_GATE` - due before `any real source or iCloud listing, stat, observation, open, read, hash, or validation`; No private real-source scope, protected-root registry, budgets, no-hydration policy, or canary authority exists.
+- `PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY` - due before `any adversarial tamper-resistance claim`; Parent-observed child identity remains local provenance, not kernel, TPM, remote, CI, or tamper-resistant attestation.
+- `VALIDATION_RECEIPT_GATE` - due before `any machine-verifiable CI, owner acceptance, or merge claim`; Local same-head receipts do not grant CI, owner, or merge authority.
+- `OWNER_AUTHORITY_GATE` - due before `merge or any owner-accepted projection`; Automated tests and contracts cannot synthesize owner acceptance, safe-to-merge, or merge authority.
+- `POSIX_LEDGER_DURABILITY_GATE` - due before `any cross-platform power-loss durability claim`; No unsupported host power-loss or POSIX durability claim is made by PX1.
+- `STABLE_REPLAY_GATE` - due before `any real-data Stable Replay consumption or authority`; PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay.
+- `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` - due before `caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production`; Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1.
+- `SCV2_PX3_MULTIWORKER_APPLY_GATE` - due before `multiple Uvicorn workers, multiple owners, or concurrent canary apply`; Default run.py uses one Uvicorn worker and the current scope is one owner; UI blocks repeated clicks and uniqueness conflicts return stable 409.
 
-Updated: `2026-09-02`.
+Updated: `2026-09-05`.

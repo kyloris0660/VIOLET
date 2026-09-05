@@ -26,8 +26,12 @@ from ..models import (
     SourceConceptSearchIndex,
     SourceConceptSignal,
     SourceConceptSignalLink,
+    SourceConceptProductMediaBinding,
+    SourceConceptProductRun,
 )
 from .source_metadata_registry_service import canonical_source_key, normalize_source_text
+from .pixiv_identity_policy import canonical_pixiv_work_id, canonical_pixiv_page_index
+from .pixiv_product_media_binding import active_binding_condition
 
 ACTIVE_SOURCE_CONCEPT_STATUSES = ("active",)
 REVIEW_SOURCE_CONCEPT_STATUSES = ("needs_review",)
@@ -274,7 +278,7 @@ def _source_concept_media_condition(concept_ids: Sequence[int], *, include_needs
     evidence_condition = exists().where(
         and_(
             evidence.concept_id.in_(ids),
-            evidence.media_id == Media.id,
+            or_(evidence.media_id == Media.id, active_binding_condition(evidence.id, Media.id)),
             evidence.status.in_(statuses),
         )
     )
@@ -685,6 +689,9 @@ def source_layer_search_path_media_ids(
     )
     identity_ids: set[int] = set()
     if concept_ids:
+        identity_ids.update(int(row[0]) for row in db.query(Media.id).filter(
+            _source_concept_media_condition(concept_ids, include_needs_review=include_needs_review)
+        ).all())
         statuses = _status_scope(include_needs_review)
         identity_ids.update(
             int(row[0])
@@ -793,7 +800,10 @@ def _concept_summary(
         .filter(SourceConceptEvidence.status.in_(statuses))
     )
     if media_id is not None:
-        evidence_query = evidence_query.filter(SourceConceptEvidence.media_id == media_id)
+        evidence_query = evidence_query.filter(or_(
+            SourceConceptEvidence.media_id == media_id,
+            active_binding_condition(SourceConceptEvidence.id, media_id),
+        ))
     evidence_rows = (
         evidence_query.order_by(
             SourceConceptEvidence.status.asc(),
@@ -810,14 +820,9 @@ def _concept_summary(
         .filter(SourceConceptEvidence.status.in_(statuses))
         .all()
     )
-    linked_media_count = int(
-        db.query(func.count(func.distinct(SourceConceptEvidence.media_id)))
-        .filter(SourceConceptEvidence.concept_id == concept.id)
-        .filter(SourceConceptEvidence.status.in_(statuses))
-        .filter(SourceConceptEvidence.media_id.isnot(None))
-        .scalar()
-        or 0
-    )
+    linked_media_count = db.query(Media.id).filter(
+        _source_concept_media_condition([concept.id], include_needs_review=True)
+    ).count()
     evidence_count = int(
         db.query(func.count(SourceConceptEvidence.id))
         .filter(SourceConceptEvidence.concept_id == concept.id)
@@ -880,9 +885,25 @@ def _concept_summary(
                 "evidence_type": _safe_text(row.evidence_type, fallback="unknown"),
                 "evidence_strength": _safe_text(row.evidence_strength, fallback="unknown"),
                 "status": row.status,
-                "media_scope": "current_media" if media_id is not None and row.media_id == media_id else "linked_media",
+                "media_scope": "current_media" if media_id is not None else "linked_media",
             }
             for row in evidence_rows
+        ]
+        binding = SourceConceptProductMediaBinding
+        binding_query = db.query(binding, SourceConceptSignal).join(
+            SourceConceptEvidence, SourceConceptEvidence.id == binding.evidence_id
+        ).join(SourceConceptSignal, SourceConceptSignal.id == SourceConceptEvidence.signal_id).join(
+            SourceConceptProductRun, SourceConceptProductRun.id == binding.product_run_id
+        ).filter(SourceConceptEvidence.concept_id == concept.id,
+                 SourceConceptEvidence.status.in_(statuses), SourceConceptProductRun.status == 'active')
+        if media_id is not None:
+            binding_query = binding_query.filter(binding.media_id == media_id)
+        payload['local_media_support'] = [
+            {'provider': 'pixiv', 'work_id': canonical_pixiv_work_id((signal.evidence_payload or {}).get('work_id')),
+             'page_index': canonical_pixiv_page_index((signal.evidence_payload or {}).get('page_index')),
+             'source_metadata_record_id': edge.source_metadata_record_id,
+             'media_id': edge.media_id}
+            for edge, signal in binding_query.limit(MAX_EVIDENCE_ITEMS_PER_CONCEPT).all()
         ]
     return payload
 
@@ -998,7 +1019,8 @@ def list_media_source_concepts(db: Session, media_id: int) -> list[dict[str, Any
         for row in (
             db.query(SourceConcept.id)
             .join(SourceConceptEvidence, SourceConceptEvidence.concept_id == SourceConcept.id)
-            .filter(SourceConceptEvidence.media_id == media_id)
+            .filter(or_(SourceConceptEvidence.media_id == media_id,
+                        active_binding_condition(SourceConceptEvidence.id, media_id)))
             .filter(SourceConceptEvidence.status.in_(statuses))
             .filter(SourceConcept.status.in_(statuses))
             .distinct()

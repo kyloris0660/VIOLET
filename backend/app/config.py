@@ -620,6 +620,21 @@ class Settings:
         return int(os.getenv("DYNAMIC_LIBRARY_SYNC_THRESHOLD", "100"))
 
     @property
+    def SCV2_PX3_PRODUCT_INTEGRATION_ENABLED(self) -> bool:
+        """Expose the PX3 read/dry-run product integration surface."""
+        return _truthy_env("SCV2_PX3_PRODUCT_INTEGRATION_ENABLED")
+
+    @property
+    def SCV2_PX3_PRODUCT_APPLY_ENABLED(self) -> bool:
+        """Independent write switch for apply and rollback operations."""
+        return _truthy_env("SCV2_PX3_PRODUCT_APPLY_ENABLED")
+
+    @property
+    def SCV2_PX3_SYNTHETIC_UI_ENABLED(self) -> bool:
+        """Test-only repository fixture control used by browser acceptance."""
+        return self.IS_TEST_ENV and _truthy_env("SCV2_PX3_SYNTHETIC_UI_ENABLED")
+
+    @property
     def DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED(self) -> bool:
         """Unattended production writes stay disabled unless explicitly enabled."""
         val = os.getenv("DYNAMIC_LIBRARY_AUTO_SYNC_ENABLED", "false")

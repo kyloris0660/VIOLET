@@ -1179,14 +1179,31 @@ def project_pixiv_aggregate_to_source_concept_signals(
 
 def build_canonical_pixiv_aggregates_from_session(
     session: Session,
+    *,
+    work_ids: Iterable[str] | None = None,
 ) -> tuple[dict[str, Any], ...]:
     """Read Pixiv source rows and build aggregates without writing the session."""
 
-    queried_records = (
-        session.query(SourceMetadataRecord)
-        .filter(SourceMetadataRecord.provider == "pixiv")
-        .all()
+    query = session.query(SourceMetadataRecord).filter(
+        SourceMetadataRecord.provider == "pixiv"
     )
+    if work_ids is not None:
+        raw_work_ids = tuple(work_ids)
+        normalized_work_ids = [
+            canonical_pixiv_work_id(value) for value in raw_work_ids
+        ]
+        if any(value is None for value in normalized_work_ids):
+            raise PixivMetadataProjectionError("pixiv_work_filter_invalid")
+        canonical_work_ids = tuple(
+            sorted(
+                {str(value) for value in normalized_work_ids},
+                key=int,
+            )
+        )
+        if not canonical_work_ids:
+            return ()
+        query = query.filter(SourceMetadataRecord.source_work_id.in_(canonical_work_ids))
+    queried_records = query.all()
     records = [
         record
         for record in queried_records

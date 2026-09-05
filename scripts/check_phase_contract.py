@@ -62,6 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--px2-evidence",
         help="Confined task-owned temporary directory containing the fixed-name SCV2-PX2 evidence bundle.",
     )
+    parser.add_argument(
+        "--px3-evidence",
+        help="Confined task-owned temporary directory containing the fixed-name SCV2-PX3 evidence bundle.",
+    )
     parser.add_argument("--list-contracts", action="store_true", help="List registered contracts as JSON and exit.")
     parser.add_argument("--explain", action="store_true", help="Include contract metadata in output.")
     return parser
@@ -137,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         or args.fl1_i2_evidence
         or args.px1_evidence
         or args.px2_evidence
+        or args.px3_evidence
     ):
         if not args.repo_root:
             parser.error("private evidence options require --repo-root")
@@ -192,6 +197,11 @@ def main(argv: list[str] | None = None) -> int:
             from scripts.phase_contracts.scv2_px2_contract import Scv2Px2EvidencePaths
 
             scv2_px2_evidence = Scv2Px2EvidencePaths(Path(args.px2_evidence))
+        scv2_px3_evidence = None
+        if args.px3_evidence:
+            from scripts.phase_contracts.scv2_px3_contract import Scv2Px3EvidencePaths
+
+            scv2_px3_evidence = Scv2Px3EvidencePaths(Path(args.px3_evidence))
         repository_context = ContractRepositoryContext(
             repo_root=Path(args.repo_root).resolve(),
             expected_python=(
@@ -204,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             fl1_i2_evidence=fl1_i2_evidence,
             scv2_px1_evidence=scv2_px1_evidence,
             scv2_px2_evidence=scv2_px2_evidence,
+            scv2_px3_evidence=scv2_px3_evidence,
         )
 
     result = check_phase_contract(
