@@ -7,10 +7,10 @@
 - Phase: `SCV2-PX3` - Pixiv Product Integration.
 - Repository / PR: `kyloris0660/VIOLET` / PR #149.
 - Branch: `codex/scv2-px3-pixiv-product-integration`.
-- Status: `scv2_px3_product_integration_in_progress`.
-- Implementation evidence HEAD/tree: `389ab3994bb81ca772ce491dac88eb1d8b292d3d` / `2bed89386dc89b1231ee30198d447c5d6af23643`.
-- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
-- `px3_started=true`; `px3_owner_accepted=false`; `px3_merge_authorized=false`.
+- Status: `SCV2_PX3_FINAL_PRODUCT_CLOSURE_ACCEPTED_PENDING_EXPECTED_HEAD_MERGE`.
+- Implementation evidence HEAD/tree: `ce5a11f75f13965652cb6f9179bbde45526c6e18` / `81f961be8d86016afdfb7c7a25a9b87698dd43c6`.
+- `target_met=true`; `safe_to_merge=true`; `route_approved=false`.
+- `px3_started=true`; `px3_owner_accepted=true`; `px3_merge_authorized=true`.
 
 ## PX2 Merge Projection
 
@@ -34,19 +34,19 @@
 - Contract: `scv2_px3_pixiv_product_integration_contract_v1`.
 - Public schema: `violet.scv2-px3-pixiv-product-integration-result.v1`.
 - Repository gap map completed: `true`.
-- PX1/PX2 reused: `false`.
-- Product persistence verified: `false`.
-- Dry-run/apply/rollback verified: `false`.
-- API/UI verified: `false`.
-- Synthetic browser E2E verified: `false`.
-- Controlled canary entrypoints verified: `false`.
+- PX1/PX2 reused: `true`.
+- Product persistence verified: `true`.
+- Dry-run/apply/rollback verified: `true`.
+- API/UI verified: `true`.
+- Synthetic browser E2E verified: `true`.
+- Controlled canary entrypoints verified: `true`.
 - Hosted CI and owner authority remain separate and are not synthesized by local evidence.
 
 ## Current Gate And Authority
 
-- Gate: `scv2_px3_implementation_in_progress`.
-- Scope: Final bounded PX3 media binding, actual search, accepted-plan apply and rollback correction on PR149
-- Resolution: Complete owner-specified regressions and exact-head local evidence, then use the once-authorized expected-head merge commit and stop before controlled canary.
+- Gate: `expected_head_merge_pending`.
+- Scope: One owner-authorized expected-head PR149 merge commit
+- Resolution: Verify final local remote PR HEAD, clean worktree and audited base, merge once, then stop before every real data-plane operation.
 - `repository_migration_code_authorized=true`; migrations may be tested only on task-owned temporary databases.
 - `synthetic_local_server_browser_e2e_authorized=true`.
 - STOP: normal startup executes Base.metadata.create_all() and schema migration. Back up and successfully restore before the first normal startup against any existing database.
@@ -80,10 +80,11 @@
 - `scv2_px3_same_head_receipt_and_contract`: `canonical_focused_validation_passed_on_exact_implementation_head_clean_before_after_and_contract_independently_rebuilt_px1_px2_product_persistence_api_and_authority_facts_with_zero_errors_or_warnings` - `389ab3994bb81ca772ce491dac88eb1d8b292d3d`.
 - `scv2_px3_full_non_e2e_and_synthetic_browser_acceptance`: `4337_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_assertions_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_limitation_while_real_browser_dry_run_apply_detail_filter_rollback_reapply_completed_with_zero_final_console_errors`.
 - `scv2_px3_pr149_ready`: `normal_pr149_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_governance_projection_without_merge`.
+- `scv2_px3_final_local_media_product_closure`: `actual_gallery_search_media_detail_duplicate_support_row_id_neutrality_exact_plan_apply_replay_rollback_reapply_verified_by_independent_contract_and_real_edge_browser` - `ce5a11f75f13965652cb6f9179bbde45526c6e18`.
 
 ## Next Action
 
-- Required checkpoint: `owner audit of exact normal Ready PR #149 followed only by separately authorized controlled provider, existing-database, and 1%-5% import canary gates`.
+- Required checkpoint: `one expected-head merge commit, then separately authorized backup/restore and controlled canary only`.
 
 ## Durable Links
 
@@ -116,5 +117,6 @@
 - `POSIX_LEDGER_DURABILITY_GATE` - due before `any cross-platform power-loss durability claim`; No unsupported host power-loss or POSIX durability claim is made by PX1.
 - `STABLE_REPLAY_GATE` - due before `any real-data Stable Replay consumption or authority`; PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay.
 - `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` - due before `caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production`; Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1.
+- `SCV2_PX3_MULTIWORKER_APPLY_GATE` - due before `multiple Uvicorn workers, multiple owners, or concurrent canary apply`; Default run.py uses one Uvicorn worker and the current scope is one owner; UI blocks repeated clicks and uniqueness conflicts return stable 409.
 
 Updated: `2026-09-05`.

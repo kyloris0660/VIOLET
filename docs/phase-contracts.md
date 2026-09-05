@@ -73,23 +73,23 @@ The verified incoming mainline was PR #148 / `SCV2_PX2_MERGED` at
 `507a223a9156ff2f9944524303419e85891812fa`. No unreviewed main increment was present.
 
 ```text
-current_status=scv2_px3_product_integration_in_progress
+current_status=SCV2_PX3_FINAL_PRODUCT_CLOSURE_ACCEPTED_PENDING_EXPECTED_HEAD_MERGE
 contract_id=scv2_px3_pixiv_product_integration_contract_v1
 public_schema=violet.scv2-px3-pixiv-product-integration-result.v1
 pr=149
-implementation_evidence_head=389ab3994bb81ca772ce491dac88eb1d8b292d3d
-implementation_evidence_tree=2bed89386dc89b1231ee30198d447c5d6af23643
+implementation_evidence_head=ce5a11f75f13965652cb6f9179bbde45526c6e18
+implementation_evidence_tree=81f961be8d86016afdfb7c7a25a9b87698dd43c6
 px3_started=true
-target_met=false
-safe_to_merge=false
+target_met=true
+safe_to_merge=true
 route_approved=false
-px3_owner_accepted=false
+px3_owner_accepted=true
 px3_merged=false
-px3_merge_authorized=false
+px3_merge_authorized=true
 real_pixiv_network_execution_authorized=false
 existing_database_or_app_storage_mutation_authorized=false
 production_authorized=false
-active_blocker=scv2_px3_implementation_in_progress
+active_blocker=expected_head_merge_pending
 ```
 
 ## Stop Boundary
@@ -148,7 +148,30 @@ multiple owners or concurrent apply; `run.py` uses the default single worker.
 boundary before untrusted paths/evidence or existing DB/real-path execution.
 These gates do not create a new phase or block the owner-authorized local merge.
 
-The earlier projection is historical. `px3_target_met=false` remains in force until final binding/search/rollback/accepted-plan evidence and receipt pass.
+Final local receipt: **783 passed**, clean before/after,
+implementation HEAD `ce5a11f75f13965652cb6f9179bbde45526c6e18`. Command fingerprint
+`a018f3496ae0c8b1da960644ba79d4f283b674197699354bbfa3d222c3d1d0de`; stdout fingerprint
+`21c338c92293f6e889c6abd10460225257428a6864e8ae24ff2b6e0534e05d8e`. The contract independently rebuilds
+all inputs, binding, actual search results, accepted-plan rejection and rollback
+proofs, including a second database with shifted row IDs. It reports zero errors
+and warnings. The binding fixture has four media, four source records and 16 edges.
+
+The full non-E2E suite ran exactly once: **4355 passed, 22 skipped, 1 failed,
+7 setup errors, 15 warnings** (528.71 s). The one failure,
+`missing_original_ai_execution_evidence`, was reproduced on exact base
+`421e2989d274e2dc4492d5bccc10720dcfbbaa4f`; no evidence was copied or fabricated.
+The seven setup errors shared a late-imported empty Base after environment-safety
+module reload. Mapped-model metadata fixes the proof schema; the ordered
+environment/contract/binding regression passed **81 tests, 1 skipped**, and the
+final focused receipt passes. The full suite was not rerun or relabeled green.
+
+System Edge completed dry-run, accepted-plan apply, gallery alias+title search,
+media detail provenance, immediate rollback disappearance and reapply recovery;
+admin initialization made zero full-detail requests and the final console had
+zero errors. The synthetic server was stopped. Changed Python compile, tracked
+JSON, docs checker, diff, UTF-8/NUL and added-diff secret scans passed. Black was
+unavailable and was not installed. Hosted checks and a new review were not
+requested and are not inferred from local validation.
 
 Canonical commands (repository venv, task-owned temporary evidence only):
 
