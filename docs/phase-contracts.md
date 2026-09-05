@@ -73,7 +73,7 @@ The verified incoming mainline was PR #148 / `SCV2_PX2_MERGED` at
 `507a223a9156ff2f9944524303419e85891812fa`. No unreviewed main increment was present.
 
 ```text
-current_status=SCV2_PX3_FINAL_PRODUCT_CLOSURE_ACCEPTED_PENDING_EXPECTED_HEAD_MERGE
+current_status=SCV2_PX3_MERGED_READY_FOR_CONTROLLED_CANARY
 contract_id=scv2_px3_pixiv_product_integration_contract_v1
 public_schema=violet.scv2-px3-pixiv-product-integration-result.v1
 pr=149
@@ -81,15 +81,15 @@ implementation_evidence_head=ce5a11f75f13965652cb6f9179bbde45526c6e18
 implementation_evidence_tree=81f961be8d86016afdfb7c7a25a9b87698dd43c6
 px3_started=true
 target_met=true
-safe_to_merge=true
+safe_to_merge=false
 route_approved=false
 px3_owner_accepted=true
-px3_merged=false
-px3_merge_authorized=true
+px3_merged=true
+px3_merge_authorized=false
 real_pixiv_network_execution_authorized=false
 existing_database_or_app_storage_mutation_authorized=false
 production_authorized=false
-active_blocker=expected_head_merge_pending
+active_blocker=controlled_canary_authorization_required
 ```
 
 ## Stop Boundary
@@ -172,6 +172,8 @@ zero errors. The synthetic server was stopped. Changed Python compile, tracked
 JSON, docs checker, diff, UTF-8/NUL and added-diff secret scans passed. Black was
 unavailable and was not installed. Hosted checks and a new review were not
 requested and are not inferred from local validation.
+
+PR #149 merged once at `6db72c73397c17128bd2ce9be54f25233bc853f0`; parents are `421e2989d274e2dc4492d5bccc10720dcfbbaa4f,496a5fa85bc5e02b6c90331cb19a29169db1d9d0`. Accepted and merge trees both equal `f49a75b1ac2859919d4faae9e81dc437f8cddf89`. Merge authority is consumed. This post-merge governance checkpoint on the same feature branch does not modify the accepted main tree or authorize normal startup. The seven existing threads received one reply each; six accepted threads are resolved and multiworker apply remains deferred.
 
 Canonical commands (repository venv, task-owned temporary evidence only):
 

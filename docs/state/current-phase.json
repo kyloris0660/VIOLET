@@ -11,9 +11,9 @@
   "implementation_evidence_head": "ce5a11f75f13965652cb6f9179bbde45526c6e18",
   "implementation_evidence_tree": "81f961be8d86016afdfb7c7a25a9b87698dd43c6",
   "implementation_evidence_status": "final_media_binding_product_closure_exact_head_local_receipt",
-  "current_status": "SCV2_PX3_FINAL_PRODUCT_CLOSURE_ACCEPTED_PENDING_EXPECTED_HEAD_MERGE",
+  "current_status": "SCV2_PX3_MERGED_READY_FOR_CONTROLLED_CANARY",
   "target_met": true,
-  "safe_to_merge": true,
+  "safe_to_merge": false,
   "route_approved": false,
   "route_scope": "Final SCV2-PX3 bounded product correction, synthetic task-owned databases and browser only; conditional expected-head merge commit after all owner-specified gates pass.",
   "planning_authorized": true,
@@ -34,10 +34,10 @@
     "pr148_merged": true,
     "accepted_pr_head_is_merge_ancestor": true,
     "accepted_pr_tree_matches_merge_tree": true,
-    "origin_main_head": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
-    "origin_main_tree": "507a223a9156ff2f9944524303419e85891812fa",
+    "origin_main_head": "6db72c73397c17128bd2ce9be54f25233bc853f0",
+    "origin_main_tree": "f49a75b1ac2859919d4faae9e81dc437f8cddf89",
     "post_merge_commit_audit_count": 0,
-    "classification": "exact_pr148_expected_merge_is_current_origin_main"
+    "classification": "pr149_once_expected_head_merge_verified_no_parallel_main_increment"
   },
   "pipeline_contract": {
     "contract_id": "scv2_px3_pixiv_product_integration_contract_v1",
@@ -66,7 +66,7 @@
     "branch_commit_push_authorized": true,
     "one_normal_pull_request_authorized": true,
     "documentation_state_transition_authorized": true,
-    "px3_merge_authorized": true,
+    "px3_merge_authorized": false,
     "real_pixiv_network_execution_authorized": false,
     "provider_credentials_authorized": false,
     "real_source_or_icloud_access_authorized": false,
@@ -183,12 +183,17 @@
       "id": "scv2_px3_final_local_media_product_closure",
       "result": "actual_gallery_search_media_detail_duplicate_support_row_id_neutrality_exact_plan_apply_replay_rollback_reapply_verified_by_independent_contract_and_real_edge_browser",
       "fingerprint": "ce5a11f75f13965652cb6f9179bbde45526c6e18"
+    },
+    {
+      "id": "scv2_px3_pr149_expected_head_merge",
+      "result": "accepted_head_is_second_parent_and_accepted_tree_equals_merge_tree_origin_main_verified_once_merge_authority_consumed",
+      "fingerprint": "6db72c73397c17128bd2ce9be54f25233bc853f0"
     }
   ],
   "active_blocker": {
-    "code": "expected_head_merge_pending",
-    "scope": "One owner-authorized expected-head PR149 merge commit",
-    "resolution": "Verify final local remote PR HEAD, clean worktree and audited base, merge once, then stop before every real data-plane operation."
+    "code": "controlled_canary_authorization_required",
+    "scope": "All real provider database source and user-data execution remains unauthorized",
+    "resolution": "Owner must separately authorize backup/restore, metadata-only smoke, existing DB read-only dry-run, accepted fingerprints, 1% apply, gallery/detail and replay/rollback."
   },
   "owner_decisions": [
     {
@@ -279,8 +284,8 @@
     "px3_implementation_completed": true,
     "product_integration_verified": true,
     "px3_owner_accepted": true,
-    "px3_safe_to_merge": true,
-    "px3_merge_authorized": true,
+    "px3_safe_to_merge": false,
+    "px3_merge_authorized": false,
     "existing_db_or_app_storage_activity": 0,
     "provider_network_activity": 0,
     "real_source_activity": 0,
@@ -538,10 +543,28 @@
     "px3_binding_count": 16,
     "px3_binding_media_count": 4,
     "px3_binding_source_record_count": 4,
-    "px3_expected_merge_base": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f"
+    "px3_expected_merge_base": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
+    "px3_merged": true,
+    "px3_accepted_head": "496a5fa85bc5e02b6c90331cb19a29169db1d9d0",
+    "px3_accepted_tree": "f49a75b1ac2859919d4faae9e81dc437f8cddf89",
+    "px3_merge_commit": "6db72c73397c17128bd2ce9be54f25233bc853f0",
+    "px3_merge_tree": "f49a75b1ac2859919d4faae9e81dc437f8cddf89",
+    "px3_merge_parents": [
+      "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
+      "496a5fa85bc5e02b6c90331cb19a29169db1d9d0"
+    ],
+    "px3_review_disposition": {
+      "reviewed_head": "d979617b6e8e74afba11523ba82a415d454ffdaf",
+      "corrected_head": "496a5fa85bc5e02b6c90331cb19a29169db1d9d0",
+      "reply_count": 7,
+      "resolved_count": 6,
+      "deferred_count": 1,
+      "deferred_gate": "SCV2_PX3_MULTIWORKER_APPLY_GATE",
+      "new_review_requested": false
+    }
   },
   "public_state_boundary": "public_safe_product_integration_no_real_data_private_paths_credentials_or_raw_payloads",
-  "next_required_checkpoint": "one expected-head merge commit, then separately authorized backup/restore and controlled canary only",
+  "next_required_checkpoint": "backup/restore -> 1-5 work metadata-only provider smoke -> existing DB read-only dry-run -> owner accepts exact selection/result fingerprints -> 1% apply canary -> gallery search/media detail -> replay/rollback",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -808,8 +831,8 @@
   "px3_target_met": true,
   "conditional_expected_head_merge_authorized": true,
   "px3_owner_accepted": true,
-  "px3_merged": false,
-  "three_phase_implementation_route_completed": false,
+  "px3_merged": true,
+  "three_phase_implementation_route_completed": true,
   "controlled_canary_authorized": false,
   "real_pixiv_network_execution_authorized": false,
   "provider_credentials_authorized": false,

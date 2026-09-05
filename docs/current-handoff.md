@@ -7,10 +7,10 @@
 - Phase: `SCV2-PX3` - Pixiv Product Integration.
 - Repository / PR: `kyloris0660/VIOLET` / PR #149.
 - Branch: `codex/scv2-px3-pixiv-product-integration`.
-- Status: `SCV2_PX3_FINAL_PRODUCT_CLOSURE_ACCEPTED_PENDING_EXPECTED_HEAD_MERGE`.
+- Status: `SCV2_PX3_MERGED_READY_FOR_CONTROLLED_CANARY`.
 - Implementation evidence HEAD/tree: `ce5a11f75f13965652cb6f9179bbde45526c6e18` / `81f961be8d86016afdfb7c7a25a9b87698dd43c6`.
-- `target_met=true`; `safe_to_merge=true`; `route_approved=false`.
-- `px3_started=true`; `px3_owner_accepted=true`; `px3_merge_authorized=true`.
+- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
+- `px3_started=true`; `px3_owner_accepted=true`; `px3_merge_authorized=false`.
 
 ## PX2 Merge Projection
 
@@ -44,9 +44,9 @@
 
 ## Current Gate And Authority
 
-- Gate: `expected_head_merge_pending`.
-- Scope: One owner-authorized expected-head PR149 merge commit
-- Resolution: Verify final local remote PR HEAD, clean worktree and audited base, merge once, then stop before every real data-plane operation.
+- Gate: `controlled_canary_authorization_required`.
+- Scope: All real provider database source and user-data execution remains unauthorized
+- Resolution: Owner must separately authorize backup/restore, metadata-only smoke, existing DB read-only dry-run, accepted fingerprints, 1% apply, gallery/detail and replay/rollback.
 - `repository_migration_code_authorized=true`; migrations may be tested only on task-owned temporary databases.
 - `synthetic_local_server_browser_e2e_authorized=true`.
 - STOP: normal startup executes Base.metadata.create_all() and schema migration. Back up and successfully restore before the first normal startup against any existing database.
@@ -81,10 +81,11 @@
 - `scv2_px3_full_non_e2e_and_synthetic_browser_acceptance`: `4337_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_assertions_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_limitation_while_real_browser_dry_run_apply_detail_filter_rollback_reapply_completed_with_zero_final_console_errors`.
 - `scv2_px3_pr149_ready`: `normal_pr149_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_governance_projection_without_merge`.
 - `scv2_px3_final_local_media_product_closure`: `actual_gallery_search_media_detail_duplicate_support_row_id_neutrality_exact_plan_apply_replay_rollback_reapply_verified_by_independent_contract_and_real_edge_browser` - `ce5a11f75f13965652cb6f9179bbde45526c6e18`.
+- `scv2_px3_pr149_expected_head_merge`: `accepted_head_is_second_parent_and_accepted_tree_equals_merge_tree_origin_main_verified_once_merge_authority_consumed` - `6db72c73397c17128bd2ce9be54f25233bc853f0`.
 
 ## Next Action
 
-- Required checkpoint: `one expected-head merge commit, then separately authorized backup/restore and controlled canary only`.
+- Required checkpoint: `backup/restore -> 1-5 work metadata-only provider smoke -> existing DB read-only dry-run -> owner accepts exact selection/result fingerprints -> 1% apply canary -> gallery search/media detail -> replay/rollback`.
 
 ## Durable Links
 
