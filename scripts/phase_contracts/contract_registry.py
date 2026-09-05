@@ -684,10 +684,11 @@ CONTRACTS: dict[str, PhaseContract] = {
         required_validation_commands=(
             "python -B scripts/run_scv2_px3_pixiv_product_integration.py --evidence-dir <task-owned-temp>",
             "python -B scripts/create_scv2_px3_validation_receipt.py --evidence-dir <task-owned-temp>",
+            "For the restored PostgreSQL checkpoint only: python -B scripts/check_scv2_px3_restored_canary.py --evidence-dir <private-task-directory> --expected-receipt-sha256 <accepted-local-receipt-digest>",
             "python -B scripts/check_phase_contract.py --contract scv2_px3_pixiv_product_integration_contract_v1 --summary <public-summary> --repo-root <trusted-repo> --expected-python <approved-python> --px3-evidence <task-owned-temp>",
             "python -B -m pytest tests/ --ignore tests/e2e",
         ),
-        db_write_policy="additive repository migration code plus task-owned temporary SQLite validation only; existing database and app storage mutation forbidden",
+        db_write_policy="additive migrations and SourceConcept writes only on synthetic task databases or an explicitly authorized independently restored PostgreSQL copy; original database and app storage mutation forbidden",
         provider_policy="existing Pixiv provider seam is connected behind owner gates; current real network and credential activity forbidden",
         llm_policy="all LLM and external model activity forbidden",
         mutation_policy="dry-run by default; explicit feature flag and confirmation for apply; guarded exact-run rollback; synthetic temporary rows only in current evidence",

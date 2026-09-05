@@ -50,6 +50,7 @@ CANONICAL_FOCUSED_TESTS = (
     "tests/test_scv2_px3_contract.py",
     "tests/test_scv2_px3_validation_receipt.py",
     "tests/test_scv2_px3_controlled_canary.py",
+    "tests/test_scv2_px3_restored_canary.py",
     "tests/test_phase45_doc1_documentation_state.py",
     "tests/test_pd1a_mainline_governance.py",
 )
@@ -60,6 +61,7 @@ PX3_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST = frozenset(
         "docs/project-roadmap.md",
         "docs/roadmap/current-mainline-roadmap.md",
         "docs/state/current-phase.json",
+        "docs/development/scv2-px3-controlled-canary.md",
     }
 )
 

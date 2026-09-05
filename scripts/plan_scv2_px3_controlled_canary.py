@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from pathlib import Path
+import re
 
 
 GATES = {
@@ -16,7 +18,31 @@ GATES = {
 }
 
 
-def build_plan(*, gate: str, canary_percent: int, work_limit: int) -> dict[str, object]:
+def accepted_apply_request(dry_run: dict, *, canary_percent: int) -> dict[str, object]:
+    """Carry an actual server dry-run; the apply endpoint rederives its contents."""
+    selection = dry_run.get('input_selection') or {}
+    unsigned = {key: value for key, value in dry_run.items() if key != 'canonical_fingerprint'}
+    fingerprint = hashlib.sha256(json.dumps(unsigned, sort_keys=True, separators=(',', ':'),
+                                           ensure_ascii=False, allow_nan=False).encode('utf-8')).hexdigest()
+    if (dry_run.get('status') != 'planned' or dry_run.get('applied') is not False
+        or dry_run.get('source_mode') != 'existing_source_metadata'
+        or selection.get('percentage') != canary_percent
+        or dry_run.get('canonical_fingerprint') != fingerprint
+        or dry_run.get('selection_fingerprint') != selection.get('canonical_fingerprint')):
+        raise ValueError('px3_actual_dry_run_required')
+    fields = {
+        'accepted_selection_fingerprint': dry_run.get('selection_fingerprint'),
+        'accepted_product_fingerprint': dry_run.get('product_result_fingerprint'),
+        'accepted_binding_fingerprint': dry_run.get('media_binding', {}).get('local_binding_fingerprint'),
+    }
+    if any(not isinstance(value, str) or not re.fullmatch('[0-9a-f]{64}', value) or value == '0'*64
+           for value in fields.values()):
+        raise ValueError('px3_actual_dry_run_fingerprints_required')
+    return dict(mode='apply',canary_percent=canary_percent,confirm=True,
+                confirm_phrase='APPLY_PIXIV_SOURCE_CONCEPTS',**fields)
+
+
+def build_plan(*, gate: str, canary_percent: int, work_limit: int, dry_run: dict | None = None) -> dict[str, object]:
     if gate not in GATES:
         raise ValueError("px3_canary_gate_invalid")
     if (
@@ -46,11 +72,8 @@ def build_plan(*, gate: str, canary_percent: int, work_limit: int) -> dict[str, 
                 "real_pixiv_network_execution_authorized=true",
                 "provider_credentials_authorized=true",
             ],
-            "entrypoint": (
-                "python -B scripts/run_pixiv_metadata_ingestion.py "
-                "--database <isolated-test-db> --output-dir <private-task-output> "
-                "--execute --gallery-dl-command <approved-command>"
-            ),
+            "entrypoint": "BLOCKED: historical ingestion CLI does not enforce this work manifest limit",
+            "executable_entrypoint_available": False,
             "bounds": {"work_limit": work_limit, "media_download": False},
             "preconditions": [
                 "owner-approved exact work manifest containing 1-5 Pixiv works",
@@ -65,17 +88,13 @@ def build_plan(*, gate: str, canary_percent: int, work_limit: int) -> dict[str, 
         },
         "existing-db-canary": {
             "required_future_authorities": [
-                "existing_database_or_app_storage_mutation_authorized=true"
+                "original_database_readonly_query_authorized=true"
             ],
             "entrypoint": (
                 "POST /api/admin/pixiv-product-integration/source-metadata/run "
                 f'{{"mode":"dry_run","canary_percent":{canary_percent}}}'
             ),
-            "apply_entrypoint": (
-                "POST /api/admin/pixiv-product-integration/source-metadata/run "
-                f'{{"mode":"apply","canary_percent":{canary_percent},'
-                '"confirm":true,"confirm_phrase":"APPLY_PIXIV_SOURCE_CONCEPTS"}'
-            ),
+            "apply_entrypoint": None,
             "bounds": {"work_percentage": canary_percent, "full_scan": False},
             "preconditions": [
                 "PX3_BACKUP_RESTORE_GATE passed for the exact database identity",
@@ -90,10 +109,11 @@ def build_plan(*, gate: str, canary_percent: int, work_limit: int) -> dict[str, 
         },
         "backup-restore": {
             "required_future_authorities": [
-                "existing_database_or_app_storage_mutation_authorized=true"
+                "original_database_readonly_backup_authorized=true",
+                "task_owned_database_create_restore_authorized=true",
             ],
             "entrypoint": "pg_dump --format=custom --file=<exact-backup-artifact> <exact-database>",
-            "restore_entrypoint": "pg_restore --clean --if-exists --dbname=<isolated-restore-db> <exact-backup-artifact>",
+            "restore_entrypoint": "pg_restore --exit-on-error --single-transaction --no-owner --no-acl --dbname=<new-task-owned-db> <exact-backup-artifact>",
             "bounds": {"restore_target": "isolated_nonproduction_database_only"},
             "preconditions": [
                 "exact database identity recorded before backup",
@@ -108,14 +128,12 @@ def build_plan(*, gate: str, canary_percent: int, work_limit: int) -> dict[str, 
         },
         "import-canary": {
             "required_future_authorities": [
-                "existing_database_or_app_storage_mutation_authorized=true",
-                "user_data_import_authorized=true",
+                "exact_target_sourceconcept_materialization_authorized=true",
             ],
-            "entrypoint": (
-                "POST /api/admin/pixiv-product-integration/source-metadata/run "
-                f'{{"mode":"apply","canary_percent":{canary_percent},'
-                '"confirm":true,"confirm_phrase":"APPLY_PIXIV_SOURCE_CONCEPTS"}'
-            ),
+            "entrypoint": "Capture the actual dry-run JSON, then pass --dry-run-result to generate its exact apply request",
+            "apply_entrypoint": None,
+            "operation_kind": "sourceconcept_materialization",
+            "media_import": False,
             "rollback_entrypoint": (
                 "POST /api/admin/pixiv-product-integration/runs/<exact-run-key>/rollback "
                 '{"confirm":true,"confirm_phrase":"ROLLBACK_PIXIV_PRODUCT:<exact-run-key>"}'
@@ -134,6 +152,12 @@ def build_plan(*, gate: str, canary_percent: int, work_limit: int) -> dict[str, 
         },
     }
     selected = plans[gate]
+    if gate in {'existing-db-canary', 'import-canary'}:
+        request = accepted_apply_request(dry_run, canary_percent=canary_percent) if dry_run is not None else None
+        selected['apply_request'] = request
+        selected['apply_request_ready'] = request is not None
+        if request is not None:
+            selected['apply_entrypoint'] = 'POST /api/admin/pixiv-product-integration/source-metadata/run ' + json.dumps(request,sort_keys=True)
     plan = {
         "schema_version": "violet.scv2-px3-controlled-canary-plan.v1",
         "gate": GATES[gate],
@@ -157,12 +181,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--canary-percent", type=int, default=1)
     parser.add_argument("--work-limit", type=int, default=1)
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument('--dry-run-result', type=Path)
     args = parser.parse_args(argv)
     try:
         plan = build_plan(
             gate=args.gate,
             canary_percent=args.canary_percent,
             work_limit=args.work_limit,
+            dry_run=json.loads(args.dry_run_result.read_text(encoding='utf-8')) if args.dry_run_result else None,
         )
     except ValueError as exc:
         print(json.dumps({"passed": False, "error": str(exc)}, sort_keys=True))

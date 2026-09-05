@@ -120,6 +120,130 @@ def test_accepted_plan_exact_match_before_any_write(bound_db, field):
     assert bound_db.query(SourceConceptSignal).count() == 0
 
 
+def test_fresh_session_binding_accounting_matches_rows_and_replay(bound_db):
+    applied = plan_apply(bound_db, True)
+    with sessionmaker(bind=bound_db.get_bind())() as fresh:
+        row = fresh.query(SourceConceptProductRun).one()
+        count = fresh.query(SourceConceptProductMediaBinding).count()
+        assert count > 0
+        assert row.summary_json['media_binding']['binding_write_count'] == count
+        assert applied['media_binding']['binding_write_count'] == count
+        replay = plan_apply(fresh, True)
+        assert replay['idempotent_replay']
+        assert replay['media_binding']['binding_write_count'] == 0
+    with sessionmaker(bind=bound_db.get_bind())() as fresh:
+        assert fresh.query(SourceConceptProductRun).one().summary_json['media_binding']['binding_write_count'] == count
+        assert fresh.query(SourceConceptProductMediaBinding).count() == count
+
+
+def test_actual_dry_run_plan_generator_and_different_selection_boundary(bound_db, monkeypatch):
+    monkeypatch.setenv('SCV2_PX3_PRODUCT_INTEGRATION_ENABLED', '1')
+    monkeypatch.setenv('SCV2_PX3_PRODUCT_APPLY_ENABLED', '1')
+    from scripts.plan_scv2_px3_controlled_canary import accepted_apply_request, build_plan
+    client = client_for(bound_db)
+    endpoint = '/api/admin/pixiv-product-integration/source-metadata/run'
+    first = client.post(endpoint, json={'mode': 'dry_run', 'canary_percent': 1}).json()
+    generated = build_plan(gate='existing-db-canary', canary_percent=1, work_limit=1, dry_run=first)
+    request = generated['apply_request']
+    assert all(request[key] == value for key, value in accepted(first).items())
+    applied = client.post(endpoint, json=request)
+    assert applied.status_code == 200, applied.text
+    count = bound_db.query(SourceConceptProductMediaBinding).count()
+    other = client.post(endpoint, json={'mode': 'dry_run', 'canary_percent': 2}).json()
+    assert other['selection_fingerprint'] != first['selection_fingerprint']
+    rejected = client.post(endpoint, json=accepted_apply_request(other, canary_percent=2))
+    assert rejected.status_code == 409
+    assert rejected.json()['detail'] == 'px3_other_active_selection_requires_rollback'
+    assert bound_db.query(SourceConceptProductRun).filter_by(status='active').count() == 1
+    assert bound_db.query(SourceConceptProductMediaBinding).count() == count
+    assert client.post(endpoint, json=request).json()['idempotent_replay']
+    service.rollback_pixiv_product_run(bound_db, applied.json()['run_key'])
+    assert client.post(endpoint, json=accepted_apply_request(other, canary_percent=2)).status_code == 200
+    assert bound_db.query(SourceConceptProductRun).filter_by(status='active').count() == 1
+
+
+def test_plan_generator_rejects_edited_dry_run(bound_db, monkeypatch):
+    monkeypatch.setenv('SCV2_PX3_PRODUCT_INTEGRATION_ENABLED', '1')
+    from scripts.plan_scv2_px3_controlled_canary import accepted_apply_request
+    client = client_for(bound_db)
+    plan = client.post('/api/admin/pixiv-product-integration/source-metadata/run',
+                       json={'mode': 'dry_run', 'canary_percent': 1}).json()
+    plan['media_binding']['local_binding_fingerprint'] = '0' * 64
+    with pytest.raises(ValueError, match='actual_dry_run_required'):
+        accepted_apply_request(plan, canary_percent=1)
+
+
+def legacy_payload(record):
+    return {'category': 'pixiv', 'id': int(record.source_work_id), 'num': record.source_page_index,
+            'page_count': 1, 'title': record.title,
+            'user': {'id': int(record.artist_id), 'name': record.artist_name}}
+
+
+@pytest.mark.parametrize('mutation', ['valid', 'work', 'page', 'provider', 'creator', 'title', 'provenance', 'partial_stable', 'redacted', 'pending'])
+def test_legacy_stored_provider_provenance_exact_local_binding(bound_db, mutation):
+    from app.services.pixiv_product_media_binding import verified_local_binding_provenance
+    record = bound_db.query(SourceMetadataRecord).first()
+    record.raw_metadata_json = legacy_payload(record)
+    record.provenance = {'adapter': 'gallery-dl', 'metadata_only': True, 'original_downloaded': False}
+    if mutation == 'work': record.raw_metadata_json['id'] += 1
+    if mutation == 'page': record.raw_metadata_json['num'] = 1
+    if mutation == 'provider': record.raw_metadata_json['category'] = 'other'
+    if mutation == 'creator': record.raw_metadata_json['user']['id'] += 1
+    if mutation == 'title': record.raw_metadata_json['title'] = 'Changed'
+    if mutation == 'provenance': record.provenance['adapter'] = 'unknown'
+    if mutation == 'partial_stable': record.provenance['stable_identity_key'] = {'provider': 'pixiv'}
+    if mutation == 'redacted': record.raw_metadata_json = {'private_stdout_artifact': 'never-read'}
+    if mutation == 'pending': record.status = 'metadata_pending'
+    before = copy.deepcopy((record.raw_metadata_json, record.provenance))
+    assert verified_local_binding_provenance(record) is (mutation == 'valid')
+    assert (record.raw_metadata_json, record.provenance) == before
+
+
+def test_legacy_binding_and_rejected_popularity_tag_keep_px1_px2_identity(bound_db):
+    for record in bound_db.query(SourceMetadataRecord):
+        record.raw_metadata_json = legacy_payload(record)
+        record.provenance = {'adapter': 'gallery-dl', 'metadata_only': True, 'original_downloaded': False}
+    bound_db.add(SourceTagObservation(source_metadata_record_id=101, provider='pixiv',
+        observation_key='popularity', raw_tag='10000users入り', normalized_tag='10000users入り',
+        canonical_tag_key='10000users入り', status='observed'))
+    bound_db.commit()
+    run = service.build_clustering_from_source_metadata_session(bound_db)
+    rejected = [s for s in run.consumer.signals if s.status == 'rejected']
+    assert rejected and all(s.trust_tier == 'rejected' for s in rejected)
+    plan = plan_apply(bound_db)
+    applied = plan_apply(bound_db, True, plan)
+    assert applied['media_binding']['planned_media_binding_count'] == 4
+    assert applied['px1_input_fingerprint'] == run.consumer.input_fingerprint
+    assert applied['px2_business_projection_fingerprint'] == run.business_projection_fingerprint
+    assert ids(client_for(bound_db), 'AsterHistorical MoonGarden') == {1, 2}
+    assert source_layer_search_path_media_ids(bound_db, '10000users入り')['identity'] == set()
+    service.rollback_pixiv_product_run(bound_db, applied['run_key'])
+
+
+def test_canary_eligibility_excludes_nonpixiv_queue_and_pending_metadata(bound_db):
+    before = service.select_existing_pixiv_canary_work_ids(bound_db, percentage=1)
+    for index, status in enumerate(('not_applicable_non_pixiv', 'metadata_pending', 'observed')):
+        bound_db.add(SourceMetadataRecord(provider='pixiv', provider_record_key=f'ineligible:{index}',
+            source_work_id='not-a-work' if index != 1 else '999999999', source_page_index=0,
+            status=status, artist_name='AsterHistorical'))
+    bound_db.commit()
+    after = service.select_existing_pixiv_canary_work_ids(bound_db, percentage=1)
+    assert after['selected_work_ids'] == before['selected_work_ids']
+    assert after['eligible_work_count'] == before['eligible_work_count'] == 3
+    assert after['excluded_source_record_count'] == 3
+
+
+def test_persisted_projection_is_independent_of_database_collation(bound_db, monkeypatch):
+    from sqlalchemy.orm import Query
+    applied = plan_apply(bound_db, True)
+    original = Query.order_by
+    def reversed_collation(self, *clauses):
+        return original(self, *(clause.desc() for clause in clauses))
+    monkeypatch.setattr(Query, 'order_by', reversed_collation)
+    detail = service.get_pixiv_product_run(bound_db, applied['run_key'])
+    assert detail['result_fingerprint'] == applied['product_result_fingerprint']
+
+
 def test_stale_plan_metadata_or_media_mapping_rejected(bound_db):
     plan = plan_apply(bound_db)
     record = bound_db.query(SourceMetadataRecord).first()

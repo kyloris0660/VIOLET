@@ -51,3 +51,19 @@ def test_execute_flag_only_emits_plan_and_returns_blocked(capsys) -> None:
     assert exit_code == 3
     assert payload["current_execution_authorized"] is False
     assert payload["status"] == "blocked_current_authority_false"
+
+
+def test_provider_template_cannot_execute_an_unbounded_ingestion_command():
+    plan = build_plan(gate='provider-smoke', canary_percent=1, work_limit=2)
+    assert plan['executable_entrypoint_available'] is False
+    assert plan['entrypoint'].startswith('BLOCKED:')
+
+
+def test_apply_without_actual_dry_run_and_restore_overwrite_are_not_emitted():
+    for gate in ('existing-db-canary', 'import-canary'):
+        plan = build_plan(gate=gate, canary_percent=1, work_limit=1)
+        assert plan['apply_entrypoint'] is None
+        assert not plan.get('apply_request_ready')
+    restore = build_plan(gate='backup-restore', canary_percent=1, work_limit=1)
+    assert '--clean' not in restore['restore_entrypoint']
+    assert '--single-transaction' in restore['restore_entrypoint']

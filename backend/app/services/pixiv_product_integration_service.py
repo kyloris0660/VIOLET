@@ -37,6 +37,7 @@ from ..models import (
 from ..utils.cache import invalidate_source_concept_search_cache
 from .pixiv_product_media_binding import (
     plan_media_bindings, binding_plan_summary, persist_media_bindings,
+    verified_local_binding_provenance,
 )
 from .pixiv_identity_policy import canonical_pixiv_work_id
 from .pixiv_metadata_clustering_service import (
@@ -419,20 +420,12 @@ def select_existing_pixiv_canary_work_ids(
         or not 1 <= percentage <= 5
     ):
         raise PixivProductIntegrationError("px3_canary_percentage_invalid")
-    raw_work_ids = (
-        session.query(SourceMetadataRecord.source_work_id)
-        .filter(
-            SourceMetadataRecord.provider == "pixiv",
-            SourceMetadataRecord.source_work_id.isnot(None),
-        )
-        .distinct()
-        .all()
-    )
-    canonical_work_ids = [
-        canonical_pixiv_work_id(value) for (value,) in raw_work_ids
-    ]
-    if any(value is None for value in canonical_work_ids):
-        raise PixivProductIntegrationError("px3_canary_source_work_id_invalid")
+    records = session.query(SourceMetadataRecord).filter_by(provider='pixiv').all()
+    # Queue placeholders (including non-Pixiv filenames) are not eligible
+    # provider works. Reuse the binding seam's trust predicate; never repair
+    # their identity or count pending metadata as a canary work.
+    eligible = [record for record in records if verified_local_binding_provenance(record)]
+    canonical_work_ids = [canonical_pixiv_work_id(record.source_work_id) for record in eligible]
     work_ids = sorted(
         {str(value) for value in canonical_work_ids},
         key=lambda value: canonical_fingerprint(
@@ -449,6 +442,8 @@ def select_existing_pixiv_canary_work_ids(
         "eligible_work_count": len(work_ids),
         "selected_work_count": len(selected),
         "selected_work_ids": selected,
+        "eligible_source_record_count": len(eligible),
+        "excluded_source_record_count": len(records) - len(eligible),
     }
     selection["canonical_fingerprint"] = canonical_fingerprint(selection)
     return selection
@@ -727,6 +722,11 @@ def _stored_product_projection(
         if any(stored[0] != canonical_fingerprint(payload)
                for stored, payload in zip(fingerprints, payloads)):
             raise PixivProductIntegrationError('px3_persisted_child_fingerprint_drift')
+    # PostgreSQL locale collation can differ from Python/SQLite ordering for
+    # multilingual keys. Restore the canonical business order before hashing.
+    clusters.sort(key=lambda item: item['cluster_key'])
+    candidates.sort(key=lambda item: item['pair_key'])
+    ambiguities.sort(key=lambda item: item['record_key'])
     if canonical_fingerprint(projection) != row.result_fingerprint:
         raise PixivProductIntegrationError('px3_persisted_projection_drift')
     return projection
@@ -839,6 +839,12 @@ def apply_pixiv_product_plan(
             or accepted_product_fingerprint != plan['product_result_fingerprint']
             or accepted_binding_fingerprint != plan['media_binding']['local_binding_fingerprint']):
             raise PixivProductIntegrationError('px3_accepted_plan_mismatch')
+    if source_mode == 'existing_source_metadata' and session.query(SourceConceptProductRun.id).filter(
+        SourceConceptProductRun.source_mode == 'existing_source_metadata',
+        SourceConceptProductRun.status == 'active',
+        SourceConceptProductRun.run_key != plan['run_key'],
+    ).first() is not None:
+        raise PixivProductIntegrationError('px3_other_active_selection_requires_rollback')
     business = _product_business_projection(
         run,
         scope_key=scope_key,
@@ -963,7 +969,7 @@ def apply_pixiv_product_plan(
             "counts": plan["counts"],
             "execution_boundary": plan["execution_boundary"],
             "input_selection": plan.get("input_selection"),
-            "media_binding": plan['media_binding'],
+            "media_binding": dict(plan['media_binding']),
         }
         existing.rollback_guard_json = {
             "rollback_available": rollback_available,
@@ -975,6 +981,10 @@ def apply_pixiv_product_plan(
         _upsert_product_projection(session, product_run=existing, business=business)
         binding_count = persist_media_bindings(session, existing, edges)
         plan['media_binding']['binding_write_count'] = binding_count
+        existing.summary_json = {
+            **existing.summary_json,
+            'media_binding': dict(plan['media_binding']),
+        }
         for stale in (
             session.query(SourceConceptProductRun)
             .filter(

@@ -415,7 +415,10 @@ def test_existing_source_canary_selection_is_stable_bounded_and_row_id_neutral(
                         source_page_index=0,
                         metadata_kind="provider_metadata",
                         data_type_label="fixture_or_mock",
-                        status="complete",
+                        status="observed",
+                        raw_metadata_json={'id': int(work_id)},
+                        provenance={'source': 'synthetic_provider', 'stable_identity_key':
+                                    {'provider': 'pixiv', 'work_id': work_id, 'page_index': 0}},
                     )
                 )
             session.commit()
@@ -453,11 +456,10 @@ def test_existing_source_canary_rejects_noncanonical_work_identity(
             )
         )
         session.commit()
-        with pytest.raises(
-            PixivProductIntegrationError,
-            match="canary_source_work_id_invalid",
-        ):
-            select_existing_pixiv_canary_work_ids(session, percentage=1)
+        selection = select_existing_pixiv_canary_work_ids(session, percentage=1)
+        assert selection['selected_work_ids'] == []
+        assert selection['eligible_work_count'] == 0
+        assert selection['excluded_source_record_count'] == 1
     finally:
         session.close()
         engine.dispose()
