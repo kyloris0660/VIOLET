@@ -746,13 +746,15 @@ def _coerce_profile_payload(
     if not payload:
         return base
     profile = dict(base)
-    for key in ("profile_id", "env", "repo_root", "python", "storage_root"):
+    for key in ("profile_id", "env", "repo_root", "python", "storage_root", "candidate_head"):
         if key in payload and payload.get(key) is not None:
             profile[key] = str(payload.get(key))
     if "app_port" in payload:
         profile["app_port"] = _coerce_optional_positive_int(payload.get("app_port"), minimum=1, maximum=65535) or DEFAULT_PORT
     if "safe_startup" in payload:
         profile["safe_startup"] = _auth_policy_bool(payload.get("safe_startup"), default=True)
+    for key in ('pixiv_product_enabled', 'pixiv_product_apply_enabled'):
+        profile[key] = _auth_policy_bool(payload.get(key), default=False)
     if "require_auth" in payload:
         profile["require_auth"] = _auth_policy_bool(payload.get("require_auth"), default=True)
     if "manual_sync_enabled" in payload:
@@ -852,6 +854,12 @@ def _profile_to_env(profile: Mapping[str, Any], *, repo_root: Path = ROOT) -> di
     }
     if profile.get("manual_sync_execute_max_files") is not None:
         profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_MAX_FILES"] = str(profile.get("manual_sync_execute_max_files"))
+    for key, flag in (
+        ('pixiv_product_enabled', 'SCV2_PX3_PRODUCT_INTEGRATION_ENABLED'),
+        ('pixiv_product_apply_enabled', 'SCV2_PX3_PRODUCT_APPLY_ENABLED'),
+    ):
+        profile_env[flag] = 'true' if _auth_policy_bool(profile.get(key), default=False) else 'false'
+    profile_env['SCV2_PX3_SYNTHETIC_UI_ENABLED'] = 'false'
     if profile.get("manual_sync_max_duration_seconds") is not None:
         profile_env["DYNAMIC_LIBRARY_MANUAL_SYNC_MAX_DURATION_SECONDS"] = str(profile.get("manual_sync_max_duration_seconds"))
     if profile.get("manual_sync_enabled") is not None:
@@ -2092,6 +2100,28 @@ def _storage_root_looks_production(config: RuntimeConfig) -> tuple[bool, str]:
     return True, "Storage root is explicit and production-shaped."
 
 
+def _pinned_candidate_worktree(config: RuntimeConfig) -> bool:
+    """明确 profile 可固定候选 worktree；行为漂移阻止启动，文档收口可延续。"""
+    head = str(config.profile_data.get('candidate_head') or '')
+    if (config.config_source != 'production_profile' or not config.profile_exists
+        or not re.fullmatch('[0-9a-f]{40}',head)
+        or _normalize_path(config.env.get('VIOLET_CANONICAL_REPO_ROOT','')) != _normalize_path(config.repo_root)
+        or not config.profile_path or not profile_file_is_local_ignored(config.profile_path,config.repo_root)):
+        return False
+    def git(*args):
+        return subprocess.check_output(['git','-C',str(config.repo_root),*args],
+            text=True,encoding='utf-8',stderr=subprocess.DEVNULL,timeout=10).strip()
+    try:
+        if git('merge-base',head,'HEAD') != head:
+            return False
+        if git('diff',head,'--','.',':!docs/**',':!AGENTS.md'):
+            return False
+        untracked=git('ls-files','--others','--exclude-standard').splitlines()
+        return all(path.startswith('docs/') and path.endswith('.md') for path in untracked)
+    except (OSError,subprocess.SubprocessError):
+        return False
+
+
 def preflight(
     *,
     repo_root: Path = ROOT,
@@ -2112,7 +2142,9 @@ def preflight(
         for profile_gate in _profile_gates(config):
             if profile_gate.name in {"production_profile_exists", "production_profile_valid", "production_profile_local_ignored", "production_profile_env"}:
                 gate(profile_gate.name, profile_gate.passed, profile_gate.message, profile_gate.hard)
-    gate("canonical_repo_root", worktree is False and not _repo_root_is_codex_worktree(repo_root), "Running from canonical repo root, not a git worktree.")
+    gate("canonical_repo_root", (worktree is False and not _repo_root_is_codex_worktree(repo_root))
+         or (worktree is True and _pinned_candidate_worktree(config)),
+         "使用正式 checkout 或生产 profile 明确固定且行为未漂移的候选 worktree。")
     gate("run_py_exists", (repo_root / "run.py").is_file(), "run.py exists in the production repo root.")
     configured_root = config.env.get("VIOLET_CANONICAL_REPO_ROOT", "").strip()
     if configured_root:

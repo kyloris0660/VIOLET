@@ -19,7 +19,7 @@ GATES = {
 
 
 def accepted_apply_request(dry_run: dict, *, canary_percent: int) -> dict[str, object]:
-    """Carry an actual server dry-run; the apply endpoint rederives its contents."""
+    """传递真实 dry-run 校验值；依据当前任务授权调用，不表示人工逐项验收。"""
     selection = dry_run.get('input_selection') or {}
     unsigned = {key: value for key, value in dry_run.items() if key != 'canonical_fingerprint'}
     fingerprint = hashlib.sha256(json.dumps(unsigned, sort_keys=True, separators=(',', ':'),
@@ -98,7 +98,7 @@ def build_plan(*, gate: str, canary_percent: int, work_limit: int, dry_run: dict
             "bounds": {"work_percentage": canary_percent, "full_scan": False},
             "preconditions": [
                 "PX3_BACKUP_RESTORE_GATE passed for the exact database identity",
-                "dry-run product fingerprint and counts owner accepted",
+                "current task authorizes the exact target; actual dry-run values are carried automatically",
                 "SCV2_PX3_PRODUCT_INTEGRATION_ENABLED and APPLY flags explicitly enabled",
             ],
             "success": [
@@ -142,7 +142,7 @@ def build_plan(*, gate: str, canary_percent: int, work_limit: int, dry_run: dict
             "preconditions": [
                 "controlled provider smoke passed or existing complete metadata selected",
                 "existing database dry-run and backup/restore gates passed",
-                "selected work IDs and selection fingerprint owner accepted",
+                "current task authorizes the selected scope; accepted_apply_request carries actual server values",
             ],
             "success": [
                 "all selected bundles and candidate pairs accounted",

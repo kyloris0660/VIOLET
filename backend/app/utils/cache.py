@@ -5,6 +5,7 @@ from typing import Callable, Optional
 
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy import text
 
 from ..redis_client import redis_cache
 from ..utils.logger import logger
@@ -28,6 +29,13 @@ def cache_response(expire: int = 3600, key_prefix: str = "cache"):
             
             # Generate cache key based on URL and query params
             url = str(request.url)
+            if key_prefix == 'search':
+                db = kwargs.get('db')
+                if db is None:
+                    return await func(*args, **kwargs)
+                # 同一事务维护的单行版本覆盖直接 SQL、跨进程和删除；不读取来源 payload。
+                revision = db.execute(text('SELECT revision FROM blombooru_source_binding_cache_epoch WHERE id=1')).scalar_one()
+                url += '|source_revision=' + str(revision)
             key = f"{key_prefix}:{hashlib.md5(url.encode()).hexdigest()}"
             
             cached_data = redis_cache.get(key)
@@ -78,11 +86,11 @@ def invalidate_tag_cache():
 
 def invalidate_source_concept_search_cache():
     """Invalidate search responses that depend on SourceConcept rows."""
-    invalidate_cache("search")
+    invalidate_cache("search", "media_list", "media_detail", "danbooru")
 
 def invalidate_source_metadata_search_cache():
     """Invalidate search responses that depend on committed source metadata."""
-    invalidate_cache("search")
+    invalidate_cache("search", "media_list", "media_detail", "danbooru")
 
 
 def invalidate_album_cache():

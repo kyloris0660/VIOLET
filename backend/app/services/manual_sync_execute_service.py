@@ -33,6 +33,7 @@ from ..models import (
     blombooru_media_tags,
 )
 from ..routes.media import process_and_save_media
+from .media_commit_boundary import MediaCommittedError
 from ..schemas import RatingEnum
 from ..utils.logger import logger
 from ..utils.local_library_scanner import _is_scannable_file
@@ -1634,6 +1635,9 @@ def _copy_and_import_media(db: Session, source_file: Path) -> tuple[int, int]:
             category_hints=None,
         )
         return int(media.id), int(bytes_copied)
+    except MediaCommittedError:
+        # The durable Media owns this file even if the response failed.
+        raise
     except HTTPException:
         if copied:
             try:

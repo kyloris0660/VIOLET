@@ -78,8 +78,8 @@ def test_status_and_synthetic_dry_run_do_not_write(api_client) -> None:
         "latest_run": None,
         "owner_gates": {
             "controlled_provider_smoke": "not_authorized",
-            "existing_database_canary": "not_authorized",
-            "backup_restore": "not_authorized",
+            "existing_database_canary": "requires_current_task_authorization",
+            "backup_restore": "requires_current_task_authorization",
             "bounded_import_canary": "not_authorized",
         },
     }

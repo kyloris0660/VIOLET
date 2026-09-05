@@ -1,5 +1,12 @@
 # V.I.O.L.E.T. 启动器 / Production Launcher
 
+A1 候选接入：项目所有者已授权本次生产验证。执行代理使用现有 profile 的
+`repo_root`、`python`、`storage_root` 及新增可选 `candidate_head` 固定候选。
+只有明确固定提交、同一提交后代且运行代码无漂移的 worktree 可通过启动预检；
+文档收口允许延续，未跟踪代码会阻止启动。原数据库、存储根、认证和 safe-startup
+继续生效。`pixiv_product_enabled` 控制来源产品入口，`pixiv_product_apply_enabled`
+仅在已授权操作窗口启用，完成后关闭。候选通过不表示项目负责人已接受或 PR 已合并。
+
 `PROD-LAUNCHER-UX1/PF1` is the first production launcher implementation: a
 temporary personal Windows entrypoint for the current development/production
 split. The visible app title is `V.I.O.L.E.T. 启动器`. It is backed by an

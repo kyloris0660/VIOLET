@@ -14,7 +14,7 @@ import json
 from collections import Counter
 from typing import Any, Iterable, Mapping, Sequence
 
-from sqlalchemy import and_, exists, func, or_
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Query, Session, aliased
 
 from ..models import (
@@ -28,10 +28,14 @@ from ..models import (
     SourceConceptSignalLink,
     SourceConceptProductMediaBinding,
     SourceConceptProductRun,
+    SourceMetadataRecord,
 )
 from .source_metadata_registry_service import canonical_source_key, normalize_source_text
 from .pixiv_identity_policy import canonical_pixiv_work_id, canonical_pixiv_page_index
-from .pixiv_product_media_binding import active_binding_condition
+from .pixiv_product_media_binding import (
+    active_binding_condition, current_binding_columns_condition,
+    current_product_alias_condition, current_product_evidence_condition,
+)
 
 ACTIVE_SOURCE_CONCEPT_STATUSES = ("active",)
 REVIEW_SOURCE_CONCEPT_STATUSES = ("needs_review",)
@@ -215,6 +219,7 @@ def _query_search_index_rows(
         .filter(SourceConceptSearchIndex.search_key.in_(sorted(keys)))
         .filter(SourceConceptSearchIndex.status.in_(statuses))
         .filter(SourceConceptAlias.status.in_(statuses))
+        .filter(current_product_alias_condition(SourceConceptAlias))
         .filter(SourceConcept.status.in_(statuses))
     )
     if active_only_for_hint:
@@ -257,6 +262,7 @@ def _query_search_index_concept_ids(
         .filter(SourceConceptSearchIndex.search_key.in_(sorted(keys)))
         .filter(SourceConceptSearchIndex.status.in_(statuses))
         .filter(SourceConceptAlias.status.in_(statuses))
+        .filter(current_product_alias_condition(SourceConceptAlias))
         .filter(SourceConcept.status.in_(statuses))
         .distinct()
         .all()
@@ -278,7 +284,7 @@ def _source_concept_media_condition(concept_ids: Sequence[int], *, include_needs
     evidence_condition = exists().where(
         and_(
             evidence.concept_id.in_(ids),
-            or_(evidence.media_id == Media.id, active_binding_condition(evidence.id, Media.id)),
+            evidence.media_id == Media.id,
             evidence.status.in_(statuses),
         )
     )
@@ -295,7 +301,15 @@ def _source_concept_media_condition(concept_ids: Sequence[int], *, include_needs
         )
     )
 
-    return or_(evidence_condition, signal_condition)
+    # 分开物化绑定集合，避免 PostgreSQL 在每个 Media 上重复执行嵌套 OR/EXISTS。
+    binding = SourceConceptProductMediaBinding
+    bound_ids = select(binding.media_id).where(
+        evidence.id == binding.evidence_id,
+        evidence.concept_id.in_(ids),
+        evidence.status.in_(statuses),
+        current_binding_columns_condition(binding, SourceConceptProductRun, SourceMetadataRecord),
+    ).correlate(None)
+    return or_(evidence_condition, signal_condition, Media.id.in_(bound_ids))
 
 
 def _query_overlay_fallback_rows(
@@ -790,6 +804,7 @@ def _concept_summary(
         db.query(SourceConceptAlias)
         .filter(SourceConceptAlias.concept_id == concept.id)
         .filter(SourceConceptAlias.status.in_(statuses))
+        .filter(current_product_alias_condition(SourceConceptAlias))
         .order_by(SourceConceptAlias.status.asc(), SourceConceptAlias.confidence.desc().nullslast(), SourceConceptAlias.display_name.asc())
         .limit(MAX_ALIASES_PER_CONCEPT)
         .all()
@@ -798,6 +813,7 @@ def _concept_summary(
         db.query(SourceConceptEvidence)
         .filter(SourceConceptEvidence.concept_id == concept.id)
         .filter(SourceConceptEvidence.status.in_(statuses))
+        .filter(current_product_evidence_condition(SourceConceptEvidence))
     )
     if media_id is not None:
         evidence_query = evidence_query.filter(or_(
@@ -818,6 +834,7 @@ def _concept_summary(
         db.query(SourceConceptEvidence.provider, SourceConceptEvidence.evidence_type, SourceConceptEvidence.evidence_strength)
         .filter(SourceConceptEvidence.concept_id == concept.id)
         .filter(SourceConceptEvidence.status.in_(statuses))
+        .filter(current_product_evidence_condition(SourceConceptEvidence))
         .all()
     )
     linked_media_count = db.query(Media.id).filter(
@@ -827,6 +844,7 @@ def _concept_summary(
         db.query(func.count(SourceConceptEvidence.id))
         .filter(SourceConceptEvidence.concept_id == concept.id)
         .filter(SourceConceptEvidence.status.in_(statuses))
+        .filter(current_product_evidence_condition(SourceConceptEvidence))
         .scalar()
         or 0
     )
@@ -834,6 +852,9 @@ def _concept_summary(
     display_name = _safe_text(concept.primary_display_name, fallback=f"SourceConcept {concept.id}")
     aliases = [_alias_payload(alias) for alias in alias_rows]
     search_label = next((alias["display_name"] for alias in aliases if alias.get("display_name") and not alias.get("redacted")), display_name)
+    if (not any(alias.display_name == concept.primary_display_name for alias in alias_rows)
+        and db.query(SourceConceptProductRun.id).filter_by(resolver_run_id=concept.created_by_run_id).first()):
+        display_name = search_label if aliases else f'SourceConcept {concept.id}'
     providers = _safe_list((row[0] for row in all_evidence_rows), limit=12)
     signal_origins = _safe_list((row[1] for row in all_evidence_rows), limit=12)
     trust_tiers = _safe_list((row[2] for row in all_evidence_rows), limit=12)
@@ -894,8 +915,10 @@ def _concept_summary(
             SourceConceptEvidence, SourceConceptEvidence.id == binding.evidence_id
         ).join(SourceConceptSignal, SourceConceptSignal.id == SourceConceptEvidence.signal_id).join(
             SourceConceptProductRun, SourceConceptProductRun.id == binding.product_run_id
+        ).join(SourceMetadataRecord, SourceMetadataRecord.id == binding.source_metadata_record_id
         ).filter(SourceConceptEvidence.concept_id == concept.id,
-                 SourceConceptEvidence.status.in_(statuses), SourceConceptProductRun.status == 'active')
+                 SourceConceptEvidence.status.in_(statuses),
+                 current_binding_columns_condition(binding, SourceConceptProductRun, SourceMetadataRecord))
         if media_id is not None:
             binding_query = binding_query.filter(binding.media_id == media_id)
         payload['local_media_support'] = [

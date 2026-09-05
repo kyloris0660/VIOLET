@@ -1,8 +1,20 @@
 # Current Mainline Roadmap
 
-<!-- CURRENT_PHASE: SCV2-PX3 -->
+<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A1 -->
 
-The current-route authority is `docs/state/current-phase.json`.
+当前阶段为 **PRODUCTION-PIXIV-A1**：执行代理依据项目所有者授权完成生产 Pixiv
+接入与原库验收；PR #150 已合并。历史 PX 的限制和证据仅描述其原阶段。
+A1 方案见 `docs/plans/production-pixiv-a1.md`；项目负责人复审尚未完成。
+本阶段不执行 A2/A3，不授权 merge、main push 或额外 reviewer。
+
+
+当前路线只以 `docs/state/current-phase.json` 为准。本次 A1 复用既有链路，
+完成后由项目负责人复审；A2 补齐 metadata 与完整裁决，A3 接通日常同步。
+
+## 历史 PX3 基线记录
+
+以下为已合并 PR #150 之前的受限证明，所有状态、授权和到期门仅描述该历史
+检查点，不构成本次 A1 当前状态。原始报告和运行证据继续保留。
 The historical PX3 incoming mainline was PR #148 / `SCV2_PX2_MERGED` at
 `421e2989d274e2dc4492d5bccc10720dcfbbaa4f`, with accepted second parent
 `bf8055af61c3a5d32155701ed7110db692047dba` and matching tree

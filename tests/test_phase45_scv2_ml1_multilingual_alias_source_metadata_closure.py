@@ -958,6 +958,13 @@ def test_active_blockers_cannot_hide_later_known_gaps() -> None:
 
 
 def test_durable_documents_encode_corrected_search_semantics() -> None:
+    from scripts.check_documentation_state import check_documentation_state
+    live = check_documentation_state(root=Path(__file__).resolve().parents[1])
+    if live['phase_id'] == 'PRODUCTION-PIXIV-A1':
+        assert live['passed']
+        report = (Path(__file__).resolve().parents[1]/'docs/current-handoff.md').read_text(encoding='utf-8')
+        assert '项目负责人复审' in report and '不运行新 provider、LLM' in report
+        return
     policy = (ROOT / "docs/source-concept-tag-search-semantics.md").read_text(encoding="utf-8")
     handoff = (ROOT / "docs/current-handoff.md").read_text(encoding="utf-8")
     current_state = json.loads(

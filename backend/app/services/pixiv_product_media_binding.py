@@ -1,6 +1,7 @@
 """PX3 apply-boundary support edges over the existing SourceConcept evidence."""
 
-from sqlalchemy import and_, exists
+from sqlalchemy import and_, exists, or_
+from sqlalchemy.orm import aliased
 
 from ..models import (
     Media, SourceMetadataRecord, SourceConceptEvidence,
@@ -56,15 +57,18 @@ def verified_local_binding_provenance(record, projection=None):
                 and pages[0]['creator_name'] == projection['creator_display_name'])
 
 
-def plan_media_bindings(session, run):
+def plan_media_bindings(session, run, *, lock=False):
     aggregates = {(a['work_id'], a['page_index']): a for a in run.consumer.aggregates}
     sources = {}
-    for record in session.query(SourceMetadataRecord).join(
+    query = session.query(SourceMetadataRecord).join(
         Media, Media.id == SourceMetadataRecord.media_id
     ).filter(
         SourceMetadataRecord.provider == 'pixiv',
         SourceMetadataRecord.source_work_id.in_({key[0] for key in aggregates}),
-    ).all():
+    )
+    if lock:
+        query = query.populate_existing().with_for_update(of=SourceMetadataRecord)
+    for record in query.all():
         aggregate = aggregates.get((record.source_work_id, record.source_page_index))
         if aggregate is None or not is_trusted_complete_pixiv_metadata_record(record):
             continue
@@ -110,15 +114,30 @@ def persist_media_bindings(session, product_run, edges):
     ).filter(SourceConceptEvidence.run_id == product_run.resolver_run_id).all():
         by_key.setdefault(key, []).append(evidence)
     count = 0
+    revisions = dict(session.query(
+        SourceMetadataRecord.id, SourceMetadataRecord.binding_revision,
+    ).filter(SourceMetadataRecord.id.in_({edge[1] for edge in edges})).all())
     for signal_key, record_id, media_id in edges:
         for evidence in by_key.get(signal_key, []):
             session.add(SourceConceptProductMediaBinding(
                 product_run_id=product_run.id, evidence_id=evidence.id,
                 source_metadata_record_id=record_id, media_id=media_id,
+                source_revision=revisions[record_id],
             ))
             count += 1
     session.flush()
     return count
+
+
+def current_binding_columns_condition(binding, run, record):
+    return and_(
+        binding.product_run_id == run.id,
+        run.status == 'active',
+        binding.source_metadata_record_id == record.id,
+        record.media_id == binding.media_id,
+        record.provider == 'pixiv',
+        binding.source_revision == record.binding_revision,
+    )
 
 
 def active_binding_condition(evidence_id, media_id):
@@ -128,9 +147,34 @@ def active_binding_condition(evidence_id, media_id):
     return exists().where(and_(
         binding.evidence_id == evidence_id,
         binding.media_id == media_id,
-        binding.product_run_id == run.id,
-        run.status == 'active',
-        binding.source_metadata_record_id == SourceMetadataRecord.id,
-        SourceMetadataRecord.media_id == binding.media_id,
-        SourceMetadataRecord.provider == 'pixiv',
+        current_binding_columns_condition(binding, run, SourceMetadataRecord),
     )).correlate_except(binding, run, SourceMetadataRecord)
+
+
+def current_product_alias_condition(alias):
+    """An alias cannot outlive every current source that supplied its name."""
+    run = aliased(SourceConceptProductRun)
+    binding = aliased(SourceConceptProductMediaBinding)
+    record = aliased(SourceMetadataRecord)
+    evidence = aliased(SourceConceptEvidence)
+    signal = aliased(SourceConceptSignal)
+    product_owned = exists().where(run.resolver_run_id == alias.created_by_run_id).correlate_except(run)
+    current_support = exists().where(and_(
+        evidence.concept_id == alias.concept_id,
+        signal.id == evidence.signal_id,
+        or_(signal.id == alias.source_signal_id, signal.normalized_key == alias.alias_key),
+        evidence.id == binding.evidence_id,
+        current_binding_columns_condition(binding, run, record),
+    )).correlate_except(run,binding,record,evidence,signal)
+    return or_(~product_owned, current_support)
+
+
+def current_product_evidence_condition(evidence):
+    """概念详情仅展示当前有效产品依据；历史运行审计保持原始版本。"""
+    run = aliased(SourceConceptProductRun)
+    binding = aliased(SourceConceptProductMediaBinding)
+    record = aliased(SourceMetadataRecord)
+    owned = exists().where(run.resolver_run_id == evidence.run_id).correlate_except(run)
+    supported = exists().where(and_(binding.evidence_id == evidence.id,
+        current_binding_columns_condition(binding,run,record))).correlate_except(binding,run,record)
+    return or_(~owned,supported)

@@ -79,7 +79,7 @@ async def search_media(
         limit = settings.get_items_per_page()
 
     query = db.query(Media).options(selectinload(Media.tags))
-    parsed = parse_search_query(q)
+    parsed = parse_search_query(q, db=db)
     source_concept_include_needs_review = True
     source_concept_expansions = resolve_source_concept_query_expansions(
         db,
@@ -152,7 +152,7 @@ async def get_random_media(
 ):
     """Get a random media ID matching the search criteria"""
     query = db.query(Media.id)
-    parsed = parse_search_query(q)
+    parsed = parse_search_query(q, db=db)
     source_concept_include_needs_review = True
     
     if rating and rating != "explicit":

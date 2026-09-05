@@ -26,6 +26,7 @@ from ..models import (
     SourceTagObservation,
     Tag,
     TagTranslation,
+    blombooru_media_tags,
 )
 from .source_concept_search_service import (
     list_media_source_concepts,
@@ -234,7 +235,12 @@ def _escape_like_pattern(value: str) -> str:
 def _media_has_tag_condition(tag_names: set[str]):
     if not tag_names:
         return None
-    return Media.tags.any(Tag.name.in_(sorted(tag_names)))
+    return exists().where(and_(
+        blombooru_media_tags.c.media_id == Media.id,
+        blombooru_media_tags.c.tag_id == Tag.id,
+        blombooru_media_tags.c.is_suggestion.is_(False),
+        Tag.name.in_(sorted(tag_names)),
+    )).correlate_except(blombooru_media_tags, Tag)
 
 
 def _source_name_condition(

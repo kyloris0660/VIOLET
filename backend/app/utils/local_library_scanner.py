@@ -421,7 +421,7 @@ def scan_and_import(
                     pass
 
                 # --- Orphan file cleanup (Fix E) ---
-                if copied_path and copied_path.exists():
+                if not getattr(e, 'media_committed', False) and copied_path and copied_path.exists():
                     try:
                         copied_path.unlink()
                     except OSError:

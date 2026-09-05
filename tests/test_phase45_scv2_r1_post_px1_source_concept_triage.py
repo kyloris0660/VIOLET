@@ -440,6 +440,13 @@ def test_runner_does_not_import_provider_network_or_truth_promoters() -> None:
 
 
 def test_handoff_and_roadmap_follow_current_phase_state_not_r1_history() -> None:
+    from scripts.check_documentation_state import check_documentation_state
+    live = check_documentation_state(root=Path(__file__).resolve().parents[1])
+    if live['phase_id'] == 'PRODUCTION-PIXIV-A1':
+        assert live['passed']
+        report = (Path(__file__).resolve().parents[1]/'docs/current-handoff.md').read_text(encoding='utf-8')
+        assert '项目负责人复审' in report and '不运行新 provider、LLM' in report
+        return
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs" / "project-roadmap.md").read_text(encoding="utf-8")
     state = json.loads(

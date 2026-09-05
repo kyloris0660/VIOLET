@@ -28,45 +28,37 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _state() -> dict[str, object]:
-    return load_state(ROOT / "docs" / "state" / "current-phase.json")
+    # Keep the accepted PX3 restrictions under regression; they are historical.
+    from scripts.check_documentation_state import _trusted_git_value
+    return json.loads(_trusted_git_value(ROOT, 'show',
+        '26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3:docs/state/current-phase.json'))
 
 
-def test_current_handoff_is_exact_px3_projection() -> None:
-    state = _state()
-    handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
+def test_current_handoff_is_exact_a1_projection() -> None:
+    state = load_state(ROOT / 'docs/state/current-phase.json')
+    handoff = (ROOT / 'docs/current-handoff.md').read_text(encoding='utf-8')
     assert handoff == render_handoff(state)
-    assert 55 <= len(handoff.splitlines()) <= 180
-    assert "PX2 Merge Projection" in handoff
-    assert "SCV2_PX2_MERGED" in handoff
-    assert "SCV2-PX3" in handoff
-    assert state["active_blocker"]["code"] in handoff
-    assert "Historical phase-4.5-PX1 is historical compatibility evidence" in handoff
-    assert f"px3_owner_accepted={str(state['protected_evidence']['px3_owner_accepted']).lower()}" in handoff
-    assert f"px3_merge_authorized={str(state['authorities']['px3_merge_authorized']).lower()}" in handoff
+    assert 55 <= len(handoff.splitlines()) <= 115
+    assert state['phase_id'] == 'PRODUCTION-PIXIV-A1'
+    assert 'PR #150 已合并' in handoff
 
 
-def test_px3_state_and_active_docs_validate() -> None:
-    state = _state()
+def test_a1_state_and_active_docs_validate() -> None:
+    state = load_state(ROOT / 'docs/state/current-phase.json')
     validate_state(state)
     validate_roadmaps(state)
-    assert state["phase_id"] == "SCV2-PX3"
-    assert state["previous_phase"] == "SCV2-PX2"
-    assert state["previous_phase_status"] == (
-        "owner_accepted_pr148_merged_with_exact_tree_preserved"
-    )
-    assert state["current_status"] in {
-        SCV2_PX3_IN_PROGRESS_STATUS,
-        SCV2_PX3_READY_STATUS,
-        SCV2_PX3_CLOSURE_READY_STATUS,
-        SCV2_PX3_MERGED_STATUS,
-        SCV2_PX3_RESTORE_PROGRESS,
-        SCV2_PX3_RESTORE_VERIFIED,
-    }
-    ready = state["current_status"] != SCV2_PX3_IN_PROGRESS_STATUS
-    assert state["target_met"] is ready
-    assert state["safe_to_merge"] is (state.get('restored_canary', {}).get('followup_merge_authorized', False) or state['current_status'] == SCV2_PX3_CLOSURE_READY_STATUS)
-    assert state["route_approved"] is False
-    assert state["next_phase_started"] is False
+    assert state['previous_phase_pr_number'] == 150
+    assert state['safe_to_merge'] is False
+    assert state['route_approved'] is False
+    assert state['next_phase_started'] is False
+
+
+@pytest.mark.parametrize('field', ['merge','provider_network','llm','truth_mutation','original_file_mutation'])
+def test_a1_authority_cannot_expand(field):
+    state = load_state(ROOT / 'docs/state/current-phase.json')
+    state['authorities'][field] = True
+    with pytest.raises(DocumentationStateError, match='forbidden'):
+        validate_state(state)
 
 
 def test_pr148_merge_identity_is_exact() -> None:

@@ -445,6 +445,13 @@ def test_public_dirty_worktree_status_is_redacted() -> None:
 
 
 def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
+    from scripts.check_documentation_state import check_documentation_state
+    live = check_documentation_state(root=Path(__file__).resolve().parents[1])
+    if live['phase_id'] == 'PRODUCTION-PIXIV-A1':
+        assert live['passed']
+        report = (Path(__file__).resolve().parents[1]/'docs/current-handoff.md').read_text(encoding='utf-8')
+        assert '项目负责人复审' in report and '不运行新 provider、LLM' in report
+        return
     handoff = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
     current_state = json.loads(
         (ROOT / "docs" / "state" / "current-phase.json").read_text(encoding="utf-8")

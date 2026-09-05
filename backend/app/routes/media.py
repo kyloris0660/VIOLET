@@ -18,6 +18,7 @@ from ..utils.request_helpers import safe_error_detail
 from ..database import get_db
 from ..models import (Album, Media, Tag, User, blombooru_album_media,
                       blombooru_media_tags)
+from ..services.media_commit_boundary import MediaCommittedError
 from ..services.tag_service import (
     add_manual_tags_to_media,
     get_media_tag_provenance,
@@ -160,6 +161,8 @@ def process_and_save_media(
     else:
         logger.warning("Thumbnail generation failed")
 
+    committed = False
+    committed_media_id = None
     try:
         relative_path = settings.storage_relative_path(file_path)
         relative_thumb = settings.storage_relative_path(thumbnail_path) if thumbnail_generated else None
@@ -223,9 +226,14 @@ def process_and_save_media(
             except Exception as e:
                 logger.error(f"Error parsing album_ids: {e}")
 
+        committed_media_id = media.id
         db.commit()
+        committed = True
         db.refresh(media)
-    except Exception:
+    except Exception as exc:
+        if committed:
+            raise MediaCommittedError(committed_media_id) from exc
+        db.rollback()
         # --- Clean up only thumbnails created by THIS call ---
         if thumbnail_generated and not thumbnail_existed_before:
             try:
@@ -236,24 +244,27 @@ def process_and_save_media(
                 pass
         raise
 
-    if tag_ids_to_update:
-        update_tag_counts(db, tag_ids_to_update)
-        db.commit()
+    try:
+        if tag_ids_to_update:
+            update_tag_counts(db, tag_ids_to_update)
+            db.commit()
 
-    if affected_album_ids:
-        for a_id in affected_album_ids:
-            update_album_last_modified(a_id, db)
-        db.commit()
-        invalidate_album_cache()
+        if affected_album_ids:
+            for a_id in affected_album_ids:
+                update_album_last_modified(a_id, db)
+            db.commit()
+            invalidate_album_cache()
 
-    db.refresh(media)
+        db.refresh(media)
 
-    logger.info(f"Media saved: ID={media.id}, filename={unique_filename}")
+        logger.info(f"Media saved: ID={media.id}, filename={unique_filename}")
 
-    invalidate_media_cache()
-    invalidate_tag_cache()
+        invalidate_media_cache()
+        invalidate_tag_cache()
 
-    return MediaResponse.model_validate(media)
+        return MediaResponse.model_validate(media)
+    except Exception as exc:
+        raise MediaCommittedError(committed_media_id) from exc
 
 @router.get("/")
 @router.get("")
